@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Votre analyste IA. Un pupitre d'intelligence personnel. Une plateforme sur laquelle construire. Une seule clé pour tous les services en direct.",
+    "proDesc": "Votre analyste IA. Un pupitre d'intelligence personnel. Une plateforme sur laquelle construire.",
     "proF1": "WM Analyst chat — interrogez les services en direct en langage naturel",
     "proF2": "Digest IA — quotidien, biquotidien ou hebdomadaire — vers Slack, Discord, Telegram, Email ou webhook",
     "proF3": "Constructeur de widgets personnalisés — HTML/CSS/JS avec modification assistée par IA",
@@ -482,7 +482,7 @@
       "plateNote": "Capturé depuis la carte en direct — cliquez pour l'ouvrir",
       "trustBuild": "Construisez dessus :",
       "positioningLink": "WorldMonitor n'est pas un Palantir open-source",
-      "asOf": "Au 8 septembre 2026",
+      "asOf": "Au {{date}}",
       "whatIsTitle": "Qu'est-ce que World Monitor ?",
       "whatIsBody": "World Monitor est un tableau de bord gratuit et open source qui diffuse les signaux géopolitiques, marchés, transports maritimes, aviation, infrastructures et cyber sur une seule carte mondiale en direct. Il corrèle les flux séparés en une image opérationnelle unique et signale les convergences avant les gros titres, chaque chiffre étant sourcé et chaque méthode documentée."
     },
@@ -676,7 +676,7 @@
       "q4": "Puis-je surveiller les points d'étranglement comme Hormuz ou Bab el-Mandeb en temps réel ?",
       "a4": "Oui. Les points critiques sont surveillés avec des comptages de navires AIS en direct, des changements de transit semaine sur semaine et une notation de perturbation — et les anomalies de densité sont signalées par rapport à la ligne de base glissante de chaque détroit.",
       "q5": "En quoi cela diffère-t-il d'une carte de conflits comme Liveuamap ?",
-      "a5": "Le conflit est une couche cartographique. World Monitor fusionne les conflits avec le transport maritime, les vols militaires, les infrastructures, les marchés et la cybersécurité — puis l'IA évalue la convergence : indices d'instabilité, escalade des points chauds, alertes de rupture corroborées et briefings quotidiens. Comparez World Monitor avec Liveuamap et d'autres cartes de conflits : worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Le conflit est une couche de carte. World Monitor fusionne les conflits avec le transport maritime, les vols militaires, les infrastructures, les marchés et la cyber — puis l'IA évalue la convergence : indices d'instabilité, escalade des points chauds, alertes de rupture corroborées et briefs quotidiens. Comparez World Monitor avec Liveuamap et d'autres cartes de conflit : worldmonitor.app/compare/liveuamap-alternatives. Pour des options de monitoring plus larges, consultez worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Pourquoi devrais-je faire confiance à une alerte ?",
       "a6": "Une bannière en temps réel ne s'affiche que quand des types d'origine indépendants corroborent — classification des actualités, vélocité des mots-clés, escalade des points chauds, augmentations militaires, sirènes officielles — dédupliquées et limitées en débit. Moins d'alertes, de vraies alertes.",
       "q7": "Les agents IA comme Claude ou GPT peuvent-ils l'utiliser ?",

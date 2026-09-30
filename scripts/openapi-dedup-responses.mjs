@@ -35,7 +35,7 @@
  * The same byte arithmetic applies to the Parameter Objects restored inline by
  * ensureInlineTypedInput below. Those copies exist so a JSON-only scanner sees
  * a TYPED input; they were carrying the component's whole description too, and
- * JmespathParam's is 403 bytes on 62 operations — ~25 KB, or 2.6% of the
+ * Jmespath's is 403 bytes on 62 operations — ~25 KB, or 2.6% of the
  * 950,000-byte budget, spent restating one paragraph 62 times. The restored
  * copy now carries a short lead sentence and a pointer; the component keeps the
  * caveats, the limits and the documentation link.
@@ -211,8 +211,10 @@ export function dedupeSharedParameters(spec) {
   const perNameOrdinal = new Map();
   for (const [key, group] of groups) {
     if (group.count < PARAM_HOIST_MIN_COUNT) continue;
-    const cleaned = String(group.name ?? '').replace(/[^A-Za-z0-9]/g, '');
-    const base = `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}Param`;
+    // Component names are repeated at every reference. Keep the scanner's
+    // curated jmespath component named; other identical contracts use compact
+    // deterministic ordinals, as error response components already do.
+    const base = group.name === 'jmespath' ? 'Jmespath' : 'P';
     let ordinal = perNameOrdinal.get(base) ?? 0;
     let name;
     do {
@@ -284,7 +286,7 @@ export const INLINE_DESCRIPTION_MAX_BYTES = 300;
 export const INLINE_SUMMARY_OVERRIDES = Object.freeze({
   // Paid once per otherwise-untyped GET. Keep the phrases the JSON contract
   // checks and nothing else. The component holds the caveats and the doc link.
-  JmespathParam: 'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+  Jmespath: 'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
 });
 
 /** UTF-8 bytes, not UTF-16 code units: the budget this serves is a byte cap. */
@@ -346,13 +348,13 @@ function shortInlineDescription(name, description) {
  * (path params stay inline) or a typed requestBody, and copy one referenced
  * Parameter Object back inline for the rest.
  *
- * Prefer the smallest typed component, not `JmespathParam`. The jmespath stamp
+ * Prefer the smallest typed component, not `Jmespath`. The jmespath stamp
  * is 514 bytes because of its description; expanding it on every GET that
  * already has a cheaper typed `$ref` (cursor, country, page_size) is what
  * pushed the served artifact through the three-operation reserve. JSON-only
  * scanners credit any inline typed schema, including a schema `$ref`, so the
  * smaller proto input is enough — and is the more useful inline field. Ops
- * whose only typed `$ref` is still `JmespathParam` keep inlining that copy,
+ * whose only typed `$ref` is still `Jmespath` keep inlining that copy,
  * shortened by shortInlineDescription.
  *
  * Mutates `spec` in place; returns { inlined }.
@@ -406,7 +408,7 @@ export function ensureInlineTypedInput(spec) {
       // `example` and `required: false` are repeated on every restored jmespath
       // copy. OpenAPI already treats a non-path parameter as optional, and the
       // component still carries both fields for the YAML contract.
-      if (name === 'JmespathParam') {
+      if (name === 'Jmespath') {
         delete copy.example;
         delete copy.required;
       }

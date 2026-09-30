@@ -120,21 +120,18 @@ describe('GDELT consumers read materialized Redis products', () => {
     );
   });
 
-  it('unrest accepts the exact product-age boundary and preserves its fetchedAt', async () => {
+  it('unrest normalizes old classifications at the age boundary without refreshing source time', async () => {
     const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
-    const events = [{ id: 'gdelt-unrest-1', title: 'Materialized unrest event' }];
     const snapshot = {
-      events,
+      events: [{ id: 'gdelt-unrest-1', eventType: 'UNREST_EVENT_TYPE_RIOT', confidence: 'CONFIDENCE_LEVEL_HIGH', severity: 'SEVERITY_LEVEL_HIGH' }],
       fetchedAt: nowMs - GDELT_BULK_UNREST_MAX_AGE_MS,
     };
-
-    assert.strictEqual(
-      await readMaterializedGdeltEvents({
-        _readSnapshot: async () => snapshot,
-        _now: () => nowMs,
-      }),
-      snapshot,
-    );
+    const result = await readMaterializedGdeltEvents({ _readSnapshot: async () => snapshot, _now: () => nowMs });
+    assert.equal(result.fetchedAt, snapshot.fetchedAt);
+    assert.equal(result.events[0].eventType, 'UNREST_EVENT_TYPE_UNSPECIFIED');
+    assert.equal(result.events[0].severity, 'SEVERITY_LEVEL_UNSPECIFIED');
+    assert.equal(result.events[0].confidence, 'CONFIDENCE_LEVEL_LOW');
+    assert.equal(snapshot.events[0].eventType, 'UNREST_EVENT_TYPE_RIOT');
   });
 
   it('unrest rejects stale, future-skewed, and malformed materialized snapshots', async () => {

@@ -1825,10 +1825,9 @@ export class MapComponent {
       // Already capped at 200 by the render loop; planned on the same slice so
       // the budget cannot spend share on the 201st position onwards.
       aircraft: layers.flights ? this.aircraftPositions.slice(0, 200) : [],
-      // Only riots and high-severity unrest reach the map; the rest stay in the
-      // CII analysis. Budgeting the full feed would cut the ones that render.
+      // Media mentions stay visible without borrowing incident severity.
       protests: layers.protests
-        ? this.protests.filter((event) => event.eventType === 'riot' || event.severity === 'high')
+        ? this.protests.filter((event) => event.sourceType === 'gdelt' || event.eventType === 'riot' || event.severity === 'high')
         : [],
       conflictEvents: withinTimeRange(layers.conflicts ? this.conflictEvents : []),
       // `centroid` is optional on WeatherAlert and the render loop skips an alert
@@ -3177,7 +3176,6 @@ export class MapComponent {
     }
 
     // Protests / Social Unrest Events (severity colors + icons) - with clustering
-    // Filter to show only significant events on map (all events still used for CII analysis)
     if (this.state.layers.protests) {
       const significantProtests = this.keepBudgetedMarkers(slices.protests);
 
@@ -3206,9 +3204,11 @@ export class MapComponent {
           badge.className = 'cluster-badge';
           badge.textContent = String(cluster.items.length);
           div.appendChild(badge);
-          div.title = `${primaryEvent.country}: ${cluster.items.length} ${t('popups.events')}`;
+          div.title = `${primaryEvent.country}: ${cluster.items.length} ${t('popups.protest.records')}`;
         } else {
-          div.title = `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
+          div.title = primaryEvent.sourceType === 'gdelt'
+            ? `${primaryEvent.city || primaryEvent.country} - ${t('popups.protest.mediaSignal')}`
+            : `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
           if (primaryEvent.validated) {
             div.classList.add('validated');
           }

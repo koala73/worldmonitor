@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
-import { t } from '../i18n';
+import { currentLanguageBase, t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import {
   DASHBOARD_SCREENSHOT_JPG,
@@ -12,6 +12,7 @@ import {
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
+import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
@@ -24,7 +25,7 @@ const HERO_PROOF_STATS = [
   {
     value: String(heroProofStats.providers),
     labelKey: 'welcome.depth.s3l',
-    href: '/sources/?utm_source=welcome-hero',
+    href: '/sources/',
   },
   { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
 ] as const;
@@ -68,7 +69,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
+      href={DASHBOARD_PATH}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
@@ -126,7 +127,9 @@ export const Hero = () => (
           {t('welcome.hero.sub')}
         </p>
         <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
-          <time dateTime="2026-09-08">{t('welcome.hero.asOf')}</time>
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
         </p>
       </motion.div>
 
@@ -137,7 +140,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
+          href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"

@@ -1076,6 +1076,7 @@ export interface PizzIntLocation {
   address: string;
   current_popularity: number;
   percentage_of_usual: number | null;
+  no_live_signal?: boolean;
   is_spike: boolean;
   spike_magnitude: number | null;
   data_source: string;

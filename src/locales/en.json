@@ -1222,10 +1222,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · venue data:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "NO DATA",
+      "statusNoBaseline": "NO BASELINE",
+      "vsUsual": "vs usual",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Tensions: World Monitor from GDELT events",
+      "insufficientData": "Insufficient data",
+      "pizzaUnavailable": "Pizza activity unavailable",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",
@@ -1237,11 +1245,11 @@
       "minutesAgo": "{{m}}m ago",
       "hoursAgo": "{{h}}h ago",
       "defconLabels": {
-        "1": "COCKED PISTOL - MAXIMUM READINESS",
-        "2": "FAST PACE - ARMED FORCES READY",
-        "3": "ROUND HOUSE - INCREASE FORCE READINESS",
-        "4": "DOUBLE TAKE - INCREASED INTELLIGENCE WATCH",
-        "5": "FADE OUT - LOWEST READINESS"
+        "1": "Maximum Activity",
+        "2": "High Activity",
+        "3": "Elevated Activity",
+        "4": "Above Normal",
+        "5": "Normal Activity"
       }
     },
     "strategicPosture": {
@@ -1907,6 +1915,27 @@
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
+    },
+    "corroboration": {
+      "singlePublisher": "Single publisher",
+      "singlePublisherHint": "Only one publisher is reporting this so far. This describes coverage, not accuracy.",
+      "tier4Only": "Low-tier sources only",
+      "tier4OnlyHint": "Every outlet reporting this is a tier-4 source (aggregators and blogs). This describes coverage, not accuracy.",
+      "rosterPublishers_one": "{{count}} publisher",
+      "rosterPublishers_other": "{{count}} publishers",
+      "rosterSummary": "Reported by {{publishers}}",
+      "rosterSummaryTier1": "Reported by {{publishers}}, including {{tier1}} tier-1",
+      "rosterListed": "({{listed}} listed)",
+      "rosterFeeds": "Feeds seen: {{labels}}",
+      "rosterLegend": "Tiers rank sources; they do not judge this claim.",
+      "tierDocsLink": "How tiers are assigned",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Tier 1: Wire services and official bodies",
+      "tierTitle2": "Tier 2: Major outlets",
+      "tierTitle3": "Tier 3: Specialist, regional and think-tank sources",
+      "tierTitle4": "Tier 4: Aggregators and blogs",
+      "tierTitleUndeclared": "Tier not declared: not yet reviewed"
     },
     "mobileNav": {
       "panelCategories": "Panel categories"
@@ -2945,6 +2974,10 @@
     "protest": {
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
+      "records": "records",
+      "mediaSignal": "Unverified media signal",
+      "relatedArticle": "Related article",
+      "mediaSignalDetail": "This location is mentioned in unrest-related articles. A local event is not verified.",
       "riots": "Riots",
       "highSeverity": "High Severity"
     },

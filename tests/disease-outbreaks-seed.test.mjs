@@ -19,7 +19,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchWhoDonApi } from '../scripts/seed-disease-outbreaks.mjs';
+import {
+  DISEASE_RSS_FEEDS,
+  fetchDiseaseOutbreaks,
+  fetchRssItems,
+  fetchWhoDonApi,
+} from '../scripts/seed-disease-outbreaks.mjs';
 import {
   whoNormalizeItem,
   rssNormalizeItem,
@@ -34,6 +39,9 @@ import {
   DISEASE_ALERT_RE,
   DISEASE_WARNING_RE,
   ALERT_LEVEL_METHODOLOGY_VERSION,
+  isRoundupHeadline,
+  isReportableHeadline,
+  HEADLINE_LOOKBACK_DAYS,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
 
 const WHO_RESPONSE = {
@@ -110,6 +118,183 @@ test('WHO adapter returns no records after both transient attempts fail', async 
 
   assert.equal(calls, 2);
   assert.deepEqual(outbreaks, []);
+});
+
+// ── RSS sources ──────────────────────────────────────────────────────────
+//
+// Outbreak News Today stopped publishing (newest item 2026-07-30) and earlier
+// answered 403, so it was a silently empty source. ECDC epidemiological updates
+// and CIDRAP disease feeds replace it (live-probed 2026-09-23).
+
+test('RSS sources include ECDC and CIDRAP and no longer include Outbreak News Today', () => {
+  const hosts = DISEASE_RSS_FEEDS.map(({ url }) => new URL(url).host);
+  assert.deepEqual(hosts.filter((host) => host === 'outbreaknewstoday.com'), []);
+  assert.ok(DISEASE_RSS_FEEDS.some(({ url, sourceName }) =>
+    sourceName === 'ECDC' && url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed'));
+  const cidrap = DISEASE_RSS_FEEDS.filter(({ sourceName }) => sourceName === 'CIDRAP');
+  assert.ok(cidrap.length >= 5);
+  for (const { url } of cidrap) assert.match(url, /^https:\/\/www\.cidrap\.umn\.edu\/news\/\d+\/rss$/);
+});
+
+const CIDRAP_XML = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"><channel><title>CIDRAP - Ebola News</title>
+    <item>
+  <title>  Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak</title>
+  <link>https://www.cidrap.umn.edu/ebola/ebola-outbreak-dr-congo-grows</link>
+  <description>&lt;p&gt;Cases keep rising.&lt;/p&gt;</description>
+  <pubDate>Mon, 14 Sep 2026 15:25:00 -0500</pubDate>
+    </item>
+    <item>
+  <title>Sprouts &amp; mangos recalled in multistate Salmonella outbreak</title>
+  <link>https://www.cidrap.umn.edu/foodborne/sprouts-mangos</link>
+  <description>&lt;p&gt;Recall.&lt;/p&gt;</description>
+  <pubDate>Tue, 01 Sep 2026 14:16:00 -0500</pubDate>
+    </item>
+</channel></rss>`;
+
+test('RSS adapter trims and entity-decodes titles and tags the source', async () => {
+  const items = await fetchRssItems('https://www.cidrap.umn.edu/news/64/rss', 'CIDRAP', {
+    fetchImpl: async () => new Response(CIDRAP_XML, { status: 200 }),
+  });
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, 'Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak');
+  assert.equal(items[0].desc, 'Cases keep rising.');
+  assert.equal(items[0].sourceName, 'CIDRAP');
+  assert.equal(items[0]._originalPublishedMs, Date.parse('2026-09-14T20:25:00Z'));
+  assert.equal(items[1].title, 'Sprouts & mangos recalled in multistate Salmonella outbreak');
+});
+
+test('RSS adapter returns no records on an HTTP error', async () => {
+  const items = await fetchRssItems('https://www.cidrap.umn.edu/news/64/rss', 'CIDRAP', {
+    fetchImpl: async () => new Response('forbidden', { status: 403 }),
+  });
+  assert.deepEqual(items, []);
+});
+
+test('headline sources take the location from the detected country, not the headline tail', () => {
+  const item = mapItem(rssNormalizeItem({
+    title: 'Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak',
+    link: 'https://www.cidrap.umn.edu/ebola/x',
+    desc: '',
+    pubDate: 'Mon, 14 Sep 2026 15:25:00 -0500',
+    sourceName: 'CIDRAP',
+  }));
+  assert.equal(item.disease, 'Ebola');
+  assert.equal(item.countryCode, 'CD');
+  assert.equal(item.location, new Intl.DisplayNames(['en'], { type: 'region' }).of('CD'));
+
+  const ecdc = mapItem(rssNormalizeItem({
+    title: 'Ebola disease outbreak in the Democratic Republic of the Congo',
+    link: 'https://www.ecdc.europa.eu/en/ebola',
+    desc: 'An Ebola virus disease outbreak has been ongoing in the Democratic Republic of the Congo (DRC).',
+    pubDate: 'Wed, 23 Sep 2026 17:36:21 +0200',
+    sourceName: 'ECDC',
+  }));
+  assert.equal(ecdc.countryCode, 'CD');
+  assert.equal(ecdc.location, item.location);
+});
+
+test('headline source without a detectable country leaves location empty', () => {
+  const item = mapItem(rssNormalizeItem({
+    title: 'MERS-CoV worldwide overview', link: 'https://www.ecdc.europa.eu/en/mers', desc: '',
+    pubDate: 'Mon, 07 Sep 2026 14:20:22 +0200', sourceName: 'ECDC',
+  }));
+  assert.equal(item.location, '');
+  assert.equal(item.countryCode, '');
+});
+
+test('WHO titles keep the title-derived location', () => {
+  const item = mapItem(whoNormalizeItem({
+    Title: 'Ebola disease caused by Bundibugyo virus - Democratic Republic of the Congo',
+    ItemDefaultUrl: '/2026-DON617',
+    PublicationDateAndTime: '2026-09-10T08:16:08Z',
+  }));
+  assert.equal(item.location, 'Democratic Republic of the Congo');
+});
+
+// CIDRAP "Quick takes" roundups bundle unrelated stories under one headline,
+// so disease and country detection attach one story's disease to another's
+// country ("DR Congo Ebola emergency, malaria deaths in Germany" -> Ebola, DE).
+test('roundup headlines are recognised so the seeder can drop them', () => {
+  assert.equal(isRoundupHeadline('Quick takes: DR Congo Ebola emergency, malaria deaths in Germany, 7 new polio cases'), true);
+  assert.equal(isRoundupHeadline('quick takes: H5N1 in dairy cattle'), true);
+  assert.equal(isRoundupHeadline('Ebola outbreak in DR Congo tops 6,600 cases'), false);
+});
+
+// CIDRAP disease feeds also carry research, policy and opinion stories, and
+// every feed returns its last 20 items however old. A headline-source item is
+// kept only when it names a known disease and a country and is recent; WHO/CDC
+// items keep their existing path.
+const NOW = Date.parse('2026-09-23T12:00:00Z');
+const headline = (title, { sourceName = 'CIDRAP', pubDate = 'Mon, 14 Sep 2026 15:25:00 -0500' } = {}) => mapItem(rssNormalizeItem({
+  title, link: 'https://www.cidrap.umn.edu/x', desc: '', pubDate, sourceName,
+}));
+
+test('headline-source items need a known disease and a country to count as an outbreak', () => {
+  assert.equal(isReportableHeadline(headline('Ebola outbreak in DR Congo tops 6,600 cases'), NOW), true);
+  assert.equal(isReportableHeadline(headline('Tpoxx doesn\u2019t improve on placebo in achieving key mpox outcomes'), NOW), false);
+  assert.equal(isReportableHeadline(headline('Poll highlights Americans\u2019 uneven knowledge of STI prevention'), NOW), false);
+  assert.equal(isReportableHeadline(headline('Early estimates of seasonal influenza vaccine effectiveness', { sourceName: 'ECDC' }), NOW), false);
+
+  const who = mapItem(whoNormalizeItem({ Title: 'Unusual respiratory illness - Country X', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
+  assert.equal(isReportableHeadline(who, NOW), true);
+});
+
+test('headline-source items older than the lookback are dropped', () => {
+  const inside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS - 1) * 86_400_000).toUTCString();
+  const outside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS + 1) * 86_400_000).toUTCString();
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: inside }), NOW), true);
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: outside }), NOW), false);
+});
+
+// rssNormalizeItem falls back to "now" when pubDate is missing or unparseable;
+// that synthetic date must not make an undated headline look current.
+test('headline-source items without a real publication date are dropped', () => {
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: '' }), NOW), false);
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: 'not a date' }), NOW), false);
+});
+
+// End-to-end through the seeder's fetch path with every upstream stubbed, so
+// removing any headline filter from fetchDiseaseOutbreaks turns this red.
+test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', async (t) => {
+  const recent = new Date(Date.now() - 2 * 86_400_000).toUTCString();
+  const stale = new Date(Date.now() - (HEADLINE_LOOKBACK_DAYS + 5) * 86_400_000).toUTCString();
+  const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map(([title, link, pubDate]) =>
+    `<item><title>${title}</title><link>${link}</link><description>d</description>${pubDate ? `<pubDate>${pubDate}</pubDate>` : ''}</item>`).join('')}</channel></rss>`;
+  const cidrapXml = rss([
+    ['Ebola outbreak in DR Congo tops 6,600 cases', 'https://www.cidrap.umn.edu/ebola/keep', recent],
+    // Its own disease/country pair, so disease+country dedup cannot hide it.
+    ['Quick takes: cholera outbreak in Haiti, polio vaccine trial', 'https://www.cidrap.umn.edu/cholera/roundup', recent],
+    ['Cholera outbreak in Sudan surges', 'https://www.cidrap.umn.edu/cholera/stale', stale],
+    ['Measles outbreak in Canada grows', 'https://www.cidrap.umn.edu/measles/undated', ''],
+    ['Tpoxx doesn’t improve on placebo in achieving key mpox outcomes', 'https://www.cidrap.umn.edu/mpox/trial', recent],
+  ]);
+  const ecdcXml = rss([['Mpox outbreak in Nigeria: epidemiological update', 'https://www.ecdc.europa.eu/en/mpox-nigeria', recent]]);
+
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.startsWith('https://www.cidrap.umn.edu/')) return new Response(cidrapXml, { status: 200 });
+    if (url.startsWith('https://www.ecdc.europa.eu/')) return new Response(ecdcXml, { status: 200 });
+    if (url.startsWith('https://tools.cdc.gov/')) return new Response(rss([]), { status: 200 });
+    return new Response('not found', { status: 404 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const links = outbreaks.map((o) => o.sourceUrl).sort();
+  assert.deepEqual(links, [
+    'https://www.cidrap.umn.edu/ebola/keep',
+    'https://www.ecdc.europa.eu/en/mpox-nigeria',
+  ]);
+});
+
+// Avian flu coverage names turkey farms constantly; the bird must not geocode
+// to Türkiye, while the country still does.
+test('turkey the bird does not geocode to Türkiye in headline sources', () => {
+  assert.notEqual(headline('Turkey farms in Dakotas, Minnesota hit by H5N1 avian flu').countryCode, 'TR');
+  assert.notEqual(headline('H5N1 avian flu strikes more turkeys in Minnesota').countryCode, 'TR');
+  assert.equal(headline('H5N1 avian flu hits turkey farm in Poland').countryCode, 'PL');
+  assert.equal(headline('Avian flu outbreak confirmed on poultry farm in Turkey').countryCode, 'TR');
 });
 
 // ── Pre-publish (in-memory) layer ────────────────────────────────────────

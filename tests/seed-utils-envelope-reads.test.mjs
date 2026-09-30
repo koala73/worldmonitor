@@ -182,3 +182,17 @@ test('verifySeedKey: truthy semantics hold for presence check', async () => {
   const value = await verifySeedKey('any:key:v1');
   assert.ok(value); // non-null — runSeed's post-write verify still works
 });
+
+test('readSeedSnapshot: timeoutMs bounds the whole read and defaults to 5s', async () => {
+  const timeouts = [];
+  const originalTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = (ms) => { timeouts.push(ms); return originalTimeout.call(AbortSignal, ms); };
+  try {
+    mockFetch({ ok: 1 });
+    await readSeedSnapshot('economic:bigmac:v1');
+    await readSeedSnapshot('gdelt:bulk:materializer-state:v1', { strict: true, timeoutMs: 30_000 });
+  } finally {
+    AbortSignal.timeout = originalTimeout;
+  }
+  assert.deepEqual(timeouts, [5_000, 30_000]);
+});

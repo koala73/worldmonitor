@@ -28,6 +28,7 @@ import {
   createBlankMapLayers,
   EMBED_KEY_PLACEHOLDER,
 } from '@/embed/embed-url';
+import { declareOverlay } from '@/utils/open-modal';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const source = readFileSync(resolve(root, 'src/app/event-handlers.ts'), 'utf8');
@@ -67,6 +68,7 @@ const Harness = new Function(
   'getAuthState',
   'getCurrentTheme',
   'SITE_VARIANT',
+  'declareOverlay',
   `${js}\nreturn Harness;`,
 )(
   buildEmbedIframeSnippet,
@@ -78,6 +80,9 @@ const Harness = new Function(
   () => ({ user: { role: accountRole } }),
   () => 'dark',
   'full',
+  // The real one, so the dialog's reload contract is observable here rather
+  // than stubbed away (a source-text harness must name every free identifier).
+  declareOverlay,
 );
 
 const MAP_STATE = {

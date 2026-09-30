@@ -2,7 +2,7 @@ import { APIConnectionError, APIConnectionTimeoutError, APIUserAbortError } from
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import {
@@ -73,7 +73,7 @@ describe("checkout session timeout retry", () => {
     expect(attempt).toHaveBeenCalledTimes(1);
   });
 
-  test("the real public action returns the recovered session without recording a failure", async () => {
+  test("the real checkout action returns the recovered session without recording a failure", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
     pinRetryClock();
     const session = { checkout_url: "https://checkout.example/recovered" };
@@ -81,7 +81,8 @@ describe("checkout session timeout retry", () => {
       .mockRejectedValueOnce(new APIConnectionTimeoutError())
       .mockResolvedValueOnce(session);
     const t = convexTest(schema, modules);
-    expect(await t.withIdentity(TEST_USER).action(api.payments.checkout.createCheckout, {
+    expect(await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: TEST_USER.subject,
       productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
     })).toEqual(session);
     expect(createDodoCheckoutSession).toHaveBeenCalledTimes(2);
@@ -161,14 +162,15 @@ describe("checkout session timeout retry", () => {
     expect(attempt).toHaveBeenCalledTimes(1);
   });
 
-  test("public action rejects a terminal timeout with its typed code", async () => {
+  test("checkout action returns a terminal timeout as its typed outcome", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
     pinRetryClock();
     vi.mocked(createDodoCheckoutSession).mockRejectedValue(new APIConnectionTimeoutError());
     const t = convexTest(schema, modules);
-    await expect(t.withIdentity(TEST_USER).action(api.payments.checkout.createCheckout, {
+    await expect(t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: TEST_USER.subject,
       productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
-    })).rejects.toThrow("CHECKOUT_TIMED_OUT");
+    })).resolves.toMatchObject({ code: "CHECKOUT_TIMED_OUT" });
     expect(await t.run((ctx) => ctx.db.query("checkoutTimeoutEvents").collect())).toHaveLength(1);
   });
 

@@ -182,6 +182,25 @@ describe('marketing ignoreErrors', () => {
     );
   });
 
+  it('drops the Brave iOS injected wallet shim (WORLDMONITOR-16Z)', () => {
+    // Verbatim production value: Brave / iOS 18.7 on /pro, one frame on the
+    // document itself (the browser's injected user script).
+    assert.equal(
+      isIgnored('TypeError', "undefined is not an object (evaluating 'window.ethereum.selectedAddress = undefined')"),
+      true,
+    );
+    // A first-party message that merely names the wallet global survives.
+    assert.equal(isIgnored('Error', 'Checkout failed: window.ethereum unavailable'), false);
+  });
+
+  it('pins the marketing surface as ethereum.selectedAddress-free, which is what licenses the rule', () => {
+    const hits = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\bethereum\.selectedAddress\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(hits, [], 'the marketing surface now touches ethereum.selectedAddress — re-derive the WORLDMONITOR-16Z rule');
+  });
+
   // Positive control for the `\b` bounds on the Zalo entry: the pattern must
   // key on the identifier, not on a substring that a longer word contains.
   it('keeps an error that merely mentions a similar word', () => {
@@ -367,6 +386,73 @@ describe('marketingBeforeSend — stale chunk after deploy', () => {
   // Positive control: an ordinary crash must pass straight through.
   it('keeps an ordinary first-party crash', () => {
     const kept = event("Cannot read properties of undefined (reading 'plan')", [
+      '/pro/assets/index-a1b2c3.js',
+    ]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
+describe('marketingBeforeSend — Puppeteer crawler and page-evaluated /sw.js', () => {
+  const inNull = "Cannot use 'in' operator to search for 'data' in null";
+
+  it('drops an error whose stack runs through a Puppeteer evaluate frame (WORLDMONITOR-169)', () => {
+    // The crawler fired a synthetic compositionend into Clerk's React handler.
+    const dropped: PolicyEvent = {
+      exception: {
+        values: [{
+          type: 'TypeError',
+          value: inNull,
+          stacktrace: {
+            frames: [
+              {
+                filename: 'file:///C:/snapshot/common-browser-driver/common/browser/adapters/puppeteer-adapter.js',
+                function: 'async pptr:evaluate;PuppeteerPage.evaluate%20',
+              },
+              { filename: '/pro/assets/clerk-a1b2c3.js', function: 'rb' },
+            ],
+          },
+        }],
+      },
+    };
+    assert.equal(marketingBeforeSend(dropped), null);
+  });
+
+  it('keeps a "puppeteer"-named frame that lacks the pptr: source URL', () => {
+    const kept: PolicyEvent = {
+      exception: {
+        values: [{
+          type: 'TypeError',
+          value: inNull,
+          stacktrace: {
+            frames: [
+              { filename: '/pro/assets/puppeteer-helpers-a1b2c3.js', function: 'puppeteerLikeDriver' },
+              { filename: '/pro/assets/index-a1b2c3.js', function: 'rb' },
+            ],
+          },
+        }],
+      },
+    };
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps the same error when no Puppeteer frame is in the stack', () => {
+    const kept = event(inNull, ['/pro/assets/clerk-a1b2c3.js', '/pro/assets/index-a1b2c3.js']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('drops an error whose only frames are the root /sw.js (WORLDMONITOR-168)', () => {
+    assert.equal(
+      marketingBeforeSend(event("Cannot read properties of null (reading 'src')", [
+        'https://www.worldmonitor.app/sw.js',
+        'https://www.worldmonitor.app/sw.js',
+      ])),
+      null,
+    );
+  });
+
+  it('keeps a /sw.js frame that shares the stack with marketing code', () => {
+    const kept = event("Cannot read properties of null (reading 'src')", [
+      'https://www.worldmonitor.app/sw.js',
       '/pro/assets/index-a1b2c3.js',
     ]);
     assert.equal(marketingBeforeSend(kept), kept);

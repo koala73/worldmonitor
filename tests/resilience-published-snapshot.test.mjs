@@ -72,10 +72,13 @@ describe('published resilience snapshot freshness', () => {
         norway,
         new RegExp(`<meta name="lastmod" content="${data.lastmod.countries}">`),
       );
+      // The repo path stays machine-readable on the source line; the visible
+      // text names the snapshot by its date instead of a repository path.
       assert.ok(
-        norway.includes(`Source: ${data.sources.resilienceSnapshot}.`),
+        norway.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`),
         'country page must identify the selected dated snapshot',
       );
+      assert.match(norway, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
       // Coverage-story pages (Tuvalu, Macau, San Marino) swap the shared snapshot
       // note for a country-specific reading guide (#7527) but keep the corrections
       // link and the dated snapshot source line.
@@ -86,7 +89,7 @@ describe('published resilience snapshot freshness', () => {
       );
       assert.match(tuvalu, /href="\/docs\/corrections"/);
       assert.ok(
-        tuvalu.includes(`Source: ${data.sources.resilienceSnapshot}.`),
+        tuvalu.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`),
         'coverage-story pages must still identify the selected dated snapshot',
       );
     } finally {

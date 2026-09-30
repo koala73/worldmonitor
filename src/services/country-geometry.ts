@@ -23,6 +23,16 @@ const COUNTRY_GEOJSON_TIMEOUT_MS = 15_000;
 const COUNTRY_OVERRIDES_URL = 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
 const COUNTRY_OVERRIDE_TIMEOUT_MS = 3_000;
 
+/**
+ * GeoJSON political codes that are not ISO 3166-1 alpha-2 but must be treated
+ * as a canonical country for deep-dive / API calls. The bundled
+ * `countries.geojson` historically stamped Taiwan as `CN-TW`; map hover/click
+ * read that property raw and opened country briefs with a non-ISO2 code, so
+ * resilience/scorecard validators returned `ValidationError: Validation failed`
+ * (Sentry WORLDMONITOR-162). Keep this table as the single remap, rewrite
+ * feature properties on load so MapLibre filters stay aligned with the index,
+ * and expose `canonicalizeCountryCode` for call sites that already hold a code.
+ */
 const POLITICAL_OVERRIDES: Record<string, string> = { 'CN-TW': 'TW' };
 
 const NAME_ALIASES: Record<string, string> = {
@@ -34,6 +44,8 @@ const NAME_ALIASES: Record<string, string> = {
   'cape verde': 'CV', 'swaziland': 'SZ', 'burma': 'MM',
 };
 
+const ISO2_PROPERTY_KEYS = ['ISO3166-1-Alpha-2', 'ISO_A2', 'iso_a2'] as const;
+
 let loadPromise: Promise<void> | null = null;
 let loadedGeoJson: FeatureCollection<Geometry> | null = null;
 const countryIndex = new Map<string, IndexedCountryGeometry>();
@@ -43,13 +55,30 @@ const nameToIso2 = new Map<string, string>();
 const codeToName = new Map<string, string>();
 let sortedCountryNames: Array<{ name: string; code: string; regex: RegExp }> = [];
 
+/** Map political / non-ISO2 country stamps onto the ISO 3166-1 alpha-2 code APIs accept. */
+export function canonicalizeCountryCode(code: string): string {
+  const trimmed = code.trim().toUpperCase();
+  return POLITICAL_OVERRIDES[trimmed] ?? trimmed;
+}
+
+function rewritePoliticalIso2Properties(properties: GeoJsonProperties | null | undefined): void {
+  if (!properties || typeof properties !== 'object') return;
+  for (const key of ISO2_PROPERTY_KEYS) {
+    const raw = properties[key];
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim().toUpperCase();
+    const overridden = POLITICAL_OVERRIDES[trimmed];
+    if (overridden) properties[key] = overridden;
+  }
+}
+
 function normalizeCode(properties: GeoJsonProperties | null | undefined): string | null {
   if (!properties) return null;
+  rewritePoliticalIso2Properties(properties);
   const rawCode = properties['ISO3166-1-Alpha-2'] ?? properties.ISO_A2 ?? properties.iso_a2;
   if (typeof rawCode !== 'string') return null;
   const trimmed = rawCode.trim().toUpperCase();
-  const overridden = POLITICAL_OVERRIDES[trimmed] ?? trimmed;
-  return /^[A-Z]{2}$/.test(overridden) ? overridden : null;
+  return /^[A-Z]{2}$/.test(trimmed) ? trimmed : null;
 }
 
 function normalizeName(properties: GeoJsonProperties | null | undefined): string | null {

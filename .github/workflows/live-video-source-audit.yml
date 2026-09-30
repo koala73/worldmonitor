@@ -19,12 +19,14 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     # Worst case that still reaches the reporter: about 3 for checkout and npm ci; at most 8 for the Chromium
-    # install (a hung install fails the run instead); about 4 for the batched check (7 pages of up to 8 players at
-    # up to 31 s each, HLS fetches capped at 15 s); at most 8 for alone re-checks (ALONE_RECHECK_BUDGET_MS, about
-    # 10 checks at 45 s each); about 1 for the reporter (GitHub calls capped at 30 s, no browser). Every phase
-    # carries its own timeout-minutes so one slow step fails with its own message instead of eating the job.
-    # tests/report-live-video-audit.test.mjs checks this sum, plus 5 minutes of headroom, against timeout-minutes.
-    timeout-minutes: 30
+    # install (a hung install fails the run instead); at most 3.5 for resolving channel pages (RESOLVE_BUDGET_MS,
+    # then at most twice CHANNEL_PAGE_TIMEOUT_MS for the last page); about 4 for the batched check (7 pages of up
+    # to 8 players at up to 31 s each, HLS fetches capped at 15 s); at most 8 for alone re-checks
+    # (ALONE_RECHECK_BUDGET_MS, about 10 checks at 45 s each); about 1 for the reporter (GitHub calls capped at
+    # 30 s, no browser). Every phase carries its own timeout-minutes so one slow step fails with its own message
+    # instead of eating the job. tests/report-live-video-audit.test.mjs checks this sum, plus 5 minutes of
+    # headroom, against timeout-minutes.
+    timeout-minutes: 34
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -45,10 +47,11 @@ jobs:
       # YouTube refuses embeds from GitHub's datacenter IPs (player error 150 on every slot, run 35816900289), so
       # the YouTube browser goes through a residential proxy. Without the secret the checker stops at once with a
       # message saying so. Only this step sees the secret; the checker never prints more than the proxy host.
-      # Page polls are time-capped, so a slower proxy does not stretch the phase budget below.
+      # Channel /live pages are fetched through the same proxy, to probe each channel's current live video instead
+      # of its embed. Page polls and page fetches are time-capped, so a slower proxy does not stretch the phase budget.
       - name: Check every live video slot
         id: check
-        timeout-minutes: 16
+        timeout-minutes: 20
         continue-on-error: true
         env:
           LIVE_VIDEO_AUDIT_PROXY_URL: ${{ secrets.LIVE_VIDEO_AUDIT_PROXY_URL }}

@@ -10,6 +10,8 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { assessCorroboration, badgePublisherCount, corroborationFlagHtml, evidenceFromCluster, evidenceFromStory, publisherRoster } from '@/utils/corroboration-flag';
+import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 import { collectBriefCitationSources, collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
@@ -673,14 +675,20 @@ export class InsightsPanel extends Panel {
 
       // #6428: the "✓ N sources" badge is a corroboration claim, so it counts
       // PUBLISHERS. story.sourceCount is the article count — nine reprints of
-      // one wire across one newsroom's feeds rendered "✓ 9 sources". Fail
-      // closed on a pre-#6428 cached payload rather than fall back to it.
-      const storyPublishers = story.uniqueSourceCount ?? 0;
+      // one wire across one newsroom's feeds rendered "✓ 9 sources". The
+      // number is the corroboration verdict's, so it matches the roster
+      // summary; a pre-#6428 payload never falls back to the article count.
+      const storyEvidence = evidenceFromStory(story);
+      const storyCorroboration = assessCorroboration(storyEvidence);
+      const storyPublishers = badgePublisherCount(storyCorroboration, story.uniqueSourceCount ?? 0);
       if (storyPublishers >= 3) {
         badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: storyPublishers })}</span>`);
       } else if (storyPublishers >= 2) {
         badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: storyPublishers })}</span>`);
       }
+      const storyFlag = corroborationFlagHtml(storyCorroboration);
+      if (storyFlag) badges.push(storyFlag);
+      const rosterView = describePublisherRoster(storyCorroboration, publisherRoster(storyEvidence));
 
       if (story.isAlert) {
         badges.push(`<span class="insight-badge alert">⚠ ${t('components.insights.alert')}</span>`);
@@ -705,6 +713,7 @@ export class InsightsPanel extends Panel {
             <span class="insight-story-title">${escapeHtml(story.primaryTitle.slice(0, 100))}${story.primaryTitle.length > 100 ? '...' : ''}</span>
           </div>
           ${badges.length > 0 ? `<div class="insight-badges">${badges.join('')}</div>` : ''}
+          ${rosterView ? renderPublisherRosterHtml(rosterView) : ''}
         </div>
       `;
     }).join('');
@@ -812,12 +821,17 @@ export class InsightsPanel extends Panel {
       }
 
       // #6428: publishers, not articles — see renderServerStories above.
-      const clusterPublishers = cluster.uniquePublisherCount ?? 0;
+      const clusterEvidence = evidenceFromCluster(cluster);
+      const clusterCorroboration = assessCorroboration(clusterEvidence);
+      const clusterPublishers = badgePublisherCount(clusterCorroboration, cluster.uniquePublisherCount ?? 0);
       if (clusterPublishers >= 3) {
         badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       } else if (clusterPublishers >= 2) {
         badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       }
+      const clusterFlag = corroborationFlagHtml(clusterCorroboration);
+      if (clusterFlag) badges.push(clusterFlag);
+      const rosterView = describePublisherRoster(clusterCorroboration, publisherRoster(clusterEvidence));
 
       if (cluster.velocity && cluster.velocity.level !== 'normal') {
         const velIcon = cluster.velocity.trend === 'rising' ? '↑' : '';
@@ -835,6 +849,7 @@ export class InsightsPanel extends Panel {
             <span class="insight-story-title">${escapeHtml(cluster.primaryTitle.slice(0, 100))}${cluster.primaryTitle.length > 100 ? '...' : ''}</span>
           </div>
           ${badges.length > 0 ? `<div class="insight-badges">${badges.join('')}</div>` : ''}
+          ${rosterView ? renderPublisherRosterHtml(rosterView) : ''}
         </div>
       `;
     }).join('');

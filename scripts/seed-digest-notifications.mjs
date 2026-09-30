@@ -58,8 +58,10 @@ import {
   shouldExitNonZero as shouldExitOnBriefFailures,
 } from './lib/brief-compose.mjs';
 import {
+  applyDigestScoreFloor,
   carouselUrlsFrom,
   digestWindowStartMs,
+  getDigestScoreMin,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -167,19 +169,6 @@ const DIGEST_HIGH_LIMIT = 15;
 const DIGEST_MEDIUM_LIMIT = 10;
 const AI_DIGEST_ENABLED = process.env.AI_DIGEST_ENABLED !== '0';
 const ENTITLEMENT_CACHE_TTL = 900; // 15 min
-
-// Absolute importance-score floor applied to the digest AFTER dedup.
-// Mirrors the realtime notification-relay gate (IMPORTANCE_SCORE_MIN)
-// but lives on the brief/digest side so operators can tune them
-// independently — e.g. let realtime page at score>=63 while the brief
-// digest drops anything <50. Default 0 = no filtering; ship disabled
-// so this PR is a no-op until Railway flips the env. Setting the var
-// to any positive integer drops every cluster whose representative
-// currentScore is below it.
-function getDigestScoreMin() {
-  const raw = Number.parseInt(process.env.DIGEST_SCORE_MIN ?? '0', 10);
-  return Number.isInteger(raw) && raw >= 0 ? raw : 0;
-}
 
 // ── Brief composer (consolidation of the retired seed-brief-composer) ──────
 
@@ -947,9 +936,7 @@ async function buildDigest(rule, windowStartMs) {
   // score field; the rep is the highest-scoring member of its
   // cluster). At DIGEST_SCORE_MIN=0 this is a no-op.
   const scoreFloor = getDigestScoreMin();
-  const deduped = scoreFloor > 0
-    ? dedupedAll.filter((s) => Number(s.currentScore ?? 0) >= scoreFloor)
-    : dedupedAll;
+  const deduped = applyDigestScoreFloor(dedupedAll, scoreFloor);
   if (scoreFloor > 0 && dedupedAll.length !== deduped.length) {
     console.log(
       `[digest] score floor dropped ${dedupedAll.length - deduped.length} ` +

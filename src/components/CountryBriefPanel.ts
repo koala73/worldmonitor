@@ -5,6 +5,7 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
 import type { BriefSource } from '@/utils/brief-sources';
+import type { IntelBriefEvidence } from '@/utils/format-intel-brief';
 import type { DecisionSignalProvenance } from '../../shared/decision-signal-provenance-contract';
 import type { ChinaDecisionSignalGroupId } from '../../shared/china-decision-signals';
 
@@ -19,6 +20,7 @@ export interface CountryIntelData {
   reason?: string;
   fallback?: boolean;
   sources?: BriefSource[];
+  evidence?: IntelBriefEvidence[];
 }
 
 export interface StockIndexData {

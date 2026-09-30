@@ -54,6 +54,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     );
   });
 
+  it('copies the PizzINT history helper required by the relay', () => {
+    assert.ok(copied.has('scripts/shared/pizzint-history.cjs'));
+  });
+
   // The BFS below seeds only from COPY'd entrypoints. notification-relay.cjs
   // is NOT COPY'd (this image's CMD is ais-relay.cjs), so nothing it requires
   // is reachable by that BFS — a COPY line added solely for the relay could be

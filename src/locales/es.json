@@ -1310,8 +1310,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Índice: World Monitor · datos de locales:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "SIN DATOS",
+      "statusNoBaseline": "SIN REFERENCIA",
+      "vsUsual": "frente a lo habitual",
       "title": "Índice de pizza del Pentágono",
       "tensionsTitle": "Tensiones geopolíticas",
+      "tensionsSource": "Tensiones: World Monitor a partir de eventos de GDELT",
+      "insufficientData": "Datos insuficientes",
+      "pizzaUnavailable": "Actividad de las pizzerías no disponible",
       "source": "Fuente:",
       "defcon": "DEFCON {{level}}",
       "updated": "Actualizado {{timeAgo}}",
@@ -1325,11 +1333,11 @@
       "minutesAgo": "Hace {{m}}m",
       "hoursAgo": "Hace {{h}}h",
       "defconLabels": {
-        "1": "PISTOLA ARMADA - MÁXIMA PREPARACIÓN",
-        "2": "RITMO RÁPIDO - FUERZAS ARMADAS PREPARADAS",
-        "3": "CASA REDONDA - AUMENTAR LA PREPARACIÓN DE LA FUERZA",
-        "4": "DOBLE TOMA: VIGILANCIA DE INTELIGENCIA AUMENTADA",
-        "5": "DESVANECIMIENTO - PREPARACIÓN MÍNIMA"
+        "1": "Actividad Máxima",
+        "2": "Actividad Alta",
+        "3": "Actividad Elevada",
+        "4": "Por Encima de lo Normal",
+        "5": "Actividad Normal"
       }
     },
     "playback": {
@@ -2857,6 +2865,28 @@
       "idleKeepPlaying": "Seguir reproduciendo cuando está inactivo",
       "idleSettingsHint": "Cambia esto en cualquier momento en Configuración › Multimedia.",
       "idleKeepPlayingToast": "El vídeo en directo seguirá reproduciéndose cuando esté inactivo. Cambia en Configuración › Multimedia."
+    },
+    "corroboration": {
+      "singlePublisher": "Un único medio",
+      "singlePublisherHint": "Solo un medio está reportando esto hasta ahora. Esto describe la cobertura, no la precisión.",
+      "tier4Only": "Solo fuentes de nivel bajo",
+      "tier4OnlyHint": "Todo medio que reporta esto es una fuente de nivel 4 (agregadores y blogs). Esto describe la cobertura, no la precisión.",
+      "rosterListed": "({{listed}} listados)",
+      "rosterFeeds": "Feeds observados: {{labels}}",
+      "rosterLegend": "Los niveles clasifican las fuentes; no juzgan esta afirmación.",
+      "tierDocsLink": "Cómo se asignan los niveles",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Nivel 1: Agencias de noticias y organismos oficiales",
+      "tierTitle2": "Nivel 2: Grandes medios",
+      "tierTitle3": "Nivel 3: Fuentes especializadas, regionales y de centros de pensamiento",
+      "tierTitle4": "Nivel 4: Agregadores y blogs",
+      "tierTitleUndeclared": "Nivel no declarado: aún no revisado",
+      "rosterSummary": "Publicado por {{publishers}}",
+      "rosterSummaryTier1": "Publicado por {{publishers}} ({{tier1}} de nivel 1)",
+      "rosterPublishers_one": "{{count}} medio",
+      "rosterPublishers_many": "{{count}} medios",
+      "rosterPublishers_other": "{{count}} medios"
     }
   },
   "popups": {
@@ -2894,6 +2924,10 @@
     "protest": {
       "acledVerified": "ACLED (verificado)",
       "gdelt": "GDELT",
+      "records": "registros",
+      "mediaSignal": "Señal mediática no verificada",
+      "relatedArticle": "Artículo relacionado",
+      "mediaSignalDetail": "Este lugar se menciona en artículos sobre disturbios. No se ha verificado un evento local.",
       "riots": "Disturbios",
       "highSeverity": "Alta Gravedad"
     },

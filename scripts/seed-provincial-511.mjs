@@ -5,7 +5,9 @@
 // endpoints x three runSeed attempts can also wait on the per-host 10/60 bucket.
 // Seeds Ontario 511 (events/alerts/roadconditions), Alberta 511 events and
 // alerts, and Manitoba 511 events and alerts. One process ticks all three
-// jurisdictions, so they clear on the same tick. Manitoba requires
+// jurisdictions, so they clear on the same tick. Ontario requires
+// ONTARIO_511_KEY (unkeyed requests return HTTP 400 "Invalid Key" since
+// 2026-09-24). Manitoba requires
 // MANITOBA_511_KEY and Alberta requires ALBERTA_511_KEY via loadEnvFile (Alberta
 // began enforcing keys 2026-08-19, answering an unkeyed GET with HTTP 400
 // "Invalid Key"); an unset key skips that jurisdiction, preserves last-good
@@ -56,9 +58,18 @@ function readAlberta511Key() {
 }
 
 async function fetchOntario511() {
+  const raw = process.env.ONTARIO_511_KEY;
+  const key = typeof raw === 'string' ? raw.trim() : '';
+  if (!key) {
+    const err = new Error('Ontario 511: not configured (ONTARIO_511_KEY missing); keeping last-good');
+    err.notConfigured = true;
+    err.nonRetryable = true;
+    throw err;
+  }
   const envelope = await fetchVendor511(ONTARIO_511, {
     userAgent: CHROME_UA,
     staggerMs: STAGGER_MS,
+    key,
   });
   if (!isCompleteVendor511(envelope, ONTARIO_511)) {
     const failed = envelope.failedResources?.join(', ') || 'incomplete';

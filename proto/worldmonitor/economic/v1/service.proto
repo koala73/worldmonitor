@@ -36,6 +36,8 @@ import "worldmonitor/economic/v1/list_global_tenders.proto";
 import "worldmonitor/economic/v1/get_us_cpi_monthly.proto";
 import "worldmonitor/economic/v1/get_us_treasury_par_yield_curve.proto";
 import "worldmonitor/economic/v1/get_us_interest_rates.proto";
+import "worldmonitor/economic/v1/get_world_cpi_monthly.proto";
+import "worldmonitor/economic/v1/get_government_yield_curve.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -206,5 +208,15 @@ service EconomicService {
   // GetUsInterestRates returns the effective federal funds rate, target range, H.15 Treasury yields, and SOFR. history=false is the latest point of each series. history=true is the full history. This is not the Treasury par curve.
   rpc GetUsInterestRates(GetUsInterestRatesRequest) returns (GetUsInterestRatesResponse) {
     option (sebuf.http.config) = {path: "/get-us-interest-rates", method: HTTP_METHOD_GET};
+  }
+
+  // GetWorldCpiMonthly returns one national CPI series per country, worldwide. The per-country source is chosen by precedence (national overlay, then HICP for Europe, then IMF, then OECD) with a staleness fall-through, so each row carries its source, frequency and index base. Month-over-month and year-over-year changes are computed from that index; levels are not comparable across sources. history=false is the latest period per country. history=true is the stored 10-year window.
+  rpc GetWorldCpiMonthly(GetWorldCpiMonthlyRequest) returns (GetWorldCpiMonthlyResponse) {
+    option (sebuf.http.config) = {path: "/get-world-cpi-monthly", method: HTTP_METHOD_GET};
+  }
+
+  // GetGovernmentYieldCurve returns one sovereign market's daily yield curve from its official national publisher, or the OECD monthly 10Y benchmark when no daily curve is covered. Yields keep their publisher's measure and are never converted.
+  rpc GetGovernmentYieldCurve(GetGovernmentYieldCurveRequest) returns (GetGovernmentYieldCurveResponse) {
+    option (sebuf.http.config) = {path: "/get-government-yield-curve", method: HTTP_METHOD_GET};
   }
 }

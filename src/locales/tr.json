@@ -1081,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Endeks: World Monitor · mekân verileri:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "VERİ YOK",
+      "statusNoBaseline": "REFERANS YOK",
+      "vsUsual": "olağana göre",
       "title": "Pentagon Pizza Endeksi",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} guncellendi",
       "tensionsTitle": "Jeopolitik Gerilimler",
+      "tensionsSource": "Gerilimler: GDELT olaylarından World Monitor hesaplaması",
+      "insufficientData": "Yetersiz veri",
+      "pizzaUnavailable": "Pizzacıların etkinlik verileri kullanılamıyor",
       "source": "Kaynak:",
       "statusClosed": "KAPALI",
       "statusSpike": "ANI ARTIS",
@@ -1096,11 +1104,11 @@
       "minutesAgo": "{{m}}dk once",
       "hoursAgo": "{{h}}sa once",
       "defconLabels": {
-        "1": "KURBALI TABANCA - MAKSIMUM HAZIRLIK",
-        "2": "HIZLI TEMPO - SILAHLI KUVVETLER HAZIR",
-        "3": "YUVARLAK EV - KUVVET HAZIRLIGINI ARTIR",
-        "4": "CIFT KONTROL - ARTIRILMIS ISTIHBARAT GOZETIMI",
-        "5": "SOLMA - EN DUSUK HAZIRLIK"
+        "1": "Maksimum Aktivite",
+        "2": "Yüksek Aktivite",
+        "3": "Artan Aktivite",
+        "4": "Normalin Üstünde",
+        "5": "Normal Aktivite"
       }
     },
     "strategicPosture": {
@@ -2838,6 +2846,27 @@
       "idleKeepPlaying": "Hareketsizlik sırasında oynatmaya devam et",
       "idleSettingsHint": "Bunu istediğiniz zaman Ayarlar › Medya bölümünde değiştirebilirsiniz.",
       "idleKeepPlayingToast": "Canlı video hareketsizlik sırasında oynatmaya devam edecektir. Ayarlar › Medya bölümünden değiştirin."
+    },
+    "corroboration": {
+      "singlePublisher": "Tek yayıncı",
+      "singlePublisherHint": "Şu ana kadar bu haberi sadece bir yayıncı bildiriyor. Bu, haber kapsamını gösterir; doğruluk değildir.",
+      "tier4Only": "Yalnızca düşük seviye kaynaklar",
+      "tier4OnlyHint": "Bu haberi bildiren her kuruluş bir seviye-4 kaynaktır (toplayıcılar ve bloglar). Bu, haber kapsamını gösterir; doğruluk değildir.",
+      "rosterListed": "({{listed}} listede)",
+      "rosterFeeds": "Görülen beslemeler: {{labels}}",
+      "rosterLegend": "Seviyeler kaynakları sıralar; bu iddiayı yargılamaz.",
+      "tierDocsLink": "Seviyeler nasıl atanır",
+      "tierChip": "S{{tier}}",
+      "tierChipUndeclared": "S?",
+      "tierTitle1": "Seviye 1: Haber ajansları ve resmi kurumlar",
+      "tierTitle2": "Seviye 2: Büyük yayın kuruluşları",
+      "tierTitle3": "Seviye 3: Uzman, bölgesel ve düşünce kuruluşu kaynakları",
+      "tierTitle4": "Seviye 4: Toplayıcılar ve bloglar",
+      "tierTitleUndeclared": "Seviye belirtilmemiş: henüz incelenmedi",
+      "rosterSummary": "{{publishers}} tarafından bildirildi",
+      "rosterSummaryTier1": "{{publishers}} tarafından bildirildi; bunların {{tier1}} tanesi seviye 1",
+      "rosterPublishers_one": "{{count}} yayıncı",
+      "rosterPublishers_other": "{{count}} yayıncı"
     }
   },
   "popups": {
@@ -2876,6 +2905,10 @@
     "protest": {
       "acledVerified": "ACLED (dogrulanmis)",
       "gdelt": "GDELT",
+      "records": "kayıt",
+      "mediaSignal": "Doğrulanmamış medya sinyali",
+      "relatedArticle": "İlgili makale",
+      "mediaSignalDetail": "Bu konum, huzursuzlukla ilgili makalelerde geçiyor. Yerel bir olay doğrulanmamıştır.",
       "riots": "Isyanlar",
       "highSeverity": "Yuksek Siddet"
     },

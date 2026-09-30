@@ -142,7 +142,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "تحلیلگر هوشمند شما. میز اطلاعات شخصی. پلتفرمی که می‌توانید بر روی آن بسازید. یک کلید در سراسر خدمات زنده.",
+    "proDesc": "تحلیلگر هوشمند شما. میز اطلاعات شخصی. پلتفرمی که می‌توانید بر روی آن بسازید.",
     "proF1": "WM Analyst chat — پرس‌وجو از خدمات زنده به صورت محاوره‌ای",
     "proF2": "AI digest — daily, twice-daily, or weekly — to Slack, Discord, Telegram, Email, or webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS with AI-assisted modification",
@@ -482,7 +482,7 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir",
-      "asOf": "تا ۸ سپتامبر ۲۰۲۶",
+      "asOf": "تا {{date}}",
       "whatIsTitle": "World Monitor چیست؟",
       "whatIsBody": "World Monitor یک داشبورد رایگان و متن‌باز است که سیگنال‌های ژئوپلیتیک، بازار، کشتیرانی، هوانوری، زیرساخت و سایبری را به صورت زنده بر روی یک نقشه جهانی پخش می‌کند. این ابزار فیدهای جداگانه را در یک تصویر عملیاتی یکپارچه ترکیب می‌کند، همگرایی را قبل از تیتر‌های خبری شناسایی می‌کند و هر رقم از منابع معتبر و هر روش توثیق‌شده است."
     },
@@ -676,7 +676,7 @@
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "بله. نقاط تنگنا با شمار کشتی‌های AIS زنده، تغییر عبور هفتگی و نمره‌دهی اختلال نظارت می‌شوند — و ناهنجاری‌های چگالی در برابر بازخط چرخشی هر تنگنا پرچم‌دار می‌شوند.",
       "q5": "How is this different from a conflict map like Liveuamap?",
-      "a5": "تنازع یکی از لایه‌های نقشه است. World Monitor تنازعات را با حمل‌ونقل دریایی، پروازهای نظامی، زیرساخت‌ها، بازارها و فضای سایبری ترکیب می‌کند — سپس هوش مصنوعی همگرایی را امتیاز‌دهی می‌کند: شاخص‌های ناپایداری، تشدید نقاط داغ، هشدارهای شکسته‌ای تأیید‌شده و گزارش‌های روزانه. World Monitor را با Liveuamap و دیگر نقشه‌های تنازع مقایسه کنید: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "تنازع یک لایه نقشه است. World Monitor درگیری‌ها را با حمل‌ونقل دریایی، پروازهای نظامی، زیرساخت‌ها، بازارها و فعالیت‌های سایبری ادغام می‌کند — سپس هوش مصنوعی همگرایی را امتیاز‌دهی می‌کند: شاخص‌های عدم‌ثبات، تشدید نقاط داغ، هشدارهای شکست‌خوردگی تأیید‌شده و خلاصه‌های روزانه. World Monitor را با Liveuamap و دیگر نقشه‌های تنازع مقایسه کنید: worldmonitor.app/compare/liveuamap-alternatives. برای گزینه‌های نظارتی گسترده‌تر، به worldmonitor.app/compare/best-geopolitical-risk-dashboards مراجعه کنید.",
       "q6": "Why should I trust an alert?",
       "a6": "A breaking banner fires only when independent origin types corroborate — news classification, keyword velocity, hotspot escalation, military surges, official sirens — deduplicated and rate-limited. Fewer alerts, real ones.",
       "q7": "Can AI agents like Claude or GPT use it?",

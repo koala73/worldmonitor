@@ -73,7 +73,7 @@ const ALLOW_LIST: AllowEntry[] = [
   // generateClusterId + cluster date aggregation moved with clusterNewsCore to
   // shared/news-clustering-core.js (#5697); the shared implementation still
   // routes its ranking comparators through effectivePubDateMs (pinned by
-  // tests/clustering-cap.test.mjs asserting the re-export, and the port was
+  // tests/dom/analysis-core-clustering-reexport.test.mts asserting the re-export, and the port was
   // characterized behavior-identical).
   {
     file: 'shared/news-clustering-core.js',

@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
+
+// One business day's curve for one sovereign. Tenor keys are lowercase
+// maturity labels ("3m"…"40y"); an absent tenor was not published that day.
+message YieldCurvePoint {
+  // UTC midnight of the business day, as Unix epoch milliseconds.
+  int64 date = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Yield per tenor, in percent, as published (never converted between measures).
+  map<string, double> tenors = 2;
+}
+
+// GetGovernmentYieldCurveRequest selects one sovereign market and window.
+message GetGovernmentYieldCurveRequest {
+  // ISO 3166-1 alpha-2 code of the sovereign, e.g. "JP" or "DE".
+  string country = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (sebuf.http.query) = {name: "country"}
+  ];
+  // True for every stored business day; false for the latest day.
+  bool history = 2 [(sebuf.http.query) = {name: "history"}];
+}
+
+// GetGovernmentYieldCurveResponse is the curve for the requested market.
+message GetGovernmentYieldCurveResponse {
+  // Echoed uppercase ISO 3166-1 alpha-2 code.
+  string country = 1;
+  // Covered-market descriptor, e.g. "jp-mof-cmt" or "uk-boe-spot".
+  string source = 2;
+  // Yield measure: "par", "spot", "benchmark", or "monthly-10y".
+  string measure = 3;
+  // Business days in ascending order. One element when history is false.
+  repeated YieldCurvePoint curves = 4;
+  // True when the market is uncovered or its seeded curve is unavailable. An
+  // empty curves list is graceful degradation, not a confirmed zero yield.
+  bool unavailable = 5;
+}

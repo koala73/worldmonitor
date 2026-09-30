@@ -2837,3 +2837,13 @@ test('China composition can contain degraded coverage when the summary seed is s
     assert.equal(isContainedHealthWarning(entry, { ...evidence, status: entry.status }, now), true);
   }
 });
+
+test('dyad health is pending before activation and strict afterward', () => {
+  const name = 'gdeltDyadTension';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], 'seed-activated:gdelt:bulk:dyad-tension');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+});

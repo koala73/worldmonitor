@@ -17,7 +17,7 @@
 // Provenance honesty is the product's differentiator; faking the join here
 // would undercut the thing this tool exists to advertise.
 import attributionManifest from '../../../shared/source-attribution-manifest.json';
-import { getSourceProvenanceState } from '../../../shared/source-provenance';
+import { getProvenanceCoverage, getSourceProvenanceState } from '../../../shared/source-provenance';
 import { TELEGRAM_CHANNEL_TRUST } from '../../../shared/telegram-channel-trust';
 import { SOURCE_TIERS } from '../../../server/_shared/source-tiers';
 import { resolveSourceOrigin, sourceOriginFilterValue, sourceOriginLabel } from '../../../scripts/source-origin.mjs';
@@ -118,10 +118,13 @@ export function outletRecord(name: string) {
   const raw = SOURCE_TIERS[name];
   const tier = typeof raw === 'number' ? raw : null;
   const platformIdentities = PLATFORM_IDENTITIES_BY_SOURCE.get(name);
+  // The prose summary would push a 200-outlet page past the output budget;
+  // every fact it restates is already a structured field here.
+  const { summary: _summary, ...provenance } = getSourceProvenanceState(name);
   return {
     name,
     tier,
-    provenance: getSourceProvenanceState(name),
+    provenance,
     ...(platformIdentities ? { platformIdentities } : {}),
   };
 }
@@ -169,7 +172,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
         summary: {
           type: 'object',
           description: 'Always present, in every view, so counts are available without a second call.',
-          required: ['providerCount', 'outletCount', 'excludedProviderCount', 'providersByCountry'],
+          required: ['providerCount', 'outletCount', 'excludedProviderCount', 'providersByCountry', 'provenanceCoverage'],
           properties: {
             providerCount: { type: 'number', description: 'Active upstream hosts. Excludes the excluded-status rows counted separately.' },
             excludedProviderCount: { type: 'number', description: 'Manifest rows deliberately excluded from the provider count (local transports and development-only URLs). Reported rather than silently dropped.' },
@@ -180,6 +183,18 @@ export const SOURCE_TOOLS: ToolDef[] = [
             outletsByTier: { type: 'object', description: 'Outlet counts keyed by declared tier.' },
             outletsByRisk: { type: 'object', description: 'Outlet counts keyed by propaganda-risk band.' },
             outletsByPlatform: { type: 'object', description: 'Outlet counts keyed by an explicitly configured platform identity.' },
+            provenanceCoverage: {
+              type: 'object',
+              description: 'How much of the provenance registry is curated. Counts the registry population, not the outlet tier table, so sources differs from outletCount.',
+              required: ['sources', 'riskReviewed', 'stateAffiliated', 'perspectiveLabelled', 'caveat'],
+              properties: {
+                sources: { type: 'number' },
+                riskReviewed: { type: 'number' },
+                stateAffiliated: { type: 'number' },
+                perspectiveLabelled: { type: 'number', description: 'Sources with at least one knownBiases label. An unlabelled source has not been assessed, not judged neutral.' },
+                caveat: { type: 'string' },
+              },
+            },
           },
         },
         providers: {
@@ -207,7 +222,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
             properties: {
               name: { type: 'string' },
               tier: { type: ['number', 'null'], description: 'Declared editorial tier, or null when WorldMonitor has not declared one. Never defaulted to a number.' },
-              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories.' },
+              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories, minus the prose `summary`. `knownBiases` is always present; empty means no perspective label recorded, not neutral.' },
               platformIdentities: {
                 type: 'array',
                 description: 'Stable platform-specific identities for this source, when configured.',
@@ -246,6 +261,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
             PLATFORM_IDENTITIES_BY_SOURCE.get(name)?.map((identity) => identity.platform) || []
           )),
         ),
+        provenanceCoverage: getProvenanceCoverage(),
       };
 
       if (!SOURCE_VIEWS.includes(view)) {

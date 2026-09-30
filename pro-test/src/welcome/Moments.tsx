@@ -14,10 +14,10 @@ interface MomentConfig {
 }
 
 const MOMENTS: MomentConfig[] = [
-  { key: 'm1', twoLineTitle: true, signals: ['RISK', 'FLOW', 'MACRO', 'PRICE'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://finance.worldmonitor.app/dashboard?utm_source=welcome&utm_content=m1' },
-  { key: 'm2', twoLineTitle: true, signals: ['AIS', 'WEATHER', 'SUPPLY', 'SPREAD'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://commodity.worldmonitor.app/dashboard?utm_source=welcome&utm_content=m2' },
-  { key: 'm3', twoLineTitle: true, signals: ['AI', 'GRID', 'CLIMATE', 'MARKET'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://tech.worldmonitor.app/dashboard?utm_source=welcome&utm_content=m3' },
-  { key: 'm4', twoLineTitle: false, signals: ['CABLE', 'BGP', 'PORTS', 'RISK'], chips: ['free', 'free', 'free', 'free'], href: `${DASHBOARD_PATH}?utm_source=welcome&utm_content=m4` },
+  { key: 'm1', twoLineTitle: true, signals: ['RISK', 'FLOW', 'MACRO', 'PRICE'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://finance.worldmonitor.app/dashboard' },
+  { key: 'm2', twoLineTitle: true, signals: ['AIS', 'WEATHER', 'SUPPLY', 'SPREAD'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://commodity.worldmonitor.app/dashboard' },
+  { key: 'm3', twoLineTitle: true, signals: ['AI', 'GRID', 'CLIMATE', 'MARKET'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://tech.worldmonitor.app/dashboard' },
+  { key: 'm4', twoLineTitle: false, signals: ['CABLE', 'BGP', 'PORTS', 'RISK'], chips: ['free', 'free', 'free', 'free'], href: DASHBOARD_PATH },
 ];
 
 const CHIP_CLASS: Record<ChipTier, string> = {
@@ -98,7 +98,12 @@ export const Moments = () => (
                   </span>
                 ))}
               </div>
-              <a href={href} className="font-mono text-xs text-wm-green hover:text-green-300 transition-colors">
+              <a
+                href={href}
+                data-umami-event="welcome-cta"
+                data-umami-event-target={`welcome-moment-${key}`}
+                className="font-mono text-xs text-wm-green hover:text-green-300 transition-colors"
+              >
                 {t(`welcome.moments.${key}.link`)}
               </a>
             </motion.article>

@@ -27,7 +27,7 @@ function readObjects(body, objectPattern, file, name) {
 /**
  * @param {{ webcamsPanel: string, newsPanel: string }} sources the two panel files' text
  * @returns {{ webcamFeeds: { id: string, region: string }[], gridCells: number,
- *   newsDefaults: Record<string, string[]>, newsOptional: string[] }}
+ *   newsDefaults: Record<string, string[]>, newsOptional: string[], newsGeoAvailability: Record<string, string[]> }}
  */
 export function extractLiveVideoSurfaces({ webcamsPanel, newsPanel }) {
   const [feeds] = arrays(webcamsPanel, 'WEBCAM_FEEDS');
@@ -40,15 +40,23 @@ export function extractLiveVideoSurfaces({ webcamsPanel, newsPanel }) {
 
   const newsDefaults = {};
   let newsOptional = null;
+  // The channels that only play in some countries: the audit runner is outside them, so a region block is expected.
+  const newsGeoAvailability = {};
   for (const { name, body } of arrays(newsPanel, '[A-Z]+_LIVE_CHANNELS')) {
     const ids = readObjects(body, /\{\s*id:\s*'([^']+)'/g, NEWS_PANEL, name).map(([, id]) => id);
+    for (const [object, id] of body.matchAll(/\{\s*id:\s*'([^']+)'[^}]*\}/g)) {
+      if (!/\bgeoAvailability\b/.test(object)) continue;
+      const list = /\bgeoAvailability:\s*\[((?:\s*'[A-Z]{2}'\s*,?)+)\s*\]/.exec(object)?.[1];
+      if (!list) throw new Error(`${NEWS_PANEL}: cannot read the geoAvailability of ${id} in ${name}`);
+      newsGeoAvailability[id] = [...list.matchAll(/'([A-Z]{2})'/g)].map(([, code]) => code);
+    }
     if (name === 'OPTIONAL_LIVE_CHANNELS') newsOptional = ids;
     else newsDefaults[name.replace(/_LIVE_CHANNELS$/, '').toLowerCase()] = ids;
   }
   if (!newsOptional) throw new Error(`${NEWS_PANEL}: cannot find OPTIONAL_LIVE_CHANNELS`);
   if (Object.keys(newsDefaults).length === 0) throw new Error(`${NEWS_PANEL}: cannot find a default *_LIVE_CHANNELS list`);
 
-  return { webcamFeeds, gridCells, newsDefaults, newsOptional };
+  return { webcamFeeds, gridCells, newsDefaults, newsOptional, newsGeoAvailability };
 }
 
 export function readLiveVideoSurfaces(root = new URL('../../', import.meta.url)) {

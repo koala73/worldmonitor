@@ -23,7 +23,7 @@ import {
 } from './_idempotency.js';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
-import { ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
+import { CHECKOUT_PER_IP_RATE_POLICY, ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
 import { validateBearerToken } from '../server/auth-session';
 // From the canonical shared module, not via api/mcp/upgrade — the checkout edge
 // function has no reason to depend on the MCP transport tree (#6716).
@@ -163,6 +163,17 @@ export default async function handler(
     ctx,
   });
   if (limited) return limited;
+
+  // Per-client-IP, fail-closed. The per-user budget cannot see one client
+  // cycling many free accounts against Dodo's shared API-key rate limit.
+  const ipLimited = await createCheckoutDeps.checkRateLimit(req, cors, {
+    scope: 'create-checkout-ip',
+    limit: CHECKOUT_PER_IP_RATE_POLICY.limit,
+    window: CHECKOUT_PER_IP_RATE_POLICY.window,
+    failClosed: true,
+    ctx,
+  });
+  if (ipLimited) return ipLimited;
 
   // Parse request body
   let body: {

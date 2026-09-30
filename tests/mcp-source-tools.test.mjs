@@ -59,6 +59,9 @@ describe('get_sources — summary view', () => {
     assert.ok(Object.keys(summary.providersByKind).length > 1);
     assert.ok(Object.keys(summary.outletsByTier).length > 1);
     assert.ok(Object.keys(summary.providersByCountry).length > 1);
+    assert.ok(summary.provenanceCoverage.perspectiveLabelled > 0);
+    assert.ok(summary.provenanceCoverage.perspectiveLabelled < summary.provenanceCoverage.sources);
+    assert.match(summary.provenanceCoverage.caveat, /not assessed|has not been assessed/);
   });
 
   it('includes the summary in every view, so counts never need a second call', async () => {
@@ -264,6 +267,26 @@ describe('get_sources — input handling', () => {
         assert.equal(result.returned, rows.length);
         assertOutputSchema(result);
       }
+    }
+  });
+
+  it('fits a page at the declared maximum limit inside the output budget', async () => {
+    for (const view of ['providers', 'outlets']) {
+      const result = await run({ view, limit: 200 });
+      assert.equal(result.returned, 200);
+      const bytes = Buffer.byteLength(JSON.stringify(result));
+      assert.ok(
+        bytes < tool._outputBudgetBytes,
+        `${view} at limit 200 is ${bytes}B against a ${tool._outputBudgetBytes}B budget`,
+      );
+    }
+  });
+
+  it('keeps structured provenance facts on outlets but leaves out the prose summary', async () => {
+    const { outlets } = await run({ view: 'outlets', limit: 200 });
+    for (const outlet of outlets) {
+      assert.ok(Array.isArray(outlet.provenance.knownBiases), `${outlet.name} knownBiases`);
+      assert.equal('summary' in outlet.provenance, false, `${outlet.name} summary`);
     }
   });
 

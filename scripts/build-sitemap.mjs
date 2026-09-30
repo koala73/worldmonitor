@@ -92,18 +92,6 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     'api/mcp',
     'public/mcp-server.md',
   ]),
-  route(`${SITE_ORIGIN}/pricing.md`, 'machine-readable-product', ['public/pricing.md']),
-  route(`${SITE_ORIGIN}/support.md`, 'machine-readable-product', ['public/support.md']),
-  route(`${SITE_ORIGIN}/ai-search.md`, 'machine-readable-product', ['public/ai-search.md']),
-  route(`${SITE_ORIGIN}/developers.md`, 'machine-readable-developer', ['public/developers.md']),
-  route(`${SITE_ORIGIN}/mcp-server.md`, 'machine-readable-developer', ['public/mcp-server.md']),
-  route(`${SITE_ORIGIN}/openapi.md`, 'machine-readable-developer', ['public/openapi.md']),
-  route(`${SITE_ORIGIN}/sdks.md`, 'machine-readable-developer', ['public/sdks.md']),
-  route(`${SITE_ORIGIN}/world-monitor.md`, 'machine-readable-brand', ['public/world-monitor.md']),
-  route(`${SITE_ORIGIN}/api-versioning.md`, 'machine-readable-developer', ['public/api-versioning.md']),
-  route(`${SITE_ORIGIN}/llms.txt`, 'machine-readable-developer', ['public/llms.txt']),
-  route(`${SITE_ORIGIN}/llms-full.txt`, 'machine-readable-developer', ['public/llms-full.txt']),
-  route(`${SITE_ORIGIN}/api/llms.txt`, 'machine-readable-developer', ['public/api/llms.txt']),
   route('https://tech.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
     'src/config/variants/tech.ts',
@@ -125,6 +113,37 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     'src/config/variants/energy.ts',
   ]),
 ]);
+
+/**
+ * Machine-readable twins and AI manifests, kept out of every sitemap (#8608).
+ *
+ * A sitemap entry asks Google to index a URL. These twelve are Markdown or
+ * text copies of HTML pages we want ranked, plus the llms.txt manifests;
+ * Search Console inspected all twelve on 2026-09-25 and indexed none, and
+ * none earned an impression. Agents discover them through llms.txt, the
+ * well-known paths and each file's canonical Link header, never through the
+ * XML sitemap, so leaving the sitemap costs them nothing. They stay fetchable
+ * and carry no noindex. IndexNow still announces them, because Bing feeds
+ * AI search and the list below is what it submits.
+ */
+export const MACHINE_READABLE_URLS = Object.freeze([
+  `${SITE_ORIGIN}/pricing.md`,
+  `${SITE_ORIGIN}/support.md`,
+  `${SITE_ORIGIN}/ai-search.md`,
+  `${SITE_ORIGIN}/developers.md`,
+  `${SITE_ORIGIN}/mcp-server.md`,
+  `${SITE_ORIGIN}/openapi.md`,
+  `${SITE_ORIGIN}/sdks.md`,
+  `${SITE_ORIGIN}/world-monitor.md`,
+  `${SITE_ORIGIN}/api-versioning.md`,
+  `${SITE_ORIGIN}/llms.txt`,
+  `${SITE_ORIGIN}/llms-full.txt`,
+  `${SITE_ORIGIN}/api/llms.txt`,
+]);
+
+// A sitemap URL must name an HTML page. Any final path segment with a file
+// extension (.md, .txt, .json, .xml, .yaml, ...) is a file, not a page.
+const FILE_EXTENSION_RE = /\/[^/]+\.[a-z0-9]+$/i;
 
 const STATIC_LOCATIONS = new Set(STATIC_ROUTE_MANIFEST.map((entry) => entry.loc));
 const ALLOWED_HOSTS = new Set(STATIC_ROUTE_MANIFEST.map((entry) => new URL(entry.loc).hostname));
@@ -273,6 +292,9 @@ export function validateSitemapEntries(entries, { today = TODAY } = {}) {
     }
     if (url.href !== entry.loc) {
       throw new Error(`sitemap URL is not in canonical form: ${entry.loc}`);
+    }
+    if (FILE_EXTENSION_RE.test(url.pathname)) {
+      throw new Error(`sitemap URL is not an HTML page: ${entry.loc} (see MACHINE_READABLE_URLS)`);
     }
 
     if (entry.family === 'content-corpus') {

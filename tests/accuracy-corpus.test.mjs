@@ -427,7 +427,6 @@ function fakeTpl() {
     tpl: {
       escapeHtml,
       absoluteUrl,
-      withUtmSource: (url, source) => `${url}${url.includes('?') ? '&' : '?'}utm_source=${source}`,
       breadcrumbLd: (baseUrl, items) => ({
         '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',

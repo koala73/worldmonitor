@@ -55,7 +55,7 @@ async function loadChatAnalystPanel() {
       export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }
     `],
     ['analytics-stub', `
-      export function trackPanelResized() {}
+      export function trackLayoutCustomized() {}
       export function trackAnalystControlAction(actionType, status, reason) {
         globalThis.__wmAnalystControlTelemetry?.push({
           actionType,

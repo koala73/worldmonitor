@@ -28,6 +28,7 @@ import {
   isCountryHeadline,
 } from '../../shared/country-headline-match';
 import {
+  canonicalizeCountryCode,
   getCountryAtCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
@@ -66,6 +67,7 @@ import {
   collectBriefSources,
   type BriefSource,
 } from '@/utils/brief-sources';
+import type { IntelBriefEvidence } from '@/utils/format-intel-brief';
 import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
@@ -78,6 +80,7 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -103,6 +106,7 @@ type CountryStockSnapshot = {
 type CountryIntelBriefResult = {
   brief: string;
   sources: BriefSource[];
+  evidence: IntelBriefEvidence[];
   generatedAt?: string | number;
   cached?: boolean;
 };
@@ -391,6 +395,8 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed) return;
       const page = this.ctx.countryBriefPage;
       if (!page) return;
+      // Map GeoJSON can still stamp Taiwan as CN-TW; APIs require ISO alpha-2.
+      code = canonicalizeCountryCode(code);
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
       // An agent open must not replace visible state while it works. Ownership
       // is explicit because shipping WebMCP browsers omit the target signal.
@@ -871,6 +877,7 @@ export class CountryIntelManager implements AppModule {
             country,
             code,
             sources: briefSources,
+            evidence: briefResult?.evidence,
             generatedAt: briefResult?.generatedAt,
             cached: briefResult?.cached,
           });
@@ -1202,17 +1209,22 @@ export class CountryIntelManager implements AppModule {
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,
     });
-    if (!resp.ok) return { brief: '', sources: [] };
+    if (!resp.ok) return { brief: '', sources: [], evidence: [] };
 
     const body = (await resp.json()) as {
       brief?: string;
       sources?: BriefSource[];
+      evidence?: unknown;
       generatedAt?: string | number;
       cached?: boolean;
     };
     return {
       brief: typeof body.brief === 'string' ? body.brief.trim() : '',
       sources: collectBriefSources(body.sources ?? [], 6),
+      evidence: Array.isArray(body.evidence)
+        ? body.evidence.filter((item): item is IntelBriefEvidence =>
+          !!item && typeof item === 'object' && typeof (item as IntelBriefEvidence).id === 'string')
+        : [],
       generatedAt: body.generatedAt,
       cached: body.cached,
     };
@@ -1452,7 +1464,7 @@ export class CountryIntelManager implements AppModule {
           structuredEvents.push({
             timestamp: new Date(v.lastAisUpdate).getTime(),
             lane: 'military',
-            label: `${v.name} (${v.vesselType})`,
+            label: `${v.name} (${vesselTypeLabel(v)})`,
             severity: v.isDark ? 'high' : 'low',
           });
         }

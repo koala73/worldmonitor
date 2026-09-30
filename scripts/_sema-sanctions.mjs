@@ -1,4 +1,4 @@
-// Global Affairs Canada SEMA consolidated sanctions: parse, identity, fetch.
+// Global Affairs Canada consolidated sanctions: parse, identity, fetch.
 // Tests import this module, not the seeder (which runs runSeed on load).
 
 import { createRequire } from 'node:module';
@@ -11,13 +11,13 @@ const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 
 export const SEMA_SOURCE = 'sema-ca';
 export const SEMA_HOST = 'www.international.gc.ca';
-export const SEMA_XML_URL = 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sema-lmes.xml';
-export const SEMA_CACHE_KEY = SEMA_XML_URL;
+export const SEMA_JSON_URL = 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sanctions-consolidated-list-eng.json';
+export const SEMA_CACHE_KEY = SEMA_JSON_URL;
 // Live list is ~1.7 MB. Raise the ceiling deliberately (4–8 MB).
 export const SEMA_MAX_BYTES = 8 * 1024 * 1024;
 export const SEMA_TIMEOUT_MS = 45_000;
 export const SEMA_PROGRAM = 'SEMA';
-export const SANCTIONS_SOURCE_VERSION = 'ofac-sls-advanced-xml+sema-ca-v3';
+export const SANCTIONS_SOURCE_VERSION = 'ofac-sls-advanced-xml+sema-ca-json-v4';
 // List publication can sit days-to-weeks between designation batches.
 export const SANCTIONS_MAX_CONTENT_AGE_MIN = 30 * DAY_MIN;
 
@@ -224,21 +224,35 @@ function compactNote(value) {
 }
 
 export function recordToCanonical(block) {
-  const countryRaw = xmlText(block, 'Country');
+  return fieldsToCanonical(Object.fromEntries(
+    Object.keys(SEMA_FIELD_TAGS).map((field) => [field, xmlText(block, field)]),
+  ));
+}
+
+function fieldsToCanonical(fields) {
+  const countryRaw = fields.Country;
   const regime = regimeLabel(countryRaw);
   const program = programFromSemaCountry(countryRaw);
-  const lastName = xmlText(block, 'LastName');
-  const givenName = xmlText(block, 'GivenName');
-  const entityOrShip = xmlText(block, 'EntityOrShip');
-  const imo = xmlText(block, 'ShipIMONumber').replace(/\D/g, '');
-  const aliases = splitAliases(xmlText(block, 'Aliases'));
-  const item = xmlText(block, 'Item') || '0';
-  const listed = xmlText(block, 'DateOfListing');
-  const schedule = xmlText(block, 'Schedule');
-  const title = xmlText(block, 'TitleOrShip');
+  const lastName = fields.LastName;
+  const givenName = fields.GivenName;
+  const entityOrShip = fields.EntityOrShip;
+  const imo = fields.ShipIMONumber.replace(/\D/g, '');
+  const aliases = splitAliases(fields.Aliases);
+  const item = fields.Item;
+  const listed = fields.DateOfListing;
+  const schedule = fields.Schedule;
+  const title = fields.TitleOrShip;
 
   const legalName = entityOrShip || [givenName, lastName].filter(Boolean).join(' ').trim();
   if (!legalName) return null;
+
+  // Country and Item are required for source identity (Schedule is absent
+  // in valid JVCFOR records). The September 2026 export
+  // shifted schedule/item/date values into name fields and omitted these
+  // identity fields. Reject the source, not just the row: publishing the
+  // remaining rows could silently remove real designations. Ingestion routes
+  // this failure through the existing last-good/error path.
+  if (!countryRaw || !item) throw new Error('SEMA_INVALID_RECORD');
 
   let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
   if (imo) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
@@ -287,6 +301,84 @@ export function parseSemaXml(xml) {
     publishedAtMs: newest > 0 ? newest : 0,
     oldestItemAt: newest > 0 && oldest !== Infinity ? oldest : 0,
   };
+}
+
+// These named fields are the official HTML table's JSON contract. Empty optional
+// values are empty strings; only item/IMO identifiers also use JSON integers.
+// Absent/renamed fields must fail instead of shifting data.
+const SEMA_JSON_FIELDS = Object.freeze({
+  Country: 'Regulation',
+  EntityOrShip: 'Entity or Ship',
+  TitleOrShip: 'Title or Ship type',
+  LastName: 'Last Name',
+  GivenName: 'Given Names',
+  Aliases: 'Aliases',
+  ShipIMONumber: 'Ship IMO number',
+  DateOfBirth: 'Date of Birth',
+  Schedule: 'Schedule',
+  Item: 'Item Number',
+  DateOfListing: 'Date of Listing',
+});
+
+// A row whose own identity fields are unusable is held back, not repaired: the
+// official table has published rows with a name in `Ship IMO number` and the
+// names shifted one row, so no field of such a row can be trusted. More than
+// this share of such rows means the table itself is broken, not a few rows.
+export const SEMA_MAX_QUARANTINE_SHARE = 0.01;
+
+function semaRowDefect(fields) {
+  if (!fields.Country) return 'MISSING_COUNTRY';
+  if (!/^[1-9]\d*$/.test(fields.Item)) return 'INVALID_ITEM';
+  if (fields.ShipIMONumber && !/^\d{7}$/.test(fields.ShipIMONumber)) return 'INVALID_IMO';
+  if (!(fields.EntityOrShip || fields.LastName || fields.GivenName)) return 'MISSING_NAME';
+  return null;
+}
+
+export function parseSemaJson(text) {
+  let data;
+  try { data = JSON.parse(text)?.data; } catch { throw new Error('SEMA_INVALID_JSON'); }
+  if (!Array.isArray(data)) throw new Error('SEMA_INVALID_JSON');
+  if (data.length === 0) throw new Error(SEMA_EMPTY_ERROR);
+  const records = [];
+  const quarantined = [];
+  const ids = new Set();
+  let newest = 0;
+  let oldest = Infinity;
+  for (const [index, row] of data.entries()) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('SEMA_INVALID_RECORD');
+    const fields = {};
+    for (const [field, key] of Object.entries(SEMA_JSON_FIELDS)) {
+      const value = row[key];
+      const numericIdentifier = (field === 'Item' || field === 'ShipIMONumber')
+        && Number.isSafeInteger(value) && value > 0;
+      if (typeof value !== 'string' && !numericIdentifier) throw new Error('SEMA_INVALID_RECORD');
+      fields[field] = String(value).replace(/\s+/g, ' ').trim();
+    }
+    // The date and duplicate-ID contracts hold for every row, held back or not:
+    // quarantine is for an unusable identity, never a way past a table-wide break.
+    const listed = fields.DateOfListing;
+    const epoch = listingEpoch(listed);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(listed) || !epoch) {
+      throw new Error('SEMA_INVALID_DATE');
+    }
+    const defect = semaRowDefect(fields);
+    const identified = defect !== 'MISSING_COUNTRY' && defect !== 'INVALID_ITEM';
+    const id = identified ? semaRecordId(fields.Country, fields.Schedule, fields.Item) : `${SEMA_SOURCE}:row:${index}`;
+    if (identified) {
+      if (ids.has(id)) throw new Error('SEMA_DUPLICATE_ID');
+      ids.add(id);
+    }
+    if (defect) {
+      quarantined.push({ id, reason: defect });
+      if (quarantined.length > data.length * SEMA_MAX_QUARANTINE_SHARE) throw new Error('SEMA_INVALID_RECORD');
+      continue;
+    }
+    const entry = fieldsToCanonical(fields);
+    records.push(entry);
+    newest = Math.max(newest, epoch);
+    oldest = Math.min(oldest, epoch);
+  }
+  return { records, quarantined, publishedAtMs: newest, oldestItemAt: oldest };
 }
 
 export function mergeSanctionEntries(parts = {}) {
@@ -437,9 +529,9 @@ async function readResponseLimited(response, maxBytes) {
 
 /**
  * Host-policy fetch: allowlist www.international.gc.ca, reject redirects,
- * timeout, byte ceiling, CHROME_UA. Do not bind fetch to globalThis. Cache key is the XML URL.
+ * timeout, byte ceiling, CHROME_UA. Do not bind fetch to globalThis. Cache key is the official table JSON URL.
  */
-export async function fetchSemaXml(url = SEMA_CACHE_KEY, {
+export async function fetchSemaJson(url = SEMA_CACHE_KEY, {
   fetchFn = globalThis.fetch,
   maxBytes = SEMA_MAX_BYTES,
   timeoutMs = SEMA_TIMEOUT_MS,
@@ -450,7 +542,7 @@ export async function fetchSemaXml(url = SEMA_CACHE_KEY, {
     throw new Error('UNTRUSTED_SOURCE_HOST');
   }
   const response = await fetchFn(parsed.toString(), {
-    headers: { Accept: 'application/xml, text/xml, */*', 'User-Agent': userAgent },
+    headers: { Accept: 'application/json', 'User-Agent': userAgent },
     redirect: 'error',
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -459,15 +551,15 @@ export async function fetchSemaXml(url = SEMA_CACHE_KEY, {
 }
 
 export async function fetchSemaEntries(options = {}) {
-  const { text } = await fetchSemaXml(SEMA_CACHE_KEY, options);
-  return parseSemaXml(text);
+  const { text } = await fetchSemaJson(SEMA_CACHE_KEY, options);
+  return parseSemaJson(text);
 }
 
 export const SEMA_EMPTY_ERROR = 'SEMA_EMPTY';
 export const SEMA_INGEST_ERROR_CODE = 'SEMA_INGEST_FAILED';
 
 /**
- * Fetch+parse SEMA without throwing. Empty XML, HTTP errors, and transport
+ * Fetch+parse SEMA without throwing. Empty JSON, HTTP errors, and transport
  * failures all become `{ error }` so a successful OFAC snapshot cannot hide them.
  */
 export async function ingestSemaEntries(options = {}) {
@@ -479,6 +571,7 @@ export async function ingestSemaEntries(options = {}) {
     }
     return {
       records,
+      quarantined: parsed.quarantined || [],
       publishedAtMs: parsed.publishedAtMs || 0,
       oldestItemAt: parsed.oldestItemAt || 0,
       error: null,

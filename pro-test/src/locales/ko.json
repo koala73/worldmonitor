@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "당신의 AI 분석가. 개인 인텔리전스 데스크. 구축할 수 있는 플랫폼. 모든 라이브 서비스에서 사용할 하나의 키.",
+    "proDesc": "당신의 AI 분석가. 개인 인텔리전스 데스크. 구축할 수 있는 플랫폼.",
     "proF1": "WM Analyst 채팅 — 라이브 서비스를 자연어로 조회",
     "proF2": "AI 다이제스트 — 매일, 하루 두 번 또는 매주 — Slack, Discord, Telegram, 이메일 또는 웹훅으로",
     "proF3": "커스텀 위젯 빌더 — HTML/CSS/JS에 AI 보조 수정",
@@ -482,7 +482,7 @@
       "plateNote": "실시간 지도에서 캡처됨 — 클릭하여 열기",
       "trustBuild": "기반 구축:",
       "positioningLink": "WorldMonitor는 오픈소스 Palantir이 아닙니다",
-      "asOf": "2026년 9월 8일 기준",
+      "asOf": "{{date}} 기준",
       "whatIsTitle": "World Monitor란 무엇인가요?",
       "whatIsBody": "World Monitor는 지정학, 시장, 해운, 항공, 인프라, 사이버 신호를 하나의 실시간 세계 지도에 스트리밍하는 무료 오픈소스 대시보드입니다. 별개의 피드를 단일 운영 화면으로 통합하고 뉴스 보도 전에 수렴을 감지하며, 모든 수치는 출처가 명시되고 모든 방법은 기록되어 있습니다."
     },
@@ -676,7 +676,7 @@
       "q4": "호르무즈 해협이나 바브 엘만데브 같은 병목을 실시간으로 모니터링할 수 있나요?",
       "a4": "네, 맞습니다. 병목은 라이브 AIS 선박 수, 주대비 운송 변화 및 중단 점수 — 그리고 밀도 이상은 각 해협의 롤링 기준선과 비교하여 표시됩니다.",
       "q5": "Liveuamap 같은 분쟁 지도와는 어떤 점이 다른가요?",
-      "a5": "분쟁은 하나의 지도 레이어입니다. World Monitor는 분쟁을 해운, 군용기, 인프라, 시장 및 사이버와 융합한 후 AI가 수렴을 점수화합니다: 불안정성 지수, 핫스팟 급증, 확증된 긴급 속보 및 일일 상황 보고. World Monitor를 Liveuamap 및 기타 분쟁 지도와 비교하세요: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "분쟁은 하나의 지도 레이어입니다. World Monitor는 분쟁을 해상 운송, 군용 항공기, 인프라, 시장, 사이버와 융합한 후 AI가 수렴성을 점수화합니다: 불안정 지수, 핫스팟 확대, 확인된 속보 및 일일 브리핑. World Monitor를 Liveuamap 및 다른 분쟁 지도와 비교하세요: worldmonitor.app/compare/liveuamap-alternatives. 더 광범위한 모니터링 옵션은 worldmonitor.app/compare/best-geopolitical-risk-dashboards를 참조하세요.",
       "q6": "알림을 왜 믿어야 하나요?",
       "a6": "속보 배너는 독립적인 출처 유형이 상호 검증할 때만 발생합니다 — 뉴스 분류, 키워드 속도, 핫스팟 확대, 군사 급증, 공식 사이렌 — 중복 제거되고 속도 제한됩니다. 더 적은 알림, 진짜 알림만.",
       "q7": "Claude나 GPT 같은 AI 에이전트가 사용할 수 있나요?",

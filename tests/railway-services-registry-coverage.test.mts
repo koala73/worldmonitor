@@ -151,6 +151,7 @@ describe('Railway service registry coverage', () => {
       'scripts/_gdelt-fetch.mjs',
       'scripts/china-corporate-disclosures/adapters.mjs',
       'scripts/cross-strait-activity/adapters.mjs',
+      'scripts/seed-live-video-resolved.mjs',
     ]) {
       const src = readFileSync(resolve(repoRoot, file), 'utf8');
       for (const m of src.matchAll(PROXY_FALLBACK_RE)) {
@@ -158,8 +159,8 @@ describe('Railway service registry coverage', () => {
       }
     }
     assert.ok(
-      fallbackPairs.length >= 3,
-      'expected the GDELT, SZSE and Japan MOD adapters to resolve a source-specific proxy with a PROXY_URL fallback',
+      fallbackPairs.length >= 4,
+      'expected the GDELT, SZSE and Japan MOD adapters and the live video seeder to resolve a source-specific proxy with a PROXY_URL fallback',
     );
 
     for (const [specific, shared] of fallbackPairs) {

@@ -6,27 +6,85 @@
   <meta name="robots" content="noindex">
   <title>Page not found — World Monitor</title>
   <style>
-    body { background: #0a0f0a; color: #e0e0e0; font-family: system-ui;
-           display: flex; align-items: center; justify-content: center;
-           min-height: 100vh; margin: 0; }
-    .c { text-align: center; padding: 2rem; max-width: 36rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-    p { color: #888; font-size: 0.9rem; }
-    a { color: #4ade80; }
-    code { color: #e0e0e0; }
-    nav { margin-top: 1.25rem; }
-    nav a { margin: 0 0.5rem; }
+    :root { color-scheme: dark; --bg: #050807; --panel: #0c1210; --text: #eef8f0; --muted: #a8b8ad; --line: #1b2b22; --accent: #4ade80; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+    header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+    header { padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    nav { display: flex; gap: 4px 18px; flex-wrap: wrap; font-size: 14px; }
+    nav a { display: inline-flex; align-items: center; min-height: 44px; }
+    nav .home { color: var(--text); font-weight: 700; margin-right: auto; }
+    main { padding-top: 48px; padding-bottom: 56px; }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+    h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -0.01em; }
+    .lede { margin: 0; max-width: 640px; color: var(--muted); font-size: 18px; }
+    .lede code { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: 0.9em; overflow-wrap: anywhere; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+    .actions { display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap; margin-top: 28px; }
+    .cta { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 12px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
+    .cta:hover { text-decoration: none; filter: brightness(1.08); }
+    .secondary { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
+    h2 { margin: 48px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+    .card { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); transition: border-color 150ms ease-out; }
+    .card:hover { border-color: var(--accent); text-decoration: none; }
+    .card strong { color: var(--text); font-size: 16px; }
+    .card span { color: var(--muted); font-size: 14px; }
+    footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 14px; }
+    footer p { margin: 0; }
+    @media (max-width: 420px) { nav { gap: 0 11px; font-size: 13px; } }
+    @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
   </style>
 </head>
 <body>
-  <div class="c">
-    <h1>Page not found</h1>
-    <p>This path is not a page on World Monitor.</p>
-    <nav>
+  <header>
+    <nav aria-label="Primary">
+      <a class="home" href="/">World Monitor</a>
       <a href="/dashboard">Dashboard</a>
+      <a href="/countries/">Countries</a>
+      <a href="/crises/">Crises</a>
       <a href="/docs/documentation">Docs</a>
-      <a href="/">Home</a>
     </nav>
-  </div>
+  </header>
+  <main>
+    <p class="eyebrow">404 · Page not found</p>
+    <h1>This page isn’t on World Monitor</h1>
+    <p class="lede">The link may be mistyped, or the page may have moved.</p>
+    <div class="actions">
+      <a class="cta" href="/dashboard">Open the live dashboard <span aria-hidden="true">→</span></a>
+    </div>
+    <h2>Or start from a section</h2>
+    <div class="grid">
+    <a class="card" href="/countries/">
+      <strong>Countries</strong>
+      <span>Risk briefs and live signals, country by country.</span>
+    </a>
+    <a class="card" href="/crises/">
+      <strong>Crises</strong>
+      <span>Trackers for active conflicts and emergencies.</span>
+    </a>
+    <a class="card" href="/chokepoints/">
+      <strong>Chokepoints</strong>
+      <span>Status of the straits and canals that trade depends on.</span>
+    </a>
+    <a class="card" href="/compare/">
+      <strong>Compare</strong>
+      <span>How World Monitor compares with other monitors.</span>
+    </a>
+    <a class="card" href="/docs/documentation">
+      <strong>Documentation</strong>
+      <span>Methods, data sources, the API and MCP.</span>
+    </a>
+    <a class="card" href="/blog/">
+      <strong>Blog</strong>
+      <span>Analysis and product notes from the team.</span>
+    </a>
+    </div>
+  </main>
+  <footer>
+    <p>Followed a World Monitor link here? <a href="/docs/support">Tell us where it was</a> so we can fix it.</p>
+  </footer>
 </body>
 </html>

@@ -83,14 +83,23 @@ export default defineConfig({
   // 1 crash reported `flaky` because the retry absorbed it, 2 crashes red
   // because the crash recurred on the retry.
   //
-  // So this retry is load-bearing in the worst way. It converts most browser
-  // crashes into a passing run, which is why the browser-loss diagnostics this
-  // job has collected since #5685 went unread for months. Leave it at 1 while
-  // the crash is being diagnosed and let the SIGTRAP check in test.yml do the
-  // reporting, then revisit. Local runs stay at 0 so a flake is felt
-  // immediately while iterating.
+  // So this retry is load-bearing in the worst way: it converts most browser
+  // crashes into a passing run, which is how they went unnoticed from #5685 to
+  // #8447. It stays at 1 while the cause of the SIGTRAP is still unknown, but
+  // the crash is no longer laundered into `flaky` --
+  // BrowserCrashReporter below counts the exits per process, at run scope, and
+  // prints the total whatever the outcome. Local runs stay at 0 so a flake is
+  // felt immediately while iterating.
   retries: process.env.CI ? 1 : 0,
-  reporter: 'list',
+  // `list` for humans, crash accounting for the record. The crash reporter is
+  // separate from `attachBrowserLossDiagnostics` (#6501), which is per spec and
+  // sees only the files that opt in; this one counts browser process exits
+  // across the whole run, so a crash in any spec is reported even when the job
+  // ends green. See e2e/browser-crash-reporter.ts.
+  reporter: [
+    ['list'],
+    ['./e2e/browser-crash-reporter.ts'],
+  ],
   use: {
     // Never let a stray production URL retarget ordinary Playwright suites.
     // The environment validation above makes the remote target reachable only

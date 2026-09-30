@@ -809,6 +809,20 @@ async function fetchHapiRows({
       },
     );
     if (!resp.ok) {
+      const retryAfter = resp.headers.get('retry-after');
+      const seconds = retryAfter !== null && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+      // HTTP dates are UTC, including the legacy asctime form with no zone.
+      // Only the normalized timestamp is logged; never expose the raw header.
+      const retryDate = retryAfter !== null && Number.isNaN(seconds)
+        ? Date.parse(retryAfter.endsWith(' GMT') ? retryAfter : `${retryAfter} GMT`) : NaN;
+      console.warn(`  HAPI API rejection ${JSON.stringify({
+        status: resp.status,
+        country: /^[A-Z]{2}$/.test(countryCode ?? '') ? countryCode : 'global',
+        adminLevel: ['0', '1', '2'].includes(adminLevel) ? adminLevel : null,
+        offset,
+        retryAfterSeconds: Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null,
+        retryAfterAt: Number.isFinite(retryDate) ? new Date(retryDate).toISOString() : null,
+      })}`);
       throw await hapiResponseError(resp);
     }
 

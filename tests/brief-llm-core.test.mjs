@@ -972,6 +972,33 @@ describe('validateNoHallucinatedStatusQualifiers — Sep 20 "former President Tr
     assert.equal(validate('Talks stalled, and then President Trump left the summit.', 'Trump leaves the summit').ok, true);
   });
 
+  it('the bridge between qualifier and title holds only office words, not clause words (#8441 review)', () => {
+    // Ordinary news phrasing with a qualifier word that qualifies nothing about
+    // the named person. Each was flagged when the bridge accepted any word.
+    const ground = 'Trump announces new tariffs on China';
+    for (const summary of [
+      'Former officials said President Trump announced tariffs.',
+      'Late on Tuesday President Trump announced tariffs.',
+      'Late last night President Trump announced tariffs.',
+      'Late Tuesday President Trump announced tariffs.',
+      'Acting swiftly President Trump announced tariffs.',
+      'Interim results show President Trump gained.',
+      'Former aides told reporters President Trump would sign.',
+    ]) {
+      assert.equal(validate(summary, ground).ok, true, summary);
+    }
+    // Office modifiers and nationality words between qualifier and title still bind.
+    for (const [summary, headline] of [
+      ['The former US President Trump announced tariffs.', ground],
+      ['Former Brazilian president Bolsonaro began a sentence.', 'Bolsonaro begins sentence'],
+      ['Former deputy prime minister Freeland resigned.', 'Freeland resigns'],
+      ['Former national security adviser Bolton criticized the deal.', 'Bolton criticizes deal'],
+      ['The late Israeli prime minister Rabin was honored.', 'Rabin honored at ceremony'],
+    ]) {
+      assert.equal(validate(summary, headline).ok, false, summary);
+    }
+  });
+
   it('a sentence boundary ends the bridge between qualifier and title', () => {
     assert.equal(validate('Former officials met. President Trump then spoke.', 'Trump speaks after officials meet').ok, true);
   });

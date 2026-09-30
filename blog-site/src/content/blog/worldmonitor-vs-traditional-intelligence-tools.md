@@ -63,6 +63,8 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 
 ### World Monitor vs. Dataminr
 
+See [World Monitor vs Dataminr](/compare/worldmonitor-vs-dataminr/) for the detailed feature and access comparison.
+
 **Dataminr wins at:**
 
 - Proprietary social media firehose access (Twitter/X partnership)
@@ -82,6 +84,8 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 **Best for:** Analysts who need multi-domain intelligence, not just social media monitoring.
 
 ### World Monitor vs. Recorded Future
+
+See [World Monitor vs Recorded Future](/compare/worldmonitor-vs-recorded-future/) for the detailed feature and access comparison.
 
 **Recorded Future wins at:**
 

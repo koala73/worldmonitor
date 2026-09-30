@@ -213,7 +213,7 @@ const SEED_DOMAINS = {
   // the shared key is fresh, so a second writer there starves the bootstrap
   // payload (incident 2026-09-23). This entry gives the hourly mirror its own
   // heartbeat instead of riding the relay's.
-  'research:tech-events-seeder': { key: 'seed-meta:research:tech-events:seeder', intervalMin: 60 },
+  'research:tech-events-seeder': { key: 'seed-meta:research:tech-events:seeder', intervalMin: 90 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
   'gdelt:bulk:country-articles': { key: 'seed-meta:gdelt:bulk:country-articles', intervalMin: 23 }, // same materializer tick; standalone health key for the per-country index (#7748).

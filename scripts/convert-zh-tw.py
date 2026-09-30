@@ -99,6 +99,9 @@ PHRASE_OVERRIDES = {
     "髮生": "發生",
     # 只 -> 隻, the measure word for animals. Taiwan counts funds with 檔.
     "隻基金": "檔基金",
+    # 列表 -> 列錶 when followed by 的历史: OpenCC takes 表 as 錶 (watch/clock)
+    # instead of 表 (list/form). Stock-backtest tooltip hit this; ban the residue.
+    "列錶": "列表",
 }
 
 # Applied before PHRASE_OVERRIDES, so an entry can opt out of a global rule.

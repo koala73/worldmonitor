@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "指数: World Monitor · 店舗データ:",
+      "statusNormal": "通常",
+      "statusNoData": "データなし",
+      "statusNoBaseline": "基準なし",
+      "vsUsual": "通常比",
       "title": "ペンタゴンピザ指数",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}}に更新",
       "tensionsTitle": "地政学的緊張",
+      "tensionsSource": "緊張度：GDELTのイベントに基づくWorld Monitorの算出値",
+      "insufficientData": "データ不足",
+      "pizzaUnavailable": "ピザ店の活動データを取得できません",
       "source": "ソース:",
       "statusClosed": "閉鎖",
       "statusSpike": "急上昇",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}分前",
       "hoursAgo": "{{h}}時間前",
       "defconLabels": {
-        "1": "COCKED PISTOL — 最大即応態勢",
-        "2": "FAST PACE — 軍即応態勢",
-        "3": "ROUND HOUSE — 即応態勢強化",
-        "4": "DOUBLE TAKE — 情報監視強化",
-        "5": "FADE OUT — 最低即応態勢"
+        "1": "最大活動",
+        "2": "高い活動",
+        "3": "活動増加",
+        "4": "通常以上",
+        "5": "通常の活動"
       }
     },
     "strategicPosture": {
@@ -2819,6 +2827,26 @@
       "idleKeepPlaying": "アイドル時にライブ動画を再生し続ける",
       "idleSettingsHint": "この設定はいつでも設定 › メディアで変更できます。",
       "idleKeepPlayingToast": "ライブ動画はアイドル時にも再生され続けます。設定 › メディアで変更してください。"
+    },
+    "corroboration": {
+      "singlePublisher": "単一の報道機関",
+      "singlePublisherHint": "現在のところ、1つの報道機関のみがこれを報じています。これは報道範囲を示すもので、正確性ではありません。",
+      "tier4Only": "低レベルのソースのみ",
+      "tier4OnlyHint": "これを報じているすべてのメディアはTier4ソース（アグリゲーターとブログ）です。これは報道範囲を示すもので、正確性ではありません。",
+      "rosterListed": "（{{listed}}社を表示）",
+      "rosterFeeds": "確認されたフィード: {{labels}}",
+      "rosterLegend": "ティアは情報源の順位付けであり、この主張の真偽を判断するものではありません。",
+      "tierDocsLink": "ティアの割り当て方法",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "ティア1: 通信社および公式機関",
+      "tierTitle2": "ティア2: 主要メディア",
+      "tierTitle3": "ティア3: 専門・地域メディアおよびシンクタンク",
+      "tierTitle4": "ティア4: アグリゲーターおよびブログ",
+      "tierTitleUndeclared": "ティア未申告: 未審査",
+      "rosterSummary": "{{publishers}}が報道",
+      "rosterSummaryTier1": "{{publishers}}が報道（うちティア1は{{tier1}}社）",
+      "rosterPublishers_other": "{{count}}社の報道機関"
     }
   },
   "popups": {
@@ -2857,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED（検証済）",
       "gdelt": "GDELT",
+      "records": "件の記録",
+      "mediaSignal": "未確認のメディア情報",
+      "relatedArticle": "関連記事",
+      "mediaSignalDetail": "この場所は騒乱に関する記事で言及されています。現地での出来事は確認されていません。",
       "riots": "暴動",
       "highSeverity": "高深刻度"
     },

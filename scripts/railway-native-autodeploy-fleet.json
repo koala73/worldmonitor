@@ -121,6 +121,10 @@
       "name": "seed-bundle-static-ref-heavy"
     },
     {
+      "id": "017af607-5a4c-49d7-b8dc-1c28d06d1835",
+      "name": "seed-bundle-yield-curves"
+    },
+    {
       "id": "12e8e87d-1214-4ba3-a813-709f279a5ba9",
       "name": "seed-chokepoint-exposure"
     },
@@ -259,6 +263,10 @@
     {
       "id": "5d294bd6-7943-4454-aa9c-eb90bd9d9124",
       "name": "seed-iran-events"
+    },
+    {
+      "id": "11581ac4-24ea-4cfc-bf17-471e41305364",
+      "name": "seed-live-video-resolved"
     },
     {
       "id": "9b6973b8-2701-45da-ab91-ba36dfbf3008",

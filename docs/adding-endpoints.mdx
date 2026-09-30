@@ -366,7 +366,7 @@ Use this checklist for each new or changed RPC:
 - [ ] If cache-backed, confirm the tool has the right `_cacheKeys` / `_coverageKeys`, freshness metadata, and `seed-meta:<key>` health coverage.
 - [ ] If no, add or update the `tests/mcp-api-parity.test.mjs` exclusion with the matching category prefix and a concrete reason.
 - [ ] If `fetch-on-miss`, include one enforced secondary signal (`high-cardinality-input`, `paid-upstream`, or `llm-cost`) and name the upstream cost, cardinality, and tier policy that makes open MCP exposure unsafe for now.
-- [ ] If `mutating` or `llm-passthrough`, document the separate threat/cost model before proposing an MCP wrapper.
+- [ ] If `mutating` or `llm-passthrough`, document the separate threat/cost model before proposing an MCP wrapper. For `mutating`, answer every question in [Mutating MCP tools](#mutating-mcp-tools).
 - [ ] Run `./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs` and include the result in the PR.
 
 A `covered` operation is declared in a tool `_apiPaths` entry. For REST-only operations, the parity test accepts these exclusion categories:
@@ -381,6 +381,20 @@ A `covered` operation is declared in a tool `_apiPaths` entry. For REST-only ope
 | `deferred-to-future-tool` | The operation is pure-read and agent-useful, but belongs in a future MCP tool or expanded bundle rather than today's registry. |
 
 The MCP reference docs render the current `_apiPaths` coverage table in [MCP Overview](/mcp-overview#api-coverage). The parity test is canonical for the current covered/excluded split, so do not rely on stale counts in a PR description.
+
+### Mutating MCP tools
+
+Every MCP tool is read-only today. The agent feedback channel (#8721) plans the first one that writes. A tool that writes state is a new kind of surface: any agent can call it, often without an account, and its input reaches people and systems we own. Before a mutating operation gets an MCP wrapper, write a decision record in `docs/architecture/` that answers each question below with a concrete value, and link it from the PR.
+
+1. **Abuse.** Can an anonymous caller trigger the write? What are the per-IP, per-principal, and global limits, and which code enforces each one on each entry path? The MCP door does not pass through the gateway's endpoint limiter. Are they all fail-closed, including when Redis is degraded? A global bucket is required whenever anonymous writes are allowed, because IP rotation defeats per-IP limits. Define which callers count as keyed; free accounts and anonymous sessions cost nothing to create.
+2. **Idempotency.** What happens when the same call arrives twice? Name the key that identifies a retry. Keep retry handling separate from any content deduplication, which can silently drop a later caller's evidence. Set `idempotentHint` from the answer, not by default.
+3. **Injection.** Who or what reads the stored text: email, terminal, GitHub, an LLM? How is the text escaped for each of them? Does any automation act on it?
+4. **Privacy.** What identity is stored, and is it derived from authentication or from the body? Which credential shapes are redacted at ingest? How long is each state retained?
+5. **Cost.** What is the daily ceiling for writes, storage, email, LLM spend, and upstream fetches at the configured limits?
+6. **Tool contract.** State the access class and all four annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`). Name the downstream path. A free-tier tool must reach no credentialed downstream, so any exception has to be stated and pinned by test. Say how the tool obtains the caller's IP, user agent, and request id, because `_execute` does not receive the request.
+7. **Re-open conditions.** Which future changes invalidate the record?
+
+[`agent-feedback-threat-model.md`](https://github.com/koala73/worldmonitor/blob/main/docs/architecture/agent-feedback-threat-model.md) is the first such record and a worked example. A second mutating tool needs its own record; it does not inherit an existing one or its exceptions.
 
 ## Proto conventions
 

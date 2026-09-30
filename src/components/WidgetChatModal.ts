@@ -12,6 +12,7 @@ import { classifyPremiumDenial, type ClientEntitlementBelief } from '@/services/
 import { readClientEntitlementBelief } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 interface WidgetChatOptions {
@@ -51,6 +52,10 @@ let overlay: HTMLElement | null = null;
 let focusTrap: FocusTrap | null = null;
 let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
+let onlineHandler: (() => void) | null = null;
+let preflightRetry: ReturnType<typeof setTimeout> | null = null;
+/** Clerk token recovery emits no browser event, so an online browser re-checks on a timer. */
+const PREFLIGHT_RETRY_MS = 15_000;
 
 interface BuiltAuthHeaders {
   headers: Record<string, string>;
@@ -59,6 +64,10 @@ interface BuiltAuthHeaders {
    *  the right 403 error message — the "Update wm-pro-key" hint is misleading
    *  for normal paying users who have no tester key. */
   usedTesterKey: boolean;
+  /** True when a signed-in user has no Clerk token — Clerk could not be
+   *  reached. The server would answer the credential-less request with the
+   *  "Pro subscription required" 403, so the request must not be sent. */
+  sessionUnavailable: boolean;
 }
 
 function reportWidgetEntitlementDesync(
@@ -86,11 +95,18 @@ async function buildWidgetAuthHeaders(isPro: boolean): Promise<BuiltAuthHeaders>
     if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
     if (widgetKey) headers['X-Widget-Key'] = widgetKey;
     if (isPro && proKey) headers['X-Pro-Key'] = proKey;
-    return { headers, usedTesterKey: true };
+    return { headers, usedTesterKey: true, sessionUnavailable: false };
   }
   const token = await getClerkToken();
-  if (token) return { headers: { 'Authorization': `Bearer ${token}` }, usedTesterKey: false };
-  return { headers: {}, usedTesterKey: false };
+  if (token) return { headers: { 'Authorization': `Bearer ${token}` }, usedTesterKey: false, sessionUnavailable: false };
+  return { headers: {}, usedTesterKey: false, sessionUnavailable: getAuthState().user !== null };
+}
+
+/** Copy for a request that cannot reach an entitlement verdict, or null. */
+function connectivityProblem(auth?: BuiltAuthHeaders): string | null {
+  if (!navigator.onLine) return t('connectivity.offlineUnavailable');
+  if (auth?.sessionUnavailable) return t('widgets.preflightUnavailable');
+  return null;
 }
 
 export function openWidgetChatModal(options: WidgetChatOptions): void {
@@ -104,6 +120,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   overlay.className = 'modal-overlay active';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-label', options.mode === 'modify' ? t('widgets.modifyTitle') : t('widgets.chatTitle'));
 
   const modal = document.createElement('div');
@@ -158,6 +175,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let currentSessionHtml: string | null = options.existingSpec?.html ?? null;
   let requestInFlight = false;
   let preflightReady = false;
+  let preflightGen = 0;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
 
   if (options.initialMessage) inputEl.value = options.initialMessage;
@@ -180,6 +198,11 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   syncComposerState();
   void runPreflight();
 
+  onlineHandler = () => {
+    if (!preflightReady && !requestInFlight) void runPreflight();
+  };
+  window.addEventListener('online', onlineHandler);
+
   closeBtn.addEventListener('click', closeWidgetChatModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeWidgetChatModal(); });
 
@@ -194,16 +217,38 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     closeWidgetChatModal();
   });
 
+  function showPreflightError(message: string): void {
+    preflightReady = false;
+    setReadinessState(readinessEl, 'error', message);
+    setFooterStatus(footerStatusEl, message, 'error');
+    if (!currentSessionHtml) renderPreviewState(previewEl, 'error', message);
+    syncComposerState();
+  }
+
   async function runPreflight(): Promise<void> {
+    const gen = ++preflightGen;
+    // A newer check, or closing the modal, supersedes this one.
+    const isStale = () => gen !== preflightGen || !modal.isConnected;
+    if (preflightRetry) { clearTimeout(preflightRetry); preflightRetry = null; }
+    const offline = connectivityProblem();
+    if (offline) return showPreflightError(offline);
     setReadinessState(readinessEl, 'checking', t('widgets.checkingConnection'));
     try {
       const auth = await buildWidgetAuthHeaders(isPro);
+      if (isStale()) return;
+      const unreachable = connectivityProblem(auth);
+      if (unreachable) {
+        showPreflightError(unreachable);
+        if (navigator.onLine) preflightRetry = setTimeout(() => void runPreflight(), PREFLIGHT_RETRY_MS);
+        return;
+      }
       const requestAuthState = getAuthState();
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
       const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
       let payload: WidgetAgentHealth | null = null;
       try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+      if (isStale()) return;
 
       if (!res.ok) {
         const message = resolvePreflightMessage(
@@ -214,22 +259,11 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
           requestBelief,
           requestUserId,
         );
-        preflightReady = false;
-        setReadinessState(readinessEl, 'error', message);
-        setFooterStatus(footerStatusEl, message, 'error');
-        if (!currentSessionHtml) renderPreviewState(previewEl, 'error', message);
-        syncComposerState();
-        return;
+        return showPreflightError(message);
       }
 
       if (isPro && payload?.proKeyConfigured === false) {
-        const message = t('widgets.preflightProUnavailable');
-        preflightReady = false;
-        setReadinessState(readinessEl, 'error', message);
-        setFooterStatus(footerStatusEl, message, 'error');
-        if (!currentSessionHtml) renderPreviewState(previewEl, 'error', message);
-        syncComposerState();
-        return;
+        return showPreflightError(t('widgets.preflightProUnavailable'));
       }
 
       preflightReady = true;
@@ -238,12 +272,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       setFooterStatus(footerStatusEl, currentSessionHtml ? t('widgets.modifyHint') : t('widgets.readyToGenerate'));
       syncComposerState();
     } catch {
-      preflightReady = false;
-      const message = t('widgets.preflightUnavailable');
-      setReadinessState(readinessEl, 'error', message);
-      setFooterStatus(footerStatusEl, message, 'error');
-      if (!currentSessionHtml) renderPreviewState(previewEl, 'error', message);
-      syncComposerState();
+      if (isStale()) return;
+      showPreflightError(connectivityProblem() ?? t('widgets.preflightUnavailable'));
     }
   }
 
@@ -277,7 +307,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     });
 
     abortController = new AbortController();
-    const timeoutMs = isPro ? 120_000 : 60_000;
+    const timeoutMs = isPro ? 200_000 : 170_000;
     clientTimeout = setTimeout(() => {
       abortController?.abort();
       appendMessage(messagesEl, 'assistant', t('widgets.requestTimedOut'));
@@ -289,6 +319,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 
     try {
       const auth = await buildWidgetAuthHeaders(isPro);
+      const unreachable = connectivityProblem(auth);
+      if (unreachable) throw new Error(unreachable);
       const requestAuthState = getAuthState();
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
@@ -400,7 +432,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      const message = err instanceof Error ? err.message : t('widgets.unknownError');
+      const message = connectivityProblem() ?? (err instanceof Error ? err.message : t('widgets.unknownError'));
       appendMessage(messagesEl, 'assistant', `${t('common.error')}: ${message}`);
       renderPreviewState(previewEl, 'error', message);
       setFooterStatus(footerStatusEl, message, 'error');
@@ -426,6 +458,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 export function closeWidgetChatModal(): void {
   if (abortController) { abortController.abort(); abortController = null; }
   if (clientTimeout) { clearTimeout(clientTimeout); clientTimeout = null; }
+  if (onlineHandler) { window.removeEventListener('online', onlineHandler); onlineHandler = null; }
+  if (preflightRetry) { clearTimeout(preflightRetry); preflightRetry = null; }
   if (overlay) {
     const o = overlay as HTMLElement & { _escHandler?: (e: KeyboardEvent) => void };
     if (o._escHandler) document.removeEventListener('keydown', o._escHandler);
@@ -492,7 +526,9 @@ function setFooterStatus(container: HTMLElement, text: string, tone: 'muted' | '
 }
 
 function renderPreviewState(container: HTMLElement, phase: PreviewPhase, detail = ''): void {
-  const heading = getPreviewHeading(phase);
+  // Web search, page reads and the source check are not WorldMonitor data.
+  const webStep = phase === 'fetching' && /^(search|read|verify):/.test(detail);
+  const heading = webStep ? t('widgets.phaseFetching') : getPreviewHeading(phase);
   const copy = detail || getPreviewCopy(phase);
   const isError = phase === 'error';
 

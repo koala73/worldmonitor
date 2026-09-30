@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Ihr KI-Analyst. Ein persönlicher Intelligence-Desk. Eine Plattform zum Aufbau darauf. Ein Key über alle Live-Services.",
+    "proDesc": "Ihr KI-Analyst. Ein persönlicher Intelligence-Desk. Eine Plattform zum Aufbau darauf.",
     "proF1": "WM Analyst Chat – Live-Services im Gespräch abfragen",
     "proF2": "KI-Digest — täglich, zweimal täglich oder wöchentlich — an Slack, Discord, Telegram, E-Mail oder Webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS mit KI-unterstützter Anpassung",
@@ -482,7 +482,7 @@
       "plateNote": "Erfasst von der Live-Karte — klicken Sie zum Öffnen",
       "trustBuild": "Darauf aufbauen:",
       "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
-      "asOf": "Stand: 8. September 2026",
+      "asOf": "Stand: {{date}}",
       "whatIsTitle": "Was ist World Monitor?",
       "whatIsBody": "World Monitor ist ein kostenloses, quelloffenes Dashboard, das geopolitische, Markt-, Schiffs-, Luftfahrt-, Infrastruktur- und Cyber-Signale auf eine Live-Weltkarte streamt. Es korreliert separate Feeds zu einem einzigen Lagebild und kennzeichnet Konvergenzen vor den Schlagzeilen, wobei jede Kennzahl belegt und jede Methode dokumentiert ist."
     },
@@ -676,7 +676,7 @@
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
       "a4": "Ja. Engpässe werden mit Live-AIS-Schiffszählungen, Woche-über-Woche-Transitveränderung und Disruptions-Bewertung überwacht – und Dichte-Anomalien werden gegen jede Meerenge-Baseline gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",
-      "a5": "Konflikt ist eine Kartenschicht. World Monitor verbindet Konflikte mit Schifffahrt, Militärflugverkehr, Infrastruktur, Märkten und Cyber – dann bewertet KI die Konvergenz: Instabilitätsindizes, Hotspot-Eskalation, bestätigte Breaking Alerts und tägliche Briefings. Vergleichen Sie World Monitor mit Liveuamap und anderen Konfliktkarten: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Konflikte sind eine Kartenschicht. World Monitor verbindet Konflikte mit Schiffsverkehr, Militärflüge, Infrastruktur, Märkte und Cyber — dann bewertet KI die Konvergenz: Instabilitätsindizes, Hotspot-Eskalation, bestätigte Breaking-Meldungen und tägliche Lageberichte. Vergleichen Sie World Monitor mit Liveuamap und anderen Konfliktkarten: worldmonitor.app/compare/liveuamap-alternatives. Für weitere Überwachungsoptionen siehe worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Warum sollte ich einem Alert vertrauen?",
       "a6": "Ein Breaking-Banner wird nur angezeigt, wenn unabhängige Ursprungstypen bestätigt werden — Nachrichtenklassifizierung, Keyword-Geschwindigkeit, Hotspot-Eskalation, Militärsurgen, offizielle Sirenen — dedupliziert und drosselungsbegrenzt. Weniger Alerts, echte Alerts.",
       "q7": "Können KI-Agenten wie Claude oder GPT es verwenden?",

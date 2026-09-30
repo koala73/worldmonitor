@@ -797,6 +797,42 @@ export function createImdProxyFetch(rawProxyUrl, { proxyFetchFn = proxyFetch } =
   };
 }
 
+const IMD_DIAGNOSTIC_CODES = new Set([
+  'EAI_AGAIN', 'ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH',
+  'ENETUNREACH', 'ENOTFOUND', 'EPIPE', 'ETIMEDOUT', 'UND_ERR_CONNECT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+const IMD_PROXY_STAGES = new Set([
+  'proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body',
+]);
+
+function logImdAuthFailure(error) {
+  try {
+    let code = 'UNKNOWN';
+    let cause = error;
+    for (let depth = 0; cause && depth < 4; depth++, cause = cause.cause) {
+      const candidate = cause.code;
+      if (IMD_DIAGNOSTIC_CODES.has(candidate)) { code = candidate; break; }
+    }
+    const details = error?.proxyFailure;
+    const candidateStage = details?.stage;
+    const stage = IMD_PROXY_STAGES.has(candidateStage) ? candidateStage : null;
+    const httpStatus = details?.httpStatus;
+    const proxyConnectStatus = details?.proxyConnectStatus;
+    console.warn(JSON.stringify({
+      event: 'imd_auth_failure', code,
+      ...(stage ? { stage } : {}),
+      ...(stage === 'response_body' && Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599
+        ? { httpStatus } : {}),
+      ...(['proxy_connect', 'target_tls'].includes(stage)
+        && Number.isInteger(proxyConnectStatus) && proxyConnectStatus >= 100 && proxyConnectStatus <= 599
+        ? { proxyConnectStatus } : {}),
+    }));
+  } catch { /* Diagnostics must not change the authentication result. */ }
+}
+
 function imdAuthFailureReason(err) {
   const message = String(err?.message || '');
   if (err?.proxyConnect === true && Number.isInteger(err?.status)) {
@@ -851,6 +887,7 @@ async function mintImdApiToken({
     }
     return { token: accessToken, error: null };
   } catch (err) {
+    logImdAuthFailure(err);
     return { token: null, error: imdAuthFailureReason(err) };
   }
 }

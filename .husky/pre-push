@@ -642,6 +642,14 @@ if changed '^(src/|scripts/(enforce-safe-local-storage|lib/source-scan)\.mjs$)';
   npm run lint:safe-local-storage || exit 1
 fi
 
+# Gated on all of src/ because the edit this catches is "someone added an
+# overlay" or "someone added a reload consumer", and overlays live in
+# components/, services/, features/ and app/ alike (WORLDMONITOR-15X/15Z).
+if changed '^(src/|scripts/(enforce-overlay-reload-policy|lib/source-scan)\.mjs$)'; then
+  echo "Running overlay reload-contract check..."
+  npm run lint:overlay-reload-policy || exit 1
+fi
+
 if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   echo "Running Sentry-coverage check..."
   node scripts/check-sentry-coverage.mjs || exit 1

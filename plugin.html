@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>WorldMonitor — News and Maps</title>
+</head>
+<body class="plugin-body">
+  <header class="header"><div class="header-left"><span class="logo">WORLD MONITOR</span></div><div class="header-right" id="pluginActions"></div></header>
+  <div role="status" id="pluginStatus">Connecting to WorldMonitor…</div>
+  <main class="main-content" id="pluginRoot">
+    <div class="map-section" id="mapSection">
+      <div class="panel-header"><div class="panel-header-left"><span class="panel-title">Global Map</span></div><div class="map-header-actions"><div class="map-dimension-toggle" id="mapDimensionToggle"><button type="button" class="map-dim-btn active" data-mode="flat" title="2D Map">2D</button><button type="button" class="map-dim-btn" data-mode="globe" title="3D Globe">3D</button></div></div></div>
+      <div class="map-container" id="mapContainer"></div>
+    </div>
+    <div class="panels-grid" id="panelsGrid" aria-label="News panels"></div>
+  </main>
+  <script type="module" src="/src/plugin-main.ts"></script>
+</body>
+</html>

@@ -118,6 +118,54 @@ describe('live video catalog', () => {
     assert.deepEqual(slates, []);
   });
 
+  it('lists a channel at most once in a slot', () => {
+    for (const [slot, entries] of [...Object.entries(WEBCAM_SOURCES), ...Object.entries(LIVE_NEWS_SOURCES)]) {
+      const channels = entries.map((entry) => parseSourceEntry(entry)).flatMap((parsed) => (parsed.ok && parsed.candidate.kind === 'channel' ? [parsed.candidate.channelId] : []));
+      assert.equal(new Set(channels).size, channels.length, `${slot} lists a channel twice`);
+    }
+  });
+
+  // Broadcasters that restart their stream under a new video id list only their channel (#8545): the audit and the
+  // refresh play whatever the channel has live, so no pinned id can rot. Each id was read from the broadcaster's
+  // @handle page and from the owner of the id it replaced, and its /live page resolved to the news stream
+  // (2026-09-24). Changing one means re-checking it with `npm run live-video:check -- <channel URL>`.
+  const CHANNEL_ONLY_SLOTS: Record<string, string> = {
+    'cbc-news': 'UCuFFtHWoLl5fauMMD5Ww2jA',
+    'cnn-turk': 'UCV6zcRug6Hqp1UX_FdyUeBg',
+    'cnn-brasil': 'UCvdwhh_fDyWccR42-rReZLw',
+    'noticias-caracol': 'UC2Xq2PK-got3Rtz9ZJ32hLQ',
+    t13: 'UCsRnhjcUCR78Q3Ud6OXCTNg',
+    'abp-news': 'UCRWFSbif-RFENbBrSiez1DA',
+    'channels-tv': 'UCEXGDNclvmg6RW0vipJYsTQ',
+    'france-info': 'UCO6K_kkdP-lnSCiO3tPx7WA',
+  };
+  // Rotating ids whose channel's featured live was not the news stream when checked (2026-09-24), and channels whose
+  // featured live is another stream (#8574): they keep a pinned id and list no channel.
+  const PINNED_NOT_CHANNEL = ['milenio', 'cti-news', 'wion', 'ann-news', 'ntv-news', 'tbs-news'];
+
+  it('lists only the verified channel for broadcasters that restart their stream', () => {
+    const news = LIVE_NEWS_SOURCES as Record<string, readonly string[]>;
+    for (const [slot, channelId] of Object.entries(CHANNEL_ONLY_SLOTS)) {
+      const youtube = (news[slot] ?? []).map((entry) => parseSourceEntry(entry)).filter((parsed) => parsed.ok && parsed.candidate.kind !== 'hls');
+      assert.ok(youtube.length > 0, `live-news/${slot} lists no YouTube entry`);
+      const [first] = youtube;
+      assert.ok(first?.ok && first.candidate.kind === 'channel' && first.candidate.channelId === channelId, `live-news/${slot} must list channel ${channelId} as its first YouTube entry`);
+      assert.ok(youtube.every((parsed) => parsed.ok && parsed.candidate.kind !== 'video'), `live-news/${slot} must not pin a video id: the channel restarts its stream`);
+    }
+  });
+
+  it('lists no channel for slots whose channel features another stream', () => {
+    const news = LIVE_NEWS_SOURCES as Record<string, readonly string[]>;
+    for (const slot of PINNED_NOT_CHANNEL) {
+      const entries = news[slot] ?? [];
+      assert.ok(entries.length > 0, `live-news/${slot} has no entries`);
+      for (const entry of entries) {
+        const parsed = parseSourceEntry(entry);
+        assert.ok(!(parsed.ok && parsed.candidate.kind === 'channel'), `live-news/${slot} lists ${entry}, whose featured live is not the news stream`);
+      }
+    }
+  });
+
   it('uses channel live embeds as audit canaries', () => {
     assert.equal(AUDIT_CANARIES.length, 2);
     for (const entry of AUDIT_CANARIES) {

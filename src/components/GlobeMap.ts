@@ -83,6 +83,7 @@ import {
 } from './premium-layer-gate';
 import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
 import { headingToCompass } from '@/utils/heading-to-compass';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -2675,6 +2676,10 @@ export class GlobeMap {
     research:   '#44ffff',
     icebreaker: '#88ccff',
     special:    '#ff44ff',
+    // An AIS-only military contact (#8611) has no hull class. Without this it
+    // fell through to patrol's own blue and read as a coast-guard vessel; the
+    // icon fallback is already the generic ship glyph, which is correct here.
+    unknown:    '#6688aa',
   };
 
   private static readonly VESSEL_TYPE_ICONS: Record<string, string> = {
@@ -2721,7 +2726,7 @@ export class GlobeMap {
       id: v.id,
       name: v.name ?? 'vessel',
       type: v.vesselType,                                                    // raw enum — color/icon key
-      typeLabel: GlobeMap.VESSEL_TYPE_LABELS[v.vesselType] ?? v.vesselType,  // display string
+      typeLabel: vesselTypeLabel(v, GlobeMap.VESSEL_TYPE_LABELS),            // display string
       hullNumber: v.hullNumber,
       operator: v.operator !== 'other' ? v.operator : undefined,
       operatorCountry: v.operatorCountry,

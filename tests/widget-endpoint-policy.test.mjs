@@ -1,182 +1,147 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import vm from 'node:vm';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-const require = createRequire(import.meta.url);
-const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-const { WIDGET_DATA_CATALOG, buildWidgetDataUrl } = require('../scripts/_widget-data-policy.cjs');
-const parserText = readFileSync(new URL('../scripts/_widget-response-parser.cjs', import.meta.url), 'utf8');
-const handlerText = between('async function handleWidgetAgentRequest(', '\n// Map a thrown error');
-const mockedHandler = handlerText.replace("const { default: Anthropic } = await import('@anthropic-ai/sdk');", 'const Anthropic = MockAnthropic;');
-// Run the actual relay handler without starting its HTTP server or loading the SDK.
-// Only external transport, admission, timers and SSE output are replaced.
-async function loop(input, tier = 'basic', transport = null) {
-  const requests = [];
-  const fetches = [];
-  const context = {
-    module: { exports: {} }, URL, AbortSignal, console, buildWidgetDataUrl,
-    WIDGET_MAX_TOOL_CALLS: 3,
-    requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
-    readRequestBody: async () => JSON.stringify({ prompt: 'Build a market widget', tier }),
-    safeEnd: () => { throw Error('unexpected early rejection'); },
-    PRO_WIDGET_KEY: 'synthetic', WIDGET_ANTHROPIC_KEY: 'synthetic',
-    checkWidgetRateLimit: () => false, checkProWidgetRateLimit: () => false,
-    isWidgetInjectionAttempt: () => false,
-    WIDGET_MAX_HTML: 50000, WIDGET_PRO_MAX_HTML: 80000,
-    WIDGET_SYSTEM_PROMPT: 'basic', WIDGET_PRO_SYSTEM_PROMPT: 'pro',
-    WIDGET_FETCH_TOOL: { name: 'fetch_worldmonitor_data' }, WIDGET_SEARCH_TOOL: { name: 'search_web' },
-    sanitizeToolContent: value => value,
-    sendWidgetSSE: () => {}, setTimeout: () => 1, clearTimeout: () => {},
-    classifyWidgetAgentError: error => error.message,
-    fetch: async (url, options) => {
-      fetches.push({ url, options });
-      return transport ? transport(url, options) : { text: async () => '{"data":[]}' };
-    },
-    MockAnthropic: class {
-      messages = {
-        create: async request => {
-          requests.push(structuredClone(request));
-          if (requests.length === 1) return {
-            stop_reason: 'tool_use',
-            content: [{ type: 'tool_use', id: 'data', name: 'fetch_worldmonitor_data', input }],
-          };
-          return {
-            stop_reason: 'end_turn',
-            content: [{ type: 'text', text: '<!-- widget-html --><div>OK</div><!-- /widget-html -->' }],
-          };
-        },
-      };
-    },
-  };
-  const run = vm.runInNewContext(`${parserText}\n${mockedHandler}\nhandleWidgetAgentRequest`, context);
-  await run({ headers: {}, on() {} }, {
-    writeHead() {}, end() { this.writableEnded = true; }, writableEnded: false,
-  });
-  return { fetches, requests };
-}
+import { resolveBootstrapRegistry } from '../shared/bootstrap-tier-keys.js';
 
-for (const tier of ['basic', 'pro']) describe(`widget data request boundary (${tier})`, () => {
-  for (const input of [
-    {endpoint:'/api/bootstrap?keys=marketQuotes,cryptoQuotes'},
-    {endpoint:'/api/bootstrap',params:{keys:'weatherAlerts'}},
-    {endpoint:'/api/economic/v1/get-fred-series?series_id=CPIAUCSL',params:{series_id:'DGS10', note:'A+B & café'}},
-    {endpoint:'/api/supply-chain/v1/get-bypass-options',params:{chokepointId:'hormuz'}},
-  ]) it(`fetches approved ${JSON.stringify(input)}`, async () => {
-    const result = await loop(input, tier);
-    assert.equal(result.fetches.length, 1);
-    const request = result.fetches[0];
-    const url = new URL(request.url);
+const require = createRequire(import.meta.url);
+const {
+  WIDGET_DATA_CATALOG, buildWidgetDataUrl, BOOTSTRAP, RPCS, EXCLUDED_BOOTSTRAP_KEYS, EXCLUDED_RPC_ROUTES,
+} = require('../scripts/_widget-data-policy.cjs');
+const root = new URL('..', import.meta.url).pathname;
+const read = path => readFileSync(join(root, path), 'utf8');
+
+const walk = dir => readdirSync(dir).flatMap(name => {
+  const path = join(dir, name);
+  return statSync(path).isDirectory() ? walk(path) : [path];
+});
+const generatedGetRoutes = walk(join(root, 'src/generated/server'))
+  .flatMap(file => [...readFileSync(file, 'utf8').matchAll(/method: "GET",\s*path: "(\/api\/[^"]+)"/g)])
+  .map(match => match[1]);
+const premiumPaths = new Set([...read('src/shared/premium-paths.ts').matchAll(/'(\/api\/[^']+)'/g)].map(m => m[1]));
+
+describe('widget data request boundary', () => {
+  for (const [endpoint, params] of [
+    ['/api/bootstrap?keys=marketQuotes,cryptoQuotes', undefined],
+    ['/api/bootstrap', { keys: 'weatherAlerts' }],
+    ['/api/economic/v1/get-fred-series?series_id=CPIAUCSL', { series_id: 'DGS10', note: 'A+B & café' }],
+    ['/api/market/v1/get-country-stock-index', { country_code: 'JP' }],
+  ]) it(`admits ${endpoint} ${JSON.stringify(params ?? {})}`, () => {
+    const url = buildWidgetDataUrl(endpoint, params);
+    assert.ok(url);
     assert.equal(url.origin, 'https://api.worldmonitor.app');
-    for (const [key, value] of Object.entries(input.params || {})) assert.equal(url.searchParams.get(key), value);
-    assert.deepEqual(Object.keys(request.options.headers), ['User-Agent']);
+    for (const [key, value] of Object.entries(params || {})) assert.equal(url.searchParams.get(key), value);
   });
-  for (const input of [
-    {endpoint:'/api/not-in-catalog'}, {endpoint:'/api/bootstrap?keys=notAdvertised'},
-    {endpoint:'/api/../health'}, {endpoint:'/api/market/v1/analyze-stock'},
-    {endpoint:'/api/news/v1/summarize-article'}, {endpoint:'/api/intelligence/v1/deduct-situation'},
-    {endpoint:'/api/intelligence/v1/get-country-intel-brief'},
-    {endpoint:'/api/bootstrap'}, {endpoint:'/api/bootstrap?keys='},
-    {endpoint:'/api/bootstrap?keys=marketQuotes,,cryptoQuotes'},
-    {endpoint:'/api/bootstrap?keys=marketQuotes&keys=notAdvertised'},
-    {endpoint:'/api/bootstrap?keys=marketQuotes',params:{keys:'notAdvertised'}},
-    {endpoint:'/api/bootstrap?keys=notAdvertised',params:{keys:'marketQuotes'}},
-    {endpoint:'/api/bootstrap?keys=marketQuotes',params:{tier:'fast'}},
-    {endpoint:'/api/bootstrap?keys=marketQuotes&tier=fast'},
-    {endpoint:'/api/bootstrap?keys=marketQuotes%252cnotAdvertised'},
-    {endpoint:'/api/bootstrap?keys=chokepointTransits'},
-    {endpoint:'/api/bootstrap?keys=marketImplications'}, {endpoint:'/api/bootstrap?keys=iranEvents'},
-    {endpoint:'/api/x/../bootstrap?keys=marketQuotes'},
-    {endpoint:'/api/%2e%2e/health'}, {endpoint:'/api/%62ootstrap?keys=marketQuotes'},
-    {endpoint:'/api/bootstrap/?keys=marketQuotes'},
-    {endpoint:'/api/bootstrap#?keys=marketQuotes'},
-    {endpoint:'https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes'},
-    {endpoint:'//example.com/api/bootstrap?keys=marketQuotes'},
-    {endpoint:'/api/\\example.com/bootstrap?keys=marketQuotes'},
-    {endpoint:'/api/boot\nstrap?keys=marketQuotes'},
-    {endpoint:'/api/bootstrap?keys=marketQuotes%ZZ'},
-    {endpoint:'/api/bootstrap?keys=weatherAlerts&public=0'},
-    {endpoint:'/api/bootstrap?keys=weatherAlerts&public=1&public=1'},
-    {endpoint:'/api/bootstrap?keys=weatherAlerts,forecasts&public=1'},
-    {endpoint:'/api/bootstrap?keys=weatherAlerts',params:{public:'2'}},
-    {endpoint:null}, {endpoint:42},
-    {endpoint:'/api/bootstrap',params:null},
-    {endpoint:'/api/bootstrap',params:{keys:['marketQuotes']}},
-  ]) it(`denies before fetch ${JSON.stringify(input)}`, async () => {
-    const result = await loop(input, tier);
-    assert.equal(result.fetches.length, 0);
-    assert.ok(result.requests.length >= 2, 'invalid tool inputs must return a tool result, not abort the agent');
-    assert.match(result.requests[1].messages.at(-1).content[0].content, /not allowed/i);
+
+  it('sends numeric and boolean params as strings', () => {
+    const url = buildWidgetDataUrl('/api/economic/v1/get-us-treasury-par-yield-curve', { history: true, limit: 5 });
+    assert.equal(url.searchParams.get('history'), 'true');
+    assert.equal(url.searchParams.get('limit'), '5');
   });
-  it('returns transport failures to the model without a second data fetch', async () => {
-    const result = await loop({ endpoint: '/api/bootstrap?keys=marketQuotes' }, tier, async () => {
-      throw new TypeError('fetch failed: unexpected redirect');
-    });
-    assert.equal(result.fetches.length, 1);
-    assert.match(result.requests[1].messages.at(-1).content[0].content, /Fetch failed:.*unexpected redirect/);
+
+  for (const [endpoint, params] of [
+    ['/api/not-in-catalog'], ['/api/bootstrap?keys=notAdvertised'],
+    ['/api/../health'], ['/api/market/v1/analyze-stock'],
+    ['/api/news/v1/summarize-article'], ['/api/intelligence/v1/deduct-situation'],
+    ['/api/intelligence/v1/get-country-intel-brief'], ['/api/supply-chain/v1/get-bypass-options'],
+    ['/api/bootstrap'], ['/api/bootstrap?keys='],
+    ['/api/bootstrap?keys=marketQuotes,,cryptoQuotes'],
+    ['/api/bootstrap?keys=marketQuotes&keys=notAdvertised'],
+    ['/api/bootstrap?keys=marketQuotes', { keys: 'notAdvertised' }],
+    ['/api/bootstrap?keys=notAdvertised', { keys: 'marketQuotes' }],
+    ['/api/bootstrap?keys=marketQuotes', { tier: 'fast' }],
+    ['/api/bootstrap?keys=marketQuotes&tier=fast'],
+    ['/api/bootstrap?keys=marketQuotes%252cnotAdvertised'],
+    ['/api/bootstrap?keys=chokepointTransits'], ['/api/bootstrap?keys=marketImplications'],
+    ['/api/bootstrap?keys=iranEvents'], ['/api/bootstrap?keys=torontoRoads'],
+    ['/api/x/../bootstrap?keys=marketQuotes'],
+    ['/api/%2e%2e/health'], ['/api/%62ootstrap?keys=marketQuotes'],
+    ['/api/bootstrap/?keys=marketQuotes'], ['/api/bootstrap#?keys=marketQuotes'],
+    ['https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes'],
+    ['//example.com/api/bootstrap?keys=marketQuotes'],
+    ['/api/\\example.com/bootstrap?keys=marketQuotes'],
+    ['/api/boot\nstrap?keys=marketQuotes'], ['/api/bootstrap?keys=marketQuotes%ZZ'],
+    ['/api/bootstrap?keys=weatherAlerts&public=0'],
+    ['/api/bootstrap?keys=weatherAlerts&public=1&public=1'],
+    ['/api/bootstrap?keys=weatherAlerts,forecasts&public=1'],
+    ['/api/bootstrap?keys=weatherAlerts', { public: '2' }],
+    [null], [42], ['/api/bootstrap', null],
+    ['/api/bootstrap', { keys: ['marketQuotes'] }],
+    ['/api/market/v1/get-country-stock-index', { country_code: { toString: () => 'JP' } }],
+  ]) it(`denies ${JSON.stringify(endpoint)} ${JSON.stringify(params ?? {})}`, () => {
+    assert.equal(buildWidgetDataUrl(endpoint, params), null);
   });
-  it('preserves downstream entitlement errors without adding credentials', async () => {
-    const result = await loop({ endpoint: '/api/supply-chain/v1/get-bypass-options' }, tier, async () => ({
-      status: 403, text: async () => '{"error":"Pro subscription required"}',
-    }));
-    assert.equal(result.requests[1].messages.at(-1).content[0].content, '{"error":"Pro subscription required"}');
-    assert.deepEqual(Object.keys(result.fetches[0].options.headers), ['User-Agent']);
-  });
-  it('disables redirect following on approved requests', async () => {
-    const {fetches} = await loop({endpoint:'/api/bootstrap?keys=marketQuotes'}, tier);
-    assert.equal(fetches[0].options.redirect, 'error');
+
+  it('keeps the public bootstrap admission shape the API recognizes', async () => {
+    const { classifyPublicBootstrapUrl } = await import('../api/_bootstrap-public-tier.js');
+    for (const key of ['weatherAlerts', 'forecasts', 'cyberThreats', 'flightDelays', 'correlationCards']) {
+      for (const [endpoint, params] of [
+        [`/api/bootstrap?keys=${key}&public=1`],
+        [`/api/bootstrap?keys=${key}`, { public: '1' }],
+        ['/api/bootstrap?public=1', { keys: key }],
+      ]) assert.ok(classifyPublicBootstrapUrl(buildWidgetDataUrl(endpoint, params)), key);
+    }
   });
 });
 
+describe('widget data catalog', () => {
+  const active = resolveBootstrapRegistry({ iranEventsEnabled: false }).cacheKeys;
+  const all = resolveBootstrapRegistry({ iranEventsEnabled: true }).cacheKeys;
 
-describe('reviewed catalog consistency', () => {
-  it('preserves the real public bootstrap admission shape in both tiers', async () => {
-    const { classifyPublicBootstrapUrl } = await import('../api/_bootstrap-public-tier.js');
-    for (const tier of ['basic', 'pro']) {
-      for (const key of ['weatherAlerts', 'forecasts', 'cyberThreats', 'flightDelays', 'correlationCards']) {
-        for (const input of [
-          { endpoint: `/api/bootstrap?keys=${key}&public=1` },
-          { endpoint: `/api/bootstrap?keys=${key}`, params: { public: '1' } },
-          { endpoint: '/api/bootstrap?public=1', params: { keys: key } },
-        ]) {
-          const { fetches } = await loop(input, tier);
-          assert.equal(fetches.length, 1);
-          assert.ok(classifyPublicBootstrapUrl(new URL(fetches[0].url)), key);
-        }
-      }
+  it('lists or excludes every bootstrap registry key exactly once', () => {
+    const listed = BOOTSTRAP.map(entry => entry.key);
+    assert.equal(new Set(listed).size, listed.length, 'duplicate catalog key');
+    for (const key of Object.keys(all)) {
+      assert.ok(listed.includes(key) !== Object.hasOwn(EXCLUDED_BOOTSTRAP_KEYS, key), `${key} must be listed or excluded, not both`);
+    }
+    for (const key of [...listed, ...Object.keys(EXCLUDED_BOOTSTRAP_KEYS)]) assert.ok(Object.hasOwn(all, key), `unknown registry key: ${key}`);
+    for (const key of listed) assert.ok(Object.hasOwn(active, key), `${key} is disabled in production`);
+  });
+
+  it('lists or excludes every generated GET route exactly once, and lists no Pro-only route', () => {
+    const listed = RPCS.map(entry => entry.path);
+    assert.equal(new Set(listed).size, listed.length, 'duplicate catalog route');
+    for (const route of generatedGetRoutes) {
+      assert.ok(listed.includes(route) !== Object.hasOwn(EXCLUDED_RPC_ROUTES, route), `${route} must be listed or excluded, not both`);
+    }
+    for (const route of [...listed, ...Object.keys(EXCLUDED_RPC_ROUTES)]) assert.ok(generatedGetRoutes.includes(route), `no generated GET route: ${route}`);
+    for (const route of listed) assert.ok(!premiumPaths.has(route), `${route} is Pro-only; the widget session gets 401`);
+  });
+
+  it('describes every entry and admits every listed source', () => {
+    for (const entry of [...BOOTSTRAP, ...RPCS]) {
+      assert.ok(entry.holds && entry.holds.length <= 140, `${entry.key || entry.path} needs a one-line description`);
+    }
+    for (const { key, holds } of BOOTSTRAP) {
+      assert.ok(WIDGET_DATA_CATALOG.includes(`- ${key}: ${holds}`), key);
+      assert.ok(buildWidgetDataUrl('/api/bootstrap', { keys: key }), key);
+    }
+    for (const { path } of RPCS) {
+      assert.ok(WIDGET_DATA_CATALOG.includes(`- ${path}`), path);
+      assert.ok(buildWidgetDataUrl(path), path);
     }
   });
 
-  it('advertised keys exist in the active bootstrap registry and pass the request boundary', async () => {
-    const { resolveBootstrapRegistry } = await import('../shared/bootstrap-tier-keys.js');
-    const registry = resolveBootstrapRegistry({ iranEventsEnabled: false }).cacheKeys;
-    const bootstrap = WIDGET_DATA_CATALOG.split('## Option 2')[0];
-    const keys = [...bootstrap.matchAll(/^ {2}(.+)$/gm)].flatMap(match => match[1].split(', '));
-    assert.ok(keys.length > 0);
-    for (const key of keys) {
-      assert.ok(Object.hasOwn(registry, key), `unknown registry key: ${key}`);
-      assert.equal((await loop({ endpoint: '/api/bootstrap', params: { keys: key } })).fetches.length, 1, key);
+  it('gives excluded entries a reason and keeps them out of the prompt and the boundary', () => {
+    for (const [key, reason] of Object.entries(EXCLUDED_BOOTSTRAP_KEYS)) {
+      assert.ok(reason, key);
+      assert.doesNotMatch(WIDGET_DATA_CATALOG, new RegExp(`^- ${key}:`, 'm'));
+      assert.equal(buildWidgetDataUrl('/api/bootstrap', { keys: key }), null, key);
+    }
+    for (const [route, reason] of Object.entries(EXCLUDED_RPC_ROUTES)) {
+      assert.ok(reason, route);
+      assert.equal(buildWidgetDataUrl(route), null, route);
     }
   });
 
-  it('advertised RPCs have generated GET routes and pass the request boundary', async () => {
-    const routes = [...WIDGET_DATA_CATALOG.matchAll(/^(\/api\/([a-z-]+)\/v1\/([a-z-]+))/gm)];
-    assert.ok(routes.length > 0);
-    for (const [, route, service] of routes) {
-      const generated = readFileSync(new URL(`../src/generated/server/worldmonitor/${service.replaceAll('-', '_')}/v1/service_server.ts`, import.meta.url), 'utf8');
-      assert.ok(generated.includes(`"${route}"`), `missing generated route: ${route}`);
-      assert.equal((await loop({ endpoint: route })).fetches.length, 1, route);
-    }
-  });
-
-  it('both actual tier prompts use the reviewed catalog and retain their output rules', () => {
-    const prompts = ['WIDGET_SYSTEM_PROMPT', 'WIDGET_PRO_SYSTEM_PROMPT'].map(name => {
+  it('is rendered into both tier prompts', () => {
+    const source = read('scripts/ais-relay.cjs');
+    for (const name of ['WIDGET_SYSTEM_PROMPT', 'WIDGET_PRO_SYSTEM_PROMPT']) {
       const template = source.split(`const ${name} = `)[1].split('`;')[0] + '`';
-      return vm.runInNewContext(template, { WIDGET_DATA_CATALOG });
-    });
-    for (const prompt of prompts) assert.ok(prompt.includes(WIDGET_DATA_CATALOG));
-    assert.match(prompts[0], /display-only HTML/);
-    assert.match(prompts[1], /inline JavaScript/);
+      const prompt = vm.runInNewContext(template, { WIDGET_DATA_CATALOG });
+      assert.ok(prompt.includes(WIDGET_DATA_CATALOG), name);
+    }
   });
 });

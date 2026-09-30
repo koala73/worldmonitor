@@ -157,7 +157,7 @@ async function translateBatch(client, langName, batch) {
   const items = batch.map(([k, v]) => `${k}\t${v}`).join('\n');
   const prompt = `You are a professional UI translator. Translate the following English UI strings to ${langName}.
 
-CRITICAL RULES:
+Rules:
 1. Preserve interpolation tokens EXACTLY as-is: {{count}}, {{name}}, {{tone}}, etc. — do NOT translate or move them.
 2. Preserve HTML tags EXACTLY: <strong>, <br>, <em>, <li>, <ul>. Do NOT translate tag names.
 3. Preserve emoji, numerals, URLs, and capitalisation style of acronyms (PRO, BREAKING, ALERT, AI, MCP, CII, RSS, ADS-B, AIS).

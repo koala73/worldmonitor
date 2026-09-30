@@ -1,0 +1,6 @@
+[
+  { "id": "usa_russia", "actors": ["USA", "RUS"], "countries": ["US", "RU"], "label": "US–Russia", "region": "global" },
+  { "id": "russia_ukraine", "actors": ["RUS", "UKR"], "countries": ["RU", "UA"], "label": "Russia–Ukraine", "region": "europe" },
+  { "id": "usa_china", "actors": ["USA", "CHN"], "countries": ["US", "CN"], "label": "US–China", "region": "global" },
+  { "id": "usa_iran", "actors": ["USA", "IRN"], "countries": ["US", "IR"], "label": "US–Iran", "region": "middle-east" }
+]

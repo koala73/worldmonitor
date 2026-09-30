@@ -414,6 +414,7 @@ const STANDALONE_KEYS = {
   // it is monitored here rather than bootstrap-tiered. Without this gate an
   // evicted or stale index stays invisible until the next weekly freeze.
   gdeltCountryArticles: 'gdelt:bulk:country-articles:v1',
+  gdeltDyadTension: 'gdelt:bulk:dyad-tension:v1',
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
@@ -423,6 +424,9 @@ const STANDALONE_KEYS = {
   chinaStockConnect:  'market:china:stock-connect:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
   imdCycloneMarine:   'weather:imd-cyclone-marine:v1',
+  // Seeded by seed-live-video-resolved (#8545); read by the live video players
+  // through the on-demand bootstrap URL. Strict once activated (SEED_META).
+  liveVideoResolved: BOOTSTRAP_CACHE_KEYS.liveVideoResolved,
   canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
   canadaAlertsSkSource: 'alerts:canada:saskalert:v1',
@@ -530,6 +534,24 @@ const STANDALONE_KEYS = {
   usCpiMonthly:          'seed-meta:economic:us-cpi',
   usTreasuryParYield:    'seed-meta:economic:us-treasury-par-yield',
   usInterestRates:       'seed-meta:economic:us-interest-rates',
+  // #8538. One probe per worldwide CPI source. The canonical keys are 115 KB –
+  // 1 MB and the read path pipelines four of them, so health reads the
+  // seed-meta keys instead of paying for the full payloads.
+  worldCpiImf:           'seed-meta:economic:world-cpi-imf',
+  worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
+  worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
+  worldCpiAbs:           'seed-meta:economic:world-cpi-abs',
+  // Meta-only probes for the yield-curve bundle. Every market's history is
+  // sharded per year; the canonical payloads are too large to probe directly.
+  yieldCurveJp:          'seed-meta:economic:yield-curve-jp',
+  yieldCurveCa:          'seed-meta:economic:yield-curve-ca',
+  yieldCurveDe:          'seed-meta:economic:yield-curve-de',
+  yieldCurveGb:          'seed-meta:economic:yield-curve-gb',
+  yieldCurveAu:          'seed-meta:economic:yield-curve-au',
+  yieldCurveCh:          'seed-meta:economic:yield-curve-ch',
+  yieldCurveNo:          'seed-meta:economic:yield-curve-no',
+  yieldCurveSe:          'seed-meta:economic:yield-curve-se',
+  oecdLtRates:           'seed-meta:economic:oecd-lt-rates',
   // Authoritative shared cohort pointer read by all vulnerability RPCs. The
   // country and inverse manifests are compatibility projections; probing only
   // them can report OK while every public handler is unavailable.
@@ -563,6 +585,13 @@ const STANDALONE_KEYS = {
   newsThreatSummary:        'news:threat:summary:v1',
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
+  // Retained PizzINT observations (docs/architecture/pizzint-history.md). No
+  // browser or RPC consumer, so it is registered here per the standalone-health
+  // rule. The watched key is the provider-agnostic heartbeat the archive's Lua
+  // advances on every successful write: the daily buckets themselves rotate by
+  // UTC date and split by provider, so watching one of those would read EMPTY at
+  // every midnight and STALE whenever the BestTime fallback took over.
+  pizzintHistory:           'seed-meta:intelligence:pizzint:history:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
@@ -652,6 +681,7 @@ const STANDALONE_KEYS = {
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
+  techEventsSeeder:              'research:tech-events:v1',
   // #5736 — historical-intelligence ingest health, one record per collector.
   // These are NOT the collectors' canonical keys: scripts/_seed-history.mjs
   // appends to the Convex intel-history store fail-open, so a permanently
@@ -719,6 +749,22 @@ const SEED_META = {
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
+  // seed-live-video-resolved cron `0 */6 * * *` (#8545); 1080 = 3× cadence per
+  // project convention. The PR registers the probe before the Railway service
+  // exists, so it softens to EMPTY_ON_DEMAND only until the seeder's first
+  // publish writes the activation marker; from then on it is strict forever
+  // (EMPTY / STALE_SEED). Not in EMPTY_DATA_OK_KEYS: a dead cron must alarm.
+  liveVideoResolved: {
+    key: 'seed-meta:live-video:resolved',
+    maxStaleMin: 1080,
+    activationKey: 'seed-activated:live-video:resolved',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8545,
+      activationKey: 'seed-activated:live-video:resolved',
+    },
+  },
   climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 540 }, // bundled into seed-bundle-climate (cron `0 */3 * * *`, every 3h); 540 = 3× cron cadence per project convention. Prior 240 (1.33× cron) flipped to silent-EMPTY between minute 180 (TTL_DATA expiry) and 240 (alarm trigger) on every routine cron-jitter cycle — see scripts/seed-climate-anomalies.mjs CACHE_TTL comment.
   climateDisasters: { key: 'seed-meta:climate:disasters',       maxStaleMin: 720 }, // runs every 6h; 720min = 2x interval
   climateAirQuality:{ key: 'seed-meta:health:air-quality',      maxStaleMin: 180 }, // hourly cron; 180 = 3x interval — shares meta key with healthAirQuality (same seeder run)
@@ -797,7 +843,7 @@ const SEED_META = {
       // without widening this makes them invisible in health. A test asserts
       // every INSIGHTS_SYNTHESIS_FAILURE_CODES value matches this pattern.
       failureCodePattern:
-        /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER|COMPOSER_ERROR|LEAD_(EMPTY|UNCITED|PROPER_NOUN|NUMERIC_FACT|GROUNDING))$/,
+        /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER|COMPOSER_ERROR|LEAD_(EMPTY|UNCITED|PROPER_NOUN|NUMERIC_FACT|STATUS_QUALIFIER|GROUNDING))$/,
     },
   },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
@@ -1121,8 +1167,33 @@ const SEED_META = {
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
+  techEventsSeeder: {
+    key: 'seed-meta:research:tech-events:seeder',
+    maxStaleMin: 180,
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 8572,
+      verifiedAt: '2026-09-24T08:57:09.430Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-research',
+        probeKey: 'seed-meta:research:tech-events:seeder',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/blob/codex/8572-tech-events-feed-health/docs/snapshots/tech-events-seeder-preseed-2026-09-24.json',
+      },
+    },
+  },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
+  gdeltDyadTension: {
+    key: 'seed-meta:gdelt:bulk:dyad-tension', maxStaleMin: 45,
+    activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 8676,
+      activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    },
+  },
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this
   // gate. Pending until the materializer's first successful index publish
   // writes the durable marker, strict after it (#7748).
@@ -1420,6 +1491,155 @@ const SEED_META = {
       activationKey: 'seed-activated:economic:us-interest-rates',
     },
   },
+  // #8538. Worldwide CPI sources. Each is a macro-bundle tail section on a
+  // daily interval, so 72h covers one missed tick; content age is the tighter
+  // clock and is declared per seeder (IMF 120d, Eurostat 120d,
+  // e-Stat 120d, ABS 400d) because their publication lags differ structurally.
+  worldCpiImf: {
+    key: 'seed-meta:economic:world-cpi-imf',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:world-cpi-imf',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8538,
+      activationKey: 'seed-activated:economic:world-cpi-imf',
+    },
+  },
+  worldCpiEurostat: {
+    key: 'seed-meta:economic:world-cpi-eurostat',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:world-cpi-eurostat',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8538,
+      activationKey: 'seed-activated:economic:world-cpi-eurostat',
+    },
+  },
+  worldCpiEstat: {
+    key: 'seed-meta:economic:world-cpi-estat',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:world-cpi-estat',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8538,
+      activationKey: 'seed-activated:economic:world-cpi-estat',
+    },
+  },
+  worldCpiAbs: {
+    key: 'seed-meta:economic:world-cpi-abs',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:world-cpi-abs',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8538,
+      activationKey: 'seed-activated:economic:world-cpi-abs',
+    },
+  },
+  yieldCurveJp: {
+    key: 'seed-meta:economic:yield-curve-jp',
+    maxStaleMin: 4320, // daily business-day source; 72h covers the Fri→Mon gap. Curve content age is separate.
+    activationKey: 'seed-activated:economic:yield-curve-jp',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-jp',
+    },
+  },
+  yieldCurveCa: {
+    key: 'seed-meta:economic:yield-curve-ca',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:yield-curve-ca',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-ca',
+    },
+  },
+  yieldCurveDe: {
+    key: 'seed-meta:economic:yield-curve-de',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:yield-curve-de',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-de',
+    },
+  },
+  // The GB cold start (39 MB BoE archive) can be budget-deferred behind the
+  // 570s bundle budget; 4460min still sits inside the 7d canonical TTL.
+  yieldCurveGb: {
+    key: 'seed-meta:economic:yield-curve-gb',
+    maxStaleMin: 4460,
+    activationKey: 'seed-activated:economic:yield-curve-gb',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-gb',
+    },
+  },
+  yieldCurveAu: {
+    key: 'seed-meta:economic:yield-curve-au',
+    maxStaleMin: 4460,
+    activationKey: 'seed-activated:economic:yield-curve-au',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-au',
+    },
+  },
+  yieldCurveCh: {
+    key: 'seed-meta:economic:yield-curve-ch',
+    maxStaleMin: 4460,
+    activationKey: 'seed-activated:economic:yield-curve-ch',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-ch',
+    },
+  },
+  yieldCurveNo: {
+    key: 'seed-meta:economic:yield-curve-no',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:yield-curve-no',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-no',
+    },
+  },
+  yieldCurveSe: {
+    key: 'seed-meta:economic:yield-curve-se',
+    maxStaleMin: 4460,
+    activationKey: 'seed-activated:economic:yield-curve-se',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:yield-curve-se',
+    },
+  },
+  oecdLtRates: {
+    key: 'seed-meta:economic:oecd-lt-rates',
+    maxStaleMin: 60 * 24 * 21, // weekly section; 21d = 3x interval, matches monthly data cadence
+    activationKey: 'seed-activated:economic:oecd-lt-rates',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8522,
+      activationKey: 'seed-activated:economic:oecd-lt-rates',
+    },
+  },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
@@ -1427,7 +1647,24 @@ const SEED_META = {
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 540 }, // relay loop every 180min (3h; was 60min, dropped now that ScrapeCreators handles Reddit); 540 = 3x interval. Co-pinned with SOCIAL_VELOCITY_TTL=43200 (ais-relay.cjs): the data-key TTL must STRICTLY exceed this (720min > 540min) so a dead relay shows STALE_SEED before the key expires to EMPTY.
   wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 540 }, // relay loop every 180min (3h); 540 = 3x interval. Co-pinned with WSB_TICKERS_TTL=43200 (ais-relay.cjs); TTL strictly > maxStaleMin (see socialVelocity note).
-  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
+  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval
+  // Same relay loop and cadence as pizzint above, so the same 3x-interval budget.
+  // The archive write is fire-and-forget alongside live publication, so this can
+  // go stale while the live key stays fresh — that asymmetry is the signal, and
+  // it is the only one an operator gets that archiving has stopped.
+  pizzintHistory:    {
+    key: 'seed-meta:intelligence:pizzint:history:v1',
+    maxStaleMin: 45,
+    // The archive's Lua writes this marker on its first write that lands records,
+    // so the on-demand EMPTY grace below expires on evidence rather than never.
+    activationKey: 'seed-activated:intelligence:pizzint-history',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8679,
+      activationKey: 'seed-activated:intelligence:pizzint-history',
+    },
+  },
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
@@ -1482,7 +1719,7 @@ const SEED_META = {
   energyMixAll:         { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // same seed run as energyExposure; shares seed-meta key
   regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
   energySpineCountries: { key: 'seed-meta:energy:spine',                maxStaleMin: 2880 }, // daily cron (06:00 UTC); 2880min = 48h = 2x interval
-  electricityPrices:    { key: 'seed-meta:energy:electricity-prices',   maxStaleMin: 3000 }, // daily 14:00 UTC; two intervals + 2h completion margin
+  electricityPrices:    { key: 'seed-meta:energy:electricity-prices',   maxStaleMin: 3000 }, // one snapshot per UTC day, tried at 14/17/20/23 UTC; two days + 2h margin
   gasStorageCountries:  { key: 'seed-meta:energy:gas-storage-countries', maxStaleMin: 2880 }, // daily cron at 10:30 UTC; 2880min = 48h = 2x interval
   energyIntelligence:   { key: 'seed-meta:energy:intelligence',          maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   // `chinaCoverage` opts these three into the producer diagnostic below. An
@@ -1722,12 +1959,22 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // Deployment-order bridge (#8545): this reader ships before the
+  // seed-live-video-resolved Railway service is provisioned. The seeder SETs the
+  // durable marker after its first successful publish; strict from then on.
+  'liveVideoResolved',
   // #8480. The macro bundle can ship the reader before the tail sections
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
   'usTreasuryParYield',
   // #8485. Same deploy-before-first-tick bridge for the US rate basket.
   'usInterestRates',
+  // #8538. Same bridge for the four worldwide CPI sources: the reader ships
+  // with the world CPI endpoint before the macro-bundle tail sections run.
+  'worldCpiImf',
+  'worldCpiEurostat',
+  'worldCpiEstat',
+  'worldCpiAbs',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -1740,6 +1987,7 @@ const ON_DEMAND_KEYS = new Set([
   // writes the marker after the index and its seed-meta publish; absence is
   // pending until that first tick and strict afterward.
   'gdeltCountryArticles',
+  'gdeltDyadTension',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -1796,6 +2044,11 @@ const ON_DEMAND_KEYS = new Set([
   // #scoreEnergy). Do NOT add these labels back to ON_DEMAND_KEYS
   // without revisiting that plan.
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
+  // The archive starts empty on the deploy that introduces it and stays empty
+  // until the first relay poll. Absence is therefore not a fault; a STOPPED
+  // archive is, and that still reports STALE_SEED because on-demand softening
+  // never covers a key that has data behind it (see classifyKey).
+  'pizzintHistory',
   // #6070 retired six expired deployment-order bridges after live producer
   // verification. Future temporary softening needs an activation marker or an
   // enforced wall-clock expiry; a prose-only removal reminder is not a control.
@@ -1826,21 +2079,30 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
+  // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
+  pizzintHistory: SEED_META.pizzintHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
+  liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
   usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
   usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
   usInterestRates: SEED_META.usInterestRates.activationKey,
+  worldCpiImf: SEED_META.worldCpiImf.activationKey,
+  worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
+  worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
+  worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,
   // Written by scripts/seed-gdelt-bulk-materializer.mjs after the per-country
   // article index publishes with its seed-meta (#7748).
   gdeltCountryArticles: SEED_META.gdeltCountryArticles.activationKey,
+  gdeltDyadTension: SEED_META.gdeltDyadTension.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
@@ -2083,6 +2345,11 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'viarailLive', // unofficial optional VIA Rail live JSON (#6615); unconfigured / 404 is STALE_SEED then NOT_CONFIGURED, never EMPTY/crit
+  // Venues closed or not yet reporting: the relay advances seed-meta only when
+  // BestTime answers every venue cleanly with no usable live reading, for up to 24h
+  // after the last live one. Provider errors, a dead loop, or a longer silence
+  // stop the heartbeat, so an absent payload then reads STALE_SEED.
+  'pizzint',
   // Compact projections stay STALE_SEED before their first producer tick or
   // after metadata turns stale. Fresh metadata plus a missing payload is
   // deliberately strict: MISSING_DATA_IS_FAILURE_KEYS reports EMPTY (crit).
@@ -3065,6 +3332,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // meta.maxContentAgeMin); legacy seeders without it skip this branch.
   // 2026-05-04 health-readiness plan, Sprint 1.
   else if (contentAge && contentAge.contentStale) status = 'STALE_CONTENT';
+  // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
+  // api/_content-age.js). Fires only after every hard fault declined and
+  // before COVERAGE_MARGIN_LOW, which is informational: an approaching time
+  // breach outranks a thin-but-passing cohort. Rides the compact pending lane
+  // via the STATUS_COUNTS/healthStatusBucket pattern — visible, non-blocking.
+  else if (contentAge && contentAge.preWarning) status = 'CONTENT_AGE_PREWARNING';
   // Shares STALE_CONTENT with the newestItemAt branch above: both mean "the
   // producer is healthy and correctly sized, but the data itself is older than
   // its content budget". Here the stale unit is a country rather than the
@@ -3191,6 +3464,11 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (contentAge) {
     entry.contentAgeMin = contentAge.contentAgeMin;          // null when contentMeta returned null
     entry.maxContentAgeMin = contentAge.maxContentAgeMin;
+    if (status === 'CONTENT_AGE_PREWARNING' && contentAge.preWarning) {
+      entry.warnAtContentAgeMin = contentAge.preWarning.warnAtContentAgeMin;
+      entry.contentAgeRemainingMin = contentAge.preWarning.remainingContentAgeMin;
+      if (contentAge.preWarning.breachAt) entry.contentAgeBreachAt = contentAge.preWarning.breachAt;
+    }
   }
   // Publish the per-entity block whenever the check requires it — including
   // the unusable case, so "the producer stopped writing this" is diagnosable
@@ -3301,6 +3579,11 @@ const STATUS_COUNTS = {
   // (both bucket to 'warn' — overall status is `degraded`, not `critical`).
   // 2026-05-04 health-readiness plan, Sprint 1.
   STALE_CONTENT: 'warn',
+  // Registered as warn (required: unlisted statuses re-become warn) and
+  // bucketed ok below, so the pre-warning rides the compact pending lane
+  // without flipping fleet health or paging. Same pattern as the bounded
+  // STALE_CONTENT grace and relay transport grace.
+  CONTENT_AGE_PREWARNING: 'warn',
   // Bounded deploy-before-cron window (#6059): the schema is live but its
   // producer has not reached its first scheduled run yet. Warn — NOT ok — so
   // the interim state is visible and flips `overall` to WARNING; and NOT
@@ -3323,6 +3606,11 @@ const STATUS_COUNTS = {
 };
 
 function healthStatusBucket(entry, now) {
+  // Content-age pre-warning is advisory lead time, not a fault: pending and
+  // visible, but the aggregate verdict stays healthy until the content is
+  // actually stale. Must never read or claim stale-content grace state; the
+  // post-breach grace belongs to STALE_CONTENT only.
+  if (entry?.status === 'CONTENT_AGE_PREWARNING') return 'ok';
   if (['COVERAGE_PARTIAL', 'CHINA_DEGRADED'].includes(entry?.status)
     && typeof entry.chinaCoveragePendingUntil === 'string'
     && !isExpiredDeadline(entry.chinaCoveragePendingUntil, now)) return 'ok';

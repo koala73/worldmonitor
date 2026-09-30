@@ -8,6 +8,7 @@ export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
  */
 
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
@@ -142,6 +143,7 @@ const EVENTS = {
   'map-layer-toggle': true,
   // Panels
   'panel-toggle': true,
+  'layout-customize': true,
   // Settings
   'settings-open': true,
   'variant-switch': true,
@@ -156,6 +158,7 @@ const EVENTS = {
   'live-media-idle-notice-action': true,
   'live-video-attempt-failed': true,
   'live-video-signal-missing': true,
+  'live-video-resolved-applied': true,
   // Webcams
   'webcam-selected': true,
   'webcam-region-filter': true,
@@ -189,6 +192,11 @@ const EVENTS = {
   // Auth (wired in PR #1812 — do not remove)
   'sign-in': true,
   'sign-up': true,
+  // Sign-up resume funnel (#8577): started once per attempt, resumed after a
+  // reload, dismissed by the user; `sign-up` carries `resumed`.
+  'sign-up-started': true,
+  'sign-up-resumed': true,
+  'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
   // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
@@ -719,7 +727,7 @@ export function initAuthAnalytics(): void {
         !hasTrackedSignupInSession(nextUserId) &&
         isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
       ) {
-        trackSignUp('clerk');
+        trackSignUp('clerk', { resumed: consumeSignUpResumed() });
         markSignupTrackedInSession(nextUserId);
       }
     }
@@ -752,8 +760,43 @@ export function trackSignIn(method: string): void {
   track('sign-in', { method });
 }
 
-export function trackSignUp(method: string): void {
-  track('sign-up', { method });
+export function trackSignUp(method: string, opts?: { resumed?: boolean }): void {
+  track('sign-up', { method, resumed: opts?.resumed === true });
+}
+
+/**
+ * Sign-up funnel: started -> (resumed) -> sign-up. Abandonment is
+ * started minus sign-up; resume effectiveness is sign-up{resumed} over resumed.
+ * `started` fires once per attempt id (the resume service keeps the marker),
+ * so a reload mid-attempt does not count a second start.
+ */
+export function trackSignUpStarted(): void {
+  track('sign-up-started');
+}
+
+export function trackSignUpResumed(props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
+  track('sign-up-resumed', { trigger: props.trigger, code: props.code, since_boot_ms: props.sinceBootMs });
+}
+
+export function trackSignUpResumeDismissed(): void {
+  track('sign-up-resume-dismissed');
+}
+
+/**
+ * Set when the resumed verify card mounts; read and cleared by the completion
+ * `sign-up` event on the next page load. localStorage rather than session
+ * scope for the same cross-tab reason as `wm-signup-tracked:`.
+ */
+const SIGNUP_RESUMED_KEY = 'wm-signup-resumed';
+
+export function markSignUpResumed(): void {
+  safeStorageSet(SIGNUP_RESUMED_KEY, '1');
+}
+
+export function consumeSignUpResumed(): boolean {
+  const resumed = safeStorageGet(SIGNUP_RESUMED_KEY) === '1';
+  if (resumed) safeStorageRemove(SIGNUP_RESUMED_KEY);
+  return resumed;
 }
 
 export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {
@@ -898,6 +941,7 @@ export function resetAnalyticsForTesting(): void {
   umamiLoadAttempts = 0;
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
+  layoutCustomizationsSent.clear();
 }
 
 export function trackGateHit(feature: string): void {
@@ -1708,8 +1752,16 @@ export function trackPanelToggled(panelId: string, enabled: boolean): void {
   track('panel-toggle', { panelId, enabled });
 }
 
-export function trackPanelResized(_panelId: string, _newSpan: number): void {
-  // No-op: fires on every drag step, too noisy for analytics.
+export type LayoutCustomizationKind = 'panel-resize' | 'panel-reorder' | 'map-divider';
+
+// Once per page load per kind: the metric is the share of sessions that ever
+// customize, and it keeps held arrow keys on a resize handle from spamming.
+const layoutCustomizationsSent = new Set<LayoutCustomizationKind>();
+
+export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
+  if (layoutCustomizationsSent.has(kind)) return;
+  layoutCustomizationsSent.add(kind);
+  track('layout-customize', { kind });
 }
 
 // ---------------------------------------------------------------------------

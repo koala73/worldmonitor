@@ -243,7 +243,7 @@ describe('Telegram trust badges (#6600)', () => {
       getSourceType('IDF Official'),
     );
     assert.ok(idf);
-    assert.equal(idf.label, 'Official Government Source');
+    assert.equal(idf.label, 'Official Government Source: Israel');
     assert.equal(getSourceTier('IDF Official'), 1);
     assert.equal(getSourceTierBadgeTitle('gov'), 'Official Government Source');
 

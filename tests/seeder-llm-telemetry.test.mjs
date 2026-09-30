@@ -103,7 +103,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
     if (raw.includes('openrouter.ai')) {
       const body = JSON.parse(String(init.body || '{}'));
       attempted.push(body);
-      const content = body.model === 'minimax/minimax-m3:free' ? 'backup free answer' : '';
+      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup free answer' : '';
       return { ok: true, json: async () => llmJson(content) };
     }
     throw new Error(`unexpected fetch: ${raw}`);
@@ -115,7 +115,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
   assert.deepEqual(attempted.map(body => body.model), [
     'google/gemini-2.5-flash',
     'google/gemma-4-26b-a4b-it:free',
-    'minimax/minimax-m3:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
   ]);
   for (const body of attempted.slice(1)) {
     assert.deepEqual(body.reasoning, { enabled: false });

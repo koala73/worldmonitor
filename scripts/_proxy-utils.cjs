@@ -356,6 +356,10 @@ function proxyFetch(url, proxyConfig, {
 
       const req = requestFn({
         hostname: targetUrl.hostname,
+        // The tunnel is to :443. With only `createConnection` there is no agent,
+        // so Node would default to port 80 and send `Host: <host>:80` over TLS,
+        // which ENTSO-E rejects as an inconsistent request URL (HTTP 400).
+        defaultPort: 443,
         path: targetUrl.pathname + targetUrl.search,
         method,
         headers: reqHeaders,

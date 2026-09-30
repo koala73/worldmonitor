@@ -347,10 +347,12 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 
 | 分级       | 描述                                | 示例                                    |
 | ---------- | ----------------------------------- | --------------------------------------- |
-| **Tier 1** | 通讯社、官方政府来源                | Reuters、AP、BBC、DOD                       |
-| **Tier 2** | 主要老牌媒体                        | CNN、NYT、The Guardian、Al Jazeera          |
-| **Tier 3** | 专业/垂直媒体                       | Defense One、Breaking Defense、The War Zone |
-| **Tier 4** | 聚合器和博客                        | Google News、个人分析师博客       |
+| **Tier 1** | 通讯社和官方机构                    | Reuters、AP News、AFP、Pentagon             |
+| **Tier 2** | 主要媒体                            | BBC、CNN World、New York Times、The Guardian、Al Jazeera |
+| **Tier 3** | 专业、地区和智库来源                | Defense One、Breaking Defense、The War Zone |
+| **Tier 4** | 聚合器和博客                        | Hacker News、The Verge、Yahoo Finance       |
+
+聚类报道会列出其发布方，每个发布方显示该报道中所见源里声明的最高分级。未声明分级的源显示为"未声明分级"，在计算佐证标记时绝不按 Tier 4 计。分级只对来源排序，不判断某条说法是否属实。
 
 源还带有**宣传风险评级**和**国家关联标志**。国家关联来源（RT、新华社、IRNA）为完整性而被纳入，但会以视觉标记标出，以便分析师考虑编辑偏见。这些同一输入还会进入每条头条的 [`credibilityScore`](/zh/methodology/news-credibility)（0-100 来源可靠性，与 `importanceScore` 新闻重要性不同）。威胁分类置信度按来源分级加权 — 在焦点检测算法中，Tier 1 的突发警报比 Tier 4 的博客帖子权重更高。
 

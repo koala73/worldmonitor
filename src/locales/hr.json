@@ -1230,10 +1230,18 @@
       "skipToEnd": "Preskoči na kraj"
     },
     "pizzint": {
+      "indexSource": "Indeks: World Monitor · podaci o objektima:",
+      "statusNormal": "NORMALNO",
+      "statusNoData": "NEMA PODATAKA",
+      "statusNoBaseline": "NEMA OSNOVE",
+      "vsUsual": "u odnosu na uobičajeno",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ažurirano {{timeAgo}}",
       "tensionsTitle": "Geopolitička napetost",
+      "tensionsSource": "Napetosti: World Monitor na temelju događaja GDELT-a",
+      "insufficientData": "Nedovoljno podataka",
+      "pizzaUnavailable": "Aktivnost pizzerija nije dostupna",
       "source": "Izvor:",
       "statusClosed": "ZATVORENO",
       "statusSpike": "SKOK",
@@ -1245,11 +1253,11 @@
       "minutesAgo": "prije {{m}}m",
       "hoursAgo": "prije {{h}}h",
       "defconLabels": {
-        "1": "REVOLVER SPREMAN - MAKSIMALNA SPREMNOST",
-        "2": "BRZ TEMPO - ORUŽANE SNAGE SPREMNE",
-        "3": "KRUŽNI DIM - POVEĆANA SPREMNOST SNAGA",
-        "4": "DVOSTRUKI POGLED - POJAČANO OBAVJEŠTAJNO PRAĆENJE",
-        "5": "BLIJEDI IZLAZ - NAJNIŽA SPREMNOST"
+        "1": "Maksimalna aktivnost",
+        "2": "Velika aktivnost",
+        "3": "Povećana aktivnost",
+        "4": "Iznad normalnog",
+        "5": "Normalna aktivnost"
       }
     },
     "strategicPosture": {
@@ -2933,6 +2941,28 @@
       "idleKeepPlaying": "Nastavi reproduciranje kada je korisnik neaktivan",
       "idleSettingsHint": "Promijeni ovo bilo kada u Postavkama › Mediji.",
       "idleKeepPlayingToast": "Live video će se nastaviti reproducirati kada je korisnik neaktivan. Promijeni u Postavkama › Mediji."
+    },
+    "corroboration": {
+      "singlePublisher": "Jedan izdavač",
+      "singlePublisherHint": "Za sada samo jedan izdavač izvještava o tome. Ovo opisuje doseg izvještavanja, ne točnost.",
+      "tier4Only": "Samo izvori niske razine",
+      "tier4OnlyHint": "Svaki medij koji izvještava o tome izvor je 4. razine (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost.",
+      "rosterListed": "({{listed}} na popisu)",
+      "rosterFeeds": "Viđeni kanali: {{labels}}",
+      "rosterLegend": "Razine rangiraju izvore; ne ocjenjuju ovu tvrdnju.",
+      "tierDocsLink": "Kako se dodjeljuju razine",
+      "tierChip": "R{{tier}}",
+      "tierChipUndeclared": "R?",
+      "tierTitle1": "Razina 1: Novinske agencije i službena tijela",
+      "tierTitle2": "Razina 2: Veliki mediji",
+      "tierTitle3": "Razina 3: Specijalizirani i regionalni izvori te think-tankovi",
+      "tierTitle4": "Razina 4: Agregatori i blogovi",
+      "tierTitleUndeclared": "Razina nije navedena: još nije pregledano",
+      "rosterSummary": "Izvještava {{publishers}}",
+      "rosterSummaryTier1": "Izvještava {{publishers}}, uključujući {{tier1}} razine 1",
+      "rosterPublishers_one": "{{count}} izdavač",
+      "rosterPublishers_few": "{{count}} izdavača",
+      "rosterPublishers_other": "{{count}} izdavača"
     }
   },
   "popups": {
@@ -2973,6 +3003,10 @@
     "protest": {
       "acledVerified": "ACLED (potvrđeno)",
       "gdelt": "GDELT",
+      "records": "zapisa",
+      "mediaSignal": "Nepotvrđeni medijski signal",
+      "relatedArticle": "Povezani članak",
+      "mediaSignalDetail": "Ovo se mjesto spominje u člancima o nemirima. Lokalni događaj nije potvrđen.",
       "riots": "Neredi",
       "highSeverity": "Visoka Težina"
     },

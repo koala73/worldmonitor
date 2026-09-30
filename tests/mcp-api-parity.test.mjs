@@ -136,8 +136,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // quota bounds it" without qualifying the env-key path.
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
-  ["POST /api/news/v1/summarize-article",
-    "llm-passthrough: request-time article summarization is intentionally REST-only; get_world_brief reads the gated seeded snapshot instead"],
 
   // === fetch-on-miss (30) ===
   ["GET /api/intelligence/v1/get-risk-scores",
@@ -329,6 +327,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read of the daily par curve since 1990 is larger than the composite economic cache tool — bundle the latest business day into a future macro-history tool"],
   ["GET /api/economic/v1/get-us-interest-rates",
     "deferred-to-future-tool: pure-read of daily Fed funds, Treasury yields, and SOFR since 1954 is larger than the composite economic cache tool — bundle the latest print into a future macro-history tool"],
+  ["GET /api/economic/v1/get-world-cpi-monthly",
+    "deferred-to-future-tool: pure-read of 190 countries across five sources is far larger than the composite economic cache tool — bundle a latest-print subset into a future macro-history tool"],
+  ["GET /api/economic/v1/get-government-yield-curve",
+    "deferred-to-future-tool: pure-read of per-country daily curves since 1974 is larger than the composite economic cache tool — bundle the latest business day per market into a future macro-history tool"],
   ["GET /api/economic/v1/list-grocery-basket-prices",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:grocery-basket:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/forecast/v1/get-simulation-outcome",

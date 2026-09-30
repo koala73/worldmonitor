@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Din AI-analytiker. Ett personligt underrättelsebord. En plattform du kan bygga på. En nyckel över live-tjänster.",
+    "proDesc": "Din AI-analytiker. Ett personligt underrättelsebord. En plattform du kan bygga på.",
     "proF1": "WM Analyst chat — fråga live-tjänster i naturligt språk",
     "proF2": "AI-digest — dagligen, två gånger om dagen eller veckovis — till Slack, Discord, Telegram, E-post eller webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS med AI-assisterad modifiering",
@@ -482,7 +482,7 @@
       "plateNote": "Fångad från live-kartan — klicka för att öppna den",
       "trustBuild": "Bygg på den:",
       "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
-      "asOf": "Per 8 september 2026",
+      "asOf": "Per {{date}}",
       "whatIsTitle": "Vad är World Monitor?",
       "whatIsBody": "World Monitor är en gratis dashboard med öppen källkod som strömmar geopolitik, marknader, sjöfart, luftfart, infrastruktur och cybersignaler till en direkt världskarta. Den korrelerar separata feeds till en enda operativ bild och flaggar konvergens före rubrikerna, där varje siffra är källhänvisad och varje metod är dokumenterad."
     },
@@ -676,7 +676,7 @@
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
       "a4": "Ja. Flaskhalsar spåras med live AIS-fartygsräkningar, vecka-över-vecka transiteringsändring och disruptionspoäng — och densitetsavvikelser flaggas mot varje sunds rullande baslinje.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",
-      "a5": "Konflikter är ett kartlager. World Monitor kombinerar konflikter med sjöfart, militära flygningar, infrastruktur, marknader och cyber — sedan analyserar AI konvergensen: instabilitetsindex, hotspot-eskalering, bekräftade breakingaviseringar och dagliga briefingar. Jämför World Monitor med Liveuamap och andra konfliktkartor: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Konflikt är ett kartlager. World Monitor sammanför konflikter med sjöfart, militär flygtrafik, infrastruktur, marknader och cyberverksamhet — därefter beräknar AI konvergensen: instabilitetsindex, hotspot-eskalering, bekräftade breaking-varningar och dagliga situationsrapporter. Jämför World Monitor med Liveuamap och andra konfliktkartor: worldmonitor.app/compare/liveuamap-alternatives. För bredare övervakningsalternativ, se worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Varför ska jag lita på en avisering?",
       "a6": "En breaking-banner startar endast när oberoende ursprungstyper bekräftar — nyhetsklassificering, nyckelordshastighet, hotspot-eskalering, militär ökning, officiella sirener — deduplicerad och hastighetsbegränsad. Färre aviseringar, verkliga.",
       "q7": "Kan AI-agenter som Claude eller GPT använda det?",

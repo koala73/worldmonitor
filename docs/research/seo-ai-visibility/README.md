@@ -16,6 +16,10 @@ missing source cannot silently become a zero or a site-wide vanity score.
   first-party exports; it emits only the normalized baseline contract.
 - `scripts/seo-ai-visibility-scorecard.mjs` — validator, scorecard renderer, and
   monthly comparison.
+- `gsc/<date>.json` and `gsc/<date>.md` — Search Console snapshots produced by
+  `scripts/seo-gsc-collect.mjs`, which reads the API rather than a UI export.
+  See `gsc/README.md`. Its per-family rows feed
+  `sources.googleSearchConsole` here rather than starting a parallel report.
 - `tests/seo-ai-visibility-collector.test.mjs` and
   `tests/seo-ai-visibility-scorecard.test.mjs` — importer, schema, missingness,
   aggregation, comparison, and reproducibility coverage.
@@ -167,7 +171,9 @@ For both the trailing 28-day and 90-day windows:
    impressions, CTR, and average position.
 2. Export or record the supported Page Indexing summary for indexed pages.
 3. Join reviewed query rows to `query-set.json` by the exact query text.
-4. Group target pages into the ten `targetPage.family` values in the query set.
+4. Group target pages into the `targetPage.family` values the query set
+   declares for its schema version. `scripts/lib/seo-url-taxonomy.mjs` performs
+   that mapping for any site URL and refuses an unmapped one.
 5. Put site aggregates in `search.googleSearchConsole.windows`, reviewed-query
    rows in `queryRows` (`windowLabel`, `queryId`, performance metrics), and
    bounded page-family rows in `pageFamilyRows` (`windowLabel`, `pageFamily`,

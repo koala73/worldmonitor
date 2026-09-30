@@ -213,6 +213,179 @@ export function dedupeSharedSchemaSubtrees(spec) {
   return stats;
 }
 
+/**
+ * Component-name prefix for the subtree hoist below. Compact on purpose: the
+ * name is paid at every ref, exactly like the `E<status>` response names in
+ * openapi-dedup-responses.mjs — `WMShared12` buys back ~19 bytes per site over
+ * a descriptive name, which is most of the yield on the 60-70 byte subtrees
+ * this pass exists for.
+ */
+export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WMShared';
+
+/**
+ * Collect every Schema Object node that an existing document-local `$ref`
+ * resolves THROUGH: each node on the pointer path, including the target.
+ *
+ * A hoist that replaced any of those nodes with a component ref would change
+ * what the existing ref resolves to (or dangle it), so they are off limits as
+ * hoist sites. Descendants of a target stay eligible — replacing one leaves
+ * the target resolvable, and full dereference still reproduces the source
+ * document (the served artifact already leans on this: corridor value refs
+ * point into ChinaDecisionSignalProvenanceClaims, whose inner subtrees the
+ * inline pass edits).
+ */
+function refPointerPathNodes(spec) {
+  const marked = new Set();
+  const collectRefs = (value) => {
+    if (Array.isArray(value)) {
+      for (const child of value) collectRefs(child);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    for (const child of Object.values(value)) collectRefs(child);
+    if (typeof value.$ref === 'string') {
+      let node = spec;
+      for (const raw of value.$ref.replace(/^#\//, '').split('/')) {
+        const segment = raw.replaceAll('~1', '/').replaceAll('~0', '~');
+        if (node == null || typeof node !== 'object') return;
+        node = Array.isArray(node) ? node[Number(segment)] : node[segment];
+        if (node && typeof node === 'object') marked.add(node);
+      }
+    }
+  };
+  collectRefs(spec);
+  return marked;
+}
+
+/**
+ * Hoist groups of byte-identical Schema Objects into shared component schemas.
+ *
+ * `dedupeSharedSchemaSubtrees` already collapses the groups whose shortest
+ * occurrence yields a SHORT $ref: it points the duplicates at one inline copy
+ * and adds no component. What survives it are the groups whose every site sits
+ * deep in a long-named component — the China provenance precision wrappers, the
+ * repeated consumer-price freshness booleans — where the pointer INTO the
+ * document is longer than the subtree itself, so an inline-target ref would
+ * cost more than the repetition it removes. This pass is the escape hatch for
+ * exactly those groups: the subtree moves into `components.schemas` under a
+ * compact `WMShared<N>` name and every site, including the first, becomes a
+ * short ref.
+ *
+ * Naming follows the dedupeErrorResponses precedent: deterministic (first-seen
+ * ordinal in greedy largest-saving-first order, so identical input rebuilds
+ * byte-identically) and paid at every ref, hence the short prefix. The hoist is
+ * lossless — the component holds a byte-identical clone of one site, so
+ * resolving the refs reproduces the source document; the contract test resolves
+ * them back. Runs AFTER dedupeSharedSchemaSubtrees, so groups the inline pass
+ * could profitably collapse never reach this one, and BEFORE the parameter
+ * passes, which do not touch Schema Objects.
+ *
+ * Mutates `spec` in place; returns { groups, replacedRefs, bytesFreed }.
+ */
+export function dedupeSharedSubtreeComponents(spec) {
+  const stats = { groups: 0, replacedRefs: 0, bytesFreed: 0 };
+  const schemas = spec?.components?.schemas;
+  if (!schemas || typeof schemas !== 'object') return stats;
+
+  const beforeBytes = Buffer.byteLength(JSON.stringify(spec), 'utf8');
+  const untouchable = refPointerPathNodes(spec);
+  const parentOf = new Map();
+  const groups = new Map();
+
+  // Same traversal and overlap bookkeeping as dedupeSharedSchemaSubtrees — the
+  // only difference is the replacement strategy (named component ref instead of
+  // ref-to-shortest-inline-copy) and therefore the profitability arithmetic.
+  const visit = (schema, parent, key) => {
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.$ref) return;
+    parentOf.set(schema, parent);
+    const serialized = canonical(schema);
+    const unitBytes = Buffer.byteLength(serialized, 'utf8');
+    if (unitBytes >= MIN_SHARED_SCHEMA_BYTES) {
+      const site = { schema, parent, key };
+      const group = groups.get(serialized);
+      if (group) group.push(site);
+      else groups.set(serialized, [site]);
+    }
+    for (const child of schemaChildren(schema)) {
+      if (child.parent !== schema) parentOf.set(child.parent, schema);
+      visit(child.schema, child.parent, child.key);
+    }
+  };
+  for (const [name, schema] of Object.entries(schemas)) visit(schema, schemas, name);
+
+  // Ref bytes for a name two ordinals wide: `WMShared99`. Selection only needs
+  // a stable estimate; the exact per-group saving is recomputed once the group
+  // is picked and named.
+  const estimatedRefBytes = Buffer.byteLength(
+    JSON.stringify({ $ref: `#/components/schemas/${SHARED_SUBTREE_COMPONENT_PREFIX}99` }),
+    'utf8',
+  );
+
+  const candidates = [...groups.values()]
+    .filter((sites) => sites.length >= 2)
+    .map((sites) => {
+      const unitBytes = Buffer.byteLength(canonical(sites[0].schema), 'utf8');
+      return {
+        sites,
+        unitBytes,
+        estimatedSaving: (sites.length - 1) * unitBytes - sites.length * estimatedRefBytes,
+      };
+    })
+    .filter((candidate) => candidate.estimatedSaving >= MIN_GROUP_SAVING_BYTES)
+    .sort((a, b) => b.estimatedSaving - a.estimatedSaving);
+
+  const selected = new Set();
+  const ancestors = new Set();
+  const overlaps = (node) => {
+    if (ancestors.has(node) || untouchable.has(node)) return true;
+    let parent = parentOf.get(node);
+    while (parent) {
+      if (selected.has(parent)) return true;
+      parent = parentOf.get(parent);
+    }
+    return false;
+  };
+  const mark = (node) => {
+    selected.add(node);
+    let parent = parentOf.get(node);
+    while (parent && !ancestors.has(parent)) {
+      ancestors.add(parent);
+      parent = parentOf.get(parent);
+    }
+  };
+
+  spec.components ??= {};
+  spec.components.schemas ??= {};
+  let ordinal = 0;
+  for (const candidate of candidates) {
+    const free = candidate.sites.filter((site) => !overlaps(site.schema));
+    if (free.length < 2) continue;
+    let name;
+    do {
+      ordinal += 1;
+      name = `${SHARED_SUBTREE_COMPONENT_PREFIX}${ordinal}`;
+    } while (Object.hasOwn(spec.components.schemas, name));
+    const ref = { $ref: `#/components/schemas/${name}` };
+    const refBytes = Buffer.byteLength(JSON.stringify(ref), 'utf8');
+    const saving = free.length * candidate.unitBytes - candidate.unitBytes - free.length * refBytes;
+    if (saving < MIN_GROUP_SAVING_BYTES) continue;
+
+    // The component holds the first free site's bytes verbatim; every free
+    // site — that one included — becomes a ref, so the subtree costs `unit`
+    // bytes once instead of `free.length` times.
+    spec.components.schemas[name] = structuredClone(free[0].schema);
+    for (const site of free) {
+      site.parent[site.key] = ref;
+      mark(site.schema);
+      stats.replacedRefs += 1;
+    }
+    stats.groups += 1;
+  }
+
+  stats.bytesFreed = beforeBytes - Buffer.byteLength(JSON.stringify(spec), 'utf8');
+  return stats;
+}
+
 function knownClaim(claim) {
   const index = claim?.oneOf?.findIndex(
     (candidate) => candidate?.properties?.status?.const === 'known',
@@ -282,25 +455,35 @@ function headerComponentName(headerName) {
  * Hoist response Header Objects that repeat under the same header name.
  * OpenAPI permits a Header Object or Reference Object at every response-header
  * site, so resolving the emitted refs reproduces the source document exactly.
+ *
+ * `components.responses` counts as a site bucket too: dedupeErrorResponses
+ * hoists repeated error bodies (E403 and friends) there BEFORE this pass runs,
+ * moving their per-op headers out of `spec.paths` — a paths-only walk would
+ * leave identical billing-verification headers duplicated across every hoisted
+ * error component.
  */
 export function dedupeSharedResponseHeaders(spec) {
   const stats = { hoisted: 0, replacedRefs: 0 };
   const groups = new Map();
+  const collect = (responses) => {
+    for (const response of Object.values(responses ?? {})) {
+      for (const [headerName, header] of Object.entries(response?.headers ?? {})) {
+        if (!header || typeof header !== 'object' || header.$ref) continue;
+        const key = `${headerName}\0${JSON.stringify(header)}`;
+        const group = groups.get(key) ?? { headerName, header, sites: [] };
+        group.sites.push(response.headers);
+        groups.set(key, group);
+      }
+    }
+  };
 
   for (const pathItem of Object.values(spec?.paths ?? {})) {
     for (const [method, operation] of Object.entries(pathItem ?? {})) {
       if (!HTTP_METHODS.has(method.toLowerCase())) continue;
-      for (const response of Object.values(operation?.responses ?? {})) {
-        for (const [headerName, header] of Object.entries(response?.headers ?? {})) {
-          if (!header || typeof header !== 'object' || header.$ref) continue;
-          const key = `${headerName}\0${JSON.stringify(header)}`;
-          const group = groups.get(key) ?? { headerName, header, sites: [] };
-          group.sites.push(response.headers);
-          groups.set(key, group);
-        }
-      }
+      collect(operation?.responses);
     }
   }
+  collect(spec?.components?.responses);
 
   const repeated = [...groups.values()].filter((group) => group.sites.length >= 2);
   if (repeated.length === 0) return stats;

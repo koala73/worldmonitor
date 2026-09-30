@@ -27,7 +27,12 @@ describe('crawlable country live-risk tool', () => {
   it('formats trend and advisory tokens for readers', () => {
     assert.equal(formatTrend(2.4, 'TREND_DIRECTION_RISING'), 'Rising +2.4');
     assert.equal(formatTrend(-1.2, 'TREND_DIRECTION_FALLING'), 'Falling -1.2');
-    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Stable or unavailable');
+    // A measured zero and a missing prior reading are different facts; the
+    // old shared "Stable or unavailable" label published them as one.
+    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Unchanged');
+    assert.equal(formatTrend(0, 'TREND_DIRECTION_UNSPECIFIED'), 'No earlier reading');
+    assert.equal(formatTrend(0, undefined), 'No earlier reading');
+    assert.equal(formatTrend(null, ''), 'No earlier reading');
     assert.equal(formatAdvisory('reconsider'), 'Reconsider Travel');
     assert.equal(formatAdvisory('caution'), 'Exercise Increased Caution');
     assert.equal(formatAdvisory(''), 'Not present');
@@ -43,12 +48,16 @@ describe('crawlable country live-risk tool', () => {
       movementText: 'down 1 point over approximately 24 hours',
     });
     assert.deepEqual(parseCiiMovement(formatTrend(0, 'TREND_DIRECTION_STABLE')), {
+      change24h: 0,
+      movementText: 'unchanged over approximately 24 hours',
+    });
+    assert.deepEqual(parseCiiMovement(formatTrend(0, 'TREND_DIRECTION_UNSPECIFIED')), {
       change24h: null,
-      movementText: 'stable or unavailable over approximately 24 hours',
+      movementText: null,
     });
     assert.deepEqual(parseCiiMovement(formatTrend(null, '')), {
       change24h: null,
-      movementText: 'stable or unavailable over approximately 24 hours',
+      movementText: null,
     });
     assert.deepEqual(
       parseCiiMovement(formatTrend(4, 'TREND_DIRECTION_RISING'), {
@@ -60,6 +69,14 @@ describe('crawlable country live-risk tool', () => {
       },
     );
     assert.throws(() => parseCiiMovement('Rising later'), /Invalid CII movement label/);
+  });
+
+  it('parses legacy conflated labels from committed snapshots without a movement claim', () => {
+    // Snapshots frozen before the split carry one label for both "no change"
+    // and "no data". Neither reading can be recovered, so publish no claim.
+    for (const legacy of ['Stable or unavailable', 'Stable / unavailable', 'Stable']) {
+      assert.deepEqual(parseCiiMovement(legacy), { change24h: null, movementText: null }, legacy);
+    }
   });
 
   it('builds a labelled view model without treating structural resilience as live risk', () => {

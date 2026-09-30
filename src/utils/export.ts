@@ -3,6 +3,7 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { IntelligenceCache } from '@/app/app-context';
 import type { GpsJamData } from '@/services/gps-interference';
 import type { ConvergenceCard } from '@/services/correlation-engine';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { showToast } from '@/utils/toast';
@@ -151,7 +152,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== MILITARY VESSELS ===');
       lines.push('Name,MMSI,Country,VesselType,Lat,Lon');
       intel.military.vessels.forEach(v => {
-        lines.push(csvRow([v.name, v.mmsi, v.operatorCountry, v.vesselType, v.lat, v.lon]));
+        lines.push(csvRow([v.name, v.mmsi, v.operatorCountry, vesselTypeLabel(v), v.lat, v.lon]));
       });
       lines.push('');
     }

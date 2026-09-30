@@ -6,7 +6,7 @@ import { delimiter, join } from 'node:path';
 import { describe, it } from 'node:test';
 import YAML from 'yaml';
 
-import { ALONE_RECHECK_BUDGET_MS, runCheck } from '../scripts/check-live-video-sources.mjs';
+import { ALONE_RECHECK_BUDGET_MS, CHANNEL_PAGE_TIMEOUT_MS, RESOLVE_BUDGET_MS, runCheck } from '../scripts/check-live-video-sources.mjs';
 import { ISSUE_TITLE, MAX_ISSUE_BODY_CHARS, publishAudit, renderAuditBody } from '../scripts/report-live-video-audit.mjs';
 
 const watch = (id) => `https://www.youtube.com/watch?v=${id}`;
@@ -115,8 +115,8 @@ describe('live video audit issue', () => {
     const { title, body } = calls[2].payload;
     assert.equal(title, ISSUE_TITLE);
     assert.equal(calls[2].payload.state, undefined, 'a new issue sends no state');
-    assert.match(body, /^\| Slot \| Where it shows \| Status \| Entry \| Why \| Shown instead \|$/m);
-    assert.match(body, /^\| webcams\/jerusalem \| Webcam grid cell 1 \| needs-replacement \| `https:\/\/www\.youtube\.com\/watch\?v=zp6LNSoq000` \| YouTube player error 150: [^|]+ \| webcams\/tel-aviv \|$/m);
+    assert.match(body, /^\| Slot \| Where it shows \| Status \| Entry \| Why \| Shown instead \| Live now \|$/m);
+    assert.match(body, /^\| webcams\/jerusalem \| Webcam grid cell 1 \| needs-replacement \| `https:\/\/www\.youtube\.com\/watch\?v=zp6LNSoq000` \| YouTube player error 150: [^|]+ \| webcams\/tel-aviv \| — \|$/m);
     assert.match(body, /actions\/runs\/7/);
     assert.match(body, /Canaries: 2 of 2 live/);
     assert.match(body, /npm run live-video:check -- <url>/);
@@ -292,6 +292,13 @@ describe('live video audit issue', () => {
       'a why carrying Markdown': mutate((slot) => { slot.attempts[0].why = 'YouTube player error 150 @koala73'; }),
       'a surface carrying an issue reference': mutate((slot) => { slot.surface = 'Webcam grid #2'; }),
       'a shownInstead carrying a link': mutate((slot) => { slot.shownInstead = '[x](https://evil.example)'; }),
+      'a suggestedEntry that is a channel': mutate((slot) => { slot.suggestedEntry = CANARY_1; }),
+      'a suggestedEntry with a short id': mutate((slot) => { slot.suggestedEntry = watch('abc123DEF4'); }),
+      'a suggestedEntry carrying a link': mutate((slot) => { slot.suggestedEntry = `${watch('abc123DEF45')})[x](https://evil.example`; }),
+      'a suggestedEntry on another host': mutate((slot) => { slot.suggestedEntry = 'https://evil.example/watch?v=abc123DEF45'; }),
+      'a resolution that is not counts': { ...complete(), resolution: { attempted: 2, live: 'two', notLive: 0, unreadable: 0 } },
+      'a resolution with a negative count': { ...complete(), resolution: { attempted: 2, live: -1, notLive: 0, unreadable: 0 } },
+      'a resolution missing a count': { ...complete(), resolution: { attempted: 2, live: 2, notLive: 0 } },
     });
 
     for (const [label, report] of Object.entries(variants)) {
@@ -371,7 +378,7 @@ describe('live video audit issue', () => {
     assert.deepEqual(await publish(report, { gh, catalog }), { findings: 2, action: 'created' });
     const { body } = calls.at(-1).payload;
     const rows = body.split('\n').filter((line) => /^\| (webcams|live-news)\//.test(line));
-    assert.equal(rows[0], '| webcams/jerusalem | Webcam grid cell 1 | empty | — | no entries configured | webcams/tel-aviv |');
+    assert.equal(rows[0], '| webcams/jerusalem | Webcam grid cell 1 | empty | — | no entries configured | webcams/tel-aviv | — |');
     assert.match(rows[1], /^\| live-news\/bloomberg \|/);
     assert.match(body, /^Daily live video source audit: 2 slot\(s\) need attention, 2 of them shown by default\.$/m);
     assert.doesNotMatch(body, /### Unfilled slots/);
@@ -436,9 +443,68 @@ describe('live video audit issue', () => {
     await publish(report, { gh });
 
     const rows = calls.at(-1).payload.body.split('\n').filter((line) => /^\| (webcams|live-news)\//.test(line));
-    const shownInstead = rows.map((row) => row.split(' | ').at(-1).replace(/ \|$/, ''));
+    const shownInstead = rows.map((row) => row.split(' | ').at(-2));
     assert.deepEqual(rows.map((row) => row.split(' | ')[0].slice(2)), ['webcams/jerusalem', 'webcams/kyiv', 'live-news/bloomberg']);
     assert.deepEqual(shownInstead, ['webcams/tel-aviv', 'entry 2 (live)', '—']);
+  });
+
+  describe('resolved channels', () => {
+    const CHANNEL = 'https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg';
+    const catalog = { ...baseCatalog, news: { ...baseCatalog.news, bloomberg: [watch('QB5BNdBFujE'), CHANNEL] } };
+    const resolvedLive = attempt(CHANNEL, 'live', {
+      evidence: { videoId: 'abc123DEF45', title: 'Live', author: 'Bloomberg', isLive: true, resolvedVideoId: 'abc123DEF45', resolution: 'live', resolvedWhy: null, probedAs: 'resolved-video' },
+    });
+    const withBloomberg = (resolution, suggestedEntry) => {
+      const report = reportFor(catalog, { 'live-news/bloomberg': { status: 'degraded', attempts: [dead(watch('QB5BNdBFujE')), resolvedLive] } });
+      report.slots.find((slot) => slot.slot === 'live-news/bloomberg').suggestedEntry = suggestedEntry;
+      return resolution ? { ...report, resolution } : report;
+    };
+
+    it('shows the resolved video in the "Live now" column and counts the channel pages in the header', async () => {
+      const { calls, gh } = fakeGh([]);
+      await publishAudit(withBloomberg({ attempted: 4, live: 3, notLive: 0, unreadable: 1 }, watch('abc123DEF45')), { repository: 'owner/repo', catalog, gh });
+      const { body } = calls.at(-1).payload;
+      assert.match(body, /^\| live-news\/bloomberg \| [^|]+ \| degraded \| `https:\/\/www\.youtube\.com\/watch\?v=QB5BNdBFujE` \| [^|]+ \| entry 2 \(live\) \| `https:\/\/www\.youtube\.com\/watch\?v=abc123DEF45` \|$/m);
+      assert.match(body, /^- Canaries: 2 of 2 live\n- Channel pages: 3 of 4 resolved to a live video$/m);
+      assert.doesNotMatch(body, /No channel page resolved/);
+      assert.match(body, /1\. When a row shows a `Live now` URL, replace the dead pinned entry with that URL/);
+    });
+
+    it('warns when no channel page resolved, and leaves the line out of a report that has no resolution', async () => {
+      const walled = renderAuditBody(withBloomberg({ attempted: 4, live: 0, notLive: 0, unreadable: 4 }, null), { canaries: '2 of 2 live' });
+      assert.match(walled, /^- Channel pages: 0 of 4 resolved to a live video$/m);
+      assert.match(walled, /^- No channel page resolved to a live video: channel entries were checked as channel embeds\. A walled proxy exit or a changed page reads like this\.$/m);
+      const old = renderAuditBody(withBloomberg(null, null), { canaries: '2 of 2 live' });
+      assert.doesNotMatch(old, /Channel pages|No channel page/);
+      assert.match(old, /^\| live-news\/bloomberg \| .* \| entry 2 \(live\) \| — \|$/m);
+    });
+
+    it('files the suggested line from a real check of a pinned slot whose channel resolved to another video (AE1)', async () => {
+      const probeYouTube = async (candidates) => candidates.map((candidate) => (candidate.videoId === 'QB5BNdBFujE'
+        ? { verdict: { verdict: 'failed', outcome: { kind: 'player-error', code: 100 } }, durationSeconds: null, verdictAtMs: 900 }
+        : { verdict: { verdict: 'live', video: { videoId: candidate.videoId ?? 'gCNeDWCI0vo', isLive: true, title: 'Live', author: 'Cams' } }, durationSeconds: 90_000, verdictAtMs: 2_000 }));
+      const resolveChannels = async (ids) => new Map(ids.map((id) => [id, id === 'UCIALMKvObZNtJ6AmdCLP7Lg'
+        ? { status: 'live', reason: null, videoId: 'abc123DEF45', channelId: id, title: 'Live', playableInEmbed: true }
+        : { status: 'unreadable', reason: 'timeout', videoId: null, channelId: id, title: null }]));
+      const writes = [];
+      const surfaces = {
+        webcamFeeds: Object.keys(catalog.webcams).map((id) => ({ id, region: 'europe' })),
+        gridCells: 4,
+        newsDefaults: { full: ['bloomberg'] },
+        newsOptional: ['bbc-news', 'rtve'],
+      };
+      await runCheck(['--all', '--report', 'audit.json'], {
+        write: () => {}, catalog, surfaces, probeYouTube, resolveChannels,
+        probeHls: async (candidates) => candidates.map(() => ({ verdict: { verdict: 'live', video: null } })),
+        writeReport: (_path, text) => writes.push(JSON.parse(text)),
+      });
+      const [report] = writes;
+      const { calls, gh } = fakeGh([]);
+      await publishAudit(report, { repository: 'owner/repo', catalog, gh });
+      const { body } = calls.at(-1).payload;
+      assert.match(body, /^\| live-news\/bloomberg \| Live News default \(full\) \| degraded \| `https:\/\/www\.youtube\.com\/watch\?v=QB5BNdBFujE` \| [^|]+ \| entry 2 \(live\) \| `https:\/\/www\.youtube\.com\/watch\?v=abc123DEF45` \|$/m);
+      assert.match(body, /^- Channel pages: 1 of 3 resolved to a live video$/m);
+    });
   });
 
   it('files a dead entry ahead of an unverifiable one as degraded, shown instead by the unverified entry', async () => {
@@ -452,7 +518,7 @@ describe('live video audit issue', () => {
     assert.deepEqual(await publish(report, { gh }), { findings: 1, action: 'created' });
     const { body } = calls.at(-1).payload;
     assert.deepEqual(body.split('\n').filter((line) => line.startsWith('| webcams/kyiv |')), [
-      '| webcams/kyiv | Webcam grid cell 2 | degraded | `https://www.youtube.com/watch?v=e2gC37ILQmk` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 2 (unverified) |',
+      '| webcams/kyiv | Webcam grid cell 2 | degraded | `https://www.youtube.com/watch?v=e2gC37ILQmk` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 2 (unverified) | — |',
     ]);
     assert.doesNotMatch(body, /### Could not verify from the runner/);
   });
@@ -469,10 +535,46 @@ describe('live video audit issue', () => {
     const { body } = calls.at(-1).payload;
     assert.match(body, /^Daily live video source audit: 1 slot\(s\) need attention, 1 of them shown by default\.$/m);
     assert.deepEqual(body.split('\n').filter((line) => line.startsWith('| webcams/kyiv |')), [
-      '| webcams/kyiv | Webcam grid cell 2 | degraded | entry 2: `https://www.youtube.com/watch?v=e2gC37ILQmk` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 1 (unverified) |',
-      '| webcams/kyiv | Webcam grid cell 2 | degraded | entry 3: `https://www.youtube.com/watch?v=VGnFLdQW39A` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 1 (unverified) |',
+      '| webcams/kyiv | Webcam grid cell 2 | degraded | entry 2: `https://www.youtube.com/watch?v=e2gC37ILQmk` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 1 (unverified) | — |',
+      '| webcams/kyiv | Webcam grid cell 2 | degraded | entry 3: `https://www.youtube.com/watch?v=VGnFLdQW39A` | YouTube player error 150: the owner does not allow embedding, or the video is unavailable here | entry 1 (unverified) | — |',
     ]);
     assert.doesNotMatch(body, /### Could not verify from the runner/);
+  });
+
+  it('publishes region-locked and unchanged-playlist entries from a real check under "Could not verify from the runner" (#8545)', async () => {
+    const SKY_HLS = 'https://linear.sky.test/live/master.m3u8';
+    const catalog = { ...baseCatalog, news: { bloomberg: [SKY_HLS], 'bbc-news': [watch('bbcNewsLive')], rtve: [watch('KQp-e_XQnDE')] } };
+    const surfaces = {
+      webcamFeeds: Object.keys(catalog.webcams).map((id) => ({ id, region: 'europe' })),
+      gridCells: 4,
+      newsDefaults: { full: ['bloomberg'] },
+      newsOptional: ['bloomberg', 'bbc-news', 'rtve'],
+      newsGeoAvailability: { 'bbc-news': ['GB'] },
+    };
+    const liveVerdict = { verdict: { verdict: 'live', video: { videoId: 'gCNeDWCI0vo', isLive: true, title: 'Live', author: 'Channel' } } };
+    let report;
+    await runCheck(['--all', '--report', 'audit.json'], {
+      write: () => {},
+      catalog,
+      surfaces,
+      writeReport: (_path, json) => { report = JSON.parse(json); },
+      probeYouTube: async (candidates) => candidates.map((candidate) => (candidate.videoId === 'bbcNewsLive'
+        ? { verdict: { verdict: 'failed', outcome: { kind: 'player-error', code: 150 } } }
+        : liveVerdict)),
+      probeHls: async (candidates) => candidates.map(() => ({
+        verdict: { verdict: 'failed', outcome: { kind: 'hls-fatal', detail: 'media playlist did not advance in 12 s' } },
+        playlistUnchanged: true,
+      })),
+    });
+    const { calls, gh } = fakeGh([{ number: 5, title: ISSUE_TITLE }]);
+    assert.deepEqual(await publish(report, { gh, catalog }), { findings: 0, action: 'closed', issue: 5 }, 'neither is a finding');
+    const body = renderAuditBody(report, { canaries: '2 of 2 live' });
+    const section = body.indexOf('### Could not verify from the runner');
+    assert.ok(section > 0, body);
+    assert.match(body.slice(section), /^An HLS 403[^\n]*an HLS playlist that did not advance between reloads[^\n]*a region-locked channel refused outside its regions[^\n]*$/m);
+    assert.match(body.slice(section), /\| live-news\/bbc-news \| Live News optional \| `https:\/\/www\.youtube\.com\/watch\?v=bbcNewsLive` \| region-locked \(GB\): cannot be verified from the runner; YouTube player error 150: [^|]+ \|/);
+    assert.match(body.slice(section), /\| live-news\/bloomberg \| Live News default \(full\) \| `https:\/\/linear\.sky\.test\/live\/master\.m3u8` \| HLS playlist did not advance between reloads; a CDN edge may still be serving a cached copy: `media playlist did not advance in 12 s` \|/);
+    assert.match(calls.at(-2).payload.body, /2 slot\(s\) could not be verified from the runner/);
   });
 
   it('keeps a dead backup out of "Could not verify from the runner"', () => {
@@ -540,7 +642,7 @@ describe('live video audit issue', () => {
     const cellCount = (row) => row.slice(2, -2).split(/(?<!\\)\|/).length;
     const rowsFor = (slot) => body.split('\n').filter((line) => line.startsWith(`| ${slot} |`));
     assert.equal(rowsFor('webcams/kyiv').length, 2);
-    for (const row of [...rowsFor('webcams/kyiv'), ...rowsFor('live-news/rtve')]) assert.equal(cellCount(row), 6, row);
+    for (const row of [...rowsFor('webcams/kyiv'), ...rowsFor('live-news/rtve')]) assert.equal(cellCount(row), 7, row);
     assert.equal(rowsFor('live-news/bbc-news').length, 1);
     for (const row of rowsFor('live-news/bbc-news')) assert.equal(cellCount(row), 4, row);
     assert.match(body, /`@koala73 @github\/staff 'tick' \[x\]\(https:\/\/evil\.example\)/, 'the title stays readable inside its code span');
@@ -667,7 +769,7 @@ describe('live video source audit workflow', () => {
   it('checks every slot, then reports from the same file even when the check exits 1', () => {
     const [job, ...others] = Object.values(workflow.jobs);
     assert.deepEqual(others, []);
-    assert.equal(job['timeout-minutes'], 30);
+    assert.equal(job['timeout-minutes'], 34);
     const runs = job.steps.map((step) => step.run ?? '');
     const install = runs.indexOf('npm ci --ignore-scripts');
     const browser = runs.indexOf('npx playwright install --with-deps chromium');
@@ -718,10 +820,14 @@ describe('live video source audit workflow', () => {
     const install = timeoutOf((step) => step.run === 'npx playwright install --with-deps chromium');
     const check = timeoutOf((step) => /scripts\/check-live-video-sources\.mjs/.test(step.run ?? ''));
     const report = timeoutOf((step) => /scripts\/report-live-video-audit\.mjs/.test(step.run ?? ''));
-    // The batched check (7 pages of up to 8 players at up to about 31 s, HLS fetches capped at 15 s: about 4) plus
-    // every alone re-check (the budget), and the reporter (GitHub calls capped at 30 s, no browser: about 1).
-    const checking = 4 + ALONE_RECHECK_BUDGET_MS / 60_000;
+    // Channel resolution (no page starts after its budget; the last one takes at most twice the page timeout, once
+    // for the proxy tunnel and once for the response), the batched check (7 pages of up to 8 players at up to about
+    // 31 s, HLS fetches capped at 15 s: about 4) plus every alone re-check (the budget), and the reporter (GitHub
+    // calls capped at 30 s, no browser: about 1).
+    const resolving = (RESOLVE_BUDGET_MS + 2 * CHANNEL_PAGE_TIMEOUT_MS) / 60_000;
+    const checking = resolving + 4 + ALONE_RECHECK_BUDGET_MS / 60_000;
     assert.equal(ALONE_RECHECK_BUDGET_MS, 8 * 60_000);
+    assert.deepEqual([RESOLVE_BUDGET_MS, CHANNEL_PAGE_TIMEOUT_MS], [3 * 60_000, 15_000]);
     for (const [phase, timeout] of Object.entries({ install, check, report })) {
       assert.equal(typeof timeout, 'number', `${phase} runs without a step timeout, so it can eat the job budget`);
     }

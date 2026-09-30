@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Az Ön AI elemzője. Egy személyes hírszerzési asztal. Egy platform, amelyre fejleszthetsz. Egy kulcs az összes élő szolgáltatáson.",
+    "proDesc": "Az Ön AI elemzője. Egy személyes hírszerzési asztal. Egy platform, amelyre fejleszthetsz.",
     "proF1": "WM Analyst chat — élő szolgáltatások lekérdezése természetes nyelvon",
     "proF2": "AI digest — naponta, naponta kétszer vagy hetente — Slackre, Discordra, Telegramra, e-mailre vagy webhookra",
     "proF3": "Custom Widget Builder — HTML/CSS/JS AI-asszisztált módosítással",
@@ -482,7 +482,7 @@
       "plateNote": "Az élő térképről rögzítve — kattints a megnyitásához",
       "trustBuild": "Építs rá:",
       "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
-      "asOf": "2026. szeptember 8-i állapot szerint",
+      "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
       "whatIsBody": "A World Monitor egy ingyenes, nyílt forráskódú dashboard, amely geopolitikai, piac-, szállítás-, légiközlekedési, infrastrukturális és kibervédelmi jeleket stream-el egy élő világtérképre. Egymástól független adatforrásokat korrelál egyetlen operatív képpé, és a konvergenciákat a hírek előtt flaggeli – minden adat forrásos és minden módszer dokumentált."
     },
@@ -676,7 +676,7 @@
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. A szűk keresztmetszetek nyomon követésre kerülnek élő AIS hajóalakokkal, hét/hét fordulatváltás és zavar pontozásával — és a sűrűségi anomáliák mindegyik szoros alapvonalához képest jelzésre kerülnek.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",
-      "a5": "A konfliktus egyetlen térképréteg. A World Monitor összekapcsolja a konfliktusokat a tengerészeti szállítmányokkal, katonai repülésekkel, infrastruktúrával, piacokkal és kibernetikai tevékenységekkel — majd az AI kiértékeli az átfedéseket: instabilitási indexek, kritikus pontok kialakulása, megerősített hírriasztások és napi helyzetelemzések. Hasonlítsa össze a World Monitort más konfliktustérképekkel: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "A konfliktus csak egy térképréteg. A World Monitor összeolvasztja a konfliktusokat a hajózással, a katonai repülésekkel, az infrastruktúrával, a piacokkal és a kibernetikai működésekkel — majd az AI kiértékeli az összefolyást: instabilitási indexek, felkavarási foltok, megerősített breaking riportok és napi briefek. Hasonlítsa össze a World Monitort a Liveuamap-tal és más konfliktustérképekkel: worldmonitor.app/compare/liveuamap-alternatives. További monitorozási lehetőségekhez lásd a worldmonitor.app/compare/best-geopolitical-risk-dashboards oldalt.",
       "q6": "Miért bízzak egy riasztásban?",
       "a6": "Egy fontos szalagcím csak akkor jelenik meg, ha független forrásfajták megerősítik — hírosztályozás, kulcsszósebesség, kritikus pont eskalációja, katonai ugrások, hivatalos szirénák — deduplikálva és sebességkorláttal. Kevesebb riasztás, valódi riasztások.",
       "q7": "Használhatják azt AI-ügynökök, mint a Claude vagy a GPT?",

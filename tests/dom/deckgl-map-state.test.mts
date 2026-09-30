@@ -277,6 +277,29 @@ async function mapWith(state?: DeckMapState): Promise<{ map: DeckGLMap; fake: In
   return created;
 }
 
+describe('DeckGLMap Taiwan country clicks', () => {
+  it.each(['cii-choropleth-layer', 'resilience-choropleth-layer', 'happiness-choropleth-layer', null])(
+    'emits TW from legacy CN-TW in %s', async (layerId) => {
+      const { map } = await mapWith();
+      const openBrief = vi.fn();
+      map.setOnCountryClick(openBrief);
+      Reflect.set(map, 'hoveredCountryIso2', 'CN-TW');
+      Reflect.set(map, 'hoveredCountryName', 'Taiwan');
+
+      // Invoke the production picking handler; only the GPU picking result is synthetic.
+      Reflect.get(map, 'handleClick').call(map, {
+        coordinate: [121, 23.5],
+        layer: layerId ? { id: layerId } : null,
+        object: layerId ? { properties: { 'ISO3166-1-Alpha-2': 'CN-TW', name: 'Taiwan' } } : null,
+      });
+
+      expect(openBrief).toHaveBeenCalledExactlyOnceWith({
+        lat: 23.5, lon: 121, code: 'TW', name: 'Taiwan',
+      });
+    },
+  );
+});
+
 describe('DeckGLMap pendingCenter — eager center cache', () => {
   it('setView caches the preset centre and writes view and zoom synchronously', async () => {
     const { map, fake } = await mapWith();

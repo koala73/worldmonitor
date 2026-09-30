@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { LiveWebcamsPanel } from '@/components/LiveWebcamsPanel';
 import { setStreamQuality } from '@/services/ai-flow-settings';
 import { LIVE_VIDEO_TIMING } from '@/services/live-video/model';
+import { __resetResolvedLiveVideosForTests } from '@/services/live-video/resolved';
 
 import { createFakeYouTubeIframeApi, type FakeYouTubeIframeApi, type FakeYouTubePlayer } from './helpers/fake-youtube-iframe-api.mts';
 import { initTestI18n } from './helpers/i18n.mts';
@@ -13,6 +14,12 @@ const catalog = vi.hoisted(() => ({
   original: {} as Record<string, readonly string[]>,
 }));
 const analytics = vi.hoisted(() => ({ track: vi.fn() }));
+const resolvedFeed = vi.hoisted(() => ({ ensureHydrated: vi.fn<(key: string) => Promise<unknown>>() }));
+
+vi.mock('@/services/bootstrap', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/bootstrap')>()),
+  ensureHydrated: resolvedFeed.ensureHydrated,
+}));
 
 vi.mock('@/services/live-video/youtube-iframe-api', () => ({
   loadYouTubeIframeApi: () => Promise.resolve(loader.blocked ? null : loader.api?.namespace ?? null),
@@ -163,6 +170,9 @@ beforeEach(() => {
   loader.api = createFakeYouTubeIframeApi();
   loader.blocked = false;
   analytics.track.mockClear();
+  __resetResolvedLiveVideosForTests();
+  resolvedFeed.ensureHydrated.mockReset();
+  resolvedFeed.ensureHydrated.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -408,5 +418,91 @@ describe('Live Webcams live verification', () => {
     click('.webcam-region-btn[data-region="space"]');
     expect(content().querySelector('.webcam-placeholder')?.textContent).toBe('No live webcams in this region right now');
     expect(content().querySelectorAll('.webcam-preview-tile')).toHaveLength(0);
+  });
+});
+
+describe('Live Webcams resolved channel live videos (#8545)', () => {
+  const X = 'UCvdwhh_fDyWccR42-rReZLw';
+  const B = 'NEW1234567x';
+  const JERUSALEM = 'Jerusalem live webcam';
+
+  function resolvedMap(channels: Record<string, string>): unknown {
+    const resolvedAt = new Date(Date.now() - HOUR).toISOString();
+    return {
+      resolvedAt,
+      channels: Object.fromEntries(Object.entries(channels).map(([id, videoId]) => [id, { videoId, resolvedAt }])),
+      stats: { attempted: 1, live: 1 },
+    };
+  }
+
+  function jerusalemPlayers(): FakeYouTubePlayer[] {
+    return api().players.filter((player) => player.iframe.title === JERUSALEM);
+  }
+
+  function pendingMap(): (value: unknown) => void {
+    let settle: (value: unknown) => void = () => {};
+    resolvedFeed.ensureHydrated.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    return (value) => settle(value);
+  }
+
+  it('plays the resolved video ahead of a channel-only tile and says it is connecting meanwhile', async () => {
+    catalog.sources.jerusalem = [`https://www.youtube.com/channel/${X}`];
+    const settle = pendingMap();
+    mountOnScreen();
+    await playWall();
+
+    expect(jerusalemPlayers()).toHaveLength(0);
+    expect(cellById('jerusalem').querySelector('.webcam-cell-label')?.textContent).toBe('JERUSALEMConnecting…');
+
+    settle(resolvedMap({ [X]: B }));
+    await flush();
+    expect(jerusalemPlayers().map((player) => player.embeddedVideoId)).toEqual([B]);
+    expect(analytics.track).toHaveBeenCalledWith('live-video-resolved-applied', { slot: 'webcams/jerusalem', count: 1 });
+  });
+
+  it('opens one player, in the connected cell, when the wall re-renders while the map loads', async () => {
+    catalog.sources.jerusalem = [`https://www.youtube.com/channel/${X}`];
+    const settle = pendingMap();
+    mountOnScreen();
+    await playWall();
+    const detached = cellById('jerusalem');
+
+    internals().refresh();
+    const connected = cellById('jerusalem');
+    expect(connected).not.toBe(detached);
+    settle(resolvedMap({ [X]: B }));
+    await flush();
+
+    const players = jerusalemPlayers();
+    expect(players).toHaveLength(1);
+    expect(players[0]!.iframe.isConnected).toBe(true);
+    expect(detached.querySelector('iframe')).toBeNull();
+
+    // The live tile's session is the one the panel tracks: going live lights its dot.
+    players[0]!.goLive();
+    await flush(LIVE_VIDEO_TIMING.pollMs);
+    expect(hasLiveDot(JERUSALEM)).toBe(true);
+  });
+
+  it('opens no player when an idle stop lands while the map loads', async () => {
+    catalog.sources.jerusalem = [`https://www.youtube.com/channel/${X}`];
+    const settle = pendingMap();
+    mountOnScreen();
+    await playWall();
+
+    internals().stopForIdle(30 * 60_000);
+    settle(resolvedMap({ [X]: B }));
+    await flush(2_000);
+
+    expect(jerusalemPlayers()).toHaveLength(0);
+    expect(content().querySelector('iframe')).toBeNull();
+  });
+
+  it('never fetches the map for tiles without a channel entry, and mounts them at once', () => {
+    mountOnScreen();
+    click('.webcam-preview-play', content());
+
+    expect(content().querySelectorAll('.webcam-iframe')).toHaveLength(4);
+    expect(resolvedFeed.ensureHydrated).not.toHaveBeenCalled();
   });
 });

@@ -123,38 +123,27 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function getSourceTier(sourceName) {
         return sourceProvenance[sourceName]?.tier ?? 4;
       }
+      export function declaredSourceTier(sourceName) {
+        return sourceProvenance[sourceName]?.tier ?? null;
+      }
       export function getSourceType(sourceName) {
         return sourceProvenance[sourceName]?.type ?? 'unknown';
       }
+      export function computeCredibilityScore() { return 50; }
+      export function resolveTelegramSourceName(value) { return value; }
+      export function resolveRegisteredTelegramSourceName(value) { return value; }
       export function getSourceTierBadgeTitle(sourceType) {
         if (sourceType === 'wire') return 'Wire Service - Highest reliability';
         if (sourceType === 'gov') return 'Official Government Source';
         if (sourceType === 'unknown') return 'Source type not yet reviewed';
         return 'News source';
       }
-      export function describePropagandaBadge(profile, sourceType = 'unknown') {
-        if (profile.risk === 'unknown') {
-          return {
-            risk: 'unknown',
-            label: '? Unreviewed',
-            shortLabel: '?',
-            title: profile.note || 'Provenance not yet reviewed',
-          };
-        }
-        const title = profile.note
-          || (profile.stateAffiliated ? 'State-affiliated: ' + profile.stateAffiliated : 'Provenance not yet reviewed');
-        if (sourceType === 'gov') {
-          return { risk: profile.risk, label: 'Official Government Source', shortLabel: 'Gov', title };
-        }
-        if (profile.risk === 'low') return null;
-        if (profile.risk === 'high') {
-          return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
-        }
-        if (profile.risk === 'medium') {
-          return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
-        }
-        return { risk: 'unknown', label: '? Unreviewed', shortLabel: '?', title };
-      }
+      export {
+        PERSPECTIVE_LABEL_CAVEAT,
+        composeProvenanceSummary,
+        describePropagandaBadge,
+        getProvenanceFacts,
+      } from ${JSON.stringify(resolve(root, 'shared/source-provenance.ts'))};
     `],
     ['country-geometry-stub', `
       export function getCountryCentroid() {
@@ -194,7 +183,13 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function escapeHtml(value) { return value ?? ''; }
       export function safeHtmlToString(value) { return String(value ?? ''); }
     `],
-    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      export function renderBriefEvidenceFooter(items, options = {}) {
+        if (!items || !items.length) return '';
+        return '<details class="' + (options.className ?? '') + '">' + items.map((item) => item.id + ' ' + item.label).join('; ') + '</details>';
+      }
+    `],
     ['export-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       export function exportCountryEvidenceMarkdown(data) {
@@ -397,6 +392,7 @@ async function loadCountryDeepDivePanel(options = {}) {
       buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
         contents: stubModules.get(args.path),
         loader: 'js',
+        resolveDir: root,
       }));
     },
   };

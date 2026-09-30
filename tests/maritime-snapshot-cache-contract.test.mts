@@ -121,7 +121,9 @@ function maritimeStubs() {
 type Harness = {
   fetchSnapshotPayload(includeCandidates: boolean): Promise<{ sequence: number } | null>;
   pollSnapshot(force?: boolean): Promise<void>;
-  registerAisCallback(callback: (data: { mmsi: string }) => void): void;
+  registerAisCallback(callback: (data: { mmsi: string }) => void): Promise<void>;
+  initAisStream(): void;
+  getAisStatus(): { connected: boolean; vessels: number; messages: number };
   unregisterAisCallback(callback: (data: { mmsi: string }) => void): void;
   disconnectAisStream(): void;
 };
@@ -129,7 +131,7 @@ type Harness = {
 before(async () => {
   const result = await build({
     stdin: {
-      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, disconnectAisStream } from './src/services/maritime/index.ts';`,
+      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, initAisStream, getAisStatus, disconnectAisStream } from './src/services/maritime/index.ts';`,
       loader: 'ts',
       resolveDir: root,
       sourcefile: 'maritime-cache-runtime-entry.ts',
@@ -194,6 +196,50 @@ test('a density sequence does not suppress the first candidate snapshot', async 
 
   assert.deepEqual(runtime.__maritimeRequests, [false, true]);
   assert.deepEqual(delivered, ['123456789']);
+  harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+// #8634: the density layer starts polling before the military layer registers,
+// and polling used to fetch candidates only at the next 5-minute tick.
+test('the first callback fetches candidates immediately when polling already runs', async () => {
+  setup([response(7), response(8, true)]);
+  const harness = await loadHarness();
+  harness.initAisStream();
+  await settleBackgroundWork();
+  assert.deepEqual(runtime.__maritimeRequests, [false]);
+
+  const delivered: string[] = [];
+  const callback = (data: { mmsi: string }) => delivered.push(data.mmsi);
+  await harness.registerAisCallback(callback);
+
+  assert.deepEqual(runtime.__maritimeRequests, [false, true]);
+  assert.deepEqual(delivered, ['123456789'], 'registration resolves after the first candidates are delivered');
+
+  const secondCallback = () => {};
+  await harness.registerAisCallback(secondCallback);
+  assert.deepEqual(runtime.__maritimeRequests, [false, true], 'later callbacks share the running candidate poll');
+  harness.unregisterAisCallback(secondCallback);
+  harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+test('a density poll that finishes after a newer candidate poll does not overwrite shared status', async () => {
+  let releaseDensity!: (value: SnapshotResponse) => void;
+  const pendingDensity = new Promise<SnapshotResponse>((resolveResponse) => { releaseDensity = resolveResponse; });
+  setup([pendingDensity, response(9, true)]);
+  const harness = await loadHarness();
+  harness.initAisStream();
+  await settleBackgroundWork();
+
+  const callback = () => {};
+  await harness.registerAisCallback(callback);
+  assert.equal(harness.getAisStatus().messages, 9);
+
+  releaseDensity(response(7));
+  await settleBackgroundWork();
+
+  assert.equal(harness.getAisStatus().messages, 9, 'the older density response must not replace newer status');
   harness.unregisterAisCallback(callback);
   harness.disconnectAisStream();
 });

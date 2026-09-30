@@ -66,22 +66,9 @@ const RENDER = `
       if (cn) head.appendChild(el("span", "story-country", cn));
       row.appendChild(head);
       var src = collapseWs(s.primarySource);
-      var provenance = s.sourceProvenance && typeof s.sourceProvenance === "object"
-        ? s.sourceProvenance : null;
-      var provenanceLabel = "";
-      if (provenance) {
-        if (provenance.riskReviewed === false || provenance.risk === "unknown") {
-          provenanceLabel = "? Unreviewed";
-        } else if (provenance.type === "gov") {
-          provenanceLabel = "Official government source"
-            + (collapseWs(provenance.stateAffiliated) ? ": " + collapseWs(provenance.stateAffiliated) : "");
-        } else if (collapseWs(provenance.stateAffiliated)) {
-          provenanceLabel = "State-affiliated: " + collapseWs(provenance.stateAffiliated);
-        } else if (provenance.type === "wire") {
-          provenanceLabel = "Wire service";
-        }
-      }
-      if (src) row.appendChild(el("div", "story-src", src + (provenanceLabel ? " • " + provenanceLabel : "")));
+      var provenanceSummary = s.sourceProvenance && typeof s.sourceProvenance === "object"
+        ? collapseWs(s.sourceProvenance.summary) : "";
+      if (src) row.appendChild(el("div", "story-src", src + (provenanceSummary ? " • " + provenanceSummary : "")));
       host.appendChild(row);
     }
     if (!host.childNodes.length) {

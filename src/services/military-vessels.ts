@@ -26,9 +26,13 @@ const MAX_MILITARY_VESSELS = 500;
 
 type VesselSnapshot = { vessels: MilitaryVessel[]; clusters: MilitaryVesselCluster[] };
 
-// Carriers first, then dark/unusual vessels, then recency. IDs make ties stable.
+// Carriers first, then hull-numbered ships (USNI roster and known naval
+// vessels), then dark/unusual vessels, then recency. Without the hull rank,
+// fresher AIS tugs and pilot boats displace roster warships dated to the last
+// USNI report. IDs make ties stable.
 function compareVesselPriority(a: MilitaryVessel, b: MilitaryVessel): number {
   return Number(b.vesselType === 'carrier') - Number(a.vesselType === 'carrier')
+    || Number(Boolean(b.hullNumber)) - Number(Boolean(a.hullNumber))
     || Number(Boolean(b.isDark || b.isInteresting)) - Number(Boolean(a.isDark || a.isInteresting))
     || (b.lastAisUpdate.getTime() || 0) - (a.lastAisUpdate.getTime() || 0)
     || a.id.localeCompare(b.id);
@@ -53,8 +57,21 @@ function limitVesselSnapshot(data: VesselSnapshot): VesselSnapshot {
   return { vessels, clusters };
 }
 
+// Snapshots persist for up to 24 h, so a returning user would keep seeing the
+// pre-#8611 'destroyer' claim long after the fix shipped. That claim is
+// identifiable: every destroyer this app can legitimately name comes from
+// KNOWN_NAVAL_VESSELS or the USNI merge, and both always carry a hull number,
+// while the old getVesselTypeFromAis(35) path never set one.
+function isStaleAisMilitaryOpsClaim(v: MilitaryVessel): boolean {
+  return v.vesselType === 'destroyer' && !v.hullNumber && v.aisShipType === 'Military Ops';
+}
+
 // Tracking state
 let isTracking = false;
+// Settles when the first AIS candidate snapshot has been processed (#8634).
+let firstCandidates: Promise<void> | null = null;
+// A slow relay must not hold back the USNI roster or the flights loaded beside it.
+const FIRST_CANDIDATES_WAIT_MS = 8_000;
 let messageCount = 0;
 let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -69,6 +86,7 @@ const breaker = createCircuitBreaker<VesselSnapshot>({
     ...data,
     vessels: data.vessels.map((v: MilitaryVessel) => ({
       ...v,
+      vesselType: isStaleAisMilitaryOpsClaim(v) ? 'unknown' : v.vesselType,
       lastAisUpdate: v.lastAisUpdate instanceof Date ? v.lastAisUpdate : new Date(v.lastAisUpdate as unknown as string),
     })),
   }),
@@ -320,7 +338,11 @@ function getVesselTypeFromAis(shipType: number): MilitaryVesselType | undefined 
   // 50-59 = Special craft
   // 55 = Law enforcement
 
-  if (shipType === 35) return 'destroyer'; // Generic military
+  // 35 reports generic military ACTIVITY, not a hull class (#8611). Returning a
+  // class here labelled every unidentified ship a destroyer. 'unknown' still
+  // counts as a military signal for the tracking gate in processAisPosition,
+  // and aisShipType carries the supported 'Military Ops' fact to the UI.
+  if (shipType === 35) return 'unknown';
   if (shipType === 55) return 'patrol'; // Law enforcement/coast guard
   if (shipType >= 50 && shipType <= 59) return 'special';
 
@@ -564,7 +586,7 @@ export function initMilitaryVesselStream(): void {
   breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
-  registerAisCallback(processAisPosition);
+  firstCandidates = registerAisCallback(processAisPosition);
   isTracking = true;
 
   // Ensure AIS stream is running
@@ -581,6 +603,7 @@ export function disconnectMilitaryVesselStream(): void {
 
   unregisterAisCallback(processAisPosition);
   isTracking = false;
+  firstCandidates = null;
 }
 
 /**
@@ -594,6 +617,18 @@ export function getMilitaryVesselStatus(): { connected: boolean; vessels: number
   };
 }
 
+async function awaitFirstCandidates(): Promise<void> {
+  const pending = firstCandidates;
+  if (!pending) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    pending.catch(() => {}),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, FIRST_CANDIDATES_WAIT_MS); }),
+  ]);
+  clearTimeout(timer);
+  if (firstCandidates === pending) firstCandidates = null;
+}
+
 /**
  * Main function to get military vessels
  */
@@ -604,6 +639,10 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
     if (!isTracking && isAisConfigured()) {
       initMilitaryVesselStream();
     }
+    // Start the roster fetch before the candidate wait so the two overlap.
+    const usniPending = fetchUSNIFleetReport();
+    usniPending.catch(() => {}); // Rejection is handled by the merge below.
+    await awaitFirstCandidates();
 
     // Clean up old data and take the current tracking snapshot. The breaker
     // owns the single 30-second refresh cadence for this payload.
@@ -615,7 +654,7 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
 
     // Merge with USNI Fleet Tracker data (non-blocking)
     try {
-      const usniReport = await fetchUSNIFleetReport();
+      const usniReport = await usniPending;
       if (usniReport && usniReport.vessels.length > 0) {
         const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
         return limitVesselSnapshot(merged);

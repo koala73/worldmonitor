@@ -1222,10 +1222,18 @@
       "skipToEnd": "अंत पर जाएं"
     },
     "pizzint": {
+      "indexSource": "सूचकांक: World Monitor · स्थल डेटा:",
+      "statusNormal": "सामान्य",
+      "statusNoData": "डेटा नहीं",
+      "statusNoBaseline": "आधार नहीं",
+      "vsUsual": "सामान्य की तुलना में",
       "title": "पेंटागन पिज़्ज़ा इंडेक्स",
       "defcon": "डिफकॉन {{level}}",
       "updated": "{{timeAgo}} पहले अपडेट हुआ",
       "tensionsTitle": "भू-राजनीतिक तनाव",
+      "tensionsSource": "तनाव: GDELT घटनाओं पर आधारित World Monitor",
+      "insufficientData": "अपर्याप्त डेटा",
+      "pizzaUnavailable": "पिज़्ज़ा दुकानों की गतिविधि उपलब्ध नहीं है",
       "source": "स्रोत:",
       "statusClosed": "बंद",
       "statusSpike": "स्पाइक",
@@ -1237,11 +1245,11 @@
       "minutesAgo": "{{m}} मिनट पहले",
       "hoursAgo": "{{h}} घंटे पहले",
       "defconLabels": {
-        "1": "COCKED PISTOL - अधिकतम तत्परता",
-        "2": "FAST PACE - सेना तैयार",
-        "3": "ROUND HOUSE - बल तत्परता बढ़ाना",
-        "4": "DOUBLE TAKE - बढ़ी हुई खुफिया सतर्कता",
-        "5": "FADE OUT - न्यूनतम तत्परता"
+        "1": "अधिकतम गतिविधि",
+        "2": "उच्च गतिविधि",
+        "3": "बढ़ी हुई गतिविधि",
+        "4": "सामान्य से ऊपर",
+        "5": "सामान्य गतिविधि"
       }
     },
     "strategicPosture": {
@@ -2907,6 +2915,27 @@
       "idleKeepPlaying": "निष्क्रियता में चलाते रहें",
       "idleSettingsHint": "सेटिंग्स › मीडिया में कभी भी यह बदलें।",
       "idleKeepPlayingToast": "लाइव वीडियो निष्क्रियता के दौरान भी चलता रहेगा। इसे सेटिंग्स › मीडिया में कभी भी बदलें।"
+    },
+    "corroboration": {
+      "singlePublisher": "एक प्रकाशक",
+      "singlePublisherHint": "अभी केवल एक प्रकाशक इसकी रिपोर्टिंग कर रहा है। यह कवरेज का वर्णन करता है, सटीकता का नहीं।",
+      "tier4Only": "निम्न-स्तर के स्रोत ही",
+      "tier4OnlyHint": "इसकी रिपोर्टिंग करने वाला हर आउटलेट एक tier-4 स्रोत है (एकत्रकर्ता और ब्लॉग)। यह कवरेज का वर्णन करता है, सटीकता का नहीं।",
+      "rosterListed": "({{listed}} सूचीबद्ध)",
+      "rosterFeeds": "देखे गए फीड: {{labels}}",
+      "rosterLegend": "स्तर स्रोतों को श्रेणीबद्ध करते हैं; वे इस दावे का निर्णय नहीं करते।",
+      "tierDocsLink": "स्तर कैसे निर्धारित किए जाते हैं",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "स्तर 1: तार सेवाएं और आधिकारिक निकाय",
+      "tierTitle2": "स्तर 2: प्रमुख आउटलेट",
+      "tierTitle3": "स्तर 3: विशेषज्ञ, क्षेत्रीय और थिंक-टैंक स्रोत",
+      "tierTitle4": "स्तर 4: एकीकारक और ब्लॉग",
+      "tierTitleUndeclared": "स्तर घोषित नहीं: अभी तक की समीक्षा नहीं की गई",
+      "rosterSummary": "{{publishers}} द्वारा रिपोर्ट किया गया",
+      "rosterSummaryTier1": "{{publishers}} द्वारा रिपोर्ट किया गया, जिनमें {{tier1}} स्तर-1 शामिल हैं",
+      "rosterPublishers_one": "{{count}} प्रकाशक",
+      "rosterPublishers_other": "{{count}} प्रकाशक"
     }
   },
   "popups": {
@@ -2945,6 +2974,10 @@
     "protest": {
       "acledVerified": "ACLED (पुष्टि किया गया)",
       "gdelt": "GDELT",
+      "records": "रिकॉर्ड",
+      "mediaSignal": "अपुष्ट मीडिया संकेत",
+      "relatedArticle": "संबंधित लेख",
+      "mediaSignalDetail": "अशांति से जुड़े लेखों में इस स्थान का उल्लेख है। स्थानीय घटना की पुष्टि नहीं हुई है।",
       "riots": "दंगे",
       "highSeverity": "उच्च गंभीरता"
     },

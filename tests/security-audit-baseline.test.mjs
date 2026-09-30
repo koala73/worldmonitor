@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
@@ -497,37 +498,21 @@ describe('security audit baseline', () => {
     assert.notEqual(viteEsbuild.version, rootEsbuild.version);
   });
 
-  it('flags a baseline entry that no longer matches any current advisory', () => {
-    // Every advisory currently baselined for pro-test must be present in the
-    // report for the no-stale case — image-size carries two.
-    const withAllBaselined = {
-      vulnerabilities: {
-        'image-size': {
-          name: 'image-size',
-          severity: 'high',
-          via: [
-            {
-              name: 'image-size',
-              severity: 'high',
-              title: 'image-size JXL/HEIF DoS',
-              url: 'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
-            },
-            {
-              name: 'image-size',
-              severity: 'high',
-              title: 'image-size ICNS DoS',
-              url: 'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
-            },
-          ],
-        },
-      },
-    };
+  it('flags a baseline entry that no longer matches any current advisory', (t) => {
+    const lockfile = 'stale-baseline-fixture/package-lock.json';
+    BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] = [
+      { id: OLD_ADVISORY, expiresAt: '2026-11-05', reason: 'Test fixture' },
+    ];
+    t.after(() => { delete BASELINE_ADVISORIES_BY_LOCKFILE[lockfile]; });
+    const present = auditReportWith({
+      name: 'some-package',
+      severity: 'high',
+      title: 'Test advisory',
+      url: `https://github.com/advisories/${OLD_ADVISORY}`,
+    });
 
-    assert.deepEqual(collectStaleBaselineEntries(withAllBaselined, 'pro-test/package-lock.json'), []);
-    assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'pro-test/package-lock.json'), [
-      'GHSA-5p2g-fcmc-qvqq',
-      'GHSA-w3rx-r6r6-pgpr',
-    ]);
+    assert.deepEqual(collectStaleBaselineEntries(present, lockfile), []);
+    assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, lockfile), [OLD_ADVISORY]);
     assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'scripts/package-lock.json'), []);
   });
 
@@ -620,4 +605,51 @@ describe('npm audit failure reporting', () => {
       assert.equal(isUpstreamAuditOutage(report), false, JSON.stringify(report));
     }
   });
+});
+
+
+describe('Dependabot image-size and fast-uri remediation', () => {
+  for (const lockPath of ['package-lock.json', 'pro-test/package-lock.json']) {
+    it(`excludes vulnerable image-size copies from ${lockPath}`, () => {
+      assert.deepEqual(baselineEntriesFor(lockPath), []);
+      const entries = Object.entries(readRepoJson(lockPath).packages)
+        .filter(([path]) => path.endsWith('/image-size'));
+      assert.deepEqual(entries, [], 'Metro must use its upstream image parser');
+    });
+  }
+
+  it('removes the legacy filename-based texture compressor', () => {
+    const paths = Object.keys(readRepoJson('package-lock.json').packages);
+    assert.equal(paths.some((path) => path.endsWith('/texture-compressor')), false);
+  });
+
+  it('excludes vulnerable fast-uri copies from the Umami runtime lockfile', () => {
+    const lock = readFileSync(new URL('../docker/umami/runtime/pnpm-lock.yaml', import.meta.url), 'utf8');
+    const versions = [...lock.matchAll(/^  fast-uri@([^:]+):/gm)].map((match) => match[1]);
+    assert.ok(versions.length > 0, 'the Ajv consumer must remain covered');
+    for (const version of versions) {
+      assert.ok(atLeast(version, '3.1.7'), `Umami fast-uri@${version} is vulnerable`);
+    }
+  });
+});
+
+
+it('Metro reads ordinary and zip-mounted image asset files', async (t) => {
+  const require = createRequire(new URL('../package.json', import.meta.url));
+  const { getAssetData, getAssetSize } = require('metro/private/Assets');
+  const directory = mkdtempSync(join(tmpdir(), 'metro-assets-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489', 'hex');
+  assert.deepEqual(getAssetSize('png', png, 'pixel.png'), { width: 1, height: 1 });
+
+  for (const folder of ['ordinary', 'assets.zip']) {
+    const assetDirectory = join(directory, folder);
+    mkdirSync(assetDirectory);
+    const file = join(assetDirectory, 'pixel.png');
+    writeFileSync(file, png);
+    const asset = await getAssetData(file, 'pixel.png', [], null, '/assets');
+    assert.equal(asset.width, 1);
+    assert.equal(asset.height, 1);
+    assert.deepEqual(asset.files, [file]);
+  }
 });

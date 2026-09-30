@@ -142,7 +142,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Твій AI-аналітик. Особистий аналітичний стіл. Платформа, на якій можна розробляти. Один ключ для всіх живих сервісів.",
+    "proDesc": "Твій AI-аналітик. Особистий аналітичний стіл. Платформа, на якій можна розробляти.",
     "proF1": "WM Analyst chat — запитуй живі сервіси розмовною мовою",
     "proF2": "AI digest — daily, twice-daily, or weekly — to Slack, Discord, Telegram, Email, or webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS with AI-assisted modification",
@@ -482,7 +482,7 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir",
-      "asOf": "Станом на 8 вересня 2026",
+      "asOf": "Станом на {{date}}",
       "whatIsTitle": "Що таке World Monitor?",
       "whatIsBody": "World Monitor — це безплатна, відкрита панель управління, яка передає сигнали геополітики, ринків, судноплавства, авіації, інфраструктури та кіберпростору на єдину живу карту світу. Вона корелює окремі потоки в єдину операційну картину й виявляє конвергенцію до новинних заголовків, з усіма цифрами, підтвердженими джерелами, та кожним методом, задокументованим."
     },
@@ -676,7 +676,7 @@
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Так. Вузькі місця відслідковуються з живими AIS-підрахунками суден, змінами транзиту тиждень від тижня та оцінюванням збоїв — а аномалії щільності позначаються порівняно з базовою лінією проливу.",
       "q5": "How is this different from a conflict map like Liveuamap?",
-      "a5": "Конфлікт — це один шар карти. World Monitor об'єднує конфлікти з морським транспортом, військовими польотами, інфраструктурою, ринками та кібербезпекою — потім AI оцінює збіги: індекси нестабільності, швидкість ескалації гарячих точок, підтверджені повідомлення про екстрені новини та щоденні брифінги. Порівняйте World Monitor з Liveuamap та іншими картами конфліктів: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Конфлікт — це один шар карти. World Monitor об'єднує конфлікти з судноплавством, військовими польотами, інфраструктурою, ринками та кіберпростором — потім ШІ оцінює їхнє перетинання: індекси нестабільності, ескалацію гарячих точок, підтверджені екстрені сповіщення та щоденні брифінги. Порівняйте World Monitor з Liveuamap та іншими картами конфліктів: worldmonitor.app/compare/liveuamap-alternatives. Щоб дізнатися про ширші можливості моніторингу, перейдіть на worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Why should I trust an alert?",
       "a6": "A breaking banner fires only when independent origin types corroborate — news classification, keyword velocity, hotspot escalation, military surges, official sirens — deduplicated and rate-limited. Fewer alerts, real ones.",
       "q7": "Can AI agents like Claude or GPT use it?",

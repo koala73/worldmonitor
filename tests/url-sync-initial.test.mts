@@ -64,4 +64,13 @@ describe('setupUrlStateSync consults the predicate', () => {
       'the predicate must not be re-inlined beside the import',
     );
   });
+
+  it('writes the synced URL with the current fragment kept', () => {
+    const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
+    assert.match(
+      source,
+      /history\.replaceState\(history\.state, '', withUrlFragment\(shareUrl, window\.location\.hash\)\)/,
+      'dropping the fragment sends the resumed sign-up card off #/verify-email-address (#8577)',
+    );
+  });
 });

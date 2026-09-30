@@ -1078,10 +1078,18 @@
       "skipToEnd": "Tới cuối"
     },
     "pizzint": {
+      "indexSource": "Chỉ số: World Monitor · dữ liệu địa điểm:",
+      "statusNormal": "BÌNH THƯỜNG",
+      "statusNoData": "KHÔNG CÓ DỮ LIỆU",
+      "statusNoBaseline": "KHÔNG CÓ MỐC CHUẨN",
+      "vsUsual": "so với thường lệ",
       "title": "Chỉ số Pizza Lầu Năm Góc",
       "defcon": "DEFCON {{level}}",
       "updated": "Cập nhật {{timeAgo}}",
       "tensionsTitle": "Căng thẳng Địa chính trị",
+      "tensionsSource": "Căng thẳng: World Monitor tính từ các sự kiện GDELT",
+      "insufficientData": "Không đủ dữ liệu",
+      "pizzaUnavailable": "Không có dữ liệu hoạt động của các tiệm pizza",
       "source": "Nguồn:",
       "statusClosed": "ĐÓNG CỬA",
       "statusSpike": "ĐỘT BIẾN",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}ph trước",
       "hoursAgo": "{{h}}g trước",
       "defconLabels": {
-        "1": "COCKED PISTOL - SẴN SÀNG TỐI ĐA",
-        "2": "FAST PACE - LỰC LƯỢNG VŨ TRANG SẴN SÀNG",
-        "3": "ROUND HOUSE - TĂNG MỨC SẴN SÀNG",
-        "4": "DOUBLE TAKE - TĂNG CƯỜNG GIÁM SÁT TÌNH BÁO",
-        "5": "FADE OUT - MỨC SẴN SÀNG THẤP NHẤT"
+        "1": "Hoạt động tối đa",
+        "2": "Hoạt động cao",
+        "3": "Hoạt động gia tăng",
+        "4": "Trên bình thường",
+        "5": "Hoạt động bình thường"
       }
     },
     "strategicPosture": {
@@ -2819,6 +2827,26 @@
       "idleKeepPlaying": "Tiếp tục phát khi không hoạt động",
       "idleSettingsHint": "Thay đổi bất kỳ lúc nào trong Cài đặt › Media.",
       "idleKeepPlayingToast": "Video trực tiếp sẽ tiếp tục phát khi không hoạt động. Thay đổi trong Cài đặt › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Một nhà xuất bản duy nhất",
+      "singlePublisherHint": "Hiện tại chỉ có một nhà xuất bản đưa tin về điều này. Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "tier4Only": "Chỉ các nguồn cấp thấp",
+      "tier4OnlyHint": "Mọi cơ quan báo chí đưa tin về điều này đều là nguồn cấp 4 (các trang tổng hợp tin tức và blog). Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "rosterListed": "({{listed}} được liệt kê)",
+      "rosterFeeds": "Kênh tin đã thấy: {{labels}}",
+      "rosterLegend": "Các cấp xếp hạng nguồn; chúng không đánh giá tuyên bố này.",
+      "tierDocsLink": "Cách phân cấp",
+      "tierChip": "C{{tier}}",
+      "tierChipUndeclared": "C?",
+      "tierTitle1": "Cấp 1: Hãng thông tấn và cơ quan chính thức",
+      "tierTitle2": "Cấp 2: Các cơ quan báo chí lớn",
+      "tierTitle3": "Cấp 3: Nguồn chuyên ngành, khu vực và viện nghiên cứu chính sách",
+      "tierTitle4": "Cấp 4: Trang tổng hợp tin tức và blog",
+      "tierTitleUndeclared": "Chưa khai báo cấp: chưa được xem xét",
+      "rosterSummary": "Được đưa tin bởi {{publishers}}",
+      "rosterSummaryTier1": "Được đưa tin bởi {{publishers}}, trong đó {{tier1}} thuộc cấp 1",
+      "rosterPublishers_other": "{{count}} nhà xuất bản"
     }
   },
   "popups": {
@@ -2857,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED (đã xác minh)",
       "gdelt": "GDELT",
+      "records": "bản ghi",
+      "mediaSignal": "Tín hiệu truyền thông chưa xác minh",
+      "relatedArticle": "Bài viết liên quan",
+      "mediaSignalDetail": "Địa điểm này được nhắc đến trong các bài viết về bất ổn. Sự kiện tại địa phương chưa được xác minh.",
       "riots": "Bạo loạn",
       "highSeverity": "Mức nghiêm trọng Cao"
     },

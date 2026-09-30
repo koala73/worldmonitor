@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
+
+test('dashboard entry opens the actual feed panels with empty arguments', () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard');
+  assert.ok(tool, 'news dashboard entry must exist separately from the intelligence summary');
+  assert.deepEqual(tool.inputSchema.required, []);
+  const publicTool = buildPublicTool(tool, { compressDescriptions: false });
+  assert.equal(publicTool._meta?.ui?.resourceUri, 'ui://worldmonitor/news-dashboard.html');
+  assert.deepEqual(publicTool._meta?.['openai/ui']?.entrypoints, [{type: 'global'}, {type: 'thread'}]);
+});
+
+import { afterEach } from 'node:test';
+import { readNewsDashboard } from '../api/mcp/ui/news-dashboard-app.ts';
+const realFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = realFetch; });
+
+test('dashboard resource serves only the fixed build origin and never forwards credentials', async () => {
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), 'https://www.worldmonitor.app/plugin/plugin.html');
+    assert.equal(init?.redirect, 'error');
+    assert.equal(new Headers(init?.headers).get('Authorization'), null);
+    return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main></body></html>', { headers: { 'Content-Type': 'text/html' } });
+  };
+  const body = await (await readNewsDashboard(1, {})).json();
+  assert.match(body.result.contents[0].text, /<base href="https:\/\/www.worldmonitor.app\/">/);
+  assert.deepEqual(body.result.contents[0]._meta.ui.csp.frameDomains, []);
+});
+
+test('missing or oversized plugin documents fail explicitly instead of returning a website error page', async () => {
+  for (const html of ['<html>Sign in</html>', '<head><main id="pluginRoot">' + 'x'.repeat(131073)]) {
+    globalThis.fetch = async () => new Response(html, { headers: { 'Content-Type': 'text/html' } });
+    const body = await (await readNewsDashboard(1, {})).json();
+    assert.equal(body.error.code, -32603);
+    assert.equal(body.result, undefined);
+  }
+});
+
+test('dashboard data uses the existing authenticated endpoint and does not claim the view was applied', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard')!;
+  assert.ok(tool._execute);
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), 'https://www.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en');
+    assert.equal(new Headers(init?.headers).get('X-WorldMonitor-Key'), 'fixture-key');
+    return Response.json({ categories: {}, feedStatuses: {}, generatedAt: 'fixture' });
+  };
+  const result = await tool._execute({ query: 'shipping', jmespath: 'categories' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined) as Record<string, unknown>;
+  assert.deepEqual(result.requestedView, { query: 'shipping' });
+  assert.equal(result.applied, undefined);
+});
+
+test('billing denials from the news endpoint propagate instead of becoming empty success', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard')!;
+  assert.ok(tool._execute);
+  globalThis.fetch = async () => Response.json({ error: 'subscription_lapsed' }, { status: 403 });
+  await assert.rejects(tool._execute({}, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined));
+});
+
+test('invalid map-center intent fails validation before any downstream request', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard')!;
+  assert.ok(tool._execute);
+  globalThis.fetch = async () => { throw new Error('Must not fetch'); };
+  await assert.rejects(tool._execute({ map_latitude: 30 }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
+});

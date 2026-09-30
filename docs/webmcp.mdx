@@ -1,6 +1,9 @@
 ---
 title: "WebMCP: browser tools for WorldMonitor"
-description: "Use WorldMonitor's experimental site tools in the ChatGPT desktop built-in browser or Chrome, inspect their schemas, and verify their visible UI and security contracts."
+description: >-
+  Use WorldMonitor's experimental site tools in the ChatGPT desktop built-in
+  browser or Chrome, inspect their schemas, and verify their visible UI and
+  security contracts.
 ---
 
 WebMCP lets a browser agent discover and invoke tools exposed by the WorldMonitor page that is open in the current tab. Those tools operate the existing homepage or dashboard UI; they are not a separate data API.
@@ -129,7 +132,7 @@ Every dashboard variant registers the same thirty-three imperative tools. Regist
 | `open_settings` | Empty object; no additional properties. | Opens the settings overlay on the Settings tab without changing settings contents. |
 | `open_alerts` | Empty object; no additional properties. | Opens the alerts overlay on the notifications tab without changing alert contents. Unavailable in the desktop app. |
 | `open_dashboard_panel` | Required string `panelId`, 1–96 characters, pattern `^[A-Za-z0-9][A-Za-z0-9@_-]*$`. Optional `tab` for `panelId=commodities`: `commodities`, `physical`, `fx`, or `xau`. No additional properties. | Opens and scrolls to an available, currently enabled panel through the entitlement-aware UI path. For Commodities, the optional tab selects the same visible subtab a person uses and returns the effective tab. Disabled panels return `panel_disabled`; use `set_panel_enabled` to change whether a catalog panel is enabled. This tool does not enable panels itself. |
-| `set_panel_enabled` | Required string `panelId`, 1–96 characters, pattern `^[a-z0-9][a-z0-9@_-]*$`; required boolean `enabled`; no additional properties. | Enables or disables a catalog panel through the same settings persist/apply path a person uses. Returns requested and effective state plus whether anything changed. Enabling an unknown, incompatible, unentitled, or free-tier-capped panel is denied. Requires target-side cancellation. |
+| `set_panel_enabled` | Required string `panelId`, 1–96 characters, pattern `^[a-zA-Z0-9][a-zA-Z0-9@_-]*$`; required boolean `enabled`; no additional properties. | Enables or disables a catalog panel through the same settings persist/apply path a person uses. Returns requested and effective state plus whether anything changed. Enabling an unknown, incompatible, unentitled, or free-tier-capped panel is denied. Requires target-side cancellation. |
 | `get_panel_layout` | Optional string `cursor` matching a previous `nextCursor` panel ID; no additional properties. | Read-only effective layout: stable panel IDs, named regions (`sidebar` / `bottom`), order index, collapsed and fullscreen state, and region availability. When `panelsTruncated` is true, pass `nextCursor` to continue. |
 | `set_panel_collapsed` | Required string `panelId`, 1–96 characters, pattern `^[A-Za-z0-9][A-Za-z0-9@_-]*$`; required boolean `collapsed`; no additional properties. | Collapses or expands a mounted panel through the visible collapse control and persistence path. Idempotent when unchanged. Unsupported panels return `collapse_unsupported`. Requires target-side cancellation. |
 | `move_panel` | Required string `panelId`; required string `region` enum `sidebar` or `bottom`; required integer `index` ≥ 0; no additional properties. | Moves a mounted panel to a named region and 0-based index through the same persistence path as keyboard reorder. No pointer coordinates. Bottom moves are denied when that region is inactive. Requires target-side cancellation. |

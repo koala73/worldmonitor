@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import schema from "../schema";
@@ -26,17 +26,17 @@ const relay = (t: ReturnType<typeof convexTest>) => t.fetch("/relay/create-check
   body: JSON.stringify({ userId: buyer.subject, productId, bypassPendingGuard: true }),
 });
 
-test("direct and relayed calls share an account budget, including pending-guard bypass", async () => {
+test("action and relayed calls share an account budget, including pending-guard bypass", async () => {
   const t = convexTest(schema, modules);
   for (let i = 0; i < 5; i++) {
     if (i % 2) expect((await relay(t)).status).toBe(200);
-    else await expect(t.withIdentity(buyer).action(api.payments.checkout.createCheckout, { productId })).resolves.toEqual(success);
+    else await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId })).resolves.toEqual(success);
   }
   const denied = await relay(t);
   expect(denied.status).toBe(429);
   expect(Number(denied.headers.get("Retry-After"))).toBeGreaterThan(0);
   expect(await denied.json()).toMatchObject({ error: "CHECKOUT_RATE_LIMITED" });
-  await expect(t.withIdentity(buyer).action(api.payments.checkout.createCheckout, { productId, bypassPendingGuard: true })).rejects.toThrow("CHECKOUT_RATE_LIMITED");
+  await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId, bypassPendingGuard: true })).resolves.toMatchObject({ code: "CHECKOUT_RATE_LIMITED" });
   expect(createDodoCheckoutSession).toHaveBeenCalledTimes(5);
   await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: "other_account", productId })).resolves.toEqual(success);
   expect(createDodoCheckoutSession).toHaveBeenCalledTimes(6);
@@ -70,7 +70,7 @@ test("failed admission storage cannot authorize provider work", async () => {
   await t.run(async (ctx) => {
     for (let i = 0; i < 2; i++) await ctx.db.insert("checkoutAdmissions", { userId: buyer.subject, windowStart: Date.now(), count: 0 });
   });
-  await expect(t.withIdentity(buyer).action(api.payments.checkout.createCheckout, { productId })).rejects.toThrow();
+  await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId })).rejects.toThrow();
   expect((await relay(t)).status).toBe(500);
   expect(createDodoCheckoutSession).not.toHaveBeenCalled();
   expect(await t.run((ctx) => ctx.db.query("users").collect())).toEqual([]);

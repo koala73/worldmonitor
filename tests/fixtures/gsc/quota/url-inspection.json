@@ -1,0 +1,27 @@
+{
+  "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Duplicate, Google chose different canonical than user",
+        "googleCanonical": "https://www.worldmonitor.app/compare/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/countries/france/": {
+    "error": {
+      "code": 429,
+      "message": "Quota exceeded for quota metric inspections",
+      "status": "RESOURCE_EXHAUSTED"
+    }
+  }
+}

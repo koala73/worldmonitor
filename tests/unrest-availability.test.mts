@@ -15,6 +15,7 @@ test('unrest client retains last-good on unavailable seed and accepts confirmed 
   process.env.UPSTASH_REDIS_REST_URL='https://redis.fixture';process.env.UPSTASH_REDIS_REST_TOKEN='fixture';delete process.env.LOCAL_API_MODE;
   let now=Date.now();t.mock.method(Date,'now',()=>now);t.mock.method(console,'warn',()=>{});t.mock.method(console,'error',()=>{});
   const good={events:[{id:'fixture',title:'Test protest',summary:'',city:'',country:'US',region:'',eventType:'UNREST_EVENT_TYPE_PROTEST',sourceType:'UNREST_SOURCE_TYPE_ACLED',severity:'SEVERITY_LEVEL_LOW',occurredAt:1,location:{latitude:1,longitude:2},fatalities:0,sources:[],sourceUrls:[],tags:[],actors:[],confidence:'CONFIDENCE_LEVEL_HIGH'}]};
+  good.events.push({ ...good.events[0]!, id: 'legacy-gdelt', sourceType: 'UNREST_SOURCE_TYPE_GDELT', sources: ['GDELT'], eventType: 'UNREST_EVENT_TYPE_RIOT', severity: 'SEVERITY_LEVEL_HIGH' });
   let payload:unknown=good;let failure=false;const statuses:number[]=[];
   t.mock.method(globalThis,'fetch',async(input:RequestInfo|URL)=>{
     const url=new URL(input instanceof Request?input.url:String(input),'https://app.fixture');
@@ -22,7 +23,10 @@ test('unrest client retains last-good on unavailable seed and accepts confirmed 
     const route=harness.routes.find((r:{path:string})=>r.path===url.pathname);assert.ok(route);const response=await route.handler(new Request(url));statuses.push(response.status);return response;
   });
   payload=null;await assert.rejects(harness.fetchProtestEvents(),/Unrest events unavailable/);payload=good;
-  const initial=await harness.fetchProtestEvents();assert.equal(initial.events.length,1);
+  const initial=await harness.fetchProtestEvents();assert.equal(initial.events.length,2);
+  const media=initial.events.find((e:{id:string})=>e.id==='legacy-gdelt');
+  assert.equal(media.confidence,'low');assert.equal(media.validated,false);assert.equal(media.severity,'low');assert.notEqual(media.eventType,'riot');
+  assert.match(media.summary,/not verified/);
   async function refresh(expected:unknown,status:number){now+=10*60*1000+1;await harness.fetchProtestEvents();await new Promise(r=>setImmediate(r));assert.equal(statuses.at(-1),status);assert.deepEqual(await harness.fetchProtestEvents(),expected);await new Promise(r=>setImmediate(r));}
   for(const bad of [null,{}, {events:null}, {events:[{}]}]){payload=bad;await refresh(initial,503);payload=good;await refresh(initial,200);}
   failure=true;await refresh(initial,503);failure=false;payload={events:[]};await refresh({...initial,events:[],byCountry:new Map(),sources:{acled:0,gdelt:0}},200);

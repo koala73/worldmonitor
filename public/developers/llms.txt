@@ -8,7 +8,7 @@ All developer surfaces share one tool inventory and one subscription auth model 
 
 - [MCP server](https://worldmonitor.app/mcp): recommended agent surface — Streamable HTTP, JSON-RPC 2.0. `tools/list`, `prompts/list`, and `resources/list` are anonymous; `describe_tool` requires subscription credentials. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - [Docs MCP server](https://www.worldmonitor.app/docs/mcp): public search-and-retrieval over the documentation — no auth. Card: https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json
-- [REST API](https://api.worldmonitor.app): OpenAPI 3.1 contract at https://www.worldmonitor.app/openapi.yaml (JSON: https://www.worldmonitor.app/openapi.json) · API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- [REST API](https://www.worldmonitor.app/docs/api-reference): OpenAPI 3.1 contract at https://www.worldmonitor.app/openapi.yaml (JSON: https://www.worldmonitor.app/openapi.json) · API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
 - [CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the command
 - [SDKs](https://www.worldmonitor.app/sdks.md): Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript (npm `worldmonitor`)
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): installable skills manifest — `npx skills add koala73/worldmonitor`

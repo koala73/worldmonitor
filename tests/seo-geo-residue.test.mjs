@@ -241,14 +241,17 @@ describe('GEO residue #7463', () => {
     assert.doesNotMatch(useCases[1], /livePulse/);
   });
 
-  it('homepage editorial copy retains its reviewed as-of date', () => {
+  it('homepage as-of date tracks the published pulse, not a hand-set stamp (#8701)', () => {
+    // The hero and home.md were pinned to 2026-09-08 to match #software
+    // dateModified. Once dateModified followed the pulse (#7654) the pin left
+    // the visible date trailing lastmod, so all three now read one freeze.
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
     const hero = read('pro-test/src/welcome/Hero.tsx');
-    const home = read('public/home.md');
     const en = readJson('pro-test/src/locales/en.json');
 
-    assert.match(hero, /dateTime="2026-09-08"/);
-    assert.match(home, /2026-09-08/);
-    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-09-08|8 September 2026/);
+    assert.match(hero, /dateTime=\{PUBLISHED_PULSE_DATE\}/);
+    assert.equal(en.welcome?.hero?.asOf, 'As of {{date}}');
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
   });
 
   it('homepage and Pro software dates track the teaser strip snapshot (#7654)', () => {
@@ -466,15 +469,18 @@ describe('GEO residue #7746 (compare discoverability)', () => {
   it('links the Liveuamap FAQ answer to the comparison page on the homepage and its agent mirror', () => {
     const label = 'worldmonitor.app/compare/liveuamap-alternatives';
     const href = '/compare/liveuamap-alternatives/';
+    const dashboardHref = '/compare/best-geopolitical-risk-dashboards/';
+    const dashboardLabel = `worldmonitor.app${dashboardHref.slice(0, -1)}`;
     const en = readJson('pro-test/src/locales/en.json');
     assert.equal(en.welcome.faq.q5, 'How is this different from a conflict map like Liveuamap?');
     // The destination rides inside the answer string, like the terms link in
     // a11, so the FAQPage JSON-LD keeps it and the translator pins the URL.
-    assert.ok(en.welcome.faq.a5.endsWith(`: ${label}.`), 'en a5 must end with the comparison destination');
+    assert.ok(en.welcome.faq.a5.includes(label), 'en a5 must keep the comparison destination');
     assert.equal(en.welcome.faq.a5Link, undefined, 'the label lives in a5, not a separate key');
     for (const file of readdirSync(join(repoRoot, 'pro-test/src/locales'))) {
       const answer = readJson(`pro-test/src/locales/${file}`).welcome?.faq?.a5;
       assert.ok(typeof answer === 'string' && answer.includes(label), `${file} a5 must keep the comparison destination`);
+      assert.ok(answer.includes(dashboardLabel), `${file} a5 must include the dashboard comparison destination`);
     }
     assert.equal(readJson('scripts/locale-baselines/pro-test.json')['welcome.faq.a5'], en.welcome.faq.a5);
     // FAQ.tsx maps that label to the route, and the route must be one the
@@ -489,6 +495,9 @@ describe('GEO residue #7746 (compare discoverability)', () => {
       comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${href}`),
       'the FAQ route must be a registered comparison page',
     );
+    assert.ok(en.welcome.faq.a5.includes(dashboardLabel));
+    assert.ok(faqSource.includes(`label: '${dashboardLabel}', href: '${dashboardHref}'`));
+    assert.ok(comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${dashboardHref}`));
     assert.match(
       read('public/home.md'),
       /\]\(https:\/\/www\.worldmonitor\.app\/compare\/\)/,

@@ -1880,7 +1880,10 @@ export async function handleSubscriptionPlanChanged(
     return;
   }
 
-  if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+  // Dodo stamps every event of one change with the same timestamp, and
+  // `renewed` can land first without reading product_id (#8733). A plan change
+  // re-applies the same snapshot, so an equal timestamp is not stale.
+  if (eventTimestamp < existing.updatedAt) return;
 
   const newPlanKey = await resolvePlanKey(ctx, data.product_id);
   const leftBusinessPlan = isBusinessPlan(existing.planKey) && !isBusinessPlan(newPlanKey);

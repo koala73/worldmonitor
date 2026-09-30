@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "지수: World Monitor · 매장 데이터:",
+      "statusNormal": "정상",
+      "statusNoData": "데이터 없음",
+      "statusNoBaseline": "기준 없음",
+      "vsUsual": "평소 대비",
       "title": "펜타곤 피자 지수",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} 업데이트",
       "tensionsTitle": "지정학적 긴장",
+      "tensionsSource": "긴장도: GDELT 이벤트를 바탕으로 World Monitor가 산출",
+      "insufficientData": "데이터 부족",
+      "pizzaUnavailable": "피자 가게 활동 데이터를 사용할 수 없습니다",
       "source": "출처:",
       "statusClosed": "폐점",
       "statusSpike": "급증",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}m 전",
       "hoursAgo": "{{h}}h 전",
       "defconLabels": {
-        "1": "COCKED PISTOL - 최대 경계 태세",
-        "2": "FAST PACE - 군 전투 준비 완료",
-        "3": "ROUND HOUSE - 전투 준비 태세 강화",
-        "4": "DOUBLE TAKE - 정보 감시 강화",
-        "5": "FADE OUT - 최저 경계 태세"
+        "1": "최대 활동",
+        "2": "높은 활동",
+        "3": "상승된 활동",
+        "4": "정상 이상",
+        "5": "정상 활동"
       }
     },
     "strategicPosture": {
@@ -2819,6 +2827,26 @@
       "idleKeepPlaying": "유휴 상태일 때 계속 재생",
       "idleSettingsHint": "언제든지 설정 › 미디어에서 변경할 수 있습니다.",
       "idleKeepPlayingToast": "유휴 상태일 때 라이브 영상이 계속 재생됩니다. 설정 › 미디어에서 변경하세요."
+    },
+    "corroboration": {
+      "singlePublisher": "단일 발행자",
+      "singlePublisherHint": "현재 이 사항을 보도하는 발행자는 하나뿐입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
+      "tier4Only": "저등급 출처만",
+      "tier4OnlyHint": "이를 보도하는 모든 매체가 4등급 출처(수집처 및 블로그)입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
+      "rosterListed": "({{listed}}곳 표시)",
+      "rosterFeeds": "확인된 피드: {{labels}}",
+      "rosterLegend": "등급은 출처의 순위를 매길 뿐, 이 주장을 판단하지 않습니다.",
+      "tierDocsLink": "등급 부여 방식",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "1등급: 통신사 및 공식 기관",
+      "tierTitle2": "2등급: 주요 언론사",
+      "tierTitle3": "3등급: 전문·지역 매체 및 싱크탱크",
+      "tierTitle4": "4등급: 어그리게이터 및 블로그",
+      "tierTitleUndeclared": "등급 미지정: 아직 검토되지 않음",
+      "rosterSummary": "{{publishers}}에서 보도됨",
+      "rosterSummaryTier1": "{{publishers}}에서 보도됨({{tier1}}곳은 1등급)",
+      "rosterPublishers_other": "{{count}}개 언론사"
     }
   },
   "popups": {
@@ -2857,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED (검증됨)",
       "gdelt": "GDELT",
+      "records": "개 기록",
+      "mediaSignal": "미확인 미디어 신호",
+      "relatedArticle": "관련 기사",
+      "mediaSignalDetail": "이 장소는 소요 관련 기사에 언급되었습니다. 현지 사건은 확인되지 않았습니다.",
       "riots": "폭동",
       "highSeverity": "고위험"
     },

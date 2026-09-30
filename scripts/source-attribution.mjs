@@ -1023,6 +1023,13 @@ const EXCLUDED_HOSTS = new Set([
   'search.seznam.cz',
   'searchadvisor.naver.com',
   'www.bing.com',
+  // Search Console reports our own property back to us. The OAuth token
+  // endpoint and the scope namespace are control surfaces on the way to it.
+  // None of them is an ingested upstream dataset, so they belong with the
+  // other webmaster-console hosts above rather than in the provider count.
+  'oauth2.googleapis.com',
+  'searchconsole.googleapis.com',
+  'www.googleapis.com',
   'yandex.com',
   'cloudflare-dns.com',
   'challenges.cloudflare.com',
@@ -1039,6 +1046,11 @@ const EXCLUDED_HOSTS = new Set([
   'protomaps.com',
   // Video-page URLs and embeds are presentation transport, not ingested
   // upstream datasets; keep them out of the provider count like native HLS.
+  // The channel /live page reader (scripts/lib/live-video-channel-live.mjs)
+  // stays in this class: it keeps only an 11-character embed id of a channel
+  // the catalog already plays, never page content. So does its 6-hourly
+  // publisher (scripts/seed-live-video-resolved.mjs): the public payload is
+  // channel id to video id and timestamps, with titles kept to the seed log.
   'www.youtube.com',
   // Release links, documentation links, and repository links are control/UI
   // surfaces; GitHub API and raw-content hosts remain tracked separately.

@@ -41,10 +41,12 @@ import {
   isVerifiableArticleUrl,
   MIN_BRIEF_GROUNDING_PUBLISHERS,
   normalizeFrozenDevelopments,
+  parseBriefSections,
 } from './crawlable-developments.mjs';
 import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
 import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -497,15 +499,44 @@ function briefRecord(payload, digestUrls) {
   if (citations.some((citation) => citation < 1 || citation > normalizedSources.length)) {
     throw new Error('brief response carried an out-of-range source citation');
   }
+  // An evidence-grounded brief always returns an evidence array (possibly
+  // empty); its presence is what marks the text as the sectioned format.
+  const evidence = Array.isArray(payload?.evidence) ? briefEvidenceRecords(payload.evidence) : null;
+  if (evidence) {
+    const ids = new Set(evidence.map((item) => item.id));
+    for (const match of text.matchAll(/\[(E\d{1,2})\]/g)) {
+      if (!ids.has(match[1])) throw new Error(`brief response cited evidence it did not return: ${match[1]}`);
+    }
+  }
   return {
     text,
-    model: String(payload?.model || ''),
     generatedAt: new Date(generatedMs).toISOString(),
     // Preserve the returned order exactly: [n] citations index this array.
     // Any invalid or unfrozen entry rejects the whole brief above rather than
     // being removed and silently shifting later citation indexes.
     sources: normalizedSources,
+    // The model id is deliberately not frozen: pages credit an automated
+    // summary, not a vendor model.
+    ...(evidence ? { evidence } : {}),
   };
+}
+
+// World Monitor data points an evidence-grounded brief cites. Claims were
+// validated against factText server-side; the corpus re-checks against the
+// same text, so it is frozen verbatim. A non-https link is dropped, not the
+// item: the value stands without it.
+function briefEvidenceRecords(value) {
+  return value.map((item) => {
+    const id = String(item?.id || '').trim();
+    const fields = ['kind', 'label', 'value', 'factText'].map((field) => String(item?.[field] || '').trim());
+    const asOfMs = new Date(String(item?.asOf || '')).getTime();
+    if (!/^E\d{1,2}$/.test(id) || fields.some((field) => !field) || !Number.isFinite(asOfMs)) {
+      throw new Error('brief response carried an invalid evidence item');
+    }
+    const [kind, label, displayValue, factText] = fields;
+    const url = normalizeHttpsUrl(item?.url);
+    return { id, kind, label, value: displayValue, factText, asOf: new Date(asOfMs).toISOString(), ...(url ? { url } : {}) };
+  });
 }
 
 // Normalize one get-intel-timeline record. Attribution is mandatory: an
@@ -648,6 +679,37 @@ function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMI
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
+}
+
+// Every English brief is offered the country's CII, advisory and resilience
+// data points, so a large sample citing none of them means the evidence pack
+// is down. A small sample can be Situation-only by chance (the model leaves
+// unsupported sections empty, and a mis-bound number is withheld); failing
+// on it would discard the whole snapshot, the failure an absolute floor on a
+// small, variable set already caused for the brief gate (#7620).
+export const MIN_EVIDENCE_GATE_BRIEFS = 10;
+
+/**
+ * What the freeze does about evidence-grounded briefs that cite no data
+ * point: 'fail' the run for a sample large enough to mean an outage,
+ * 'record' a capture error for a smaller one, or null when nothing is wrong.
+ */
+export function evidenceGateVerdict({ formatCount, citedCount }) {
+  if (formatCount === 0 || citedCount > 0) return null;
+  return formatCount >= MIN_EVIDENCE_GATE_BRIEFS ? 'fail' : 'record';
+}
+
+function evidenceFormatBriefs(countries) {
+  return Object.entries(countries)
+    .map(([code, row]) => ({ code, brief: row.developments?.brief }))
+    .filter(({ brief }) => brief && Array.isArray(brief.evidence) && typeof brief.text === 'string');
+}
+
+// Rows a brief may cite: the same title predicate the server grounding and
+// the MCP tool apply. Order is preserved, so citation indexes built over the
+// result stay aligned with the frozen sources.
+function briefGroundingRows(rows) {
+  return rows.filter((row) => isBriefRelevantTitle(row?.title));
 }
 
 // Brief grounding block in the server's `Source [n]` format
@@ -1092,13 +1154,24 @@ export async function freezeCrawlableLivePulse({
   // server that starts returning one source per brief would empty the
   // denominator and pass the gate with zero briefs.
   const briefAttemptedCodes = new Set();
+  // Countries whose rows cleared the grounding floor until the relevance
+  // filter removed their sports/entertainment rows. Counted apart from
+  // briefThinGroundingCount so a lexicon change shows up as its own number.
+  const briefRelevanceFilteredCodes = new Set();
   for (const code of Object.keys(countries)) {
     const countryHeadlines = headlinesByCode.get(code) || [];
+    // Recent developments keeps every row; the brief sees only the eligible
+    // subset, in the same order, so buildBriefContext's Source [n] and the
+    // sources the server echoes back describe the same rows.
+    const groundingHeadlines = briefGroundingRows(countryHeadlines);
+    if (hasBriefGrounding(countryHeadlines) && !hasBriefGrounding(groundingHeadlines)) {
+      briefRelevanceFilteredCodes.add(code);
+    }
     const briefSkipped = !keyed
       ? 'no-service-key'
       : countryHeadlines.length === 0
         ? 'no-grounding'
-        : briefGroundingGap(countryHeadlines);
+        : briefGroundingGap(groundingHeadlines);
     const developments = {
       ...emptyDevelopments(freezeStartedAt, briefSkipped),
       headlines: countryHeadlines,
@@ -1106,7 +1179,7 @@ export async function freezeCrawlableLivePulse({
     if (briefSkipped === null) {
       briefAttemptedCodes.add(code);
       try {
-        const context = buildBriefContext(countryHeadlines);
+        const context = buildBriefContext(groundingHeadlines);
         const briefPayload = await authedGet(
           `/api/intelligence/v1/get-country-intel-brief?country_code=${encodeURIComponent(code)}&lang=en&context=${encodeURIComponent(context)}`,
           token,
@@ -1254,8 +1327,23 @@ export async function freezeCrawlableLivePulse({
         .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
       briefCountryCount: Object.values(countries)
         .filter((row) => row.developments?.brief != null).length,
-      // Grounding eligibility is independent of credentials or request outcome.
-      briefEligibleCount: [...headlinesByCode.values()].filter(hasBriefGrounding).length,
+      // Evidence-grounded briefs (the server returned an evidence array), the
+      // ones among them citing at least one World Monitor data point, and the
+      // ones a page shows beyond Situation (which "Recent developments" covers).
+      briefEvidenceFormatCount: evidenceFormatBriefs(countries).length,
+      briefEvidenceCitedCount: evidenceFormatBriefs(countries)
+        .filter(({ brief }) => /\[E\d{1,2}\]/.test(brief.text)).length,
+      briefAnalysisCount: evidenceFormatBriefs(countries)
+        .filter(({ code, brief }) => parseBriefSections(brief.text, { countryCode: code })
+          .some((section) => section.key !== 'situation')).length,
+      // Grounding eligibility is independent of credentials or request outcome,
+      // and measured on the rows a brief may cite.
+      briefEligibleCount: [...headlinesByCode.values()]
+        .filter((rows) => hasBriefGrounding(briefGroundingRows(rows))).length,
+      // Countries the relevance filter (shared/brief-relevance.js) pushed
+      // below the floor. Disjoint from briefThinGroundingCount, which counts
+      // rows that were thin before filtering.
+      briefRelevanceFilteredCount: briefRelevanceFilteredCodes.size,
       briefUnsupportedCitationCount: Object.values(countries)
         .filter((row) => row.developments?.briefSkipped === 'unsupported-citation').length,
       // Countries a brief was requested for: keyed, and grounded on at least
@@ -1269,8 +1357,9 @@ export async function freezeCrawlableLivePulse({
           && !hasBriefGrounding(row.developments?.headlines)).length,
       // Countries the open-web index named but no curated feed did: dated
       // headlines, no brief (#7748 review).
-      briefUncuratedGroundingCount: Object.values(countries)
-        .filter((row) => row.developments?.briefSkipped === 'uncurated-grounding').length,
+      briefUncuratedGroundingCount: Object.entries(countries)
+        .filter(([code, row]) => row.developments?.briefSkipped === 'uncurated-grounding'
+          && !briefRelevanceFilteredCodes.has(code)).length,
       timelineCountryCount: Object.values(countries)
         .filter((row) => (row.developments?.timeline?.length || 0) > 0).length,
       // The enrichment tail (#7748): indexed pages with no dated item at all.
@@ -1361,6 +1450,21 @@ export async function freezeCrawlableLivePulse({
         + firstCaptureCause(developmentsErrors),
       );
     }
+    // An evidence-pack outage fails soft on the server (every source drops
+    // out), so the briefs still arrive, Situation-only, and every page renders
+    // no brief block. Legacy-format responses (a server that predates the
+    // evidence pack) do not engage this gate.
+    const evidenceVerdict = evidenceGateVerdict({
+      formatCount: snapshot.coverage.briefEvidenceFormatCount,
+      citedCount: snapshot.coverage.briefEvidenceCitedCount,
+    });
+    const evidenceMessage = `${snapshot.coverage.briefEvidenceFormatCount} evidence-grounded briefs cited no World Monitor data point`;
+    if (evidenceVerdict === 'fail') {
+      throw new Error(`Pulse freeze: ${evidenceMessage}; the evidence pack is unavailable`);
+    }
+    if (evidenceVerdict === 'record') {
+      snapshot.errors.developments.push({ code: '*', stage: 'brief-evidence', message: evidenceMessage });
+    }
     const minBriefs = minimumBriefCaptures(snapshot.coverage.briefMatchedCount);
     if (checkedBriefs < minBriefs) {
       throw new Error(
@@ -1404,9 +1508,12 @@ if (isMain) {
         + `quotes=${snapshot.coverage.quoteCount} `
         + `headlineCountries=${snapshot.coverage.headlineCountryCount} `
         + `briefCountries=${snapshot.coverage.briefCountryCount} `
+        + `briefEvidenceCited=${snapshot.coverage.briefEvidenceCitedCount}/${snapshot.coverage.briefEvidenceFormatCount} `
+        + `briefAnalysis=${snapshot.coverage.briefAnalysisCount} `
         + `briefEligible=${snapshot.coverage.briefEligibleCount} `
         + `briefUnsupportedCitations=${snapshot.coverage.briefUnsupportedCitationCount} `
         + `briefThinGrounding=${snapshot.coverage.briefThinGroundingCount} `
+        + `briefRelevanceFiltered=${snapshot.coverage.briefRelevanceFilteredCount} `
         + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
         + `developmentsCountries=${snapshot.coverage.developmentsCountryCount} `
         + `developmentsMissing=${snapshot.coverage.developmentsMissingCount} `
@@ -1438,6 +1545,14 @@ if (isMain) {
           `[freeze-crawlable-live-pulse] ${snapshot.coverage.developmentsMissingCount} of `
           + `${snapshot.coverage.countryCount} countries have no dated development this run `
           + '(no digest or index mention, brief or timeline event).',
+        );
+      }
+      if (snapshot.coverage.briefRelevanceFilteredCount > 0) {
+        // Separate from the thin-grounding tail: these countries had enough
+        // publishers until their sports/entertainment rows were set aside.
+        console.log(
+          `[freeze-crawlable-live-pulse] ${snapshot.coverage.briefRelevanceFilteredCount} countries skipped a brief `
+          + 'because the relevance filter left them below the grounding floor.',
         );
       }
       if (snapshot.coverage.developmentsCountryIndex.state !== 'available') {

@@ -15,7 +15,8 @@
   },
   "pnpm": {
     "overrides": {
-      "hono": "4.13.5"
+      "hono": "4.13.5",
+      "fast-uri": "3.1.7"
     }
   }
 }

@@ -11,6 +11,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/natural/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { projectNaturalEventsRetention } from '../../../../api/_natural-events-dashboard.js';
 
 const SEED_CACHE_KEY = 'natural:events:v1';
 const SEED_META_KEY = 'seed-meta:natural:events';
@@ -29,11 +30,12 @@ export const listNaturalEvents: NaturalServiceHandler['listNaturalEvents'] = asy
       getCachedJson(SEED_META_KEY, true) as Promise<SeedMeta | null>,
     ]);
     if (!result) return { events: [], fetchedAt: 0, dataAvailable: false };
+    const available = projectNaturalEventsRetention(result);
 
     return {
-      events: result.events ?? [],
-      fetchedAt: Number(result.fetchedAt || meta?.fetchedAt || 0),
-      dataAvailable: true,
+      events: available.events ?? [],
+      fetchedAt: Number(available.fetchedAt || meta?.fetchedAt || 0),
+      dataAvailable: available.dataAvailable !== false,
     };
   } catch {
     return { events: [], fetchedAt: 0, dataAvailable: false };

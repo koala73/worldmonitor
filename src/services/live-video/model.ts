@@ -157,6 +157,11 @@ export const LIVE_VIDEO_TIMING = {
   recordingConfirmMs: 2_000,
   relockWindowMs: 60_000,
   failureMemoryMs: 5 * 60_000,
+  /**
+   * A resolved channel live id older than this is ignored. Equal to the seeder's last-good retention
+   * (LAST_GOOD_MAX_AGE_MS in scripts/seed-live-video-resolved.mjs; tests/live-video-resolved-retention.test.mts).
+   */
+  resolvedMaxAgeMs: 36 * 60 * 60_000,
 } as const;
 
 const PENDING: AttemptVerdict = { verdict: 'pending' };
@@ -253,6 +258,78 @@ export function parseSource(source: LiveVideoSource): ParsedSource {
   const problems = new Set(parsed.flatMap((item) => (item.ok ? [] : [item.problem])));
   const problem = problems.has('needs-channel-url') ? 'needs-channel-url' : problems.has('not-https') ? 'insecure-url' : 'no-entries';
   return { source, candidates, problem };
+}
+
+/** The video a catalog channel had live when the seed-live-video-resolved cron last read its /live page. */
+export interface ResolvedLiveVideo {
+  readonly videoId: VideoId;
+  readonly resolvedAtMs: number;
+}
+
+export type ResolvedLiveVideos = ReadonlyMap<ChannelId, ResolvedLiveVideo>;
+
+const NO_RESOLVED_VIDEOS: ResolvedLiveVideos = new Map();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFresh(resolvedAtMs: number, nowMs: number): boolean {
+  return nowMs - resolvedAtMs <= LIVE_VIDEO_TIMING.resolvedMaxAgeMs;
+}
+
+/**
+ * Reads the `liveVideoResolved` bootstrap payload (`{ channels: { UC…: { videoId, resolvedAt } } }`). Keeps an
+ * entry only when its key is a bare channel id, its videoId is a bare 11-char video id and its resolvedAt is a
+ * date no older than `resolvedMaxAgeMs`; drops everything else. Never throws: anything unreadable is an empty map.
+ */
+export function parseResolvedLiveVideos(raw: unknown, nowMs: number): ResolvedLiveVideos {
+  const channels = isRecord(raw) ? raw.channels : undefined;
+  if (!isRecord(channels)) return NO_RESOLVED_VIDEOS;
+  const resolved = new Map<ChannelId, ResolvedLiveVideo>();
+  for (const [key, value] of Object.entries(channels)) {
+    if (!CHANNEL_ID.test(key) || !isRecord(value)) continue;
+    const { videoId, resolvedAt } = value;
+    // A bare id only: parseSourceEntry would also read a watch URL, and nothing but an id belongs here.
+    if (typeof videoId !== 'string' || !VIDEO_ID.test(videoId) || typeof resolvedAt !== 'string') continue;
+    const parsed = parseSourceEntry(videoId);
+    if (!parsed.ok || parsed.candidate.kind !== 'video') continue;
+    const resolvedAtMs = Date.parse(resolvedAt);
+    if (!Number.isFinite(resolvedAtMs) || !isFresh(resolvedAtMs, nowMs)) continue;
+    resolved.set(key as ChannelId, { videoId: parsed.candidate.videoId, resolvedAtMs });
+  }
+  return resolved;
+}
+
+/** Whether resolved ids could change this source: a built-in slot that lists a channel entry. */
+export function sourceListsChannel(source: LiveVideoSource): boolean {
+  return source.origin === 'builtin'
+    && source.entries.some((entry) => {
+      const parsed = parseSourceEntry(entry);
+      return parsed.ok && parsed.candidate.kind === 'channel';
+    });
+}
+
+/**
+ * Tries each channel's resolved live video immediately before that channel entry, so every entry the owner
+ * placed ahead of the channel keeps priority. An id the slot already lists, or one already inserted, is not
+ * added again. Built-in sources only. Returns the same object when nothing is inserted.
+ */
+export function withResolvedEntries(source: LiveVideoSource, resolved: ResolvedLiveVideos, nowMs: number): LiveVideoSource {
+  if (source.origin !== 'builtin' || resolved.size === 0) return source;
+  const parsed = source.entries.map(parseSourceEntry);
+  const listed = new Set(parsed.flatMap((item) => (item.ok && item.candidate.kind === 'video' ? [item.candidate.videoId] : [])));
+  const entries: string[] = [];
+  source.entries.forEach((entry, index) => {
+    const item = parsed[index]!;
+    const hit = item.ok && item.candidate.kind === 'channel' ? resolved.get(item.candidate.channelId) : undefined;
+    if (hit && isFresh(hit.resolvedAtMs, nowMs) && !listed.has(hit.videoId)) {
+      listed.add(hit.videoId);
+      entries.push(`https://www.youtube.com/watch?v=${hit.videoId}`);
+    }
+    entries.push(entry);
+  });
+  return entries.length === source.entries.length ? source : { ...source, entries };
 }
 
 export interface AttemptReport {

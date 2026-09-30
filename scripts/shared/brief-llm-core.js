@@ -1124,11 +1124,26 @@ const PERSON_TITLE_WORDS =
   + 'chairman|chairwoman|chairperson|chair|chief|ceo|cfo|ambassador|envoy|speaker|king|queen|pope|leader|'
   + 'commander|general|admiral|director|prosecutor|judge|justice|adviser|advisor|aide|spokesman|spokeswoman|'
   + 'spokesperson|head|official|lawmaker|congressman|congresswoman|representative|pm';
+// Lowercase words that can sit inside an office name between the qualifier
+// and the title: "former deputy prime minister", "former national security adviser".
+const OFFICE_MODIFIER_WORDS =
+  'deputy|vice|assistant|associate|senior|national|security|foreign|defense|defence|finance|interior|'
+  + 'justice|health|trade|energy|state|army|military|intelligence|supreme|party|attorney|federal|regional';
+const CALENDAR_WORDS =
+  'Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|'
+  + 'August|September|October|November|December';
 // No `i` flag: under `i`, \p{Lu} also matches lowercase, so "Former officials said" reads as a named person.
 const anyCase = (/** @type {string} */ word) => word.replace(/\p{L}/gu, (c) => `[${c.toUpperCase()}${c}]`);
+const PERSON_TITLE_RE_SOURCE = PERSON_TITLE_WORDS.split('|').map(anyCase).join('|');
+// A bridge word is part of the office name: a nationality or institution
+// ("US", "Brazilian", "White House"), an office modifier, or a title word
+// ("official adviser"). Any other word ends the match, so "Former officials
+// said President Trump" and "Late on Tuesday President Trump" qualify nobody.
+const BRIDGE_WORD_RE_SOURCE = `(?:(?!(?:${CALENDAR_WORDS})\\b)\\p{Lu}[\\p{L}'’-]*`
+  + `|${OFFICE_MODIFIER_WORDS.split('|').map(anyCase).join('|')}|${PERSON_TITLE_RE_SOURCE})`;
 const STATUS_QUALIFIER_RE = new RegExp(
   `\\b(${STATUS_QUALIFIER_CLASSES.flat().map((q) => (q.endsWith('-') ? `${anyCase(q.slice(0, -1))}(?=-)` : anyCase(q))).join('|')})[-\\s]+`
-  + `(?:[\\p{L}'’-]+\\s+){0,3}?(?:${PERSON_TITLE_WORDS.split('|').map(anyCase).join('|')})s?\\b[-\\s]+(?:(?:of|the|for|to|and)\\s+)?(\\p{Lu}[\\p{L}'’-]+)`,
+  + `(?:${BRIDGE_WORD_RE_SOURCE}\\s+){0,3}?(?:${PERSON_TITLE_RE_SOURCE})s?\\b[-\\s]+(?:(?:of|the|for|to|and)\\s+)?(\\p{Lu}[\\p{L}'’-]+)`,
   'gu',
 );
 

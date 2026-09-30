@@ -1285,7 +1285,9 @@ describe('CII scoring', () => {
     const us = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
     assert.notEqual(us.combinedScore - us.staticBaseline, 0, 'fixture should have a non-zero structural baseline gap');
     assert.equal(us.dynamicScore, 0, 'cold-start movement must not reuse combinedScore - staticBaseline');
-    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+    // No prior reading is not a measured zero change: STABLE would let every
+    // reader (crawlable pages, MCP) claim "unchanged" for a country never compared.
+    assert.equal(us.trend, 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('derives rising trend and dynamicScore from a prior CII snapshot', () => {
@@ -1341,7 +1343,7 @@ describe('CII scoring', () => {
     )!;
 
     assert.equal(us.dynamicScore, 0);
-    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+    assert.equal(us.trend, 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('ignores stale prior snapshots when deriving CII movement', () => {
@@ -1355,7 +1357,7 @@ describe('CII scoring', () => {
     )!;
 
     assert.equal(us.dynamicScore, 0);
-    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+    assert.equal(us.trend, 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('targets trend history buckets around the 24-hour comparison window', () => {
@@ -1786,6 +1788,11 @@ describe('CII scoring', () => {
     const risks = computeStrategicRisks([]);
     assert.equal(risks.length, 1);
     assert.equal(risks[0]!.score, STRATEGIC_RISK_SCALE_FLOOR);
+  });
+
+  it('computeStrategicRisks: global trend is unspecified because no prior roll-up is compared', () => {
+    const risks = computeStrategicRisks(computeCIIScores([], emptyAux()));
+    assert.equal(risks[0]!.trend, 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('riskScores health coverage reports zero for total real-time outage', () => {

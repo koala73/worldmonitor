@@ -77,6 +77,7 @@ import {
   parseFontScale,
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
+import { declareOverlay } from '@/utils/open-modal';
 
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
@@ -198,6 +199,7 @@ export class UnifiedSettings {
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(this.overlay, { reload: 'blocking' });
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
@@ -1246,6 +1248,7 @@ export class UnifiedSettings {
     overlay.className = 'account-deletion-dialog-overlay active';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
     overlay.setAttribute('aria-labelledby', 'account-deletion-dialog-title');
     setTrustedHtml(
       overlay,

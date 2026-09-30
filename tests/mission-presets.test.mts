@@ -338,7 +338,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
-      export { urlHasAsyncFlyTo } from ${urlStateModule};
+      export { urlHasAsyncFlyTo, withUrlFragment } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
@@ -456,7 +456,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
       export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
       export function trackGateHit(...args) { push('trackGateHit', args); }
-      export function trackPanelResized(...args) { push('trackPanelResized', args); }
+      export function trackLayoutCustomized(...args) { push('trackLayoutCustomized', args); }
     `],
     ['@/services', `
       export async function saveSnapshot() {}

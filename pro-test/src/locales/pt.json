@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Seu analista IA. Uma mesa de inteligência pessoal. Uma plataforma que você pode desenvolver. Uma chave em todos os serviços ao vivo.",
+    "proDesc": "Seu analista IA. Uma mesa de inteligência pessoal. Uma plataforma que você pode desenvolver.",
     "proF1": "WM Analyst chat — consulte serviços ao vivo conversacionalmente",
     "proF2": "Digest de IA — diário, duas vezes ao dia ou semanal — para Slack, Discord, Telegram, E-mail ou webhook",
     "proF3": "Construtor de widgets personalizados — HTML/CSS/JS com modificação assistida por IA",
@@ -482,7 +482,7 @@
       "plateNote": "Capturado do mapa ao vivo — clique para abrir",
       "trustBuild": "Construa sobre ele:",
       "positioningLink": "WorldMonitor não é um Palantir de código aberto",
-      "asOf": "Em 8 de setembro de 2026",
+      "asOf": "Em {{date}}",
       "whatIsTitle": "O que é World Monitor?",
       "whatIsBody": "World Monitor é um dashboard gratuito e de código aberto que transmite sinais de geopolítica, mercados, transporte marítimo, aviação, infraestrutura e cibernética em um único mapa ao vivo. Ele correlaciona feeds separados em uma única imagem operacional e sinaliza convergências antes dos destaques, com cada dado fundamentado e cada metodologia documentada."
     },
@@ -676,7 +676,7 @@
       "q4": "Posso monitorar pontos de estrangulamento como Hormuz ou Bab el-Mandeb em tempo real?",
       "a4": "Sim. Gargalos são monitorados com contagens ao vivo de navios AIS, mudança de trânsito semana-a-semana e pontuação de disrupção — e anomalias de densidade são sinalizadas contra a linha de base móvel de cada estreito.",
       "q5": "Como isso é diferente de um mapa de conflitos como Liveuamap?",
-      "a5": "Conflito é uma camada de mapa. World Monitor funde conflitos com navegação marítima, voos militares, infraestrutura, mercados e cyber — depois a IA pontua a convergência: índices de instabilidade, escalação de pontos críticos, alertas breaking corroborados e briefings diários. Compare World Monitor com Liveuamap e outros mapas de conflito: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Conflito é uma camada de mapa. World Monitor funde conflitos com navegação marítima, voos militares, infraestrutura, mercados e cibersegurança — e depois a IA pontua a convergência: índices de instabilidade, escalação em pontos críticos, alertas de breaking corroborados e briefings diários. Compare World Monitor com Liveuamap e outros mapas de conflito: worldmonitor.app/compare/liveuamap-alternatives. Para opções mais amplas de monitoramento, veja worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Por que devo confiar em um alerta?",
       "a6": "Um banner de breaking dispara apenas quando tipos de origem independentes corroboram — classificação de notícias, velocidade de palavras-chave, escalada de hotspot, picos militares, sirenes oficiais — desduplicados e rate-limited. Menos alertas, alertas reais.",
       "q7": "Agentes de IA como Claude ou GPT podem usar?",

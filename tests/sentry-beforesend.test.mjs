@@ -307,6 +307,67 @@ describe('first-party file detection', () => {
     });
   }
 
+  // ── Build-time chunk ownership manifest overrides the name regex ──
+  //
+  // The regex above is a fallback. A chunk NAME cannot answer "is this ours":
+  // Rollup names a chunk after its seed module and hoists shared modules into
+  // it, so `i18n-<hash>.js` measured 12/12 first-party modules on a real build
+  // while a second, genuinely pure chunk shared the name `i18n`. No name rule
+  // can separate those. `wm-first-party-chunk-manifest` stamps each chunk with
+  // its own ownership; these lock in that the stamp wins and that a miss is
+  // never worse than the old behaviour.
+  describe('chunk ownership manifest (vendor-named chunks that hold our code)', () => {
+    const OWNERSHIP = '__WM_CHUNK_OWNERSHIP__';
+    const withOwnership = (map, run) => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      const prev = globalThis[OWNERSHIP];
+      globalThis[OWNERSHIP] = map;
+      try { return run(); } finally {
+        if (had) globalThis[OWNERSHIP] = prev; else delete globalThis[OWNERSHIP];
+      }
+    };
+    // Ambiguous message: suppressed without a first-party frame, kept with one.
+    const ambiguous = (filename) => makeEvent('Maximum call stack size exceeded', 'RangeError', [
+      { filename, lineno: 10, function: 'doStuff' },
+    ]);
+
+    it('KEEPS a vendor-NAMED chunk the manifest marks first-party (the i18n case)', () => {
+      // Exactly the live bug: this chunk matches the vendor regex, but the build
+      // measured 12/12 of its modules as ours, so its failures must surface.
+      const kept = withOwnership({ 'i18n-0kRCkTIm.js': 1 },
+        () => beforeSend(ambiguous('/assets/i18n-0kRCkTIm.js')));
+      assert.ok(kept !== null, 'a chunk the build says is ours must not be treated as vendor');
+    });
+
+    it('DROPS a chunk the manifest marks vendor even though the name is unknown to the regex', () => {
+      const dropped = withOwnership({ 'somelib-Ab12Cd34.js': 0 },
+        () => beforeSend(ambiguous('/assets/somelib-Ab12Cd34.js')));
+      assert.equal(dropped, null, 'a chunk the build says is pure vendor must be suppressible');
+    });
+
+    it('falls back to the name regex for a chunk the manifest has not registered', () => {
+      // Dev/serve, or a chunk that failed before its registration statement ran.
+      // Legacy behaviour exactly: vendor-named dropped, owned-named kept.
+      const registered = { 'other-Zz99.js': 1 };
+      assert.equal(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/maplibre-AbC123.js'))),
+        null,
+        'unregistered + vendor-named must still be suppressed',
+      );
+      assert.ok(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/panels-DzUv7BBV.js'))) !== null,
+        'unregistered + owned-named must still be kept',
+      );
+    });
+
+    it('is inert when the manifest is absent entirely', () => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      assert.equal(had, false, 'no manifest should be installed by importing the policy');
+      assert.equal(beforeSend(ambiguous('/assets/maplibre-AbC123.js')), null);
+      assert.ok(beforeSend(ambiguous('/assets/panels-DzUv7BBV.js')) !== null);
+    });
+  });
+
   it('filters sentry chunk frames as infrastructure (not even counted as third-party)', () => {
     // Sentry frames are excluded from nonInfraFrames entirely, so a sentry-only stack
     // is treated as empty (no confirming third-party frames, no first-party frames).
@@ -1878,6 +1939,87 @@ describe('injected browser-automation harness errors (Floot)', () => {
       firstPartyFrame('src/components/SomePanel.ts', 'requireEl'),
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party "Element not found: X" must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-169: Puppeteer crawler driving synthetic events ────────────
+//
+// A Chrome 141 crawler ran `PuppeteerPage.evaluate` scripts that dispatched
+// `isTrusted: false` events into the page; a handler threw on the null event
+// detail. Puppeteer's evaluated code carries a `pptr:` source URL, so its frame
+// sits at the bottom of the stack even when first-party frames sit above it.
+describe('Puppeteer-driven crawler frames (WORLDMONITOR-169)', () => {
+  const msg = "Cannot use 'in' operator to search for 'data' in null";
+  const pptrFrame = {
+    filename: 'file:///C:/snapshot/common-browser-driver/common/browser/adapters/puppeteer-adapter.js',
+    lineno: 11763,
+    function: 'async pptr:evaluate;PuppeteerPage.evaluate%20',
+  };
+
+  it('suppresses an error whose stack runs through a Puppeteer evaluate frame', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      pptrFrame,
+      { filename: 'file:///C:/snapshot/explorer.js', lineno: 7506, function: 'dispatchCustomEvent' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress on a "puppeteer"-named frame without the pptr: source URL', () => {
+    // The match keys on Puppeteer's source-URL scheme, which no bundle asset or
+    // function name can carry, not on the word. A chunk or function of ours that
+    // merely mentions puppeteer must still report.
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: '/assets/puppeteer-helpers-Bx81kQ2a.js', lineno: 12, function: 'puppeteerLikeDriver' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a puppeteer-named first-party frame must reach Sentry');
+  });
+
+  it('does NOT suppress the same error from first-party frames without Puppeteer', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'dispatchCustomEvent'),
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a real user hitting the same handler bug must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-168: `/sw.js` evaluated as a page script ────────────────────
+//
+// The same crawler loaded the service worker's script into pages. Workbox's
+// loader then read `document.currentScript.src` on a null `currentScript`. The
+// real registration (src/main.ts) runs it in a worker, which this client never
+// sees, so an all-`/sw.js` stack cannot come from a real user.
+describe('`/sw.js` evaluated as a page script (WORLDMONITOR-168)', () => {
+  const msg = "Cannot read properties of null (reading 'src')";
+
+  it('suppresses an error whose only frames are /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: null },
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress the same message from a first-party frame', () => {
+    const event = makeEvent(msg, 'TypeError', [firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadScript')]);
+    assert.ok(beforeSend(event) !== null, 'a first-party null currentScript read must reach Sentry');
+  });
+
+  it('does NOT suppress when a first-party frame shares the stack with /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'registerServiceWorker'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only an all-/sw.js stack is proof of page-context evaluation');
+  });
+
+  it('does NOT suppress a same-named script under another path', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/assets/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only the root /sw.js is the registered worker');
   });
 });
 

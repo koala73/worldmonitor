@@ -320,7 +320,7 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/utils/followed-only-chip.ts :: localStorage.<member> x7',
   'src/utils/index.ts :: localStorage.<member> x2',
   'src/utils/panel-storage.ts :: localStorage.<member> x3',
-  'src/utils/theme-manager.ts :: localStorage.<member> x4',
+  'src/utils/theme-manager.ts :: localStorage.<member> x3',
 ];
 
 /**

@@ -770,8 +770,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "statusNormal": "NORMAAL",
+      "statusNoData": "GEEN GEGEVENS",
+      "statusNoBaseline": "GEEN REFERENTIE",
+      "vsUsual": "ten opzichte van normaal",
       "title": "Pentagon Pizza-index",
       "tensionsTitle": "Geopolitieke spanningen",
+      "tensionsSource": "Spanningen: World Monitor op basis van GDELT-gebeurtenissen",
+      "insufficientData": "Onvoldoende gegevens",
+      "pizzaUnavailable": "Activiteit van pizzeria's niet beschikbaar",
       "source": "Bron:",
       "defcon": "DEFCON {{level}}",
       "updated": "Bijgewerkt {{timeAgo}}",
@@ -785,11 +793,11 @@
       "minutesAgo": "{{m}}m geleden",
       "hoursAgo": "{{h}}u geleden",
       "defconLabels": {
-        "1": "GEREGISTREERD PISTOOL - MAXIMALE KLAARHEID",
-        "2": "SNEL TEMPO - STRIJDKRACHTEN KLAAR",
-        "3": "ROND HUIS - VERHOOG DE KRACHTBEREIDING",
-        "4": "DUBBEL NEMEN - VERHOOGDE INTELLIGENTIE HORLOGE",
-        "5": "FADE OUT - LAAGSTE KLAARHEID"
+        "1": "Maximale activiteit",
+        "2": "Hoge activiteit",
+        "3": "Verhoogde activiteit",
+        "4": "Boven normaal",
+        "5": "Normale activiteit"
       }
     },
     "stablecoins": {
@@ -2457,6 +2465,27 @@
       "idleKeepPlaying": "Videostream afspelen bij inactiviteit",
       "idleSettingsHint": "Wijzig dit op elk moment in Instellingen › Media.",
       "idleKeepPlayingToast": "Livevideostream blijft afspelen bij inactiviteit. Wijzigen in Instellingen › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Enkele uitgever",
+      "singlePublisherHint": "Tot nu toe meldt slechts één uitgever dit. Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "tier4Only": "Alleen laag-tier bronnen",
+      "tier4OnlyHint": "Elk medium dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "rosterListed": "({{listed}} vermeld)",
+      "rosterFeeds": "Feeds gezien: {{labels}}",
+      "rosterLegend": "Tiers rangschikken bronnen; ze beoordelen deze bewering niet.",
+      "tierDocsLink": "Hoe tiers worden toegekend",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Tier 1: Persbureaus en officiële instanties",
+      "tierTitle2": "Tier 2: Grote media",
+      "tierTitle3": "Tier 3: Gespecialiseerde, regionale en denktankbronnen",
+      "tierTitle4": "Tier 4: Aggregators en blogs",
+      "tierTitleUndeclared": "Tier niet opgegeven: nog niet beoordeeld",
+      "rosterSummary": "Gemeld door {{publishers}}",
+      "rosterSummaryTier1": "Gemeld door {{publishers}}, waaronder {{tier1}} tier-1",
+      "rosterPublishers_one": "{{count}} uitgever",
+      "rosterPublishers_other": "{{count}} uitgevers"
     }
   },
   "popups": {
@@ -2494,6 +2523,10 @@
     "protest": {
       "acledVerified": "ACLED (geverifieerd)",
       "gdelt": "GDELT",
+      "records": "vermeldingen",
+      "mediaSignal": "Onbevestigd mediasignaal",
+      "relatedArticle": "Gerelateerd artikel",
+      "mediaSignalDetail": "Deze locatie wordt genoemd in artikelen over onrust. Een lokale gebeurtenis is niet bevestigd.",
       "riots": "Rellen",
       "highSeverity": "Hoge ernst"
     },

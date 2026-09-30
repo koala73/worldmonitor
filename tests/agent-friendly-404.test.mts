@@ -11,9 +11,11 @@ import {
   AGENT_NOT_FOUND_STATUS,
   HUMAN_NOT_FOUND_CONTENT_TYPE,
   buildAgentNotFoundMarkdown,
+  HUMAN_NOT_FOUND_SECTIONS,
   buildHumanNotFoundHtml,
   isKnownPublicPagePath,
   prefersAgentNotFound,
+  suggestNotFoundSection,
 } from '../src/config/agent-not-found.ts';
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
 
@@ -194,5 +196,54 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
       buildAgentNotFoundMarkdown('/missing').includes(AGENT_NOT_FOUND_INDEXES.llmsTxt),
       true,
     );
+  });
+});
+
+describe('human 404 guides a lost reader to a real page', () => {
+  it('suggests the section a mistyped or singular first segment was reaching for', () => {
+    const cases: Array<[string, string | null]> = [
+      ['/countri/iran', '/countries/'],
+      ['/country/iran', '/countries/'],
+      ['/crisis/sudan-conflict', '/crises/'],
+      ['/chokepoint/suez-canal', '/chokepoints/'],
+      ['/comparison/liveuamap', '/compare/'],
+      ['/documentation', '/docs/documentation'],
+      ['/blogs/some-post', '/blog/'],
+      ["/'to", null],
+      ['/zzzzzz', null],
+      [`/${'countries'.repeat(900)}`, null],
+      ['/', null],
+    ];
+    for (const [path, expected] of cases) {
+      assert.equal(suggestNotFoundSection(path)?.href ?? null, expected, path);
+    }
+  });
+
+  it('makes the likely destination the primary action, with the dashboard second', () => {
+    const body = buildHumanNotFoundHtml('/countri/iran');
+    assert.match(body, /<main\b/);
+    assert.match(body, /<nav aria-label="Primary">/);
+    assert.match(body, /<a class="cta" href="\/countries\/">Go to Countries/);
+    assert.match(body, /<a class="secondary" href="\/dashboard">/);
+    assert.match(buildHumanNotFoundHtml("/'to"), /<a class="cta" href="\/dashboard">Open the live dashboard/);
+    for (const section of HUMAN_NOT_FOUND_SECTIONS) {
+      assert.ok(body.includes(`href="${section.href}"`), section.href);
+      assert.ok(body.includes(section.description), section.label);
+    }
+  });
+
+  it('omits the suggestion when nothing is close, and never ships a script', () => {
+    const body = buildHumanNotFoundHtml("/'to");
+    assert.doesNotMatch(body, /Go to /);
+    assert.doesNotMatch(buildHumanNotFoundHtml(), /Go to /);
+    assert.doesNotMatch(body, /<script\b/i);
+    assert.match(body, /<meta name="robots" content="noindex">/);
+  });
+
+  it('links every section to its final URL, never through a redirect', () => {
+    const redirectSources = new Set(vercelConfig.redirects.map((rule) => rule.source));
+    for (const section of HUMAN_NOT_FOUND_SECTIONS) {
+      assert.ok(!redirectSources.has(section.href), `${section.href} is a redirect source`);
+    }
   });
 });

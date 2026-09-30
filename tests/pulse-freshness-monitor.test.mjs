@@ -17,9 +17,63 @@ import {
   evaluatePulseFreshness,
   publishPulseFreshness,
   renderBody,
+  readLastRefreshRun,
 } from '../scripts/check-pulse-freshness.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+describe('refresh listing corroboration', () => {
+  it('does not treat a failed rerun after the snapshot as already repaired', () => {
+    const lastRun = readLastRefreshRun({
+      repository: 'o/r',
+      gh: () => ({ total_count: 1, workflow_runs: [{
+        id: 1, run_attempt: 2, status: 'completed', conclusion: 'failure',
+        created_at: '2026-09-14T00:00:00Z', updated_at: '2026-09-24T00:00:00Z',
+      }] }),
+    });
+    const verdict = evaluatePulseFreshness(HAND_REFRESHED, lastRun);
+    assert.equal(verdict.alert, true);
+    assert.equal(verdict.lastRun.superseded, false);
+    const repaired = evaluatePulseFreshness({
+      ...HAND_REFRESHED, capturedAtMs: Date.parse('2026-09-24T01:00:00Z'),
+    }, lastRun);
+    assert.equal(repaired.alert, false);
+    assert.equal(repaired.lastRun.superseded, true);
+  });
+  it('still reports a stale snapshot when the workflow listing is unknown', () => {
+    const verdict = evaluatePulseFreshness(snapshot(10), { unknown: true });
+    const writes = [];
+    const result = publishPulseFreshness(verdict, {
+      repository: 'o/r', gh: () => [[]], ghPost: (_args, body) => writes.push(body),
+    });
+    assert.equal(result.alert, true);
+    assert.equal(writes.length, 1);
+    assert.match(writes[0].body, /UNKNOWN/);
+  });
+  it('preserves an open issue when the latest run is unknown', () => {
+    const verdict = evaluatePulseFreshness(snapshot(1), { unknown: true });
+    const result = publishPulseFreshness(verdict, {
+      repository: 'o/r',
+      gh: () => { throw new Error('unknown must not query issues'); },
+      ghPost: () => { throw new Error('unknown must not close an issue'); },
+    });
+    assert.equal(result.state, 'UNKNOWN');
+  });
+  const run = (id, conclusion) => ({ id, conclusion, created_at: `2026-09-${id}T00:00:00Z`, status: 'completed' });
+  for (const [oldResult, newResult] of [['failure', 'success'], ['success', 'failure']]) {
+    it(`rejects stale ${oldResult} in favour of current ${newResult}`, () => {
+      const replies = [
+        { total_count: 1, workflow_runs: [run(20, oldResult)] },
+        { total_count: 2, workflow_runs: [run(24, newResult)] },
+        { total_count: 2, workflow_runs: [run(24, newResult)] },
+      ];
+      assert.equal(readLastRefreshRun({ repository: 'o/r', gh: () => replies.shift() }).conclusion, newResult);
+    });
+  }
+  it('does not interpret contradictory empty listings as never run', () => {
+    assert.throws(() => readLastRefreshRun({ repository: 'o/r', gh: () => ({ total_count: 10, workflow_runs: [] }) }), /corroborated/);
+  });
+});
 
 function snapshot(ageDays, filename = 'crawlable-live-pulse-2026-09-09.json') {
   return { filename, capturedAt: '2026-09-09', ageDays };

@@ -76,6 +76,8 @@ export interface PizzintLocation {
   isClosedNow: boolean;
   lat: number;
   lng: number;
+  noLiveSignal: boolean;
+  hasBaseline: boolean;
 }
 
 export interface GdeltTensionPair {
@@ -135,6 +137,7 @@ export interface GetCountryIntelBriefResponse {
   model: string;
   generatedAt: number;
   sources: BriefSource[];
+  evidence: BriefEvidence[];
 }
 
 export interface BriefSource {
@@ -142,6 +145,16 @@ export interface BriefSource {
   source: string;
   url: string;
   publishedAt: string;
+}
+
+export interface BriefEvidence {
+  id: string;
+  kind: string;
+  label: string;
+  value: string;
+  factText: string;
+  asOf: string;
+  url: string;
 }
 
 export interface GetCountryCoverageRequest {

@@ -48,7 +48,7 @@ import { BETA_MODE } from '@/config/beta';
 import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents, replayPendingMissionReturn } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, trackLayoutCustomized, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents, replayPendingMissionReturn } from '@/services/analytics';
 import { ProPreviewSection } from '@/components/ProPreviewSection';
 import { syncPanelPreview } from '@/services/mission-preview-registry';
 import { loadStoredMissionPreset } from '@/services/mission-presets';
@@ -3162,6 +3162,7 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('nq-catalysts', () => import('@/components/NqCatalystsPanel'), 'NqCatalystsPanel');
     this.lazyDefaultPanel('yield-curve', () => import('@/components/YieldCurvePanel'), 'YieldCurvePanel');
     this.lazyDefaultPanel('earnings-calendar', () => import('@/components/EarningsCalendarPanel'), 'EarningsCalendarPanel');
+    this.lazyDefaultPanel('material-events', () => import('@/components/MaterialEventsPanel'), 'MaterialEventsPanel');
     this.lazyDefaultPanel('economic-calendar', () => import('@/components/EconomicCalendarPanel'), 'EconomicCalendarPanel');
     this.lazyDefaultPanel('cot-positioning', () => import('@/components/CotPositioningPanel'), 'CotPositioningPanel');
     this.lazyDefaultPanel('liquidity-shifts', () => import('@/components/LiquidityShiftsPanel'), 'LiquidityShiftsPanel');
@@ -4462,6 +4463,7 @@ export class PanelLayoutManager implements AppModule {
             this.bottomSetMemory.delete(key);
           }
           this.savePanelOrder();
+          trackLayoutCustomized('panel-reorder');
         }
       }
       dragStarted = false;
@@ -4519,7 +4521,10 @@ export class PanelLayoutManager implements AppModule {
             bottomGrid,
             bottomSet: this.bottomSetMemory,
           });
-          if (moved) this.savePanelOrder();
+          if (moved) {
+            this.savePanelOrder();
+            trackLayoutCustomized('panel-reorder');
+          }
           moveBtn.focus();
           return;
         }
@@ -4536,6 +4541,7 @@ export class PanelLayoutManager implements AppModule {
         if (back) parent.insertBefore(el, sibling);
         else parent.insertBefore(el, sibling.nextElementSibling);
         this.savePanelOrder();
+        trackLayoutCustomized('panel-reorder');
         // The button travels with the panel; keep focus on it so repeated
         // presses keep moving the same panel.
         moveBtn.focus();

@@ -2162,7 +2162,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         systemPrompts.push(body.messages?.[0]?.content || '');
         const title = body.messages?.[1]?.content.match(/^\[1\] (.+)$/m)?.[1];
         const content = title ? JSON.stringify({
-          situation: [{ text: title, source: 1 }], implications: [], risks: [], outlook: [], watch: [],
+          situation: [{ text: title, sources: [1], evidence: [] }], implications: [], risks: [], outlook: [], watch: [],
         }) : `brief-${counters.groqCalls}`;
         return jsonResponse({ choices: [{ message: { content: completion ?? content } }] });
       }
@@ -2209,14 +2209,125 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(context)}`),
         { countryCode: 'FI' },
       );
-      assert.match(userPrompts[0], /Brief source articles:/);
+      assert.match(userPrompts[0], /Headlines:/);
       assert.match(userPrompts[0], /\[1\].*Finland completes border fence/);
       assert.doesNotMatch(userPrompts[0], /Tamar|30%|Net energy import dependency/);
       assert.match(systemPrompts[0], /one factual sentence, no newlines/i);
       assert.match(systemPrompts[0], /do not invent.*forecasts/i);
       assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
       assert.equal(out.sources[0].title, 'Finland completes border fence');
-      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v8:')));
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v9:')));
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('grounds analytical sections in the evidence pack and returns the cited evidence', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    store.set('intelligence:advisories:v1', JSON.stringify({ byCountry: { FI: 'caution' }, fetchedAt: new Date().toISOString() }));
+    const userPrompts = [];
+    const systemPrompts = [];
+    const risk = 'The most severe government travel advisory World Monitor tracks for Finland is Exercise Increased Caution.';
+    installIntelFetchMock({
+      store, setKeys: [], userPrompts, systemPrompts, counters: { groqCalls: 0 },
+      completion: JSON.stringify({
+        situation: [{ text: 'Finland completes border fence', sources: [1], evidence: [] }],
+        implications: [],
+        risks: [
+          { text: risk, sources: [], evidence: ['E1'] },
+          // Names a label its cited data point never states: dropped.
+          { text: 'The Country Instability Index for Finland is 85 of 100.', sources: [1], evidence: ['E1'] },
+        ],
+        outlook: [], watch: [],
+      }),
+    });
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(context)}`),
+        { countryCode: 'FI' },
+      );
+      assert.match(userPrompts[0], /World Monitor data points:\n\[E1\] \(advisory\) .*Exercise Increased Caution/);
+      assert.match(systemPrompts[0], /never use a number from a headline/);
+      assert.equal(out.brief, `SITUATION NOW\nFinland completes border fence [1]\n\nKEY RISKS\n${risk} [E1]`);
+      assert.deepEqual(out.evidence.map((item) => [item.id, item.kind, item.value]), [['E1', 'advisory', 'Exercise Increased Caution']]);
+      assert.doesNotMatch(out.brief, /do not establish|withheld/i);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('grounds a premium English request without Source lines on the server digest', async () => {
+    // The dashboard sends signal context without Source lines when it has no
+    // headlines of its own; that must not cost a premium caller the brief.
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    store.set('news:digest:v1:full:en', JSON.stringify({ categories: { conflict: { items: [
+      { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-1', pubDate: '2026-07-05T06:00:00.000Z' },
+    ] } } }));
+    const counters = { groqCalls: 0 };
+    const userPrompts = [];
+    installIntelFetchMock({ store, setKeys: [], userPrompts, counters });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=CII%3A%2045%2F100'),
+        { countryCode: 'IL' },
+      );
+      assert.equal(counters.groqCalls, 1);
+      assert.match(userPrompts[0], /\[1\] Israel announces new security framework/);
+      assert.equal(out.brief, 'SITUATION NOW\nIsrael announces new security framework [1]');
+      assert.equal(out.sources[0]?.url, 'https://example.com/il-1');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('makes no LLM call for an ungrounded shared request in any language', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], counters });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FR&lang=fr'),
+        { countryCode: 'FR' },
+      );
+      assert.equal(counters.groqCalls, 0);
+      assert.equal(out.brief, '');
+      assert.equal(out.countryName, 'France', 'an empty brief still names the country, unlike an invalid code');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('writes no English brief from sports-only caller context', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], counters });
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Black Maidens thrash Burkina Faso 4-0 in WAFU B opener', source: 'MyJoyOnline', url: 'https://myjoyonline.com/bf' });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=BF&context=${encodeURIComponent(context)}`),
+        { countryCode: 'BF' },
+      );
+      assert.equal(counters.groqCalls, 0, 'a sports-only grounding must not reach the LLM');
+      assert.equal(out.brief, '');
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2231,7 +2342,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const setKeys = [];
     const store = new Map();
     installIntelFetchMock({ store, setKeys, userPrompts: [], counters: { groqCalls: 0 }, completion: JSON.stringify({
-      situation: [{ text: 'Tamar output increases 30%', source: 1 }], implications: [], risks: [], outlook: [], watch: [],
+      situation: [{ text: 'Tamar output increases 30%', sources: [1], evidence: [] }], implications: [], risks: [], outlook: [], watch: [],
     }) });
     const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' });
     try {
@@ -2400,7 +2511,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:IL:en:shared'), `anon key should use the shared v7 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:en:shared'), `anon key should use the shared v9 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
       assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
@@ -2430,20 +2541,23 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
     try {
       const req = { countryCode: 'IL' };
-      const alpha = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
-      const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
-      const alphaCached = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
+      const contextFor = (title) => encodeURIComponent('Source [1]: ' + JSON.stringify({ title, source: 'Reuters', url: 'https://reuters.com/il' }));
+      const alphaUrl = `https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=${contextFor('Israel announces alpha framework')}`;
+      const betaUrl = `https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=${contextFor('Israel announces beta framework')}`;
+      const alpha = await module.getCountryIntelBrief(makeCtx(alphaUrl), req);
+      const beta = await module.getCountryIntelBrief(makeCtx(betaUrl), req);
+      const alphaCached = await module.getCountryIntelBrief(makeCtx(alphaUrl), req);
 
       assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:IL:'), 'cache key should use the v8 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:'), 'cache key should use the v9 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
-      assert.equal(alpha.brief, 'brief-1');
-      assert.equal(beta.brief, 'brief-2');
-      assert.equal(alphaCached.brief, 'brief-1', 'same premium context should hit cache');
-      assert.match(userPrompts[0], /Context snapshot:\s*alpha/);
-      assert.match(userPrompts[1], /Context snapshot:\s*beta/);
+      assert.equal(alpha.brief, 'SITUATION NOW\nIsrael announces alpha framework [1]');
+      assert.equal(beta.brief, 'SITUATION NOW\nIsrael announces beta framework [1]');
+      assert.equal(alphaCached.brief, alpha.brief, 'same premium context should hit cache');
+      assert.match(userPrompts[0], /\[1\] Israel announces alpha framework/);
+      assert.match(userPrompts[1], /\[1\] Israel announces beta framework/);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2451,7 +2565,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }
   });
 
-  it('uses base cache key and prompt when context is missing or blank', async () => {
+  it('returns no English brief and makes no LLM call when nothing grounds it', async () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv({
       GROQ_API_KEY: 'test-key',
@@ -2500,13 +2614,15 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const first = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US'), req);
       const second = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US&context=%20%20%20'), req);
 
-      assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
-      assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
-      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
-      assert.match(userPrompts[0], /Net energy import dependency: unavailable from audited sources\./);
-      assert.equal(first.brief, 'base-brief');
-      assert.equal(second.brief, 'base-brief');
+      // Before the evidence-grounded brief, this fell through to the analyst
+      // prompt and published an ungrounded brief with 24/48/72-hour predictions.
+      assert.equal(groqCalls, 0, 'no headline means no LLM call');
+      assert.equal(userPrompts.length, 0);
+      assert.equal(first.brief, '');
+      assert.equal(second.brief, '');
+      assert.deepEqual(first.evidence, []);
+      assert.equal(setKeys.length, 1, 'one shared negative-cache write; the second call is served from it');
+      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v9:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

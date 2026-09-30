@@ -1423,7 +1423,7 @@ describe('webmcp.ts: current API contract', () => {
 
     const page = await tool.execute({ variant: 'full', limit: 4 });
     assert.equal(page.variant, 'full');
-    assert.equal(page.total, 109);
+    assert.equal(page.total, 110);
     assert.equal(page.hasMore, true);
     assert.equal(typeof page.nextCursor, 'string');
     assert.equal(page.panels.length, 4);

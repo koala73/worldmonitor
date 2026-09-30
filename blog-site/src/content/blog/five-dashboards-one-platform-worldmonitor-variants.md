@@ -221,8 +221,8 @@ No. All published variants are completely free with no time limits, feature gate
 **Pick your variant and start exploring:**
 
 - [worldmonitor.app](https://www.worldmonitor.app) for geopolitics
-- [tech.worldmonitor.app](https://tech.worldmonitor.app) for technology
-- [finance.worldmonitor.app](https://finance.worldmonitor.app) for markets
-- [commodity.worldmonitor.app](https://commodity.worldmonitor.app) for commodities
-- [happy.worldmonitor.app](https://happy.worldmonitor.app) for good news
-- [energy.worldmonitor.app](https://energy.worldmonitor.app) for energy
+- [tech.worldmonitor.app](https://tech.worldmonitor.app/dashboard) for technology
+- [finance.worldmonitor.app](https://finance.worldmonitor.app/dashboard) for markets
+- [commodity.worldmonitor.app](https://commodity.worldmonitor.app/dashboard) for commodities
+- [happy.worldmonitor.app](https://happy.worldmonitor.app/dashboard) for good news
+- [energy.worldmonitor.app](https://energy.worldmonitor.app/dashboard) for energy

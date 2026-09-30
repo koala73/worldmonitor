@@ -57,7 +57,7 @@ async function assertBadgeColourSemantics(page: Page): Promise<void> {
 
   const miit = banner.locator('.breaking-alert', { hasText: 'MIIT (China)' });
   await expect(miit.locator('.tier-badge.tier-1')).toHaveText('★');
-  await expect(miit.locator('.propaganda-badge.high')).toHaveText('Official Government Source');
+  await expect(miit.locator('.propaganda-badge.high')).toHaveText('Official Government Source: China');
   await expect(miit.locator('.propaganda-badge.high')).toHaveCSS('color', 'rgb(255, 68, 68)');
 }
 
