@@ -55,6 +55,10 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
       geoContext: { type: 'string', maxLength: 100 },
     },
     required: ['headlines'],
+    oneOf: [
+      { required: ['mode'], properties: { mode: { const: 'translate' }, headlines: { maxItems: 1 } } },
+      { properties: { mode: { const: 'brief' } } },
+    ],
   },
   outputSchema: {
     type: 'object',
