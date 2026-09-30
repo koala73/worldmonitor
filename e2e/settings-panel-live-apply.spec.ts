@@ -69,6 +69,43 @@ test('enabling a panel in Settings shows it on the dashboard without a reload', 
   await expect(page.locator(PANEL_SELECTOR)).toBeVisible({ timeout: 30_000 });
 });
 
+// Closing with an unsaved panel toggle asks to discard. The confirm is appended
+// to <body> beside the Settings overlay, so it must also stack above it: a
+// confirm hidden behind Settings leaves the close button dead (close() returns
+// while the confirm is pending) and the tab wedged with Settings open, which
+// holds off every stale-bundle reload (Sentry WORLDMONITOR-15Z).
+test('closing Settings with unsaved panel changes shows a clickable discard confirm', async ({ page }) => {
+  await seedDashboard(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  const settingsBtn = page.locator('#unifiedSettingsBtn');
+  await expect(settingsBtn).toBeVisible({ timeout: 60_000 });
+  await settingsBtn.click();
+  const settings = page.locator('#unifiedSettingsModal');
+  await expect(settings).toHaveClass(/\bactive\b/);
+  await page.locator('#us-tab-panels').click();
+
+  const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
+  await expect(toggle).toBeVisible({ timeout: 15_000 });
+  await toggle.click();
+  await expect(toggle).toHaveClass(/\bactive\b/);
+  await page.locator('.unified-settings-close').click();
+
+  const discard = page.locator('.confirm-dialog-overlay.active .confirm-dialog-confirm');
+  await expect(discard).toBeVisible();
+  // toBeVisible ignores stacking, so hit-test the button's centre directly.
+  const onTop = await discard.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit !== null && button.contains(hit);
+  });
+  expect(onTop).toBe(true);
+
+  await discard.click();
+  await expect(settings).not.toHaveClass(/\bactive\b/);
+  await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(0);
+});
+
 // The native bridge response is synthetic; HTML delimiters are not a demonstrated
 // valid input to Node's HTTP method parser. This tests the rendering boundary.
 test('diagnostic traffic methods render as text', async ({ page }, testInfo) => {
