@@ -254,6 +254,10 @@ async function start(): Promise<void> {
       void operation.then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
         .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
     }
+    if (message.method === 'ui/notifications/tool-input') {
+      const input = Object.fromEntries(Object.entries(message.params?.arguments ?? {}).filter(([key]) => key !== 'jmespath'));
+      void applyView(input).catch(() => { status.textContent = 'The requested view could not be applied.'; });
+    }
     if (message.method === 'ui/notifications/tool-result') renderResult(message.params);
 
     if (message.method === 'ui/notifications/host-context-changed' && ['light', 'dark'].includes(message.params?.theme)) document.documentElement.dataset.theme = message.params.theme;

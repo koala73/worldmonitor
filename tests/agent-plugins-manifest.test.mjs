@@ -100,6 +100,23 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.equal(rootBytes.equals(publicPlugin), true, 'public/plugin.json must match plugin.json exactly');
   });
 
+  it('OpenAI listing metadata references packaged assets and respects submission text limits', () => {
+    const listing = plugin.extensions['com.openai'].interface;
+    for (const [field, limit] of Object.entries({ displayName: 30, shortDescription: 30, longDescription: 4000, developerName: 80 })) {
+      assert.ok(typeof listing[field] === 'string' && listing[field].length > 0 && listing[field].length <= limit, field);
+    }
+    for (const field of ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL']) {
+      assert.equal(new URL(listing[field]).protocol, 'https:', field);
+    }
+    assert.ok(listing.defaultPrompt.length <= 3);
+    for (const prompt of listing.defaultPrompt) assert.ok(prompt.length <= 128);
+    for (const field of ['composerIcon', 'logo']) {
+      const path = listing[field];
+      assert.ok(path.startsWith('./') && !path.includes('..'), field);
+      assert.ok(existsSync(join(ROOT, path)), `${field} must exist inside the package source`);
+    }
+  });
+
   it('mcp.json is a closed Agent Plugins MCP config pointing at the live servers', () => {
     assert.equal(mcp.$schema, MCP_SCHEMA);
     for (const key of Object.keys(mcp)) {

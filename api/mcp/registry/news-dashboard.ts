@@ -9,7 +9,7 @@ import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
 export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   name: 'open_news_dashboard',
   title: 'WorldMonitor news and maps',
-  description: 'Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. Map view arguments are applied by the mounted app.',
+  description: 'Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. View arguments configure a rendered instance when delivered by the host. requestedView confirms requested settings, not the applied state of an already-open map.',
   _uiResourceUri: NEWS_DASHBOARD_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 1048576,

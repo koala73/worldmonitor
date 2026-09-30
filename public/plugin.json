@@ -19,5 +19,33 @@
     "country-risk",
     "markets",
     "chokepoints"
-  ]
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "WorldMonitor",
+        "shortDescription": "News and global intelligence",
+        "longDescription": "Explore source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints with WorldMonitor tools and task-focused skills. Browse curated news panels and a 2D map or 3D globe, search headlines, and summarize or translate selected headlines. Data can be partial, stale or unavailable; answers retain coverage and attribution. Connect your WorldMonitor account through OAuth. Some tools require an eligible plan. This plugin reads intelligence data and does not trade, publish articles or modify source records. Map controls work in the UI; model control of an already-open map depends on host support.",
+        "developerName": "WorldMonitor",
+        "category": "Research & Analysis",
+        "capabilities": [
+          "Browse curated news",
+          "Summarize and translate headlines",
+          "Read country risk and intelligence",
+          "Inspect news on a map"
+        ],
+        "websiteURL": "https://www.worldmonitor.app",
+        "supportURL": "https://www.worldmonitor.app/support.md",
+        "privacyPolicyURL": "https://www.worldmonitor.app/legal/privacy.pdf",
+        "termsOfServiceURL": "https://www.worldmonitor.app/legal/terms.pdf",
+        "defaultPrompt": [
+          "Show today’s world headlines with sources and coverage.",
+          "Summarize the latest energy news.",
+          "Translate one current headline into Arabic."
+        ],
+        "composerIcon": "./public/favico/worldmonitor-icon-1024.png",
+        "logo": "./public/favico/worldmonitor-icon-1024.png"
+      }
+    }
+  }
 }
