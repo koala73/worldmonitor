@@ -40,6 +40,25 @@ health signal: a healthy deployment can still return HTTP 500 from `POST
   retry append-only conversion events after an ambiguous 5xx; identity snapshots
   may use their idempotent retry policy.
 
+### Diagnose a monitor transport failure
+
+The scheduled monitor reports each failed write with its burst number, UTC
+start time, and elapsed milliseconds. Transport failures include bounded error
+codes from nested causes and aggregate connection errors, such as `ECONNRESET`,
+`EAI_AGAIN`, and `UND_ERR_CONNECT_TIMEOUT`. Arbitrary error messages, stacks,
+socket addresses, and request payloads are excluded.
+
+`phase=request` means fetch failed before response headers were available.
+`phase=body` means headers arrived but the response body could not be read.
+The latter includes the HTTP status. Neither proves that the collector did not
+commit the write.
+
+Compare the failed attempt times with Railway HTTP and runtime logs for the
+`umami` service. Check the adjacent scheduled runs before classifying an alert
+as isolated. A later clean run proves recovery for that sample; it does not
+identify the cause of an earlier connection failure. Any failed write still
+fails the monitor, including failures followed by successful bursts.
+
 ### Raced-timeout retry / replay (#6968)
 
 A `raced` failure means the transport ignored our abort and the request may
