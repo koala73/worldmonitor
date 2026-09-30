@@ -11,7 +11,7 @@ import type {
 
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 import trackedCategories from '../../../../scripts/shared/research-arxiv-categories.json';
-import { clampInt } from '../../../_shared/constants';
+import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
@@ -26,7 +26,7 @@ export async function listArxivPapers(
     throw new ValidationError([{ field: 'category', description: 'Unsupported arXiv category' }]);
   }
   const categories = category ? [category] : trackedCategories;
-  const pageSize = clampInt(req.pageSize, 50, 1, 100);
+  const pageSize = resolvePageSize(req.pageSize, 50, 100);
   const snapshots = await Promise.all(categories.map(async (selected) => {
     try {
       return await getCachedJson(`${SEED_KEY_PREFIX}:${selected}::50`, true) as ListArxivPapersResponse | null;
