@@ -48,6 +48,8 @@ describe('widget data request boundary', () => {
     ['/api/intelligence/v1/get-country-intel-brief'], ['/api/supply-chain/v1/get-bypass-options'],
     ['/api/bootstrap'], ['/api/bootstrap?keys='],
     ['/api/bootstrap?keys=marketQuotes,,cryptoQuotes'],
+    ['/api/bootstrap?keys=marketQuotes,marketQuotes'],
+    ['/api/bootstrap', { keys: 'cryptoQuotes,marketQuotes,cryptoQuotes' }],
     ['/api/bootstrap?keys=marketQuotes&keys=notAdvertised'],
     ['/api/bootstrap?keys=marketQuotes', { keys: 'notAdvertised' }],
     ['/api/bootstrap?keys=notAdvertised', { keys: 'marketQuotes' }],

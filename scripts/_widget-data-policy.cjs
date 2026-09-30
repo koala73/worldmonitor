@@ -401,9 +401,11 @@ function approvedBootstrapQuery(searchParams, requireKeys) {
   if (markers.length > 1 || (markers.length === 1 && markers[0] !== '1')) return false;
   const values = searchParams.getAll('keys');
   if (!values.length) return !requireKeys;
+  const keys = values[0].split(',');
   return values.length === 1
-    && (!markers.length || !values[0].includes(','))
-    && values[0].split(',').every(key => BOOTSTRAP_KEYS.has(key));
+    && (!markers.length || keys.length === 1)
+    && new Set(keys).size === keys.length
+    && keys.every(key => BOOTSTRAP_KEYS.has(key));
 }
 
 // Validate both supplied queries and the final URL. Never let URL normalization
