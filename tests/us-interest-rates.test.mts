@@ -92,8 +92,8 @@ describe('US interest rate history', () => {
 
     const withHistory = buildUsInterestRates(snapshot, {
       sofr: [
-        { date: '2018-04-03', value: 1.8 },
-        { date: '2018-04-02', value: 1.83 },
+        { date: '2018-04-04', value: 1.8 },
+        { date: '2018-04-03', value: 1.83 },
       ],
     }, true);
     assert.deepEqual(
@@ -129,6 +129,10 @@ describe('US interest rate history', () => {
     assert.equal(validateRateHistory({ series }), true);
     series.fedFundsEffective = series.fedFundsEffective.slice(0, 120);
     assert.equal(validateRateHistory({ series }), false);
+  });
+
+  it('expects SOFR history to start at FRED\'s first observation', () => {
+    assert.equal(SEEDED_SERIES.find((series) => series.id === 'sofr')?.startsWith, '2018-04-03');
   });
 
   it('uses the same Redis keys as the seeder', () => {
@@ -231,7 +235,7 @@ describe('US interest rate handler', () => {
 
   it('builds the latest print from history when the snapshot key is empty', () => {
     const histories = mergeRateHistories([
-      ['economic:us-interest-rates:v1:sofr:2010', [{ date: '2018-04-02', value: 1.8 }]],
+      ['economic:us-interest-rates:v1:sofr:2010', [{ date: '2018-04-03', value: 1.8 }]],
       ['economic:us-interest-rates:v1:sofr:2020', [{ date: '2026-09-18', value: 3.91 }]],
     ]);
     const response = buildUsInterestRates(undefined, histories, true);
