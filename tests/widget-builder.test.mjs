@@ -64,6 +64,15 @@ describe('widget relay spend identity trust', () => {
   }
 });
 
+// The relay's Sonnet request settings, for harnesses that evaluate relay functions in isolation.
+const widgetSonnetConstants = () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const params = relay.match(/const WIDGET_SONNET_PARAMS = \{[\s\S]*?\n\};/);
+  const headers = relay.match(/const WIDGET_SONNET_HEADERS = \{[^\n]*\};/);
+  assert.ok(params && headers, 'Missing WIDGET_SONNET_PARAMS or WIDGET_SONNET_HEADERS');
+  return `${params[0]}\n${headers[0]}`;
+};
+
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
 async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [], hangOn = null, clock = null, request = {} } = {}) {
@@ -73,7 +82,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     assert.ok(match, `Missing relay function ${name}`);
     return match[0];
   };
-  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [], modelSignals = [];
+  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [], modelSignals = [], modelOptions = [];
   let ended = 0;
   let expire, disconnect;
   // A hung call settles only through its abort signal; the guard fails a missing abort.
@@ -93,7 +102,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     URL, AbortSignal, AbortController, clearTimeout, parseWidgetAgentResponse,
     ...(clock ? { Date: class extends Date { static now() { return clock(); } } } : {}),
     setTimeout: (callback, ms) => { expire = callback; return setTimeout(callback, ms); },
-    console: { error: (...args) => logs.push(args) },
+    console: { error: (...args) => logs.push(args), log: (...args) => logs.push(args) },
     requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
     readRequestBody: async () => JSON.stringify({ prompt: 'Show earthquake data', tier, ...request }),
     checkProWidgetRateLimit: () => false, checkWidgetRateLimit: () => false,
@@ -113,6 +122,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     },
     verifyWidgetAgainstSources: async (_client, input, options) => {
       verifyCalls.push({ ...input, signal: options?.signal });
+      options?.onUsage?.({ input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 50 }, 'claude-sonnet-5-5');
       return verdicts.length ? verdicts.shift() : { rightDataset: true, datasetWhy: '', unsupported: [] };
     },
     fetch: async (url, init) => {
@@ -148,6 +158,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     } : class {
       messages = { create: async (request, options) => {
         modelSignals.push(options?.signal);
+        modelOptions.push(options);
         if (hangOn && requests.length === responses.length) { requests.push(request); return hang(options?.signal); }
         return nextResponse(request);
       } };
@@ -161,7 +172,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     return match[0];
   }).join('\n');
   const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
-  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
+  const run = vm.runInNewContext(`${limit}\n${widgetSonnetConstants()}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
   const res = {
     writableEnded: false, writeHead() {},
     write(frame) { frames.push(frame); },
@@ -171,9 +182,10 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
   res.on = (event, cb) => { if (event === 'close') disconnect = () => { if (!res.writableEnded) cb(); }; };
   await run({ headers: {}, on() {}, socket: {} }, res);
   const events = frames.map(frame => JSON.parse(frame.match(/data: (.*)/)[1]));
-  return { requests, effects, fetchInits, invalidated, verifyCalls, modelSignals, logs, events, ended };
+  return { requests, effects, fetchInits, invalidated, verifyCalls, modelSignals, modelOptions, logs, events, ended };
 }
 
+const usageLine = result => JSON.parse(result.logs.find(args => args[0] === '[widget-agent] usage')[1]);
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
 const widgetResponse = (stop_reason, content = [{ type: 'text', text: widgetText }]) => ({ stop_reason, content });
 const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/test' }) => ({ type: 'tool_use', id, name, input });
@@ -189,6 +201,69 @@ function assertWidgetError(result, pattern) {
   assert.match(terminal[0].message, pattern);
   assert.equal(result.ended, 1);
 }
+
+describe('widget-agent relay — model, caching and usage', () => {
+  it('runs Pro on Sonnet 5.5 with adaptive thinking at low effort, loop caching and refusal fallback', async () => {
+    const result = await runWidgetAgent([widgetResponse('tool_use', [widgetTool('1')]), widgetResponse('end_turn')], { tier: 'pro' });
+    for (const [i, request] of result.requests.entries()) {
+      assert.equal(request.model, 'claude-sonnet-5-5');
+      assert.deepEqual(request.thinking, { type: 'adaptive' });
+      assert.deepEqual(request.output_config, { effort: 'low' });
+      assert.deepEqual(request.cache_control, { type: 'ephemeral' });
+      assert.equal(request.fallbacks, 'default');
+      assert.equal(result.modelOptions[i].headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
+    }
+  });
+
+  it('keeps basic on Haiku, with loop caching but no Sonnet-only fields', async () => {
+    const result = await runWidgetAgent([widgetResponse('end_turn')]);
+    const [request] = result.requests;
+    assert.equal(request.model, 'claude-haiku-4-5-20251001');
+    assert.deepEqual(request.cache_control, { type: 'ephemeral' });
+    assert.equal(request.thinking, undefined);
+    assert.equal(request.fallbacks, undefined);
+    assert.equal(result.modelOptions[0].headers, undefined);
+  });
+
+  it('only ever appends to the conversation, including when tools are switched off', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [1, 2, 3, 4].map(n => widgetTool(String(n)))),
+      widgetResponse('max_tokens', [{ type: 'text', text: 'cut' }]),
+      widgetResponse('end_turn'),
+    ], { tier: 'pro' });
+    assert.ok(result.requests.length >= 3);
+    for (let i = 1; i < result.requests.length; i++) {
+      const before = result.requests[i - 1].messages;
+      assert.deepEqual(result.requests[i].messages.slice(0, before.length), before, `request ${i} rewrote earlier history`);
+    }
+    assert.match(JSON.stringify(result.requests.at(-1).messages), /Tools are now disabled/);
+  });
+
+  it('counts a refused attempt billed before a fallback, from usage.iterations, without double counting', async () => {
+    const tokens = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+    const result = await runWidgetAgent([{
+      ...widgetResponse('end_turn'), model: 'claude-sonnet-5',
+      usage: { ...tokens(20, 800, 5000, 3000), iterations: [{ ...tokens(500, 0, 0, 40), type: 'message' }, { ...tokens(20, 800, 5000, 3000), type: 'fallback_message' }] },
+    }], { tier: 'pro' });
+    assertWidgetSuccess(result);
+    const line = usageLine(result);
+    assert.deepEqual([line.input, line.cacheWrite, line.cacheRead, line.output], [520, 800, 5000, 3040]);
+  });
+
+  it('logs one usage line per request with the builder and source-check tokens summed', async () => {
+    const usage = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+    const result = await runWidgetAgent([
+      { ...widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), model: 'claude-sonnet-5-5', usage: usage(10, 5000, 0, 100) },
+      { ...widgetResponse('end_turn'), model: 'claude-sonnet-5', usage: usage(20, 800, 5000, 3000) },
+    ], { tier: 'pro', searchResults: [{ title: 'T', url: 'https://example.com/t' }] });
+    assertWidgetSuccess(result);
+    const lines = result.logs.filter(args => args[0] === '[widget-agent] usage');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0][1]), {
+      model: 'claude-sonnet-5-5', servedBy: ['claude-sonnet-5-5', 'claude-sonnet-5'], calls: 3, input: 1030, cacheWrite: 5800, cacheRead: 5000, output: 3150, toolCalls: 1, outcome: 'complete',
+    });
+  });
+});
 
 describe('widget-agent relay — runtime tool budget and finalization', () => {
   it('executes only three of four calls in one response and returns every tool result', async () => {
@@ -335,12 +410,14 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     const result = await runWidgetAgent([], { hangOn: 'deadline' });
     assert.equal(result.modelSignals[0]?.aborted, true);
     assertWidgetError(result, /timeout/i);
+    assert.equal(usageLine(result).outcome, 'timeout');
   });
 
   it('aborts the in-flight model call when the client disconnects', async () => {
     const result = await runWidgetAgent([], { hangOn: 'disconnect' });
     assert.equal(result.modelSignals[0]?.aborted, true);
     assert.equal(result.events.some(e => e.type === 'html_complete'), false);
+    assert.equal(usageLine(result).outcome, 'cancelled');
   });
 
   it('gives the source verifier a signal bounded by the deadline as well as cancellation', async () => {
@@ -973,7 +1050,7 @@ describe('widget source verifier', () => {
   const load = () => {
     const match = relay.match(/async function verifyWidgetAgainstSources\([\s\S]*?\n\}/);
     assert.ok(match, 'Missing verifyWidgetAgainstSources');
-    return vm.runInNewContext(`${match[0]}\nverifyWidgetAgainstSources`, { JSON, console: { warn() {} } });
+    return vm.runInNewContext(`${widgetSonnetConstants()}\n${match[0]}\nverifyWidgetAgainstSources`, { JSON, console: { warn() {} } });
   };
   const clientReturning = (text, seen = []) => ({ messages: { create: async req => { seen.push(req); return { content: [{ type: 'text', text }] }; } } });
   const input = { request: 'Premier League table', today: '2026-09-29', html: '<div>Arsenal 15</div>', sources: [{ kind: 'page', label: 'https://example.com/t', text: '| Arsenal | 15 |' }] };
@@ -995,6 +1072,18 @@ describe('widget source verifier', () => {
     assert.match(seen[0].system, /data_period[\s\S]*needed_period[\s\S]*right_dataset/);
     assert.match(seen[0].system, /finished[^.]*newer one is in progress/);
     assert.equal(verdict.datasetWhy, 'finished season (data: 2025-26 final table; needed: 2026-27 in progress)');
+  });
+
+  it('checks on Sonnet 5.5 with the builder settings and refusal fallback, and reports its usage', async () => {
+    const seen = [];
+    const reported = [];
+    const client = { messages: { create: async (req, opts) => { seen.push({ req, opts }); return { content: [{ type: 'text', text: '{"right_dataset": true, "unsupported": []}' }], usage: { input_tokens: 7, output_tokens: 3 } }; } } };
+    await load()(client, input, { onUsage: u => reported.push(u) });
+    assert.equal(seen[0].req.model, 'claude-sonnet-5-5');
+    assert.deepEqual(JSON.parse(JSON.stringify(seen[0].req.thinking)), { type: 'adaptive' });
+    assert.equal(seen[0].req.fallbacks, 'default');
+    assert.equal(seen[0].opts.headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
+    assert.deepEqual(reported, [{ input_tokens: 7, output_tokens: 3 }]);
   });
 
   it('keeps the newest sources when the material is over budget', async () => {
@@ -1536,7 +1625,7 @@ describe('widget-agent relay — completion contract', () => {
       write(chunk) { chunks.push(chunk); },
       end() { this.writableEnded = true; ends++; },
     };
-    vm.runInNewContext(`${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, context);
+    vm.runInNewContext(`${widgetSonnetConstants()}\n${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, context);
     await context.run({ headers: {}, on() {} }, res);
     assert.equal(ends, 1, 'stream must end exactly once');
     assert.equal(calls, responses.length, 'generation must consume the expected responses');

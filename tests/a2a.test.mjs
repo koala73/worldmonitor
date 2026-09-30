@@ -64,6 +64,17 @@ describe('a2a: agent card contract', () => {
     assert.ok(Array.isArray(card.defaultOutputModes) && card.defaultOutputModes.length > 0);
   });
 
+  it('advertises the deployed JSON-RPC service in supportedInterfaces', () => {
+    assert.ok(Array.isArray(card.supportedInterfaces) && card.supportedInterfaces.length > 0);
+    assert.deepEqual(card.supportedInterfaces, [{
+      url: 'https://www.worldmonitor.app/a2a',
+      protocolBinding: 'JSONRPC',
+      protocolVersion: '0.3',
+    }]);
+    assert.equal(card.supportedInterfaces[0].url, card.url);
+    assert.equal(card.supportedInterfaces[0].protocolBinding, card.preferredTransport);
+  });
+
   it('declares capabilities honestly: no streaming, no push notifications, no tasks', () => {
     assert.equal(card.capabilities.streaming, false);
     assert.equal(card.capabilities.pushNotifications, false);

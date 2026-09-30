@@ -14003,7 +14003,7 @@ async function performWidgetPageRead(url, { signal } = {}) {
 // "2025-26 season" in September 2026 and built last season's table 3 times out
 // of 3, while an independent check given today's date caught every one. Returns
 // null when the check itself fails, so the caller serves the draft unverified.
-async function verifyWidgetAgainstSources(client, { request, today, html, sources, priorHtml = '' }, { signal } = {}) {
+async function verifyWidgetAgainstSources(client, { request, today, html, sources, priorHtml = '' }, { signal, onUsage } = {}) {
   const instructions = 'You check a generated dashboard widget against the source material its builder read. First state the period the widget\'s data covers and the period the request needs as of today\'s date. A finished season, table, week or release is the wrong dataset when a newer one is in progress as of today, unless the request names the earlier period. Then decide whether the sources are the right dataset: the requested entity and that needed period, not a stale or different one. Then list every concrete data value the widget displays (numbers, dates, names in tables, percentages, prices) that the source material does not support, exactly or by trivial arithmetic such as rounding or a difference. Ignore CSS, layout and chart configuration. Reply with JSON only: {"data_period": "...", "needed_period": "...", "right_dataset": true|false, "dataset_why": "...", "unsupported": [{"value": "...", "why": "..."}]}';
   // Keep the newest sources when over budget: a repair's own search comes last.
   const parts = [];
@@ -14018,11 +14018,12 @@ async function verifyWidgetAgainstSources(client, { request, today, html, source
   const prior = priorHtml ? `\n\nPRIOR WIDGET (the widget being modified; values carried over from it unchanged count as supported):\n${String(priorHtml)}` : '';
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      ...WIDGET_SONNET_PARAMS,
       max_tokens: 4096,
       system: instructions,
       messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}${prior}\n\nWIDGET HTML:\n${String(html)}` }],
-    }, { signal });
+    }, { signal, headers: WIDGET_SONNET_HEADERS });
+    onUsage?.(response.usage, response.model);
     const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
     if (typeof verdict.right_dataset !== 'boolean' || !Array.isArray(verdict.unsupported)) return null;
@@ -14045,6 +14046,20 @@ function formatWidgetVerifierFindings(verdict) {
     ...verdict.unsupported.slice(0, 12).map(u => `Unsupported value "${u.value}": ${u.why}`),
   ].filter(Boolean).join('\n');
 }
+
+// Sonnet 5.5 at two thirds of Sonnet 4.6's per-token price. Adaptive thinking at
+// low effort, not between_tools: with thinking off the model made a throwaway
+// search ("noop", "skip") to get room to plan before writing the widget, in 6 of
+// 6 runs, which marked data-only widgets web-sourced and ran the source check.
+// Server-side fallback retries a cyber or frontier_llm decline on Sonnet 5:
+// cyber-threat dashboards are real widget requests.
+const WIDGET_SONNET_PARAMS = {
+  model: 'claude-sonnet-5-5',
+  thinking: { type: 'adaptive' },
+  output_config: { effort: 'low' },
+  fallbacks: 'default',
+};
+const WIDGET_SONNET_HEADERS = { 'anthropic-beta': 'server-side-fallback-2026-07-01' };
 
 // Time kept back from the source check so a draft can still be delivered.
 const WIDGET_DRAFT_DELIVERY_RESERVE_MS = 5_000;
@@ -14224,7 +14239,7 @@ async function handleWidgetAgentRequest(req, res) {
   }
 
   // Tier-specific settings
-  const model = isPro ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+  const model = isPro ? WIDGET_SONNET_PARAMS.model : 'claude-haiku-4-5-20251001';
   const maxTokens = isPro ? 8192 : 4096;
   let maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
@@ -14246,6 +14261,7 @@ async function handleWidgetAgentRequest(req, res) {
   // Abort in-flight model calls too: a flag alone lets a call the user no
   // longer waits for run to completion and bill.
   let cancelled = false;
+  let timedOut = false;
   const abort = new AbortController();
   // The request closed when its body was read; a disconnect shows on the response.
   res.on('close', () => {
@@ -14255,6 +14271,7 @@ async function handleWidgetAgentRequest(req, res) {
   });
 
   const timeout = setTimeout(() => {
+    timedOut = true;
     cancelled = true;
     abort.abort();
     sendWidgetSSE(res, 'error', { message: 'Request timeout' });
@@ -14269,6 +14286,22 @@ async function handleWidgetAgentRequest(req, res) {
   // log line. `completed` doesn't need hoisting (not read in catch).
   let toolCallCount = 0;
   let toolExecutionCount = 0;
+  let delivered = false;
+  // A refusal fallback serves the call on another model; log what actually ran.
+  const servedBy = new Set();
+  const usage = { calls: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  const addUsage = (u, servedModel) => {
+    if (servedModel) servedBy.add(servedModel);
+    usage.calls++;
+    // With a fallback, top-level usage covers only the attempt that answered;
+    // every billed attempt, the refused one included, is in iterations.
+    for (const part of u?.iterations?.length ? u.iterations : [u]) {
+      usage.input += part?.input_tokens || 0;
+      usage.cacheWrite += part?.cache_creation_input_tokens || 0;
+      usage.cacheRead += part?.cache_read_input_tokens || 0;
+      usage.output += part?.output_tokens || 0;
+    }
+  };
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -14301,6 +14334,7 @@ async function handleWidgetAgentRequest(req, res) {
     let incompleteMessage = `Widget generation incomplete: tool loop exhausted (${maxTurns} turns)`;
     let finalizing = false;
     let forceFinal = false;
+    let finalNoticeSent = false;
     let truncatedResponses = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
@@ -14308,19 +14342,24 @@ async function handleWidgetAgentRequest(req, res) {
       // Truncation and pause_turn force final output for good; the tool budget
       // and turn limit reopen only through the source check's one repair grant.
       finalizing = forceFinal || toolCallCount >= toolLimit || turn >= maxTurns - 2;
-      const turnMessages = finalizing
-        ? [...messages, { role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' }]
-        : messages;
+      // History only grows: the cache and replayed thinking blocks both depend
+      // on earlier turns staying byte-identical, so the notice is kept once sent.
+      if (finalizing && !finalNoticeSent) {
+        messages.push({ role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' });
+        finalNoticeSent = true;
+      }
 
       const response = await client.messages.create({
-        model,
+        ...(isPro ? WIDGET_SONNET_PARAMS : { model }),
         max_tokens: maxTokens,
         system: systemPrompt,
         // Keep schemas for tool blocks in history while prohibiting new calls.
         tools: [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL, WIDGET_READ_TOOL],
         tool_choice: { type: finalizing ? 'none' : 'auto' },
-        messages: turnMessages,
-      }, { signal: abort.signal });
+        cache_control: { type: 'ephemeral' },
+        messages,
+      }, { signal: abort.signal, headers: isPro ? WIDGET_SONNET_HEADERS : undefined });
+      addUsage(response.usage, response.model);
       if (cancelled) break;
 
       const hasToolRequests = response.content.some(b => b.type === 'tool_use');
@@ -14343,7 +14382,7 @@ async function handleWidgetAgentRequest(req, res) {
           if (checkMs > 0) {
             sourceChecks++;
             sendWidgetSSE(res, 'tool_call', { endpoint: 'verify:sources' });
-            verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources, priorHtml: mode === 'modify' && currentHtml ? String(currentHtml).slice(0, maxHtml) : '' }, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(checkMs)]) });
+            verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources, priorHtml: mode === 'modify' && currentHtml ? String(currentHtml).slice(0, maxHtml) : '' }, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(checkMs)]), onUsage: addUsage });
             if (cancelled) break;
           }
           const rejected = verdict && (!verdict.rightDataset || verdict.unsupported.length > 0);
@@ -14360,6 +14399,7 @@ async function handleWidgetAgentRequest(req, res) {
         sendWidgetSSE(res, 'html_complete', { html });
         sendWidgetSSE(res, 'done', { title });
         completed = true;
+        delivered = true;
         break;
       }
 
@@ -14526,6 +14566,7 @@ async function handleWidgetAgentRequest(req, res) {
           sendWidgetSSE(res, 'html_complete', { html: parsed.html });
           sendWidgetSSE(res, 'done', { title: parsed.title });
           recovered = true;
+          delivered = true;
           break;
         }
       }
@@ -14562,6 +14603,10 @@ async function handleWidgetAgentRequest(req, res) {
   } finally {
     clearTimeout(timeout);
     if (!cancelled && !res.writableEnded) res.end();
+    console.log('[widget-agent] usage', JSON.stringify({
+      model, servedBy: [...servedBy], ...usage, toolCalls: toolCallCount,
+      outcome: delivered ? 'complete' : timedOut ? 'timeout' : cancelled ? 'cancelled' : 'error',
+    }));
   }
 }
 
