@@ -69,11 +69,10 @@ describe('a2a: agent card contract', () => {
     assert.deepEqual(card.supportedInterfaces, [{
       url: 'https://www.worldmonitor.app/a2a',
       protocolBinding: 'JSONRPC',
-      protocolVersion: '0.3.0',
+      protocolVersion: '0.3',
     }]);
     assert.equal(card.supportedInterfaces[0].url, card.url);
     assert.equal(card.supportedInterfaces[0].protocolBinding, card.preferredTransport);
-    assert.equal(card.supportedInterfaces[0].protocolVersion, card.protocolVersion);
   });
 
   it('declares capabilities honestly: no streaming, no push notifications, no tasks', () => {

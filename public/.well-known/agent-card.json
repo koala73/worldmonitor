@@ -8,7 +8,7 @@
     {
       "url": "https://www.worldmonitor.app/a2a",
       "protocolBinding": "JSONRPC",
-      "protocolVersion": "0.3.0"
+      "protocolVersion": "0.3"
     }
   ],
   "version": "1.0.0",
