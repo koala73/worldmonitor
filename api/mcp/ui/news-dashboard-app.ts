@@ -6,11 +6,19 @@ const previewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_UR
 const ASSET_ORIGIN = previewHost && /^[a-z0-9-]+\.vercel\.app$/i.test(previewHost)
   ? `https://${previewHost}`
   : 'https://www.worldmonitor.app';
+const MAP_ASSET_ORIGINS = [
+  'https://tiles.openfreemap.org',
+  'https://basemaps.cartocdn.com',
+  'https://*.basemaps.cartocdn.com',
+  'https://protomaps.github.io',
+  'https://pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev',
+  'https://maps.worldmonitor.app',
+];
 export const NEWS_DASHBOARD_META = {
   ui: {
     csp: {
-      connectDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://protomaps.github.io'],
-      resourceDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://protomaps.github.io', 'data:'],
+      connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
+      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS, 'data:'],
       frameDomains: [],
       baseUriDomains: [ASSET_ORIGIN],
     },
