@@ -184,6 +184,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
    *  Falls back to a generic Bearer default so custom server key input works. */
   const DEFAULT_API_KEY_HEADER = 'Authorization: Bearer {key}';
   let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? (initialSimpleMode ? DEFAULT_API_KEY_HEADER : '');
+  /** The selected preset declares an API key template, so a panel without
+   *  credentials would be rejected by the upstream on every refresh
+   *  (WORLDMONITOR-172). Custom servers keep the key optional. */
+  let keyRequired = !!matchingPreset?.apiKeyHeader;
 
   const urlInput = modal.querySelector('.mcp-server-url') as HTMLInputElement;
   const apiKeyGroup = modal.querySelector('.mcp-api-key-group') as HTMLElement;
@@ -216,6 +220,17 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     return parseAuthHeader(authInput.value);
   }
 
+  function canAdd(): boolean {
+    return selectedTool !== null && (!keyRequired || Object.keys(getEffectiveHeaders()).length > 0);
+  }
+
+  function syncAddEnabled(): void {
+    addBtn.disabled = !canAdd();
+  }
+
+  apiKeyInput.addEventListener('input', syncAddEnabled);
+  authInput.addEventListener('input', syncAddEnabled);
+
   function showSimpleMode(preset: McpPreset): void {
     activeApiKeyHeader = preset.apiKeyHeader ?? '';
     apiKeyGroup.style.display = '';
@@ -237,7 +252,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     if (activeApiKeyHeader) toSimpleBtn.style.display = '';
   }
 
-  toAdvancedBtn.addEventListener('click', () => showAdvancedMode(true));
+  toAdvancedBtn.addEventListener('click', () => {
+    showAdvancedMode(true);
+    syncAddEnabled();
+  });
   toSimpleBtn.addEventListener('click', () => {
     // Re-extract key from any edits made in advanced mode
     if (activeApiKeyHeader) {
@@ -248,6 +266,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     apiKeyGroup.style.display = '';
     authHeaderGroup.style.display = 'none';
     toSimpleBtn.style.display = 'none';
+    syncAddEnabled();
   });
 
   // Set hint if editing in simple mode
@@ -269,6 +288,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         const cardApiKeyHeader = matchedCard.dataset.apiKeyHeader ?? '';
         const cardAuthNote = matchedCard.dataset.authNote ?? '';
         const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
+        keyRequired = cardApiKeyHeader !== '';
         if (cardApiKeyHeader) {
           showSimpleMode(fakePreset);
         } else {
@@ -280,12 +300,14 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         }
       } else {
         presetCards.forEach(c => c.classList.remove('selected'));
+        keyRequired = false;
         activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
         apiKeyGroup.style.display = '';
         apiKeyHint.textContent = '';
         authHeaderGroup.style.display = 'none';
         toSimpleBtn.style.display = 'none';
       }
+      syncAddEnabled();
     });
   }
 
@@ -298,6 +320,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
 
       const cardApiKeyHeader = card.dataset.apiKeyHeader ?? '';
       const cardAuthNote = card.dataset.authNote ?? '';
+      keyRequired = cardApiKeyHeader !== '';
 
       if (cardApiKeyHeader) {
         const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
@@ -329,10 +352,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         argsInput.value = presetArgs || '{}';
         if (presetTitle) titleInput.value = presetTitle;
         toolConfig.style.display = '';
-        addBtn.disabled = false;
         toolsSection.style.display = '';
         setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected"><span class="mcp-tool-name">${escapeHtml(presetTool)}</span></div>`, "legacy direct innerHTML migration"));
       }
+      syncAddEnabled();
     });
   });
 
@@ -344,7 +367,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     toolConfig.style.display = '';
     toolsSection.style.display = '';
     setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected">${escapeHtml(existing.toolName)}</div>`, "legacy direct innerHTML migration"));
-    addBtn.disabled = false;
+    syncAddEnabled();
   }
 
   function parseAuthHeader(raw: string): Record<string, string> {
@@ -391,7 +414,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
           argsInput.value = '{}';
         }
         toolConfig.style.display = '';
-        addBtn.disabled = false;
+        syncAddEnabled();
       });
       toolsList.appendChild(item);
     }
@@ -434,7 +457,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   });
 
   addBtn.addEventListener('click', () => {
-    if (!selectedTool) return;
+    if (!selectedTool || !canAdd()) return;
     track('mcp-panel-add', { tool: selectedTool.name });
     argsError.style.display = 'none';
     let toolArgs: Record<string, unknown> = {};
