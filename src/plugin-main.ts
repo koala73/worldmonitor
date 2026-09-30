@@ -205,7 +205,7 @@ async function start(): Promise<void> {
     if (applyingTimeRange) return;
     void applyView({ time_range }).catch(() => { status.textContent = 'Time range could not be applied.'; });
   });
-  search = new SearchModal(document.body);
+  search = new SearchModal(document.body, { placeholder: 'Search news', scopes: ['all', 'signals'] });
   search.setCommandVisibleFn(() => false);
   search.setResultVisibleFn(result => result.type === 'news');
   search.setOnSelect(result => { void focusNews(result.id).catch(() => { status.textContent = 'The article location could not be applied.'; }); });

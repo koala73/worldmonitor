@@ -77,6 +77,7 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('.search-scope')).toHaveCount(2);
   await expect(app.locator('.tip-item, .search-chip, .search-all-commands-link')).toHaveCount(0);
   await expect(app.locator('.search-input:visible')).toHaveAttribute('placeholder', 'Search news');
+  await page.screenshot({ path: testInfo.outputPath('news-search-desktop.png'), fullPage: true });
   await app.locator('.search-input:visible').fill('Energy');
   await expect(app.locator('.search-results')).toContainText('Energy ministers');
   await app.locator('.search-input:visible').press('Escape');
@@ -112,6 +113,12 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.getByRole('button', { name: 'Refresh news' })).toBeInViewport();
   expect(await app.locator('body').evaluate(element => element.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await app.getByRole('button', { name: 'Search news' }).click();
+  await expect(app.locator('.search-scope')).toHaveCount(2);
+  await expect(app.locator('.tip-item, .search-chip, .search-all-commands-link')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('news-search-mobile.png'), fullPage: true });
+  await app.locator('.search-input:visible').press('Escape');
+  await expect(app.getByRole('dialog')).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath('news-maps-mobile.png'), fullPage: true });
   await page.evaluate(() => (window as any).sendResult({ structuredContent: { categories: {}, feedStatuses: {}, generatedAt: '' } }));
   await expect(app.locator('.panel')).toHaveCount(0);

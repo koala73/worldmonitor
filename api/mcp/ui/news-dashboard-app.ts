@@ -9,8 +9,8 @@ const ASSET_ORIGIN = previewHost && /^[a-z0-9-]+\.vercel\.app$/i.test(previewHos
 export const NEWS_DASHBOARD_META = {
   ui: {
     csp: {
-      connectDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com'],
-      resourceDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'data:'],
+      connectDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://protomaps.github.io'],
+      resourceDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://protomaps.github.io', 'data:'],
       frameDomains: [],
       baseUriDomains: [ASSET_ORIGIN],
     },
