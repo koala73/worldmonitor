@@ -12,7 +12,7 @@ let workerAsset: string;
 const origin = 'https://worldmonitor.test';
 const item = (source: string, title: string, link: string) => ({ source, title, link, publishedAt: Date.now(), isAlert: false, locationName: 'Berlin', location: { latitude: 52.5, longitude: 13.4 }, importanceScore: 70, credibilityScore: 80, corroborationCount: 1, snippet: 'Fixture news. No live provider request.', tickers: [] });
 const payload = { categories: {
-  politics: { items: [item('Reuters', 'Ports review shipping schedules as trade routes shift', 'https://example.com/news'), item('AP', 'Science team announces new satellite research', 'https://example.com/science')] },
+  politics: { items: [item('Reuters', 'Ports review shipping schedules as trade routes shift', 'https://example.com/news'), item('AP', 'Science team announces new satellite research', 'https://example.com/science'), item('Missing link feed', 'Headline with no supplied source URL', '')] },
   europe: { items: [item('BBC', 'Energy ministers meet to discuss winter supply', 'https://example.com/energy')] },
 }, feedStatuses: {}, generatedAt: new Date().toISOString() };
 
@@ -146,6 +146,9 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
       });
     } finally { worker.terminate(); }
   }, `${origin}/plugin/assets/${workerAsset}`)).toBe(true);
+  await app.locator('[data-panel="politics"] a[href=""]').first().click();
+  await expect(app.getByRole('status')).toContainText('source link is unavailable');
+  expect(await page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(0);
   await app.locator('[data-panel="politics"] a[href="https://example.com/news"]').first().click();
   await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(1);
   expect(await page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'tools/call').length)).toBe(0);
