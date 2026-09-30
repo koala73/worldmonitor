@@ -3,11 +3,13 @@ import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
 import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
 
-test('dashboard CSP permits the sprite dependencies requested by its basemap', () => {
+test('dashboard CSP permits the tile, sprite and boundary dependencies requested by its basemap', () => {
   const csp = NEWS_DASHBOARD_META.ui.csp;
   for (const url of [
     'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.json',
     'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.png',
+    'https://pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev/planet.pmtiles',
+    'https://maps.worldmonitor.app/country-boundary-overrides.geojson',
   ]) {
     assert.ok(csp.connectDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
     assert.ok(csp.resourceDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
