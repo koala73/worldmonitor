@@ -6,7 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
-  const validate = new Ajv2020({ strict: false }).compile(buildPublicTool(tool).inputSchema);
+  const validate = new Ajv2020({ strict: false }).compile(buildPublicTool(tool, { compressDescriptions: false }).inputSchema);
   assert.equal(validate({ headlines: ['First'], mode: 'translate', lang: 'ar' }), true);
   assert.equal(validate({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }), false);
   assert.equal(validate({ headlines: Array(8).fill('Headline'), mode: 'brief' }), true);
