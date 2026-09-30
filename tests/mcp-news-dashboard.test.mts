@@ -17,15 +17,29 @@ const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
 test('dashboard resource serves only the fixed build origin and never forwards credentials', async () => {
+  let redirect: RequestRedirect | undefined;
   globalThis.fetch = async (input, init) => {
     assert.equal(String(input), 'https://www.worldmonitor.app/plugin/plugin.html');
-    assert.equal(init?.redirect, 'error');
+    redirect = init?.redirect;
     assert.equal(new Headers(init?.headers).get('Authorization'), null);
     return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main></body></html>', { headers: { 'Content-Type': 'text/html' } });
   };
   const body = await (await readNewsDashboard(1, {})).json();
+  assert.equal(redirect, 'manual');
   assert.match(body.result.contents[0].text, /<base href="https:\/\/www.worldmonitor.app\/">/);
   assert.deepEqual(body.result.contents[0]._meta.ui.csp.frameDomains, []);
+});
+
+test('dashboard resource rejects redirects without following their location', async () => {
+  let redirect: RequestRedirect | undefined;
+  globalThis.fetch = async (_input, init) => {
+    redirect = init?.redirect;
+    return new Response('<head><main id="pluginRoot"></main>', { status: 302, headers: { 'Content-Type': 'text/html', Location: 'https://example.com/' } });
+  };
+  const body = await (await readNewsDashboard(1, {})).json();
+  assert.equal(redirect, 'manual');
+  assert.equal(body.error.code, -32603);
+  assert.equal(body.result, undefined);
 });
 
 test('missing or oversized plugin documents fail explicitly instead of returning a website error page', async () => {
@@ -81,4 +95,16 @@ test('translation rejects multiple headlines instead of silently dropping all bu
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
   globalThis.fetch = async () => { throw new Error('Must not fetch'); };
   await assert.rejects(tool._execute!({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
+});
+
+test('brief analysis retains the full dashboard variant and requested summary language', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.mode, 'brief');
+    assert.equal(request.variant, 'full');
+    assert.equal(request.lang, 'fr');
+    return Response.json({ summary: 'Résumé', status: 'success' });
+  };
+  await tool._execute!({ headlines: ['First', 'Second'], lang: 'fr' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined);
 });
