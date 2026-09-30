@@ -21,7 +21,8 @@ export const RESEARCH_MAX_STALE_MIN = 150;
 // the ~hourly cron so a single arXiv blip stays a graceful exit-0 RETRY rather than exit-1 +
 // `researchArxivHnTrending` EMPTY in prod (issue #5409). Was 3600 (≈1× cron, BELOW the gate).
 export const ARXIV_TTL = 10800;
-const HN_TTL = 600;
+// ≈3× the hourly cron, like ARXIV_TTL: 600s left every HN feed EMPTY for ~50 min of each hour.
+export const HN_TTL = 10800;
 const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
 // Distinct seed-meta key for this seeder's tech-events mirror. MUST NOT share
 // seed-meta:research:tech-events with scripts/ais-relay.cjs: the relay writes
