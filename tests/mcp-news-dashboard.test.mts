@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
+import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
+
+test('dashboard CSP permits the sprite dependencies requested by its basemap', () => {
+  const csp = NEWS_DASHBOARD_META.ui.csp;
+  for (const url of [
+    'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.json',
+    'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.png',
+  ]) {
+    assert.ok(csp.connectDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
+    assert.ok(csp.resourceDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
+  }
+});
 
 test('dashboard entry opens the actual feed panels with empty arguments', () => {
   const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard');
