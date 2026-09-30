@@ -130,6 +130,11 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.locator('[data-panel="europe"]')).toContainText('Energy ministers');
   await expect(app.locator('#mapContainer svg').first()).toBeVisible();
+  await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { query: 'Energy', map_latitude: 52.5, map_longitude: 13.4, map_zoom: 4 } } }, '*'));
+  await expect(app.locator('.search-input:visible')).toHaveValue('Energy');
+  await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/update-model-context').at(-1)?.params?.content?.[0]?.text)).toContain('52.5');
+  await app.locator('.search-input:visible').press('Escape');
+  await app.getByRole('button', { name: 'Clear filters' }).click();
   expect(await app.locator('body').evaluate(async (_element, assetUrl) => {
     const blob = `data:text/javascript;charset=utf-8,${encodeURIComponent(`import ${JSON.stringify(assetUrl)};self.postMessage({pluginWorkerReady:true});`)}`;
     const worker = new Worker(blob, { type: 'module' });
