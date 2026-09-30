@@ -239,6 +239,17 @@ describe('widget-agent relay — model, caching and usage', () => {
     assert.match(JSON.stringify(result.requests.at(-1).messages), /Tools are now disabled/);
   });
 
+  it('counts a refused attempt billed before a fallback, from usage.iterations, without double counting', async () => {
+    const tokens = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+    const result = await runWidgetAgent([{
+      ...widgetResponse('end_turn'), model: 'claude-sonnet-5',
+      usage: { ...tokens(20, 800, 5000, 3000), iterations: [{ ...tokens(500, 0, 0, 40), type: 'message' }, { ...tokens(20, 800, 5000, 3000), type: 'fallback_message' }] },
+    }], { tier: 'pro' });
+    assertWidgetSuccess(result);
+    const line = usageLine(result);
+    assert.deepEqual([line.input, line.cacheWrite, line.cacheRead, line.output], [520, 800, 5000, 3040]);
+  });
+
   it('logs one usage line per request with the builder and source-check tokens summed', async () => {
     const usage = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
     const result = await runWidgetAgent([
