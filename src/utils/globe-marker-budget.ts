@@ -114,7 +114,18 @@ export const GLOBE_MARKER_BUDGET_DESKTOP: GlobeMarkerBudget = { perLayer: 300, t
  */
 export const MAP_OVERLAY_MARKER_BUDGET_DESKTOP: GlobeMarkerBudget = { perLayer: 300, total: 800 };
 
-/** Mobile always uses the SVG renderer, so it keeps the tighter mobile ceiling. */
+/**
+ * The tighter mobile ceiling, shared with `GLOBE_MARKER_BUDGET_MOBILE` above.
+ *
+ * This used to read "mobile always uses the SVG renderer". It does not: only the
+ * *default* mobile path is SVG (`MapContainer.shouldUseDeckGL` returns false when
+ * `isMobile`). `MapContainer.useGlobe` carries no `isMobile` term at all, so a
+ * phone reaches the globe both from a persisted mode preference and from the 3D
+ * toggle at runtime. Assuming otherwise is what let the mobile density caps in
+ * `mobile-feature-caps.ts` be bypassed in globe mode (#4545) — the budget below
+ * still bounds the marker count there, but a budget cannot enforce a semantic
+ * cut, so it let through exactly the markers those caps exist to remove.
+ */
 export const MAP_OVERLAY_MARKER_BUDGET_MOBILE: GlobeMarkerBudget = { perLayer: 150, total: 400 };
 
 /**
