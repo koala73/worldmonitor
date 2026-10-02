@@ -25,6 +25,7 @@ import {
   diseaseContentMeta,
   diseasePublishTransform,
   cleanRssDescription,
+  DISEASE_LOOKBACK_DAYS,
   DISEASE_MAX_CONTENT_AGE_MIN,
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
@@ -50,8 +51,6 @@ const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66];
 // publishes precise coordinates (WHO/CDC/ONT only have country names → map
 // falls back to country centroids). Verified 2026-05-04.
 const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/master/index_bundle.js';
-// Keep alerts within this many days; avoids flooding the map with old events
-const TGH_LOOKBACK_DAYS = 90;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
@@ -143,7 +142,7 @@ export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fe
  * schema-anchored scanner that survives further bundler upgrades as long
  * as the field names (Alert_ID, lat, lng, diseases) are stable.
  *
- * We filter to last TGH_LOOKBACK_DAYS days post-parse.
+ * We filter to last DISEASE_LOOKBACK_DAYS days post-parse.
  */
 async function fetchThinkGlobalHealth() {
   try {
@@ -162,7 +161,7 @@ async function fetchThinkGlobalHealth() {
       return [];
     }
 
-    const cutoff = Date.now() - TGH_LOOKBACK_DAYS * 86400_000;
+    const cutoff = Date.now() - DISEASE_LOOKBACK_DAYS * 86400_000;
     const items = [];
     for (const rec of records) {
       if (rec.lat == null || rec.lng == null || !rec.disease || !rec.date) continue;
@@ -172,7 +171,7 @@ async function fetchThinkGlobalHealth() {
       // (tghNormalizeItem) so tests verify the exact contract without duplicating logic.
       items.push(tghNormalizeItem(rec));
     }
-    console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);
+    console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${DISEASE_LOOKBACK_DAYS}d`);
     return items;
   } catch (e) {
     console.warn('[Disease] ThinkGlobalHealth fetch error:', e?.message || e);

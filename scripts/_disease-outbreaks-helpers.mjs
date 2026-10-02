@@ -221,17 +221,22 @@ function headlineCountryCode(text) {
 
 // Headline sources also publish research, policy and opinion pieces; only a
 // story that names a known disease AND a country is treated as an outbreak.
-// WHO/CDC keep their existing path.
-// Every CIDRAP feed returns its last 20 items however old; match the
-// ThinkGlobalHealth window so a quiet topic cannot resurface year-old stories.
-export const HEADLINE_LOOKBACK_DAYS = 90;
+// WHO/CDC keep their existing disease/location path but share the lookback:
+// the CDC HAN and WHO archives go back years, and the panel sorts by severity
+// rather than date, so without a window those rows surface as current feed
+// entries (2026-10-01 report: CDC rows up to 700 days old).
+// Every CIDRAP feed returns its last 20 items however old; one window —
+// shared with ThinkGlobalHealth — keeps a quiet topic from resurfacing
+// year-old stories.
+export const DISEASE_LOOKBACK_DAYS = 30;
 
 export function isReportableHeadline(outbreak, nowMs = Date.now()) {
-  if (!HEADLINE_SOURCES.has(outbreak.sourceName)) return true;
+  const withinLookback = outbreak.publishedAt >= nowMs - DISEASE_LOOKBACK_DAYS * 86_400_000;
+  if (!HEADLINE_SOURCES.has(outbreak.sourceName)) return withinLookback;
   // An undated item carries a "now" fallback that would pass the lookback.
   if (outbreak._publishedAtIsSynthetic === true) return false;
   if (outbreak.disease === 'Unknown Disease' || !outbreak.countryCode) return false;
-  return outbreak.publishedAt >= nowMs - HEADLINE_LOOKBACK_DAYS * 86_400_000;
+  return withinLookback;
 }
 
 export function mapItem(item) {

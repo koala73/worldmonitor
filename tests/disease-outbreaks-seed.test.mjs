@@ -41,7 +41,7 @@ import {
   ALERT_LEVEL_METHODOLOGY_VERSION,
   isRoundupHeadline,
   isReportableHeadline,
-  HEADLINE_LOOKBACK_DAYS,
+  DISEASE_LOOKBACK_DAYS,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
 
 const WHO_RESPONSE = {
@@ -235,14 +235,32 @@ test('headline-source items need a known disease and a country to count as an ou
   assert.equal(isReportableHeadline(headline('Tpoxx doesn\u2019t improve on placebo in achieving key mpox outcomes'), NOW), false);
   assert.equal(isReportableHeadline(headline('Poll highlights Americans\u2019 uneven knowledge of STI prevention'), NOW), false);
   assert.equal(isReportableHeadline(headline('Early estimates of seasonal influenza vaccine effectiveness', { sourceName: 'ECDC' }), NOW), false);
+});
 
-  const who = mapItem(whoNormalizeItem({ Title: 'Unusual respiratory illness - Country X', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
-  assert.equal(isReportableHeadline(who, NOW), true);
+// 2026-10-01 — WHO/CDC items keep their disease/location path but are no
+// longer exempt from the shared lookback: their archive feeds (CDC HAN served
+// rows up to 700 days old) otherwise surfaced as current entries in a panel
+// that sorts by severity, not date.
+test('WHO/CDC items share the lookback window', () => {
+  const staleWho = mapItem(whoNormalizeItem({ Title: 'Unusual respiratory illness - Country X', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
+  assert.equal(isReportableHeadline(staleWho, NOW), false, 'year-old WHO archive rows must not surface');
+
+  const recentWho = mapItem(whoNormalizeItem({
+    Title: 'Ebola disease - Country X',
+    ItemDefaultUrl: '/y',
+    PublicationDateAndTime: new Date(NOW - 5 * 86_400_000).toISOString(),
+  }));
+  assert.equal(isReportableHeadline(recentWho, NOW), true);
+
+  // An undated WHO item carries a "now" fallback; it stays (unchanged path),
+  // unlike headline sources where an undated item is a research/policy row.
+  const undatedWho = mapItem(whoNormalizeItem({ Title: 'Ebola disease - Country X', ItemDefaultUrl: '/z' }, NOW));
+  assert.equal(isReportableHeadline(undatedWho, NOW), true);
 });
 
 test('headline-source items older than the lookback are dropped', () => {
-  const inside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS - 1) * 86_400_000).toUTCString();
-  const outside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS + 1) * 86_400_000).toUTCString();
+  const inside = new Date(NOW - (DISEASE_LOOKBACK_DAYS - 1) * 86_400_000).toUTCString();
+  const outside = new Date(NOW - (DISEASE_LOOKBACK_DAYS + 1) * 86_400_000).toUTCString();
   assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: inside }), NOW), true);
   assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: outside }), NOW), false);
 });
@@ -255,10 +273,13 @@ test('headline-source items without a real publication date are dropped', () => 
 });
 
 // End-to-end through the seeder's fetch path with every upstream stubbed, so
-// removing any headline filter from fetchDiseaseOutbreaks turns this red.
-test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', async (t) => {
+// removing any reportable/recency filter from fetchDiseaseOutbreaks turns this
+// red. Covers headline sources and the WHO archive path.
+test('fetchDiseaseOutbreaks publishes only reportable, in-window items', async (t) => {
+  // Fixed clock: the fixtures and the seeder's cutoff both read Date.now().
+  t.mock.timers.enable({ apis: ['Date'], now: NOW });
   const recent = new Date(Date.now() - 2 * 86_400_000).toUTCString();
-  const stale = new Date(Date.now() - (HEADLINE_LOOKBACK_DAYS + 5) * 86_400_000).toUTCString();
+  const stale = new Date(Date.now() - (DISEASE_LOOKBACK_DAYS + 5) * 86_400_000).toUTCString();
   const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map(([title, link, pubDate]) =>
     `<item><title>${title}</title><link>${link}</link><description>d</description>${pubDate ? `<pubDate>${pubDate}</pubDate>` : ''}</item>`).join('')}</channel></rss>`;
   const cidrapXml = rss([
@@ -273,7 +294,23 @@ test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', as
 
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
-    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.startsWith('https://www.who.int/')) {
+      return new Response(JSON.stringify({
+        value: [
+          {
+            Title: 'Ebola disease - Country Y',
+            ItemDefaultUrl: '/emergencies/disease-outbreak-news/item/2026-DON-live',
+            PublicationDateAndTime: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+          },
+          {
+            // WHO archive row outside the shared window; must not publish.
+            Title: 'Cholera disease - Country Z',
+            ItemDefaultUrl: '/emergencies/disease-outbreak-news/item/2019-DON-old',
+            PublicationDateAndTime: new Date(Date.now() - (DISEASE_LOOKBACK_DAYS + 5) * 86_400_000).toISOString(),
+          },
+        ],
+      }), { status: 200 });
+    }
     if (url.startsWith('https://www.cidrap.umn.edu/')) return new Response(cidrapXml, { status: 200 });
     if (url.startsWith('https://www.ecdc.europa.eu/')) return new Response(ecdcXml, { status: 200 });
     if (url.startsWith('https://tools.cdc.gov/')) return new Response(rss([]), { status: 200 });
@@ -285,6 +322,7 @@ test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', as
   assert.deepEqual(links, [
     'https://www.cidrap.umn.edu/ebola/keep',
     'https://www.ecdc.europa.eu/en/mpox-nigeria',
+    'https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON-live',
   ]);
 });
 
