@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { OutputBundle } from 'rollup';
 import { resolve, dirname, extname } from 'path';
@@ -6,6 +7,8 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
+import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -102,7 +105,7 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
-  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets', MaterialEvents: 'panels-markets',
   EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
   Fx: 'panels-markets',
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
@@ -316,6 +319,36 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
     },
   };
 }
@@ -792,72 +825,6 @@ function rssProxyPlugin(): Plugin {
   };
 }
 
-function youtubeLivePlugin(): Plugin {
-  return {
-    name: 'youtube-live',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/youtube/live')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const channel = url.searchParams.get('channel');
-
-        if (!channel) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing channel parameter' }));
-          return;
-        }
-
-        try {
-          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
-
-          const ytRes = await fetch(liveUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            redirect: 'follow',
-          });
-
-          if (!ytRes.ok) {
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Cache-Control', 'public, max-age=300');
-            res.end(JSON.stringify({ videoId: null, channel }));
-            return;
-          }
-
-          const html = await ytRes.text();
-
-          // Scope both fields to the same videoDetails block so we don't
-          // combine a videoId from one object with isLive from another.
-          let videoId: string | null = null;
-          const detailsIdx = html.indexOf('"videoDetails"');
-          if (detailsIdx !== -1) {
-            const block = html.substring(detailsIdx, detailsIdx + 5000);
-            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-            const liveMatch = block.match(/"isLive"\s*:\s*true/);
-            if (vidMatch && liveMatch) {
-              videoId = vidMatch[1];
-            }
-          }
-
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
-        } catch (error) {
-          console.error(`[YouTube Live] Error:`, error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Failed to fetch', videoId: null }));
-        }
-      });
-    },
-  };
-}
-
 function gpsjamDevPlugin(): Plugin {
   return {
     name: 'gpsjam-dev',
@@ -926,6 +893,12 @@ export default defineConfig(({ mode }) => {
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
   const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
     || process.env.VERCEL_ENV === 'preview';
+  // Sentry source-map upload. Gated on the token so a build without it (local,
+  // fork, CI) behaves exactly as before rather than failing. Matching is by
+  // debug ID — the plugin stamps the same id into the bundle and its map.
+  const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
+  const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
+  const publishSentryRelease = process.env.VERCEL_ENV === 'production' && Boolean(sentryBuild.dist);
 
   return {
     html: {
@@ -943,6 +916,34 @@ export default defineConfig(({ mode }) => {
       __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
     },
     plugins: [
+      // Ship readable dashboard stack traces to Sentry. Without this every
+      // browser frame arrives minified (`Rs.loadNews`, `BO`, `v`), which is why
+      // triage has had to infer call sites from Vite chunk names.
+      ...(uploadSourceMapsToSentry
+        ? [sentryVitePlugin({
+            org: 'elie-habib',
+            project: 'worldmonitor',
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            telemetry: false,
+            release: {
+              name: sentryBuild.release,
+              inject: false,
+              dist: sentryBuild.dist,
+              // Preview/local uploads must not resolve shared production issues.
+              create: publishSentryRelease,
+              finalize: publishSentryRelease,
+              // Preserve the plugin's Vercel-aware commit detection in production.
+              setCommits: publishSentryRelease ? undefined : false,
+              deploy: publishSentryRelease ? undefined : false,
+            },
+            sourcemaps: {
+              // Previews deliberately serve public maps (emitPublicSourceMaps);
+              // leave those in place and only sweep them when production built
+              // them solely to upload.
+              filesToDeleteAfterUpload: emitPublicSourceMaps ? [] : ['dist/**/*.map'],
+            },
+          })]
+        : []),
       // Emit dist/build-hash.txt with the deployed SHA so the running bundle
       // can fetch /build-hash.txt at tab-focus time and force-reload itself
       // if it's running an older bundle (see src/bootstrap/stale-bundle-check.ts).
@@ -960,6 +961,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -969,7 +971,6 @@ export default defineConfig(({ mode }) => {
       webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
-      youtubeLivePlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
@@ -1038,7 +1039,9 @@ export default defineConfig(({ mode }) => {
           // Web Push handler (Phase 6). importScripts runs in the SW
           // context; /push-handler.js is a static file copied from
           // public/ and attaches 'push' + 'notificationclick' listeners.
-          importScripts: ['/push-handler.js', '/sw-navigation.js'],
+          // /link-suppression-check.js must load BEFORE the push handler
+          // so notificationclick can consult the operator block set (#8401).
+          importScripts: ['/link-suppression-check.js', '/push-handler.js', '/sw-navigation.js'],
 
           // Navigations are handled by public/sw-navigation.js (network-first
           // with an offline.html fallback), NOT by a runtime cache: a cached
@@ -1125,7 +1128,10 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
-      sourcemap: emitPublicSourceMaps,
+      // Uploading requires the maps to exist. When they are not also being
+      // published deliberately, the Sentry plugin deletes them after upload so
+      // production keeps shipping no public maps.
+      sourcemap: emitPublicSourceMaps || uploadSourceMapsToSentry,
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.
@@ -1184,6 +1190,24 @@ export default defineConfig(({ mode }) => {
           // DeckGLMap boundary.
           onlyExplicitManualChunks: true,
           manualChunks(id) {
+            // Keep the existing secondary-flow chunk stable when standalone
+            // entries stop sharing panel dependencies with the dashboard.
+            if (id.endsWith('/src/services/checkout.ts')) {
+              return 'checkout';
+            }
+            // Give the layered dashboard stylesheet a CSS-only chunk. Vite folds a
+            // CSS-only chunk into each importing entry's own CSS, so dashboard.html
+            // links it. Left inside a shared JavaScript chunk it inherited that
+            // chunk's name (debugbear-rum-*.css) and could lose its link: Vite 6
+            // caches each chunk's CSS list across HTML entries, and the main entry
+            // chunk is also imported by App and live-channels, so the cached list
+            // can omit CSS another entry reached first. The preload helper then
+            // fetched the stylesheet for import('./App'), and a failed download
+            // aborted the dashboard boot (WORLDMONITOR-XT). Guarded by
+            // tests/dashboard-critical-css.test.mjs.
+            if (id.endsWith('/src/styles/base-layer.css')) {
+              return 'dashboard-styles';
+            }
             if (id.includes('node_modules')) {
               if (id.includes('/@xenova/transformers/')) {
                 return 'transformers';

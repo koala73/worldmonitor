@@ -3,13 +3,14 @@ import './bootstrap/zod-csp';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { registerWebMcpTools, type WebMcpAppBindings } from '@/services/webmcp';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
-import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
+import { initVercelAnalytics, stripSensitiveParamsFromUrl } from '@/bootstrap/secondary-startup';
 import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
-import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 
@@ -230,6 +231,23 @@ function shouldSuppressCspViolation(
       if (url.protocol === 'https:' && url.hostname === 'dhfs.heytapimage.com') return true;
     } catch { /* scheme-only values ('inline', 'eval') fall through */ }
   }
+  // UC Browser (Alibaba's Android browser) fetches its own bottom-banner ad
+  // plugin from `uc.gre`, a pseudo-host the browser resolves internally, and
+  // reports the result to its `*.uc.cn` tracker. Both are http:, which our
+  // `connect-src 'self' https: wss: blob: data:` never admits, so no policy
+  // state of ours can reach them. `uc.cn` and `uc.gre` appear nowhere in our
+  // sources, so this is the browser's injection failing, the HeyTap case above
+  // on a different directive. The only blockedURIs WORLDMONITOR-HN has recorded
+  // since 2026-08-19 are these two (UC Browser 12.3.0 / Android 14,
+  // 2026-09-09). Exact `uc.gre`; `uc.cn` by registrable-domain suffix with a
+  // leading `.` because its tracker hosts vary, so `uc.cn.evil.com` and
+  // `notuc.cn` still surface.
+  if (directive === 'connect-src') {
+    try {
+      const host = new URL(blockedURI).hostname;
+      if (host === 'uc.gre' || host === 'uc.cn' || host.endsWith('.uc.cn')) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // Zscaler enterprise content-filter proxy: `gateway.zscloud.net` is injected into
   // corporate users' frames by Zscaler's web filter agent. We never load it ourselves;
   // it's inserted into the host page outside our control (WORLDMONITOR-HT). Match by
@@ -265,8 +283,8 @@ function shouldSuppressCspViolation(
       // `div.show` — an origin-only frame (no path) that appears nowhere in our
       // source, repeated across many users over months. The injector is not
       // identified, but it does not need to be: frame-src is a BOUNDED
-      // allowlist — named hosts plus five vendor wildcard subdomains
-      // (*.clerk.accounts.dev, *.vercel.app, *.dodopayments.com and two more) —
+      // allowlist — named hosts plus four vendor wildcard subdomains
+      // (*.clerk.accounts.dev, *.dodopayments.com and two more) —
       // and div.show falls under none of them, so it can only have been framed
       // into the page from outside. That safety argument depends on frame-src
       // staying bounded — pinned by "CSP frame-src stays a bounded host
@@ -301,6 +319,18 @@ function shouldSuppressCspViolation(
   if (/manifest\.webmanifest$/.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // Meta Pixel's form-post beacon. An injected server-side GTM tag (stape.io
+  // collect breadcrumbs) submitted a form to https://www.facebook.com/tr/
+  // (WORLDMONITOR-12G: 23 events from one user). The app ships no Meta Pixel,
+  // and the dashboard's form-action admits only 'self' and api.worldmonitor.app,
+  // so the post is never ours. Exact host, /tr path and form-action only: other
+  // facebook.com form targets and /tr under other directives still report.
+  if (directive === 'form-action') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.host === 'www.facebook.com' && /^\/tr\/?$/.test(url.pathname)) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // ---- font-src: one invariant, not a host list.
   //
   // The app ships `font-src 'self' data:` (vercel.json, the catch-all route that
@@ -381,6 +411,14 @@ function shouldSuppressCspViolation(
       // script-src still surfaces.
       if (url.protocol === 'https:' && url.hostname === 'use.fontawesome.com'
           && url.pathname.startsWith('/releases/') && cssFile.test(url.pathname)) return true;
+      // Font Awesome's Kit service, the same vendor's other delivery host:
+      // `kit.fontawesome.com/<kit-id>.css`, where the hex kit ID is a per-account
+      // key. We never adopted Font Awesome, so the kit belongs to whoever
+      // injected it (WORLDMONITOR-J0 round 5, the only blockedURI since the
+      // unpkg rule shipped on 2026-08-16). Exact host + kit-ID path; the kit's
+      // JS loader under script-src still surfaces.
+      if (url.protocol === 'https:' && url.hostname === 'kit.fontawesome.com'
+          && /^\/[0-9a-f]+\.css$/.test(url.pathname)) return true;
       // Adobe Typekit / Adobe Fonts kit CSS, from both hosts it serves:
       // `use.typekit.net/<kit>.css` and the `p.typekit.net/p.css?...` tracking
       // sheet — together 17% of this issue's current volume. We self-host every
@@ -526,6 +564,9 @@ if (capturedContentAttribution) {
   // reload does not duplicate the landing handoff.
   trackContentHandoff();
 }
+// Drop unread secrets (email, license_key) from the live URL before any
+// telemetry vendor initializes.
+stripSensitiveParamsFromUrl();
 void initAnalytics();
 initVercelAnalytics();
 initDebugBearRum();
@@ -577,12 +618,7 @@ requestAnimationFrame(() => {
 });
 
 // Clear stale settings-open flag (survives ungraceful shutdown)
-try {
-  localStorage.removeItem('wm-settings-open');
-} catch {
-  // Storage may be unavailable (blocked cookies, sandboxed iframe). The flag is
-  // only a convenience hint, so boot must continue with the in-memory default.
-}
+safeStorageRemove('wm-settings-open');
 
 // Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
 // Both need i18n initialized so t() does not return undefined.
@@ -603,26 +639,41 @@ if (urlParams.get('settings') === '1') {
   );
 } else {
   installUtmInterceptor();
-  markLcpDebug('wm:boot:app-construct');
-  const app = new App('app');
-  app
-    .init()
-    .then(() => {
-      clearChunkReloadGuard(chunkReloadStorageKey);
-    })
-    .catch((error: unknown) => {
-      console.error(error);
-      try {
-        // init() registers WebMCP before its first await. A failed boot must
-        // therefore run normal teardown so the browser cannot retain tools
-        // bound to an App that will never become ready.
-        app.destroy();
-      } catch (cleanupError) {
-        // Cleanup is best-effort on a partially initialised App; never replace
-        // the original boot failure with an unhandled teardown rejection.
-        console.error('[App] Failed to clean up after initialization failure:', cleanupError);
-      }
-    });
+  let resolveBindings!: (bindings: WebMcpAppBindings) => void;
+  let rejectBindings!: (error: unknown) => void;
+  const bindings = new Promise<WebMcpAppBindings>((resolve, reject) => {
+    resolveBindings = resolve;
+    rejectBindings = reject;
+  });
+  const webMcpController = registerWebMcpTools(bindings);
+  // Import and constructor failures must reach the global startup error monitors.
+  void import('./App').then(({ App }) => {
+    markLcpDebug('wm:boot:app-construct');
+    const app = new App('app');
+    resolveBindings(app.getWebMcpBindings());
+    app
+      .init(webMcpController)
+      .then(() => {
+        clearChunkReloadGuard(chunkReloadStorageKey);
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        try {
+          // init() owns the WebMCP controller before its first await. A failed
+          // boot must run normal teardown so the browser cannot retain tools
+          // bound to an App that will never become ready.
+          app.destroy();
+        } catch (cleanupError) {
+          // Cleanup is best-effort on a partially initialised App; never replace
+          // the original boot failure with an unhandled teardown rejection.
+          console.error('[App] Failed to clean up after initialization failure:', cleanupError);
+        }
+      });
+  }).catch((error: unknown) => {
+    rejectBindings(error);
+    webMcpController?.abort();
+    throw error;
+  });
 }
 
 // Debug helpers for geo-convergence testing (remove in production)
@@ -634,13 +685,13 @@ if (urlParams.get('settings') === '1') {
 // Beta mode toggle: type `beta=true` / `beta=false` in console
 Object.defineProperty(window, 'beta', {
   get() {
-    const on = localStorage.getItem('worldmonitor-beta-mode') === 'true';
+    const on = safeStorageGet('worldmonitor-beta-mode') === 'true';
     console.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
     return on;
   },
   set(v: boolean) {
-    if (v) localStorage.setItem('worldmonitor-beta-mode', 'true');
-    else localStorage.removeItem('worldmonitor-beta-mode');
+    if (v) safeStorageSet('worldmonitor-beta-mode', 'true');
+    else safeStorageRemove('worldmonitor-beta-mode');
     location.reload();
   },
 });

@@ -9,11 +9,12 @@ import type {
   ListEtfFlowsResponse,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'market:etf-flows:v1';
 
 const EMPTY_RESPONSE: ListEtfFlowsResponse = {
-  timestamp: new Date().toISOString(),
+  timestamp: '',
   summary: {
     etfCount: 0,
     totalVolume: 0,
@@ -27,13 +28,13 @@ const EMPTY_RESPONSE: ListEtfFlowsResponse = {
 };
 
 export async function listEtfFlows(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListEtfFlowsRequest,
 ): Promise<ListEtfFlowsResponse> {
   try {
     const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListEtfFlowsResponse | null;
-    return seedData || EMPTY_RESPONSE;
+    return Array.isArray(seedData?.etfs) ? seedData : markNoStoreFallbackResponse(ctx.request, EMPTY_RESPONSE);
   } catch {
-    return EMPTY_RESPONSE;
+    return markNoStoreFallbackResponse(ctx.request, EMPTY_RESPONSE);
   }
 }

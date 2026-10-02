@@ -16,13 +16,16 @@ import {
   beginStandaloneIdempotency,
   completeStandaloneIdempotency,
   getIdempotencyKey,
+  peekStandaloneIdempotency,
 } from './_idempotency.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
 import { validateBearerToken } from '../server/auth-session';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -66,14 +69,26 @@ export default async function handler(
   }
 
   const idempotencyKey = getIdempotencyKey(req);
-  const idempotency = idempotencyKey
-    ? await beginStandaloneIdempotency({
-      request: req,
-      pathname: '/api/customer-portal',
-      scope: `user:${session.userId}`,
-      idempotencyKey,
-      corsHeaders: cors,
-    })
+  const idempotencyOptions = idempotencyKey ? {
+    request: req,
+    pathname: '/api/customer-portal',
+    scope: `user:${session.userId}`,
+    idempotencyKey,
+    corsHeaders: cors,
+  } : null;
+  if (idempotencyOptions) {
+    const existing = await peekStandaloneIdempotency(idempotencyOptions);
+    if (existing.kind !== 'miss' && existing.kind !== 'disabled') return existing.response;
+  }
+
+  const limited = await checkRateLimit(req, cors, {
+    scope: 'customer-portal', identifier: session.userId, limit: 5, window: '60 s',
+    failClosed: true, ctx,
+  });
+  if (limited) return limited;
+
+  const idempotency = idempotencyOptions
+    ? await beginStandaloneIdempotency(idempotencyOptions)
     : null;
   if (
     idempotency &&
@@ -83,7 +98,7 @@ export default async function handler(
     return idempotency.response;
   }
 
-  if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
+  if (!CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET) {
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
@@ -92,7 +107,7 @@ export default async function handler(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
       },
       body: JSON.stringify({ userId: session.userId }),
       signal: AbortSignal.timeout(15_000),
@@ -110,7 +125,7 @@ export default async function handler(
     return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
   } catch (err) {
     console.error('[customer-portal] Relay failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' }, fingerprint: ['api/customer-portal', 'relay', err instanceof Error ? err.name : 'Error'], ctx });
     return completeStandaloneIdempotency(idempotency, json({ error: 'Customer portal unavailable' }, 502, cors));
   }
 }

@@ -57,6 +57,7 @@ export const migrateAccountClaimPolicy = internalMutation({
     let claimsPatched = 0;
     let aliasesInserted = 0;
     for (const company of page.page) {
+      if (company.lifecycle === "removed" || company.purgePhase !== "none") continue;
       const claims = await ctx.db
         .query("companyMonitoringClaims")
         .withIndex("by_account_company", (q) =>

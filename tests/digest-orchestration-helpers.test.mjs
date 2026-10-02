@@ -16,7 +16,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyDigestScoreFloor,
   digestWindowStartMs,
+  getDigestScoreMin,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -681,5 +683,61 @@ describe('selectCanonicalSendRule — option (a) canonical mapping', () => {
       [/** @type {any} */ (malformed), winner],
     );
     assert.equal(out, winner);
+  });
+});
+
+// ── getDigestScoreMin / applyDigestScoreFloor — DIGEST_SCORE_MIN floor ───
+
+describe('getDigestScoreMin — DIGEST_SCORE_MIN env parse', () => {
+  it('defaults to 0 (no floor) when the var is unset or empty', () => {
+    assert.equal(getDigestScoreMin({}), 0);
+    assert.equal(getDigestScoreMin({ DIGEST_SCORE_MIN: '' }), 0);
+  });
+
+  it('returns a valid non-negative integer', () => {
+    assert.equal(getDigestScoreMin({ DIGEST_SCORE_MIN: '63' }), 63);
+    assert.equal(getDigestScoreMin({ DIGEST_SCORE_MIN: '0' }), 0);
+  });
+
+  it('degrades NaN and negative values to 0 instead of throwing', () => {
+    assert.equal(getDigestScoreMin({ DIGEST_SCORE_MIN: 'abc' }), 0);
+    assert.equal(getDigestScoreMin({ DIGEST_SCORE_MIN: '-5' }), 0);
+  });
+
+  it('reads process.env on every call, so an env flip applies on the next tick', () => {
+    const prev = process.env.DIGEST_SCORE_MIN;
+    try {
+      process.env.DIGEST_SCORE_MIN = '40';
+      assert.equal(getDigestScoreMin(), 40);
+      process.env.DIGEST_SCORE_MIN = '70';
+      assert.equal(getDigestScoreMin(), 70);
+      delete process.env.DIGEST_SCORE_MIN;
+      assert.equal(getDigestScoreMin(), 0);
+    } finally {
+      if (prev === undefined) delete process.env.DIGEST_SCORE_MIN;
+      else process.env.DIGEST_SCORE_MIN = prev;
+    }
+  });
+});
+
+describe('applyDigestScoreFloor — post-dedup score floor', () => {
+  const reps = [
+    { hash: 'a', currentScore: 80 },
+    { hash: 'b', currentScore: 50 },
+    { hash: 'c', currentScore: '63' },
+    { hash: 'd' },
+  ];
+
+  it('returns the input array unchanged when the floor is 0', () => {
+    assert.equal(applyDigestScoreFloor(reps, 0), reps);
+  });
+
+  it('keeps reps at or above the floor and drops the rest (missing score counts as 0)', () => {
+    const out = applyDigestScoreFloor(reps, 63);
+    assert.deepEqual(out.map((s) => s.hash), ['a', 'c']);
+  });
+
+  it('returns an empty array when the floor drains every rep', () => {
+    assert.deepEqual(applyDigestScoreFloor(reps, 100), []);
   });
 });

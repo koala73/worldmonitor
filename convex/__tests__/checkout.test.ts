@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
-import { PRODUCT_CATALOG } from "../config/productCatalog";
+import { LEGACY_PRODUCT_ALIASES, PRODUCT_CATALOG } from "../config/productCatalog";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -87,6 +87,52 @@ async function simulateSubscriptionWebhook(
 // ---------------------------------------------------------------------------
 
 describe("E2E checkout-to-entitlement contract", () => {
+  const mappedProducts = [
+    ...Object.values(PRODUCT_CATALOG)
+      .filter((plan) => plan.dodoProductId)
+      .map((plan) => [plan.dodoProductId!, plan.planKey]),
+    ...Object.entries(LEGACY_PRODUCT_ALIASES),
+  ];
+
+  for (const seeded of [false, true]) {
+    test.each(mappedProducts)(`maps %s to exact %s features (seeded=${seeded})`, async (productId, planKey) => {
+      const t = convexTest(schema, modules);
+      if (seeded) await seedAndListPlans(t);
+      await seedCustomer(t);
+      await simulateSubscriptionWebhook(t, {
+        webhookId: "wh_product_matrix",
+        subscriptionId: "sub_product_matrix",
+        productId,
+      });
+      const entitlement = await t.query(internal.entitlements.getEntitlementsByUserId, {
+        userId: TEST_USER_ID,
+      });
+      expect(entitlement.planKey).toBe(planKey);
+      expect(entitlement.features).toEqual(PRODUCT_CATALOG[planKey].features);
+    });
+  }
+
+  // Characterization after webhook authentication, not proof that Dodo sells
+  // either synthetic ID. Merchant reachability is a separate investigation.
+  test.each(["pdt_unmapped_investigation", "not-a-product-id"])(
+    "characterizes accepted subscription event for unmapped %s",
+    async (productId) => {
+      const t = convexTest(schema, modules);
+      await seedAndListPlans(t);
+      await seedCustomer(t);
+      await simulateSubscriptionWebhook(t, {
+        webhookId: "wh_unmapped",
+        subscriptionId: "sub_unmapped",
+        productId,
+      });
+      const entitlement = await t.query(internal.entitlements.getEntitlementsByUserId, {
+        userId: TEST_USER_ID,
+      });
+      expect(entitlement.planKey).toBe("enterprise");
+      expect(entitlement.features).toEqual(PRODUCT_CATALOG.enterprise.features);
+    },
+  );
+
   test("product plans can be seeded and queried", async () => {
     const t = convexTest(schema, modules);
 

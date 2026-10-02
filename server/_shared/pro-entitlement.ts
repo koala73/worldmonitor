@@ -58,12 +58,11 @@ export async function checkTierProEntitlement(
   // paying customers included — and rendering that as `pro_required` sells the
   // plan they already own back to them because of OUR deploy defect (#5619).
   //
-  // The null deliberately stays a null upstream: server/gateway.ts detects this
-  // same state with isEntitlementBackendConfigured() and serves wm_-key traffic
-  // fail-open, because 503ing a missing env var turns a config regression into
-  // a fleet-wide API outage. That exception is for key-authenticated machine
-  // traffic; a browser gate has no such trade-off to make, so it answers the
-  // honest retryable contract instead.
+  // wm_ user-key gateway traffic now uses the same retryable
+  // entitlement_verification_unavailable 503 when getEntitlements returns null,
+  // including an unconfigured backend. These standalone tier-1 JSON handlers
+  // apply that same honest contract here instead of mislabeling a deploy defect
+  // as pro_required (#5619).
   if (!entitlements && !isEntitlementBackendConfigured()) {
     return {
       allowed: false,

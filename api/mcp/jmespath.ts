@@ -50,7 +50,7 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
     // and serialize the field away — clients would see a missing `text`
     // field. Same guard as the projection path: stringify-then-coerce-to-'null'.
     const text = JSON.stringify(value);
-    return { text: text === undefined ? 'null' : text };
+    return { text: text === undefined ? 'null' : text, value };
   }
 
   // Input gate — reject before parser.
@@ -60,7 +60,7 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
       _jmespath_error: `expression_too_long: ${exprBytes} > ${JMESPATH_MAX_EXPR_BYTES}`,
       original_keys: jmespathOriginalKeys(value),
     };
-    return { text: JSON.stringify(envelope), failed: 'expression_too_long' };
+    return { text: JSON.stringify(envelope), value: envelope, failed: 'expression_too_long' };
   }
 
   let projected: unknown;
@@ -72,7 +72,7 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
       _jmespath_error: `invalid_expression: ${message}`,
       original_keys: jmespathOriginalKeys(value),
     };
-    return { text: JSON.stringify(envelope), failed: 'invalid_expression' };
+    return { text: JSON.stringify(envelope), value: envelope, failed: 'invalid_expression' };
   }
 
   const text = JSON.stringify(projected);
@@ -88,8 +88,8 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
       _jmespath_error: `projection_too_large: ${outputBytes} > ${JMESPATH_MAX_OUTPUT_BYTES}`,
       original_keys: jmespathOriginalKeys(value),
     };
-    return { text: JSON.stringify(envelope), failed: 'projection_too_large' };
+    return { text: JSON.stringify(envelope), value: envelope, failed: 'projection_too_large' };
   }
 
-  return { text: safeText };
+  return { text: safeText, value: projected };
 }

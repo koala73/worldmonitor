@@ -14,7 +14,7 @@ const ENV_KEYS = [
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
   'CONVEX_SITE_URL',
-  'RELAY_SHARED_SECRET',
+  'CONVEX_TENANT_RELAY_SECRET',
   'NOTIFICATION_ENCRYPTION_KEY',
 ];
 const originalFetch = globalThis.fetch;
@@ -59,7 +59,7 @@ function setTestEnv() {
     UPSTASH_REDIS_REST_URL: REDIS_URL,
     UPSTASH_REDIS_REST_TOKEN: 'redis-token',
     CONVEX_SITE_URL: 'https://convex.test',
-    RELAY_SHARED_SECRET: 'relay-secret',
+    CONVEX_TENANT_RELAY_SECRET: 'relay-secret',
     NOTIFICATION_ENCRYPTION_KEY: TEST_ENCRYPTION_KEY,
   });
 }
@@ -88,7 +88,7 @@ function makeFetchStub(provider, { failAtomicConsume = false } = {}) {
   };
   let consumed = false;
 
-  const fetchStub = async (input) => {
+  const fetchStub = async (input, init) => {
     const url = String(input);
 
     if (url.startsWith(`${REDIS_URL}/getdel/`)) {
@@ -115,6 +115,7 @@ function makeFetchStub(provider, { failAtomicConsume = false } = {}) {
     }
 
     if (url === 'https://convex.test/relay/notification-channels') {
+      assert.equal(init.headers.Authorization, 'Bearer relay-secret');
       calls.relayWrites += 1;
       return jsonResponse({ ok: true, isNew: false });
     }

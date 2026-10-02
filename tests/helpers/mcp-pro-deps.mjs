@@ -18,6 +18,9 @@ export const PRO_TOKEN_ID = 'k57mcptokenid';
 export const PRO_BEARER = 'pro-bearer-uuid';
 export const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
 export const BASE_URL = 'https://worldmonitor.app/mcp';
+// The transport at BASE_URL challenges an unauthenticated `initialize`. A full
+// anonymous handshake is served on the machine-discovery alias (same handler).
+export const ANON_DISCOVERY_URL = 'https://worldmonitor.app/.well-known/mcp';
 
 /**
  * In-memory pipeline stub over Pro INCR / DECR / EXPIRE, the Pro daily
@@ -96,13 +99,18 @@ export function makePipelineMock({
         const limitRaw = cmd[5];
         const unlimited = limitRaw === '' || limitRaw === undefined || limitRaw === null;
         const limit = unlimited ? null : Number(limitRaw);
-        counter += 1;
+        // ARGV[3] is the per-tool weight. Mirror the script's INCRBY: charging 1
+        // here regardless made a weight-2 call look like it had reserved less
+        // than it charged, which reserveQuota reads as a Redis fault (503).
+        const weightRaw = Number(cmd[7]);
+        const weight = Number.isFinite(weightRaw) && weightRaw >= 1 ? weightRaw : 1;
+        counter += weight;
         const reserved = counter;
         if (unlimited) {
           limitFloor = -1;
           out.push({ result: [1, reserved] });
         } else if (!Number.isFinite(limit) || limit < 0) {
-          counter = Math.max(0, counter - 1);
+          counter = Math.max(0, counter - weight);
           out.push({ result: [-1, 0] });
         } else if (reserved <= limit) {
           if (limitFloor !== -1 && (limitFloor === null || limit > limitFloor)) {
@@ -110,7 +118,7 @@ export function makePipelineMock({
           }
           out.push({ result: [1, reserved] });
         } else {
-          counter = Math.max(0, counter - 1);
+          counter = Math.max(0, counter - weight);
           if (limitFloor !== -1) {
             const clampTo = limitFloor !== null && limitFloor > limit ? limitFloor : limit;
             if (counter > clampTo) counter = clampTo;
@@ -122,6 +130,9 @@ export function makePipelineMock({
         out.push({ result: counter });
       } else if (cmd[0] === 'DECR') {
         counter = Math.max(0, counter - 1);
+        out.push({ result: counter });
+      } else if (cmd[0] === 'DECRBY') {
+        counter = Math.max(0, counter - Number(cmd[2] ?? 1));
         out.push({ result: counter });
       } else if (cmd[0] === 'EXPIRE') {
         out.push({ result: 1 });

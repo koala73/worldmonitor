@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { callLlm, callLlmReasoning, callLlmReasoningStream, getLlmAttemptTimeoutMs } from '../server/_shared/llm.ts';
 import { __testing__ as llmHealth, isModelUsable } from '../server/_shared/llm-health.ts';
@@ -42,6 +42,82 @@ afterEach(() => {
 
   if (originalLlmApiKey === undefined) delete process.env.LLM_API_KEY;
   else process.env.LLM_API_KEY = originalLlmApiKey;
+});
+
+describe('callLlmReasoningStream error bodies', () => {
+  beforeEach(() => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.LLM_REASONING_PROVIDER = 'openrouter';
+    delete process.env.LLM_REASONING_MODEL;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+  });
+
+  for (const mode of ['oversized', 'stalled', 'cancelled'] as const) {
+    it(`bounds ${mode} provider error reads without losing fallback diagnostics`, async (t) => {
+      const originalWarn = console.warn;
+      const warnings: string[] = [];
+      console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+      t.after(() => { console.warn = originalWarn; });
+      let attempts = 0;
+      let cancelled = false;
+      let aborted = false;
+      let rescued = false;
+      let ready!: () => void;
+      const bodyStarted = new Promise<void>((resolve) => { ready = resolve; });
+      let rescueTimer: ReturnType<typeof setTimeout>;
+      t.after(() => { clearTimeout(rescueTimer); });
+      const diagnostic = `REGION_BLOCK ${'x'.repeat(4000)}`;
+
+      globalThis.fetch = async (_input, init) => {
+        if ((init?.method || 'GET') === 'GET') return new Response('');
+        attempts += 1;
+        if (attempts > 1) {
+          return new Response('data: {"choices":[{"delta":{"content":"fallback"}}]}\n\ndata: [DONE]\n\n');
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            if (mode === 'oversized') controller.enqueue(new TextEncoder().encode(diagnostic));
+            // Release a broken implementation so the regression fails instead of hanging.
+            rescueTimer = setTimeout(() => { rescued = true; controller.close(); }, 500);
+            init?.signal?.addEventListener('abort', () => {
+              aborted = true;
+              clearTimeout(rescueTimer);
+              controller.error(new DOMException('Aborted', 'AbortError'));
+            }, { once: true });
+            ready();
+          },
+          cancel() { cancelled = true; clearTimeout(rescueTimer); },
+        });
+        return new Response(body, { status: 503 });
+      };
+
+      const stream = callLlmReasoningStream({
+        messages: [{ role: 'user', content: 'synthetic prompt' }],
+        timeoutMs: mode === 'stalled' ? 20 : 2000,
+      });
+      if (mode === 'cancelled') {
+        await bodyStarted;
+        await stream.cancel();
+        await new Promise<void>((resolve) => { setImmediate(resolve); });
+        assert.equal(aborted, true, 'client cancellation must abort the provider body');
+        assert.equal(attempts, 1, 'client cancellation must not start a fallback');
+        return;
+      }
+      const output = await new Response(stream).text();
+      assert.equal(rescued, false, 'fallback must not wait for the safety release');
+      assert.equal(attempts, 2);
+      assert.match(output, /"delta":"fallback"/);
+      assert.match(output, /"done":true/);
+      if (mode === 'stalled') assert.equal(aborted, true, 'request timeout must cover the error body');
+      else {
+        assert.equal(cancelled, true, 'oversized body must be cancelled after the prefix');
+        assert.ok(warnings.some((line) => line.endsWith(`body=${diagnostic.slice(0, 300)}`)));
+      }
+    });
+  }
 });
 
 describe('callLlm', () => {
@@ -89,7 +165,7 @@ describe('callLlm', () => {
     delete process.env.LLM_API_KEY;
 
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
       return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 5 } }), { status: 200 });
@@ -307,7 +383,7 @@ describe('callLlm', () => {
 
     const postBodies: Array<Record<string, unknown>> = [];
 
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if ((init?.method || 'GET') === 'GET') {
         return new Response('', { status: 200 });
       }
@@ -340,7 +416,7 @@ describe('callLlm', () => {
     delete process.env.LLM_API_KEY;
 
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
       return new Response(JSON.stringify({
@@ -372,6 +448,42 @@ describe('callLlm', () => {
     // which runs even if an assertion above throws — no manual cleanup here.
   });
 
+  it('keeps user-typed reasoning prompts off the NVIDIA free backup (#8570)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.LLM_REASONING_PROVIDER;
+    delete process.env.LLM_REASONING_MODEL;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const attemptedModels: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      attemptedModels.push(String((JSON.parse(String(init?.body || '{}')) as Record<string, unknown>).model || ''));
+      return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: 503 });
+    }) as typeof fetch;
+
+    await callLlmReasoning({ messages: [{ role: 'user', content: 'What happens to my portfolio?' }] });
+    await new Response(callLlmReasoningStream({
+      messages: [{ role: 'user', content: 'What happens to my portfolio?' }],
+    })).text();
+
+    assert.ok(attemptedModels.includes('google/gemma-4-26b-a4b-it:free'), 'the gemma free leg still serves reasoning calls');
+    assert.equal(
+      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      false,
+      'NVIDIA logs free-endpoint prompts, so chat and deduction text must never reach it',
+    );
+
+    attemptedModels.length = 0;
+    await callLlm({ messages: [{ role: 'user', content: 'Summarize these headlines.' }] });
+    assert.ok(
+      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      'the default chain keeps the backup for public-data prompts',
+    );
+  });
+
   it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.GROQ_API_KEY;
@@ -379,7 +491,7 @@ describe('callLlm', () => {
     delete process.env.LLM_API_URL;
     delete process.env.LLM_API_KEY;
 
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if ((init?.method || 'GET') === 'GET') {
         return new Response('', { status: 200 });
       }
@@ -470,7 +582,7 @@ describe('callLlm', () => {
       }
       const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
       bodies.push(body);
-      const content = body.model === 'minimax/minimax-m3:free' ? 'backup answer' : '';
+      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup answer' : '';
       return new Response(JSON.stringify({
         choices: [{ message: { content } }],
         usage: { total_tokens: 5 },
@@ -480,11 +592,11 @@ describe('callLlm', () => {
     const result = await callLlm({ messages: [{ role: 'user', content: 'Answer briefly.' }] });
 
     assert.equal(result?.provider, 'openrouter-free-backup');
-    assert.equal(result?.model, 'minimax/minimax-m3:free');
+    assert.equal(result?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'minimax/minimax-m3:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });
@@ -928,7 +1040,9 @@ describe('callLlm', () => {
       })).text();
     }
 
-    assert.equal(postCount, 9);
+    // Two posts per stream: ghost, then the gemma free leg. The stream skips
+    // the NVIDIA free backup for user-typed text (#8570).
+    assert.equal(postCount, 6);
     assert.equal(ghostAttempts, 3);
     assert.equal(
       isModelUsable('https://openrouter.ai/api/v1/chat/completions', 'ghost/ghost-model-v9'),

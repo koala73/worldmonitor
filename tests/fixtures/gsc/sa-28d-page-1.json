@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "https://www.worldmonitor.app/countries/france/"
+      ],
+      "clicks": 0,
+      "impressions": 44,
+      "ctr": 0.0,
+      "position": 61.3
+    },
+    {
+      "keys": [
+        "https://www.worldmonitor.app/chokepoints/suez-canal/"
+      ],
+      "clicks": 2,
+      "impressions": 96,
+      "ctr": 0.020833,
+      "position": 33.1
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

@@ -90,3 +90,40 @@ describe('COT small-trader positioning', () => {
     assert.equal(response.instruments[1].smallTraderShort, '8');
   });
 });
+
+describe('COT report dates', () => {
+  for (const [input, expected] of [
+    ['2026-08-04', '2026-08-04'], ['260804', '2026-08-04'],
+    ['500101', '1950-01-01'], ['491231', '2049-12-31'],
+    ['2024-02-29', '2024-02-29'], ['0000-01-01', '0000-01-01'],
+    [' 2026-08-04 ', '2026-08-04'],
+    ['2022-09-13T00:00:00.000', '2022-09-13'],
+    ['2022-09-13T00:00:00', '2022-09-13'],
+  ]) {
+    it(`preserves supported date ${input}`, () => {
+      const instrument = buildInstrument(target, { report_date_as_yyyy_mm_dd: input }, null, 'financial');
+      const response = mapCotPositioning({ instruments: [instrument], reportDate: instrument.reportDate });
+      assert.equal(response.reportDate, expected);
+      assert.equal(response.instruments[0].reportDate, expected);
+      assert.equal(response.unavailable, false);
+    });
+  }
+  for (const input of ['', null, 'not-a-date', '<b>bad</b>', '2026-02-29', '260230',
+    '2026-04-31', '2026-13-01', '2026-00-10', '2026-01-00',
+    '2026-08-04<script>', '2026-08-04T99:99:99.000', {},
+  ]) {
+    it(`rejects invalid date ${JSON.stringify(input)} without inventing a release`, () => {
+      const instrument = buildInstrument(target, { report_date_as_yyyy_mm_dd: input }, null, 'financial');
+      assert.equal(instrument.reportDate, '');
+      assert.equal(instrument.nextReleaseDate, '');
+      const response = mapCotPositioning({ instruments: [instrument], reportDate: instrument.reportDate });
+      assert.equal(response.reportDate, '');
+      assert.equal(response.unavailable, false);
+    });
+  }
+  it('preserves unavailable responses for missing instruments', () => {
+    for (const raw of [null, {}, { instruments: [], reportDate: '2026-08-04' }]) {
+      assert.deepEqual(mapCotPositioning(raw), { instruments: [], reportDate: '', unavailable: true });
+    }
+  });
+});

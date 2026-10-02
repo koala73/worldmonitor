@@ -7,6 +7,8 @@ World Monitor fuses attributed structured APIs, news and OSINT feeds, and operat
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
 
+Compare the dashboard with its underlying event-data services: [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/) and [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/).
+
 ## Coverage at a Glance
 
 | Domain | What you get | Representative providers |
@@ -264,9 +266,9 @@ The public server digest feed inventory below is source-backed from `server/worl
 | `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh) |
 | `full` | `commodities` | Oil & Gas; Gold & Metals |
 | `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; U.S. Trade Representative; UN News; CISA; Treasury; DOJ |
-| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
-| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
-| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en) |
+| `full` | `africa` | BBC Africa; Guardian Africa; France 24 Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Guardian Caribbean; France 24 LatAm; Mexico News Daily; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
+| `full` | `asia` | BBC Asia; Guardian Pacific; France 24 Asia Pacific; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en) |
 | `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
 | `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
 | `full` | `crisis` | CrisisWatch; IAEA; WHO |
@@ -384,28 +386,30 @@ This is curated public news-account monitoring, not a general-purpose follow lis
 
 The YouTube live-stream catalog covers geopolitical hotspots across global regions and provides continuous visual situational awareness:
 
-| Region             | Cities                                                           |
-| ------------------ | ---------------------------------------------------------------- |
-| **Iran / Attacks** | Tehran, Tel Aviv, Jerusalem (Western Wall)                       |
-| **Middle East**    | Jerusalem (Western Wall), Tehran, Tel Aviv, Mecca (Grand Mosque) |
-| **Europe**         | Kyiv, Odessa, Paris, St. Petersburg, London                      |
-| **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
-| **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
+| Region           | Cities                                                                 |
+| ---------------- | ---------------------------------------------------------------------- |
+| **Middle East**  | Jerusalem (Western Wall), multi-camera Middle East feed, Mecca, Istanbul, Medina |
+| **Europe**       | Ukraine (Kyiv, Odesa, Kharkiv and more), Paris, St. Petersburg, London |
+| **Americas**     | Washington DC, New York, Los Angeles, Miami                            |
+| **Asia-Pacific** | Taipei, Shanghai, Tokyo, Seoul, Sydney                                 |
+| **Space**        | ISS Earth view, Earth from orbit                                       |
 
-The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
+The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Middle East, Ukraine, Washington DC) and a single-feed expanded view. Region tabs (ALL/MIDEAST/EUROPE/AMERICAS/ASIA/SPACE) filter the available feeds.
 
-Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
+Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), stopped with an explanatory notice after a configurable period without mouse, keyboard or touch input, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds load through the local sidecar (`/api/youtube-embed`), which gives the player an http parent origin that YouTube accepts. Each feed is a curated YouTube live stream; broadcasters end and restart streams, so the IDs are re-checked for liveness.
 
 ### Source Credibility & Feed Tiering
 
-Every RSS feed is assigned a source tier reflecting editorial reliability:
+Feeds are assigned a source tier reflecting editorial reliability:
 
-| Tier       | Description                                | Examples                                    |
-| ---------- | ------------------------------------------ | ------------------------------------------- |
-| **Tier 1** | Wire services, official government sources | Reuters, AP, BBC, DOD                       |
-| **Tier 2** | Major established outlets                  | CNN, NYT, The Guardian, Al Jazeera          |
-| **Tier 3** | Specialized/niche outlets                  | Defense One, Breaking Defense, The War Zone |
-| **Tier 4** | Aggregators and blogs                      | Google News, individual analyst blogs       |
+| Tier       | Description                                 | Examples                                             |
+| ---------- | ------------------------------------------- | ---------------------------------------------------- |
+| **Tier 1** | Wire services and official bodies           | Reuters, AP News, AFP, Pentagon                      |
+| **Tier 2** | Major outlets                               | BBC, CNN World, New York Times, The Guardian, Al Jazeera |
+| **Tier 3** | Specialist, regional and think-tank sources | Defense One, Breaking Defense, The War Zone          |
+| **Tier 4** | Aggregators and blogs                       | Hacker News, The Verge, Yahoo Finance                |
+
+A clustered story lists its publishers with the best tier declared among the feeds seen for that story. A feed with no declared tier shows as "tier not declared" and never counts as tier 4 when the corroboration flags are computed. Tiers rank sources; they do not judge whether a claim is true.
 
 Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Those same inputs feed the per-headline [`credibilityScore`](/methodology/news-credibility) (0-100 source reliability, distinct from `importanceScore` newsworthiness). Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 
@@ -565,7 +569,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
-- IMD RSMC New Delhi cyclone tracks, forecast wind radii, cone of uncertainty, and port / sea-area / coastal bulletins (`weather:imd-cyclone-marine:v1`, on-demand). Live fetch requires `IMD_API_KEY`; a disabled snapshot is not an all-clear.
+- IMD RSMC New Delhi cyclone tracks, forecast wind radii, cone of uncertainty, and port / sea-area / coastal bulletins (`weather:imd-cyclone-marine:v1`, on-demand). Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. A disabled snapshot is not an all-clear.
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**

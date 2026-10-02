@@ -4,6 +4,7 @@
 export interface RunScenarioRequest {
   scenarioId: string;
   iso2: string;
+  disruptionPct?: number;
 }
 
 export interface RunScenarioResponse {
@@ -26,12 +27,19 @@ export interface ScenarioResult {
   affectedChokepointIds: string[];
   topImpactCountries: ScenarioImpactCountry[];
   template?: ScenarioResultTemplate;
+  scenarioId: string;
+  scopedIso2: string;
+  coverage?: ScenarioCoverage;
+  computedAt: string;
 }
 
 export interface ScenarioImpactCountry {
   iso2: string;
   totalImpact: number;
   impactPct: number;
+  evaluatedRecords: number;
+  requestedRecords: number;
+  partialEvidence: boolean;
 }
 
 export interface ScenarioResultTemplate {
@@ -39,6 +47,23 @@ export interface ScenarioResultTemplate {
   disruptionPct: number;
   durationDays: number;
   costShockMultiplier: number;
+}
+
+export interface ScenarioCoverage {
+  status: string;
+  countryIds: string[];
+  hs2Codes: string[];
+  records: ScenarioCoverageRecord[];
+  manifestFetchedAt: string;
+}
+
+export interface ScenarioCoverageRecord {
+  iso2: string;
+  hs2: string;
+  state: string;
+  basis: string;
+  rawImpact?: number;
+  fetchedAt: string;
 }
 
 export interface ListScenarioTemplatesRequest {

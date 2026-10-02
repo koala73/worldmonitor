@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { escapeHtml, sanitizeUrl } from '../src/utils/sanitize.ts';
+import { escapeHtml, sanitizeUrl, validateUrl } from '../src/utils/sanitize.ts';
 
 describe('sanitize utility contracts', () => {
   it('escapeHtml escapes every HTML delimiter while preserving safe text', () => {
@@ -36,4 +36,12 @@ describe('sanitize utility contracts', () => {
       ['https://example.com/', 'http://example.com/a?x=1&amp;y=2'],
     );
   });
+});
+
+it('validates DOM URLs without encoding query parameters', () => {
+  assert.equal(validateUrl('https://example.com/a?x=1&y=2'), 'https://example.com/a?x=1&y=2');
+  assert.equal(validateUrl('?x=1&y=2'), '?x=1&y=2');
+  for (const url of ['javascript:alert(1)', 'data:text/html,test', 'ftp://example.com']) {
+    assert.equal(validateUrl(url), '');
+  }
 });

@@ -25,7 +25,7 @@ function extractHotspotSegment(source: string): string {
 function extractHotspotBaselines(source: string): Array<{ id: string; name: string; baseline: number }> {
   const segment = extractHotspotSegment(source);
   const entries: Array<{ id: string; name: string; baseline: number }> = [];
-  const blockRe = /^  \{\n([\s\S]*?)^  \},/gm;
+  const blockRe = /^ {2}\{\n([\s\S]*?)^ {2}\},/gm;
   let blockMatch: RegExpExecArray | null;
   while ((blockMatch = blockRe.exec(segment)) !== null) {
     const block = blockMatch[1]!;
@@ -106,7 +106,7 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
       /static_?baseline[\s\S]{0,120}escalationScore|escalationScore[\s\S]{0,120}staticBaseline/i,
       `${label} must publish hotspot static baseline source`,
     );
-    assert.match(doc, /0\.30[\s\S]{0,120}0\.70/, `${label} must publish hotspot 30\/70 blend`);
+    assert.match(doc, /0\.30[\s\S]{0,120}0\.70/, `${label} must publish hotspot 30/70 blend`);
     assert.match(doc, /1-5/, `${label} must state hotspot scores are on a 1-5 scale`);
     assert.doesNotMatch(doc, /proximity_boost/, `${label} must not document a nonexistent hotspot proximity boost`);
   }

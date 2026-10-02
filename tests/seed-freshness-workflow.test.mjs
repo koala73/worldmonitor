@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -91,6 +91,35 @@ function runPublisherFromLegacyRevision() {
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
+
+it('captures JSON when a historical workflow revision predates Markdown output support', () => {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-legacy-probe-'));
+  try {
+    mkdirSync(join(tempDir, 'scripts'));
+    writeFileSync(join(tempDir, 'scripts/check-seed-freshness.mjs'), [
+      "import { parseArgs } from 'node:util';",
+      "import { writeFileSync } from 'node:fs';",
+      "const { values } = parseArgs({ options: { 'json-output': { type: 'string' } } });",
+      "writeFileSync(values['json-output'], JSON.stringify({ version: 1, report: { failed: true } }));",
+      'process.exitCode = 1;',
+    ].join('\n'));
+    const result = spawnSync('bash', ['-e', '-c', stepNamed('Check ingestion operational acceptance').run], {
+      cwd: tempDir, encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: tempDir },
+    });
+    assert.equal(result.status, 1, 'the legacy probe must retain its strict failure');
+    assert.doesNotMatch(result.stderr, /Unknown option/);
+    assert.deepEqual(JSON.parse(readFileSync(join(tempDir, 'seed-freshness-observation.json'), 'utf8')), {
+      version: 1, report: { failed: true },
+    });
+    const summary = join(tempDir, 'summary.md');
+    const shown = spawnSync('bash', ['-e', '-c', stepNamed('Show production acceptance').run], {
+      cwd: tempDir, encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: tempDir, GITHUB_STEP_SUMMARY: summary },
+    });
+    assert.equal(shown.status, 0, shown.stderr);
+    assert.match(readFileSync(summary, 'utf8'), /observation was produced/);
+    assert.doesNotMatch(readFileSync(summary, 'utf8'), /No current observation/);
+  } finally { rmSync(tempDir, { recursive: true, force: true }); }
+});
 
 const HEAD_SHA = '0123456789abcdef';
 // Frozen so the age bound is a boundary, not a race against the wall clock:
@@ -239,6 +268,34 @@ function runScheduledGate(head, ancestors = []) {
 }
 
 describe('seed freshness workflow control plane', () => {
+  it('shows failed acceptance even after a successful publisher and marks a missing observation unverified', () => {
+    const step = stepNamed('Show production acceptance');
+    assert.equal(step.if, '${{ always() }}');
+    assertBashSyntax(step.run);
+    const artifact = stepNamed('Retain acceptance observation');
+    assert.equal(artifact.if, '${{ always() }}');
+    assert.equal(artifact.with['retention-days'], 7);
+    assert.equal(artifact.with.path, '${{ runner.temp }}/seed-freshness-observation.json');
+    const dir = mkdtempSync(join(repoRoot, '.tmp-seed-summary-'));
+    try {
+      const output = join(dir, 'summary.md');
+      const run = () => spawnSync('bash', ['-e', '-c', step.run], {
+        encoding: 'utf8',
+        env: { ...process.env, RUNNER_TEMP: dir, GITHUB_STEP_SUMMARY: output,
+          GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'koala73/worldmonitor', GITHUB_RUN_ID: '123' },
+      });
+      assert.equal(run().status, 0);
+      assert.match(readFileSync(output, 'utf8'), /Unverified.*No current observation/);
+      assert.match(readFileSync(output, 'utf8'), /https:\/\/github.com\/koala73\/worldmonitor\/actions\/runs\/123/);
+      writeFileSync(output, '');
+      writeFileSync(join(dir, 'seed-freshness-summary.md'), '**Failed.** wildfires remains active.\n');
+      assert.equal(run().status, 0);
+      assert.equal(readFileSync(output, 'utf8'), '**Failed.** wildfires remains active.\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('monitors the checked-out main SHA when its gate passed', () => {
     const success = runScheduledGate('success', [
       { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
@@ -337,7 +394,7 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(publisher.env.SEED_STATUS_WRITER_LOGIN, 'github-actions[bot]');
     assert.match(publisher.run, /update-seed-health-statuses\.mjs/);
     assert.match(publisher.run, /if \[ ! -f scripts\/update-seed-health-statuses\.mjs \]/);
-    assert.match(publisher.run, /not active on gated revision/);
+    assert.match(publisher.run, /not active on workflow revision/);
     assert.match(publisher.run, /--sha "\$SEED_ACCEPTANCE_SHA"/);
     assert.match(publisher.run, /status_args=\(\)/);
     assert.match(publisher.run, /grep -q -- "'status-sha':"/);
@@ -355,10 +412,10 @@ describe('seed freshness workflow control plane', () => {
 
     const success = runPublisherWithoutActivation('success');
     assert.equal(success.status, 0, success.stderr);
-    assert.match(success.stdout, /waiting for a gated activation revision/);
+    assert.match(success.stdout, /waiting for a workflow revision with publisher support/);
   });
 
-  it('keeps the pre-anchor publisher compatible during the first gated-revision race', () => {
+  it('keeps historical workflow revisions compatible with the pre-anchor publisher', () => {
     const legacy = runPublisherFromLegacyRevision();
     assert.equal(legacy.result.status, 0, legacy.result.stderr);
     assert.deepEqual(legacy.args, [
@@ -367,23 +424,69 @@ describe('seed freshness workflow control plane', () => {
     ]);
   });
 
-  it('checks out the resolved revision before the ingestion probe', () => {
-    const checkout = stepNamed('Check out the gated main revision');
-    const checkoutIndex = monitorSteps.indexOf(checkout);
-    const gateIndex = monitorSteps.indexOf(scheduledGateStep());
-    const acceptanceIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Check ingestion operational acceptance',
-    );
-    const publisherIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Publish ingestion operational transitions',
-    );
-    assert.ok(gateIndex < checkoutIndex && checkoutIndex < acceptanceIndex && acceptanceIndex < publisherIndex);
-    assert.equal(checkout.if, "${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}");
-    assert.equal(checkout.env.GATED_SHA, '${{ steps.gate.outputs.sha }}');
-    assert.match(checkout.run, /git checkout --detach "\$GATED_SHA"/);
-    assert.doesNotMatch(checkout.run, /\$\{\{/);
-    assertBashSyntax(checkout.run);
-    assertBashSyntax(scheduledGateStep().run);
+  it('runs head scripts while retaining the gated ancestor for acceptance bookkeeping', () => {
+    const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+    const localGitVariables = execFileSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' })
+      .trim().split('\n').filter(Boolean);
+    for (const name of localGitVariables) delete gitEnv[name];
+    const dir = mkdtempSync(join(repoRoot, '.tmp-seed-revision-'));
+    const git = (...args) => {
+      const result = spawnSync('git', args, { cwd: dir, env: gitEnv, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      git('init');
+      git('config', 'user.name', 'Workflow Test');
+      git('config', 'user.email', 'workflow@example.invalid');
+      mkdirSync(join(dir, 'scripts'));
+      const probe = join(dir, 'scripts/check-seed-freshness.mjs');
+      const publisher = join(dir, 'scripts/update-seed-health-statuses.mjs');
+      // The older probe does not understand a newly introduced pending kind.
+      writeFileSync(probe, 'process.exit(1);\n');
+      writeFileSync(publisher, 'process.exit(1);\n');
+      git('add', 'scripts');
+      git('commit', '-m', 'gated ancestor');
+      const ancestor = git('rev-parse', 'HEAD');
+      writeFileSync(probe, [
+        "import { writeFileSync } from 'node:fs';",
+        "const output = process.argv[process.argv.indexOf('--json-output') + 1];",
+        "writeFileSync(output, JSON.stringify({ revision: 'head', pending: ['new-kind'] }));",
+      ].join('\n'));
+      writeFileSync(publisher, [
+        "import { writeFileSync } from 'node:fs';",
+        "// 'status-sha': supported by this revision",
+        "writeFileSync(process.env.ARGS_LOG, JSON.stringify(process.argv.slice(2)));",
+      ].join('\n'));
+      git('add', 'scripts');
+      git('commit', '-m', 'current probe and publisher');
+      const head = git('rev-parse', 'HEAD');
+      const gateIndex = monitorSteps.indexOf(scheduledGateStep());
+      const publisherStep = stepNamed('Publish ingestion operational transitions');
+      const publisherIndex = monitorSteps.indexOf(publisherStep);
+      const statusAnchor = publisherStep.env.SEED_STATUS_SHA;
+      // Run every shell step after gate selection, including any checkout, so
+      // reintroducing an ancestor checkout exercises the actual regression.
+      for (const step of monitorSteps.slice(gateIndex + 1, publisherIndex + 1)) {
+        assert.equal(typeof step.run, 'string', 'post-gate steps must run from the initial checkout');
+        const result = spawnSync('bash', ['-e', '-c', step.run], {
+          cwd: dir, encoding: 'utf8',
+          env: { ...gitEnv, GITHUB_SHA: head, GATED_SHA: ancestor,
+            SEED_ACCEPTANCE_SHA: ancestor, SEED_STATUS_SHA: statusAnchor,
+            SEED_ACCEPTANCE_OUTCOME: 'success', RUNNER_TEMP: dir,
+            ARGS_LOG: join(dir, 'publisher-args.json') },
+        });
+        assert.equal(result.status, 0, `${step.name}: ${result.stderr}`);
+      }
+      assert.equal(git('rev-parse', 'HEAD'), head);
+      assert.deepEqual(JSON.parse(readFileSync(join(dir, 'seed-freshness-observation.json'), 'utf8')), {
+        revision: 'head', pending: ['new-kind'],
+      });
+      assert.deepEqual(JSON.parse(readFileSync(join(dir, 'publisher-args.json'), 'utf8')), [
+        '--sha', ancestor, '--status-sha', statusAnchor,
+        '--report', join(dir, 'seed-freshness-observation.json'),
+      ]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it('reports ingestion acceptance only', () => {
@@ -397,6 +500,7 @@ describe('seed freshness workflow control plane', () => {
     );
     assert.equal(checkout.with?.['fetch-depth'], 0);
     assert.equal(checkout.with?.filter, 'blob:none');
+    assert.equal(checkout.with?.ref, '${{ github.sha }}');
     assert.deepEqual(
       workflow.concurrency,
       { group: 'seed-freshness-monitor', 'cancel-in-progress': false },

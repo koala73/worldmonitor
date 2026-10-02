@@ -10,6 +10,7 @@ import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
@@ -23,6 +24,31 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
     /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
   );
   assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
+});
+
+test('jsonForScript keeps any value inside an inline <script> as data', () => {
+  const { jsonForScript } = __testing__;
+  const hostile = '</script><script>alert(1)</script>\u2028\u2029<!--&';
+  const encoded = jsonForScript(hostile);
+  assert.doesNotMatch(encoded, /[<>&\u2028\u2029]/);
+  assert.equal(runInNewContext(`(${encoded})`), hostile);
+  assert.equal(jsonForScript(null), 'null');
+  assert.equal(runInNewContext(`(${jsonForScript('live_stream')})`), 'live_stream');
+});
+
+test('isYahooFinanceHost matches finance.yahoo.com and its subdomains only', () => {
+  const { isYahooFinanceHost } = __testing__;
+  for (const host of ['finance.yahoo.com', 'query1.finance.yahoo.com', 'query2.finance.yahoo.com',
+    'finance.yahoo.com.', 'query1.finance.yahoo.com.']) {
+    assert.equal(isYahooFinanceHost(host), true, host);
+  }
+  for (const host of ['evilfinance.yahoo.com', 'finance.yahoo.com.evil.example', 'yahoo.com', 'example.com', 'finance.yahoo.com..']) {
+    assert.equal(isYahooFinanceHost(host), false, host);
+  }
+});
+
+test('keeps seed-owned WSB snapshots cloud-preferred', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/intelligence/v1/list-wsb-tickers'), true);
 });
 
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
@@ -80,6 +106,41 @@ test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async
   }
 });
 
+test('routes seed-only displacement requests to cloud before a local empty 200', async () => {
+  const endpoint = '/api/displacement/v1/get-displacement-summary';
+  const seeded = { summary: { year: 2025, countries: [{ code: 'SYR' }], topFlows: [] }, fetchedAt: 123456, dataAvailable: true };
+  const hits = [];
+  const remote = createServer((req, res) => {
+    hits.push(req.url);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(seeded));
+  });
+  const remotePort = await listen(remote);
+  const localApi = await setupApiDir({
+    'displacement/v1/get-displacement-summary.js': `export default async function handler() {
+      return Response.json({ dataAvailable: false, fetchedAt: 0 });
+    }`,
+  });
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  try {
+    const query = '?year=0&flow_limit=50';
+    const response = await authFetch(`http://127.0.0.1:${port}${endpoint}${query}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), seeded);
+    assert.deepEqual(hits, [`${endpoint}${query}`]);
+    assert.equal(__testing__.isCloudPreferred(endpoint), true);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => remote.close(error => error ? reject(error) : resolve()));
+  }
+});
+
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
 // an open local-HTTP proxy). Set a stable test token + an authFetch helper
@@ -123,7 +184,9 @@ function executeYoutubeEmbedHtml(html) {
   assert.ok(script, 'youtube embed response must contain an executable script');
   const posted = [];
   const appendedScripts = [];
+  const messageListeners = [];
   let playerEvents = null;
+  let playerOptions = null;
   const parent = {};
   Object.defineProperty(parent, 'postMessage', {
     configurable: false,
@@ -134,7 +197,12 @@ function executeYoutubeEmbedHtml(html) {
   });
   const sandbox = {
     console: { log() {}, warn() {}, error() {} },
-    window: { parent, addEventListener() {} },
+    window: {
+      parent,
+      addEventListener(type, listener) {
+        if (type === 'message') messageListeners.push(listener);
+      },
+    },
     document: {
       createElement: () => ({}),
       head: { appendChild: (node) => appendedScripts.push(node) },
@@ -151,6 +219,7 @@ function executeYoutubeEmbedHtml(html) {
     YT: {
       Player: class {
         constructor(_elementId, options) {
+          playerOptions = options;
           playerEvents = options.events;
         }
 
@@ -158,6 +227,11 @@ function executeYoutubeEmbedHtml(html) {
         playVideo() {}
         isMuted() { return true; }
         getVolume() { return 0; }
+        getPlayerState() { return 1; }
+        getDuration() { return 4_056_940; }
+        getVideoData() {
+          return { video_id: 'gCNeDWCI0vo', isLive: true, title: 'Al Jazeera English | Live', author: 'Al Jazeera English' };
+        }
       },
     },
   };
@@ -166,8 +240,99 @@ function executeYoutubeEmbedHtml(html) {
   assert.equal(typeof sandbox.onYouTubeIframeAPIReady, 'function');
   sandbox.onYouTubeIframeAPIReady();
   playerEvents.onReady();
-  return { posted, appendedScripts };
+  const sendMessage = (data) => {
+    for (const listener of messageListeners) listener({ data, origin: 'https://tauri.localhost', source: parent });
+  };
+  return { posted, appendedScripts, playerOptions, sendMessage };
 }
+
+test('youtube embed bridge plays a channel live embed and rejects ambiguous or malformed ids', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const embed = (query) => fetch(`http://127.0.0.1:${port}/api/youtube-embed?${query}&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`);
+
+  try {
+    const channelResponse = await embed('channel=UCNye-wNBqNL5ZzHSJj3l8Bg');
+    assert.equal(channelResponse.status, 200);
+    const channel = executeYoutubeEmbedHtml(await channelResponse.text());
+    assert.equal(channel.playerOptions.videoId, 'live_stream');
+    assert.equal(channel.playerOptions.playerVars.channel, 'UCNye-wNBqNL5ZzHSJj3l8Bg');
+
+    const videoResponse = await embed('videoId=zp6LNSoq000');
+    const video = executeYoutubeEmbedHtml(await videoResponse.text());
+    assert.equal(video.playerOptions.videoId, 'zp6LNSoq000');
+    assert.equal(video.playerOptions.playerVars.channel, undefined);
+    // A tile that draws its own chrome asks for none; the default stays the native control bar.
+    assert.equal(video.playerOptions.playerVars.controls, 1);
+    const chromeless = executeYoutubeEmbedHtml(await (await embed('videoId=zp6LNSoq000&controls=0')).text());
+    assert.equal(chromeless.playerOptions.playerVars.controls, 0);
+    // Muted by default so autoplay is allowed; an unmuted session must get sound, not a hardcoded mute.
+    assert.equal(video.playerOptions.playerVars.mute, 1);
+    const unmuted = executeYoutubeEmbedHtml(await (await embed('videoId=zp6LNSoq000&mute=0')).text());
+    assert.equal(unmuted.playerOptions.playerVars.mute, 0);
+
+    for (const query of [
+      'videoId=zp6LNSoq000&channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
+      'autoplay=1',
+      'channel=UCshort',
+      'channel=%40AlJazeeraEnglish',
+      'videoId=zp6LNSoq000%22',
+    ]) {
+      const response = await embed(query);
+      assert.equal(response.status, 400, `${query} must be rejected`);
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('youtube embed bridge answers a probe with video data for the allowed parent only', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const allowedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=gCNeDWCI0vo&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`,
+    );
+    const allowed = executeYoutubeEmbedHtml(await allowedResponse.text());
+    allowed.sendMessage({ type: 'probe' });
+    const reply = allowed.posted.find(({ message }) => message?.type === 'yt-video-data');
+    // The message is built inside the sandbox's own realm; compare its JSON shape.
+    assert.deepEqual(JSON.parse(JSON.stringify(reply ?? null)), {
+      message: {
+        type: 'yt-video-data',
+        videoId: 'gCNeDWCI0vo',
+        isLive: true,
+        title: 'Al Jazeera English | Live',
+        author: 'Al Jazeera English',
+        duration: 4_056_940,
+        state: 1,
+      },
+      targetOrigin: 'https://tauri.localhost',
+    });
+
+    const rejectedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=gCNeDWCI0vo&parentOrigin=${encodeURIComponent('https://evil.example')}`,
+    );
+    const rejected = executeYoutubeEmbedHtml(await rejectedResponse.text());
+    rejected.sendMessage({ type: 'probe' });
+    assert.deepEqual(rejected.posted, [], 'a rejected parent must receive no video data');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
 
 test('youtube embed bridge accepts exact Tauri origin and no-ops rejected parents', async () => {
   const localApi = await setupApiDir({});
@@ -780,6 +945,75 @@ test('preserves caller Authorization while hiding the sidecar transport token', 
   }
 });
 
+for (const registrationStatus of ['registered', 'already_registered']) {
+  test(`uses the authenticated Convex bridge for self-hosted register-interest (${registrationStatus})`, async () => {
+    const originalConvex = process.env.CONVEX_URL;
+    const originalSite = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_URL = 'https://self-hosted.convex.cloud';
+    process.env.CONVEX_SITE_URL = 'http://self-hosted.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'convex-test-secret';
+
+    let captured;
+    globalThis.fetch = async (url, init) => {
+      captured = { url, init };
+      return new Response(JSON.stringify({
+        status: registrationStatus,
+        position: 7,
+        emailSuppressed: true,
+        referralCode: 'secret-referral-code',
+        referralCount: 9,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const localApi = await setupApiDir({});
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      remoteBase: 'https://worldmonitor.app',
+      logger: { log() { }, warn() { }, error() { } },
+    });
+    const { port } = await app.start();
+
+    try {
+      const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/register-interest`, {
+        email: 'self-hosted@example.com',
+        source: 'desktop-settings',
+        appVersion: '2.8.0',
+        referredBy: 'REF123',
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(response.json, {
+        status: 'registered',
+        referralCode: '',
+        referralCount: 0,
+        position: 0,
+        emailSuppressed: false,
+      });
+      assert.equal(captured.url, 'http://self-hosted.convex.site/api/internal-register-interest');
+      assert.equal(captured.init.headers['x-convex-shared-secret'], 'convex-test-secret');
+      assert.equal(captured.init.headers['User-Agent'], 'worldmonitor-sidecar/1.0');
+      assert.deepEqual(JSON.parse(captured.init.body), {
+        email: 'self-hosted@example.com',
+        source: 'desktop-settings',
+        appVersion: '2.8.0',
+        referredBy: 'REF123',
+      });
+    } finally {
+      await app.close();
+      await localApi.cleanup();
+      globalThis.fetch = originalFetch;
+      if (originalConvex === undefined) delete process.env.CONVEX_URL;
+      else process.env.CONVEX_URL = originalConvex;
+      if (originalSite === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSite;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+}
+
 test('does not forward the sidecar transport token through Docker cloud proxy routes', async () => {
   const originalConvex = process.env.CONVEX_URL;
   delete process.env.CONVEX_URL;
@@ -822,7 +1056,7 @@ test('does not forward the sidecar transport token through Docker cloud proxy ro
   }
 });
 
-test('preserves Request body when handler uses fetch(Request)', async () => {
+for (const inputKind of ['Request', 'URL']) test(`preserves body when handler uses fetch(${inputKind})`, async () => {
   // Use a DISTINCT upstream server (not the sidecar itself) so this test
   // exercises real "handler proxies to external host" semantics. The upstream
   // is on 127.0.0.1, so it must be opted into the SSRF allowlist via
@@ -849,7 +1083,7 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ secret: 'keep-body' }),
         });
-        const upstream = await fetch(request);
+        const upstream = await fetch(${inputKind === 'Request' ? 'request' : 'new URL(request.url), { method: request.method, headers: request.headers, body: await request.text() }'});
         const payload = await upstream.text();
         return new Response(payload, {
           status: upstream.status,
@@ -938,7 +1172,7 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
   }
 });
 
-test('blocks handler global fetches to private network targets (#3549)', async () => {
+for (const inputKind of ['string', 'URL', 'Request']) test(`blocks handler ${inputKind} fetches to private network targets (#3549, #7892)`, async () => {
   let upstreamHits = 0;
 
   const upstream = createServer((_req, res) => {
@@ -952,7 +1186,7 @@ test('blocks handler global fetches to private network targets (#3549)', async (
   const localApi = await setupApiDir({
     'private-proxy.js': `
       export default async function handler() {
-        const upstream = await fetch(process.env.WM_TEST_UPSTREAM);
+        const upstream = await fetch(${inputKind === 'string' ? 'process.env.WM_TEST_UPSTREAM' : `new ${inputKind}(process.env.WM_TEST_UPSTREAM)`});
         const payload = await upstream.text();
         return new Response(payload, {
           status: upstream.status,
@@ -1616,7 +1850,106 @@ test('resolves packaged tauri resource layout under _up_/api', async () => {
 
 // ── Ollama env key allowlist + validation tests ──
 
-test('accepts OLLAMA_API_URL via /api/local-env-update', async () => {
+test('Docker rejects native administration without changing configuration, caches, or relay transport', async (t) => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const relayCalls = [];
+  const operatorRelay = 'https://operator-relay.example';
+  const otherRelay = 'https://untrusted-relay.example';
+  process.env.WS_RELAY_URL = operatorRelay;
+  process.env.RELAY_SHARED_SECRET = 'synthetic-relay-secret';
+  delete process.env.RELAY_AUTH_HEADER;
+  globalThis.fetch = (input, options) => {
+    const url = String(input);
+    if (url.startsWith(operatorRelay) || url.startsWith(otherRelay)) {
+      relayCalls.push({ url, headers: new Headers(options?.headers) });
+      return Promise.resolve(new Response('[]', { headers: { 'content-type': 'application/json' } }));
+    }
+    return originalFetch(input, options);
+  };
+  let privateProbeHits = 0;
+  const privateProvider = createServer((_req, res) => {
+    privateProbeHits++;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"data":[{"id":"fixture-model"}]}');
+  });
+  const privatePort = await listen(privateProvider);
+  const relayModule = pathToFileURL(path.resolve(import.meta.dirname, '../../api/oref-alerts.js')).href;
+  const localApi = await setupApiDir({
+    'oref-alerts.js': `export { default } from ${JSON.stringify(relayModule)};`,
+    'missing.js': `import './absent.js'; export default () => new Response('unreachable');`,
+  });
+  const verboseStatePath = path.join(localApi.apiDir, 'verbose-mode.json');
+  await writeFile(verboseStatePath, '{"verboseMode":false}');
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir, dataDir: localApi.apiDir, mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const base = `http://127.0.0.1:${port}`;
+  // This is the authority nginx grants even when the outside caller is anonymous.
+  const proxyHeaders = { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN, Origin: 'http://localhost' };
+  try {
+    await authFetch(`${base}/api/missing`);
+    const requests = [
+      ['local-env-update', 'POST', { key: 'WS_RELAY_URL', value: otherRelay }],
+      ['local-env-update-batch', 'POST', { entries: [{ key: 'WS_RELAY_URL', value: otherRelay }] }],
+      ['local-validate-secret', 'POST', { key: 'OLLAMA_API_URL', value: `http://127.0.0.1:${privatePort}` }],
+      ['local-status', 'GET'],
+      ['local-traffic-log', 'GET'],
+      ['local-traffic-log', 'DELETE'],
+      ['local-debug-toggle', 'GET'],
+      ['local-debug-toggle', 'POST'],
+      ['local-env-update', 'OPTIONS'],
+    ];
+    for (const [route, method, body] of requests) {
+      await t.test(`${method} ${route}`, async () => {
+        const response = await fetch(`${base}/api/${route}`, {
+          method, headers: { ...proxyHeaders, 'Content-Type': 'application/json' },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        assert.equal(response.status, 403);
+      });
+    }
+    await t.test('spoofed and native credentials cannot override Docker mode', async () => {
+      for (const headers of [{}, { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` }, {
+        Authorization: 'Bearer caller-oauth', Origin: 'https://tauri.localhost',
+        'X-WorldMonitor-Local-Token': 'spoofed-token',
+      }]) {
+        const response = await fetch(`${base}/api/local-status`, { headers });
+        assert.equal(response.status, 403);
+      }
+    });
+    await t.test('rejections leave validation transport and debug state untouched', () => {
+      assert.equal(privateProbeHits, 0);
+      assert.equal(readFileSync(verboseStatePath, 'utf8'), '{"verboseMode":false}');
+    });
+    await t.test('rejections preserve environment, failed-import cache, and outbound destination', async () => {
+      const relay = await fetch(`${base}/api/oref-alerts`, { headers: proxyHeaders });
+      assert.equal(relay.status, 200);
+      assert.equal(relayCalls.length, 1);
+      assert.equal(relayCalls[0].url, `${operatorRelay}/oref/alerts`);
+      assert.equal(relayCalls[0].headers.get('x-relay-key'), 'synthetic-relay-secret');
+      assert.equal(relayCalls[0].headers.get('authorization'), 'Bearer synthetic-relay-secret');
+      assert.equal(process.env.WS_RELAY_URL, operatorRelay);
+      const missing = await authFetch(`${base}/api/missing`);
+      assert.match((await missing.json()).reason, /cached-failure/);
+      const health = await fetch(`${base}/api/sidecar-health`);
+      assert.equal(health.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of ['WS_RELAY_URL', 'RELAY_SHARED_SECRET', 'RELAY_AUTH_HEADER']) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+    await app.close();
+    await localApi.cleanup();
+    await new Promise(resolve => privateProvider.close(resolve));
+  }
+});
+
+test('accepts OLLAMA_API_URL through desktop single and batch env updates', async () => {
   const localApi = await setupApiDir({});
 
   const app = await createLocalApiServer({
@@ -1637,6 +1970,13 @@ test('accepts OLLAMA_API_URL via /api/local-env-update', async () => {
     assert.equal(body.ok, true);
     assert.equal(body.key, 'OLLAMA_API_URL');
     assert.equal(process.env.OLLAMA_API_URL, 'http://127.0.0.1:11434');
+    const batchResponse = await authFetch(`http://127.0.0.1:${port}/api/local-env-update-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: [{ key: 'OLLAMA_API_URL', value: 'http://127.0.0.1:11435' }] }),
+    });
+    assert.equal(batchResponse.status, 200);
+    assert.equal(process.env.OLLAMA_API_URL, 'http://127.0.0.1:11435');
   } finally {
     delete process.env.OLLAMA_API_URL;
     await app.close();
@@ -2032,6 +2372,32 @@ test('does not soft-pass provider auth 403 JSON responses even with cf-ray heade
     assert.equal(response.json?.message, 'Groq rejected this key');
   } finally {
     restoreHttps();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('serves no unauthenticated HLS proxy', async () => {
+  // The referer-spoofing /api/hls-proxy route was auth-exempt. With it retired the path is an ordinary
+  // authenticated request, so a caller without the token is refused before any upstream is contacted.
+  const localApi = await setupApiDir({});
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'secret-token-123';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const upstream = encodeURIComponent('https://example.com/live/index.m3u8');
+    const response = await fetch(`http://127.0.0.1:${port}/api/hls-proxy?url=${upstream}`);
+    assert.equal(response.status, 401);
+  } finally {
+    if (originalToken === undefined) delete process.env.LOCAL_API_TOKEN;
+    else process.env.LOCAL_API_TOKEN = originalToken;
     await app.close();
     await localApi.cleanup();
   }
@@ -2512,6 +2878,144 @@ test('rss-proxy pins an IPv6-only hostname to the validated address', async () =
   }
 });
 
+test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transport', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  let outboundCalls = 0;
+
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => ['::ffff:7f00:1'];
+  https.request = () => {
+    outboundCalls += 1;
+    throw new Error('blocked mapped address must not reach the network');
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const mappedUrls = [
+      'https://[::ffff:127.0.0.1]/feed.xml',
+      'https://[0:0:0:0:0:ffff:127.0.0.1]/feed.xml',
+      'https://[::ffff:7f00:1]/feed.xml',
+      'https://[::ffff:c0a8:101]/feed.xml',
+      'https://[::ffff:a9fe:101]/feed.xml',
+      'https://[::ffff:c633:6401]/feed.xml',
+    ];
+    for (const feedUrl of mappedUrls) {
+      const response = await authFetch(
+        `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+      );
+      assert.equal(response.status, 403, feedUrl);
+      const body = await response.json();
+      assert.match(body.error, /private\/reserved/, feedUrl);
+    }
+
+    const dnsResponse = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://mapped-dns.example/feed.xml')}`,
+    );
+    assert.equal(dnsResponse.status, 403);
+    assert.match((await dnsResponse.json()).error, /private\/reserved/);
+    assert.equal(outboundCalls, 0);
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy forces active and error responses through an inert response policy', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  const upstreamResponses = [
+    {
+      statusCode: 200,
+      statusMessage: 'OK',
+      contentType: 'text/html; charset=utf-8',
+      body: '<html><script>globalThis.rssProxyExecuted = true;</script></html>',
+    },
+    {
+      statusCode: 502,
+      statusMessage: 'Bad Gateway',
+      contentType: 'image/svg+xml',
+      body: '<svg><script>globalThis.rssProxyExecuted = true;</script></svg>',
+    },
+  ];
+  let upstreamIndex = 0;
+
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => {
+    const error = new Error('No AAAA records');
+    error.code = 'ENODATA';
+    throw error;
+  };
+  https.request = (_options, onResponse) => {
+    const upstream = upstreamResponses[upstreamIndex++];
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = upstream.statusCode;
+        res.statusMessage = upstream.statusMessage;
+        res.headers = { 'content-type': upstream.contentType };
+        onResponse(res);
+        res.emit('data', Buffer.from(upstream.body));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    for (const upstream of upstreamResponses) {
+      const response = await authFetch(
+        `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://publisher.example/feed.xml')}`,
+      );
+      assert.equal(response.status, upstream.statusCode);
+      assert.equal(await response.text(), upstream.body);
+      assert.equal(response.headers.get('content-type'), 'application/xml; charset=utf-8');
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.match(response.headers.get('content-security-policy') || '', /(?:^|;\s*)sandbox(?:;|$)/);
+      assert.match(response.headers.get('content-security-policy') || '', /script-src 'none'/);
+    }
+
+    for (const query of ['', '?url=http%3A%2F%2F127.0.0.1%2F']) {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/rss-proxy${query}`);
+      assert.ok(response.status === 400 || response.status === 403);
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.match(response.headers.get('content-security-policy') || '', /(?:^|;\s*)sandbox(?:;|$)/);
+    }
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('rss-proxy rejects a hostname with mixed public and private DNS answers', async () => {
   const localApi = await setupApiDir({});
   const originalResolve4 = dns.resolve4;
@@ -2834,6 +3338,58 @@ test('releases the upstream fetch semaphore when a response stalls mid-body (#54
     await new Promise((resolve, reject) => {
       healthy.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+});
+
+test('nested self-origin fetches do not hold upstream semaphore slots (#5449)', async () => {
+  // Self-hosted MCP tools call sibling /api routes on the sidecar's own
+  // loopback origin through the patched globalThis.fetch. Each such call used
+  // to hold one of the 6 upstream slots for the whole nested request while
+  // the nested handler's own fetch needed a slot from the same pool, so six
+  // concurrent tool calls wedged until their timeouts fired. Fire 7 outer
+  // self-calls whose handler makes one more self-call: with self-origin
+  // fetches exempt from the semaphore, all 7 complete promptly.
+  const localApi = await setupApiDir({
+    'leaf.js': `
+      export default async function handler() {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+    'self-hop.js': `
+      export default async function handler(req) {
+        const leaf = await fetch(new URL('/api/leaf', req.url), {
+          headers: { 'X-WorldMonitor-Local-Token': process.env.LOCAL_API_TOKEN },
+        });
+        const payload = await leaf.text();
+        return new Response(payload, { status: leaf.status, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    // Deliberately the PATCHED globalThis.fetch, not getJsonViaHttp: this is
+    // exactly how an MCP registry tool reaches a sibling route in-process.
+    const results = await Promise.all(Array.from({ length: 7 }, () =>
+      globalThis.fetch(`http://127.0.0.1:${port}/api/self-hop`, {
+        headers: { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN },
+        signal: AbortSignal.timeout(3000),
+      }).then(async (res) => ({ status: res.status, json: await res.json() }))
+    ));
+    for (const result of results) {
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.json, { ok: true });
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
   }
 });
 

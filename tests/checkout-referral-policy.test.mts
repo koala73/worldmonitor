@@ -90,12 +90,6 @@ const stubSources: Record<string, string> = {
       fn({ addBreadcrumb: () => {}, captureMessage: () => {}, captureException: () => {} });
     }
   `,
-  'dodopayments-checkout': `
-    export const DodoPayments = {
-      Initialize() {},
-      Checkout: { isOpen: () => false, close: () => {}, open: () => {} },
-    };
-  `,
   './billing': `
     export const openBillingPortal = async () => {};
     export const prereserveBillingPortalTab = () => null;
@@ -149,11 +143,6 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-plan-names': `
     export const resolvePlanDisplayName = () => 'Pro';
-  `,
-  './entitlement-watchdog': `
-    export function createEntitlementWatchdog() {
-      return { start: () => {}, stop: () => {}, isActive: () => false };
-    }
   `,
 };
 

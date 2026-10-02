@@ -12,7 +12,7 @@ describe('ACLED conflict date window', () => {
 
     const window = resolveAcledEventWindow({ start: 0, end: 0 }, now);
 
-    assert.equal(window.startMs, now - ACLED_DEFAULT_WINDOW_MS);
+    assert.equal(window.startMs, Math.floor((now - ACLED_DEFAULT_WINDOW_MS) / 86_400_000) * 86_400_000);
     assert.equal(window.endMs, now);
   });
 

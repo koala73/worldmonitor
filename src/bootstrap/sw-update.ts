@@ -1,5 +1,5 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { isModalOpen } from '@/utils/open-modal';
+import { findReloadBlockingModal } from '@/utils/open-modal';
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -10,7 +10,7 @@ interface DocumentLike {
   querySelector: (sel: string) => Element | null;
   querySelectorAll: (sel: string) => Iterable<Element & VisibleElementLike>;
   createElement: (tag: string) => HTMLElement;
-  body: { appendChild: (el: Element) => void; contains: (el: Element | null) => boolean };
+  body: { appendChild: (el: Element) => void; contains: (el: Element | null) => boolean } | null;
   addEventListener: (type: string, cb: () => void) => void;
   removeEventListener: (type: string, cb: () => void) => void;
 }
@@ -72,7 +72,7 @@ const SW_DEBUG_LOG_MAX = 30;
 // Modal detection moved to src/utils/open-modal.ts so the passkey offer
 // controller shares one predicate with this updater. Re-exported because the
 // selector is part of this module's existing public surface.
-export { OPEN_MODAL_SELECTOR } from '@/utils/open-modal';
+export { RELOAD_BLOCKING_MODAL_SELECTOR } from '@/utils/open-modal';
 
 function appendDebugLog(entry: Record<string, unknown>): void {
   try {
@@ -154,6 +154,9 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     }
     doc.querySelector('.update-toast')?.remove();
 
+    const body = doc.body;
+    if (!body) return;
+
     const toast = doc.createElement('div');
     toast.className = 'update-toast';
     setTrustedHtml(toast, trustedHtml(`
@@ -205,13 +208,17 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         logSw('dwell-timer-cancelled-on-hide');
       }
       logSw('visibility-hidden', { autoReloadAllowed, dismissed });
-      if (!dismissed && autoReloadAllowed && doc.body.contains(toast)) {
+      if (!dismissed && autoReloadAllowed && doc.body?.contains(toast)) {
         // Don't interrupt an in-flight modal flow (Clerk email-code wait,
         // Settings, ⌘K search, etc.). The reload stays armed — next tab-hide
         // after the modal closes will fire it. User can also click Reload
         // in the toast manually at any time.
-        if (isModalOpen(doc)) {
-          logSw('auto-reload-suppressed-modal-open');
+        // An overlay that declared itself reload-safe (the onboarding popover,
+        // the SignalModal) does not count: it holds nothing a reload would
+        // lose. See src/utils/open-modal.ts and WORLDMONITOR-15X.
+        const blocker = findReloadBlockingModal(doc);
+        if (blocker !== null) {
+          logSw('auto-reload-suppressed-modal-open', { blockedBy: blocker.label, reloadPolicy: blocker.policy });
           return;
         }
         logSw('auto-reload-triggered');
@@ -226,6 +233,10 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         dwellTimerId = null;
         currentDwellCancel = null;
         logSw('reload-clicked');
+        // reload:user-initiated — the user pressed Reload, so the modal guard
+        // does not apply. Deferring a direct instruction would be a bug, not a
+        // protection. The marker is what keeps this exception explicit rather
+        // than implied by the shape of the enclosing installer.
         reload();
       } else if (action === 'dismiss') {
         clearTimer(dwellTimerId);
@@ -243,7 +254,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     currentOnHidden = onHidden;
     currentDwellCancel = () => { clearTimer(dwellTimerId); dwellTimerId = null; };
     doc.addEventListener('visibilitychange', onHidden);
-    doc.body.appendChild(toast);
+    body.appendChild(toast);
     raf(() => toast.classList.add('visible'));
   };
 

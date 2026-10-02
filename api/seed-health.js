@@ -8,6 +8,7 @@ import {
 } from './_pool-coverage.js';
 import {
   EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+  SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT,
   parseEducationPayloadRankableRecordCount,
   parseRankableRecordCount,
 } from './_rankable-coverage.js';
@@ -20,7 +21,8 @@ import {
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 // @ts-expect-error — JS module, no declaration file
-import { readExistsFlags, redisPipeline } from './_upstash-json.js';
+import { applyRedisKeyPrefix, readExistsFlags, redisPipeline } from './_upstash-json.js';
+import { isAppOwnedRedisKey } from './_redis-key-ownership.js';
 
 export const config = { runtime: 'edge' };
 
@@ -195,7 +197,9 @@ const SEED_DOMAINS = {
   'economic:china-macro':     { key: 'seed-meta:economic:china-macro-transport', intervalMin: 2160 },
   'economic:china-release-calendar': { key: 'seed-meta:economic:china-release-calendar', intervalMin: 2160 },
   'china:policy-events':      { key: 'seed-meta:china:policy-events',      intervalMin: 360 },
-  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 30, minRecordCount: 6 },
+  // The producer still runs every 15min. seed-health stales at intervalMin*2,
+  // so 90 mirrors the three-hour operational-coverage budget in api/health.js.
+  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 90, minRecordCount: 6 },
   'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries
   'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
@@ -203,8 +207,16 @@ const SEED_DOMAINS = {
   'economic:boc-valet':                { key: 'seed-meta:economic:boc-valet',                intervalMin: 1440, minRecordCount: 19 }, // daily cron (seed-bundle-macro); api/health.js maxStaleMin 4320 = 3x. minRecordCount = 15 FX + policy + 3 yields.
   'economic:statcan-wds':              { key: 'seed-meta:economic:statcan-wds',              intervalMin: 1440, minRecordCount: 2 }, // daily cron; floor is CPI YoY + LFS unemployment. Empty change-list is valid quiet.
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
+  // Seeder-owned meta for the research:tech-events:v1 mirror (scripts/
+  // seed-research.mjs). MUST stay distinct from the relay-owned
+  // seed-meta:research:tech-events above: the relay defers its boot seed while
+  // the shared key is fresh, so a second writer there starves the bootstrap
+  // payload (incident 2026-09-23). This entry gives the hourly mirror its own
+  // heartbeat instead of riding the relay's.
+  'research:tech-events-seeder': { key: 'seed-meta:research:tech-events:seeder', intervalMin: 90 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
+  'gdelt:bulk:country-articles': { key: 'seed-meta:gdelt:bulk:country-articles', intervalMin: 23 }, // same materializer tick; standalone health key for the per-country index (#7748).
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
   // Corporate intelligence (#5695): intervalMin = maxStaleMin / 2 (api/health.js: 2880 / 120).
@@ -218,7 +230,7 @@ const SEED_DOMAINS = {
     key: 'seed-meta:supply-chain:vulnerability',
     intervalMin: 1440,
     minRecordCount: 110,
-    minRankableRecordCount: 110,
+    minRankableRecordCount: SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT, // matches api/health.js and the producer floor MIN_COUNTRY_COVERAGE * MIN_SCORED_COMMODITIES_PER_RANKABLE_COUNTRY
     requiredRedistributionPolicyVersion: 1,
     activationKey: 'seed-activated:supply-chain:vulnerability',
   },
@@ -524,24 +536,29 @@ async function getSeedBatch(entries) {
   const probeSlots = [];
   const activationSlots = [];
   const contentFreshnessActivationSlots = [];
+  const batchKey = (key) => (isAppOwnedRedisKey(key) ? applyRedisKeyPrefix(key) : key);
   for (const [domain, cfg] of entries) {
     metaSlots.push({ domain, key: cfg.key, index: commands.length });
-    commands.push(['GET', cfg.key]);
+    commands.push(['GET', batchKey(cfg.key)]);
     if (cfg.dataProbe?.key) {
       probeSlots.push({ domain, index: commands.length });
-      commands.push(['GET', cfg.dataProbe.key]);
+      commands.push(['GET', batchKey(cfg.dataProbe.key)]);
     }
     if (cfg.activationKey) {
       activationSlots.push({ domain, index: commands.length });
-      commands.push(['EXISTS', cfg.activationKey]);
+      commands.push(['EXISTS', batchKey(cfg.activationKey)]);
     }
     if (cfg.contentFreshnessActivationKey) {
       contentFreshnessActivationSlots.push({ domain, index: commands.length });
-      commands.push(['EXISTS', cfg.contentFreshnessActivationKey]);
+      commands.push(['EXISTS', batchKey(cfg.contentFreshnessActivationKey)]);
     }
   }
 
-  const data = await redisPipeline(commands, 3000);
+  // Most rows are written by the Railway seeder fleet and stay raw. The small
+  // route-owned set is finalized above into this deployment's namespace. Send
+  // the mixed pipeline verbatim so the Redis helper cannot prefix every key
+  // as one ownership class (#7674).
+  const data = await redisPipeline(commands, 3000, true);
   if (!data) throw new Error('Redis not configured');
 
   const metaMap = new Map();
@@ -571,6 +588,10 @@ async function getSeedBatch(entries) {
   );
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
+
+// Per-country states the bilateral HS4 seeder records when it could not
+// observe a reporter this run (see scripts/seed-comtrade-bilateral-hs4.mjs).
+const BILATERAL_FAILURE_STATES = new Set(['unavailable', 'malformed', 'incomplete', 'not_attempted']);
 
 export async function handleSeedHealth(req, options = {}) {
   const hasInjectedClock = Object.hasOwn(options, 'now');
@@ -650,6 +671,18 @@ export async function handleSeedHealth(req, options = {}) {
     const ageMs = evaluationNow - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const rankableRecordCount = parseRankableRecordCount(meta);
+    const chinaDecisionDiagnostics = domain === 'intelligence:china-decision-signals'
+      ? projectChinaDecisionGroupDiagnostics(meta, {
+          groupIds: CHINA_DECISION_SIGNAL_GROUP_IDS,
+          allowedStates: CHINA_DECISION_SIGNAL_STATES,
+          healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
+        })
+      : null;
+    const chinaDecisionDiagnosticsInvalid = domain === 'intelligence:china-decision-signals'
+      && chinaDecisionDiagnostics === null;
+    const chinaDecisionFailureEvidenceInvalid = Boolean(
+      chinaDecisionDiagnostics?.coverageFailureInvalidReason,
+    );
     const redistributionPolicyVersion = Number.isInteger(meta.redistributionPolicyVersion)
       ? meta.redistributionPolicyVersion
       : null;
@@ -661,9 +694,31 @@ export async function handleSeedHealth(req, options = {}) {
     const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
     const redistributionPolicyPartial = cfg.requiredRedistributionPolicyVersion != null
       && redistributionPolicyVersion !== cfg.requiredRedistributionPolicyVersion;
-    const coveragePartial = recordCoveragePartial
+    const bilateralGaps = domain === 'comtrade:bilateral-hs4' ? {
+      preservedCountries: Object.keys(meta.preserveStreaks ?? {}).filter(iso => /^[A-Z]{2}$/.test(iso)),
+      countryCoverage: Object.fromEntries(Object.entries(meta.countryCoverage ?? {}).filter(([iso]) => /^[A-Z]{2}$/.test(iso))),
+      productCoverageKnown: Boolean(meta.countryCoverage),
+      // The run's two reserved world-export requests (R10). Null on a snapshot
+      // written before the field existed, which is absence of evidence, not a
+      // failure — reporting it as one would flag every legacy run.
+      worldExports: meta.worldExports ?? null,
+    } : null;
+    // Only failures are a coverage gap. A reporter with no positive rows
+    // (no_records) and an observed importer that does not trade every reviewed
+    // heading are valid observations; flagging them would keep the domain
+    // partial on every healthy run. Both stay visible in bilateralCoverage.
+    //
+    // World exports are one run-level fetch, so anything but 'observed' — an
+    // unrecognised state included — is a gap the brief's supplier scale inherits.
+    const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
+      || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
+      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+    const coveragePartial = Boolean(bilateralPartial) || recordCoveragePartial
       || rankableCoveragePartial
-      || poolCoveragePartial;
+      || poolCoveragePartial
+      || chinaDecisionDiagnosticsInvalid
+      || chinaDecisionFailureEvidenceInvalid
+      || (chinaDecisionDiagnostics?.staleGroups.length ?? 0) > 0;
     // Source-specific seed projections retain their last-good records while
     // reporting a current upstream failure through sourceState. Treat that as
     // an immediate operator error instead of waiting for the freshness window.
@@ -737,7 +792,7 @@ export async function handleSeedHealth(req, options = {}) {
       || probe?.ok === false
       || contentFreshnessInvalid
       || contentFreshnessStale;
-    if (stale || poolCoveragePartial) staleCount++;
+    if (stale || coveragePartial) staleCount++;
     // A policy mismatch is an operator error only once the producer has
     // actually activated. Before the first publish the field is legitimately
     // absent, so escalating then would drive `overall: degraded` (HTTP 503) for
@@ -776,6 +831,7 @@ export async function handleSeedHealth(req, options = {}) {
       ageMinutes: Math.round(ageMs / 60000),
       stale,
     };
+    if (bilateralGaps) seeds[domain].bilateralCoverage = bilateralGaps;
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minRankableRecordCount != null) {
       seeds[domain].rankableRecordCount = rankableRecordCount;
@@ -811,12 +867,8 @@ export async function handleSeedHealth(req, options = {}) {
       seeds[domain].lastErrorCode = meta.lastErrorCode;
     }
     if (domain === 'intelligence:china-decision-signals') {
-      const diagnostics = projectChinaDecisionGroupDiagnostics(meta, {
-        groupIds: CHINA_DECISION_SIGNAL_GROUP_IDS,
-        allowedStates: CHINA_DECISION_SIGNAL_STATES,
-        healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
-      });
-      if (diagnostics) Object.assign(seeds[domain], diagnostics);
+      if (chinaDecisionDiagnostics) Object.assign(seeds[domain], chinaDecisionDiagnostics);
+      else seeds[domain].coverageFailureInvalidReason = 'GROUP_DIAGNOSTICS_INVALID';
     }
   }
 

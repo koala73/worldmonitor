@@ -7,9 +7,10 @@ import type {
   CyberThreatSeverity,
   CyberThreatIndicatorType,
 } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { ensureHydrated } from '@/services/bootstrap';
 import { CyberServiceClient } from '@/services/generated-rpc-clients';
+import { isCyberThreatSnapshot } from '../../../shared/cyber-threat-snapshot';
 
 // ---- Client + Circuit Breaker ----
 
@@ -17,6 +18,7 @@ const client = new CyberServiceClient(getRpcBaseUrl(), { fetch: (...args) => glo
 const breaker = createCircuitBreaker<ListCyberThreatsResponse>({ name: 'Cyber Threats', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListCyberThreatsResponse = { threats: [], pagination: undefined };
+const AVAILABLE_CACHE_KEY = 'available-v1';
 
 // ---- Proto enum -> legacy string adapters ----
 
@@ -87,15 +89,18 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
   // 364 KB to every visitor for data the default visitor never read. Callers that
   // reach here have already passed that gate, so fetch it now, through its own
   // CDN-shielded per-key URL. Falls through to the RPC below if that fetch fails.
-  const hydrated = (await ensureHydrated('cyberThreats')) as { threats?: ProtoCyberThreat[] } | undefined;
-  if (hydrated?.threats?.length) return hydrated.threats.map(toCyberThreat);
+  const hydrated = await ensureHydrated('cyberThreats');
+  if (isCyberThreatSnapshot(hydrated)) {
+    breaker.recordSuccess({ threats: hydrated.threats }, AVAILABLE_CACHE_KEY);
+    return hydrated.threats.map(toCyberThreat);
+  }
 
   const limit = clampInt(options.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const days = clampInt(options.days, DEFAULT_DAYS, 1, MAX_DAYS);
   const now = Date.now();
 
   const resp = await breaker.execute(async () => {
-    return client.listCyberThreats({
+    const response = await client.listCyberThreats({
       start: now - days * 24 * 60 * 60 * 1000,
       end: now,
       pageSize: limit,
@@ -104,7 +109,10 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
       source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
       minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',
     });
-  }, emptyFallback);
+    if (!isCyberThreatSnapshot(response)) throw new Error('Cyber threats unavailable');
+    return response;
+  }, emptyFallback, { cacheKey: AVAILABLE_CACHE_KEY, shouldCache: isCyberThreatSnapshot });
 
+  if (breaker.getDataState().mode === 'unavailable') throw new Error('Cyber threats unavailable');
   return resp.threats.map(toCyberThreat);
 }

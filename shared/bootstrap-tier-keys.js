@@ -70,6 +70,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts: 'weather:alerts:v1',
   imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
+  liveVideoResolved: 'live-video:resolved:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -99,7 +100,6 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   eurostatHousePrices: 'economic:eurostat:house-prices:v1',
   eurostatGovDebtQ: 'economic:eurostat:gov-debt-q:v1',
   eurostatIndProd: 'economic:eurostat:industrial-production:v1',
-  marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex: 'market:fear-greed:v1',
   hyperliquidFlow: 'market:hyperliquid:flow:v1',
   crudeInventories: 'economic:crude-inventories:v1',
@@ -111,7 +111,6 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   euFsi: 'economic:fsi-eu:v1',
   shippingStress: 'supply_chain:shipping_stress:v1',
   socialVelocity: 'intelligence:social:reddit:v1',
-  wsbTickers: 'intelligence:wsb-tickers:v1',
   pizzint: 'intelligence:pizzint:seed:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress: 'economic:stress-index:v1',
@@ -155,7 +154,6 @@ const SLOW_KEY_NAMES = new Set([
   'nationalDebt',
   'euGasStorage',
   'eurostatCountryData',
-  'marketImplications',
   'fearGreedIndex',
   'hyperliquidFlow',
   'crudeInventories',
@@ -204,8 +202,6 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // Flights layer ships disabled on every variant, so this never rendered
   // from the fast payload for a default visitor.
   'flightDelays',
-  // Premium WSB scanner — not a default-startup surface.
-  'wsbTickers',
   // The minimum further FAST demotion needed by #7046. Both consumers are
   // demand-gated and read the credential-less per-key URL. Putting them in
   // SLOW would erase the energy-registry reduction; moving additional FAST
@@ -241,6 +237,12 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // and natural layers fetch this key only when those layers are on, so it
   // never rides a payload every visitor downloads.
   'imdCycloneMarine',
+  // The video each catalog YouTube channel has live now (#8545), fetched by the
+  // live video players at play intent and only for slots that list a channel.
+  // The get-bootstrap-data RPC also serves any registered key by name, so the
+  // payload stays minimal: channel id to video id and timestamps, no titles,
+  // enforced by validateResolvedPayload in scripts/seed-live-video-resolved.mjs.
+  'liveVideoResolved',
 ]);
 
 /**

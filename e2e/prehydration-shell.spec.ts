@@ -234,7 +234,7 @@ test.describe('pre-hydration dashboard shell', () => {
         '/tools/',
         '/pro#pricing',
         'https://www.worldmonitor.app/blog/',
-        'https://www.worldmonitor.app/docs',
+        'https://www.worldmonitor.app/docs/documentation',
         'https://github.com/koala73/worldmonitor',
       ]) {
         await expect(page.locator(`.site-footer nav a[href="${href}"]`)).toHaveCount(1);
@@ -378,7 +378,7 @@ test.describe('server-rendered welcome page', () => {
     await expect(page.locator('#seo-prerender')).toHaveCount(0);
     await expect(page.locator('#root[data-wm-prerendered="welcome"] h1')).toHaveCount(1);
     await expect(page.locator('#root h1')).toBeVisible();
-    await expect(page.locator('#root a[href="/dashboard?utm_source=welcome&utm_content=hero"]')).toBeVisible();
+    await expect(page.locator('#root a[href="/dashboard"][data-umami-event-target="welcome-hero"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="/countries/"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="https://github.com/koala73/worldmonitor"]')).toBeVisible();
   });
@@ -478,7 +478,7 @@ test.describe('dashboard shell without JavaScript', () => {
     await expect(page.locator('#root h1')).toHaveCount(1);
     await expect(page.locator('#root h1')).toBeVisible();
     await expect(page.locator('#root h1')).toContainText('you already knew');
-    await expect(page.locator('#root a[href="/dashboard?utm_source=welcome&utm_content=hero"]')).toBeVisible();
+    await expect(page.locator('#root a[href="/dashboard"][data-umami-event-target="welcome-hero"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="/countries/"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="https://github.com/koala73/worldmonitor"]')).toBeVisible();
   });
@@ -498,7 +498,7 @@ test.describe('dashboard shell without JavaScript', () => {
       '/crises/',
       '/tools/',
       '/blog/',
-      '/docs',
+      '/docs/documentation',
       '/pro#pricing',
       'https://github.com/koala73/worldmonitor',
     ]) {

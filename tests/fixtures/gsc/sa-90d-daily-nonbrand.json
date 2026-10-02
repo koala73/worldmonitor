@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "2026-07-01"
+      ],
+      "clicks": 0,
+      "impressions": 20,
+      "ctr": 0.0,
+      "position": 25.0
+    },
+    {
+      "keys": [
+        "2026-09-01"
+      ],
+      "clicks": 1,
+      "impressions": 25,
+      "ctr": 0.04,
+      "position": 22.5
+    }
+  ],
+  "responseAggregationType": "byProperty"
+}

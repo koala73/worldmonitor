@@ -47,9 +47,10 @@ export const MAX_JODI_CONTENT_AGE_MIN = MAX_JODI_CONTENT_AGE_MONTHS * 31 * 24 * 
  *
  * 230 days rather than a figure closer to the observed 197: the gas age climbs
  * daily until JODI publishes the next month, so a threshold set near the
- * observed peak clears today and re-alarms on the first missed publish. 230
- * absorbs one skipped month while still surfacing a genuine stall — the file
- * would have to fall a further month behind its own worst observed lag.
+ * observed peak clears today and re-alarms on the first missed publish. The
+ * gas bundle interval is 15 days, so 230 days leaves enough time to observe an
+ * unchanged file once and fetch again after the publisher advances, while
+ * still surfacing a genuine stall.
  */
 export const MAX_JODI_GAS_CONTENT_AGE_MIN = 230 * 24 * 60;
 

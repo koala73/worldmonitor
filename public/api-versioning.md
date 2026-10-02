@@ -1,3 +1,9 @@
+---
+title: "World Monitor REST API versioning"
+description: "API compatibility, deprecation headers, sunset policy, and migration."
+canonical: "https://www.worldmonitor.app/api-versioning.md"
+---
+
 # World Monitor REST API versioning and deprecation
 
 Last updated: August 29, 2026
@@ -76,7 +82,7 @@ No currently supported endpoint sends `Deprecation` or `Sunset` merely because i
 
 ## Related
 
-- [OpenAPI specification](https://worldmonitor.app/openapi.md)
-- [Developer portal](https://worldmonitor.app/developers.md)
-- [Agent operations guide](https://worldmonitor.app/agents.md)
-- [Brand identity](https://worldmonitor.app/world-monitor.md)
+- [OpenAPI specification](https://www.worldmonitor.app/openapi.md)
+- [Developer portal](https://www.worldmonitor.app/developers.md)
+- [Agent operations guide](https://www.worldmonitor.app/agents.md)
+- [Brand identity](https://www.worldmonitor.app/world-monitor.md)

@@ -218,6 +218,28 @@ describe('five-factor source adapters', () => {
     assert.ok(stocks.aggregation!.denominator > stocks.aggregation!.numerator);
   });
 
+  it('converts a FAOSTAT Food Balances pair with the calorie table but leaves stocks unavailable', () => {
+    const sources = sourceFixture();
+    sources.foodStocks.US.commodities = {
+      wheat: {
+        marketingYear: '2023/24', production: 10, consumption: 20,
+        exports: null, endingStocks: null, source: 'faostat',
+      },
+      palmOil: {
+        marketingYear: '2023/24', production: 2, consumption: 1,
+        exports: null, endingStocks: null, source: 'faostat',
+      },
+    } as never;
+
+    const evidence = adaptCountryEvidence('US', sources);
+    const balance = evidence.inputs['food.productionBalance'];
+    assert.equal(balance.availability, 'available');
+    if (balance.availability !== 'available') return;
+    assert.equal(balance.aggregation?.numerator, (10 * 3340 + 2 * 8840) / 1_000_000);
+    assert.equal(balance.aggregation?.denominator, (20 * 3340 + 1 * 8840) / 1_000_000);
+    assert.equal(evidence.inputs['food.stocksToUse'].availability, 'unavailable');
+  });
+
   it('keeps stock evidence when production evidence is unavailable', () => {
     const sources = sourceFixture();
     sources.foodStocks.US.commodities.wheat.production = null as never;

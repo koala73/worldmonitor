@@ -47,6 +47,7 @@ async function invokeHandlerWithCachedEnvelope(
   providerCompletion = null,
   primary = 'gemini',
   fallbackProviderCompletion = null,
+  requestOverrides = {},
 ) {
   const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
@@ -97,8 +98,9 @@ async function invokeHandlerWithCachedEnvelope(
       headers: {
         Authorization: 'Bearer test-relay-secret',
         'Content-Type': 'application/json',
+        ...requestOverrides.headers,
       },
-      body: JSON.stringify({ story: story() }),
+      body: requestOverrides.body ?? JSON.stringify({ story: story() }),
     });
     const response = await handler(request);
     return { response, body: await response.json(), fetchCalls };
@@ -199,10 +201,32 @@ describe('normalizeCountryToIso2', () => {
   });
 });
 
+describe('displayNameForIso2', () => {
+  it('resolves non-tier-1 codes such as Norway instead of leaking the ISO code', async () => {
+    const { displayNameForIso2 } = await import('../server/_shared/country-normalize.ts');
+    assert.equal(displayNameForIso2('NO'), 'Norway');
+    assert.equal(displayNameForIso2('no'), 'Norway');
+    assert.equal(displayNameForIso2('US'), 'United States');
+    assert.equal(displayNameForIso2('GB'), 'United Kingdom');
+    assert.equal(displayNameForIso2('PS'), 'Palestinian Territories');
+    assert.equal(displayNameForIso2('CD'), 'Congo - Kinshasa');
+    assert.equal(displayNameForIso2('LA'), 'Laos');
+    assert.equal(displayNameForIso2('KR'), 'South Korea');
+    assert.equal(displayNameForIso2('ZZ'), null);
+  });
+});
+
 // ── Cache-key stability ──────────────────────────────────────────────────
 
 describe('cache key identity', () => {
-  it('hashBriefStory stable across the 5-field material', async () => {
+  it('uses an unambiguous tuple and a full SHA-256 digest', async () => {
+    const a = await hashBriefStory(story({ headline: 'a||b', source: 'c' }));
+    const b = await hashBriefStory(story({ headline: 'a', source: 'b||c' }));
+    assert.notEqual(a, b);
+    assert.match(a, /^[a-f0-9]{64}$/);
+  });
+
+  it('hashBriefStory stable across the six-field material', async () => {
     const a = await hashBriefStory(story());
     const b = await hashBriefStory(story());
     assert.equal(a, b);
@@ -210,7 +234,7 @@ describe('cache key identity', () => {
 
   it('hashBriefStory differs when any hash-field differs', async () => {
     const baseline = await hashBriefStory(story());
-    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country']) {
+    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country', 'description']) {
       const h = await hashBriefStory(story({ [f]: `${story()[f]}X` }));
       assert.notEqual(h, baseline, `${f} must be part of cache identity`);
     }
@@ -218,7 +242,7 @@ describe('cache key identity', () => {
 });
 
 describe('brief-why-matters Edge cache acceptance', () => {
-  it('serves a complete v10 envelope as a cache hit', async () => {
+  it('serves a complete v11 envelope as a cache hit', async () => {
     const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters,
@@ -233,7 +257,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
   });
 
-  it('treats a clipped v10 envelope as a miss when regeneration fails', async () => {
+  it('treats a clipped v11 envelope as a miss when regeneration fails', async () => {
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters: ANALYST_MAX_TOKEN_CLIP,
       producedBy: 'analyst',
@@ -281,7 +305,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(
       fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
       true,
-      'a stop-finished complete response should populate v10',
+      'a stop-finished complete response should populate v11',
     );
   });
 
@@ -685,12 +709,6 @@ describe('endpoint validation contract', () => {
   // test regression on the endpoint flow (see "endpoint end-to-end" below).
   const VALID_THREAT = new Set(['critical', 'high', 'medium', 'low']);
   const CAPS = { headline: 400, source: 120, category: 80, country: 80 };
-  // Must match `api/internal/brief-why-matters.ts:116` — bumped to 8192 in
-  // PR #3269 to accommodate v2 output + description. If this ever drifts
-  // again, the bloated-fixture assertion below silently passes for
-  // payloads in the (OLD_VALUE, NEW_VALUE] range that the real endpoint
-  // now accepts (greptile P2, PR #3281).
-  const MAX_BODY_BYTES = 8192;
 
   function validate(raw) {
     if (!raw || typeof raw !== 'object') return { ok: false, msg: 'body' };
@@ -708,10 +726,6 @@ describe('endpoint validation contract', () => {
       if (s.country.length > CAPS.country) return { ok: false, msg: 'country-length' };
     }
     return { ok: true };
-  }
-
-  function measureBytes(obj) {
-    return new TextEncoder().encode(JSON.stringify(obj)).byteLength;
   }
 
   it('accepts a valid payload', () => {
@@ -752,21 +766,34 @@ describe('endpoint validation contract', () => {
     assert.deepEqual(validate({ story: withoutCountry }), { ok: true });
   });
 
-  it('body cap catches oversize payloads (both Content-Length and post-read)', () => {
-    const bloated = {
+  it('rejects oversize payloads through both endpoint body-cap paths', async () => {
+    const cachedEnvelope = {
+      whyMatters: 'The ruling keeps the 2027 race open while reshaping coalition strategy.',
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    };
+    const oversizedBody = JSON.stringify({
       story: {
         ...story(),
-        // Artificial oversize payload — would need headline cap bypassed
-        // to reach in practice, but the total body-byte cap must still fire.
-        // Sized well above MAX_BODY_BYTES (8192) so a future bump doesn't
-        // silently invalidate the assertion.
         extra: 'x'.repeat(10_000),
       },
-    };
-    assert.ok(measureBytes(bloated) > MAX_BODY_BYTES, 'fixture is oversize');
-    // Note: body-cap is enforced at the handler level, not the validator.
-    // We assert the invariant about the measure here; the handler path is
-    // covered by the endpoint smoke test below.
+    });
+
+    for (const [path, requestOverrides] of [
+      ['Content-Length', { headers: { 'Content-Length': '10000' } }],
+      ['post-read byte length', { body: oversizedBody }],
+    ]) {
+      const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
+        cachedEnvelope,
+        null,
+        'gemini',
+        null,
+        requestOverrides,
+      );
+      assert.equal(response.status, 400, path);
+      assert.equal(body.error, 'body exceeds 8192 bytes', path);
+      assert.equal(fetchCalls.length, 0, `${path} must reject before cache access`);
+    }
   });
 });
 

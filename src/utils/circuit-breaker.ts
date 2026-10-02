@@ -453,6 +453,15 @@ export class CircuitBreaker<T> {
        * so the caller can stop its own lifecycle without opening cooldown.
        */
       ignoreError?: (error: unknown) => boolean;
+      /**
+       * Never serve a cache entry older than this, on any path (fresh hit,
+       * stale-while-revalidate, cooldown, recovery-probe fallback). An older
+       * entry — or one without a finite timestamp, e.g. a persisted envelope
+       * missing `updatedAt` — is evicted from memory and persistence and the
+       * call proceeds as if nothing were cached. Omit to keep serving stale
+       * entries until they are replaced.
+       */
+      maxServeAgeMs?: number;
     } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
@@ -461,6 +470,11 @@ export class CircuitBreaker<T> {
     const evictOnRefreshFailure = options.evictOnRefreshFailure ?? false;
     const staleRefreshMode = options.staleRefreshMode ?? 'background';
     const forceRefresh = options.forceRefresh ?? false;
+    const maxServeAgeMs = options.maxServeAgeMs;
+    const isServable = (entry: CacheEntry<T>): boolean => (
+      maxServeAgeMs === undefined
+      || (Number.isFinite(entry.timestamp) && Date.now() - entry.timestamp < maxServeAgeMs)
+    );
 
     // Hydrate from persistent storage on first call (~1-5ms IndexedDB read)
     if (this.persistEnabled && !this.persistentLoadedKeys.has(cacheKey)) {
@@ -469,14 +483,15 @@ export class CircuitBreaker<T> {
 
     let cachedEntry = this.getCacheEntry(cacheKey);
 
-    // If the cached data fails the shouldCache predicate, evict it and fetch
-    // fresh rather than serving known-invalid data for the full TTL.
+    // If the cached data fails the shouldCache predicate, or is older than
+    // the caller's maxServeAgeMs, evict it and fetch fresh rather than
+    // serving known-invalid or too-old data.
     // The default shouldCache (() => true) never returns false, so this only
     // fires when an explicit predicate is passed.
     // deletePersistentCache is fire-and-forget; on the rare case that
     // hydratePersistentCache runs again before the delete commits, the entry
     // is evicted once more — safe and self-resolving.
-    if (cachedEntry !== null && !shouldCache(cachedEntry.data as R)) {
+    if (cachedEntry !== null && (!shouldCache(cachedEntry.data as R) || !isServable(cachedEntry))) {
       this.evictCacheKey(cacheKey);
       if (this.persistEnabled) this.deletePersistentCache(cacheKey);
       cachedEntry = null;
@@ -600,7 +615,7 @@ export class CircuitBreaker<T> {
         }
 
         const fallbackEntry = this.getCacheEntry(cacheKey);
-        if (fallbackEntry !== null) {
+        if (fallbackEntry !== null && isServable(fallbackEntry)) {
           this.lastDataState = { mode: 'cached', timestamp: fallbackEntry.timestamp, offline };
           this.touchCacheKey(cacheKey);
           return fallbackEntry.data as R;

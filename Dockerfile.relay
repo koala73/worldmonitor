@@ -11,13 +11,13 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS inventory-builder
+FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
+FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -36,6 +36,8 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+COPY scripts/_widget-response-parser.cjs ./scripts/_widget-response-parser.cjs
+COPY scripts/_widget-data-policy.cjs ./scripts/_widget-data-policy.cjs
 COPY scripts/_opensky-account-cooldown.cjs ./scripts/_opensky-account-cooldown.cjs
 # Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
 COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
@@ -55,10 +57,18 @@ COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
 COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
+COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+# Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
+# relay-emitted rss_alert events must not carry off-publisher links.
+COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
+COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
+# Jev shadow observer required by ais-relay.cjs; its shared/jev-classify.js
+# half ships with the `COPY shared/` below.
+COPY scripts/lib/jev-classify-relay.cjs ./scripts/lib/jev-classify-relay.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.
@@ -74,6 +84,24 @@ COPY scripts/shared/iso2-to-region.json ./scripts/shared/iso2-to-region.json
 # (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
 # relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
+# notify-fields.cjs mirrors server/_shared/notify-fields.ts for the relay
+# (no TS loader under scripts/package.json); required by notification-relay.cjs.
+#
+# NOTE on the guard: tests/dockerfile-relay-imports.test.mjs seeds its BFS from
+# COPY'd entrypoints only, and notification-relay.cjs is NOT COPY'd here (it is
+# not this image's CMD), so the BFS can never reach this file — deleting this
+# line left that guard green (review finding). The explicit presence assertion
+# in that test is what pins this line now. notification-relay.cjs also imports
+# five scripts/lib/* modules absent from this image, so it cannot be running
+# from this image; see tests/dockerfile-relay-imports.test.mjs for the check
+# that keeps this COPY list and that claim honest.
+# Guarded by tests/notify-fields-parity.test.mjs (behaviour parity).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/notify-fields.cjs
+# notification-link-suppression.cjs is the operator blocked-link matcher
+# (#8401) required by notification-relay.cjs; it requires notify-fields.cjs
+# above. Same guard caveat: pinned explicitly in
+# tests/dockerfile-relay-imports.test.mjs because the BFS cannot reach it.
+COPY scripts/shared/notification-link-suppression.cjs ./scripts/shared/notification-link-suppression.cjs
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
@@ -86,10 +114,15 @@ COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-univer
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
+COPY scripts/shared/pizzint-history.cjs ./scripts/shared/pizzint-history.cjs
 # ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+# compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
+# in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
+# any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
+COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
@@ -113,6 +146,9 @@ COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs
 # (crash loop taking AIS/market/RSS with it), NOT a degraded weather seed.
 # Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/_weather-alert-select.mjs ./scripts/_weather-alert-select.mjs
+# Static import of _weather-alert-select.mjs, so it carries the same crash-loop
+# risk as the file above rather than a degraded weather seed.
+COPY scripts/lib/geo-coord.mjs ./scripts/lib/geo-coord.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
 COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
 # Shared single-pass entity decoder imported by seed-climate-news.mjs (and the

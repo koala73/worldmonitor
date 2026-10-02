@@ -76,6 +76,8 @@ export interface PizzintLocation {
   isClosedNow: boolean;
   lat: number;
   lng: number;
+  noLiveSignal: boolean;
+  hasBaseline: boolean;
 }
 
 export interface GdeltTensionPair {
@@ -135,6 +137,7 @@ export interface GetCountryIntelBriefResponse {
   model: string;
   generatedAt: number;
   sources: BriefSource[];
+  evidence: BriefEvidence[];
 }
 
 export interface BriefSource {
@@ -142,6 +145,61 @@ export interface BriefSource {
   source: string;
   url: string;
   publishedAt: string;
+}
+
+export interface BriefEvidence {
+  id: string;
+  kind: string;
+  label: string;
+  value: string;
+  factText: string;
+  asOf: string;
+  url: string;
+}
+
+export interface GetCountryCoverageRequest {
+  countryCode: string;
+  windowHours: number;
+  limit: number;
+}
+
+export interface GetCountryCoverageResponse {
+  countryCode: string;
+  countryName: string;
+  windowHours: number;
+  generatedAt: string;
+  headlines: CountryCoverageHeadline[];
+  events: CountryCoverageEvent[];
+  sources: CountryCoverageSourceStatus[];
+  degraded: boolean;
+  containment: string;
+}
+
+export interface CountryCoverageHeadline {
+  title: string;
+  url: string;
+  source: string;
+  publishedAt: string;
+  publishedAtMs: number;
+}
+
+export interface CountryCoverageEvent {
+  timestampMs: number;
+  occurredAt: string;
+  lane: string;
+  label: string;
+  severity: string;
+  origin: string;
+  source: string;
+}
+
+export interface CountryCoverageSourceStatus {
+  source: string;
+  state: string;
+  detail: string;
+  fetchedAt: string;
+  ageSeconds: number;
+  contributed: number;
 }
 
 export interface SearchGdeltDocumentsRequest {
@@ -600,6 +658,21 @@ export interface TransmissionNode {
   logic: string;
 }
 
+export interface ListWsbTickersRequest {
+}
+
+export interface ListWsbTickersResponse {
+  tickers: WsbTicker[];
+}
+
+export interface WsbTicker {
+  symbol: string;
+  mentionCount: number;
+  totalScore: number;
+  subreddits: string[];
+  velocityScore: number;
+}
+
 export interface GetSocialVelocityRequest {
 }
 
@@ -717,7 +790,9 @@ export interface ComputeEnergyShockScenarioResponse {
   degraded: boolean;
   chokepointConfidence: string;
   liveFlowRatio?: number;
+  /** @deprecated */
   gasImpact?: GasImpact;
+  gasSensitivity?: GasSensitivity;
 }
 
 export interface ProductImpact {
@@ -743,6 +818,28 @@ export interface GasStorageBuffer {
   fillPct: number;
   gasTwh: number;
   bufferDays: number;
+  trend: string;
+  date: string;
+  scope: string;
+}
+
+export interface GasSensitivity {
+  lngShareOfImports?: number;
+  lngImportsTj: number;
+  lngDisruptionTj: number;
+  totalDemandTj: number;
+  deficitPct: number;
+  dataAvailable: boolean;
+  assessment: string;
+  storage?: GasStorageObservation;
+  dataSource: string;
+  dataMonth: string;
+  modelBasis: string;
+}
+
+export interface GasStorageObservation {
+  fillPct: number;
+  gasTwh: number;
   trend: string;
   date: string;
   scope: string;
@@ -1130,6 +1227,7 @@ export interface IntelligenceServiceHandler {
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
   getCountryRisk(ctx: ServerContext, req: GetCountryRiskRequest): Promise<GetCountryRiskResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
+  getCountryCoverage(ctx: ServerContext, req: GetCountryCoverageRequest): Promise<GetCountryCoverageResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
   deductSituation(ctx: ServerContext, req: DeductSituationRequest): Promise<DeductSituationResponse>;
   listSatellites(ctx: ServerContext, req: ListSatellitesRequest): Promise<ListSatellitesResponse>;
@@ -1146,6 +1244,7 @@ export interface IntelligenceServiceHandler {
   getGdeltTopicTimeline(ctx: ServerContext, req: GetGdeltTopicTimelineRequest): Promise<GetGdeltTopicTimelineResponse>;
   listCrossSourceSignals(ctx: ServerContext, req: ListCrossSourceSignalsRequest): Promise<ListCrossSourceSignalsResponse>;
   listMarketImplications(ctx: ServerContext, req: ListMarketImplicationsRequest): Promise<ListMarketImplicationsResponse>;
+  listWsbTickers(ctx: ServerContext, req: ListWsbTickersRequest): Promise<ListWsbTickersResponse>;
   getSocialVelocity(ctx: ServerContext, req: GetSocialVelocityRequest): Promise<GetSocialVelocityResponse>;
   getCountryEnergyProfile(ctx: ServerContext, req: GetCountryEnergyProfileRequest): Promise<GetCountryEnergyProfileResponse>;
   computeEnergyShockScenario(ctx: ServerContext, req: ComputeEnergyShockScenarioRequest): Promise<ComputeEnergyShockScenarioResponse>;
@@ -1382,6 +1481,55 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getCountryIntelBrief(ctx, body);
           return new Response(JSON.stringify(result as GetCountryIntelBriefResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-coverage",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryCoverageRequest = {
+            countryCode: params.get("country_code") ?? "",
+            windowHours: Number(params.get("window_hours") ?? "0"),
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryCoverage", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryCoverage(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryCoverageResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
@@ -2127,6 +2275,43 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.listMarketImplications(ctx, body);
           return new Response(JSON.stringify(result as ListMarketImplicationsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-wsb-tickers",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListWsbTickersRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listWsbTickers(ctx, body);
+          return new Response(JSON.stringify(result as ListWsbTickersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

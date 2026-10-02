@@ -11,7 +11,7 @@ description: "SSE、SZSE、HKEX 来源准入、审核发行人、仅元数据采
 | 交易所 | 上线状态 | 准入决定 | 采集契约 |
 | --- | --- | --- | --- |
 | `SSE` | `launched` | `admitted_metadata_only` | 公共公告元数据、有界第一页；保留文件链接但不抓取正文 |
-| `SZSE` | `launched` | `admitted_metadata_only` | 公共公告元数据、有界第一页；保留文件链接但不抓取正文 |
+| `SZSE` | `launched` | `admitted_metadata_only` | 公共公告元数据、有界两页元数据采集；保留文件链接但不抓取正文 |
 | `HKEX` | `blocked` | `rejected` | 不自动采集；`TERMS_PROHIBIT_AUTOMATED_ACCESS` |
 
 审核条款记录为：
@@ -59,9 +59,11 @@ HKEX 发行人保留在审核注册表中，以便来源决定可见；它们不
 
 ## 有界采集
 
-SSE 在一个审核 90 天页面最多请求 100 行；SZSE 在一个审核页面最多请求 50 行。
-适配器不会静默追踪更多页面。页面饱和报告 `PAGE_LIMIT_REACHED`；连续三次空结果
-报告 `COVERAGE_GAP`。
+SSE 在一个审核 90 天页面最多请求 100 行；SZSE 在同一审核窗口最多请求两个
+50 行页面。SZSE 总请求上限为四次，代理请求上限为三次，因此一次临时 CONNECT
+5xx 可以轮换到下一个中国 sticky 出口，同时仍能读取有界第二页。
+超过这些硬限制时报告
+`PAGE_LIMIT_REACHED`；连续三次空结果报告 `COVERAGE_GAP`。
 
 组合快照最多保留 100 个分类事件、每个事件 20 个修订，以及 100 个未分类修订。
 Railway market-backup 成员每 30 分钟运行并发布
@@ -81,8 +83,8 @@ SZSE: SZSE_PROXY_URL → PROXY_URL
 切换到下一个环境变量。SZSE 的不同代理尝试只会在已选代理配置内轮换符合条件的
 Decodo sticky gateway 端口。
 
-SSE 最多使用四个直接请求和四个代理请求，并限制并发。SZSE 使用一次直接尝试、
-最多两次符合条件的不同 gateway 端口代理尝试。
+SSE 最多使用四个直接请求和四个代理请求，并限制并发。SZSE 最多使用 2 次直接尝试、
+最多 3 次符合条件的不同 gateway 端口代理尝试。两种路线每次运行共享总上限 4 次请求。
 
 回退顺序只用于传输失败。能证明应用层响应的 HTTP 或 schema 结果会被记录，不会
 触发无界路线猜测。SZSE 需要连续两次成功运行才能清除持久传输失败状态。

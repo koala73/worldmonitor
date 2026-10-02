@@ -119,7 +119,8 @@
       "activeSirens": "사이렌 작동 중",
       "sirens24h": "사이렌 / 24시간",
       "aviationDisruptions": "항공 장애",
-      "gpsJammingZones": "GPS 교란 구역"
+      "gpsJammingZones": "GPS 교란 구역",
+      "temporalUnavailable": "시간 관측 데이터 없음"
     },
     "fallback": {
       "instabilityIndex": "**불안정 지수: {{score}}/100** ({{level}}, {{trend}})",
@@ -190,7 +191,7 @@
       "decisionSignalsUnavailable": "중국 의사결정 신호 스냅샷을 현재 사용할 수 없습니다."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -852,7 +853,6 @@
   "components": {
     "webcams": {
       "paused": "웹캠 일시정지됨",
-      "pausedIdle": "웹캠 일시정지됨 — 마우스를 움직여 재개",
       "regions": {
         "all": "전체",
         "mideast": "중동",
@@ -862,7 +862,11 @@
         "space": "우주"
       },
       "play": "재생",
-      "previewStatus": "라이브 미리보기"
+      "previewStatus": "재생 준비 완료",
+      "connecting": "연결 중…",
+      "unverified": "이 스트림이 실시간인지 확인할 수 없습니다",
+      "offline": "{{city}}는 현재 오프라인 상태입니다",
+      "noFeeds": "현재 이 지역의 라이브 웹캠이 없습니다"
     },
     "positiveNewsFeed": {
       "noStories": "이 카테고리에 아직 기사가 없습니다"
@@ -1074,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "지수: World Monitor · 매장 데이터:",
+      "statusNormal": "정상",
+      "statusNoData": "데이터 없음",
+      "statusNoBaseline": "기준 없음",
+      "vsUsual": "평소 대비",
       "title": "펜타곤 피자 지수",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} 업데이트",
       "tensionsTitle": "지정학적 긴장",
+      "tensionsSource": "긴장도: GDELT 이벤트를 바탕으로 World Monitor가 산출",
+      "insufficientData": "데이터 부족",
+      "pizzaUnavailable": "피자 가게 활동 데이터를 사용할 수 없습니다",
       "source": "출처:",
       "statusClosed": "폐점",
       "statusSpike": "급증",
@@ -1089,11 +1101,11 @@
       "minutesAgo": "{{m}}m 전",
       "hoursAgo": "{{h}}h 전",
       "defconLabels": {
-        "1": "COCKED PISTOL - 최대 경계 태세",
-        "2": "FAST PACE - 군 전투 준비 완료",
-        "3": "ROUND HOUSE - 전투 준비 태세 강화",
-        "4": "DOUBLE TAKE - 정보 감시 강화",
-        "5": "FADE OUT - 최저 경계 태세"
+        "1": "최대 활동",
+        "2": "높은 활동",
+        "3": "상승된 활동",
+        "4": "정상 이상",
+        "5": "정상 활동"
       }
     },
     "strategicPosture": {
@@ -1174,9 +1186,6 @@
       "datacenter": "데이터 센터",
       "base": "군사 기지",
       "nuclear": "핵 시설"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "심각",
@@ -1486,7 +1495,10 @@
       "provenanceTitle": "커버리지 출처: 이 브리프가 선택된 수집 스토리 및 고유 소스의 개수",
       "compiledFrom": "{{stories}}개의 스토리와 {{sources}}개의 소스에서 컴파일됨",
       "briefFreshness": "{{minutes}}분 전 생성됨 · 최신 소스 {{hours}}시간 전",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "기사 세부 정보 ({{count}})",
+      "streamIdleStopLabel": "유휴 상태일 때 라이브 영상 중지",
+      "streamIdleStopDesc": "활동이 없는 상태가 이 시간 동안 지속되면 Live News와 Live Webcams을 중지하고 패널에 알림을 표시합니다.",
+      "streamIdleStopNever": "사용 안 함"
     },
     "settings": {
       "exportSettings": "설정 내보내기",
@@ -1898,6 +1910,7 @@
       "etfs": "ETF",
       "netInflow": "순유입",
       "netOutflow": "순유출",
+      "netNeutral": "순중립",
       "table": {
         "ticker": "티커",
         "issuer": "발행사",
@@ -1980,15 +1993,11 @@
     },
     "liveNews": {
       "notLive": "{{name}}은(는) 현재 라이브 중이 아닙니다",
-      "cannotEmbed": "{{name}}을(를) 여기서 재생할 수 없습니다 — 지역 제한일 수 있습니다 (오류 {{code}})",
-      "botCheck": "YouTube에서 {{name}} 재생을 위해 로그인을 요청합니다",
       "signInToYouTube": "YouTube 로그인",
       "openOnYouTube": "YouTube에서 열기",
       "manage": "채널 관리",
       "addChannel": "채널 추가",
       "remove": "삭제",
-      "youtubeHandle": "YouTube 핸들 (예: @Channel)",
-      "youtubeHandleOrUrl": "YouTube 핸들 또는 URL",
       "displayName": "표시 이름 (선택)",
       "channelSettings": "채널 설정",
       "save": "저장",
@@ -2004,12 +2013,24 @@
       "regionMiddleEast": "중동",
       "regionAfrica": "아프리카",
       "regionOceania": "오세아니아",
-      "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
       "verifying": "확인 중…",
       "hlsUrl": "HLS 스트림 URL (선택사항)",
       "invalidHlsUrl": "유효한 HLS 스트림 URL (.m3u8)을 입력하세요",
       "playLiveFeed": "라이브 피드 재생",
-      "readyStatus": "준비되면 시작"
+      "readyStatus": "준비되면 시작",
+      "embedBlocked": "YouTube에서 {{name}}을(를) 다른 사이트 내에서 재생할 수 없습니다",
+      "unavailable": "{{name}}을(를) 지금 재생할 수 없습니다",
+      "noStream": "{{name}}에 설정된 라이브 스트림이 없습니다",
+      "needsChannelUrl": "{{name}}을(를) 채널 URL(youtube.com/channel/UC…) 또는 라이브 비디오 URL로 다시 추가하세요",
+      "insecureStream": "{{name}}은(는) 브라우저가 차단하는 안전하지 않은(http) 스트림을 사용합니다. 보안(https) 스트림 URL로 다시 추가하세요",
+      "connecting": "{{name}}에 연결 중…",
+      "recording": "녹화 중",
+      "unverified": "이 스트림이 라이브 상태인지 확인할 수 없습니다",
+      "playNextChannel": "다음 채널 재생",
+      "channelOrVideoUrl": "YouTube 채널 또는 비디오 URL",
+      "channelUrlHint": "채널 URL(youtube.com/channel/UC…) 또는 라이브 비디오 URL을 붙여넣으세요",
+      "youtubeChannel": "YouTube 채널",
+      "httpsStreamHint": "브라우저는 안전하지 않은(http) 스트림을 차단합니다. 보안(https) 스트림 URL을 붙여넣으세요"
     },
     "map": {
       "showMap": "지도 표시",
@@ -2163,7 +2184,7 @@
       "infoTooltip": "<strong>경제 캘린더</strong> 예정된 거시경제 발표: CPI, NFP, GDP, PMI 및 중앙은행 결정. 전망 대 실제 대 이전을 표시. 고영향 이벤트 강조 표시. 출처: 경제 데이터 제공업체."
     },
     "fsi": {
-      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행.",
+      "infoTooltip": "<strong>금융 스트레스 지표</strong> 주식 변동성과 하이일드 스프레드로 조정한 하이일드 신용과 장기 미국 국채 간 WorldMonitor 비율: (HYG / TLT) / (VIX × HY spread / 100). 이는 캔자스시티 연방준비은행의 금융 스트레스 지수가 아닙니다. 1.5 이상은 낮은 스트레스, 0.3 미만은 높은 스트레스를 의미합니다.",
       "title": "금융 스트레스 지표",
       "usFsiValue": "미국 FSI 값",
       "cissTitle": "EU CISS (유로존 시스템 스트레스)",
@@ -2613,7 +2634,14 @@
       "empty": "검출된 활성 수렴이 없습니다.",
       "signals_other": "{{count}}개 신호",
       "analyzing": "분석 중입니다...",
-      "viewOnMap": "지도에서 보기"
+      "viewOnMap": "지도에서 보기",
+      "waiting": "다음 데이터 업데이트를 기다리는 중입니다. 이 패널은 자동으로 업데이트됩니다.",
+      "offline": "연결을 기다리는 중입니다. 다시 온라인 상태가 되면 이 패널이 자동으로 업데이트됩니다.",
+      "updated": "업데이트됨 {{time}}",
+      "saved": "마지막으로 확인된 업데이트 {{time}} · 업데이트 확인 중",
+      "savedOffline": "마지막으로 확인된 업데이트 {{time}} · 오프라인",
+      "localSignals": "대시보드에 로드된 신호를 기반으로 함",
+      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다."
     },
     "thermalEscalation": {
       "title": "열 급증",
@@ -2770,6 +2798,55 @@
       "succeeded": "패스키가 저장되었습니다. 다음에 로그인할 때 사용할 수 있습니다.",
       "retryable": "완료되지 않았습니다. 다시 시도할 수 있습니다.",
       "failed": "이 기기에서 패스키를 저장할 수 없었습니다."
+    },
+    "decisionBrief": {
+      "commodityTitle": "원자재 의사결정 브리프",
+      "commodity": "원자재 / 제품",
+      "blockedChokepoint": "봉쇄를 가정한 해상 요충지",
+      "commodityCapture": "원자재 비교 기록",
+      "title": "의사결정 브리프",
+      "fuel": "연료",
+      "chokepoint": "병목 지점",
+      "baseline": "기준 시나리오 차질",
+      "comparison": "비교 시나리오 차질",
+      "capture": "둘 다 가져오기 / 새로고침",
+      "downloadHtml": "브리프 HTML 다운로드",
+      "downloadJson": "브리프 JSON 다운로드",
+      "back": "← 국가 브리프로 돌아가기",
+      "select": "에너지 공급 차질을 선택한 다음 두 시나리오를 가져오세요.",
+      "changed": "선택이 변경되었습니다. 내보내기 전에 두 시나리오를 가져오세요.",
+      "loading": "두 시나리오를 가져오는 중…",
+      "captured": "가져왔습니다. 다운로드 전에 관측 날짜와 제약을 확인하세요.",
+      "failed": "시나리오를 가져오지 못했습니다. 접근 권한을 확인하고 다시 시도하세요. 내보낼 결과가 없습니다.",
+      "locked": "의사결정 브리프는 Pro에서 이용할 수 있습니다."
+    },
+    "liveMedia": {
+      "idleStatus": "활동 부재로 일시 중지됨",
+      "idleBody": "마우스, 키보드 또는 터치 활동이 {{duration}} 동안 없어서 라이브 영상이 중지되었습니다.",
+      "idleResume": "재개",
+      "idleKeepPlaying": "유휴 상태일 때 계속 재생",
+      "idleSettingsHint": "언제든지 설정 › 미디어에서 변경할 수 있습니다.",
+      "idleKeepPlayingToast": "유휴 상태일 때 라이브 영상이 계속 재생됩니다. 설정 › 미디어에서 변경하세요."
+    },
+    "corroboration": {
+      "singlePublisher": "단일 발행자",
+      "singlePublisherHint": "현재 이 사항을 보도하는 발행자는 하나뿐입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
+      "tier4Only": "저등급 출처만",
+      "tier4OnlyHint": "이를 보도하는 모든 매체가 4등급 출처(수집처 및 블로그)입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
+      "rosterListed": "({{listed}}곳 표시)",
+      "rosterFeeds": "확인된 피드: {{labels}}",
+      "rosterLegend": "등급은 출처의 순위를 매길 뿐, 이 주장을 판단하지 않습니다.",
+      "tierDocsLink": "등급 부여 방식",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "1등급: 통신사 및 공식 기관",
+      "tierTitle2": "2등급: 주요 언론사",
+      "tierTitle3": "3등급: 전문·지역 매체 및 싱크탱크",
+      "tierTitle4": "4등급: 어그리게이터 및 블로그",
+      "tierTitleUndeclared": "등급 미지정: 아직 검토되지 않음",
+      "rosterSummary": "{{publishers}}에서 보도됨",
+      "rosterSummaryTier1": "{{publishers}}에서 보도됨({{tier1}}곳은 1등급)",
+      "rosterPublishers_other": "{{count}}개 언론사"
     }
   },
   "popups": {
@@ -2808,14 +2885,18 @@
     "protest": {
       "acledVerified": "ACLED (검증됨)",
       "gdelt": "GDELT",
+      "records": "개 기록",
+      "mediaSignal": "미확인 미디어 신호",
+      "relatedArticle": "관련 기사",
+      "mediaSignalDetail": "이 장소는 소요 관련 기사에 언급되었습니다. 현지 사건은 확인되지 않았습니다.",
       "riots": "폭동",
       "highSeverity": "고위험"
     },
     "gpsJamming": {
       "title": "GPS/GNSS 간섭",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "영향을 받은 항공기",
+      "samples": "영향을 받은 항공기 수",
+      "aircraft": "관측된 항공기 총수",
       "h3Hex": "H3 Hex"
     },
     "flight": {

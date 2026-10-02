@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 128,
   "total": {
-    "raw": 1956
+    "raw": 2916
   },
   "chunks": {
     "embed.js": {
-      "raw": 1956,
+      "raw": 2916,
       "files": 1
     }
   }

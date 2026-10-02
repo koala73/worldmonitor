@@ -37,6 +37,9 @@ retailer:
     # matching than hydration (a 15000 run matched Água Mineral to a 12-pack at
     # R$44.28 instead of the single 1,5L bottle at R$2.89).
     renderWaitMs: 8000
+    # 2026-09-02: Exa recovered current rice and oil pages with matching title,
+    # size, BRL, and same-call R$ evidence. A price-less milk page stayed closed.
+    extractionFallback: exa
 
   rateLimit:
     requestsPerMinute: 10
@@ -46,4 +49,34 @@ retailer:
   discovery:
     mode: search
     maxPages: 20
-    seeds: []
+    # Exa ranks unrelated /produto/ pages for these broad basket names. Try a
+    # known qualifying page first, then keep the normal bounded search fallback
+    # when a product is removed or has no printed price.
+    seeds:
+      - id: eggs_12
+        url: https://www.paodeacucar.com/produto/123706
+        category: eggs
+      - id: milk_1l
+        url: https://www.paodeacucar.com/produto/164065
+        category: dairy
+      - id: bread_white
+        url: https://www.paodeacucar.com/produto/144583/pao
+        category: bread
+      - id: rice_1kg
+        url: https://www.paodeacucar.com/produto/102639/arroz-branco-tipo-1-qualita-pacote-1kg
+        category: rice
+      - id: cooking_oil_soy_900ml
+        url: https://www.paodeacucar.com/produto/124153/oleo-de-soja-soya-garrafa-900ml
+        category: cooking_oil
+      - id: tomatoes_1kg
+        url: https://www.paodeacucar.com/produto/198376/tomate-italiano-selecionado-qualita-1kg
+        category: tomatoes
+      - id: water_1_5l
+        url: https://www.paodeacucar.com/produto/99466/agua-mineral-natural-sem-gas-crystal-garrafa-15l
+        category: water
+      - id: sugar_1kg
+        url: https://www.paodeacucar.com/produto/162802/acucar-cristalcucar-uniao-pacote-1kg
+        category: sugar
+      - id: yogurt_500g
+        url: https://www.paodeacucar.com/produto/1619280
+        category: dairy

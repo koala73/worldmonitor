@@ -29,6 +29,22 @@ function telegramItem(overrides: Partial<Omit<TelegramItem, 'source'>> = {}): Te
 }
 
 describe('TelegramIntelPanel trust badges (#6600)', () => {
+  it.each([
+    ['SaudiDCD', 'Saudi Civil Defense', 'Official Government Source'],
+    ['BNONews', 'BNO News', 'Wire'],
+  ])('shows the reviewed Tier 1 identity for %s', (channel, channelTitle, badge) => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram', earlySignal: true, enabled: true, count: 1,
+      updatedAt: new Date().toISOString(),
+      items: [telegramItem({ id: `${channel}:1`, channel, channelTitle })],
+    });
+    const item = panel.getElement().querySelector('.telegram-intel-item');
+    expect(item?.textContent).toContain(badge);
+    expect(item?.querySelector('.tier-badge')?.className).toContain('tier-1');
+  });
+
   it('renders existing provenance badges beside the channel title', () => {
     const panel = new TelegramIntelPanel();
     document.body.appendChild(panel.getElement());
@@ -60,6 +76,29 @@ describe('TelegramIntelPanel trust badges (#6600)', () => {
     const clash = items[1];
     expect(clash?.querySelector('.propaganda-badge')?.className).toContain('medium');
     expect(clash?.querySelector('.tier-badge')).toBeNull();
+  });
+
+  it('renders perspective and badge-less state chips beside the channel title (#6419)', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 2,
+      updatedAt: new Date().toISOString(),
+      items: [
+        telegramItem({ id: 'DeepStateUA:1', channel: 'DeepStateUA', channelTitle: 'DeepState' }),
+        telegramItem({ id: 'cnalatest:2', channel: 'cnalatest', channelTitle: 'CNA' }),
+      ],
+    });
+
+    const items = panel.getElement().querySelectorAll('.telegram-intel-item');
+    expect(items[0]?.querySelector('.provenance-fact.perspective')?.textContent).toBe('Pro-Ukraine');
+    expect(items[0]?.querySelector('.provenance-fact.perspective')?.getAttribute('title')).toContain('not judged neutral');
+
+    expect(items[1]?.querySelector('.propaganda-badge')).toBeNull();
+    expect(items[1]?.querySelector('.provenance-fact.state')?.textContent).toBe('State-affiliated: Singapore');
   });
 
   it('resolves stable handles before mutable channel titles', () => {

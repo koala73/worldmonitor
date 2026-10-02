@@ -3,10 +3,12 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   createRedisSlotStore,
+  passkeyOfferFingerprint,
   passkeyOfferHandler,
   persistClerkTerminalCount,
   readClerkMigratedCount,
   type PasskeyOfferDeps,
+  type PasskeyOfferFailureStep,
 } from '../api/user/passkey-offer.ts';
 
 const originalFetch = globalThis.fetch;
@@ -105,6 +107,79 @@ describe('passkey offer route', () => {
 
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('Retry-After'), '5');
+  });
+
+  // WORLDMONITOR-10E: both upstreams abort through `AbortSignal.timeout` and the
+  // minified edge bundle gives them identical anonymous frames, so a single
+  // `step` value left a Clerk outage and a Redis outage indistinguishable in
+  // Sentry. Each upstream must name itself.
+  it('attributes a Clerk read failure to the clerk-read step', async () => {
+    const steps: PasskeyOfferFailureStep[] = [];
+    const response = await passkeyOfferHandler(request(), deps({
+      readMigratedCount: async () => { throw new Error('clerk unavailable'); },
+      reserve: async () => { throw new Error('reserve must not run'); },
+      report: (_error, step) => { steps.push(step); },
+    }));
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(steps, ['clerk-read']);
+  });
+
+  it('attributes a Redis claim failure to the redis-claim step', async () => {
+    const steps: PasskeyOfferFailureStep[] = [];
+    const response = await passkeyOfferHandler(request(), deps({
+      reserve: async () => { throw new Error('redis unavailable'); },
+      report: (_error, step) => { steps.push(step); },
+    }));
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(steps, ['redis-claim']);
+  });
+
+  it('attributes a terminal-mirror failure to the clerk-mirror step and still returns the slot', async () => {
+    const steps: PasskeyOfferFailureStep[] = [];
+    const response = await passkeyOfferHandler(request(), deps({
+      readMigratedCount: async () => 2,
+      reserve: async () => ({ status: 'reserved', count: 3 }),
+      persistTerminalCount: async () => { throw new Error('clerk mirror unavailable'); },
+      report: (_error, step) => { steps.push(step); },
+    }));
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(steps, ['clerk-mirror']);
+  });
+});
+
+describe('passkey offer Sentry fingerprint', () => {
+  // A timeout on Clerk and a timeout on Redis carry the same message and the
+  // same anonymous stack; only the step keeps them in separate Sentry issues.
+  it('separates the two upstreams for an identical error', () => {
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    });
+
+    assert.deepEqual(
+      passkeyOfferFingerprint('clerk-read', timeout),
+      ['passkey-offer', 'clerk-read', 'TimeoutError'],
+    );
+    assert.notDeepEqual(
+      passkeyOfferFingerprint('clerk-read', timeout),
+      passkeyOfferFingerprint('redis-claim', timeout),
+    );
+  });
+
+  it('separates distinct faults on the same upstream', () => {
+    assert.notDeepEqual(
+      passkeyOfferFingerprint('clerk-read', Object.assign(new Error('x'), { name: 'TimeoutError' })),
+      passkeyOfferFingerprint('clerk-read', new Error('Clerk user read failed with 500')),
+    );
+  });
+
+  it('keys a non-Error throw without reading properties off it', () => {
+    assert.deepEqual(
+      passkeyOfferFingerprint('redis-claim', 'boom'),
+      ['passkey-offer', 'redis-claim', 'non-error'],
+    );
   });
 });
 

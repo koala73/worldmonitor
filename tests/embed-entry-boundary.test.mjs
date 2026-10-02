@@ -51,16 +51,55 @@ describe('embed entry boundary', () => {
     assert.ok(waitIdx < i18nIdx, 'waitForEmbeddingApiKey() must start before await initI18n()');
   });
 
-  it('loads public conflict events without importing the full conflict service into the embed entry', () => {
+  it('reaches the network only through the single composed map-frame endpoint', () => {
     const loaderSource = readFileSync(resolve(root, 'src/embed/embed-data-loader.ts'), 'utf-8');
     const mapSource = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');
-    assert.ok(loaderSource.includes('@/services/generated-rpc-clients'), 'embed loader should use the lazy generated public conflict client helper');
-    assert.ok(loaderSource.includes('ConflictServiceClient'), 'embed loader should instantiate the public conflict RPC client through the lazy helper');
-    assert.ok(loaderSource.includes('listAcledEvents'), 'conflicts layer should fetch public ACLED conflict events');
-    assert.ok(loaderSource.includes('this.map.setConflictEvents'), 'conflicts layer should push fetched events into the flat map');
-    assert.ok(!loaderSource.includes('@/services/conflict'), 'embed loader must not import the full conflict service because it pulls runtime app helpers');
+    assert.ok(loaderSource.includes('fetchEmbedMapFrame'), 'embed loader should read the composed map frame');
+    assert.ok(loaderSource.includes('this.map.setConflictEvents'), 'conflicts layer should push events into the flat map');
     assert.ok(mapSource.includes('setConflictEvents'), 'flat map should expose a conflict event setter for the embed');
     assert.ok(mapSource.includes('conflict-event-marker'), 'flat map should render fetched conflict event markers');
+
+    // The point of the composed endpoint is that a credential published in
+    // partner HTML reaches ONE path. A per-layer fetch reintroduced here would
+    // reopen the surface PR3 then removes from the anonymous RPC allowlist.
+    for (const forbidden of [
+      'ConflictServiceClient',
+      'listAcledEvents',
+      'fetchEarthquakes',
+      'fetchNaturalEvents',
+      'fetchProtestEvents',
+      'fetchWeatherAlerts',
+      '/api/bootstrap',
+      'globalThis.fetch',
+    ]) {
+      assert.ok(
+        !loaderSource.includes(forbidden),
+        `embed loader must not fetch layers directly (found ${forbidden})`,
+      );
+    }
+    assert.ok(!loaderSource.includes('@/services/conflict'), 'embed loader must not import the full conflict service because it pulls runtime app helpers');
+  });
+
+  it('renders the attribution link before any tier is known', () => {
+    const mapPanel = readFileSync(resolve(root, 'src/embed/panels/map.ts'), 'utf-8');
+    const attributionIdx = mapPanel.indexOf('buildWorldMonitorAttributionUrl');
+    const loaderIdx = mapPanel.indexOf('new EmbedDataLoader');
+    const requestGrantIdx = mapPanel.indexOf('loader.requestGrant');
+    assert.ok(attributionIdx !== -1, 'the map panel must render an attribution link');
+    assert.ok(
+      attributionIdx < loaderIdx && attributionIdx < requestGrantIdx,
+      'attribution is appended before any tier decision, so free and keyed embeds both carry it',
+    );
+  });
+
+  it('never sends the embedding key on a data poll', () => {
+    const fetchSource = readFileSync(resolve(root, 'src/embed/embed-fetch.ts'), 'utf-8');
+    const frameFn = fetchSource.slice(fetchSource.indexOf('export async function fetchEmbedMapFrame'));
+    assert.ok(frameFn.includes('X-WorldMonitor-Grant'), 'map-frame polls carry the short-lived grant');
+    assert.ok(
+      !frameFn.includes('X-WorldMonitor-Key'),
+      'the wme_ key must stay on the mint path so polls never enter the per-account meter',
+    );
   });
 
   it('keeps the shared SVG map independent of runtime/auth imports used by the app shell', () => {

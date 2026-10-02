@@ -6,11 +6,15 @@ import { fileURLToPath } from 'node:url';
 import {
   parseEmberCsv,
   buildAllCountriesMap,
+  getPipelineFailures,
+  isEmberCountDrop,
+  preservePreviousSnapshot,
   EMBER_KEY_PREFIX,
   EMBER_ALL_KEY,
   EMBER_META_KEY,
   EMBER_TTL_SECONDS,
 } from '../scripts/seed-ember-electricity.mjs';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, 'fixtures');
@@ -77,6 +81,26 @@ function threeCountryFixture() {
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '550' }),
   ];
   return buildCsv(rows);
+}
+
+function mockEmberRedis(t, existingMeta) {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.ember.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const { fetchImpl } = createRedisFetch(existingMeta == null ? {} : {
+    [EMBER_META_KEY]: existingMeta,
+  });
+  const pipelines = [];
+
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (new URL(url).pathname === '/pipeline') {
+      pipelines.push(JSON.parse(String(init.body)));
+    }
+    return fetchImpl(input, init);
+  });
+
+  return pipelines;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────
@@ -310,36 +334,30 @@ describe('exported constants', () => {
 
 describe('count-drop guard math', () => {
   it('45/60 is acceptable (75% threshold)', () => {
-    const prevCount = 60;
-    const newCount = 45;
-    const ratio = newCount / prevCount;
-    assert.ok(ratio >= 0.75, '45/60 = 75% should pass the guard');
+    assert.equal(isEmberCountDrop(45, { recordCount: 60 }), false);
   });
 
   it('44/60 triggers the guard (below 75%)', () => {
-    const prevCount = 60;
-    const newCount = 44;
-    const ratio = newCount / prevCount;
-    assert.ok(ratio < 0.75, '44/60 ≈ 73.3% should trigger the guard');
+    assert.equal(isEmberCountDrop(44, { recordCount: 60 }), true);
   });
 });
 
 describe('pipeline failure detection logic (non-transactional, e.g. Phase B meta write)', () => {
   it('detects a partial pipeline failure when one command errors', () => {
     const results = [{ result: 'OK' }, { result: 'OK' }, { error: 'NOSCRIPT' }, { result: 'OK' }];
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
+    const failures = getPipelineFailures(results);
     assert.equal(failures.length, 1, 'should detect 1 failed command');
   });
 
   it('treats all-OK results as no failures', () => {
     const results = [{ result: 'OK' }, { result: 'OK' }, { result: 'OK' }];
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
+    const failures = getPipelineFailures(results);
     assert.equal(failures.length, 0, 'all-OK pipeline should have 0 failures');
   });
 
   it('detects ERR-result commands as failures', () => {
     const results = [{ result: 'OK' }, { result: 'ERR' }];
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
+    const failures = getPipelineFailures(results);
     assert.equal(failures.length, 1, 'ERR result should count as failure');
   });
 });
@@ -541,79 +559,63 @@ describe('health cascade: seedError priority over hasData', () => {
   });
 });
 
-describe('health endpoint status agreement for error meta', () => {
-  it('seed-health.js logic emits "error" for meta.status="error"', () => {
-    // Simulates seed-health.js lines 131-148 logic
-    const meta = { fetchedAt: Date.now(), recordCount: 100, status: 'error', error: 'test failure' };
-    const isError = meta.status === 'error';
-    const ageMs = Date.now() - (meta.fetchedAt || 0);
-    const maxStalenessMs = 1440 * 2 * 60 * 1000;
-    const stale = ageMs > maxStalenessMs || isError;
-    const status = stale ? (isError ? 'error' : 'stale') : 'ok';
-    assert.equal(status, 'error', 'seed-health.js should report "error" for meta.status=error');
-  });
-
-  it('health.js SEED_ERROR is the correct status for meta.status="error" (not STALE_SEED)', () => {
-    // Verifies the expected contract: meta.status=error → SEED_ERROR (not STALE_SEED)
-    // This test documents the intended behavior after the fix
-    const meta = { fetchedAt: Date.now(), recordCount: 100, status: 'error', error: 'test failure' };
-    const seedError = meta?.status === 'error';
-    const seedStale = seedError; // error implies stale
-
-    let status;
-    if (seedError) {
-      status = 'SEED_ERROR';
-    } else if (seedStale) {
-      status = 'STALE_SEED';
-    } else {
-      status = 'OK';
-    }
-    assert.equal(status, 'SEED_ERROR', 'explicit error meta should yield SEED_ERROR, not STALE_SEED');
-  });
-});
-
 describe('preservePreviousSnapshot recordCount fallback', () => {
-  it('uses null (not 0) when existingMeta is unavailable', () => {
-    const existingMeta = null;
-    const recordCount = existingMeta?.recordCount ?? null;
-    assert.equal(recordCount, null, 'should be null, not 0');
-    const serialized = JSON.stringify({ recordCount });
-    assert.ok(serialized.includes('"recordCount":null'), 'null should be serialized');
+  it('uses null (not 0) when existingMeta is unavailable', async (t) => {
+    const pipelines = mockEmberRedis(t, null);
+
+    await preservePreviousSnapshot('test failure', null, null, true);
+
+    const [[metaCommand]] = pipelines;
+    const meta = JSON.parse(metaCommand[2]);
+    assert.equal(meta.recordCount, null, 'should publish null, not 0');
   });
 
-  it('preserves existing recordCount when meta is readable', () => {
-    const existingMeta = { recordCount: 180, fetchedAt: Date.now() };
-    const recordCount = existingMeta?.recordCount ?? null;
-    assert.equal(recordCount, 180);
+  it('preserves existing recordCount when meta is readable', async (t) => {
+    const pipelines = mockEmberRedis(t, { recordCount: 180, fetchedAt: Date.now() });
+
+    await preservePreviousSnapshot('test failure', null, null, true);
+
+    const [[metaCommand]] = pipelines;
+    const meta = JSON.parse(metaCommand[2]);
+    assert.equal(meta.recordCount, 180);
   });
 
   it('null recordCount does not enable count-drop guard', () => {
-    const prevMeta = { recordCount: null, status: 'error' };
-    const guardActive = prevMeta && typeof prevMeta === 'object' && prevMeta.recordCount > 0;
-    assert.equal(guardActive, false, 'null recordCount should not activate guard');
+    assert.equal(
+      isEmberCountDrop(44, { recordCount: null, status: 'error' }),
+      false,
+      'null recordCount should not activate guard',
+    );
   });
 });
 
 describe('dataWritten flag prevents stash restore after successful pipeline', () => {
-  it('skips restore when dataWritten=true (data is correct, only meta failed)', () => {
+  it('skips restore when dataWritten=true (data is correct, only meta failed)', async (t) => {
     const stashedAllMap = { US: {}, DE: {} };
-    const dataWritten = true;
-    const shouldRestore = stashedAllMap && typeof stashedAllMap === 'object' && !dataWritten;
-    assert.equal(shouldRestore, false, 'should not restore stash when data was written successfully');
+    const pipelines = mockEmberRedis(t, { recordCount: 180 });
+
+    await preservePreviousSnapshot('metadata failed', stashedAllMap, new Set(['US', 'DE']), true);
+
+    assert.equal(pipelines.length, 1, 'only the error metadata pipeline should run');
+    assert.equal(pipelines[0][0][1], EMBER_META_KEY);
   });
 
-  it('allows restore when dataWritten=false (pipeline failed or never ran)', () => {
+  it('allows restore when dataWritten=false (pipeline failed or never ran)', async (t) => {
     const stashedAllMap = { US: {}, DE: {} };
-    const dataWritten = false;
-    const shouldRestore = stashedAllMap && typeof stashedAllMap === 'object' && !dataWritten;
-    assert.ok(shouldRestore, 'should restore stash when data was not written');
-  });
+    const pipelines = mockEmberRedis(t, { recordCount: 180 });
 
-  it('skips TTL extension when dataWritten=true and no stash', () => {
-    const stashedAllMap = null;
-    const dataWritten = true;
-    const shouldExtendTtl = !dataWritten;
-    assert.equal(shouldExtendTtl, false, 'should not extend TTL when data is already correct');
+    await preservePreviousSnapshot('data pipeline failed', stashedAllMap, new Set(['US', 'DE', 'XX']), false);
+
+    assert.equal(pipelines.length, 2, 'restore and error metadata pipelines should run');
+    assert.deepEqual(
+      pipelines[0].map((command) => command.slice(0, 2)),
+      [
+        ['SET', `${EMBER_KEY_PREFIX}US`],
+        ['SET', `${EMBER_KEY_PREFIX}DE`],
+        ['SET', EMBER_ALL_KEY],
+        ['DEL', `${EMBER_KEY_PREFIX}XX`],
+      ],
+    );
   });
 });
 

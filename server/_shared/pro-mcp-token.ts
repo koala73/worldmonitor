@@ -489,11 +489,7 @@ export function envPrefix(): string {
  * Seconds remaining until the next UTC midnight — used for the
  * `Retry-After` header on -32029 quota-exceeded responses.
  */
-export function secondsUntilUtcMidnight(now?: Date): number {
-  const d = now ?? new Date();
-  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0));
-  return Math.max(1, Math.ceil((next.getTime() - d.getTime()) / 1000));
-}
+export { secondsUntilUtcMidnight } from './api-key-rate-limit';
 
 /** Hard cap per UTC day for Pro MCP `tools/call`s. Plan default. */
 export const PRO_DAILY_QUOTA_LIMIT = 50;

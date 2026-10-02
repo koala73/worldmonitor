@@ -5,6 +5,7 @@ import {
   buildMapUrl,
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+  withUrlFragment,
 } from '../src/utils/urlState.ts';
 
 const EMPTY_LAYERS = {
@@ -94,6 +95,51 @@ describe('parseMapUrlState chokepoint param', () => {
   });
 });
 
+describe('buildMapUrl non-finite centre (#7660)', () => {
+  const base = 'https://worldmonitor.app/dashboard';
+  const baseState = {
+    view: 'global' as const,
+    zoom: 2,
+    timeRange: '24h' as const,
+    layers: EMPTY_LAYERS,
+  };
+
+  it('omits lat/lon when the centre is NaN', () => {
+    const url = buildMapUrl(base, { ...baseState, center: { lat: NaN, lon: NaN } });
+    const params = new URL(url).searchParams;
+    assert.equal(params.get('lat'), null);
+    assert.equal(params.get('lon'), null);
+    assert.ok(!url.includes('NaN'), `url must not contain NaN: ${url}`);
+  });
+
+  it('omits lat/lon when only one coordinate is non-finite', () => {
+    for (const center of [
+      { lat: NaN, lon: 12.5 },
+      { lat: 51.5, lon: NaN },
+      { lat: Infinity, lon: 0 },
+      { lat: 0, lon: -Infinity },
+    ]) {
+      const url = buildMapUrl(base, { ...baseState, center });
+      assert.ok(!url.includes('NaN'), `url must not contain NaN: ${url}`);
+      assert.ok(!url.includes('Infinity'), `url must not contain Infinity: ${url}`);
+    }
+  });
+
+  it('still emits a finite centre', () => {
+    const url = buildMapUrl(base, { ...baseState, center: { lat: 51.5074, lon: -0.1278 } });
+    const params = new URL(url).searchParams;
+    assert.equal(params.get('lat'), '51.5074');
+    assert.equal(params.get('lon'), '-0.1278');
+  });
+
+  it('round-trips a NaN centre to a parse that yields no coordinates', () => {
+    const url = buildMapUrl(base, { ...baseState, center: { lat: NaN, lon: NaN } });
+    const state = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
+    assert.equal(state.lat, undefined);
+    assert.equal(state.lon, undefined);
+  });
+});
+
 describe('buildMapUrl expanded param', () => {
   const base = 'https://worldmonitor.app/dashboard';
   const baseState = {
@@ -159,5 +205,21 @@ describe('expanded param round-trip', () => {
     const url = buildMapUrl(base, { ...baseState, chokepoint: 'hormuz_strait' });
     const parsed = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
     assert.equal(parsed.chokepoint, 'hormuz_strait');
+  });
+});
+
+describe('withUrlFragment', () => {
+  const synced = 'https://www.worldmonitor.app/dashboard?zoom=1.00&view=global&layers=hotspots';
+
+  it('keeps a hash route another surface is routing on', () => {
+    assert.equal(withUrlFragment(synced, '#/verify-email-address'), `${synced}#/verify-email-address`);
+  });
+
+  it('adds nothing when there is no fragment', () => {
+    assert.equal(withUrlFragment(synced, ''), synced);
+  });
+
+  it('replaces a fragment already on the synced url', () => {
+    assert.equal(withUrlFragment(`${synced}#old`, '#new'), `${synced}#new`);
   });
 });

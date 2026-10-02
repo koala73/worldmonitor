@@ -7,19 +7,19 @@
  * import of RouteExplorer.ts crashes in node:test.
  *
  * Pure formatting/filtering/url-state logic is covered by the sibling test files
- * (route-explorer-pickers, route-explorer-url-state). The actual modal lifecycle,
- * keyboard bindings, and focus trap need a real browser environment and are
- * covered by the Sprint 6 Playwright E2E suite (e2e/route-explorer.spec.ts).
+ * (route-explorer-pickers, route-explorer-url-state). This file covers the
+ * route-utils formatters only.
+ *
+ * The modal lifecycle, keyboard bindings, and focus trap are NOT covered. This
+ * file used to name e2e/route-explorer.spec.ts as their home; no such spec
+ * exists and nothing under e2e/ references RouteExplorer, so the claim read as
+ * coverage that was never written.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-describe('RouteExplorer keyboard + modal surface (deferred to E2E)', () => {
-  it('pure url-state and picker utilities are covered by sibling tests', () => {
-    assert.ok(true);
-  });
-
+describe('RouteExplorer route-utils formatters', () => {
   it('route-utils formatters import cleanly in node', async () => {
     const mod = await import('../src/components/RouteExplorer/tabs/route-utils.ts');
     assert.equal(typeof mod.formatTransitRange, 'function');

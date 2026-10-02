@@ -60,7 +60,7 @@ All published variants run on three platforms that work together:
 └──────────────────────────────────────────┘
 ```
 
-**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The Railway relay server acts as an alternate origin, handling:
+**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The [Railway relay server](/relay-parameters) acts as an alternate origin, handling:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)

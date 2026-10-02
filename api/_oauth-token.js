@@ -2,13 +2,14 @@
 import { keyFingerprint, sha256Hex } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
+import { validateUserApiKeyHash } from './_user-api-key.js';
 
 /**
  * Bearer-to-context resolver for the OAuth + MCP edge.
  *
  * U6 of plan 2026-05-10-001 (`feat-pro-mcp-clerk-auth-quota-plan`) introduced
  * the discriminated `McpAuthContext` union — the same `oauth:token:<uuid>`
- * Redis namespace now stores TWO disjoint shapes:
+ * Redis namespace stores three disjoint shapes:
  *
  *   Legacy (env-key issued, written by `storeNewTokens` / `storeLegacyToken`
  *   in `api/oauth/token.js`): a bare JSON-string holding either a 64-hex
@@ -21,7 +22,11 @@ import { getRedisCredentials } from './_upstash-json.js';
  *   object carrying the Convex `mcpProTokens` row id and the user id.
  *     stored = { kind: 'pro', userId: 'user_abc', mcpTokenId: 'k57...' }
  *
- * Both shapes coexist forever — there is no migration. Resolver dispatches
+ *   Dashboard key: { kind: 'user_key', api_key_hash: '<sha256>' }.
+ *   Resolve its current owner through the shared key validator on each use;
+ *   MCP applies the same entitlement and quota checks as header-based keys.
+ *
+ * The shapes coexist without a migration. Resolver dispatches
  * on `typeof raw` then on `raw.kind`. Authorization-code / refresh-token
  * issued access tokens also get `oauth:tokenfam:<uuid>`; when
  * `oauth:famrev:<family_id>` exists, the resolver rejects that bearer so
@@ -41,6 +46,15 @@ async function fetchOAuthValue(key) {
   const creds = getRedisCredentials();
   if (!creds) return null;
 
+  // Deliberately cross-deployment namespace (#7674): oauth:token/tokenfam/
+  // famrev state is per-principal credential material, and BOTH sides of it
+  // bypass the shared helpers — api/oauth/token.ts writes through its own
+  // raw fetchers, this file reads through a raw GET. Keeping both bare (like
+  // entitlements:* in server/_shared/entitlement-check.ts, P2-3) preserves
+  // production-issued bearer resolution on preview deployments without
+  // churning the auth surface, so this read must NOT gain the deployment
+  // prefix even though the shared pipeline helpers now prefix app-owned keys
+  // by default.
   const resp = await fetch(`${creds.url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${creds.token}` },
     signal: AbortSignal.timeout(3_000),
@@ -90,6 +104,7 @@ export async function resolveApiKeyFromHash(fullHash) {
  *
  *   { kind: 'env_key', apiKey: string }
  *   | { kind: 'pro',   userId: string, mcpTokenId: string }
+ *   | { kind: 'user_key', userId: string }
  *   | null
  *
  * Branch logic:
@@ -127,6 +142,12 @@ export async function resolveBearerToContext(token) {
     if (raw.length === 64) apiKey = await resolveApiKeyFromHash(raw);
     else if (raw.length === 16) apiKey = await resolveApiKeyFromFingerprint(raw);
     return apiKey ? { kind: 'env_key', apiKey } : null;
+  }
+
+  if (raw && typeof raw === 'object' && raw.kind === 'user_key') {
+    const result = await validateUserApiKeyHash(raw.api_key_hash);
+    if (!result.ok && result.status === 503) throw new Error('API key validation unavailable');
+    return result.ok ? { kind: 'user_key', userId: result.userId } : null;
   }
 
   // New Pro object shape — defensive shape-check before trusting.

@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
@@ -208,6 +209,7 @@ export const setAlertRules = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     const existing = await ctx.db
@@ -281,6 +283,7 @@ export const setDigestSettings = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
@@ -354,6 +357,7 @@ export const setAlertRulesForUser = internalMutation({
     tickers: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, ...rest } = args;
     const existing = await ctx.db
       .query("alertRules")
@@ -442,6 +446,7 @@ export const setQuietHours = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
     validateQuietHoursArgs(args);
 
@@ -508,6 +513,7 @@ export const setDigestSettingsForUser = internalMutation({
     countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant, countries, ...digest } = args;
     if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
@@ -552,6 +558,7 @@ export const setDigestSettingsForUser = internalMutation({
 export const setQuietHoursForUser = internalMutation({
   args: { userId: v.string(), ...QUIET_HOURS_ARGS, countries: v.optional(v.array(v.string())) },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, countries, ...rest } = args;
     validateQuietHoursArgs(rest);
 
@@ -632,6 +639,7 @@ export const setNotificationConfigForUser = internalMutation({
     tickers: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant } = args;
     // Layer-2 gate: this internal mutation is reachable from the public
     // `set-notification-config` HTTP action in convex/http.ts. Even though

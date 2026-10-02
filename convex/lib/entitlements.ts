@@ -10,6 +10,7 @@ import {
   type PlanFeatures,
   getEntitlementFeatures,
   PRODUCT_CATALOG,
+  SHARED_API_BUDGET,
 } from "../config/productCatalog";
 
 export type { PlanFeatures };
@@ -34,12 +35,23 @@ export function mergeEntitlementFeatures(
   },
 ): PlanFeatures {
   const catalogDefaults = getFeaturesForPlan(planKey);
+  const planLimits = {
+    ...catalogDefaults.planLimits,
+    ...storedFeatures.planLimits,
+  } as PlanFeatures["planLimits"];
+  // `mcpCallsPerDay` is plan STRUCTURE, not a per-user override: it decides
+  // WHICH counter the plan charges, so the catalog has to win when it names the
+  // shared budget. Rows written before that move still carry the old numeric
+  // (1,000 / 10,000), and a plain spread would let it through — leaving an
+  // existing API-tier subscriber on a separate MCP allowance ON TOP of their
+  // REST one, twenty times what they have today, until a billing event happened
+  // to rewrite the row.
+  if (planLimits && catalogDefaults.planLimits?.mcpCallsPerDay === SHARED_API_BUDGET) {
+    planLimits.mcpCallsPerDay = SHARED_API_BUDGET;
+  }
   return {
     ...catalogDefaults,
     ...storedFeatures,
-    planLimits: {
-      ...catalogDefaults.planLimits,
-      ...storedFeatures.planLimits,
-    } as PlanFeatures["planLimits"],
+    planLimits,
   };
 }

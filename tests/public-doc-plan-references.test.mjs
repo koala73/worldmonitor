@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   findPublicDocumentationViolations,
   findPublicPlanReferences,
+  inspectDocumentationPublication,
 } from '../scripts/check-public-doc-plan-references.mjs';
 
 describe('public documentation plan-reference guard', () => {
@@ -112,5 +113,75 @@ describe('public documentation plan-reference guard', () => {
     } finally {
       rmSync(docsDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('documentation publication coverage', () => {
+  function fixture(t, pages = ['guide']) {
+    const dir = mkdtempSync(join(tmpdir(), 'doc-publication-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, '.mintignore'), 'internal/\nplans/\n');
+    writeFileSync(join(dir, 'docs.json'), JSON.stringify({ navigation: { pages } }));
+    writeFileSync(join(dir, 'guide.mdx'), '# Guide\n');
+    return dir;
+  }
+
+  it('classifies every repository document without silently publishing an orphan', () => {
+    assert.deepEqual(inspectDocumentationPublication().violations, []);
+  });
+
+  it('rejects an indexable page outside navigation and ignores the legacy filename', t => {
+    const dir = fixture(t);
+    writeFileSync(join(dir, 'orphan.md'), '# Missing page\n');
+    writeFileSync(join(dir, '.mintlifyignore'), 'orphan.md\n');
+    const result = inspectDocumentationPublication(dir);
+    assert.deepEqual(result.documents, [
+      { path: 'guide.mdx', status: 'public' },
+      { path: 'orphan.md', status: 'unclassified' },
+    ]);
+    assert.deepEqual(result.violations, [
+      'docs/orphan.md: add to navigation, set noindex: true, or exclude in .mintignore',
+    ]);
+  });
+
+  it('accepts explicit noindex and publication exclusions', t => {
+    const dir = fixture(t);
+    mkdirSync(join(dir, 'internal'));
+    writeFileSync(join(dir, 'internal', 'note.md'), '# Internal\n');
+    writeFileSync(join(dir, 'unlisted.mdx'), '---\nnoindex: true\n---\n# Direct link only\n');
+    const result = inspectDocumentationPublication(dir);
+    assert.deepEqual(result.violations, []);
+    assert.deepEqual(result.documents.map(doc => doc.status), ['public', 'excluded', 'noindex']);
+  });
+
+  it('does not accept a noindex example in page content as an indexing directive', t => {
+    const dir = fixture(t, []);
+    writeFileSync(join(dir, 'guide.mdx'), '# Guide\n```yaml\nnoindex: true\n```\n');
+    assert.equal(inspectDocumentationPublication(dir).documents[0].status, 'unclassified');
+  });
+
+  it('rejects an excluded navigation target and a missing navigation source', t => {
+    const dir = fixture(t, ['guide', 'missing']);
+    writeFileSync(join(dir, '.mintignore'), 'internal/\nplans/\nguide.mdx\n');
+    assert.deepEqual(inspectDocumentationPublication(dir).violations, [
+      'docs/guide.mdx: excluded page is still in navigation',
+      'docs/docs.json: navigation page has no Markdown source: missing',
+    ]);
+  });
+
+  it('requires hidden groups to be searchable before treating their pages as public', t => {
+    const dir = fixture(t);
+    const config = { navigation: { groups: [{ hidden: true, pages: ['guide'] }] } };
+    writeFileSync(join(dir, 'docs.json'), JSON.stringify(config));
+    assert.equal(inspectDocumentationPublication(dir).documents[0].status, 'unclassified');
+    config.navigation.groups[0].searchable = true;
+    writeFileSync(join(dir, 'docs.json'), JSON.stringify(config));
+    assert.deepEqual(inspectDocumentationPublication(dir).violations, []);
+  });
+
+  it('fails closed on ignore syntax it cannot evaluate', t => {
+    const dir = fixture(t);
+    writeFileSync(join(dir, '.mintignore'), 'internal/\nplans/\n*.md\n');
+    assert.match(inspectDocumentationPublication(dir).violations[0], /requires literal relative files or directories/);
   });
 });

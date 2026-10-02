@@ -336,7 +336,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'News / Hotspots',
     purpose: 'Highlights monitored geopolitical hotspots and raises their level when related news and escalation signals converge.',
     source: 'WorldMonitor hotspot registry, RSS/GDELT news intelligence, hotspot escalation scoring, military activity, and CII context.',
-    freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; live-news RSS cache expectations are around 5 minutes, while GDELT intelligence has longer seeded/cache budgets.',
+    freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; hotspot levels are recomputed when the dashboard news feeds refresh, around 20 minutes apart, while GDELT intelligence has longer seeded/cache budgets.',
     confidence: 'Useful as a triage cue, not a citation-grade claim without opening the underlying news and country context.',
     limitations: [
       'News volume and keyword matching can overrepresent highly covered regions.',
@@ -437,6 +437,15 @@ export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant)
     if (!allowed.has(key)) sanitized[key] = false;
   }
   return sanitized;
+}
+
+export function sanitizeResilienceScoreForRenderer(
+  layers: MapLayers,
+  isDeckGLActive: boolean,
+): MapLayers {
+  return layers.resilienceScore && !isDeckGLActive
+    ? { ...layers, resilienceScore: false }
+    : layers;
 }
 
 /**

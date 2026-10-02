@@ -313,14 +313,15 @@ async function storeNewTokens(
   clientId: string,
   scope: string,
   familyId: string,
+  kind?: 'user_key',
 ): Promise<boolean> {
   const results = await pipeline([
-    ['SET', `oauth:token:${accessUuid}`, JSON.stringify(apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
+    ['SET', `oauth:token:${accessUuid}`, JSON.stringify(kind === 'user_key' ? { kind, api_key_hash: apiKeyHash } : apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
     ['SET', accessTokenFamilyKey(accessUuid), JSON.stringify(familyId), 'EX', TOKEN_TTL_SECONDS],
     [
       'SET',
       `oauth:refresh:${refreshUuid}`,
-      JSON.stringify({ client_id: clientId, api_key_hash: apiKeyHash, scope, family_id: familyId }),
+      JSON.stringify({ kind, client_id: clientId, api_key_hash: apiKeyHash, scope, family_id: familyId }),
       'EX',
       REFRESH_TTL_SECONDS,
     ],
@@ -426,7 +427,7 @@ interface CodeDataLegacy {
   code_challenge: string;
   scope?: string;
   api_key_hash: string;
-  kind?: undefined;
+  kind?: 'user_key';
 }
 
 interface RefreshDataPro {
@@ -443,7 +444,7 @@ interface RefreshDataLegacy {
   api_key_hash: string;
   scope: string;
   family_id: string;
-  kind?: undefined;
+  kind?: 'user_key';
 }
 
 // ---------------------------------------------------------------------------
@@ -528,8 +529,7 @@ async function handleAuthorizationCode(
   const refreshUuid = deps.randomUuid();
   const familyId = deps.randomUuid();
 
-  // Branch by code-record kind. Pro records carry `userId` + `mcpTokenId`;
-  // legacy records carry the `api_key_hash` SHA-256.
+  // Pro records carry `userId` + `mcpTokenId`; API-key records carry a hash.
   if (codeData.kind === 'pro') {
     const scope = codeData.scope ?? 'mcp_pro';
     const stored = await storeProTokens(
@@ -554,7 +554,7 @@ async function handleAuthorizationCode(
     });
   }
 
-  // Legacy env-key path — unchanged
+  // Preserve dashboard-key identity; only operator keys use the legacy shape.
   const scope = codeData.scope ?? 'mcp';
   const stored = await storeNewTokens(
     deps.redisPipeline,
@@ -564,6 +564,7 @@ async function handleAuthorizationCode(
     clientId,
     scope,
     familyId,
+    codeData.kind,
   );
   if (!stored) {
     return jsonResp({ error: 'server_error', error_description: 'Token storage failed' }, 500);
@@ -770,7 +771,7 @@ async function handleRefreshToken(
     });
   }
 
-  // Legacy env-key path — unchanged
+  // Preserve dashboard-key identity across refresh rotation.
   const scope = refreshData.scope ?? 'mcp';
   const stored = await storeNewTokens(
     deps.redisPipeline,
@@ -780,6 +781,7 @@ async function handleRefreshToken(
     clientId,
     scope,
     refreshData.family_id,
+    refreshData.kind,
   );
   if (!stored) {
     await restoreRefreshAttempt(
@@ -803,10 +805,12 @@ async function handleRefreshToken(
 }
 
 function temporaryAuthFailure(): Response {
-  return jsonResp(
+  const response = jsonResp(
     { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
     503,
   );
+  response.headers.set('Retry-After', '5');
+  return response;
 }
 
 function invalidRefreshGrant(): Response {
@@ -845,10 +849,7 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
   try {
     client = await deps.redisGet(`oauth:client:${clientId}`);
   } catch {
-    return jsonResp(
-      { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-      503,
-    );
+    return temporaryAuthFailure();
   }
   if (!client) {
     return jsonResp(
@@ -875,8 +876,6 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
 async function applyRateLimit(
   req: Request,
   grantType: string | null,
-  clientSecret: string | null,
-  clientId: string | null,
   ctx: WaitUntilCtx | undefined,
 ): Promise<TokenRateLimitDecision> {
   const rl = getRatelimit();
@@ -890,15 +889,8 @@ async function applyRateLimit(
     return { kind: 'degraded' };
   }
   try {
-    let rlKey: string;
-    if (grantType === 'client_credentials' && clientSecret) {
-      rlKey = `cred:${(await sha256Hex(clientSecret)).slice(0, 8)}`;
-    } else if (clientId) {
-      rlKey = `cid:${clientId}`;
-    } else {
-      rlKey = `ip:${getClientIp(req)}`;
-    }
-    const result = await rl.limit(rlKey);
+    // Unvalidated credentials and client IDs must not select their own abuse budget.
+    const result = await rl.limit(`ip:${getClientIp(req)}`);
     // @upstash/ratelimit v2 races Redis against an internal timeout and
     // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
     // so a slow Redis is indistinguishable from a genuine allow unless we
@@ -944,7 +936,7 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
   const clientSecret = params.get('client_secret');
   const clientId = params.get('client_id');
 
-  const rateLimit = await applyRateLimit(req, grantType, clientSecret, clientId, deps.ctx);
+  const rateLimit = await applyRateLimit(req, grantType, deps.ctx);
   if (rateLimit.kind === 'limited') {
     emitOAuthTokenUsage(deps.ctx, req, rateLimit.response, startedAt, 'rate_limit_429');
     return rateLimit.response;
@@ -995,6 +987,7 @@ export default async function handler(
           step: 'refresh-restore',
           stage: context.stage,
         },
+        fingerprint: ['api/oauth/token', 'refresh-restore', 'Error'],
         ctx,
       });
     },

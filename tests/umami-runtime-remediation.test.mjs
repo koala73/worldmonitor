@@ -323,7 +323,7 @@ describe('Umami runtime remediation (#6024)', () => {
 
   it('runs the real migration and concurrent upserts in a path-filtered PostgreSQL CI job', () => {
     const workflow = read('.github/workflows/test.yml');
-    const deployGate = read('.github/workflows/deploy-gate.yml');
+    const deployGate = read('.github/scripts/deploy-gate.sh');
     const integration = read('tests/umami-postgres-integration.mjs');
     const umamiJob = workflow.match(/^ {2}umami-postgres:\n[\s\S]*?(?=^ {2}[a-z][a-z0-9-]+:\n)/m)?.[0];
 

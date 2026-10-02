@@ -2867,7 +2867,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 }
 .deduction-form-row { display: flex; gap: 6px; align-items: center; }
 .deduction-geo-input {
-  flex: 1; padding: 7px 10px; box-sizing: border-box;
+  flex: 1; min-width: 0; resize: vertical; padding: 7px 10px; box-sizing: border-box;
   background: transparent; border: 1px solid var(--border);
   border-radius: 5px; color: var(--text-dim);
   font-family: var(--font-body-base, system-ui, sans-serif);

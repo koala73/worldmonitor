@@ -28,7 +28,10 @@ export type DirectLlmEntitlementShape = {
   features?: {
     tier?: number;
     planLimits?: {
-      mcpCallsPerDay?: number | null;
+      // `SHARED_API_BUDGET` is a real catalog value for `mcpCallsPerDay` on the
+      // API tiers; this shape is structurally matched against entitlement rows
+      // that carry it, so narrowing it to `number | null` would reject them.
+      mcpCallsPerDay?: number | null | 'shared-api-budget';
       dashboardAiCallsPerDay?: number | null;
     };
   };
@@ -71,8 +74,8 @@ function isActivePaidEntitlement(ent: DirectLlmEntitlementShape | null | undefin
 /**
  * THE decision point for "what daily direct-LLM budget does this caller get".
  *
- * Both enforcement surfaces — `server/gateway.ts` and `api/chat-analyst.ts`
- * (via `resolvePremiumCallerIdentity`) — INCR the same
+ * Both enforcement surfaces — `server/gateway.ts`, `api/chat-analyst.ts`, and
+ * `api/widget-agent.ts` (the self-metered edge proxies) — INCR the same
  * `llm:direct-usage:<userId>:<date>` key, so they must agree. One counter
  * enforced against two different caps is the class of bug this centralizes
  * away: it tells a Pro Business customer "limit 500" on one surface while
@@ -99,6 +102,7 @@ export const DIRECT_LLM_GATEWAY_QUOTA_PATHS = new Set<string>([
 
 export const DIRECT_LLM_SELF_METERED_QUOTA_PATHS = new Set<string>([
   '/api/chat-analyst',
+  '/api/widget-agent',
 ]);
 
 export const DIRECT_LLM_QUOTA_PATHS = new Set<string>([

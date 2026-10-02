@@ -22,6 +22,9 @@ import {
 } from '../src/services/stock-analysis-rating.ts';
 import { analyzeStock } from '../server/worldmonitor/market/v1/analyze-stock.ts';
 import { getStockAnalysisHistory } from '../server/worldmonitor/market/v1/get-stock-analysis-history.ts';
+import { storeStockAnalysisSnapshot } from '../server/worldmonitor/market/v1/premium-stock-store.ts';
+import { ApiError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
+import { STOCK_ANALYSIS_PRO_LIMIT } from '../src/services/stock-analysis-targets.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
 
 const originalFetch = globalThis.fetch;
@@ -320,6 +323,20 @@ describe('stock analysis history helpers', () => {
     assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
   });
 
+  it('matches a mixed-case watchlist symbol to the stored uppercase ticker', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 80, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+        withCompositeScore: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['aapl']), true);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['aapl']), []);
+  });
+
   it('treats time-fresh analyst snapshots without fundamentals as stale', () => {
     const recent = new Date(Date.now() - 60_000).toISOString();
     const history = {
@@ -514,6 +531,45 @@ describe('server-backed stock analysis history', () => {
 
     assert.deepEqual(history.items, []);
   });
+
+  it('returns every stored symbol when the request is larger than the old 8-symbol slice', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = createRedisAwareFetch().fetch;
+
+    const symbols = Array.from({ length: 9 }, (_, index) => `S${String(index).padStart(2, '0')}`);
+    const generatedAt = new Date().toISOString();
+    for (const symbol of symbols) {
+      await storeStockAnalysisSnapshot(
+        makeSnapshot(symbol, generatedAt, 70, 'Buy', {
+          withAnalystFields: true,
+          withFundamentals: true,
+          withCompositeScore: true,
+        }),
+        true,
+      );
+    }
+
+    const history = await getStockAnalysisHistory({} as never, {
+      symbols,
+      limitPerSymbol: 1,
+      includeNews: true,
+    });
+
+    assert.deepEqual(history.items.map((item) => item.symbol).sort(), [...symbols].sort());
+  });
+
+  it('rejects a symbol list above the Pro watchlist cap instead of slicing it', async () => {
+    const symbols = Array.from({ length: STOCK_ANALYSIS_PRO_LIMIT + 1 }, (_, index) => `T${index}`);
+    await assert.rejects(
+      () => getStockAnalysisHistory({} as never, {
+        symbols,
+        limitPerSymbol: 1,
+        includeNews: false,
+      }),
+      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+    );
+  });
 });
 
 describe('MarketServiceClient getStockAnalysisHistory', () => {
@@ -536,4 +592,30 @@ describe('MarketServiceClient getStockAnalysisHistory', () => {
     assert.match(requestedUrl, /limit_per_symbol=4/);
     assert.match(requestedUrl, /include_news=true/);
   });
+});
+
+for (const failure of ['http', 'command', 'malformed', 'item-http']) {
+  it(`does not report empty stock history after ${failure} failure`, async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://history-redis.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    globalThis.fetch = async (_input, init) => {
+      const commands = JSON.parse(String(init?.body));
+      if (failure === 'item-http' && commands[0][0] === 'ZREVRANGE') return Response.json([{ result: ['item'] }]);
+      if (failure === 'command') return Response.json([{ error: 'fixture' }]);
+      if (failure === 'malformed') return Response.json([{}]);
+      return new Response('', { status: 503 });
+    };
+    await assert.rejects(() => getStockAnalysisHistory({ request: new Request('https://worldmonitor.app'), headers: {}, pathParams: {} }, {
+      symbols: ['AAPL'], includeNews: false, limitPerSymbol: 4,
+    }), (error: any) => error.statusCode === 503);
+  });
+}
+
+it('keeps a confirmed empty stock history successful', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://history-redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  globalThis.fetch = async () => Response.json([{ result: [] }]);
+  assert.deepEqual(await getStockAnalysisHistory({ request: new Request('https://worldmonitor.app'), headers: {}, pathParams: {} }, {
+    symbols: ['AAPL'], includeNews: false, limitPerSymbol: 4,
+  }), { items: [] });
 });

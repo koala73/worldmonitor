@@ -8,11 +8,11 @@
     <!-- Primary Meta Tags -->
     <title>World Monitor - Real-Time Global Intelligence Dashboard</title>
     <meta name="title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta name="description" content="Real-time global intelligence platform tracking conflicts, markets, military activity, and OSINT signals across 190+ countries, with live context in one view." />
+    <meta name="description" content="Real-time global intelligence: conflicts, markets, military, OSINT signals — live in 190+ countries; structural resilience ranked for 170, in one view." />
     <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
     <meta name="author" content="Elie Habib" />
     <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />
@@ -29,7 +29,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.worldmonitor.app/dashboard" />
     <meta property="og:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta property="og:description" content="Real-time global intelligence platform tracking conflicts, markets, military activity, and OSINT signals across 190+ countries, with live context in one view." />
+    <meta property="og:description" content="Real-time global intelligence: conflicts, markets, military, OSINT signals — live in 190+ countries; structural resilience ranked for 170, in one view." />
     <meta property="og:image" content="https://www.worldmonitor.app/favico/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -41,7 +41,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://www.worldmonitor.app/dashboard" />
     <meta name="twitter:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta name="twitter:description" content="Real-time global intelligence platform tracking conflicts, markets, military activity, and OSINT signals across 190+ countries, with live context in one view." />
+    <meta name="twitter:description" content="Real-time global intelligence: conflicts, markets, military, OSINT signals — live in 190+ countries; structural resilience ranked for 170, in one view." />
     <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
     <meta name="twitter:site" content="@worldmonitorai" />
     <meta name="twitter:creator" content="@worldmonitorai" />
@@ -50,7 +50,7 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
+      "@type": "SoftwareApplication",
       "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "alternateName": [
@@ -58,10 +58,10 @@
         "World Monitor App",
         "WM Intelligence"
       ],
-      "url": "https://www.worldmonitor.app/dashboard",
-      "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries. Featured in WIRED.",
-      "applicationCategory": "SecurityApplication",
-      "operatingSystem": "Web, Windows, macOS, Linux",
+      "url": "https://www.worldmonitor.app/",
+      "description": "Free real-time global intelligence dashboard. Curated news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "publisher": {
         "@id": "https://www.worldmonitor.app/#organization"
       },
@@ -140,10 +140,58 @@
         "https://www.npmjs.com/package/worldmonitor",
         "https://www.wikidata.org/wiki/Q141237754",
         "https://x.com/worldmonitorai",
-        "https://x.com/eliehabib",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ],
       "keywords": "OSINT dashboard, geopolitical monitoring, real-time intelligence, conflict tracker, threat intelligence, ADS-B tracking, AIS ship tracking, global risk monitoring, situational awareness"
+    }
+    </script>
+
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "https://www.worldmonitor.app/dashboard#webpage",
+      "url": "https://www.worldmonitor.app/dashboard",
+      "name": "World Monitor — Real-Time Global Intelligence Dashboard",
+      "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data.",
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "mainEntity": {
+        "@id": "https://www.worldmonitor.app/#software"
+      },
+      "breadcrumb": {
+        "@id": "https://www.worldmonitor.app/dashboard#breadcrumb"
+      },
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": ["h1", ".app-seo-summary"]
+      }
+    }
+    </script>
+
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "@id": "https://www.worldmonitor.app/dashboard#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "World Monitor",
+          "item": "https://www.worldmonitor.app/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Dashboard",
+          "item": "https://www.worldmonitor.app/dashboard"
+        }
+      ]
     }
     </script>
 
@@ -394,7 +442,7 @@
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
-    <section class="app-seo-summary" aria-hidden="true">
+    <section class="app-seo-summary">
       <p>World Monitor is the full-spectrum real-time global intelligence dashboard: one browser workspace that combines geopolitical conflict tracking, military and civil aviation, maritime AIS, undersea cable and infrastructure maps, markets, climate hazards, cyber signals, and open-source news into a single live situation picture. Analysts, journalists, researchers, and operators use it to see how distant events connect before they harden into headlines.</p>
       <p>On the map you can follow conflict zones and protest activity alongside earthquake and wildfire alerts, power-outage clusters, and strategic infrastructure such as military bases, nuclear facilities, and subsea cables. Aviation layers surface military and commercial flights; maritime layers track ships through chokepoints and high-risk waters. Country deep-dives open resilience, risk, and source-backed context for more than 190 states without leaving the dashboard.</p>
       <p>Market and prediction panels sit beside the geospatial view so price moves, central-bank signals, commodities, and prediction-market odds can be read against the same map context that shows tankers, jets, and crisis corridors. Government-spending and macro indicators help separate noise from policy-relevant shifts. The goal is not another news feed — it is a continuously updating OSINT workbench with auditable upstream sources.</p>
@@ -417,8 +465,9 @@
             <li><a href="/crises/">Crisis trackers</a></li>
             <li><a href="/tools/">Live tools</a></li>
             <li><a href="/research/">Research reports</a></li>
+            <li><a href="/accuracy/">Forecast accuracy</a></li>
             <li><a href="/blog/">Blog</a></li>
-            <li><a href="/docs">Documentation</a></li>
+            <li><a href="/docs/documentation">Documentation</a></li>
             <li><a href="/pro#pricing">Pricing</a></li>
             <li><a href="https://github.com/koala73/worldmonitor">GitHub</a></li>
           </ul>

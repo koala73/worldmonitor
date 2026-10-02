@@ -3,6 +3,8 @@ title: "Chokepoint Methodology"
 description: "How World Monitor scores 13 monitored maritime chokepoints, including the seven-item live-flow subset backed by EIA energy baseline volumes."
 ---
 
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
 ## Start here
 
 A handful of narrow waterways carry a wildly disproportionate share of world
@@ -14,6 +16,8 @@ WorldMonitor watches 13 of them and answers, continuously: **is anything wrong
 here, and who would feel it?**
 
 ### What a chokepoint row tells you
+
+Open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) for a worked example. Read its published disruption score, available inputs, and observation dates alongside the method below.
 
 Each waterway carries four separate readings, and it is worth keeping them
 apart:
@@ -111,7 +115,10 @@ only: hazard enrichment does not change `currentMbd`, `flowRatio`, or the
 ## Score Badge
 
 The public `status` field on `ChokepointInfo` is a traffic-light score badge:
-`green`, `yellow`, or `red`. It is not an operational closure-state label.
+`green`, `yellow`, or `red`. It summarizes disruption risk; it is not an
+operational declaration that a waterway is open, restricted, or closed. Detail
+pages report observed transit activity when it is available and state when
+source coverage is too partial to verify operational passage status.
 
 The score is:
 
@@ -128,9 +135,15 @@ Where:
 - `warningComponent = min(15, activeWarnings * 5)`.
 - `aisComponent = min(15, maxCongestionSeverity * 5)`, where low/elevated/high
   AIS congestion severity maps to 1/2/3.
-- `anomalyBonus = 10` only when transit history shows a 50% or larger traffic
-  drop against the prior 30-day transit-count baseline and the threat level is
-  `war_zone` or `critical`.
+- `anomalyBonus = 10` only when PortWatch daily transit history shows a 50% or
+  larger traffic drop against the prior 30-day transit-count baseline and the
+  threat level is `war_zone` or `critical`.
+
+Those four terms are the whole formula. AIS event counts, relay transit counts,
+and PortWatch week-over-week movement are published as context and never enter
+the score. PortWatch feeds both sides: `anomalyBonus` reads its daily transit
+history through `supply_chain:portwatch:v1`, while the week-over-week figure is
+presentation only.
 
 The score badge thresholds are:
 
@@ -239,7 +252,7 @@ Refresh cadence:
 
 - The seven live-flow rows are energy-baseline-backed; the other six monitored
   waterways do not yet publish mb/d estimates.
-- The Dover Strait live-flow row currently maps to the EIA `danish` baseline id.
+- The [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) live-flow row currently maps to the EIA `danish` baseline id.
   Treat `baselineMbd` as the source reference and `id` as the canonical
   WorldMonitor row id.
 - AIS and PortWatch coverage can degrade near heavily jammed or conflict-heavy

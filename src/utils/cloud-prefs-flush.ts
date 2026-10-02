@@ -3,7 +3,8 @@ export interface ObservableCloudPrefsFlushSuccessOptions {
   myGeneration: number;
   getAuthGeneration: () => number;
   getSyncVersion: () => number;
-  setSyncVersion: (syncVersion: number) => void;
+  /** Returns false when a usable store REJECTED the version write. */
+  setSyncVersion: (syncVersion: number) => boolean;
   clearSettledDirtyKeys: () => void;
   setLastSyncAt: (timestampMs: number) => void;
   isIdle: () => boolean;
@@ -23,7 +24,10 @@ export function applyObservableCloudPrefsFlushSuccess(
   if (opts.getAuthGeneration() !== opts.myGeneration) return false;
   if (opts.syncVersion <= opts.getSyncVersion()) return false;
 
-  opts.setSyncVersion(opts.syncVersion);
+  // A rejected version write means the durable marker is still stale. Going on
+  // to settle dirty keys and report synced would claim a reconciliation that
+  // did not persist, so bail before touching either (#7833 review).
+  if (!opts.setSyncVersion(opts.syncVersion)) return false;
   opts.clearSettledDirtyKeys();
   opts.setLastSyncAt((opts.now ?? Date.now)());
   if (opts.isIdle()) opts.setSynced();

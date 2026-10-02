@@ -57,6 +57,22 @@ async function postResendWebhook(
     timestamp = String(TEST_NOW_SECONDS),
   }: { payload?: string; messageId?: string; timestamp?: string } = {},
 ) {
+  const { res } = await postResendWebhookWithTest(svixSignature, {
+    payload,
+    messageId,
+    timestamp,
+  });
+  return res;
+}
+
+async function postResendWebhookWithTest(
+  svixSignature: string | undefined,
+  {
+    payload = makePayload(),
+    messageId = "msg_test_resend_signature",
+    timestamp = String(TEST_NOW_SECONDS),
+  }: { payload?: string; messageId?: string; timestamp?: string } = {},
+) {
   const t = convexTest(schema, modules);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -67,11 +83,12 @@ async function postResendWebhook(
     headers["svix-signature"] = svixSignature;
   }
 
-  return await t.fetch("/resend-webhook", {
+  const res = await t.fetch("/resend-webhook", {
     method: "POST",
     headers,
     body: payload,
   });
+  return { t, res };
 }
 
 describe("Resend webhook signature verification (#4678)", () => {
@@ -152,5 +169,64 @@ describe("Resend webhook signature verification (#4678)", () => {
 
     expect(res.status).toBe(401);
     expect(await res.text()).toBe("Invalid signature");
+  });
+
+  test("persists a signed contact.updated unsubscribe", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
+    const payload = JSON.stringify({
+      type: "contact.updated",
+      data: {
+        id: "contact_unsubscribed",
+        email: "  Opted.Out@Example.com ",
+        unsubscribed: true,
+      },
+    });
+    const signature = await signPayload(payload);
+
+    const { t, res } = await postResendWebhookWithTest(`v1,${signature}`, {
+      payload,
+    });
+
+    expect(res.status).toBe(200);
+    const rows = await t.run(async (ctx) =>
+      await ctx.db.query("emailSuppressions").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      normalizedEmail: "opted.out@example.com",
+      reason: "unsubscribe",
+      source: "resend-webhook:contact_unsubscribed",
+    });
+    const message = log.mock.calls
+      .map(([value]) => String(value))
+      .find((value) => value.startsWith("[resend-webhook] Suppressed"));
+    expect(message).toContain("O***@Example.com");
+    expect(message).not.toContain("Opted.Out@Example.com");
+  });
+
+  test("does not treat a contact.updated resubscribe as an unsubscribe", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
+    const payload = JSON.stringify({
+      type: "contact.updated",
+      data: {
+        id: "contact_resubscribed",
+        email: "resubscribed@example.com",
+        unsubscribed: false,
+      },
+    });
+    const signature = await signPayload(payload);
+
+    const { t, res } = await postResendWebhookWithTest(`v1,${signature}`, {
+      payload,
+    });
+
+    expect(res.status).toBe(200);
+    const rows = await t.run(async (ctx) =>
+      await ctx.db.query("emailSuppressions").collect(),
+    );
+    expect(rows).toEqual([]);
   });
 });

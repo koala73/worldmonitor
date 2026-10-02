@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
-import { t } from '../i18n';
+import { currentLanguageBase, t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import {
   DASHBOARD_SCREENSHOT_JPG,
@@ -11,18 +11,24 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
+import heroProofStats from '../generated/hero-stats.json';
+import depthProofStats from '../generated/depth-stats.json';
+import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
+// Homepage proof numerals are measured at build time (see heroProofStats in
+// scripts/generate-public-product-facts.mjs), never hardcoded adjectives.
+// Labels stay in locale files; numerals bypass i18n because they are universal.
 const HERO_PROOF_STATS = [
-  { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
-  { valueKey: 'welcome.depth.s2v', labelKey: 'welcome.depth.s2l' },
+  { value: String(heroProofStats.mapLayers), labelKey: 'welcome.depth.s1l' },
+  { value: String(heroProofStats.feeds), labelKey: 'welcome.depth.s2l' },
   {
-    valueKey: 'welcome.depth.s3v',
+    value: String(heroProofStats.providers),
     labelKey: 'welcome.depth.s3l',
-    href: '/sources/?utm_source=welcome-hero',
+    href: '/sources/',
   },
-  { valueKey: 'welcome.depth.s15v', labelKey: 'welcome.depth.s15l' },
+  { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
 ] as const;
 
 const HeroProofRail = () => (
@@ -36,13 +42,13 @@ const HeroProofRail = () => (
       const className = `px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`;
       const content = (
         <>
-          <div className="font-display text-2xl font-bold text-wm-text">{t(stat.valueKey)}</div>
+          <div className="font-display text-2xl font-bold text-wm-text">{stat.value}</div>
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
         </>
       );
       return 'href' in stat ? (
         <a
-          key={stat.valueKey}
+          key={stat.labelKey}
           href={stat.href}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-sources-proof"
@@ -50,7 +56,7 @@ const HeroProofRail = () => (
         >
           {content}
         </a>
-      ) : <div key={stat.valueKey} className={className}>{content}</div>;
+      ) : <div key={stat.labelKey} className={className}>{content}</div>;
     })}
   </motion.div>
 );
@@ -64,7 +70,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
+      href={DASHBOARD_PATH}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
@@ -122,7 +128,9 @@ export const Hero = () => (
           {t('welcome.hero.sub')}
         </p>
         <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
-          <time dateTime="2026-08-31">{t('welcome.hero.asOf')}</time>
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
         </p>
       </motion.div>
 
@@ -133,7 +141,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
+          href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
@@ -188,6 +196,10 @@ export const Hero = () => (
           <span className="text-wm-green">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
         </a>
       </motion.div>
+      <div className="mx-auto mt-10 max-w-2xl text-center">
+        <h2 className="font-display text-xl font-bold text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
+        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody', depthProofStats)}</p>
+      </div>
       <motion.div
         initial={false}
         animate={{ opacity: 1 }}

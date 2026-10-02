@@ -1,419 +1,153 @@
 import { Panel } from './Panel';
-import { fetchLiveVideoInfo } from '@/services/live-news';
-import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl, getLocalApiPort } from '@/services/runtime';
+import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
 import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
-import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { STORAGE_KEYS } from '@/config';
 
-import { getStreamQuality } from '@/services/ai-flow-settings';
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
-import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
+import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
+import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
+import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
+import { withResolvedLiveVideos } from '@/services/live-video/resolved';
+import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { track } from '@/services/analytics';
+import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { OPTIONAL_LIVE_CHANNELS, getDefaultLiveChannels, hasBuiltinStreams, liveVideoSourceFor, loadChannelsFromStorage, saveChannelsToStorage, type LiveChannel } from '@/services/live-channels';
+import { declareOverlay } from '@/utils/open-modal';
+export { getDefaultLiveChannels, loadChannelsFromStorage } from '@/services/live-channels';
 
-
-// YouTube IFrame Player API types
-type YouTubePlayer = {
-  mute(): void;
-  unMute(): void;
-  playVideo(): void;
-  pauseVideo(): void;
-  loadVideoById(videoId: string): void;
-  cueVideoById(videoId: string): void;
-  setPlaybackQuality?(quality: string): void;
-  getIframe?(): HTMLIFrameElement;
-  getVolume?(): number;
-  destroy(): void;
-};
-
-type YouTubePlayerConstructor = new (
-  elementId: string | HTMLElement,
-  options: {
-    videoId: string;
-    host?: string;
-    playerVars: Record<string, number | string>;
-    events: {
-      onReady: () => void;
-      onError?: (event: { data: number }) => void;
-    };
-  },
-) => YouTubePlayer;
-
-type YouTubeNamespace = {
-  Player: YouTubePlayerConstructor;
-};
-
-declare global {
-  interface Window {
-    YT?: YouTubeNamespace;
-    onYouTubeIframeAPIReady?: () => void;
+function offlineReasonText(reason: OfflineReason, name: string): string {
+  switch (reason) {
+    case 'embed-blocked': return t('components.liveNews.embedBlocked', { name });
+    case 'unavailable': return t('components.liveNews.unavailable', { name });
+    case 'no-entries': return t('components.liveNews.noStream', { name });
+    case 'needs-channel-url': return t('components.liveNews.needsChannelUrl', { name });
+    case 'insecure-url': return t('components.liveNews.insecureStream', { name });
+    case 'not-live':
+    case 'stream-ended': return t('components.liveNews.notLive', { name });
   }
 }
 
-export interface LiveChannel {
-  id: string;
-  name: string;
-  handle?: string; // YouTube channel handle (e.g., @bloomberg) - optional for HLS streams
-  fallbackVideoId?: string; // Fallback if no live stream detected
-  videoId?: string; // Dynamically fetched live video ID
-  isLive?: boolean;
-  hlsUrl?: string; // HLS manifest URL for native <video> playback (desktop)
-  useFallbackOnly?: boolean; // Skip auto-detection, always use fallback
-  geoAvailability?: string[]; // ISO 3166-1 alpha-2 codes; undefined = available everywhere
+function actionButton(label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'offline-retry';
+  button.textContent = label;
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return button;
 }
 
-
-// Full variant: World news channels (24/7 live streams)
-const FULL_LIVE_CHANNELS: LiveChannel[] = [
-  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
-  { id: 'sky', name: 'SkyNews', handle: '@SkyNews', fallbackVideoId: 'uvviIF4725I' },
-  { id: 'euronews', name: 'Euronews', handle: '@euronews', fallbackVideoId: 'pykpO5kQJ98' },
-  { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
-  { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
-  { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
-  { id: 'france24', name: 'France 24', handle: '@FRANCE24', fallbackVideoId: 'u9foWyMSETk' },
-  { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
-  { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
-];
-
-// Tech variant: Tech & business channels
-const TECH_LIVE_CHANNELS: LiveChannel[] = [
-  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
-  { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance', fallbackVideoId: 'KQp-e_XQnDE' },
-  { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
-  { id: 'nasa', name: 'Sen Space Live', handle: '@NASA', fallbackVideoId: 'aB1yRz0HhdY', useFallbackOnly: true },
-];
-
-// Optional channels users can add from the "Available Channels" tab UI
-// Includes default channels so they appear in the grid for toggle on/off
-export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
-  // North America (defaults first)
-  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
-  { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
-  { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance', fallbackVideoId: 'KQp-e_XQnDE' },
-  { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
-  { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek' },
-  { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
-  { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
-  { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'R9L8sDK8iEc' },
-  { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews', fallbackVideoId: 'yMr0neQhu6c' },
-  { id: 'cbc-news', name: 'CBC News', handle: '@CBCNews', fallbackVideoId: 'jxP_h3V-Dv8' },
-  { id: 'ctv-news', name: 'CTV News', hlsUrl: 'https://pe-fa-lp02a.9c9media.com/live/News1Digi/p/hls/00000201/38ef78f479b07aa0/index/0c6a10a2/live/stream/h264/v1/3500000/manifest.m3u8', useFallbackOnly: true },
-  { id: 'reuters-tv', name: 'Reuters TV', hlsUrl: 'https://reuters-reutersnow-1-eu.rakuten.wurl.tv/playlist.m3u8', useFallbackOnly: true },
-  { id: 'nasa', name: 'Sen Space Live', handle: '@NASA', fallbackVideoId: 'aB1yRz0HhdY', useFallbackOnly: true },
-  // Europe (defaults first)
-  { id: 'sky', name: 'SkyNews', handle: '@SkyNews', fallbackVideoId: 'uvviIF4725I' },
-  { id: 'euronews', name: 'Euronews', handle: '@euronews', fallbackVideoId: 'pykpO5kQJ98' },
-  { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
-  { id: 'france24', name: 'France 24', handle: '@FRANCE24', fallbackVideoId: 'u9foWyMSETk' },
-  { id: 'bbc-news', name: 'BBC News', handle: '@BBCNews', fallbackVideoId: 'bjgQzJzCZKs' },
-  { id: 'gb-news', name: 'GB News', hlsUrl: 'https://live-gbnews.simplestreamcdn.com/live5/gbnews/bitrate1.isml/manifest.m3u8', useFallbackOnly: true },
-  { id: 'the-guardian', name: 'The Guardian', hlsUrl: 'https://rakuten-guardian-1-ie.samsung.wurl.tv/playlist.m3u8', useFallbackOnly: true },
-  { id: 'france24-en', name: 'France 24 English', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
-  { id: 'rtve', name: 'RTVE 24H', handle: '@RTVENoticias', fallbackVideoId: '7_srED6k0bE' },
-  { id: 'phoenix', name: 'Phoenix', hlsUrl: 'https://zdf-hls-19.akamaized.net/hls/live/2016502/de/veryhigh/master.m3u8', useFallbackOnly: true, geoAvailability: ['DE', 'AT', 'CH'] },
-  { id: 'rtp3', name: 'RTP3', hlsUrl: 'https://streaming-live.rtp.pt/livetvhlsDVR/rtpnHDdvr.smil/playlist.m3u8?DVR=', useFallbackOnly: true, geoAvailability: ['PT', 'BR'] },
-  { id: 'trt-haber', name: 'TRT Haber', handle: '@trthaber', fallbackVideoId: '3XHebGJG0bc' },
-  { id: 'ntv-turkey', name: 'NTV', handle: '@NTV', fallbackVideoId: 'pqq5c6k70kk' },
-  { id: 'cnn-turk', name: 'CNN TURK', handle: '@cnnturk', fallbackVideoId: 'lsY4GFoj_xY' },
-  { id: 'tv-rain', name: 'TV Rain', handle: '@tvrain' },
-  { id: 'rt', name: 'RT', hlsUrl: 'https://rt-glb.rttv.com/dvr/rtnews/playlist.m3u8', useFallbackOnly: true },
-  { id: 'tvp-info', name: 'TVP Info', handle: '@tvpinfo', fallbackVideoId: '3jKb-uThfrg' },
-  { id: 'telewizja-republika', name: 'Telewizja Republika', handle: '@Telewizja_Republika', fallbackVideoId: 'dzntyCTgJMQ' },
-  // Latin America & Portuguese
-  { id: 'cnn-brasil', name: 'CNN Brasil', handle: '@CNNbrasil', fallbackVideoId: 'qcTn899skkc' },
-  { id: 'jovem-pan', name: 'Jovem Pan News', handle: '@jovempannews' },
-  { id: 'record-news', name: 'Record News', handle: '@RecordNews', hlsUrl: 'https://stream.ads.ottera.tv/playlist.m3u8?network_id=2116' },
-  { id: 'band-jornalismo', name: 'Band Jornalismo', handle: '@BandJornalismo' },
-  { id: 'tn-argentina', name: 'TN (Todo Noticias)', handle: '@todonoticias', fallbackVideoId: 'cb12KmMMDJA' },
-  { id: 'c5n', name: 'C5N', handle: '@c5n', fallbackVideoId: 'SF06Qy1Ct6Y' },
-  { id: 'milenio', name: 'MILENIO', handle: '@MILENIO' },
-  { id: 'noticias-caracol', name: 'Noticias Caracol', handle: '@NoticiasCaracol' },
-  { id: 'ntn24', name: 'NTN24', handle: '@NTN24' },
-  { id: 't13', name: 'T13', handle: '@Teletrece' },
-  { id: 'dw-espanol', name: 'DW Español', hlsUrl: 'https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/stream04/streamPlaylist.m3u8', useFallbackOnly: true },
-  { id: 'rt-espanol', name: 'RT Español', hlsUrl: 'https://rt-esp.rttv.com/dvr/rtesp/playlist.m3u8', useFallbackOnly: true },
-  { id: 'cgtn-espanol', name: 'CGTN Español', hlsUrl: 'https://news.cgtn.com/resource/live/espanol/cgtn-e.m3u8', useFallbackOnly: true },
-  // Asia
-  { id: 'tbs-news', name: 'TBS NEWS DIG', handle: '@tbsnewsdig', fallbackVideoId: 'aUDm173E8k8' },
-  { id: 'ann-news', name: 'ANN News', handle: '@ANNnewsCH' },
-  { id: 'ntv-news', name: 'NTV News (Japan)', handle: '@ntv_news' },
-  { id: 'cti-news', name: 'CTI News (Taiwan)', handle: '@中天新聞CtiNews' },
-  { id: 'wion', name: 'WION', handle: '@WION' },
-  { id: 'ndtv', name: 'NDTV 24x7', handle: '@NDTV' },
-  { id: 'cgtn', name: 'CGTN', hlsUrl: 'https://news.cgtn.com/resource/live/english/cgtn-news.m3u8', useFallbackOnly: true },
-  { id: 'cna-asia', name: 'CNA (NewsAsia)', handle: '@channelnewsasia', fallbackVideoId: 'XWq5kBlakcQ' },
-  { id: 'nhk-world', name: 'NHK World Japan', handle: '@NHKWORLDJAPAN', fallbackVideoId: 'f0lYfG_vY_U' },
-  { id: 'arirang-news', name: 'Arirang News', handle: '@ArirangCoKrArirangNEWS', hlsUrl: 'https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8' },
-  { id: 'india-today', name: 'India Today', handle: '@indiatoday', fallbackVideoId: 'sYZtOFzM78M' },
-  { id: 'abp-news', name: 'ABP News', handle: '@ABPNews', hlsUrl: 'https://abplivetv.pc.cdn.bitgravity.com/httppush/abp_livetv/abp_abpnews/master.m3u8' },
-  // Middle East (defaults first)
-  { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
-  { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
-  { id: 'al-hadath', name: 'Al Hadath', handle: '@AlHadath', fallbackVideoId: 'xWXpl7azI8k', useFallbackOnly: true },
-  { id: 'sky-news-arabia', name: 'Sky News Arabia', handle: '@skynewsarabia', fallbackVideoId: 'U--OjmpjF5o' },
-  { id: 'trt-world', name: 'TRT World', handle: '@TRTWorld', fallbackVideoId: 'ABfFhWzWs0s' },
-  { id: 'iran-intl', name: 'Iran International', handle: '@IranIntl' },
-  { id: 'cgtn-arabic', name: 'CGTN Arabic', handle: '@CGTNArabic' },
-  { id: 'kan-11', name: 'Kan 11', handle: '@KAN11NEWS', fallbackVideoId: 'TCnaIE_SAtM' },
-  { id: 'i24-news', name: 'i24NEWS (Israel)', handle: '@i24NEWS_HE', fallbackVideoId: 'myKybZUK0IA' },
-  { id: 'asharq-news', name: 'Asharq News', handle: '@asharqnews', fallbackVideoId: 'f6VpkfV7m4Y', useFallbackOnly: true },
-  { id: 'aljazeera-arabic', name: 'AlJazeera Arabic', handle: '@AljazeeraChannel', fallbackVideoId: 'bNyUyrR0PHo', useFallbackOnly: true },
-  { id: 'aljazeera-mubasher', name: 'Al Jazeera Mubasher', hlsUrl: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8', useFallbackOnly: true },
-  { id: 'alarabiya-business', name: 'Al Arabiya Business', hlsUrl: 'https://live.alarabiya.net/alarabiapublish/aswaaq.smil/playlist.m3u8', useFallbackOnly: true },
-  { id: 'al-qahera-news', name: 'Al Qahera News', hlsUrl: 'https://bcovlive-a.akamaihd.net/d30cbb3350af4cb7a6e05b9eb1bfd850/eu-west-1/6057955906001/playlist.m3u8', useFallbackOnly: true },
-  { id: 'press-tv', name: 'Press TV', hlsUrl: 'https://cdnlive.presstv.ir/cdnlive/smil:cdnlive.smil/playlist.m3u8', useFallbackOnly: true },
-  { id: 'dw-arabic', name: 'DW Arabic', hlsUrl: 'https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/index.m3u8', useFallbackOnly: true },
-  { id: 'rt-arabic', name: 'RT Arabic', hlsUrl: 'https://rt-arb.rttv.com/dvr/rtarab/playlist.m3u8', useFallbackOnly: true },
-  { id: 'rudaw', name: 'Rudaw', hlsUrl: 'https://svs.itworkscdn.net/rudawlive/rudawlive.smil/playlist.m3u8', useFallbackOnly: true },
-  // Africa
-  { id: 'africanews', name: 'Africanews', handle: '@africanews' },
-  { id: 'channels-tv', name: 'Channels TV', handle: '@ChannelsTelevision' },
-  { id: 'ktn-news', name: 'KTN News', handle: '@ktnnews_kenya', fallbackVideoId: 'RmHtsdVb3mo' },
-  { id: 'enca', name: 'eNCA', handle: '@encanews' },
-  { id: 'sabc-news', name: 'SABC News', handle: '@SABCDigitalNews', hlsUrl: 'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/playlist.m3u8' },
-  { id: 'arise-news', name: 'Arise News', handle: '@AriseNewsChannel', fallbackVideoId: '4uHZdlX-DT4' },
-  // Europe (additional)
-  { id: 'welt', name: 'WELT', handle: '@WELTVideoTV', fallbackVideoId: 'L-TNmYmaAKQ', geoAvailability: ['DE', 'AT', 'CH'] },
-  { id: 'tagesschau24', name: 'Tagesschau24', handle: '@tagesschau', fallbackVideoId: 'fC_q9TkO1uU' },
-  { id: 'euronews-fr', name: 'Euronews FR', handle: '@euronewsfr', fallbackVideoId: 'NiRIbKwAejk' },
-  { id: 'euronews-gr', name: 'Euronews GR', handle: '@euronewsgr' },
-  { id: 'skai-tv', name: 'SKAI TV', handle: '@skaitv' },
-  { id: 'ert-news', name: 'ERT News', handle: '@ertgr', hlsUrl: 'https://ertflix.ascdn.broadpeak.io/ertlive/ertnews/default/index.m3u8', useFallbackOnly: true },
-  { id: 'france24-fr', name: 'France 24 FR', handle: '@France24_fr', fallbackVideoId: 'l8PMl7tUDIE' },
-  { id: 'france-info', name: 'France Info', handle: '@franceinfo', fallbackVideoId: 'Z-Nwo-ypKtM' },
-  { id: 'bfmtv', name: 'BFMTV', handle: '@BFMTV', fallbackVideoId: 'smB_F6DW7cI' },
-  { id: 'tv5monde-info', name: 'TV5 Monde Info', handle: '@TV5MONDEInfo', hlsUrl: 'https://ott.tv5monde.com/Content/HLS/Live/channel(info)/index.m3u8', geoAvailability: ['FR', 'BE', 'CH', 'CA'] },
-  { id: 'nrk1', name: 'NRK1', handle: '@nrk', hlsUrl: 'https://nrk-nrk1.akamaized.net/21/0/hls/nrk_1/playlist.m3u8', geoAvailability: ['NO'] },
-  { id: 'aljazeera-balkans', name: 'Al Jazeera Balkans', handle: '@AlJazeeraBalkans', hlsUrl: 'https://live-hls-web-ajb.getaj.net/AJB/index.m3u8' },
-  // Oceania
-  { id: 'abc-news-au', name: 'ABC News Australia', handle: '@abcnewsaustralia', fallbackVideoId: 'vOTiJkg1voo' },
-];
-
-const _REGION_ENTRIES: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['bloomberg', 'cnbc', 'yahoo', 'cnn', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news', 'ctv-news', 'reuters-tv', 'nasa'] },
-  { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['sky', 'euronews', 'dw', 'france24', 'bbc-news', 'gb-news', 'the-guardian', 'france24-en', 'phoenix', 'rtp3', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'euronews-fr', 'euronews-gr', 'skai-tv', 'ert-news', 'france24-fr', 'france-info', 'bfmtv', 'tv5monde-info', 'nrk1', 'aljazeera-balkans'] },
-  { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13', 'dw-espanol', 'rt-espanol', 'cgtn-espanol'] },
-  { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'cgtn', 'wion', 'ndtv', 'cna-asia', 'nhk-world', 'arirang-news', 'india-today', 'abp-news'] },
-  { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['alarabiya', 'aljazeera', 'al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'press-tv', 'cgtn-arabic', 'kan-11', 'i24-news', 'asharq-news', 'aljazeera-arabic', 'aljazeera-mubasher', 'alarabiya-business', 'al-qahera-news', 'dw-arabic', 'rt-arabic', 'rudaw'] },
-  { key: 'africa', labelKey: 'components.liveNews.regionAfrica', channelIds: ['africanews', 'channels-tv', 'ktn-news', 'enca', 'sabc-news', 'arise-news'] },
-  { key: 'oc', labelKey: 'components.liveNews.regionOceania', channelIds: ['abc-news-au'] },
-];
-export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
-  ..._REGION_ENTRIES,
-];
-
-const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS;
-
-/** Default channel list for the current variant (for restore in channel management). */
-export function getDefaultLiveChannels(): LiveChannel[] {
-  return [...DEFAULT_LIVE_CHANNELS];
+function youtubeLink(watchUrl: string): HTMLAnchorElement {
+  const link = document.createElement('a');
+  link.className = 'offline-retry';
+  link.href = watchUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = t('components.liveNews.openOnYouTube') || 'Open on YouTube';
+  link.addEventListener('click', (e) => e.stopPropagation());
+  return link;
 }
 
-/** Returns optional channels filtered by user country. Channels without geoAvailability pass through. */
-export function getFilteredOptionalChannels(userCountry: string | null): LiveChannel[] {
-  if (!userCountry) return OPTIONAL_LIVE_CHANNELS;
-  const uc = userCountry.toUpperCase();
-  return OPTIONAL_LIVE_CHANNELS.filter((c) => !c.geoAvailability || c.geoAvailability.includes(uc));
-}
-
-/** Returns region entries with geo-restricted channel IDs removed for the user's country. */
-export function getFilteredChannelRegions(userCountry: string | null): typeof OPTIONAL_CHANNEL_REGIONS {
-  if (!userCountry) return OPTIONAL_CHANNEL_REGIONS;
-  const filtered = getFilteredOptionalChannels(userCountry);
-  const allowedIds = new Set(filtered.map((c) => c.id));
-  return OPTIONAL_CHANNEL_REGIONS.map((r) => ({
-    ...r,
-    channelIds: r.channelIds.filter((id) => allowedIds.has(id)),
-  }));
-}
-
-export interface StoredLiveChannels {
-  order: string[];
-  custom?: LiveChannel[];
-  /** Display name overrides for built-in channels (and custom). */
-  displayNameOverrides?: Record<string, string>;
-}
-
-const DEFAULT_STORED: StoredLiveChannels = {
-  order: DEFAULT_LIVE_CHANNELS.map((c) => c.id),
-};
-
-const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
-  'sky': 'https://linear901-oo-hls0-prd-gtm.delivery.skycdp.com/17501/sde-fast-skynews/master.m3u8',
-  'euronews': 'https://dash4.antik.sk/live/test_euronews/playlist.m3u8',
-  'dw': 'https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/master.m3u8',
-  'france24': 'https://amg00106-france24-france24-samsunguk-qvpp8.amagi.tv/playlist/amg00106-france24-france24-samsunguk/playlist.m3u8',
-  'alarabiya': 'https://live.alarabiya.net/alarabiapublish/alarabiya.smil/playlist.m3u8',
-  'aljazeera': 'https://live-hls-apps-aje-fa.getaj.net/AJE/index.m3u8',
-  'bloomberg': 'https://bloomberg.com/media-manifest/streams/us.m3u8',
-  'cnn': 'https://turnerlive.warnermediacdn.com/hls/live/586495/cnngo/cnn_slate/VIDEO_0_3564000.m3u8',
-  'abc-news': 'https://lnc-abc-news.tubi.video/index.m3u8',
-  'nbc-news': 'https://dai2.xumo.com/amagi_hls_data_xumo1212A-xumo-nbcnewsnow/CDN/master.m3u8',
-  'ndtv': 'https://ndtvindiaelemarchana.akamaized.net/hls/live/2003679/ndtvindia/master.m3u8',
-  'i24-news': 'https://bcovlive-a.akamaihd.net/6e3dd61ac4c34d6f8fb9698b565b9f50/eu-central-1/5377161796001/playlist-all_dvr.m3u8',
-  'cgtn-arabic': 'https://news.cgtn.com/resource/live/arabic/cgtn-a.m3u8',
-  'cbs-news': 'https://cbsn-us.cbsnstream.cbsnews.com/out/v1/55a8648e8f134e82a470f83d562deeca/master.m3u8',
-  'trt-world': 'https://tv-trtworld.medya.trt.com.tr/master.m3u8',
-  'sky-news-arabia': 'https://live-stream.skynewsarabia.com/c-horizontal-channel/horizontal-stream/index.m3u8',
-  'al-hadath': 'https://av.alarabiya.net/alarabiapublish/alhadath.smil/playlist.m3u8',
-  'rt': 'https://rt-glb.rttv.com/dvr/rtnews/playlist.m3u8',
-  'abc-news-au': 'https://abc-iview-mediapackagestreams-2.akamaized.net/out/v1/6e1cc6d25ec0480ea099a5399d73bc4b/index.m3u8',
-  'bbc-news': 'https://vs-hls-push-uk.live.fastly.md.bbci.co.uk/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/iptv_hd_abr_v1.m3u8',
-  'tagesschau24': 'https://tagesschau.akamaized.net/hls/live/2020115/tagesschau/tagesschau_1/master.m3u8',
-  'india-today': 'https://indiatodaylive.akamaized.net/hls/live/2014320/indiatoday/indiatodaylive/playlist.m3u8',
-  'rudaw': 'https://svs.itworkscdn.net/rudawlive/rudawlive.smil/playlist.m3u8',
-  'kan-11': 'https://kan11.media.kan.org.il/hls/live/2024514/2024514/master.m3u8',
-  'tv5monde-info': 'https://ott.tv5monde.com/Content/HLS/Live/channel(info)/index.m3u8',
-  'arise-news': 'https://liveedge-arisenews.visioncdn.com/live-hls/arisenews/arisenews/arisenews_web/master.m3u8',
-  'nhk-world': 'https://nhkwlive-ojp.akamaized.net/hls/live/2003459/nhkwlive-ojp-en/index_4M.m3u8',
-  'cbc-news': 'https://cbcnewshd-f.akamaihd.net/i/cbcnews_1@8981/index_2500_av-p.m3u8',
-  'record-news': 'https://stream.ads.ottera.tv/playlist.m3u8?network_id=2116',
-  'abp-news': 'https://abplivetv.pc.cdn.bitgravity.com/httppush/abp_livetv/abp_abpnews/master.m3u8',
-  'nrk1': 'https://nrk-nrk1.akamaized.net/21/0/hls/nrk_1/playlist.m3u8',
-  'aljazeera-balkans': 'https://live-hls-web-ajb.getaj.net/AJB/index.m3u8',
-  'sabc-news': 'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/chunklist_b250000_t64MjQwcA==.m3u8',
-  'arirang-news': 'https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8',
-  'fox-news': 'https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8',
-  'aljazeera-arabic': 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8',
-  'cgtn': 'https://news.cgtn.com/resource/live/english/cgtn-news.m3u8',
-  'gb-news': 'https://live-gbnews.simplestreamcdn.com/live5/gbnews/bitrate1.isml/manifest.m3u8',
-  'reuters-tv': 'https://reuters-reutersnow-1-eu.rakuten.wurl.tv/playlist.m3u8',
-  'the-guardian': 'https://rakuten-guardian-1-ie.samsung.wurl.tv/playlist.m3u8',
-  'phoenix': 'https://zdf-hls-19.akamaized.net/hls/live/2016502/de/veryhigh/master.m3u8',
-  'ctv-news': 'https://pe-fa-lp02a.9c9media.com/live/News1Digi/p/hls/00000201/38ef78f479b07aa0/index/0c6a10a2/live/stream/h264/v1/3500000/manifest.m3u8',
-  'al-qahera-news': 'https://bcovlive-a.akamaihd.net/d30cbb3350af4cb7a6e05b9eb1bfd850/eu-west-1/6057955906001/playlist.m3u8',
-  'aljazeera-mubasher': 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8',
-  'alarabiya-business': 'https://live.alarabiya.net/alarabiapublish/aswaaq.smil/playlist.m3u8',
-  'rtp3': 'https://streaming-live.rtp.pt/livetvhlsDVR/rtpnHDdvr.smil/playlist.m3u8?DVR=',
-  'dw-arabic': 'https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/index.m3u8',
-  'dw-espanol': 'https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/stream04/streamPlaylist.m3u8',
-  'rt-arabic': 'https://rt-arb.rttv.com/dvr/rtarab/playlist.m3u8',
-  'rt-espanol': 'https://rt-esp.rttv.com/dvr/rtesp/playlist.m3u8',
-  'cgtn-espanol': 'https://news.cgtn.com/resource/live/espanol/cgtn-e.m3u8',
-  'press-tv': 'https://cdnlive.presstv.ir/cdnlive/smil:cdnlive.smil/playlist.m3u8',
-};
-
-interface ProxiedHlsEntry { url: string; referer: string; }
-const PROXIED_HLS_MAP: Readonly<Record<string, ProxiedHlsEntry>> = {
-  'cnbc': { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnbc_live/index.m3u8', referer: 'https://livenewschat.eu/' },
-};
-
-const IDLE_ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'] as const;
-
-if (import.meta.env.DEV) {
-  const allChannels = [...FULL_LIVE_CHANNELS, ...TECH_LIVE_CHANNELS, ...OPTIONAL_LIVE_CHANNELS];
-  for (const id of Object.keys(DIRECT_HLS_MAP)) {
-    const ch = allChannels.find(c => c.id === id);
-    if (!ch) console.error(`[LiveNews] DIRECT_HLS_MAP key '${id}' has no matching channel`);
-    else if (!ch.fallbackVideoId && !ch.hlsUrl && !ch.handle) {
-      console.error(`[LiveNews] Channel '${id}' in DIRECT_HLS_MAP lacks fallback (videoId/hlsUrl/handle)`);
-    }
-  }
-}
-
-export const BUILTIN_IDS = new Set([
-  ...FULL_LIVE_CHANNELS.map((c) => c.id),
-  ...TECH_LIVE_CHANNELS.map((c) => c.id),
-  ...OPTIONAL_LIVE_CHANNELS.map((c) => c.id),
-]);
-
-export function loadChannelsFromStorage(): LiveChannel[] {
-  const stored = loadFromStorage<StoredLiveChannels>(STORAGE_KEYS.liveChannels, DEFAULT_STORED);
-  const order = stored.order?.length ? stored.order : DEFAULT_STORED.order;
-  const channelMap = new Map<string, LiveChannel>();
-  for (const c of FULL_LIVE_CHANNELS) channelMap.set(c.id, { ...c });
-  for (const c of TECH_LIVE_CHANNELS) channelMap.set(c.id, { ...c });
-  for (const c of OPTIONAL_LIVE_CHANNELS) channelMap.set(c.id, { ...c });
-  for (const c of stored.custom ?? []) {
-    if (c.id && (c.handle || c.hlsUrl)) channelMap.set(c.id, { ...c });
-  }
-  const overrides = stored.displayNameOverrides ?? {};
-  for (const [id, name] of Object.entries(overrides)) {
-    const ch = channelMap.get(id);
-    if (ch) ch.name = name;
-  }
-  const result: LiveChannel[] = [];
-  for (const id of order) {
-    const ch = channelMap.get(id);
-    if (ch) result.push(ch);
-  }
-  return result;
-}
-
-export function saveChannelsToStorage(channels: LiveChannel[]): void {
-  const order = channels.map((c) => c.id);
-  const custom = channels.filter((c) => !BUILTIN_IDS.has(c.id));
-  const builtinNames = new Map<string, string>();
-  for (const c of [...FULL_LIVE_CHANNELS, ...TECH_LIVE_CHANNELS, ...OPTIONAL_LIVE_CHANNELS]) builtinNames.set(c.id, c.name);
-  const displayNameOverrides: Record<string, string> = {};
-  for (const c of channels) {
-    if (builtinNames.has(c.id) && c.name !== builtinNames.get(c.id)) {
-      displayNameOverrides[c.id] = c.name;
-    }
-  }
-  saveToStorage(STORAGE_KEYS.liveChannels, { order, custom, displayNameOverrides });
-}
+/**
+ * An explicit start (a channel click, Retry, the header play button) explains an offline channel.
+ * An implicit one (play-all, auto-play, Resume) moves on to the next channel instead.
+ */
+type PlaybackOrigin = 'explicit' | 'implicit';
 
 export class LiveNewsPanel extends Panel {
-  private static apiPromise: Promise<void> | null = null;
   private channels: LiveChannel[] = [];
   private activeChannel!: LiveChannel;
   private channelSwitcher: HTMLElement | null = null;
   private isMuted = true;
   private isPlaying = false;
-  private wasPlayingBeforeIdle = false;
+  private idleStoppedAfterMs: number | null = null;
   private muteBtn: HTMLButtonElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
   private liveBtn: HTMLButtonElement | null = null;
-  private idleTimeout: ReturnType<typeof setTimeout> | null = null;
-  private readonly ECO_IDLE_PAUSE_MS = IDLE_PAUSE_MS;
-  private boundVisibilityHandler!: () => void;
-  private boundIdleResetHandler!: () => void;
-  private idleDetectionEnabled = false;
+  private readonly boundVisibilityHandler = () => {
+    if (document.hidden) stopLiveMediaPlayback('live-news', 'hidden');
+    else this.startAlwaysOnPlaybackIfVisible();
+  };
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
+  private unsubscribeIdle: (() => void) | null = null;
 
-  // YouTube Player API state
-  private player: YouTubePlayer | null = null;
+  // One verified live session for the active channel. Callbacks from a replaced session carry a stale generation.
+  private videoSession: LiveVideoSession | null = null;
+  // A player waiting for the resolved channel map before its session opens (renderPlayer).
+  private pendingMount = false;
+  private videoPhase: LiveVideoState['phase'] | null = null;
   private playerContainer: HTMLDivElement | null = null;
-  private playerElement: HTMLDivElement | null = null;
-  private playerElementId: string;
-  private isPlayerReady = false;
-  private currentVideoId: string | null = null;
-  private readonly youtubeOrigin: string | null;
-  private forceFallbackVideoForNextInit = false;
-
-  // Desktop: always use sidecar embed for YouTube (tauri:// origin gets 153).
-  // DIRECT_HLS_MAP channels use native <video> instead.
-  private useDesktopEmbedProxy = isDesktopRuntime();
-  private desktopEmbedIframe: HTMLIFrameElement | null = null;
-  private desktopEmbedSession: { iframe: HTMLIFrameElement; channelId: string; sessionToken: number } | null = null;
-  private desktopEmbedRenderToken = 0;
-  private channelSwitchGeneration = 0;
+  private playerGeneration = 0;
+  private playbackOrigin: PlaybackOrigin = 'implicit';
+  // Channels an implicit start already found offline, so it never skips in a circle.
+  private skippedChannelIds = new Set<string>();
+  // When each channel was last found offline. Implicit starts and "Play next channel" pass over it meanwhile.
+  private readonly failureMemory = createFailureMemory();
   private suppressChannelClick = false;
-  private boundMessageHandler!: (e: MessageEvent) => void;
-  private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
-  private static readonly MUTE_SYNC_POLL_MS = 500;
+  private channelDragTarget: HTMLElement | null = null;
+  private channelDragStarted = false;
+  private channelDragStartX = 0;
+  private channelDragListenersAttached = false;
+  private readonly boundChannelDragMove = (e: MouseEvent): void => {
+    if (!this.channelDragTarget || !this.channelSwitcher) return;
+    if (!this.channelDragStarted) {
+      if (Math.abs(e.clientX - this.channelDragStartX) < 6) return;
+      this.channelDragStarted = true;
+      this.channelDragTarget.classList.add('live-channel-dragging');
+    }
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
+    if (!target || target === this.channelDragTarget) return;
+    const all = Array.from(this.channelSwitcher.querySelectorAll('.live-channel-btn'));
+    const idx = all.indexOf(this.channelDragTarget);
+    const targetIdx = all.indexOf(target);
+    if (idx === -1 || targetIdx === -1) return;
+    if (idx < targetIdx) {
+      target.parentElement?.insertBefore(this.channelDragTarget, target.nextSibling);
+    } else {
+      target.parentElement?.insertBefore(this.channelDragTarget, target);
+    }
+  };
+  private readonly boundChannelDragUp = (): void => {
+    if (!this.channelDragTarget) return;
+    if (this.channelDragStarted) {
+      this.channelDragTarget.classList.remove('live-channel-dragging');
+      this.applyChannelOrderFromDom();
+      this.suppressChannelClick = true;
+      setTimeout(() => {
+        this.suppressChannelClick = false;
+      }, 0);
+    }
+    this.channelDragTarget = null;
+    this.channelDragStarted = false;
+    this.detachChannelDragListeners();
+  };
 
-  // Bot-check detection: if player doesn't become ready within this timeout,
-  // YouTube is likely showing "Sign in to confirm you're not a bot".
-  private botCheckTimeout: ReturnType<typeof setTimeout> | null = null;
-  private static readonly BOT_CHECK_TIMEOUT_MS = 15_000;
+  private attachChannelDragListeners(): void {
+    if (this.channelDragListenersAttached) return;
+    document.addEventListener('mousemove', this.boundChannelDragMove);
+    document.addEventListener('mouseup', this.boundChannelDragUp);
+    this.channelDragListenersAttached = true;
+  }
 
-  // Native HLS <video> element for direct stream playback (bypasses iframe/cookie issues)
-  private nativeVideoElement: HTMLVideoElement | null = null;
-  private hlsInstance: import('hls.js').default | null = null;
-  private hlsFailureCooldown = new Map<string, number>();
-  private readonly HLS_COOLDOWN_MS = 5 * 60 * 1000;
-  private liveMediaSessionToken = 0;
+  private detachChannelDragListeners(): void {
+    if (!this.channelDragListenersAttached) return;
+    document.removeEventListener('mousemove', this.boundChannelDragMove);
+    document.removeEventListener('mouseup', this.boundChannelDragUp);
+    this.channelDragListenersAttached = false;
+  }
 
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  /** Removes the open channel-management overlay and its document listener. Null while none is open. */
+  private dismissChannelManagementModal: (() => void) | null = null;
   // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
     if (this.canHostLiveMedia()) this.triggerInit();
@@ -421,28 +155,24 @@ export class LiveNewsPanel extends Panel {
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
-    this.insertLiveCountBadge(OPTIONAL_LIVE_CHANNELS.length);
-    this.youtubeOrigin = LiveNewsPanel.resolveYouTubeOrigin();
-    this.playerElementId = `live-news-player-${Date.now()}`;
+    this.insertLiveCountBadge(OPTIONAL_LIVE_CHANNELS.filter(hasBuiltinStreams).length);
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
     const savedChannelId = loadFromStorage<string>(STORAGE_KEYS.activeChannel, '');
     const savedChannel = savedChannelId ? this.channels.find(c => c.id === savedChannelId) : null;
-    this.activeChannel = savedChannel ?? this.channels[0]!;
+    this.activeChannel = savedChannel ?? this.channels[0] ?? { id: '', name: '' };
     this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
-    this.setupBridgeMessageListener();
     this.renderPlaceholder();
     this.setupLazyInit();
-    this.setupIdleDetection();
-    this.unsubscribeStreamSettings = subscribeLiveStreamsSettingsChange((alwaysOn) => {
-      const wasAlwaysOn = this.alwaysOn;
+    document.addEventListener('visibilitychange', this.boundVisibilityHandler);
+    this.unsubscribeIdle = subscribeLiveMediaIdle((idleAfterMs) => this.stopForIdle(idleAfterMs));
+    this.unsubscribeStreamSettings = subscribeLiveStreamsAlwaysOnChange((alwaysOn) => {
       this.alwaysOn = alwaysOn;
-      this.applyIdleMode();
-      if (wasAlwaysOn && !alwaysOn) {
+      if (!alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
-        // Anything already playing keeps running — feeds coexist; eco-idle (re-armed below) will pause it.
+        // Anything already playing keeps running — feeds coexist; the idle stop still applies.
         if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
         if (this.idleCallbackId !== null) {
           if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
@@ -474,8 +204,14 @@ export class LiveNewsPanel extends Panel {
   private renderPlaceholder(): void {
     this.deferredInit = false;
     this.playerContainer = null;
-    this.playerElement = null;
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
+    if (this.idleStoppedAfterMs !== null) {
+      this.setContentNodes(createLiveMediaIdleNotice({
+        panel: 'live-news',
+        heading: this.getChannelDisplayName(this.activeChannel),
+        idleAfterMs: this.idleStoppedAfterMs,
+      }));
+      return;
+    }
     const container = document.createElement('div');
     container.className = 'live-news-placeholder live-media-shell';
 
@@ -503,7 +239,7 @@ export class LiveNewsPanel extends Panel {
     container.appendChild(label);
     container.appendChild(playBtn);
     container.addEventListener('click', () => playAllLiveMedia());
-    this.content.appendChild(container);
+    this.setContentNodes(container);
   }
 
   private setupLazyInit(): void {
@@ -512,7 +248,8 @@ export class LiveNewsPanel extends Panel {
         if (entries.some(e => e.isIntersecting)) {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
-          if (!this.alwaysOn) return;
+          // An idle stop ends only through Resume or Play; scrolling back into view is neither.
+          if (!this.alwaysOn || this.idleStoppedAfterMs !== null) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
               () => { this.idleCallbackId = null; this.triggerInit(); },
@@ -537,6 +274,13 @@ export class LiveNewsPanel extends Panel {
       else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
       this.idleCallbackId = null;
     }
+    this.beginPlayback('implicit');
+  }
+
+  /** Starts the active channel. The origin decides what an offline channel does: explain itself, or hand over. */
+  private beginPlayback(origin: PlaybackOrigin): void {
+    this.playbackOrigin = origin;
+    this.skippedChannelIds.clear();
     this.requestPlaybackForActiveChannel();
   }
 
@@ -553,22 +297,15 @@ export class LiveNewsPanel extends Panel {
   private hasPlaybackIntent(): boolean {
     return this.deferredInit ||
       this.isPlaying ||
-      !!this.player ||
-      !!this.desktopEmbedIframe ||
-      !!this.nativeVideoElement ||
+      this.videoSession !== null ||
+      this.pendingMount ||
       this.ownsLiveNewsMedia() ||
-      (this.alwaysOn && !document.hidden && this.isPanelVisible());
+      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
   }
 
   private ownsLiveMediaForChannel(channelId: string): boolean {
     const activeMedia = getActiveLiveMedia('live-news');
     return activeMedia?.panelId === 'live-news' && activeMedia.streamId === channelId;
-  }
-
-  private ownsLiveMediaSession(channelId: string, sessionToken: number): boolean {
-    return this.liveMediaSessionToken === sessionToken &&
-      this.activeChannel.id === channelId &&
-      this.ownsLiveMediaForChannel(channelId);
   }
 
   private ownsActiveLiveMedia(): boolean {
@@ -581,24 +318,23 @@ export class LiveNewsPanel extends Panel {
 
   private startAlwaysOnPlaybackIfVisible(): void {
     if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isPanelVisible()) return;
-    if (this.ownsActiveLiveMedia()) return;
-    this.requestPlaybackForActiveChannel();
+    // An idle stop ends only through Resume or Play, so autoplay must not restart it on tab return.
+    if (this.idleStoppedAfterMs !== null || this.ownsActiveLiveMedia()) return;
+    this.beginPlayback('implicit');
   }
 
   private startPlaybackForActiveChannel(): void {
-    this.liveMediaSessionToken += 1;
     this.isPlaying = true;
-    this.wasPlayingBeforeIdle = true;
+    this.idleStoppedAfterMs = null;
     this.updateLiveIndicator();
     this.renderPlayer();
   }
 
   private stopPlaybackFromController(reason: LiveMediaStopReason): void {
-    this.liveMediaSessionToken += 1;
-    const shouldResumeAfterIdle = reason === 'idle' && this.wasPlayingBeforeIdle;
     this.isPlaying = false;
-    this.wasPlayingBeforeIdle = shouldResumeAfterIdle;
+    if (reason !== 'idle') this.idleStoppedAfterMs = null;
     this.updateLiveIndicator();
+    this.clearChannelLoadingState();
     this.destroyPlayer();
     // Skip DOM work on a detached panel; destroy() already runs destroyPlayer().
     if (this.element.isConnected) this.renderPlaceholder();
@@ -608,219 +344,20 @@ export class LiveNewsPanel extends Panel {
     saveChannelsToStorage(this.channels);
   }
 
-  private getDirectHlsUrl(channelId: string): string | undefined {
-    const url = DIRECT_HLS_MAP[channelId];
-    if (!url) return undefined;
-    const failedAt = this.hlsFailureCooldown.get(channelId);
-    if (failedAt && Date.now() - failedAt < this.HLS_COOLDOWN_MS) return undefined;
-    return url;
-  }
-
-  private getProxiedHlsUrl(channelId: string): string | undefined {
-    if (!isDesktopRuntime()) return undefined;
-    const entry = PROXIED_HLS_MAP[channelId];
-    if (!entry) return undefined;
-    const failedAt = this.hlsFailureCooldown.get(channelId);
-    if (failedAt && Date.now() - failedAt < this.HLS_COOLDOWN_MS) return undefined;
-    return `http://127.0.0.1:${getLocalApiPort()}/api/hls-proxy?url=${encodeURIComponent(entry.url)}`;
-  }
-
-  private get embedOrigin(): string {
-    if (isDesktopRuntime()) return `http://localhost:${getLocalApiPort()}`;
-    try { return new URL(getRemoteApiBaseUrl()).origin; } catch { return 'https://worldmonitor.app'; }
-  }
-
-  private setupBridgeMessageListener(): void {
-    this.boundMessageHandler = (e: MessageEvent) => {
-      const session = this.desktopEmbedSession;
-      if (!session || e.source !== session.iframe.contentWindow) return;
-      if (!this.ownsLiveMediaSession(session.channelId, session.sessionToken)) return;
-      const expected = this.embedOrigin;
-      const localOrigin = getApiBaseUrl();
-      if (e.origin !== expected && (!localOrigin || e.origin !== localOrigin)) return;
-      const msg = e.data;
-      if (!msg || typeof msg !== 'object' || !msg.type) return;
-      if (msg.type === 'yt-ready') {
-        this.clearBotCheckTimeout();
-        this.isPlayerReady = true;
-        this.syncDesktopEmbedState();
-      } else if (msg.type === 'yt-error') {
-        this.clearBotCheckTimeout();
-        const code = Number(msg.code ?? 0);
-        const channel = this.activeChannel;
-        if (code === 153 && channel.fallbackVideoId &&
-          channel.videoId !== channel.fallbackVideoId) {
-          channel.videoId = channel.fallbackVideoId;
-          this.renderDesktopEmbed(true);
-        } else {
-          this.showEmbedError(channel, code);
-        }
-      } else if (msg.type === 'yt-mute-state') {
-        const muted = msg.muted === true;
-        if (this.isMuted !== muted) {
-          this.isMuted = muted;
-          this.updateMuteIcon();
-        }
-      }
-    };
-    window.addEventListener('message', this.boundMessageHandler);
-  }
-
-  private static resolveYouTubeOrigin(): string | null {
-    const fallbackOrigin = SITE_VARIANT === 'tech'
-      ? 'https://worldmonitor.app'
-      : 'https://worldmonitor.app';
-
-    try {
-      const { protocol, origin, host } = window.location;
-      if (protocol === 'http:' || protocol === 'https:') {
-        // Desktop webviews commonly run from tauri.localhost which can trigger
-        // YouTube embed restrictions. Use canonical public origin instead.
-        if (host === 'tauri.localhost' || host.endsWith('.tauri.localhost')) {
-          return fallbackOrigin;
-        }
-        return origin;
-      }
-      if (protocol === 'tauri:' || protocol === 'asset:') {
-        return fallbackOrigin;
-      }
-    } catch {
-      // Ignore invalid location values.
-    }
-    return fallbackOrigin;
-  }
-
-
-  private applyIdleMode(): void {
-    if (this.alwaysOn) {
-      if (this.idleTimeout) {
-        clearTimeout(this.idleTimeout);
-        this.idleTimeout = null;
-      }
-      if (this.idleDetectionEnabled) {
-        IDLE_ACTIVITY_EVENTS.forEach((event) => {
-          document.removeEventListener(event, this.boundIdleResetHandler);
-        });
-        this.idleDetectionEnabled = false;
-      }
-      this.startAlwaysOnPlaybackIfVisible();
-      return;
-    }
-
-    if (!this.idleDetectionEnabled) {
-      IDLE_ACTIVITY_EVENTS.forEach((event) => {
-        document.addEventListener(event, this.boundIdleResetHandler, { passive: true });
-      });
-      this.idleDetectionEnabled = true;
-    }
-
-    this.boundIdleResetHandler();
-  }
-
-  private setupIdleDetection(): void {
-    // Suspend idle timer when hidden, resume when visible
-    this.boundVisibilityHandler = () => {
-      if (document.hidden) {
-        if (this.idleTimeout) clearTimeout(this.idleTimeout);
-        stopLiveMediaPlayback('live-news', 'hidden');
-      } else {
-        this.applyIdleMode();
-      }
-    };
-    document.addEventListener('visibilitychange', this.boundVisibilityHandler);
-
-    // Track user activity to detect idle (pauses after 5 min inactivity)
-    this.boundIdleResetHandler = () => {
-      if (this.alwaysOn) return;
-      if (this.idleTimeout) clearTimeout(this.idleTimeout);
-      this.resumeFromIdle();
-      this.idleTimeout = setTimeout(() => this.pauseForIdle(), this.ECO_IDLE_PAUSE_MS);
-    };
-
-    this.applyIdleMode();
-  }
-
-  private pauseForIdle(): void {
-    // Arm idle-resume only when actually playing; otherwise a stale flag could
-    // resurrect media the user never started (or paused) when the stop fires.
-    this.wasPlayingBeforeIdle = this.isPlaying;
-    if (this.isPlaying) {
-      this.isPlaying = false;
-      this.updateLiveIndicator();
-    }
+  private stopForIdle(idleAfterMs: number): void {
+    if (this.isFullscreen || !this.isPlaying || !getActiveLiveMedia('live-news')) return;
+    this.idleStoppedAfterMs = idleAfterMs;
+    trackLiveMediaIdleStop('live-news', idleAfterMs);
     stopLiveMediaPlayback('live-news', 'idle');
   }
 
-  private stopMuteSyncPolling(): void {
-    if (this.muteSyncInterval !== null) {
-      clearInterval(this.muteSyncInterval);
-      this.muteSyncInterval = null;
-    }
-  }
-
-  private startMuteSyncPolling(): void {
-    this.stopMuteSyncPolling();
-    this.muteSyncInterval = setInterval(() => this.syncMuteStateFromPlayer(), LiveNewsPanel.MUTE_SYNC_POLL_MS);
-  }
-
-  private syncMuteStateFromPlayer(): void {
-    if (this.useDesktopEmbedProxy || !this.player || !this.isPlayerReady) return;
-    const p = this.player as { getVolume?(): number; isMuted?(): boolean };
-    const muted = typeof p.isMuted === 'function'
-      ? p.isMuted()
-      : (p.getVolume?.() === 0);
-    if (typeof muted === 'boolean' && muted !== this.isMuted) {
-      this.isMuted = muted;
-      this.updateMuteIcon();
-    }
-  }
-
   private destroyPlayer(): void {
-    this.clearBotCheckTimeout();
-    this.stopMuteSyncPolling();
-    if (this.player) {
-      if (typeof this.player.destroy === 'function') this.player.destroy();
-      this.player = null;
-    }
-
-    if (this.hlsInstance) {
-      this.hlsInstance.destroy();
-      this.hlsInstance = null;
-    }
-
-    if (this.nativeVideoElement) {
-      this.nativeVideoElement.pause();
-      this.nativeVideoElement.removeAttribute('src');
-      this.nativeVideoElement.load();
-      this.nativeVideoElement = null;
-    }
-
-    this.desktopEmbedIframe = null;
-    this.desktopEmbedSession = null;
-    this.desktopEmbedRenderToken += 1;
-    this.isPlayerReady = false;
-    this.currentVideoId = null;
-
-    // Clear the container to remove player/iframe
-    if (this.playerContainer) {
-      setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
-
-      if (!this.useDesktopEmbedProxy) {
-        // Recreate player element for JS API mode
-        this.playerElement = document.createElement('div');
-        this.playerElement.id = this.playerElementId;
-        this.playerContainer.appendChild(this.playerElement);
-      } else {
-        this.playerElement = null;
-      }
-    }
-  }
-
-  private resumeFromIdle(): void {
-    if (this.ownsActiveLiveMedia()) return;
-    if (this.wasPlayingBeforeIdle && !this.isPlaying) {
-      this.requestPlaybackForActiveChannel();
-    }
+    this.playerGeneration += 1;
+    this.pendingMount = false;
+    this.videoSession?.destroy();
+    this.videoSession = null;
+    this.videoPhase = null;
+    this.playerContainer = null;
   }
 
   private createLiveButton(): void {
@@ -842,12 +379,12 @@ export class LiveNewsPanel extends Panel {
   }
 
   private togglePlayback(): void {
-    if (this.isPlaying || this.player || this.desktopEmbedIframe || this.nativeVideoElement) {
+    if (this.isPlaying || this.videoSession || this.pendingMount) {
       stopLiveMediaPlayback('live-news', 'user-paused');
       return;
     }
 
-    this.requestPlaybackForActiveChannel();
+    this.beginPlayback('explicit');
   }
 
   private createMuteButton(): void {
@@ -919,7 +456,7 @@ export class LiveNewsPanel extends Panel {
   private toggleMute(): void {
     this.isMuted = !this.isMuted;
     this.updateMuteIcon();
-    this.syncPlayerState();
+    this.videoSession?.setMuted(this.isMuted);
   }
 
   private getChannelDisplayName(channel: LiveChannel): string {
@@ -957,6 +494,8 @@ export class LiveNewsPanel extends Panel {
         return;
       }
       e.preventDefault();
+      // A connecting channel keeps focus (it is never disabled), so its repeat clicks are ignored here.
+      if (btn.getAttribute('aria-busy') === 'true') return;
       this.switchChannel(channel);
     });
     return btn;
@@ -970,55 +509,16 @@ export class LiveNewsPanel extends Panel {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
 
-    // Mouse-based drag reorder (works in WKWebView/Tauri)
-    let dragging: HTMLElement | null = null;
-    let dragStarted = false;
-    let startX = 0;
-    const THRESHOLD = 6;
-
     this.channelSwitcher.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
       if (!btn) return;
       this.suppressChannelClick = false;
-      dragging = btn;
-      dragStarted = false;
-      startX = e.clientX;
+      this.channelDragTarget = btn;
+      this.channelDragStarted = false;
+      this.channelDragStartX = e.clientX;
+      this.attachChannelDragListeners();
       e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging || !this.channelSwitcher) return;
-      if (!dragStarted) {
-        if (Math.abs(e.clientX - startX) < THRESHOLD) return;
-        dragStarted = true;
-        dragging.classList.add('live-channel-dragging');
-      }
-      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
-      if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
-      const idx = all.indexOf(dragging);
-      const targetIdx = all.indexOf(target);
-      if (idx === -1 || targetIdx === -1) return;
-      if (idx < targetIdx) {
-        target.parentElement?.insertBefore(dragging, target.nextSibling);
-      } else {
-        target.parentElement?.insertBefore(dragging, target);
-      }
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      if (dragStarted) {
-        dragging.classList.remove('live-channel-dragging');
-        this.applyChannelOrderFromDom();
-        this.suppressChannelClick = true;
-        setTimeout(() => {
-          this.suppressChannelClick = false;
-        }, 0);
-      }
-      dragging = null;
-      dragStarted = false;
     });
 
     const toolbar = document.createElement('div');
@@ -1048,6 +548,7 @@ export class LiveNewsPanel extends Panel {
     overlay.className = 'live-channels-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
     overlay.setAttribute('aria-label', t('components.liveNews.manage') ?? 'Manage channels');
 
     const modal = document.createElement('div');
@@ -1072,10 +573,14 @@ export class LiveNewsPanel extends Panel {
       await initLiveChannelsWindow(container);
     }).catch(console.error);
 
-    const close = () => {
+    const dismiss = () => {
       focusTrap.deactivate();
       overlay.remove();
       document.removeEventListener('keydown', onKey);
+      this.dismissChannelManagementModal = null;
+    };
+    const close = () => {
+      dismiss();
       this.refreshChannelsFromStorage();
     };
     const focusTrap = createFocusTrap(overlay);
@@ -1088,6 +593,7 @@ export class LiveNewsPanel extends Panel {
       if (e.target === overlay) close();
     });
     document.addEventListener('keydown', onKey);
+    this.dismissChannelManagementModal = dismiss;
   }
 
   private refreshChannelSwitcher(): void {
@@ -1096,6 +602,9 @@ export class LiveNewsPanel extends Panel {
     for (const channel of this.channels) {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
+    // A fresh button carries neither mark, so put back what failure memory and the running session still say.
+    this.syncOfflineButtonMarks();
+    if (this.videoPhase === 'connecting') this.markChannelButtonLoading(this.activeChannel.id);
   }
 
   private applyChannelOrderFromDom(): void {
@@ -1108,48 +617,15 @@ export class LiveNewsPanel extends Panel {
     this.saveChannels();
   }
 
-  private async resolveChannelVideo(channel: LiveChannel, forceFallback = false): Promise<void> {
-    const useFallbackVideo = channel.useFallbackOnly || forceFallback;
-
-    if (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id) || channel.hlsUrl) {
-      channel.videoId = channel.fallbackVideoId;
-      channel.isLive = true;
-      return;
-    }
-
-    if (useFallbackVideo) {
-      channel.videoId = channel.fallbackVideoId;
-      channel.isLive = false;
-      return;
-    }
-
-    // Skip fetchLiveVideoInfo for channels without handle (HLS-only)
-    if (!channel.handle) {
-      channel.videoId = channel.fallbackVideoId;
-      channel.isLive = false;
-      return;
-    }
-
-    const info = await fetchLiveVideoInfo(channel.handle);
-    channel.videoId = info.videoId || channel.fallbackVideoId;
-    channel.isLive = !!info.videoId;
-    // Don't re-apply an hlsUrl while the channel is on HLS failure cooldown —
-    // prevents an infinite retry loop in browsers (e.g. Firefox) that reject
-    // YouTube HLS manifests via CORS. The cooldown lets the embed fallback run.
-    const failedAt = this.hlsFailureCooldown.get(channel.id);
-    const hlsCooldownActive = failedAt !== undefined && Date.now() - failedAt < this.HLS_COOLDOWN_MS;
-    channel.hlsUrl = (!hlsCooldownActive && info.hlsUrl) ? info.hlsUrl : undefined;
-  }
-
   private resetChannelButtonLoading(btn: HTMLElement): void {
     btn.classList.remove('loading');
     btn.removeAttribute('aria-busy');
-    (btn as HTMLButtonElement).disabled = false;
+    btn.removeAttribute('aria-disabled');
   }
 
   // Clear every channel button, not only `.loading`. Success used to drop the
-  // spinner class while leaving aria-busy/disabled set, and a later switch
-  // could strip `.loading` from a still-disabled predecessor.
+  // spinner class while leaving aria-busy set, and a later switch could strip
+  // `.loading` from a still-busy predecessor.
   private clearChannelLoadingState(): void {
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       this.resetChannelButtonLoading(btn as HTMLElement);
@@ -1162,592 +638,243 @@ export class LiveNewsPanel extends Panel {
       const btnEl = btn as HTMLElement;
       if (btnEl.dataset.channelId !== channelId) return;
       btnEl.classList.add('loading');
-      // CSS blocks the pointer during load (pointer-events: none); mirror
-      // that for keyboard/AT instead of leaving a silently dead button.
+      // CSS blocks the pointer during load (pointer-events: none). Announce the
+      // same to keyboard/AT without `disabled`, which would drop focus to <body>
+      // for the whole connection; the click handler ignores a busy button.
       btnEl.setAttribute('aria-busy', 'true');
-      (btnEl as HTMLButtonElement).disabled = true;
+      btnEl.setAttribute('aria-disabled', 'true');
     });
   }
 
-  private async switchChannel(channel: LiveChannel): Promise<void> {
-    if (channel.id === this.activeChannel.id) return;
-
-    const generation = ++this.channelSwitchGeneration;
-    this.activeChannel = channel;
-    saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
-    const shouldStartMedia = this.hasPlaybackIntent();
-    const hadLiveNewsOwnership = this.ownsLiveNewsMedia();
-
+  private markActiveChannelButton(channelId: string): void {
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;
-      const isActive = btnEl.dataset.channelId === channel.id;
+      const isActive = btnEl.dataset.channelId === channelId;
       btnEl.classList.toggle('active', isActive);
       btnEl.setAttribute('aria-pressed', String(isActive));
     });
+  }
+
+  private setChannelOffline(channelId: string, offline: boolean): void {
+    this.channelSwitcher?.querySelectorAll<HTMLElement>('.live-channel-btn').forEach(btn => {
+      if (btn.dataset.channelId === channelId) btn.classList.toggle('offline', offline);
+    });
+  }
+
+  /** Keep switcher offline marks aligned with failure memory (do not wipe on a no-intent switch). */
+  private syncOfflineButtonMarks(): void {
+    this.channelSwitcher?.querySelectorAll<HTMLElement>('.live-channel-btn').forEach(btn => {
+      const id = btn.dataset.channelId;
+      if (id) btn.classList.toggle('offline', this.failureMemory.isKnownOffline(id));
+    });
+  }
+
+  private switchChannel(channel: LiveChannel): void {
+    if (channel.id === this.activeChannel.id) {
+      // An implicit start may have landed here without saving it. Choosing it makes it the viewer's channel:
+      // saved, and explained rather than skipped if it goes offline. What is playing keeps playing.
+      if (this.playbackOrigin === 'implicit') {
+        saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
+        this.playbackOrigin = 'explicit';
+      }
+      return;
+    }
+
+    this.activeChannel = channel;
+    saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
+    const shouldStartMedia = this.hasPlaybackIntent();
+    this.markActiveChannelButton(channel.id);
 
     if (!shouldStartMedia) {
       this.clearChannelLoadingState();
-      this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
-        (btn as HTMLElement).classList.remove('offline');
-      });
+      this.syncOfflineButtonMarks();
       this.renderPlaceholder();
       return;
     }
 
-    this.markChannelButtonLoading(channel.id);
-
-    try {
-      await this.resolveChannelVideo(channel);
-      if (generation !== this.channelSwitchGeneration) return;
-      if (!this.element?.isConnected) return;
-      if (this.activeChannel.id !== channel.id) return;
-      if (hadLiveNewsOwnership && !this.ownsLiveNewsMedia()) {
-        this.renderPlaceholder();
-        return;
-      }
-      if (!this.hasPlaybackIntent()) {
-        this.renderPlaceholder();
-        return;
-      }
-
-      this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
-        const btnEl = btn as HTMLElement;
-        if (btnEl.dataset.channelId === channel.id && !channel.videoId) {
-          btnEl.classList.add('offline');
-        }
-      });
-
-      this.requestPlaybackForActiveChannel();
-    } finally {
-      if (generation === this.channelSwitchGeneration) {
-        this.clearChannelLoadingState();
-      }
-    }
+    this.beginPlayback('explicit');
+    // Busy until this channel's session settles on a verdict (onVideoState) or playback stops.
+    if (this.videoPhase === 'connecting') this.markChannelButtonLoading(channel.id);
   }
 
-  private showOfflineMessage(channel: LiveChannel): void {
+  /** The next channel after `from` in the switcher order that `accept` allows, wrapping around. */
+  private nextChannel(from: LiveChannel, accept: (channel: LiveChannel) => boolean): LiveChannel | null {
+    const start = this.channels.findIndex((channel) => channel.id === from.id);
+    for (let step = 1; step < this.channels.length + (start === -1 ? 1 : 0); step++) {
+      const candidate = this.channels[(start + step) % this.channels.length]!;
+      if (candidate.id !== from.id && accept(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  private showOfflineMessage(channel: LiveChannel, reason: OfflineReason = 'not-live', watchUrl: string | null = null): void {
     this.destroyPlayer();
-    const safeName = escapeHtml(channel.name);
-    // #6557: a terminal offline state is authoritative content.
-    this.setTrustedContent(trustedHtml(`
-      <div class="live-offline live-offline-compact">
-        <div class="offline-icon">📺</div>
-        <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
-        <button class="offline-retry" data-live-retry>${t('common.retry')}</button>
-      </div>
-    `, "legacy direct innerHTML migration"));
-    // The repo's last inline onclick= lived here (CSP unsafe-inline
-    // dependency). switchChannel no-ops when the id is already active, so
-    // retry must re-request playback for the current stream.
-    this.content.querySelector('[data-live-retry]')?.addEventListener('click', () => {
-      this.requestPlaybackForActiveChannel();
-    });
-  }
+    // Nothing is playing, so the header button offers play rather than pause.
+    this.isPlaying = false;
+    this.updateLiveIndicator();
 
-  private showEmbedError(channel: LiveChannel, errorCode: number): void {
-    this.destroyPlayer();
-    const watchUrl = channel.videoId
-      ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
-      : channel.handle
-      ? `https://www.youtube.com/${encodeURIComponent(channel.handle)}`
-      : 'https://www.youtube.com';
-    const safeName = escapeHtml(channel.name);
-
-    // #6557: a terminal embed-error state is authoritative content.
-    this.setTrustedContent(trustedHtml(`
-      <div class="live-offline live-offline-compact">
-        <div class="offline-icon">!</div>
-        <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>
-        <a class="offline-retry" href="${sanitizeUrl(watchUrl)}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
-      </div>
-    `, "legacy direct innerHTML migration"));
-  }
-
-  private renderPlayer(): void {
-    this.ensurePlayerContainer();
-    void this.initializePlayer();
-  }
-
-  private ensurePlayerContainer(): void {
-    this.deferredInit = true;
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
-    this.playerContainer = document.createElement('div');
-    this.playerContainer.className = 'live-news-player';
-
-    if (!this.useDesktopEmbedProxy) {
-      this.playerElement = document.createElement('div');
-      this.playerElement.id = this.playerElementId;
-      this.playerContainer.appendChild(this.playerElement);
-    } else {
-      this.playerElement = null;
-    }
-
-    this.content.appendChild(this.playerContainer);
-  }
-
-  private postToEmbed(msg: Record<string, unknown>): void {
-    if (!this.desktopEmbedIframe?.contentWindow) return;
-    this.desktopEmbedIframe.contentWindow.postMessage(msg, this.embedOrigin);
-  }
-
-  private syncDesktopEmbedState(): void {
-    this.postToEmbed({ type: this.isPlaying ? 'play' : 'pause' });
-    this.postToEmbed({ type: this.isMuted ? 'mute' : 'unmute' });
-  }
-
-  private renderDesktopEmbed(force = false): void {
-    if (!this.useDesktopEmbedProxy) return;
-    void this.renderDesktopEmbedAsync(force);
-  }
-
-  private async renderDesktopEmbedAsync(force = false): Promise<void> {
-    const channelId = this.activeChannel.id;
-    const sessionToken = this.liveMediaSessionToken;
-    const videoId = this.activeChannel.videoId;
-    if (!videoId) {
-      this.showOfflineMessage(this.activeChannel);
-      return;
-    }
-
-    // Only recreate iframe when video ID changes (not for play/mute toggling).
-    if (!force && this.currentVideoId === videoId && this.desktopEmbedIframe) {
-      this.syncDesktopEmbedState();
-      return;
-    }
-
-    const renderToken = ++this.desktopEmbedRenderToken;
-    this.currentVideoId = videoId;
-    this.isPlayerReady = true;
-
-    // Always recreate if container was removed from DOM (e.g. showEmbedError replaced content).
-    if (!this.playerContainer || !this.playerContainer.parentElement) {
-      this.ensurePlayerContainer();
-    }
-
-    if (!this.playerContainer) {
-      return;
-    }
-
-    this.desktopEmbedIframe = null;
-    this.desktopEmbedSession = null;
-    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
-
-    // Use local sidecar embed — YouTube rejects tauri:// parent origin with error 153,
-    // and Vercel WAF blocks cloud bridge iframe loads. The sidecar serves the embed from
-    // http://127.0.0.1:PORT which YouTube accepts and has no WAF.
-    const quality = getStreamQuality();
-    const params = new URLSearchParams({
-      videoId,
-      autoplay: this.isPlaying ? '1' : '0',
-      mute: this.isMuted ? '1' : '0',
-    });
-    if (quality !== 'auto') params.set('vq', quality);
-    // origin = canonical site origin YouTube trusts for embed restrictions.
-    // parentOrigin = actual parent frame origin so postMessage round-trips work.
-    params.set('origin', this.youtubeOrigin || 'https://worldmonitor.app');
-    params.set('parentOrigin', window.location.origin);
-    const embedUrl = `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
-
-    if (renderToken !== this.desktopEmbedRenderToken || !this.ownsLiveMediaSession(channelId, sessionToken)) {
-      return;
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.className = 'live-news-embed-frame';
-    iframe.src = embedUrl;
-    iframe.title = `${this.activeChannel.name} live feed`;
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    iframe.style.border = '0';
-    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; storage-access';
-    iframe.allowFullscreen = true;
-    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    iframe.setAttribute('loading', 'eager');
-
-    this.desktopEmbedIframe = iframe;
-    this.desktopEmbedSession = { iframe, channelId, sessionToken };
-    this.playerContainer.appendChild(iframe);
-    this.startBotCheckTimeout();
-  }
-
-  private async renderNativeHlsPlayer(): Promise<void> {
-    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id) || this.activeChannel.hlsUrl;
-    if (!hlsUrl || !(hlsUrl.startsWith('https://') || hlsUrl.startsWith('http://127.0.0.1'))) return;
-    const sessionToken = this.liveMediaSessionToken;
-
-    this.destroyPlayer();
-    this.ensurePlayerContainer();
-    if (!this.playerContainer) return;
-    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
-
-    const video = document.createElement('video');
-    video.className = 'live-news-native-video';
-    video.autoplay = this.isPlaying;
-    video.muted = this.isMuted;
-    video.playsInline = true;
-    video.controls = true;
-    video.setAttribute('referrerpolicy', 'no-referrer');
-    video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000';
-
-    const failedChannel = this.activeChannel;
-
-    let hlsErrorFired = false;
-    const onHlsFatalError = () => {
-      if (hlsErrorFired) return;
-      hlsErrorFired = true;
-      console.warn('[LiveNews] HLS fatal error for', failedChannel.id, hlsUrl);
-      if (this.hlsInstance) { this.hlsInstance.destroy(); this.hlsInstance = null; }
-      video.pause();
-      video.removeAttribute('src');
-      this.nativeVideoElement = null;
-      this.hlsFailureCooldown.set(failedChannel.id, Date.now());
-      failedChannel.hlsUrl = undefined;
-
-      if (this.ownsLiveMediaSession(failedChannel.id, sessionToken)) {
-        this.ensurePlayerContainer();
-        void this.initializePlayer();
-      }
-    };
-
-    const nativeHls = video.canPlayType('application/vnd.apple.mpegurl');
-    if (nativeHls) {
-      // Safari / WKWebView: native HLS support
-      video.src = hlsUrl;
-      video.addEventListener('error', onHlsFatalError);
-    } else {
-      // Chrome / Firefox: lazy-load hls.js only when needed
-      const { default: Hls } = await import('hls.js');
-      if (!this.element?.isConnected || !this.ownsLiveMediaSession(failedChannel.id, sessionToken)) return;
-      if (!Hls.isSupported()) {
-        // No HLS support at all — fall through to YouTube
-        onHlsFatalError();
-        return;
-      }
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-      this.hlsInstance = hls;
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(video);
-      // Monitor both hls.js fatal events and raw media element errors (e.g. decode failures).
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) onHlsFatalError();
-      });
-      video.addEventListener('error', onHlsFatalError);
-    }
-
-    video.addEventListener('volumechange', () => {
-      if (!this.nativeVideoElement) return;
-      const muted = this.nativeVideoElement.muted || this.nativeVideoElement.volume === 0;
-      if (muted !== this.isMuted) {
-        this.isMuted = muted;
-        this.updateMuteIcon();
-      }
-    });
-
-    video.addEventListener('pause', () => {
-      if (!this.nativeVideoElement) return;
-      if (this.isPlaying) {
-        this.isPlaying = false;
-        this.updateLiveIndicator();
-      }
-    });
-
-    video.addEventListener('play', () => {
-      if (!this.nativeVideoElement) return;
-      if (!this.isPlaying) {
-        this.isPlaying = true;
-        this.updateLiveIndicator();
-      }
-    });
-
-    this.nativeVideoElement = video;
-    this.playerContainer.appendChild(video);
-    this.isPlayerReady = true;
-    this.currentVideoId = this.activeChannel.videoId || null;
-
-    // WKWebView blocks autoplay without user gesture. Force muted play, then restore.
-    if (this.isPlaying) {
-      const wantUnmute = !this.isMuted;
-      video.muted = true;
-      video.play()?.then(() => {
-        if (wantUnmute && this.nativeVideoElement === video && this.ownsLiveMediaSession(failedChannel.id, sessionToken)) {
-          video.muted = false;
-        }
-      }).catch(() => {});
-    }
-  }
-
-  private syncNativeVideoState(): void {
-    if (!this.nativeVideoElement) return;
-    this.nativeVideoElement.muted = this.isMuted;
-    if (this.isPlaying) {
-      this.nativeVideoElement.play()?.catch(() => {});
-    } else {
-      this.nativeVideoElement.pause();
-    }
-  }
-
-  private static loadYouTubeApi(): Promise<void> {
-    if (LiveNewsPanel.apiPromise) return LiveNewsPanel.apiPromise;
-
-    LiveNewsPanel.apiPromise = new Promise((resolve) => {
-      if (window.YT?.Player) {
-        resolve();
-        return;
-      }
-
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[data-youtube-iframe-api="true"]',
-      );
-
-      if (existingScript) {
-        if (window.YT?.Player) {
-          resolve();
-          return;
-        }
-        const previousReady = window.onYouTubeIframeAPIReady;
-        window.onYouTubeIframeAPIReady = () => {
-          previousReady?.();
-          resolve();
-        };
-        return;
-      }
-
-      const previousReady = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        previousReady?.();
-        resolve();
-      };
-
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.async = true;
-      script.dataset.youtubeIframeApi = 'true';
-      script.onerror = () => {
-        console.warn('[LiveNews] YouTube IFrame API failed to load (ad blocker or network issue)');
-        LiveNewsPanel.apiPromise = null;
-        script.remove();
-        resolve();
-      };
-      document.head.appendChild(script);
-    });
-
-    return LiveNewsPanel.apiPromise;
-  }
-
-  private async initializePlayer(): Promise<void> {
-    if (!this.useDesktopEmbedProxy && !this.nativeVideoElement && this.player) return;
-
-    const channel = this.activeChannel;
-    const channelId = channel.id;
-    const sessionToken = this.liveMediaSessionToken;
-    const useFallbackVideo = channel.useFallbackOnly || this.forceFallbackVideoForNextInit;
-    this.forceFallbackVideoForNextInit = false;
-    await this.resolveChannelVideo(channel, useFallbackVideo);
-    if (!this.element?.isConnected) return;
-    if (!this.ownsLiveMediaSession(channelId, sessionToken)) return;
-
-    if (this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id) || this.activeChannel.hlsUrl) {
-      void this.renderNativeHlsPlayer();
-      return;
-    }
-
-    if (!this.activeChannel.videoId || !/^[\w-]{10,12}$/.test(this.activeChannel.videoId)) {
-      this.showOfflineMessage(this.activeChannel);
-      return;
-    }
-
-    if (this.useDesktopEmbedProxy) {
-      this.renderDesktopEmbed(true);
-      return;
-    }
-
-    await LiveNewsPanel.loadYouTubeApi();
-    if (!this.element?.isConnected) return;
-    if (!this.ownsLiveMediaSession(channelId, sessionToken)) return;
-    if (this.player || !this.playerElement || !window.YT?.Player) return;
-
-    // When YT.Player receives a DOM element it replaces that element in the
-    // parent — the mutation fires on playerContainer, not inside playerElement.
-    // Passing the string ID instead makes the API insert the iframe *as a child*
-    // of the div, which the observer on playerContainer can catch.
-    // We add storage-access so YouTube can call requestStorageAccess() and
-    // access the user's cached session (avoids bot-check for signed-in users).
-    const storageObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node instanceof HTMLIFrameElement) {
-            let isYouTube = false;
-            try {
-              const parsed = new URL(node.src);
-              isYouTube = parsed.hostname === 'youtube.com' || parsed.hostname.endsWith('.youtube.com');
-            } catch {
-              isYouTube = false;
-            }
-            if (!isYouTube) continue;
-            const cur = node.getAttribute('allow') || '';
-            if (!cur.includes('storage-access')) {
-              node.setAttribute('allow', cur ? `${cur}; storage-access` : 'storage-access');
-            }
-            storageObserver.disconnect();
-            if (observerTimeout !== null) clearTimeout(observerTimeout);
-            return;
-          }
-        }
-      }
-    });
-    // Auto-disconnect after 10 s to avoid leaking the observer if the iframe
-    // never appears (e.g. YT.Player throws or the API fails to load).
-    let observerTimeout: ReturnType<typeof setTimeout> | null = null;
-    if (this.playerContainer) {
-      storageObserver.observe(this.playerContainer, { childList: true, subtree: true });
-      observerTimeout = setTimeout(() => storageObserver.disconnect(), 10_000);
-    }
-
-    const playerChannelId = this.activeChannel.id;
-    const playerSessionToken = this.liveMediaSessionToken;
-    try {
-      this.player = new window.YT!.Player(this.playerElementId, {
-      host: 'https://www.youtube.com',
-      videoId: this.activeChannel.videoId,
-      playerVars: {
-        autoplay: this.isPlaying ? 1 : 0,
-        mute: this.isMuted ? 1 : 0,
-        rel: 0,
-        playsinline: 1,
-        enablejsapi: 1,
-        ...(this.youtubeOrigin
-          ? {
-            origin: this.youtubeOrigin,
-            widget_referrer: this.youtubeOrigin,
-          }
-          : {}),
-      },
-      events: {
-        onReady: () => {
-          if (!this.ownsLiveMediaSession(playerChannelId, playerSessionToken)) return;
-          this.clearBotCheckTimeout();
-          this.isPlayerReady = true;
-          this.currentVideoId = this.activeChannel.videoId || null;
-          const iframe = this.player?.getIframe?.();
-          if (iframe) iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-          const quality = getStreamQuality();
-          if (quality !== 'auto') this.player?.setPlaybackQuality?.(quality);
-          this.syncPlayerState();
-          this.startMuteSyncPolling();
-        },
-        onError: (event) => {
-          if (!this.ownsLiveMediaSession(playerChannelId, playerSessionToken)) return;
-          this.clearBotCheckTimeout();
-          const errorCode = Number(event?.data ?? 0);
-
-          // Retry once with known fallback stream.
-          if (
-            errorCode === 153 &&
-            this.activeChannel.fallbackVideoId &&
-            this.activeChannel.videoId !== this.activeChannel.fallbackVideoId
-          ) {
-            this.destroyPlayer();
-            this.forceFallbackVideoForNextInit = true;
-            this.ensurePlayerContainer();
-            void this.initializePlayer();
-            return;
-          }
-
-          // Desktop-specific last resort: switch to cloud bridge embed.
-          if (errorCode === 153 && isDesktopRuntime()) {
-            this.useDesktopEmbedProxy = true;
-            this.destroyPlayer();
-            this.ensurePlayerContainer();
-            this.renderDesktopEmbed(true);
-            return;
-          }
-
-          this.destroyPlayer();
-          this.showEmbedError(this.activeChannel, errorCode);
-        },
-      },
-    });
-    } catch (err) {
-      // YT.Player constructor threw — disconnect the observer so it doesn't leak.
-      storageObserver.disconnect();
-      if (observerTimeout !== null) clearTimeout(observerTimeout);
-      throw err;
-    }
-
-    this.startBotCheckTimeout();
-  }
-
-  private startBotCheckTimeout(): void {
-    this.clearBotCheckTimeout();
-    const channelId = this.activeChannel.id;
-    const sessionToken = this.liveMediaSessionToken;
-    this.botCheckTimeout = setTimeout(() => {
-      this.botCheckTimeout = null;
-      if (!this.isPlayerReady && this.ownsLiveMediaSession(channelId, sessionToken)) {
-        this.showBotCheckPrompt();
-      }
-    }, LiveNewsPanel.BOT_CHECK_TIMEOUT_MS);
-  }
-
-  private clearBotCheckTimeout(): void {
-    if (this.botCheckTimeout) {
-      clearTimeout(this.botCheckTimeout);
-      this.botCheckTimeout = null;
-    }
-  }
-
-  private showBotCheckPrompt(): void {
-    const channel = this.activeChannel;
-    const watchUrl = channel.videoId
-      ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
-      : channel.handle
-      ? `https://www.youtube.com/${encodeURIComponent(channel.handle)}`
-      : 'https://www.youtube.com';
-
-    this.destroyPlayer();
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'live-offline live-offline-compact';
+    const card = document.createElement('div');
+    card.className = 'live-offline live-offline-compact';
+    card.setAttribute('role', 'status');
 
     const icon = document.createElement('div');
     icon.className = 'offline-icon';
-    icon.textContent = '\u26A0\uFE0F';
+    icon.textContent = '📺';
 
     const text = document.createElement('div');
     text.className = 'offline-text';
-    text.textContent = t('components.liveNews.botCheck', { name: channel.name }) || 'YouTube is requesting sign-in verification';
+    text.textContent = offlineReasonText(reason, this.getChannelDisplayName(channel));
 
     const actions = document.createElement('div');
-    actions.className = 'bot-check-actions';
+    actions.className = 'live-offline-actions';
+    if (reason === 'needs-channel-url' || reason === 'insecure-url') {
+      actions.appendChild(actionButton(t('components.liveNews.manage') || 'Manage channels', () => this.openChannelManagementModal()));
+    } else if (reason !== 'no-entries') {
+      // switchChannel never restarts the channel it already holds, so retry re-requests playback for the current stream.
+      const retry = actionButton(t('common.retry') || 'Retry', () => this.beginPlayback('explicit'));
+      retry.dataset.liveRetry = '';
+      actions.appendChild(retry);
+    }
+    // Managing channels while the card is up can remove the one it picked, so resolve again at click time.
+    const nextChannel = () => this.nextChannel(channel, (candidate) => !this.failureMemory.isKnownOffline(candidate.id));
+    if (nextChannel()) {
+      actions.appendChild(actionButton(t('components.liveNews.playNextChannel') || 'Play next channel', () => {
+        const next = nextChannel();
+        if (next) this.switchChannel(next);
+      }));
+    }
+    if (watchUrl) actions.appendChild(youtubeLink(watchUrl));
 
-    const signinBtn = document.createElement('button');
-    signinBtn.className = 'offline-retry bot-check-signin';
-    signinBtn.textContent = t('components.liveNews.signInToYouTube') || 'Sign in to YouTube';
-    signinBtn.addEventListener('click', () => this.openYouTubeSignIn());
+    card.append(icon, text, actions);
+    // #6557: a terminal offline state is authoritative content.
+    this.setContentNodes(card);
+  }
 
-    const retryBtn = document.createElement('button');
-    retryBtn.className = 'offline-retry bot-check-retry';
-    retryBtn.textContent = t('common.retry') || 'Retry';
-    retryBtn.addEventListener('click', () => {
-      this.ensurePlayerContainer();
-      if (this.useDesktopEmbedProxy) {
-        this.renderDesktopEmbed(true);
-      } else {
-        void this.initializePlayer();
-      }
+  private renderPlayer(): void {
+    this.destroyPlayer();
+    const generation = ++this.playerGeneration;
+    const isCurrent = () => generation === this.playerGeneration;
+    const channel = this.activeChannel;
+    const container = this.ensurePlayerContainer();
+    const source = liveVideoSourceFor(channel);
+    if (!sourceListsChannel(source)) {
+      this.openPlayer(container, channel, source, isCurrent);
+      return;
+    }
+    // A slot that lists a channel first asks for that channel's resolved live video (at most 1.5 s), showing the
+    // connecting cover meanwhile. A stop, a channel switch or a new render bumps the generation and drops the mount.
+    this.pendingMount = true;
+    this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+    void withResolvedLiveVideos(source).then((resolved) => {
+      if (!isCurrent()) return;
+      this.pendingMount = false;
+      this.openPlayer(container, channel, resolved, isCurrent);
     });
+  }
 
-    const ytLink = document.createElement('a');
-    ytLink.className = 'offline-retry';
-    ytLink.href = watchUrl;
-    ytLink.target = '_blank';
-    ytLink.rel = 'noopener noreferrer';
-    ytLink.textContent = t('components.liveNews.openOnYouTube') || 'Open on YouTube';
+  private openPlayer(container: HTMLDivElement, channel: LiveChannel, source: LiveVideoSource, isCurrent: () => boolean): void {
+    const session = openLiveVideo(container, {
+      source,
+      autoplay: true,
+      muted: this.isMuted,
+      presentation: { title: `${this.getChannelDisplayName(channel)} live feed`, className: 'live-news-media', controls: true },
+      onState: (state) => {
+        if (isCurrent()) this.onVideoState(channel, state);
+      },
+      onMutedChange: (muted) => {
+        if (!isCurrent()) return;
+        this.isMuted = muted;
+        this.updateMuteIcon();
+      },
+      onPlayingChange: (playing) => {
+        // The viewer paused or resumed from the player's own controls; the idle stop leaves a paused stream alone.
+        if (!isCurrent() || this.isPlaying === playing) return;
+        this.isPlaying = playing;
+        this.updateLiveIndicator();
+      },
+    });
+    // The first state arrives synchronously, and an offline one may already have moved playback on.
+    if (isCurrent()) this.videoSession = session;
+    else session.destroy();
+  }
 
-    actions.append(signinBtn, retryBtn, ytLink);
-    wrapper.append(icon, text, actions);
-    this.content.appendChild(wrapper);
+  private ensurePlayerContainer(): HTMLDivElement {
+    this.deferredInit = true;
+    const container = document.createElement('div');
+    container.className = 'live-news-player';
+    this.playerContainer = container;
+    this.setContentNodes(container);
+    return container;
+  }
+
+  private onVideoState(channel: LiveChannel, state: LiveVideoState): void {
+    this.videoPhase = state.phase;
+    if (state.phase !== 'connecting') this.clearChannelLoadingState();
+    switch (state.phase) {
+      case 'connecting':
+        this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+        return;
+      case 'live':
+        this.failureMemory.clear(channel.id);
+        this.skippedChannelIds.clear();
+        this.setChannelOffline(channel.id, false);
+        this.showPlayerStatus(null);
+        return;
+      // A recording and an unverified stream both play, so neither is still offline.
+      case 'recording':
+        this.failureMemory.clear(channel.id);
+        this.setChannelOffline(channel.id, false);
+        this.showPlayerStatus('chip', t('components.liveNews.recording'));
+        return;
+      case 'unverified':
+        this.failureMemory.clear(channel.id);
+        this.setChannelOffline(channel.id, false);
+        this.showPlayerStatus('chip', t('components.liveNews.unverified'), state.watchUrl);
+        return;
+      case 'offline':
+        this.handleChannelOffline(channel, state.reason, state.watchUrl);
+    }
+  }
+
+  /** A cover over the player while it connects, a corner chip for a disclosed state, or nothing once live. */
+  private showPlayerStatus(kind: 'cover' | 'chip' | null, text = '', watchUrl: string | null = null): void {
+    const container = this.playerContainer;
+    if (!container) return;
+    container.querySelector('.live-news-status')?.remove();
+    if (!kind) return;
+
+    const status = document.createElement('div');
+    status.className = `live-news-status live-news-status--${kind}`;
+    status.setAttribute('role', 'status');
+    const label = document.createElement('span');
+    label.textContent = text;
+    status.appendChild(label);
+    if (watchUrl) {
+      status.appendChild(actionButton(t('components.liveNews.signInToYouTube') || 'Sign in to YouTube', () => void this.openYouTubeSignIn()));
+      status.appendChild(youtubeLink(watchUrl));
+    }
+    container.appendChild(status);
+  }
+
+  private handleChannelOffline(channel: LiveChannel, reason: OfflineReason, watchUrl: string | null): void {
+    this.failureMemory.markOffline(channel.id);
+    this.setChannelOffline(channel.id, true);
+    if (this.playbackOrigin === 'implicit') {
+      this.skippedChannelIds.add(channel.id);
+      const next = this.nextChannel(channel, (candidate) => !this.skippedChannelIds.has(candidate.id) && !this.failureMemory.isKnownOffline(candidate.id));
+      if (next) {
+        this.playChannelWithoutSaving(next);
+        return;
+      }
+    }
+    this.showOfflineMessage(channel, reason, watchUrl);
+  }
+
+  /** Moves an implicit start on to another channel without making it the saved choice. */
+  private playChannelWithoutSaving(channel: LiveChannel): void {
+    this.activeChannel = channel;
+    this.markActiveChannelButton(channel.id);
+    this.requestPlaybackForActiveChannel();
   }
 
   private async openYouTubeSignIn(): Promise<void> {
@@ -1764,104 +891,44 @@ export class LiveNewsPanel extends Panel {
     }
   }
 
-  private syncPlayerState(): void {
-    // Native HLS <video> (desktop + web for CORS-enabled streams)
-    if (this.nativeVideoElement) {
-      const videoId = this.activeChannel.videoId;
-      if (videoId && this.currentVideoId !== videoId) {
-        // Channel changed — reinitialize
-        void this.initializePlayer();
-      } else {
-        this.syncNativeVideoState();
-      }
-      return;
-    }
-
-    if (this.useDesktopEmbedProxy) {
-      const videoId = this.activeChannel.videoId;
-      if (videoId && this.currentVideoId !== videoId) {
-        this.renderDesktopEmbed(true);
-      } else {
-        this.syncDesktopEmbedState();
-      }
-      return;
-    }
-
-    if (!this.player || !this.isPlayerReady) return;
-
-    const videoId = this.activeChannel.videoId;
-    if (!videoId) return;
-
-    // Handle channel switch
-    const isNewVideo = this.currentVideoId !== videoId;
-    if (isNewVideo) {
-      this.currentVideoId = videoId;
-      if (!this.playerElement || !document.getElementById(this.playerElementId)) {
-        this.ensurePlayerContainer();
-        void this.initializePlayer();
-        return;
-      }
-      if (this.isPlaying) {
-        if (typeof this.player.loadVideoById === 'function') {
-          this.player.loadVideoById(videoId);
-        }
-      } else {
-        if (typeof this.player.cueVideoById === 'function') {
-          this.player.cueVideoById(videoId);
-        }
-      }
-    }
-
-    if (this.isMuted) {
-      this.player.mute?.();
-    } else {
-      this.player.unMute?.();
-    }
-
-    if (this.isPlaying) {
-      if (isNewVideo) {
-        // WKWebView loses user gesture context after await.
-        // Pause then play after a delay — mimics the manual workaround.
-        this.player.pauseVideo?.();
-        setTimeout(() => {
-          if (this.player && this.isPlaying) {
-            this.player.mute?.();
-            this.player.playVideo?.();
-            // Restore mute state after play starts
-            if (!this.isMuted) {
-              setTimeout(() => { this.player?.unMute?.(); }, 500);
-            }
-          }
-        }, 800);
-      } else {
-        this.player.playVideo?.();
-      }
-    } else {
-      this.player.pauseVideo?.();
-    }
-  }
-
   public refresh(): void {
-    this.syncPlayerState();
+    this.videoSession?.setMuted(this.isMuted);
   }
 
   /** Reload channel list from storage (e.g. after edit in separate channel management window). */
   public refreshChannelsFromStorage(): void {
+    const activeIndex = this.channels.findIndex((c) => c.id === this.activeChannel.id);
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
-    if (!this.channels.some((c) => c.id === this.activeChannel.id)) {
-      this.activeChannel = this.channels[0]!;
-      void this.switchChannel(this.activeChannel);
-    }
     this.refreshChannelSwitcher();
+    if (this.channels.length === 0) {
+      this.renderPlaceholder();
+      return;
+    }
+    const current = this.channels.find((c) => c.id === this.activeChannel.id);
+    if (!current) {
+      // The active channel was removed, or an edit gave it a new id (a channel URL in place of a handle), so
+      // take the channel now in its position. switchChannel never restarts the channel it already holds, so
+      // hand it the replacement instead of assigning it first; it stops the old channel and saves the new one.
+      const next = this.channels[Math.min(Math.max(activeIndex, 0), this.channels.length - 1)];
+      if (next) this.switchChannel(next);
+      return;
+    }
+    // An edit can keep the id and change what plays (a custom stream URL). Hold the edited channel, and move a
+    // running session, or the offline card its last attempt left, onto the new source; a stopped channel plays
+    // the new source next time.
+    const sourceChanged = liveVideoSourceFor(current).entries.join('\n') !== liveVideoSourceFor(this.activeChannel).entries.join('\n');
+    this.activeChannel = current;
+    if (!sourceChanged) return;
+    if (this.videoSession || this.pendingMount) this.renderPlayer();
+    else if (this.ownsActiveLiveMedia()) this.beginPlayback('explicit');
   }
 
   public stopLiveMediaForClose(): void {
-    this.liveMediaSessionToken += 1;
-    this.wasPlayingBeforeIdle = false;
-    if (this.idleTimeout) { clearTimeout(this.idleTimeout); this.idleTimeout = null; }
+    const wasIdleStopped = this.idleStoppedAfterMs !== null;
+    this.idleStoppedAfterMs = null;
     stopLiveMediaPlayback('live-news', 'destroyed');
-    if (this.player || this.desktopEmbedIframe || this.nativeVideoElement) {
+    if (wasIdleStopped || this.videoSession || this.pendingMount) {
       this.isPlaying = false;
       this.updateLiveIndicator();
       this.destroyPlayer();
@@ -1879,12 +946,18 @@ export class LiveNewsPanel extends Panel {
   }
 
   public destroy(): void {
-    this.liveMediaSessionToken += 1;
+    // The overlay is parented to document.body and hides only by unmounting
+    // (main.css toggles opacity, not display), so destroying the panel while
+    // it was open left it on screen holding every automatic reload off for
+    // the rest of the session, with a document keydown listener to match.
+    this.dismissChannelManagementModal?.();
     unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
     releaseLiveMediaPlayback('live-news');
     this.destroyPlayer();
     this.unsubscribeStreamSettings?.();
     this.unsubscribeStreamSettings = null;
+    this.unsubscribeIdle?.();
+    this.unsubscribeIdle = null;
 
     if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
     if (this.idleCallbackId !== null) {
@@ -1893,23 +966,10 @@ export class LiveNewsPanel extends Panel {
       this.idleCallbackId = null;
     }
 
-    if (this.idleTimeout) {
-      clearTimeout(this.idleTimeout);
-      this.idleTimeout = null;
-    }
-
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
-    window.removeEventListener('message', this.boundMessageHandler);
+    this.detachChannelDragListeners();
     if (this.isFullscreen) this.setFullscreen(false);
-    if (this.idleDetectionEnabled) {
-      IDLE_ACTIVITY_EVENTS.forEach(event => {
-        document.removeEventListener(event, this.boundIdleResetHandler);
-      });
-      this.idleDetectionEnabled = false;
-    }
-
-    this.playerContainer = null;
 
     super.destroy();
   }

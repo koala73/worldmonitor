@@ -154,7 +154,7 @@ async function loadRuntimeConfigPanel() {
         return document.createDocumentFragment();
       }
     `],
-    ['analytics-stub', `export function trackPanelResized() {} export function trackFeatureToggle() {}`],
+    ['analytics-stub', `export function trackLayoutCustomized() {} export function trackFeatureToggle() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['sanitize-stub', `
       export function escapeHtml(value) { return String(value); }

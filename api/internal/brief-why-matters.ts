@@ -290,7 +290,7 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
     // (analyst/gemini paths run via Promise.allSettled). Await keeps the
     // helper's own promise pending until Sentry delivery completes,
     // capped by the 2s fetch timeout in `_sentry-common.js`.
-    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'analyst-path', severity: 'warn' } });
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'analyst-path', severity: 'warn' }, fingerprint: ['api/internal/brief-why-matters', 'analyst-path', err instanceof Error ? err.name : 'Error'] });
     return null;
   }
 }
@@ -328,7 +328,7 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     return parseWhyMatters(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
-    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' } });
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' }, fingerprint: ['api/internal/brief-why-matters', 'gemini-path', err instanceof Error ? err.name : 'Error'] });
     return null;
   }
 }
@@ -453,10 +453,15 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
   //
   // v6 history (kept for reference): category-gated context + prompt-level
   // RELEVANCE RULE (2026-04-22) — those changes remain in v8.
-  const cacheKey = `brief:llm:whymatters:v10:${hash}`;
+  // v11 uses an unambiguous story tuple and the full SHA-256 digest.
+  const cacheKey = `brief:llm:whymatters:v11:${hash}`;
   // Shadow v6→v7 for the same reason: a pre-policy v6 record would mix
   // retired and current analyst outputs in the seven-day evaluation cohort.
   const shadowKey = `brief:llm:whymatters:shadow:v7:${hash}`;
+  // App-owned keys (#7674): this route is the sole writer of both, so all
+  // three Redis touchpoints below ride the deployment-prefixed default. On a
+  // preview deployment the envelope cache and shadow cohort stay inside that
+  // deployment's namespace instead of writing into production rows.
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;
@@ -467,7 +472,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
     }
   } catch (err) {
     console.warn(`[brief-why-matters] cache read degraded: ${err instanceof Error ? err.message : String(err)}`);
-    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-read', severity: 'warn' } });
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-read', severity: 'warn' }, fingerprint: ['api/internal/brief-why-matters', 'cache-read', err instanceof Error ? err.name : 'Error'] });
   }
 
   if (cached) {
@@ -525,7 +530,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
       await setCachedData(cacheKey, envelope, WHY_MATTERS_TTL_SEC);
     } catch (err) {
       console.warn(`[brief-why-matters] cache write degraded: ${err instanceof Error ? err.message : String(err)}`);
-      await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-write', severity: 'warn' } });
+      await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-write', severity: 'warn' }, fingerprint: ['api/internal/brief-why-matters', 'cache-write', err instanceof Error ? err.name : 'Error'] });
     }
   }
 

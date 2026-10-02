@@ -13,7 +13,7 @@ paths:
             tags:
                 - SafetyService
             summary: GetTorontoSafety
-            description: Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+            description: Explore one Toronto Police Service dataset with area, offence and year filters, plus source attribution, data semantics and freshness for local safety analysis.
             operationId: GetTorontoSafety
             parameters:
                 - name: dataset

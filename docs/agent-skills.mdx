@@ -30,7 +30,7 @@ If the agent is helping a person inside an already-open Chrome dashboard, [WebMC
 
 | Skill | Use it for | Recipe |
 |---|---|---|
-| `fetch-country-brief` | Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md) |
+| `fetch-country-brief` | Open the WorldMonitor country interface in a UI-capable MCP host. Use the text assessment endpoint for explicit text-only requests or clients without embedded UI. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md) |
 | `fetch-resilience-score` | Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md) |
 | `check-country-risk` | Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code. Use when the user asks how risky or unstable a country is right now. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md) |
 
@@ -47,6 +47,8 @@ If the agent is helping a person inside an already-open Chrome dashboard, [WebMC
 
 | Skill | Use it for | Recipe |
 |---|---|---|
+| `research-stocks` | Read current stock research, technical backtests, saved analyses or saved backtests. Use for a named ticker or watchlist research history; preserve source dates, model limitations and risk factors. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/research-stocks/SKILL.md) |
+| `compare-macro-history` | Compare CPI, interest rates and sovereign yield histories from seeded official reports. Use for inflation or rate trends; preserve country provenance, index base, frequency, yield measure and missing readings. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/compare-macro-history/SKILL.md) |
 | `get-market-quotes` | Retrieve real-time equity, index, and ETF quotes with price, change, and sparkline history. Use when the user asks for current market prices, how a ticker is doing, or a quick market snapshot. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-market-quotes/SKILL.md) |
 | `get-prediction-markets` | Retrieve active prediction-market contracts (Polymarket) with live yes-price probabilities, volume, and close dates, filterable by category or keyword. Use when the user asks what the market odds are on a geopolitical, economic, or election outcome. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-prediction-markets/SKILL.md) |
 | `track-tariff-trends` | Retrieve MFN applied tariff-rate timeseries for a reporting country — applied vs bound rates by year, plus the optional US effective tariff rate. Use when the user asks how a country's MFN tariffs have changed over time. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-tariff-trends/SKILL.md) |

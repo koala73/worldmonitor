@@ -5,6 +5,7 @@ import {
   buildCountryMarketIndex,
   countCountryMarkets,
   projectCountryMarketIndex,
+  selectKalshiSeriesTickers,
 } from '../scripts/_prediction-country-index.mjs';
 
 const NOW = Date.parse('2026-08-31T00:00:00Z');
@@ -47,6 +48,51 @@ describe('buildCountryMarketIndex', () => {
     const index = buildCountryMarketIndex([lastOfUs, southAmerica, trump], { now: NOW });
 
     assert.deepEqual(index.US.map((entry) => entry.title), [trump.title]);
+  });
+
+  it('matches shared country language across countries and providers', () => {
+    const cases = [
+      ['FR', [
+        market('Will the French government survive the confidence vote?', 'polymarket', 20_000),
+        market('Will France hold an early election?', 'kalshi', 10_000),
+      ]],
+      ['DE', [
+        market('Will the German chancellor call an early election?', 'polymarket', 20_000),
+        market('Will Germany enter recession?', 'kalshi', 10_000),
+      ]],
+      ['SA', [
+        market('Will Saudi cut oil production this year?', 'polymarket', 20_000),
+        market('Will Saudi Arabia host the peace talks?', 'kalshi', 10_000),
+      ]],
+      ['GB', [
+        market('Next UK parliamentary by-election called by...?', 'polymarket', 20_000),
+        market('What will Mike Johnson say during his address to the UK Parliament?', 'kalshi', 10_000),
+      ]],
+    ];
+    const index = buildCountryMarketIndex(cases.flatMap(([, markets]) => markets), { now: NOW });
+
+    for (const [countryCode, markets] of cases) {
+      assert.deepEqual(
+        new Set(index[countryCode]?.map((entry) => entry.title)),
+        new Set(markets.map((entry) => entry.title)),
+        countryCode,
+      );
+      assert.deepEqual(
+        new Set(index[countryCode]?.map((entry) => entry.source)),
+        new Set(['polymarket', 'kalshi']),
+        countryCode,
+      );
+    }
+  });
+
+  it('does not match a short country term inside another word', () => {
+    const embeddedTerms = [
+      market('Will luck decide the 2027 Nobel Peace Prize?', 'polymarket', 30_000),
+      market('Will Duke Energy name a new CEO in 2027?', 'kalshi', 25_000),
+    ];
+
+    const embeddedIndex = buildCountryMarketIndex(embeddedTerms, { now: NOW });
+    assert.equal(embeddedIndex.GB, undefined);
   });
 
   it('ranks a nearer country alias ahead of an exact-name 2045 contract', () => {
@@ -213,5 +259,68 @@ describe('projectCountryMarketIndex', () => {
   it('projects the country index when every source segment succeeded', () => {
     const index = projectCountryMarketIndex([usMarket], { complete: true, now: NOW });
     assert.deepEqual(index.US.map((entry) => entry.title), [usMarket.title]);
+  });
+});
+
+describe('selectKalshiSeriesTickers', () => {
+  it('selects two high-volume non-sports series for each requested country', () => {
+    const series = [
+      { ticker: 'KXIRANSPORT', title: 'Iran match winner', category: 'Sports', volume_fp: '90000000' },
+      { ticker: 'KXIRANSTALE', title: 'Ali Khamenei out?', tags: ['Iran'], category: 'Politics', volume_fp: '54513052' },
+      { ticker: 'KXIRANDEAL', title: 'US Iran nuclear deal', tags: ['Iran'], category: 'World', volume_fp: '21065356' },
+      { ticker: 'KXIRANLOW', title: 'Iran trade agreement', category: 'World', volume_fp: '4999' },
+      { ticker: 'KXIRANUNKNOWN', title: 'A new Iran agreement', category: 'World' },
+      { ticker: 'KXLEBANONPARLI', title: 'Lebanon parliament', category: 'Elections', volume_fp: '28888' },
+      { ticker: 'KXLEBUSFLIGHT', title: 'Lebanon-US flight resumption', category: 'World', volume_fp: '11181' },
+      { ticker: 'KXFRANCE', title: 'France election', category: 'Elections', volume_fp: '500000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB']),
+      ['KXIRANSTALE', 'KXIRANDEAL', 'KXLEBANONPARLI', 'KXLEBUSFLIGHT'],
+    );
+    assert.deepEqual(selectKalshiSeriesTickers(series, ['LB']), ['KXLEBANONPARLI', 'KXLEBUSFLIGHT']);
+  });
+
+  it('deduplicates a series that matches more than one requested country', () => {
+    const series = [{
+      ticker: 'KXUSIRAN',
+      title: 'United States and Iran nuclear deal',
+      category: 'World',
+      volume_fp: '100000',
+    }];
+
+    assert.deepEqual(selectKalshiSeriesTickers(series, ['US', 'IR']), ['KXUSIRAN']);
+  });
+
+  it('selects the next ranked series after an earlier series produced no eligible markets', () => {
+    const series = [
+      { ticker: 'KXIRANEMPTY', title: 'Iran agreement', category: 'World', volume_fp: '50000' },
+      { ticker: 'KXIRANACTIVE', title: 'Iran election', category: 'Elections', volume_fp: '40000' },
+      { ticker: 'KXLEBANONACTIVE', title: 'Lebanon election', category: 'Elections', volume_fp: '30000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        excludedTickers: ['KXIRANEMPTY'],
+      }),
+      ['KXIRANACTIVE', 'KXLEBANONACTIVE'],
+    );
+  });
+
+  it('caps a selection round by the remaining global request budget', () => {
+    const series = [
+      { ticker: 'KXIRAN', title: 'Iran election', category: 'Elections', volume_fp: '50000' },
+      { ticker: 'KXLEBANON', title: 'Lebanon election', category: 'Elections', volume_fp: '40000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        totalLimit: 1,
+      }),
+      ['KXIRAN'],
+    );
   });
 });

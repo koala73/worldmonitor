@@ -3,6 +3,8 @@ title: "国家韧性指数"
 description: "面向 196 个国家的实时韧性评分体系。实时 API 每 6 小时刷新，可抓取的国家快照每月发布。"
 ---
 
+_本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/) 维护。已发布的修订记录在[更正日志](/zh/corrections)中。_
+
 ## 从这里开始
 
 国家韧性指数对 196 个国家各问同一个问题：**当事情严重出错时，这个国家能多好地吸收它、并重新站起来？**
@@ -634,7 +636,7 @@ API 响应包含额外上下文字段，这些字段是信息性的，不属于�
 
 ### 运行时清单
 
-对于实时部署状态，请使用[运行时清单](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest)。它报告活动公式标签、静态 `dataVersion`、排名缓存元数据和安全派生构造版本：`constructVersions.energy`（`legacy` 或 `v2`）与 `constructVersions.education`（`active` 或 `rollback`）。它还报告公共 `scoreInterval`/`rankStable` 支持路径的 `intervals` 可用性元数据，而不暴露部署标识符、原始 `RESILIENCE_*` 标志状态或内部缓存键。参考版仍是冻结的已发布包；不应将其视为当前生产中活动运行时状态的证据。
+对于实时部署状态，请使用[运行时清单](https://www.worldmonitor.app/api/resilience/v1/get-runtime-manifest)。它报告活动公式标签、静态 `dataVersion`、排名缓存元数据和安全派生构造版本：`constructVersions.energy`（`legacy` 或 `v2`）与 `constructVersions.education`（`active` 或 `rollback`）。它还报告公共 `scoreInterval`/`rankStable` 支持路径的 `intervals` 可用性元数据，而不暴露部署标识符、原始 `RESILIENCE_*` 标志状态或内部缓存键。参考版仍是冻结的已发布包；不应将其视为当前生产中活动运行时状态的证据。
 
 ### 缓存版本化
 
@@ -888,4 +890,4 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 - **验收门**：Spearman 至少为 0.85；至少 60% 的国家整体变化小于 3 分；非制裁队列国家不得有超过 12 分的整体变化。标题合格变化和金融来源故障行保留在已提交工件中。
 - **问题状态**：#6461 已由 #6515 关闭，后者落地了剩余的“缺失即强度”修复，因此不需要修改已关闭问题的优先级。
 
-操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) 快照。
+操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) 快照。

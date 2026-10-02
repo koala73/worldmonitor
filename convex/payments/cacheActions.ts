@@ -11,6 +11,7 @@
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { SHARED_API_BUDGET } from "../config/productCatalog";
 
 // 15 min — short enough that subscription expiry is reflected promptly
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
@@ -48,7 +49,11 @@ export const syncEntitlementCache = internalAction({
       planLimits: v.optional(v.object({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
-        mcpCallsPerDay: v.union(v.number(), v.null()),
+        // `SHARED_API_BUDGET` = the plan has no MCP allowance of its own; its
+        // MCP calls charge `apiRequestsPerDay`. Imported rather than retyped for
+        // the same reason as the entitlements schema: a rename that left a stale
+        // literal here would typecheck and then reject the cache sync at runtime.
+        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal(SHARED_API_BUDGET)),
         // Optional so cache sync remains compatible with legacy rows/jobs that
         // predate the dashboard-AI dimension.
         dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
@@ -65,6 +70,9 @@ export const syncEntitlementCache = internalAction({
       // Optional — data-export entitlement (plan 2026-07-25-001). Catalog
       // writes set it; legacy rows omit it (export gate fail-opens at tier 2+).
       dataExport: v.optional(v.boolean()),
+      // Optional — partner-embed entitlement. Catalog writes set it; legacy
+      // rows omit it and embed-key issuance treats that case as fail-closed.
+      embedAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
   },

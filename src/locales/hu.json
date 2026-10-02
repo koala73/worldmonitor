@@ -188,7 +188,8 @@
       "activeSirens": "Aktív szirénák",
       "sirens24h": "Szirénák / 24h",
       "aviationDisruptions": "Repülési zavarok",
-      "gpsJammingZones": "GPS-zavar zónák"
+      "gpsJammingZones": "GPS-zavar zónák",
+      "temporalUnavailable": "Időbeli megfigyelések nem érhetők el"
     },
     "fallback": {
       "instabilityIndex": "**Instabilitási index: {{score}}/100** ({{level}}, {{trend}})",
@@ -261,7 +262,7 @@
       "decisionSignalsUnavailable": "Kína döntési jeleinek pillanatképe jelenleg nem érhető el."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -924,7 +925,6 @@
   "components": {
     "webcams": {
       "paused": "Webkamerák szüneteltetve",
-      "pausedIdle": "Webkamerák szüneteltetve — mozgassa az egeret a folytatáshoz",
       "regions": {
         "all": "ÖSSZES",
         "mideast": "KÖZEL-KELET",
@@ -934,7 +934,11 @@
         "space": "VILÁGŰR"
       },
       "play": "Lejátszás",
-      "previewStatus": "Élő előnézet"
+      "previewStatus": "Készen áll a lejátszásra",
+      "connecting": "Csatlakozás…",
+      "unverified": "Nem tudjuk megerősíteni, hogy ez az élő közvetítés",
+      "offline": "{{city}} jelenleg offline",
+      "noFeeds": "Ebben a régióban jelenleg nincsenek élő webkamerák"
     },
     "pinnedWebcams": {
       "pinFromMap": "Rögzítsen egy webkamerát a térképről"
@@ -1218,10 +1222,18 @@
       "skipToEnd": "Ugrás a végére"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · helyadatok:",
+      "statusNormal": "NORMÁL",
+      "statusNoData": "NINCS ADAT",
+      "statusNoBaseline": "NINCS VISZONYÍTÁSI ALAP",
+      "vsUsual": "a szokásoshoz képest",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Frissítve: {{timeAgo}}",
       "tensionsTitle": "Geopolitikai feszültségek",
+      "tensionsSource": "Feszültségek: World Monitor a GDELT eseményei alapján",
+      "insufficientData": "Nincs elegendő adat",
+      "pizzaUnavailable": "A pizzériák forgalmi adatai nem érhetők el",
       "source": "Forrás:",
       "statusClosed": "LEZÁRVA",
       "statusSpike": "CSÚCS",
@@ -1233,11 +1245,11 @@
       "minutesAgo": "{{m}}p ezelőtt",
       "hoursAgo": "{{h}}ó ezelőtt",
       "defconLabels": {
-        "1": "FEGYVEREZETT PISZTOLY - MAXIMÁLIS KÉSZENLÉT",
-        "2": "GYORS ÜTEM - FEGYVERES ERŐK KÉSZEN ÁLLNAK",
-        "3": "KEREK HÁZ - MEGNÖVELT ERŐKÉSZENLÉT",
-        "4": "KETTŐS NÉZET - MEGNÖVELT HÍRSZERZÉSI MEGFIGYELÉS",
-        "5": "ELHALVÁNYULÁS - LEGALACSONYABB KÉSZENLÉT"
+        "1": "Maximális aktivitás",
+        "2": "Magas aktivitás",
+        "3": "Emelt szintű aktivitás",
+        "4": "Az átlag felett",
+        "5": "Normál aktivitás"
       }
     },
     "strategicPosture": {
@@ -1318,9 +1330,6 @@
       "datacenter": "Adatközpont",
       "base": "Bázis",
       "nuclear": "Nukleáris"
-    },
-    "community": {
-      "joinDiscussion": "Alakítsd meg a jövőt"
     },
     "threatLabels": {
       "critical": "KRI",
@@ -1631,7 +1640,10 @@
       "provenanceTitle": "Lefedettség eredete: hány feldolgozott történetből és különálló forrásból választotta ki ezt az összefoglalót",
       "compiledFrom": "{{stories}} történetből és {{sources}} forrásból összeállítva",
       "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "A hír részletei ({{count}})",
+      "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
+      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
+      "streamIdleStopNever": "Soha"
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",
@@ -2043,6 +2055,7 @@
       "etfs": "ETF-ek",
       "netInflow": "NETTÓ BEÁRAMLÁS",
       "netOutflow": "NETTÓ KIÁRAMLÁS",
+      "netNeutral": "NETTÓ SEMLEGES",
       "table": {
         "ticker": "Ticker",
         "issuer": "Kibocsátó",
@@ -2250,15 +2263,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} jelenleg nem él",
-      "cannotEmbed": "{{name}} nem játszható itt – lehet, hogy korlátozva van az Ön régiójában (hiba {{code}})",
-      "botCheck": "A YouTube bejelentkezést kér a {{name}} lejátszásához",
       "signInToYouTube": "Bejelentkezés a YouTube-ba",
       "openOnYouTube": "Megnyitás a YouTube-on",
       "manage": "Csatornák kezelése",
       "addChannel": "Csatorna hozzáadása",
       "remove": "Eltávolítás",
-      "youtubeHandle": "YouTube kezelő (pl. @Channel)",
-      "youtubeHandleOrUrl": "YouTube kezelő vagy URL",
       "displayName": "Megjelenítési név (opcionális)",
       "channelSettings": "Csatorna beállításai",
       "save": "Mentés",
@@ -2274,12 +2283,24 @@
       "regionMiddleEast": "Közel-Kelet",
       "regionAfrica": "Afrika",
       "regionOceania": "Óceánia",
-      "invalidHandle": "Adjon meg érvényes YouTube-fogantyút (például @ChannelName)",
       "verifying": "Ellenőrzés alatt…",
       "hlsUrl": "HLS Stream URL (opcionális)",
       "invalidHlsUrl": "Adjon meg érvényes HLS stream URL-t (.m3u8)",
       "playLiveFeed": "Élő adás lejátszása",
-      "readyStatus": "Készen áll, amikor Ön is"
+      "readyStatus": "Készen áll, amikor Ön is",
+      "embedBlocked": "A YouTube jelenleg nem játssza le a {{name}} oldalt más weboldalakon",
+      "unavailable": "A {{name}} jelenleg nem játszható le",
+      "noStream": "Még nincs élő stream beállítva a {{name}} számára",
+      "needsChannelUrl": "Adja hozzá a {{name}} értéket újra a csatorna URL-jével (youtube.com/channel/UC…) vagy egy élő videó URL-jével",
+      "insecureStream": "A {{name}} nem biztonságos (http) streamet használ, amelyet a böngészők blokkolnak. Adja hozzá újra egy biztonságos (https) stream URL-vel",
+      "connecting": "Csatlakozás a {{name}} számára…",
+      "recording": "Felvétel",
+      "unverified": "Nem lehet megerősíteni, hogy ez az stream élő",
+      "playNextChannel": "Következő csatorna lejátszása",
+      "channelOrVideoUrl": "YouTube-csatorna vagy videó URL",
+      "channelUrlHint": "Illesszen be egy csatorna URL-t (youtube.com/channel/UC…) vagy egy élő videó URL-t",
+      "youtubeChannel": "YouTube-csatorna",
+      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t"
     },
     "map": {
       "showMap": "Térkép megjelenítése",
@@ -2379,7 +2400,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): az amerikai pénzügyi piacok stresszét méri 11 mutató felhasználásával, beleértve a hozamszpreadeket, a volatilitást és a keresztkorreláció-kat. A pozitív értékek az átlagosnál magasabb stresszre utalnak. Forrás: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Pénzügyi stresszmutató</strong> A WorldMonitor magas hozamú hitel és hosszú lejáratú amerikai államkötvények közötti aránya, részvénypiaci volatilitással és magas hozamú felárral korrigálva: (HYG / TLT) / (VIX × HY spread / 100). Ez nem a Kansas City-i Fed pénzügyi stresszindexe. Az 1.5 vagy magasabb érték alacsony stresszt jelent; 0.3 alatt magas stresszt.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",
@@ -2696,7 +2717,14 @@
       "signals_one": "{{count}} jel",
       "signals_other": "{{count}} jel",
       "analyzing": "Elemzés...",
-      "viewOnMap": "Megtekintés a térképen"
+      "viewOnMap": "Megtekintés a térképen",
+      "waiting": "Várakozás a következő adatfrissítésre. Ez a panel automatikusan frissül.",
+      "offline": "Várakozás a kapcsolatra. Ez a panel automatikusan frissül, amikor újra csatlakozik az internethez.",
+      "updated": "Frissítve {{time}}",
+      "saved": "Utolsó ismert frissítés {{time}} · Frissítések keresése",
+      "savedOffline": "Utolsó ismert frissítés {{time}} · Nincs kapcsolat",
+      "localSignals": "A betöltött irányítópult-jelzések alapján",
+      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia."
     },
     "thermalEscalation": {
       "title": "Hőmérsékleti Eszkaláció",
@@ -2858,6 +2886,56 @@
       "succeeded": "Passkey mentve. Használhatod a következő bejelentkezéskor.",
       "retryable": "Ez nem fejeződött be. Megpróbálhatod újra.",
       "failed": "Erre az eszközre nem sikerült passkey-t menteni."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Árupiaci döntési összefoglaló",
+      "commodity": "Árucikk / termék",
+      "blockedChokepoint": "Feltételezetten lezárt szűkület",
+      "commodityCapture": "Áru-összehasonlítás rögzítése",
+      "title": "Döntési összefoglaló",
+      "fuel": "Tüzelőanyag",
+      "chokepoint": "Szűk keresztmetszet",
+      "baseline": "Alapeseti zavar",
+      "comparison": "Összehasonlító zavar",
+      "capture": "Mindkettő betöltése / frissítése",
+      "downloadHtml": "Összefoglaló letöltése HTML-ben",
+      "downloadJson": "Összefoglaló letöltése JSON-ban",
+      "back": "← Vissza az országjelentéshez",
+      "select": "Válasszon energiaellátási zavart, majd töltse be mindkét forgatókönyvet.",
+      "changed": "A kiválasztás módosult. Exportálás előtt töltse be mindkét forgatókönyvet.",
+      "loading": "Mindkét forgatókönyv betöltése…",
+      "captured": "Betöltve. Letöltés előtt ellenőrizze a megfigyelési dátumokat és a korlátokat.",
+      "failed": "Nem sikerült betölteni a forgatókönyveket. Ellenőrizze hozzáférését, és próbálja újra. Nincs exportálható eredmény.",
+      "locked": "A döntési összefoglaló Pro csomaggal érhető el."
+    },
+    "liveMedia": {
+      "idleStatus": "Szüneteltetve az inaktivitás miatt",
+      "idleBody": "Az élő videó leállítva {{duration}} után egér-, billentyűzet- vagy érintésaktivitás hiányában.",
+      "idleResume": "Folytatás",
+      "idleKeepPlaying": "Élő videó lejátszása üresjárat során",
+      "idleSettingsHint": "Ezt bármikor módosíthatja a Beállítások › Média menüben.",
+      "idleKeepPlayingToast": "Az élő videó üresjárat során is lejátszódik. Módosítása a Beállítások › Média menüben."
+    },
+    "corroboration": {
+      "singlePublisher": "Egyetlen kiadó",
+      "singlePublisherHint": "Egyelőre csak egy kiadó számol be erről. Ez a lefedettséget jellemzi, nem a pontosságot.",
+      "tier4Only": "Csak alacsony szintű források",
+      "tier4OnlyHint": "Minden erről beszámoló médium 4. szintű forrás (aggregátorok és blogok). Ez a lefedettséget jellemzi, nem a pontosságot.",
+      "rosterListed": "({{listed}} felsorolva)",
+      "rosterFeeds": "Látott hírcsatornák: {{labels}}",
+      "rosterLegend": "A szintek a forrásokat rangsorolják; nem ítélik meg ezt az állítást.",
+      "tierDocsLink": "Hogyan történik a szintek meghatározása",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "1. szint: Hírügynökségek és hivatalos szervek",
+      "tierTitle2": "2. szint: Nagy médiumok",
+      "tierTitle3": "3. szint: Szakosodott, regionális és kutatóintézeti források",
+      "tierTitle4": "4. szint: Aggregátorok és blogok",
+      "tierTitleUndeclared": "Szint nincs megadva: még nem ellenőrzött",
+      "rosterSummary": "{{publishers}} által közölve",
+      "rosterSummaryTier1": "{{publishers}} által közölve, köztük {{tier1}} 1. szintű",
+      "rosterPublishers_one": "{{count}} kiadó",
+      "rosterPublishers_other": "{{count}} kiadó"
     }
   },
   "popups": {
@@ -2896,14 +2974,18 @@
     "protest": {
       "acledVerified": "ACLED (ellenőrzött)",
       "gdelt": "GDELT",
+      "records": "rekord",
+      "mediaSignal": "Nem ellenőrzött médiajelzés",
+      "relatedArticle": "Kapcsolódó cikk",
+      "mediaSignalDetail": "Ezt a helyet zavargásokról szóló cikkek említik. Helyi esemény nincs igazolva.",
       "riots": "Zavargások",
       "highSeverity": "Magas súlyosság"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS zavar",
-      "navPerformance": "Navigációs teljesítmény",
-      "samples": "ADS-B minták",
-      "aircraft": "Repülőgép",
+      "title": "GPS/GNSS-interferencia",
+      "navPerformance": "Érintett légijárművek",
+      "samples": "Érintett légijárművek száma",
+      "aircraft": "Az észlelt légijárművek teljes száma",
       "h3Hex": "H3 Hex"
     },
     "flight": {

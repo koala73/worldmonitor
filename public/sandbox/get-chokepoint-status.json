@@ -24,8 +24,8 @@
             "example"
           ],
           "aisDisruptions": 1,
-          "congestionLevel": "example",
-          "description": "Example WorldMonitor observation."
+          "aisSnapshotAvailable": true,
+          "congestionLevel": "example"
         }
       ],
       "fetchedAt": "2026-01-15T12:00:00Z",

@@ -145,7 +145,9 @@ Pinned webcam data is stored in `localStorage` under the key `wm-pinned-webcams`
 webcamId, title, lat, lng, category, country, playerUrl, active (boolean), pinnedAt (timestamp)
 ```
 
-Maximum 4 webcams can be active (showing in grid) at any time. The total number of pinned webcams is not limited.
+Maximum 4 webcams can be active (showing in grid) at any time. Up to 32 unique webcams can be pinned. The serialized webcam preference is limited to 16 KiB of UTF-8 data. Pinning at either storage limit shows a message and keeps existing pins.
+
+Settings import, cloud sync, and saved-data reads validate webcam records and Windy player URLs. Malformed or oversized preference blobs become an empty list. Within the size limit, normalization keeps the first valid, unique records that fit. These rules affect only the webcam preference, not other settings.
 
 ## Current Limitations
 

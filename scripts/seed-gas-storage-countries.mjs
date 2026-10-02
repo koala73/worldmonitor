@@ -16,6 +16,7 @@ loadEnvFile(import.meta.url);
 
 export const GAS_STORAGE_KEY_PREFIX = 'energy:gas-storage:v1:';
 export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
+export const GAS_STORAGE_ALL_KEY = 'energy:gas-storage:v1:all';
 export const GAS_STORAGE_META_KEY = 'seed-meta:energy:gas-storage-countries';
 export const GAS_STORAGE_TTL_SECONDS = 259200; // 3 days = 3× daily cron
 
@@ -43,13 +44,14 @@ const COUNTRY_NAMES = {
   ES: 'Spain', SE: 'Sweden', GB: 'United Kingdom',
 };
 
-async function redisPipeline(commands) {
+async function redisPipeline(commands, transactional = false) {
   const { url, token } = getRedisCredentials();
-  const response = await fetch(`${url}/pipeline`, {
+  const response = await fetch(`${url}/${transactional ? 'multi-exec' : 'pipeline'}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'User-Agent': CHROME_UA,
     },
     body: JSON.stringify(commands),
     signal: AbortSignal.timeout(15_000),
@@ -74,8 +76,11 @@ async function redisGet(key) {
 
 /** Parse a single GIE entry into fill/gwh/date/change */
 export function parseFillEntry(entry) {
-  const fill = parseFloat(entry.full || entry.fillLevel || entry.pct || '0');
-  const gwh = parseFloat(entry.gasInStorage || entry.gasTwh || entry.volume || '0');
+  const firstMeasurement = (...values) => values.find(value =>
+    value != null && String(value).trim() !== '',
+  );
+  const fill = Number(firstMeasurement(entry.full, entry.fillLevel, entry.pct));
+  const gwh = Number(firstMeasurement(entry.gasInStorage, entry.gasTwh, entry.volume));
   const date = entry.gasDayStart ?? entry.date ?? '';
   const change = parseFloat(entry.trend || entry.change || '0');
   return { fill, gwh, date, change };
@@ -107,7 +112,10 @@ export function buildCountriesPayload(rawEntries) {
     const fillPct = current.fill;
     if (!Number.isFinite(fillPct) || fillPct < 0 || fillPct > 100) continue;
 
-    const fillPctChange1d = prev !== null ? +(fillPct - prev.fill).toFixed(2) : 0;
+    if (!Number.isFinite(current.gwh) || current.gwh < 0) continue;
+
+    const fillPctChange1d = prev !== null && Number.isFinite(prev.fill)
+      ? +(fillPct - prev.fill).toFixed(2) : 0;
     const trend = computeTrend(fillPctChange1d);
 
     const countryName =
@@ -167,7 +175,7 @@ async function preservePreviousSnapshot(errorMsg) {
     : [];
 
   await extendExistingTtl(
-    [...perCountryKeys, GAS_STORAGE_COUNTRIES_KEY],
+    [...perCountryKeys, GAS_STORAGE_COUNTRIES_KEY, GAS_STORAGE_ALL_KEY],
     GAS_STORAGE_TTL_SECONDS,
   );
 
@@ -240,37 +248,23 @@ export async function main() {
       sourceVersion: 'gie-agsi-plus-countries-v1',
     };
 
-    const commands = [];
-    for (const payload of countries) {
-      commands.push([
-        'SET',
-        `${GAS_STORAGE_KEY_PREFIX}${payload.iso2}`,
-        JSON.stringify(payload),
-        'EX',
-        GAS_STORAGE_TTL_SECONDS,
-      ]);
-    }
-    commands.push([
-      'SET',
-      GAS_STORAGE_COUNTRIES_KEY,
-      JSON.stringify(seededIso2),
-      'EX',
-      GAS_STORAGE_TTL_SECONDS,
+    const entries = countries.map(payload => [
+      `${GAS_STORAGE_KEY_PREFIX}${payload.iso2}`, JSON.stringify(payload),
     ]);
-    commands.push([
-      'SET',
-      GAS_STORAGE_META_KEY,
-      JSON.stringify(metaPayload),
-      'EX',
-      GAS_STORAGE_TTL_SECONDS,
-    ]);
-
-    const results = await redisPipeline(commands);
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
-    if (failures.length > 0) {
-      throw new Error(
-        `Redis pipeline: ${failures.length}/${commands.length} commands failed`,
-      );
+    entries.push(
+      [GAS_STORAGE_COUNTRIES_KEY, JSON.stringify(seededIso2)],
+      [GAS_STORAGE_ALL_KEY, JSON.stringify(Object.fromEntries(countries.map(country => [country.iso2, country])))],
+      [GAS_STORAGE_META_KEY, JSON.stringify(metaPayload)],
+    );
+    const commands = [
+      ['MSET', ...entries.flat()],
+      ...entries.map(([key]) => ['EXPIRE', key, GAS_STORAGE_TTL_SECONDS]),
+    ];
+    const results = await redisPipeline(commands, true);
+    if (!Array.isArray(results) || results.length !== commands.length
+      || results[0]?.result !== 'OK'
+      || results.slice(1).some(result => result?.result !== 1)) {
+      throw new Error('Redis transaction returned an invalid command result');
     }
 
     logSeedResult('energy:gas-storage-countries', countries.length, Date.now() - startedAt, {

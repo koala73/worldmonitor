@@ -1229,7 +1229,11 @@ const SHARE_SCRIPT = `<script>
 // blocked by an extension, BRIEF_THREAD_OPEN_SCRIPT silently no-ops.
 // Same data-website-id as the dashboard so events land in the same
 // project — segmentation is via event properties, not website ids.
-const UMAMI_LOADER = '<script async src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>';
+// `data-exclude-search` keeps the query out of the reported URL. On the
+// auth'd route the query carries the sole reader credential (`?t=`, see
+// api/brief/[userId]/[issueDate].ts). Without the attribute the tracker
+// stores that credential with every pageview.
+const UMAMI_LOADER = '<script async src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-exclude-search="true" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>';
 
 /**
  * U11 telemetry: emit a `brief-thread-open` event whenever a story

@@ -10,6 +10,7 @@
  */
 
 import { acquire511Slot } from '../_511-rate-limit.mjs';
+import { lonLatPair } from './geo-coord.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
@@ -53,12 +54,6 @@ function hostnameOf(baseUrl) {
   return hostname;
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function textOf(...values) {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -93,10 +88,7 @@ function pairFrom(value) {
   if (!Array.isArray(value) || value.length < 2) return null;
   // Help-page Point samples sometimes wrap [lon, lat] in an extra array.
   if (Array.isArray(value[0])) return pairFrom(value[0]);
-  const lon = finiteCoord(value[0]);
-  const lat = finiteCoord(value[1]);
-  if (lon == null || lat == null) return null;
-  return [lon, lat];
+  return lonLatPair(value);
 }
 
 export function geometryFromOpen511(geography) {

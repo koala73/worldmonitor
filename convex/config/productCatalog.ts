@@ -45,6 +45,13 @@ export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
   alerts: false,
 } as const;
 
+/**
+ * `mcpCallsPerDay` marker for plans whose MCP calls consume the plan's REST
+ * budget rather than a separate allowance. Declared here rather than as a bare
+ * string literal so every reader imports the same token.
+ */
+export const SHARED_API_BUDGET = "shared-api-budget";
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -57,10 +64,17 @@ export type PlanLimits = {
    */
   apiBurstRequestsPerMinute: number | null;
   /**
-   * Daily MCP tool/resource call allowance. Current runtime enforcement only
-   * has a Pro daily counter; API-tier counters need scanner/source support.
+   * Daily MCP tool/resource call allowance.
+   *
+   * `SHARED_API_BUDGET` means the plan has no separate MCP allowance: its MCP
+   * calls charge `apiRequestsPerDay` at a per-tool weight (`api/mcp/quota.ts`).
+   * Only plans that own a real REST budget may declare it — Pro and Pro
+   * Business are `apiAccess: false` with `apiRequestsPerDay: 0`, so they must
+   * keep a number of their own.
+   *
+   * A number is a dedicated MCP counter; `null` is unlimited.
    */
-  mcpCallsPerDay: number | null;
+  mcpCallsPerDay: number | null | typeof SHARED_API_BUDGET;
   /**
    * Daily dashboard-AI/REST LLM allowance. This is deliberately separate from
    * `mcpCallsPerDay`: MCP clients and dashboard/API callers have different
@@ -108,6 +122,27 @@ export type PlanFeatures = {
    * (fail-closed). Catalog entries below ALWAYS set the field explicitly.
    */
   mcpAccess?: boolean;
+  /**
+   * Partner-embed key issuance — gates minting `wme_…` keys
+   * (`convex/embedKeys.ts`). Deliberately NOT `apiAccess`: an embed key is
+   * pasted into the partner's PUBLIC HTML (`data-key` on `public/embed.js`),
+   * so it is worthless outside the embed surface and must be reachable by
+   * every paid tier — including Pro and Pro Business, which are
+   * `apiAccess: false` and therefore cannot mint a `wm_…` key at all.
+   *
+   * A named flag rather than a bare `tier >= 1` at each call site, for the
+   * same reason `mcpAccess` is one: the paywall ledger
+   * (`scripts/generate-entitlement-crosswalk.mjs`) can only certify a rule it
+   * can see, and a capability spelled out per-plan is what a pricing change
+   * edits. `shared/embed-access.ts` holds the single predicate that reads it.
+   *
+   * Optional for the same reason as `mcpAccess`: rows written before this
+   * field existed omit it, and the read-time catalog merge
+   * (`convex/entitlements.ts`) supplies the plan default. Consumers treat
+   * `undefined` as false (fail-closed). Catalog entries below ALWAYS set the
+   * field explicitly.
+   */
+  embedAccess?: boolean;
   /**
    * Per-account daily REST request allowance (the "included" number). Read by
    * the per-account rate-limit layer (#3199): the daily usage meter counts but
@@ -193,6 +228,7 @@ const FREE_FEATURES: PlanFeatures = {
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: false,
+  embedAccess: false,
   dataExport: false,
 };
 
@@ -212,6 +248,7 @@ const PRO_FEATURES: PlanFeatures = {
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: true,
+  embedAccess: true,
   dataExport: false,
 };
 
@@ -242,6 +279,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   prioritySupport: true,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
   dataExport: true,
 };
 
@@ -254,13 +292,14 @@ const API_STARTER_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 1_000,
     apiBurstRequestsPerMinute: 60,
-    mcpCallsPerDay: 1_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: false,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
   dataExport: true,
 };
 
@@ -273,7 +312,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 10_000,
     apiBurstRequestsPerMinute: 300,
-    mcpCallsPerDay: 10_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
   },
@@ -281,6 +320,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
   dataExport: true,
 };
 
@@ -302,6 +342,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   // (#4974): neither has an exporter, and this array is display truth.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
   dataExport: true,
 };
 
@@ -431,7 +472,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications",
     ],
     highlightFeatures: ["Commercial license — for your organization"],
@@ -470,9 +511,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: API_BUSINESS_FEATURES,
     marketingFeatures: [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
-      "10,000 requests/day included",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support",
     ],
@@ -613,6 +654,16 @@ export function getEntitlementFeatures(planKey: string): PlanFeatures {
   return entry.features;
 }
 
+/**
+ * True when the plan's MCP calls charge its REST budget rather than a counter
+ * of their own. Derived from the catalog so a new plan cannot be added to one
+ * list and forgotten in another — the drift that left API-tier MCP usage read
+ * from an Axiom query that could not answer it.
+ */
+export function hasSharedApiBudget(planKey: string): boolean {
+  return getEntitlementFeatures(planKey).planLimits?.mcpCallsPerDay === SHARED_API_BUDGET;
+}
+
 export function getPlanLimit(
   planKey: string,
   dimension: PlanLimitDimension,
@@ -625,7 +676,13 @@ export function getPlanLimit(
     case "api_minute_burst":
       return limits.apiBurstRequestsPerMinute;
     case "mcp_daily_calls":
-      return limits.mcpCallsPerDay;
+      // A shared-budget plan has no MCP ceiling of its own: its MCP calls are
+      // charged to the REST budget, so that IS the limit a notice must warn
+      // against. Returning the marker (or a stale second number) here is what
+      // let the API tiers advertise 1,000 MCP calls/day that never existed.
+      return limits.mcpCallsPerDay === SHARED_API_BUDGET
+        ? limits.apiRequestsPerDay
+        : limits.mcpCallsPerDay;
     case "mcp_minute_burst":
       return limits.mcpBurstRequestsPerMinute;
   }

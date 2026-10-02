@@ -379,3 +379,18 @@ describe('WatchlistTableView scaled virtualization', () => {
     view.destroy();
   });
 });
+
+it('binds a surviving table once and uses the latest callback', () => {
+  const view = createView();
+  const root = document.createElement('div');
+  document.body.append(root);
+  root.innerHTML = view.render();
+  const first = vi.fn();
+  const second = vi.fn();
+  view.bind(root, first);
+  view.bind(root, second);
+  root.querySelector<HTMLElement>('.watchlist-row')!.click();
+  expect(first).not.toHaveBeenCalled();
+  expect(second).toHaveBeenCalledOnce();
+  view.destroy();
+});

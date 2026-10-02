@@ -101,7 +101,7 @@ test('event lat/lon are preserved as centroid [lon, lat]', () => {
 });
 
 test('missing lat/lon falls back to a polyline centroid', () => {
-  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F';
+  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F?';
   const path = decodeEncodedPolyline(encoded);
   assert.ok(path.length > 1);
   const expected = centroidOfPath(path);
@@ -120,8 +120,16 @@ test('missing lat/lon falls back to a polyline centroid', () => {
   assert.ok(record.centroid[0] < -74 && record.centroid[0] > -90);
 });
 
+test('truncated or invalid encoded polylines do not create a zero centroid', () => {
+  for (const encoded of ['?', '_', '_?', '"?']) {
+    assert.deepEqual(decodeEncodedPolyline(encoded), []);
+    assert.equal(normalize511Record({ EncodedPolyline: encoded }, { kind: 'event' }).centroid, null);
+  }
+  assert.deepEqual(decodeEncodedPolyline('??'), [[0, 0]]);
+});
+
 test('roadconditions EncodedPolyline arrays decode to a path and centroid', () => {
-  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F';
+  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F?';
   const record = normalize511Record({
     LocationDescription: 'From Highway 17 to Pukaskwa Park',
     Condition: ['No Report'],

@@ -16,6 +16,137 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+const { __testing__ } = await import('../api/health.js?failure-history-plan');
+
+const NOW = Date.parse('2026-09-09T08:00:00.000Z');
+
+function persistencePlan(overrides = {}) {
+  const defaults = {
+    verdict: {
+      overall: 'HEALTHY',
+      diagnosticOverall: 'WARNING',
+      critCount: 0,
+      realWarnCount: 1,
+    },
+    diagnostics: {
+      problemKeys: ['diseaseOutbreaks:STALE_CONTENT(181min)'],
+      sigKeys: ['diseaseOutbreaks:STALE_CONTENT'],
+    },
+    containedWarnCount: 1,
+    previousSignature: '',
+    now: NOW,
+  };
+  return __testing__.buildFailureLogPersistencePlan({
+    ...defaults,
+    ...overrides,
+  });
+}
+
+describe('api/health diagnostic incident persistence', () => {
+  it('writes a contained HEALTHY incident once while retaining diagnostic severity', () => {
+    const plan = persistencePlan();
+
+    assert.equal(plan.action, 'persist');
+    assert.equal(plan.appendIncident, true);
+    assert.deepEqual(plan.entry, {
+      at: '2026-09-09T08:00:00.000Z',
+      status: 'WARNING',
+      availabilityStatus: 'HEALTHY',
+      containedWarnCount: 1,
+      critCount: 0,
+      warnCount: 1,
+      problems: ['diseaseOutbreaks:STALE_CONTENT(181min)'],
+    });
+    assert.deepEqual(plan.commands.map(([op, key]) => [op, key]), [
+      ['SET', 'health:last-failure'],
+      ['LPUSH', 'health:failure-log'],
+      ['LTRIM', 'health:failure-log'],
+      ['EXPIRE', 'health:failure-log'],
+      ['SET', 'health:failure-log-sig'],
+    ]);
+  });
+
+  it('refreshes active incident state without appending a duplicate', () => {
+    const signature = 'WARNING|diseaseOutbreaks:STALE_CONTENT';
+    const plan = persistencePlan({ previousSignature: signature });
+
+    assert.equal(plan.appendIncident, false);
+    assert.deepEqual(plan.commands[1], ['EXPIRE', 'health:failure-log', 86400 * 7]);
+    assert.deepEqual(plan.commands.map(([op, key]) => [op, key]), [
+      ['SET', 'health:last-failure'],
+      ['EXPIRE', 'health:failure-log'],
+      ['SET', 'health:failure-log-sig'],
+    ]);
+    assert.deepEqual(plan.commands[2], [
+      'SET', 'health:failure-log-sig', signature, 'EX', 86400,
+    ]);
+  });
+
+  it('appends transitions and keeps broad-impact WARNING as the public verdict', () => {
+    const transitioned = persistencePlan({
+      previousSignature: 'WARNING|diseaseOutbreaks:STALE_CONTENT',
+      diagnostics: {
+        problemKeys: ['portwatchPortActivity:COVERAGE_PARTIAL'],
+        sigKeys: ['portwatchPortActivity:COVERAGE_PARTIAL'],
+      },
+    });
+    assert.equal(transitioned.appendIncident, true);
+
+    const broad = persistencePlan({
+      verdict: {
+        overall: 'WARNING',
+        diagnosticOverall: 'WARNING',
+        critCount: 0,
+        realWarnCount: 10,
+      },
+      containedWarnCount: 10,
+      diagnostics: {
+        problemKeys: ['manySources:COVERAGE_PARTIAL'],
+        sigKeys: ['manySources:COVERAGE_PARTIAL'],
+      },
+    });
+    assert.equal(broad.entry.status, 'WARNING');
+    assert.equal(Object.hasOwn(broad.entry, 'availabilityStatus'), false);
+    assert.equal(Object.hasOwn(broad.entry, 'containedWarnCount'), false);
+  });
+
+  it('clears only after recovery, then appends the same incident when it recurs', () => {
+    const recovered = persistencePlan({
+      verdict: {
+        overall: 'HEALTHY',
+        diagnosticOverall: 'HEALTHY',
+        critCount: 0,
+        realWarnCount: 0,
+      },
+      containedWarnCount: 0,
+      diagnostics: { problemKeys: [], sigKeys: [] },
+      previousSignature: 'WARNING|diseaseOutbreaks:STALE_CONTENT',
+    });
+    assert.deepEqual(recovered, {
+      action: 'clear',
+      commands: [['DEL', 'health:failure-log-sig']],
+    });
+
+    assert.equal(persistencePlan({ previousSignature: '' }).appendIncident, true);
+  });
+
+  it('does not persist on-demand or actively pending diagnostics', () => {
+    const pendingUntil = new Date(NOW + 60_000).toISOString();
+    const { problemKeys, sigKeys } = __testing__.collectFailureLogProblems({
+      imdCycloneMarine: { status: 'EMPTY_ON_DEMAND', records: 0, onDemand: true },
+      temporalAnomalies: {
+        status: 'STALE_CONTENT',
+        records: 5,
+        staleContentGraceUntil: pendingUntil,
+      },
+    }, NOW);
+
+    assert.deepEqual(problemKeys, []);
+    assert.deepEqual(sigKeys, []);
+    assert.equal(persistencePlan({ diagnostics: { problemKeys, sigKeys } }).action, 'clear');
+  });
+});
+
 describe('api/health ?history=1', () => {
   it('returns lastFailure + failureLog shape, never throws', async () => {
     // Force the no-Redis path so the test is hermetic. The endpoint must

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { loadCountryStockIndexes } from '../scripts/_country-stock-index-registry.mjs';
+
 // #6235 follow-up: seeding the whole 45-country enum is only half the gold
 // standard — without its own freshness metadata a run where every country
 // failed would leave seed-meta:market:stocks fresh and health green while the
@@ -81,9 +83,14 @@ test('health.js tracks the country-index seed with a floor below the measured su
   const minRecordCount = Number(entry[2]);
 
   assert.equal(maxStaleMin, 30, 'should mirror the market:stocks staleness budget it shares a cron with');
-  // Measured 2026-08-05: 37/45 symbols return usable closes. The floor must sit
-  // below that (or it alarms permanently on the eight known-dead symbols) and
-  // above zero (or a total seeding failure stays green).
+  // The floor must sit below the seedable work-list (countries without an
+  // `unavailable` flag, #6240), or it alarms permanently, and above zero, or a
+  // total seeding failure stays green. Derived from the registry so adding or
+  // lifting a flag re-checks the floor instead of trusting a one-off measurement.
+  const seedable = loadCountryStockIndexes().length;
   assert.ok(minRecordCount > 0, 'a zero floor would let a total seeding failure report healthy');
-  assert.ok(minRecordCount < 37, 'a floor at or above the measured success rate would alarm permanently');
+  assert.ok(
+    minRecordCount < seedable,
+    `a floor at or above the ${seedable} seedable countries would alarm permanently`,
+  );
 });

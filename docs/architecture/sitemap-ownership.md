@@ -55,6 +55,18 @@ modified date earlier than publication.
 
 ## Build and verification
 
+`npm run lint:public-docs` checks every Markdown source under `docs/`.
+Each document must appear in indexable navigation, declare `noindex: true` or
+`hidden: true` in frontmatter, or match a literal file or directory in
+`docs/.mintignore`. The check rejects ignored navigation targets and missing
+source files. `.mintlifyignore` is not a publication control.
+
+Run `node scripts/check-public-doc-plan-references.mjs --inventory` to print
+each document's classification. Engineering records stay in Git and are excluded
+from Mintlify. The three English-only methodology appendices remain public.
+Global `seo.indexing: all` would also index unlisted engineering records, so the
+check rejects it.
+
 The normal full build runs these steps in order:
 
 ```sh

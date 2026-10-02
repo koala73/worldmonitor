@@ -5,6 +5,11 @@ import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
+import { __testing__ as healthTesting } from '../api/health.js';
+import {
+  CHINA_COVERAGE_PENDING_SKEW_SLACK_MS,
+  MAX_CHINA_COVERAGE_PENDING_MS,
+} from '../scripts/check-seed-freshness.mjs';
 import { readChinaDecisionSignalWireContract } from '../scripts/lib/openapi-codegen.mjs';
 import { validateChinaDecisionSignalSnapshot } from '../scripts/seed-china-decision-signals.mjs';
 import { CHINA_DECISION_SIGNAL_GROUP_MANIFEST } from '../shared/china-decision-signal-manifest.ts';
@@ -27,6 +32,25 @@ const REPO_ROOT = resolve(import.meta.dirname, '..');
 const ROUTE = '/api/intelligence/v1/get-china-decision-signals';
 
 describe('China decision-signal static and staging audit (#5580)', () => {
+  it('keeps every China decision health surface on the three-hour budget', () => {
+    const budgetMin = healthTesting.CHINA_DECISION_SIGNALS_PENDING_MS / 60_000;
+    assert.equal(budgetMin, 180);
+    assert.equal(healthTesting.SEED_META.chinaDecisionSignals.maxStaleMin, budgetMin);
+    assert.equal(
+      MAX_CHINA_COVERAGE_PENDING_MS - CHINA_COVERAGE_PENDING_SKEW_SLACK_MS,
+      healthTesting.CHINA_DECISION_SIGNALS_PENDING_MS,
+    );
+    assert.match(
+      readFileSync(join(REPO_ROOT, 'scripts/seed-china-decision-signals.mjs'), 'utf8'),
+      /maxStaleMin:\s*180/,
+    );
+    assert.match(
+      readFileSync(join(REPO_ROOT, 'api/seed-health.js'), 'utf8'),
+      /'intelligence:china-decision-signals':\s*\{[^}]*intervalMin:\s*90/,
+      'seed-health multiplies intervalMin by two, so 90 must match 180 minutes',
+    );
+  });
+
   it('pins all six domains across API, MCP, bootstrap, health, alerts, Railway, and docs', () => {
     const result = auditChinaDecisionStaticRegistrations(REPO_ROOT);
     assert.deepEqual(result.groupIds, [
@@ -166,7 +190,7 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       // The lone unavailable group declares no cause, so it is not a proven
       // healthy quiet window and stays uncovered (#6060).
       healthyQuiet: 0,
-      operationallyCovered: 3,
+      operationallyCovered: 2,
     });
 
     const groups = CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => ({

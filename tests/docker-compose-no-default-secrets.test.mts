@@ -199,6 +199,17 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     );
   });
 
+  it('docker-compose.yml forwards operator MCP/REST keys to the app container (#5449)', async () => {
+    const compose = await read('docker-compose.yml');
+    const worldmonitor = serviceBlock(compose, 'worldmonitor');
+
+    assert.match(
+      worldmonitor,
+      /WORLDMONITOR_VALID_KEYS:\s*"\$\{WORLDMONITOR_VALID_KEYS:-\}"/,
+      'worldmonitor must receive WORLDMONITOR_VALID_KEYS so the self-hosted MCP X-WorldMonitor-Key path documented in SELF_HOSTING.md works',
+    );
+  });
+
   it('docker-compose.yml points ais-relay Classify at the in-network app (#7437)', async () => {
     const compose = await read('docker-compose.yml');
     const relay = serviceBlock(compose, 'ais-relay');

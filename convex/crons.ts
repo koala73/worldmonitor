@@ -23,6 +23,20 @@ crons.hourly(
   {},
 );
 
+// Bounded recovery for account deletions whose scheduled continuation was
+// dropped. Without it the by_status_updatedAt index has no reader, and a user
+// whose erase stalled sits write-fenced and already anonymized while their
+// subscription keeps billing, recoverable only by clicking Delete again or by
+// support running the runbook. The mutation only re-arms rows already staler
+// than PENDING_STALE_AFTER_MS, so a live retry backoff is never doubled, and
+// re-running a step is a no-op because every stepper re-queries its leftovers.
+crons.hourly(
+  "account-deletion-stalled-reaper",
+  { minuteUTC: 7 },
+  internal.accountDeletion.batches.reapStalledDeletions,
+  {},
+);
+
 // Bounded recovery for Company Monitoring purge generations whose scheduled
 // continuation was dropped. The mutation independently enforces the ordinary
 // lapse purgeAfter deadline, so an hourly wake cannot bypass the 24h grace.

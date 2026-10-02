@@ -34,7 +34,7 @@ describe('producer fixture contracts', () => {
       new URL('../scripts/seed-internet-outages.mjs', import.meta.url),
       'utf8',
     );
-    assert.match(cableProducer, /return \{ generatedAt: Date\.now\(\), cables \}/);
+    assert.match(cableProducer, /\{ generatedAt: Date\.now\(\), cables \}/);
     assert.match(thermalProducer, /\bzScore,\s*\n\s*persistenceHours:[\s\S]*?\n\s*status,/);
     assert.match(outageProducer, /severity: mapOutageSeverity\(raw\.outage\?\.outageType\),[\s\S]*?endedAt: toEpochMs\(raw\.endDate\),/);
   });

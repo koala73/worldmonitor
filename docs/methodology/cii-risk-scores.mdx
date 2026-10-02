@@ -1,11 +1,13 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index — baseline risk, event multiplier, four-component score, and strategic-risk bands."
+description: "Editorial methodology behind the Country Instability Index: baseline risk, event multiplier, four-component score, and strategic-risk bands."
 ---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
 
 ## Start here
 
-The Composite Instability Index answers one operational question:
+The Country Instability Index answers one operational question:
 **which country should I look at first today?**
 
 It is a 0-100 stress reading, recomputed continuously for a curated watchlist of
@@ -60,6 +62,11 @@ travel-advisory guidance from a sovereign government. It is also **not** the
 the opposite question: not *what is happening to this country*, but *how well
 could it take a hit*. The dashboard shows them together because a country can
 be calm and fragile, or under heavy pressure and structurally tough.
+
+Where WorldMonitor does forecast, that record is graded and published. The
+[forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/) carries
+the Brier and log scores, the calibration table, and the sample size behind
+every published figure.
 
 <Warning>
 **These weights are editorial, not empirical.** They were authored by the
@@ -211,8 +218,10 @@ occurred inside internationally recognized Israeli territory.
 
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean
-the country score rose, negative values mean it fell, and `0` means stable or
-that no valid prior snapshot is available.
+the country score rose, negative values mean it fell, and `0` means no change
+or that no valid prior snapshot is available. `trend` tells the two apart:
+`TREND_DIRECTION_STABLE` for a measured comparison inside the deadband,
+`TREND_DIRECTION_UNSPECIFIED` when no valid prior snapshot is available.
 
 `GetRiskScoresResponse.degraded` is `true` when upstream scoring inputs failed
 and the response is served from a stale cache or from the baseline-only cold
@@ -417,7 +426,12 @@ in `CURATED_COUNTRIES`.
 > event count > 100; minor when event count > 10), matching the frontend
 > `deriveUcdpClassifications` heuristic. The classifier is configured for that
 > 2-year window, but the Redis writers currently fetch the newest six UCDP pages
-> and retain at most 2,000 mapped events from a 365-day trailing slice. The relay
+> and retain a default of 2,000 mapped events from a 365-day trailing slice.
+> The newest candidate release is added within the same window. All fetched
+> candidate rows survive the payload cap, including monthly aggregates dated
+> at period start. Capacity grows when needed to retain those rows plus up to
+> 500 annual rows. Candidate fetching remains limited to three 1,000-row pages.
+> Earlier candidate releases are not backfilled. The relay
 > `/ucdp-events` reader can fetch up to 12 pages, but it applies the same 365-day
 > filter. Live scoring is therefore seed-input-bounded until UCDP retention is
 > widened with production API-volume and Redis-payload safeguards.

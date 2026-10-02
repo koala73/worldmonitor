@@ -1,0 +1,34 @@
+body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
+#pluginRoot { overflow: visible; height: auto; min-height: 720px; }
+@media (min-width: 900px) {
+  #pluginRoot { overflow: hidden; height: 720px; }
+}
+#pluginStatus:empty { display: none; }
+#pluginRoot .panel[hidden] { display: none; }
+#pluginStatus { padding: 8px; }
+#pluginMapLayers { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 4px 8px; border: 1px solid var(--border); }
+#pluginMapLayers label { display: inline-flex; align-items: center; gap: 4px; }
+#pluginMapStatus { padding: 4px 8px; font-size: 12px; }
+#pluginMapStatus:empty { display: none; }
+#pluginRoot .panel-close-btn, #pluginRoot .layer-toggles, #pluginRoot .map-legend { display: none; }
+#pluginActions { display: flex; flex-wrap: wrap; gap: 6px; }
+#pluginActions select { background: var(--panel-bg); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; font: inherit; }
+.plugin-body .header { height: auto; min-height: 40px; flex-wrap: wrap; gap: 8px; }
+.plugin-body .header-left { display: flex; }
+@layer base {
+  .plugin-body .header-right > :not(#authWidgetMount), .plugin-body .header-left > * { display: inline-flex !important; }
+  #pluginActions .search-btn { display: inline-flex !important; }
+  #pluginMapLayers .search-btn { display: inline-flex !important; }
+  @media (max-width: 899px) {
+    #pluginRoot { display: flex; flex-direction: column; min-height: 0; }
+    #pluginRoot #mapSection { height: auto !important; min-height: 0 !important; max-height: none !important; flex: none; }
+    #pluginRoot #mapContainer { height: 360px; min-height: 360px; flex: none; }
+    #pluginRoot #panelsGrid { display: grid; grid-template-columns: 1fr; overflow: visible; height: auto; max-height: none; }
+    #pluginRoot #panelsGrid .panel { min-height: 260px; }
+  }
+}
+
+@media (max-width: 899px) {
+  #pluginActions { width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; justify-content: flex-start; }
+  #pluginActions select { max-width: 100%; }
+}

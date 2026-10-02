@@ -71,6 +71,7 @@ vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => entitlementState,
   getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => true,
+  hasEmbedAccessForAccount: () => true,
   isEntitled: () => true,
   onEntitlementChange: () => () => {},
   onEntitlementVerificationChange: () => () => {},

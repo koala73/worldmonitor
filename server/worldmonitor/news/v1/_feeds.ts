@@ -302,6 +302,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     africa: [
       { name: 'BBC Africa', url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      // Keep regional desks early in the category-fair fetch schedule (#7748).
+      { name: 'Guardian Africa', url: 'https://www.theguardian.com/world/africa/rss' },
+      { name: 'France 24 Africa', url: 'https://www.france24.com/en/africa/rss' },
       // Theater coverage preset (#5956) - Sahel and West Africa sources.
       { name: 'Africa News', url: gn('(Africa OR Nigeria OR Kenya OR "South Africa" OR Ethiopia) when:2d') },
       { name: 'Sahel Crisis', url: gn('(Sahel OR Mali OR Niger OR "Burkina Faso" OR Wagner) when:3d') },
@@ -341,6 +344,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
       { name: 'Guardian Americas', url: 'https://www.theguardian.com/world/americas/rss' },
+      { name: 'Guardian Caribbean', url: 'https://www.theguardian.com/world/caribbean/rss' },
+      { name: 'France 24 LatAm', url: 'https://www.france24.com/en/americas/rss' },
+      { name: 'Mexico News Daily', url: 'https://mexiconewsdaily.com/feed/' },
       { name: 'Primicias', url: 'https://www.primicias.ec/feed/', lang: 'es' },
       { name: 'Infobae Americas', url: 'https://www.infobae.com/arc/outboundfeeds/rss/', lang: 'es' },
       { name: 'El Universo', url: 'https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml', lang: 'es' },
@@ -355,6 +361,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
+      { name: 'Guardian Pacific', url: 'https://www.theguardian.com/world/pacific-islands/rss' },
+      { name: 'France 24 Asia Pacific', url: 'https://www.france24.com/en/asia-pacific/rss' },
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
       // Theater coverage preset (#5956) - Indo-Pacific sources.
       { name: 'Reuters Asia', url: gn('site:reuters.com (China OR Japan OR Taiwan OR Korea) when:3d') },

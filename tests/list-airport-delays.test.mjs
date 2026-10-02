@@ -22,6 +22,7 @@
 
 import { describe, it, before, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 
 // 4. Behavioural — actually invoke the handler against stubbed Redis.
 //    These are the regression tests the bug report would catch.
@@ -102,11 +103,20 @@ beforeEach(() => {
 const FAA_SAMPLE = 'JFK';            // in FAA_AIRPORTS
 const INTL_SAMPLE = 'LHR';           // in AVIATIONSTACK_AIRPORTS
 const NOTAM_ONLY_SAMPLE = 'IKA';     // Tehran Imam Khomeini — not in either AS or FAA
+const context = () => ({ request: new Request('https://worldmonitor.app/api/aviation/v1/list-airport-delays') });
 
 describe('listAirportDelays handler — coverage gating (#3707)', () => {
+  it('rejects declared filters because the seed snapshot has no filtered contract', async () => {
+    await assert.rejects(
+      listAirportDelays(context(), { pageSize: 100, cursor: '', region: '', minSeverity: '' }),
+      { statusCode: 400 },
+    );
+  });
+
   it('both caches MISS → every monitored airport emits severity=UNKNOWN', async () => {
     // No cache set.
-    const resp = await listAirportDelays({}, {});
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/list-airport-delays');
+    const resp = await listAirportDelays({ request }, {});
     assert.ok(Array.isArray(resp.alerts) && resp.alerts.length > 0, 'must return some rows');
 
     for (const a of resp.alerts) {
@@ -125,13 +135,15 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     // And critically: no fabricated NORMAL row exists.
     const normalCount = resp.alerts.filter(a => a.severity === 'FLIGHT_DELAY_SEVERITY_NORMAL').length;
     assert.equal(normalCount, 0, 'must not fabricate NORMAL rows when no telemetry available');
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1',
+      'unavailable required delay seeds must not produce a cacheable UNKNOWN map');
   });
 
   it('FAA HIT (empty alerts) + INTL MISS → US airports = NORMAL/FAA, non-US = UNKNOWN', async () => {
     cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
     // intl missing
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
 
     const faaRow = resp.alerts.find(a => a.iata === FAA_SAMPLE);
     assert.ok(faaRow, `must include ${FAA_SAMPLE} row`);
@@ -179,7 +191,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
       coverage: [{ iata: INTL_SAMPLE, status: 'normal', flightCount: 12 }],
     });
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
 
     // JFK keeps its alert verbatim (apart from possibly enriched fields).
     const jfkOut = resp.alerts.find(a => a.iata === 'JFK');
@@ -220,7 +232,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
       ],
     });
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
     const omitted = resp.alerts.find(a => a.iata === 'LHR');
     assert.equal(omitted.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
     assert.equal(omitted.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED');
@@ -234,7 +246,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
     cacheStore.set('aviation:delays:intl:v3', { alerts: [] });
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
     const intl = resp.alerts.find(a => a.iata === INTL_SAMPLE);
     assert.ok(intl, `must include ${INTL_SAMPLE} row`);
     assert.equal(intl.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
@@ -248,7 +260,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     cacheStore.set('aviation:delays:faa:v1', { notTheRightField: true });
     cacheStore.set('aviation:delays:intl:v3', { alerts: [] });
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
     const faa = resp.alerts.find(a => a.iata === FAA_SAMPLE);
     assert.equal(faa.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
       'malformed FAA payload must not be treated as coverage');
@@ -262,11 +274,31 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
     cacheStore.set('aviation:delays:intl:v3', { notTheRightField: true });
 
-    const resp = await listAirportDelays({}, {});
+    const resp = await listAirportDelays(context(), {});
     const intl = resp.alerts.find(a => a.iata === INTL_SAMPLE);
     assert.equal(intl.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
       'malformed INTL payload must not be treated as coverage');
     assert.equal(intl.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
       'malformed INTL payload: source must be UNSPECIFIED when uncovered');
   });
+
+  for (const [name, faa, intl] of [
+    ['null FAA alert', { alerts: [null] }, { alerts: [], coverage: [{ iata: INTL_SAMPLE, status: 'normal' }] }],
+    ['null INTL coverage row', { alerts: [] }, { alerts: [], coverage: [null] }],
+    ['invalid INTL coverage row', { alerts: [] }, { alerts: [], coverage: [{ iata: INTL_SAMPLE, status: 'invalid' }] }],
+  ]) {
+    it(`marks ${name} as unavailable instead of cacheable coverage`, async () => {
+      cacheStore.set('aviation:delays:faa:v1', faa);
+      cacheStore.set('aviation:delays:intl:v3', intl);
+      const request = new Request('https://worldmonitor.app/api/aviation/v1/list-airport-delays');
+
+      const response = await listAirportDelays({ request }, {});
+      assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+      if (name === 'null FAA alert') {
+        assert.equal(response.alerts.find(a => a.iata === FAA_SAMPLE)?.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      } else {
+        assert.equal(response.alerts.find(a => a.iata === INTL_SAMPLE)?.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      }
+    });
+  }
 });

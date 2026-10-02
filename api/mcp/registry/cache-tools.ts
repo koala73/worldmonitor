@@ -1,4 +1,6 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { normalizeSocialVelocity } from '../../_social-velocity.js';
+import { projectNaturalEventsRetention } from '../../_natural-events-dashboard.js';
 import { CHINA_MACRO_REQUIRED_SERIES } from '../../../shared/china-macro-contract.js';
 import {
   normalizeChinaMacroObservations,
@@ -13,9 +15,19 @@ import {
   CREDIBILITY_HIGH_RISK_CAP,
   computeCredibilityScore,
 } from '../../../shared/news-credibility.js';
+import {
+  CORROBORATION_OUTPUT_SCHEMA,
+  PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
+  assessCorroboration,
+  evidenceFromStory,
+  publisherRoster,
+  toCorroborationJson,
+  toPublisherRosterJson,
+} from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
+import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -44,26 +56,10 @@ import {
   selectDatasets,
   summarizeData,
 } from '../filters';
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { resolveCountryFilter } from '../_country-args';
+import { RpcValidationError } from '../billing-denial';
 import type { ToolDef } from '../types';
 
-/**
- * Country codes for a `countries` filter, resolving names and alpha-3 the way
- * the country-scoped tools do.
- *
- * `pickMapKeys` FAILS OPEN — a filter that matches nothing returns the entire
- * map (api/mcp/filters.ts:100), by design, so naming keys that do not exist is
- * not silently an empty result. That makes an unresolved designator expensive
- * here: the `country-briefing` prompt fans one argument out to three tools, and
- * a name reaching this one un-normalized would splice EVERY country's macro
- * indicators into a single-country brief.
- *
- * Unresolvable entries pass through untouched, so this is never worse than the
- * previous behaviour — it only adds the designators the sibling tools accept.
- */
-function resolveCountryFilter(value: unknown): string[] {
-  return argStrList(value).map((code) => resolveCountryCode(code)?.toLowerCase() ?? code);
-}
 import { utf8ByteLength } from '../utils';
 import {
   PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA,
@@ -80,6 +76,30 @@ import {
   NEWS_INTELLIGENCE_UI_URI,
   PREDICTION_MARKETS_UI_URI,
 } from '../ui/registry';
+
+// Eurostat uses EL for Greece and also publishes these two non-country geos.
+function resolveEurostatCountryFilter(raw: unknown): string[] {
+  if (raw == null || (typeof raw === 'string' && !raw.trim())) return [];
+  return (Array.isArray(raw) ? raw : [raw]).flatMap((value) => {
+    const geo = argStr(value);
+    if (geo === 'ea20' || geo === 'eu27_2020') return [geo];
+    return resolveCountryFilter(value, 'countries').map((code) => code === 'gr' ? 'el' : code);
+  });
+}
+
+// The UNHCR seeder stores `{ summary: { year, globalTotals, countries, topFlows } }`.
+// executeTool then files that value under the cache-key label `summary`, so the
+// lists live at `data.summary.summary.*`. Hoist the inner object so `limit`,
+// `countries`, and `summary: true` reach the arrays the outputSchema describes.
+function hoistDisplacementSeed(data: Record<string, unknown>): void {
+  const outer = data.summary;
+  if (!outer || typeof outer !== 'object' || Array.isArray(outer)) return;
+  const inner = (outer as Record<string, unknown>).summary;
+  if (!inner || typeof inner !== 'object' || Array.isArray(inner)) return;
+  const seeded = inner as Record<string, unknown>;
+  if (!Array.isArray(seeded.countries) && !Array.isArray(seeded.topFlows)) return;
+  data.summary = seeded;
+}
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: drop the dormant
 // conflict:iran-events:v1 key from the get_conflict_events cache set so the MCP
@@ -232,9 +252,13 @@ function addNewsSourceProvenance(value: unknown): unknown {
     const corroboration = Number(
       record.uniqueSourceCount ?? record.corroborationSourceCount ?? 1,
     );
+    const evidence = evidenceFromStory(record);
+    const verdict = assessCorroboration(evidence);
     return {
       ...record,
       sourceProvenance: provenance,
+      corroboration: toCorroborationJson(verdict),
+      ...toPublisherRosterJson(publisherRoster(evidence), verdict),
       credibilityScore: servedScore !== null
         ? servedScore
         : computeCredibilityScore({
@@ -354,6 +378,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
     _outputBudgetBytes: 65536,
+    // TPS rows are licensed for reuse with attribution. Extract it from the
+    // cache envelope so a projection over `records` cannot leave the rows
+    // without the licence assertion that permits redistributing them.
+    _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
     description: 'Bounded Toronto Police Service Major Crime Indicators rows. Retrospective reported occurrences only; coordinates are approximate and this is not live dispatch.',
     inputSchema: {
       type: 'object',
@@ -400,6 +428,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_calls_attended',
     _outputBudgetBytes: 65536,
+    // Read AFTER `_postFilter`, which rewrites `attribution` from the source
+    // descriptor — a pre-CKAN cached blob still carries the retired
+    // OGL-Ontario claim, and the rider must publish the current licence.
+    _attribution: 'data.annual_aggregates.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
     description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
     inputSchema: {
       type: 'object',
@@ -436,6 +468,16 @@ export const CACHE_TOOLS: ToolDef[] = [
       ));
       const requested = argNum(params.limit);
       capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      // Attribution is a licence assertion, so it comes from the descriptor —
+      // never from whatever snapshot happens to be cached. A pre-CKAN blob
+      // still carries the retired OGL-Ontario claim until it is overwritten.
+      const aggregates = (data as Record<string, unknown>).annual_aggregates;
+      if (aggregates && typeof aggregates === 'object') {
+        const descriptor = torontoSafetySourceById('tps-calls-attended');
+        if (descriptor?.attribution) {
+          (aggregates as Record<string, unknown>).attribution = descriptor.attribution;
+        }
+      }
       return data;
     },
     _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],
@@ -980,7 +1022,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_news_intelligence',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
+    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -990,7 +1032,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           description: 'Filter GDELT intelligence to a single topic.',
         },
         category: { type: 'string', description: 'Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general").' },
-        country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive).' },
+        country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         alerts_only: { type: 'boolean', description: 'Keep only top stories flagged as alerts.' },
         query: { type: 'string', description: 'Keep only top stories whose headline, primary source, or any clustered member headline contains this text (case-insensitive substring). This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that.' },
         min_importance: { type: 'number', description: 'Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero.' },
@@ -1004,7 +1046,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           topStories: { type: 'array', items: { type: 'object', properties: {
             primaryTitle: { type: 'string' }, primarySource: { type: 'string' }, primaryLink: { type: 'string' },
-            pubDate: { type: 'string' }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
+            // Epoch milliseconds from the digest pipeline, or an ISO string when a
+            // feed item carried only a text date (scripts/seed-insights.mjs).
+            pubDate: { type: ['string', 'number'] }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
             credibilityScore: { type: 'number', description: '0-100 source-reliability score, distinct from importanceScore. Built from source tier, propaganda risk, and independent corroboration. State-controlled media is capped at 40.' },
             // Corroboration and clustering fields the seeder already writes
             // into every news:insights:v1 topStories entry (see the object
@@ -1037,10 +1081,18 @@ export const CACHE_TOOLS: ToolDef[] = [
                 riskReviewed: { type: 'boolean' },
                 typeReviewed: { type: 'boolean' },
                 stateAffiliated: { type: 'string' },
+                knownBiases: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Curated perspective labels. Recorded for few sources: empty means not assessed, not neutral.',
+                },
                 note: { type: 'string' },
+                summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
               },
-              required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed'],
+              required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary'],
             },
+            corroboration: CORROBORATION_OUTPUT_SCHEMA,
+            ...PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
           } } },
         },
       },
@@ -1075,7 +1127,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _postFilter: (data, params) => {
       const topic = argStr(params.topic);
       const category = argStr(params.category);
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       mapNested(data, 'insights', 'topStories', addNewsSourceProvenance);
       if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
@@ -1122,7 +1174,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // matching api/health.js.
     _freshnessChecks: [
       { key: 'seed-meta:news:insights',                    maxStaleMin: 30 },  // 15min cron × 2
-      { key: 'seed-meta:intelligence:gdelt-intel',         maxStaleMin: 45 },  // 15min materializer; matches api/health.js
+      { key: 'seed-meta:intelligence:gdelt-intel',         maxStaleMin: 45, honorContentAge: true }, // 15min materializer; matches api/health.js
       { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 60 }, // 30min cron × 2
     ],
     _apiPaths: [
@@ -1195,6 +1247,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const minMag = argNum(params.min_magnitude);
+      data.events = projectNaturalEventsRetention(data.events);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (minMag != null) {
         narrowNested(data, 'earthquakes', 'earthquakes', (q) => (argNum(q.magnitude) ?? 0) >= minMag);
@@ -1284,9 +1337,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         min_severity: {
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
-          description: 'Drop threats below this severity level.',
+          description: 'Keep only threats with a known severity at or above this level; exclude missing or unrecognized severities.',
         },
-        country: { type: 'string', description: 'Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter).' },
+        country: { type: 'string', description: 'Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         limit: { type: 'number', description: 'Cap the threat list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
@@ -1305,7 +1358,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const type = argStr(params.threat_type);
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const minSev = argStr(params.min_severity).replace('criticality_level_', '');
       const ranks: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 };
       const minRank = ranks[minSev];
@@ -1317,7 +1370,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'threats-bootstrap', 'threats', (t) => {
           const tok = argStr(t.severity).replace('criticality_level_', '');
           const r = ranks[tok];
-          return r == null || r >= minRank;
+          return r != null && r >= minRank;
         });
       }
       capNested(data, 'threats-bootstrap', 'threats', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
@@ -1330,7 +1383,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
+    description: 'Read cached rates, calendars and fuel prices with official-only 12-series China macro (no proxies, see launchReady). Includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, US federal spending awards, earnings, COT positioning, BIS household debt service ratios, and BIS residential/commercial property prices. Optional China macro data has official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Requested datasets may be unavailable or stale; this tool reads cached data and does not fetch fresh upstream releases.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1344,7 +1397,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         country: {
           type: 'string',
-          description: 'Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code.',
+          description: 'Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'number', description: 'Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap).' },
       },
@@ -1457,7 +1510,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       data['china-macro'] = projectChinaMacroForMcp(data['china-macro']);
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'fuel-prices', 'countries', (c) => matchesCode(c.code, countries));
@@ -1535,7 +1588,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries.',
+          description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'integer', minimum: 0, description: 'Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
@@ -1550,7 +1603,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries);
+      const codes = resolveCountryFilter(params.countries, 'countries');
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
         return data;
@@ -1583,7 +1636,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
@@ -1600,7 +1653,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries);
+      const codes = resolveEurostatCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'house-prices', 'countries', codes);
         return data;
@@ -1622,7 +1675,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
@@ -1639,7 +1692,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries);
+      const codes = resolveEurostatCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'gov-debt-q', 'countries', codes);
         return data;
@@ -1661,7 +1714,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
@@ -1678,7 +1731,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries);
+      const codes = resolveEurostatCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'industrial-production', 'countries', codes);
         return data;
@@ -1760,12 +1813,13 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_sanctions_data',
+    _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
     description: 'OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.',
     inputSchema: {
       type: 'object',
       properties: {
-        country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code.' },
+        country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity").' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
         limit: { type: 'number', description: 'Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap).' },
@@ -1779,7 +1833,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       entities: {
         type: ['array', 'object', 'null'],
         items: { type: 'object', properties: {
-          name: { type: 'string' }, cc: { type: 'string' }, et: { type: 'string' },
+          // Up to three ISO country codes per entity (scripts/seed-sanctions-pressure.mjs).
+          name: { type: 'string' }, cc: { type: 'array', items: { type: 'string' } }, et: { type: 'string' },
           addr: { type: 'string' },
         } },
       },
@@ -1797,7 +1852,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const etype = argStr(params.entity_type);
       const query = argStr(params.query);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1832,7 +1887,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all.',
+          description: 'Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params.',
         },
         limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap).' },
       },
@@ -1842,18 +1897,32 @@ export const CACHE_TOOLS: ToolDef[] = [
       summary: {
         type: ['object', 'null'],
         properties: {
+          year: { type: 'number' },
+          globalTotals: { type: 'object', properties: {
+            refugees: { type: 'number' }, asylumSeekers: { type: 'number' }, idps: { type: 'number' },
+            stateless: { type: 'number' }, total: { type: 'number' },
+          } },
           countries: { type: 'array', items: { type: 'object', properties: {
-            code: { type: 'string' }, total: { type: ['number', 'null'] }, year: { type: ['number', 'string'] },
+            code: { type: 'string' }, name: { type: 'string' },
+            refugees: { type: 'number' }, asylumSeekers: { type: 'number' }, idps: { type: 'number' },
+            stateless: { type: 'number' }, totalDisplaced: { type: 'number' },
+            hostRefugees: { type: 'number' }, hostAsylumSeekers: { type: 'number' }, hostTotal: { type: 'number' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
           } } },
           topFlows: { type: 'array', items: { type: 'object', properties: {
-            originCode: { type: 'string' }, asylumCode: { type: 'string' }, value: { type: ['number', 'null'] },
+            originCode: { type: 'string' }, originName: { type: 'string' },
+            asylumCode: { type: 'string' }, asylumName: { type: 'string' }, refugees: { type: 'number' },
+            originLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            asylumLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
           } } },
         },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries);
+      hoistDisplacementSeed(data);
+      const countries = resolveCountryFilter(params.countries, 'countries');
+      const codes = [...countries, ...compact(countries.map((code) => ISO2_TO_ISO3[code.toUpperCase()]?.toLowerCase()))];
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (codes.length > 0) {
         narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));
@@ -1890,7 +1959,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           items: { type: 'string', enum: ['outbreaks', 'air-quality'] },
           description: 'Restrict to disease outbreaks, air-quality stations, or both. Omit for both.',
         },
-        country: { type: 'string', description: 'Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code.' },
+        country: { type: 'string', description: 'Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         disease: { type: 'string', description: 'Keep only outbreaks whose disease name contains this text (case-insensitive).' },
         min_aqi: { type: 'number', description: 'Drop air-quality stations below this AQI value.' },
         limit: { type: 'number', description: 'Cap the outbreak and station lists to at most this many items (default 30, pass 0 for no cap).' },
@@ -1919,7 +1988,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const disease = argStr(params.disease);
       const minAqi = argNum(params.min_aqi);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1956,7 +2025,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_energy_intelligence',
     _outputBudgetBytes: 131072,
-    description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.',
+    description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), national natural-gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies. Gas-storage observations include country fill percentage, stored TWh and observation date; _countries is only a coverage index. Null observations mean unavailable, not zero.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1970,7 +2039,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         country: {
           type: 'string',
-          description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code.',
+          description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'number', description: 'Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap).' },
       },
@@ -1987,10 +2056,25 @@ export const CACHE_TOOLS: ToolDef[] = [
     //   resilience:fossil-electricity-share:v1   -> fossil-electricity-share
     //   economic:worldbank-renewable:v1          -> worldbank-renewable
     outputSchema: cacheEnvelope({
-      'eia-petroleum': { type: ['object', 'null'] },
+      'eia-petroleum': { type: ['object', 'null'], additionalProperties: {
+        type: 'object', properties: {
+          current: { type: 'number' }, previous: { type: ['number', 'null'] }, date: { type: 'string' },
+          unit: { type: 'string', description: 'Source unit. Stocks and production use thousand barrels and thousand barrels per day; prices use USD per barrel.' },
+        },
+      } },
       index: { type: ['object', 'null'], properties: { regions: { type: 'array', items: { type: 'object' } } } },
       _all: { type: ['object', 'null'] },
       _countries: { type: ['array', 'object', 'null'] },
+      'gas-storage': { type: ['object', 'null'], additionalProperties: {
+        type: 'object', properties: {
+          iso2: { type: 'string' }, countryName: { type: 'string' },
+          fillPct: { type: 'number', description: 'National natural-gas storage fill percentage.' },
+          fillPctChange1d: { type: 'number', description: 'Change in percentage points.' },
+          gasTwh: { type: 'number', description: 'Stored natural gas in terawatt-hours.' },
+          trend: { type: 'string' }, date: { type: 'string', description: 'Observation date.' },
+          seededAt: { type: 'string' },
+        },
+      } },
       'fuel-shortages': { type: ['object', 'null'], properties: { shortages: { type: ['object', 'array', 'null'] } } },
       disruptions: { type: ['object', 'null'], properties: { events: { type: ['object', 'array', 'null'] } } },
       'crisis-policies': { type: ['object', 'null'], properties: { policies: { type: 'array', items: { type: 'object' } } } },
@@ -2002,9 +2086,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       if (countries.length > 0) {
         data._all = pickMapKeys(data._all, countries);
+        data['gas-storage'] = pickMapKeys(data['gas-storage'], countries);
         pickNestedMap(data, 'fossil-electricity-share', 'countries', countries);
         // energy:gas-storage:v1:_countries is a string[] of ISO2 codes — match
         // the entry directly; the `?.iso2` fallback tolerates an object shape.
@@ -2020,6 +2105,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       // _countries is a top-level string[] — capArrays handles top-level arrays;
       // in the energy bundle it's the only such array, so no collateral damage.
       capArrays(data, limit);
+      if (limit > 0 && data['gas-storage'] && typeof data['gas-storage'] === 'object') {
+        data['gas-storage'] = Object.fromEntries(Object.entries(data['gas-storage']).slice(0, limit));
+      }
       const ds = argStrList(params.dataset);
       if (ds.length > 0) {
         const map: Record<string, string> = {
@@ -2027,11 +2115,13 @@ export const CACHE_TOOLS: ToolDef[] = [
           'fuel-shortages': 'fuel-shortages', disruptions: 'disruptions', 'crisis-policies': 'crisis-policies',
           'fossil-share': 'fossil-electricity-share', renewable: 'worldbank-renewable',
         };
-        return selectDatasets(data, compact(ds.map((d) => map[d])));
+        const selected = compact(ds.map((d) => map[d]));
+        if (ds.includes('gas-storage')) selected.push('gas-storage');
+        return selectDatasets(data, selected);
       }
       return data;
     },
-    // Broad 9-key energy bundle mirroring get_economic_data. Cadences span
+    // Broad 10-key energy bundle mirroring get_economic_data. Cadences span
     // hourly (electricity prices) to annual (World Bank renewable share); use
     // _freshnessChecks with per-key maxStaleMin pulled from
     // api/health.js::SEED_META so a slow-cadence key doesn't drag the
@@ -2041,15 +2131,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       'energy:electricity:v1:index',              // BOOTSTRAP_KEYS::electricityPrices
       'energy:ember:v1:_all',                     // STANDALONE_KEYS::emberElectricity
       'energy:gas-storage:v1:_countries',         // BOOTSTRAP_KEYS::gasStorageCountries
+      'energy:gas-storage:v1:all',
       'energy:fuel-shortages:v1',                 // STANDALONE_KEYS::fuelShortages
       'energy:disruptions:v1',                    // STANDALONE_KEYS::energyDisruptions
       'energy:crisis-policies:v1',                // STANDALONE_KEYS::energyCrisisPolicies
       'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
       'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
     ],
+    _cacheLabels: { 'energy:gas-storage:v1:all': 'gas-storage' },
     _freshnessChecks: [
       { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
-      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 2880 },   // daily cron (14:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 3000 },   // one snapshot per UTC day, tried at 14/17/20/23 UTC; two days + 2h margin
       { key: 'seed-meta:energy:ember',                          maxStaleMin: 2880 },   // daily cron (08:00 UTC); 48h = 2× interval
       { key: 'seed-meta:energy:gas-storage-countries',          maxStaleMin: 2880 },   // daily cron at 10:30 UTC; 48h = 2× interval
       { key: 'seed-meta:energy:fuel-shortages',                 maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
@@ -2063,6 +2155,102 @@ export const CACHE_TOOLS: ToolDef[] = [
       "GET /api/supply-chain/v1/get-fuel-shortage-detail",
       "GET /api/supply-chain/v1/list-energy-disruptions",
       "GET /api/supply-chain/v1/list-fuel-shortages",
+    ],
+  },
+  {
+    name: 'get_energy_storage',
+    _outputBudgetBytes: 65536,
+    description: 'EU gas storage and US gas/crude inventories with dated history. Seeded GIE AGSI+ and EIA data, not live quotes. Gas is in TWh or billion cubic feet; crude is in million barrels. Null datasets or weekly changes mean unavailable, not zero. Freshness covers all three sources, including when selecting a subset.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['eu-gas-storage', 'nat-gas-storage', 'crude-inventories'] },
+          description: 'Select EU gas storage, US natural gas storage, or US crude inventories. Omit for all three.',
+        },
+        limit: {
+          type: 'integer', minimum: 0,
+          description: 'Maximum observations per history, newest first. Default 30; 0 returns all available seeded observations.',
+        },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      'eu-gas-storage': {
+        type: ['object', 'null'],
+        properties: {
+          fillPct: { type: 'number', description: 'EU storage fill percentage.' },
+          fillPctChange1d: { type: ['number', 'null'], description: 'Daily change in percentage points.' },
+          gasDaysConsumption: { type: ['number', 'null'], description: 'Approximate days of consumption, a source heuristic.' },
+          trend: { type: 'string' },
+          updatedAt: { type: 'string', description: 'Observation date, distinct from the cache fetch timestamp.' },
+          seededAt: { type: ['string', 'number'] },
+          unavailable: { type: 'boolean' },
+          history: {
+            type: 'array',
+            items: { type: 'object', properties: {
+              date: { type: 'string' }, fillPct: { type: 'number' },
+              gasTwh: { type: 'number', description: 'Stored gas in terawatt-hours.' },
+            } },
+          },
+        },
+      },
+      'nat-gas-storage': {
+        type: ['object', 'null'],
+        properties: {
+          latestPeriod: { type: 'string' },
+          weeks: { type: 'array', items: { type: 'object', properties: {
+            period: { type: 'string' },
+            storBcf: { type: 'number', description: 'US working gas in billion cubic feet.' },
+            weeklyChangeBcf: { type: ['number', 'null'], description: 'Weekly change in billion cubic feet; null if the prior observation is unavailable.' },
+          } } },
+        },
+      },
+      'crude-inventories': {
+        type: ['object', 'null'],
+        properties: {
+          latestPeriod: { type: 'string' },
+          weeks: { type: 'array', items: { type: 'object', properties: {
+            period: { type: 'string' },
+            stocksMb: { type: 'number', description: 'US commercial crude inventories in million barrels.' },
+            weeklyChangeMb: { type: ['number', 'null'], description: 'Weekly change in million barrels; null if the prior observation is unavailable.' },
+          } } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const datasets = ['eu-gas-storage', 'nat-gas-storage', 'crude-inventories'];
+      if (params.dataset !== undefined && (!Array.isArray(params.dataset)
+        || params.dataset.some((value) => !datasets.includes(value)))) {
+        throw new RpcValidationError('get_energy_storage', [{ field: 'dataset', description: 'Expected an array of supported storage datasets.' }]);
+      }
+      if (params.limit !== undefined && (typeof params.limit !== 'number'
+        || !Number.isSafeInteger(params.limit) || params.limit < 0)) {
+        throw new RpcValidationError('get_energy_storage', [{ field: 'limit', description: 'Expected a non-negative integer.' }]);
+      }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'eu-gas-storage', 'history', limit);
+      capNested(data, 'nat-gas-storage', 'weeks', limit);
+      capNested(data, 'crude-inventories', 'weeks', limit);
+      const selected = argStrList(params.dataset);
+      return selected.length > 0 ? selectDatasets(data, selected) : data;
+    },
+    _cacheKeys: [
+      'economic:eu-gas-storage:v1',
+      'economic:nat-gas-storage:v1',
+      'economic:crude-inventories:v1',
+    ],
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:eu-gas-storage', maxStaleMin: 2880 },
+      { key: 'seed-meta:economic:nat-gas-storage', maxStaleMin: 20160 },
+      { key: 'seed-meta:economic:crude-inventories', maxStaleMin: 20160 },
+    ],
+    _apiPaths: [
+      'GET /api/economic/v1/get-eu-gas-storage',
+      'GET /api/economic/v1/get-nat-gas-storage',
+      'GET /api/economic/v1/get-crude-inventories',
     ],
   },
   {
@@ -2082,7 +2270,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         country: {
           type: 'string',
-          description: 'Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code.',
+          description: 'Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'number', description: 'Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap).' },
       },
@@ -2103,7 +2291,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'disasters', 'disasters', (d) => matchesCode(d.countryCode, countries));
@@ -2122,7 +2310,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:climate:disasters', maxStaleMin: 720 },
       { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
       { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },
-      { key: 'seed-meta:climate:ocean-ice', maxStaleMin: 1440 },
+      { key: 'seed-meta:climate:ocean-ice', maxStaleMin: 2880 },
       { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 },
       { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
     ],
@@ -2138,10 +2326,14 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_imd_cyclone_marine',
     _outputBudgetBytes: 65536,
+    // IMD bulletins are reusable with attribution to the issuing office. The
+    // snapshot carries it inline; the rider keeps it attached when a caller
+    // projects only `cyclones` or `portWarnings`.
+    _attribution: 'data.imd_cyclone_marine.{attribution: attribution, sourceName: sourceName, sourceUrl: sourceUrl}',
     description:
       'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
-      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY. ' +
-      'Read coverageState on every call: disabled means IMD_API_KEY is missing, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
+      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY plus IMD_API_EMAIL and IMD_API_PASSWORD to mint a short-lived JWT for each run. ' +
+      'Read coverageState on every call: disabled means the IMD credentials are missing or invalid, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
       'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
     inputSchema: {
       type: 'object',
@@ -2360,7 +2552,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         country: {
           type: 'string',
-          description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works.',
+          description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
         limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
       },
@@ -2393,7 +2585,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const countries = argStrList(params.country);
+      const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'bigmac', 'countries', (c) => matchesCode(c.code, countries));
@@ -2476,7 +2668,8 @@ export const CACHE_TOOLS: ToolDef[] = [
             todayCargo: { type: ['number', 'null'] }, todayOther: { type: ['number', 'null'] },
             wowChangePct: { type: ['number', 'null'] }, riskLevel: { type: 'string' },
             incidentCount7d: { type: ['number', 'null'] }, disruptionPct: { type: ['number', 'null'] },
-            riskSummary: { type: 'string' }, riskReportAction: { type: 'string' },
+            riskSummary: { type: 'string', description: 'Generated prose is withheld as an empty string. This does not indicate low risk.' },
+            riskReportAction: { type: 'string', description: 'Operational advice is withheld as an empty string because it has no verified routing basis.' },
             anomaly: { type: 'object' }, dataAvailable: { type: 'boolean' },
             // null todayTotal means the relay's 24h AIS window was empty --
             // unsupplied, not a measured zero (#7457). dataAvailable is
@@ -2575,12 +2768,20 @@ export const CACHE_TOOLS: ToolDef[] = [
           }
         }
       }
+      mapNested(data, 'transit-summaries', 'summaries', (summaries) => {
+        if (!summaries || typeof summaries !== 'object' || Array.isArray(summaries)) return summaries;
+        return Object.fromEntries(Object.entries(summaries).map(([id, entry]) => [id,
+          entry && typeof entry === 'object'
+            ? { ...entry, riskSummary: '', riskReportAction: '' }
+            : entry,
+        ]));
+      });
       const cp = argStr(params.chokepoint);
       if (cp) {
         mapNested(data, 'transit-summaries', 'summaries', (m) => pickMapKeysLike(m, cp));
         mapNested(data, 'chokepoint_transits', 'transits', (m) => pickMapKeysLike(m, cp));
         data['chokepoint-flows'] = pickMapKeysLike(data['chokepoint-flows'], cp);
-        narrowNested(data, 'chokepoint-baselines', 'chokepoints', (c) => ciIncludes(c.id, cp) || ciIncludes(c.relayId, cp) || ciIncludes(c.name, cp));
+        narrowNested(data, 'chokepoint-baselines', 'chokepoints', (c) => ciIncludes(c?.id, cp) || ciIncludes(c?.relayId, cp) || ciIncludes(c?.name, cp));
       }
       const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
       capNested(data, 'chokepoint-baselines', 'chokepoints', limit);
@@ -2869,6 +3070,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const sub = argStr(params.subreddit);
+      if (data.reddit != null) data.reddit = normalizeSocialVelocity(data.reddit);
       if (sub) narrowNested(data, 'reddit', 'posts', (p) => argStr(p.subreddit) === sub);
       capNested(data, 'reddit', 'posts', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;

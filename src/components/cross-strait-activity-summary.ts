@@ -308,6 +308,13 @@ function isSourceHealth(value: unknown): boolean {
     )
     && Array.isArray(value.errorCodes)
     && value.errorCodes.every((code) => typeof code === 'string')
+    && (
+      value.refreshErrorCodes === undefined
+      || (
+        Array.isArray(value.refreshErrorCodes)
+        && value.refreshErrorCodes.every((code) => typeof code === 'string')
+      )
+    )
     && isNullableDateString(value.lastSuccessAt)
     && (
       value.admittedDocumentCount === undefined

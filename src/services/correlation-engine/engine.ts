@@ -2,6 +2,7 @@
 import type { AppContext } from '@/app/app-context';
 import type {
   DomainAdapter,
+  CorrelationDomain,
   SignalEvidence,
   ConvergenceCard,
   ClusterState,
@@ -32,7 +33,10 @@ export class CorrelationEngine {
   private llmCache: Map<string, LlmCacheEntry> = new Map();
   private intelligenceClient: InstanceType<typeof IntelligenceServiceClient>;
   private running = false;
-  private llmInFlight = 0;
+  private llmInFlight = new Set<string>();
+  private assessmentCards = new Map<CorrelationDomain, ConvergenceCard[]>();
+  private attemptedAssessments = new WeakSet<ConvergenceCard>();
+  private assessmentGeneration = 0;
   private consecutiveSlowRuns = 0;
   private peakSlowRunMs = 0;
   private warnedForCurrentSlowStreak = false;
@@ -87,9 +91,6 @@ export class CorrelationEngine {
           adapter.domain,
           withTrend.map(c => c.state),
         );
-
-        // Queue LLM assessments (non-blocking)
-        this.queueLlmAssessments(cards, adapter);
       }
 
       const elapsed = performance.now() - t0;
@@ -411,43 +412,75 @@ export class CorrelationEngine {
 
   // ── LLM Assessment ─────────────────────────────────────────
 
-  private queueLlmAssessments(cards: ConvergenceCard[], adapter: DomainAdapter): void {
+  /** Assess only the evidence selected for display, whether seeded or computed locally. */
+  assessCards(domain: CorrelationDomain, cards: ConvergenceCard[]): void {
+    this.assessmentCards.set(domain, cards);
+    this.drainAssessments();
+  }
+
+  clearAssessments(): void {
+    this.assessmentGeneration++;
+    this.llmCache.clear();
+    for (const cards of this.assessmentCards.values()) {
+      for (const card of cards) delete card.assessment;
+    }
+    const domains = [...this.assessmentCards.keys()];
+    this.assessmentCards.clear();
+    this.attemptedAssessments = new WeakSet();
+    document.dispatchEvent(new CustomEvent('wm:correlation-updated', {
+      detail: { domains, assessmentUpdate: true },
+    }));
+  }
+
+  private drainAssessments(): void {
     if (!hasPremiumAccess()) return;
-    const pending: Array<{ card: ConvergenceCard; cacheKey: string }> = [];
-    for (const card of cards) {
+    const changed = new Set<CorrelationDomain>();
+    for (const card of [...this.assessmentCards.values()].flat()) {
       if (card.score < LLM_SCORE_THRESHOLD) continue;
 
       const cacheKey = this.llmCacheKey(card);
       const cached = this.llmCache.get(cacheKey);
       if (cached && (Date.now() - cached.timestamp) < LLM_CACHE_TTL_MS) {
-        card.assessment = cached.assessment;
+        if (card.assessment !== cached.assessment) {
+          card.assessment = cached.assessment;
+          changed.add(card.domain);
+        }
         continue;
       }
 
-      pending.push({ card, cacheKey });
+      if (this.llmInFlight.has(cacheKey)) {
+        continue;
+      }
+      if (this.attemptedAssessments.has(card) || this.llmInFlight.size >= LLM_MAX_CONCURRENT) continue;
+      this.attemptedAssessments.add(card);
+      this.llmInFlight.add(cacheKey);
+      void this.fetchAssessment(card, cacheKey).finally(() => {
+        this.llmInFlight.delete(cacheKey);
+        // Re-scan only the currently selected cards; replaced/closed panels
+        // must not leave obsolete paid work waiting behind the concurrency cap.
+        this.drainAssessments();
+      });
     }
-
-    for (const { card, cacheKey } of pending) {
-      if (this.llmInFlight >= LLM_MAX_CONCURRENT) break;
-      this.llmInFlight++;
-      void this.fetchAssessment(card, adapter, cacheKey).finally(() => { this.llmInFlight--; });
+    if (changed.size) {
+      document.dispatchEvent(new CustomEvent('wm:correlation-updated', {
+        detail: { domains: [...changed], assessmentUpdate: true },
+      }));
     }
   }
 
   private llmCacheKey(card: ConvergenceCard): string {
-    const types = [...new Set(card.signals.map(s => s.type))].sort().join(',');
-    const loc = card.countries.sort().join(',') || card.location?.label || 'global';
-    // Include score bucket (10-point granularity) to avoid cache collisions
-    // between clusters with same domain+types+location but different signal counts
-    const scoreBucket = Math.floor(card.score / 10) * 10;
-    return `${card.domain}:${types}:${loc}:s${scoreBucket}`;
+    // Match the prompt evidence; a cluster ID or type/score bucket can outlive it.
+    return JSON.stringify([
+      card.domain, card.score, card.trend, card.countries, card.location,
+      card.signals.map(({ type, label, severity }) => [type, label, severity]),
+    ]);
   }
 
   private async fetchAssessment(
     card: ConvergenceCard,
-    adapter: DomainAdapter,
     cacheKey: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
+    const generation = this.assessmentGeneration;
     try {
       const signalSummary = card.signals
         .map(s => `- [${s.type}] ${s.label} (severity: ${s.severity})`)
@@ -460,7 +493,7 @@ export class CorrelationEngine {
         disaster: 'cascading disaster and infrastructure failure',
       };
 
-      const query = `Analyze this ${domainLabels[adapter.domain] ?? adapter.domain} convergence pattern. ` +
+      const query = `Analyze this ${domainLabels[card.domain] ?? card.domain} convergence pattern. ` +
         `${card.signals.length} signals detected in ${card.countries.join(', ') || card.location?.label || 'region'}:\n${signalSummary}\n\n` +
         `Convergence score: ${card.score}/100. Trend: ${card.trend}. ` +
         `What does this pattern indicate? Assess likelihood and potential implications in 2-3 sentences.`;
@@ -473,13 +506,9 @@ export class CorrelationEngine {
 
       const resp = await this.intelligenceClient.deductSituation({ query, geoContext, framework: '' });
 
-      if (resp.analysis) {
-        card.assessment = resp.analysis;
+      if (resp.analysis && generation === this.assessmentGeneration && hasPremiumAccess()) {
         this.llmCache.set(cacheKey, { assessment: resp.analysis, timestamp: Date.now() });
-
-        document.dispatchEvent(new CustomEvent('wm:correlation-updated', {
-          detail: { domains: [adapter.domain], assessmentUpdate: true },
-        }));
+        return resp.analysis;
       }
     } catch (err) {
       console.warn(`[CorrelationEngine] LLM assessment failed for ${card.domain}:`, err);

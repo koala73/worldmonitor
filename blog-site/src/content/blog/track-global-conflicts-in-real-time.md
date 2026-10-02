@@ -6,12 +6,14 @@ keywords: "real-time conflict map, geopolitical intelligence map, military track
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-20"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
 
 World Monitor was built to give you those 24 hours back.
+
+To compare aircraft observations with conflict reporting, follow the [military flight-tracking workflow](/blog/posts/military-flight-tracking-osint/).
 
 ## A Situation Room in Your Browser
 
@@ -34,15 +36,17 @@ Each layer can be toggled independently. Combine them to build a multi-source pi
 
 World Monitor maintains real-time posture assessments for its operational-theater registry:
 
-1. **Iran / Persian Gulf:** Strait of Hormuz chokepoint, IRGC activity, proxy conflict indicators
-2. **Taiwan Strait:** PLA military exercises, naval deployments, airspace incursions
+1. **[Iran](https://www.worldmonitor.app/countries/iran/) / Persian Gulf:** [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) chokepoint, IRGC activity, proxy conflict indicators
+2. **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/):** PLA military exercises, naval deployments, airspace incursions
 3. **Baltic Region:** NATO-Russia friction, Kaliningrad corridor, submarine activity
 4. **Korean Peninsula:** DMZ incidents, missile tests, force posture changes
 5. **Eastern Mediterranean:** Israel-Hezbollah dynamics, energy disputes, naval presence
 6. **Horn of Africa:** Houthi maritime threats, Red Sea shipping disruption, piracy
 7. **South China Sea:** Island militarization, fishing militia, freedom of navigation operations
 8. **Arctic:** Resource competition, Northern Sea Route, military basing
-9. **Black Sea:** Ukraine conflict, grain corridor, naval mine risk
+9. **Black Sea:** [Ukraine](https://www.worldmonitor.app/countries/ukraine/) conflict, grain corridor, naval mine risk
+
+For dated country-level conflict summaries, open the [Gulf security](https://www.worldmonitor.app/crises/hormuz-gulf-security/), [Red Sea security](https://www.worldmonitor.app/crises/red-sea-security/), and [Ukraine war](https://www.worldmonitor.app/crises/ukraine-war/) trackers. Each states its country coverage and observation period; that scope differs from the broader theaters above.
 
 Each theater's posture level is synthesized from news velocity, military movements, CII scores of involved nations, and historical escalation patterns.
 
@@ -75,7 +79,7 @@ World Monitor's escalation algorithm goes beyond showing where events are happen
 - **Geographic convergence (25%):** Multiple event types (conflict, protest, natural disaster, cyber) co-occurring within the same 1-degree grid cell within 24 hours
 - **Military indicators (15%):** Unusual force movements, exercise activity, weapons tests
 
-Geographic convergence is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
+[Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
 
 ## Military Bases Mapped
 

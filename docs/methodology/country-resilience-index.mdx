@@ -3,6 +3,8 @@ title: "Country Resilience Index"
 description: "Live resilience scoring for 196 countries using 72 indicators across 21 dimensions and 6 domains, with a monthly crawlable snapshot."
 ---
 
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
 ## Start here
 
 The Country Resilience Index answers one question about each of 196 countries:
@@ -211,7 +213,7 @@ historical continuity.
 
 For the full construct rationale and the rejected alternatives (program-
 weight categorization, transit-hub exclusion lists), see
-[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
+[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions-%E2%86%92-tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -757,6 +759,37 @@ and are excluded from the headline ranking.
 
 The API response includes `imputationShare` (0.0-1.0), representing the fraction of total indicator weight that came from imputed (synthetic) data rather than observed data. This allows consumers to assess data provenance.
 
+### Supported Readings on Unranked Country Pages
+
+A country that publishes no headline score still publishes a dimension evidence
+inventory. The page uses three evidence terms that do not mean the same thing:
+
+- **Observed.** The snapshot holds a usable partial series for that dimension
+  and no more specific absence or failure class applies. Stable absence is
+  labeled separately, even when its recorded coverage is positive.
+- **Supported reading.** On a microstate or territory page, the dimension has no
+  imputation class, clears **0.50** coverage, and has a finite score. The page
+  publishes the dimension score and its coverage.
+- **Available evidence.** On another unranked country page, the summary names
+  non-gap dimensions that clear **0.50** coverage. The summary publishes their
+  labels and coverage, but it does not publish dimension scores.
+
+When a shown inventory row is labeled observed but falls below **0.50** coverage,
+the page names that row and states the floor inline. This explains why the row
+does not count as a supported reading.
+
+The inventory is ordered weakest evidence first — not-applicable slots, then
+dimensions with no usable series, then partial coverage ascending — and capped
+at 12 rows. It is grouped rather than strictly sorted by coverage, so a
+dimension with no usable series can precede one with a thin but real reading.
+The cap splits the active dimensions into three buckets, and the scope note
+accounts for all three: the dimensions shown, the dimensions already at full
+coverage that never entered the weakest-first pool, and the dimensions the cap
+omitted.
+The counts are generated from a single partition and asserted at build time, so
+a page whose inventory arithmetic does not close fails the build rather than
+publishing (#7609).
+
 ## Data Sources
 
 | Source | Indicators | Cadence | Scope |
@@ -814,7 +847,7 @@ The subsection on [Pillar-combined score activation](#pillar-combined-score-acti
 
 ### Runtime manifest
 
-For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production.
+For the live deployment state, use the [runtime manifest](https://www.worldmonitor.app/api/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production.
 
 ### Cache versioning
 
@@ -1075,7 +1108,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and finance source-failure rows remain explicit in the artifact.
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
-See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
+See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
 ### Editorial notes
 

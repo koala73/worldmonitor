@@ -190,6 +190,8 @@ export interface CrossStraitActivitySourceHealth {
    */
   shadowIndexProbe?: CrossStraitShadowIndexProbe;
   errorCodes: string[];
+  /** Optional rotating-history refresh failures. These do not change current source health. */
+  refreshErrorCodes?: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;
   unreviewedCandidateCount?: number;

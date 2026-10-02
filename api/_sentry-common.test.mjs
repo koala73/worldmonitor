@@ -67,6 +67,31 @@ test('custom API Sentry transport can be exercised by clearing NODE_TEST_CONTEXT
   assert.equal(init?.headers?.['X-Sentry-Auth'], 'Sentry sentry_version=7, sentry_key=public');
 });
 
+test('caller fingerprint is preserved in the Sentry envelope', async () => {
+  delete process.env.NODE_TEST_CONTEXT;
+  process.env.VITE_SENTRY_DSN = 'https://public@example.ingest.sentry.io/12345';
+
+  const fetchCalls = [];
+  globalThis.fetch = async (input, init) => {
+    fetchCalls.push({ input, init });
+    return new Response(null, { status: 200 });
+  };
+
+  const { makeCaptureSilentError } = await import(`./_sentry-common.js?fingerprint=${Date.now()}-${Math.random()}`);
+  const captureSilentError = makeCaptureSilentError({
+    runtime: 'edge',
+    platform: 'javascript',
+    logPrefix: '[sentry-test]',
+  });
+
+  await captureSilentError(new Error('request id 123'), {
+    fingerprint: ['api/example', 'read', 'Error'],
+  });
+
+  const event = JSON.parse(String(fetchCalls[0].init.body).split('\n')[2]);
+  assert.deepEqual(event.fingerprint, ['api/example', 'read', 'Error']);
+});
+
 // Regression: the edge/serverless bundles are minified, so a custom error
 // class's `constructor.name` is a mangled identifier that changes on every
 // build. Production proof (2026-08-21, WORLDMONITOR-Y2): `RpcValidationError`

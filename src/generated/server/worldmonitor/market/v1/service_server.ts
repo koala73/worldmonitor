@@ -260,6 +260,25 @@ export interface GetCountryStockIndexResponse {
   fetchedAt: string;
 }
 
+export interface GetPriceHistoryRequest {
+  symbols: string;
+  range: string;
+}
+
+export interface GetPriceHistoryResponse {
+  range: string;
+  series: PriceSeries[];
+  unavailable: string[];
+}
+
+export interface PriceSeries {
+  symbol: string;
+  name: string;
+  currency: string;
+  timestamps: number[];
+  closes: number[];
+}
+
 export interface ListGulfQuotesRequest {
 }
 
@@ -868,6 +887,7 @@ export interface MarketServiceHandler {
   listStablecoinMarkets(ctx: ServerContext, req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse>;
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
   getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
+  getPriceHistory(ctx: ServerContext, req: GetPriceHistoryRequest): Promise<GetPriceHistoryResponse>;
   listGulfQuotes(ctx: ServerContext, req: ListGulfQuotesRequest): Promise<ListGulfQuotesResponse>;
   analyzeStock(ctx: ServerContext, req: AnalyzeStockRequest): Promise<AnalyzeStockResponse>;
   getStockAnalysisHistory(ctx: ServerContext, req: GetStockAnalysisHistoryRequest): Promise<GetStockAnalysisHistoryResponse>;
@@ -1283,6 +1303,54 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getCountryStockIndex(ctx, body);
           return new Response(JSON.stringify(result as GetCountryStockIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-price-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetPriceHistoryRequest = {
+            symbols: params.get("symbols") ?? "",
+            range: params.get("range") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getPriceHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPriceHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetPriceHistoryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

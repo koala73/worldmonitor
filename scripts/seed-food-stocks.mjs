@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Seed USDA FAS PSD food stocks (plus FAOSTAT production gap-fill) into Redis.
+ * Seed USDA FAS PSD food stocks with a FAOSTAT Food Balances gap fill into Redis.
  *
  * Canonical key: resilience:food-stocks:v1
- * Stages: PSD (authoritative stocks) → FAOSTAT production fill → stocks-to-use.
+ * Stages: PSD authoritative stocks, FAOSTAT balance fill, then stocks-to-use.
  * Marketing years stay on the record as "YYYY/YY"; never calendar-bucketed.
  *
  * Usage:
@@ -11,6 +11,7 @@
  */
 
 import { resolveIso2 } from './_country-resolver.mjs';
+import Papa from 'papaparse';
 import {
   FOOD_STOCKS_CANONICAL_KEY,
   FOOD_STOCKS_MAX_CONTENT_AGE_MIN,
@@ -19,25 +20,24 @@ import {
   FOOD_STOCKS_TTL_SECONDS,
   FOOD_STOCKS_WORLD_KEY,
   PSD_COMMODITIES,
-  applyFaostatProductionFill,
+  applyFaostatFoodBalanceFill,
   assembleFoodStocksSnapshot,
   foodStocksContentMeta,
   parsePsdForecastRows,
 } from './_food-stocks-helpers.mjs';
-import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url, { only: ['USDA_FAS_PSD_API_KEY', 'USDA_FAS_API_KEY'] });
 
 // Official FAS Open Data host (swagger base api.fas.usda.gov). The legacy
 // apps.fas.usda.gov/OpenData path returns HTTP 500 for the same routes.
 const PSD_BASE = 'https://api.fas.usda.gov/api/psd';
-const FAOSTAT_DATA = 'https://fenixservices.fao.org/faostat/api/v1/en/data/QCL';
-const FAOSTAT_AREAS = 'https://fenixservices.fao.org/faostat/api/v1/en/codes/area/QCL';
-const RICE_PADDY_TO_MILLED = 0.67;
+const FAOSTAT_DATA = 'https://api.data.apps.fao.org/api/v2/bigquery';
+const FAOSTAT_QUERY_SQL = 'https://data.apps.fao.org/catalog/dataset/5c00a4e6-0ec8-4191-a0c0-a7cd5fda3674/resource/91b9d43c-55c4-4a2a-9b25-78f2fabba28b/download/fct-fbs-food-balances.query.sql';
+const M49_TO_ISO2 = loadSharedConfig('un-to-iso2.json');
 const FETCH_GAP_MS = 150;
-// Wall clock for the whole FAOSTAT enrichment stage. 6 commodities x up to 3
-// year probes x 30s would otherwise be 540s on its own — the entire fetch-phase
-// budget — leaving nothing for the authoritative PSD stage.
+// Wall clock for the whole FAOSTAT enrichment stage. Six 30-second requests
+// could otherwise consume three minutes after the authoritative PSD stage.
 const FAOSTAT_STAGE_BUDGET_MS = 120_000;
 
 export const CANONICAL_KEY = FOOD_STOCKS_CANONICAL_KEY;
@@ -50,7 +50,7 @@ function defaultFetch(url, init) {
   return globalThis.fetch(url, init);
 }
 
-async function fetchJson(fetchImpl, url, headers, label) {
+async function fetchUpstream(fetchImpl, url, headers, label) {
   const resp = await fetchImpl(url, {
     headers: {
       'User-Agent': CHROME_UA,
@@ -68,7 +68,15 @@ async function fetchJson(fetchImpl, url, headers, label) {
     err.status = resp.status;
     throw err;
   }
-  return resp.json();
+  return resp;
+}
+
+async function fetchJson(fetchImpl, url, headers, label) {
+  return (await fetchUpstream(fetchImpl, url, headers, label)).json();
+}
+
+async function fetchText(fetchImpl, url, headers, label) {
+  return (await fetchUpstream(fetchImpl, url, headers, label)).text();
 }
 
 /** A 404 means the year is genuinely unpublished; anything else is a failure. */
@@ -150,60 +158,42 @@ export async function selectLatestPsdYear(commodity, { fetchImpl, apiKey, now = 
   return { year: null, rows: [], parsed: [], degraded: sawFailure };
 }
 
-function pickField(row, names) {
-  for (const name of names) {
-    if (row?.[name] != null && row[name] !== '') return row[name];
+export function parseFaostatFoodBalanceRows(csv, { commodity }) {
+  const parsed = Papa.parse(String(csv || ''), { header: true, skipEmptyLines: true });
+  if (parsed.errors.length > 0) {
+    throw new Error(`FAOSTAT Food Balances CSV parse failed: ${parsed.errors[0].message}`);
   }
-  return null;
-}
-
-export function parseFaostatAreaMap(payload) {
-  const rows = asRowArray(payload);
-  const map = new Map();
-  for (const row of rows) {
-    const code = String(pickField(row, ['code', 'Code', 'areaCode', 'Area Code']) ?? '').trim();
-    if (!code) continue;
-    const iso2 = resolveIso2({
-      iso3: pickField(row, ['iso3', 'ISO3', 'Area Code (ISO3)', 'iso3Code']),
-      name: pickField(row, ['label', 'Label', 'Area', 'area', 'name']),
-    });
-    if (iso2) map.set(code, iso2);
-  }
-  return map;
-}
-
-export function parseFaostatProductionRows(payload, { commodity, areaMap, millFactor = 1 }) {
-  const rows = asRowArray(payload);
-  const byCountry = new Map();
-  for (const row of rows) {
-    const areaCode = String(pickField(row, ['Area Code', 'areaCode', 'area']) ?? '').trim();
-    const iso2 = areaMap.get(areaCode) || resolveIso2({
-      iso3: pickField(row, ['Area Code (ISO3)', 'iso3']),
-      name: pickField(row, ['Area', 'area']),
-    });
+  const rows = [];
+  for (const row of parsed.data) {
+    if (Number(row?.item_code) !== PSD_COMMODITIES[commodity]?.faostatBalanceItem) continue;
+    const m49 = String(row?.m49_code || '').padStart(3, '0');
+    const iso2 = M49_TO_ISO2[m49] || resolveIso2({ name: row?.country_name_en });
     if (!iso2) continue;
-    const year = Number(pickField(row, ['Year', 'year']));
-    const raw = Number(pickField(row, ['Value', 'value']));
-    if (!Number.isInteger(year) || !Number.isFinite(raw)) continue;
-    const production = (raw * millFactor) / 1000;
-    const prev = byCountry.get(iso2);
-    if (!prev || year > prev.calendarYear) {
-      byCountry.set(iso2, {
-        countryCode: iso2,
-        commodity,
-        production,
-        calendarYear: year,
-      });
-    }
+    const calendarYear = Number(row?.year);
+    const production = row?.production_1000_tonnes == null || row.production_1000_tonnes === ''
+      ? null
+      : Number(row.production_1000_tonnes);
+    const consumption = row?.domestic_supply_quantity_1000_tonnes == null
+      || row.domestic_supply_quantity_1000_tonnes === ''
+      ? null
+      : Number(row.domestic_supply_quantity_1000_tonnes);
+    if (!Number.isInteger(calendarYear)
+      || !Number.isFinite(production)
+      || production < 0
+      || !Number.isFinite(consumption)
+      || consumption <= 0) continue;
+    rows.push({ countryCode: iso2, commodity, calendarYear, production, consumption });
   }
-  return [...byCountry.values()];
+  return rows;
 }
 
-async function fetchFaostatProduction(commodity, year, { fetchImpl, areaMap }) {
-  const url = `${FAOSTAT_DATA}?item=${commodity.faostatItem}&element=5510&year=${year}&show_codes=true`;
-  const payload = await fetchJson(fetchImpl, url, {}, `FAOSTAT ${commodity.slug} ${year}`);
-  const millFactor = commodity.slug === 'rice' ? RICE_PADDY_TO_MILLED : 1;
-  return parseFaostatProductionRows(payload, { commodity: commodity.slug, areaMap, millFactor });
+async function fetchFaostatFoodBalance(commodity, { fetchImpl }) {
+  const url = new URL(FAOSTAT_DATA);
+  url.searchParams.set('download', 'true');
+  url.searchParams.set('item_code', String(commodity.faostatBalanceItem));
+  url.searchParams.set('sql_url', FAOSTAT_QUERY_SQL);
+  const csv = await fetchText(fetchImpl, url, { Accept: 'text/csv' }, `FAOSTAT ${commodity.slug}`);
+  return parseFaostatFoodBalanceRows(csv, { commodity: commodity.slug });
 }
 
 /**
@@ -227,20 +217,10 @@ export async function fetchFoodStocks({
   const stageNotes = { psd: {}, faostat: {} };
   let upstreamDegraded = false;
 
-  let areaMap = new Map();
-  try {
-    const areaPayload = await fetchJson(fetchImpl, FAOSTAT_AREAS, {}, 'FAOSTAT area codes');
-    areaMap = parseFaostatAreaMap(areaPayload);
-  } catch (err) {
-    console.warn(`  FAOSTAT area map failed: ${err.message}`);
-    stageNotes.faostat.areaMap = 'failed';
-  }
-
-  // FAOSTAT is an OPTIONAL production gap-fill over authoritative PSD data, but
-  // it is 18 potential 30s fetches (6 commodities x 3 year probes) on top of a
-  // PSD stage that can already consume the entire fetch-phase budget. Without
-  // its own wall clock a slow FAOSTAT starves PSD and the whole run is killed by
-  // the phase deadline, publishing nothing.
+  // FAOSTAT is an optional balance gap fill over authoritative PSD data, but
+  // it is six potential 30-second fetches on top of a PSD stage that can already
+  // consume the fetch-phase budget. Its own wall clock prevents a slow FAOSTAT
+  // service from starving the authoritative stage.
   const faostatDeadline = Date.now() + FAOSTAT_STAGE_BUDGET_MS;
 
   for (const commodity of Object.values(PSD_COMMODITIES)) {
@@ -253,25 +233,25 @@ export async function fetchFoodStocks({
     if (year) {
       const faostatYears = [year - 1, year - 2, year - 3];
       let fill = null;
-      for (const faoYear of faostatYears) {
-        if (Date.now() > faostatDeadline) {
-          console.warn(`  FAOSTAT ${commodity.slug}: stage budget exhausted — skipping fill`);
-          stageNotes.faostat[commodity.slug] = { skipped: 'stage-budget' };
-          break;
-        }
+      if (Date.now() > faostatDeadline) {
+        console.warn(`  FAOSTAT ${commodity.slug}: stage budget exhausted — skipping fill`);
+        stageNotes.faostat[commodity.slug] = { skipped: 'stage-budget' };
+      } else {
         try {
-          fill = await fetchFaostatProduction(commodity, faoYear, { fetchImpl, areaMap });
-          if (fill.length) {
+          const rows = await fetchFaostatFoodBalance(commodity, { fetchImpl });
+          for (const faoYear of faostatYears) {
+            const sameYear = rows.filter((row) => row.calendarYear === faoYear);
+            if (!sameYear.length) continue;
+            fill = sameYear;
             stageNotes.faostat[commodity.slug] = { year: faoYear, rows: fill.length };
             break;
           }
         } catch (err) {
-          console.warn(`  FAOSTAT ${commodity.slug} ${faoYear} failed: ${err.message}`);
+          console.warn(`  FAOSTAT ${commodity.slug} failed: ${err.message}`);
           fill = err;
         }
-        if (gapMs) await sleep(gapMs);
       }
-      merged = applyFaostatProductionFill(parsed, fill, { commodity: commodity.slug });
+      merged = applyFaostatFoodBalanceFill(parsed, fill, { commodity: commodity.slug });
     }
     allRecords.push(...merged);
     if (gapMs) await sleep(gapMs);
@@ -306,7 +286,7 @@ export function validateFoodStocks(data) {
 
   // Coverage, not just presence. Counting country KEYS lets five of six
   // commodities vanish while ~200 countries keep the floor satisfied, and lets a
-  // FAOSTAT-production-only snapshot (every endingStocks null) publish as
+  // FAOSTAT-only snapshot (every endingStocks null) publish as
   // "food stocks". Require most commodities to carry a REAL world ratio.
   const withWorldRatio = Object.entries(worldCommodities)
     .filter(([slug, rec]) => PSD_COMMODITIES[slug] && Number.isFinite(rec?.stocksToUseRatio));

@@ -8,6 +8,17 @@ import {
 } from '../server/worldmonitor/scorecard/v1/_read-snapshot.ts';
 
 describe('five-factor scorecard service deadline', () => {
+  // AbortSignal.timeout timers are unref'ed: under the parallel suite the loop
+  // can drain while a stub awaits the deadline abort, and node:test cancels
+  // the pending test ("Promise resolution is still pending..."). A ref'ed
+  // keep-alive, cleared on abort, closes that window without changing what
+  // each stub proves.
+  function hangUntilAbort(signal: AbortSignal): Promise<never> {
+    const keepAlive = setTimeout(() => {}, 10_000);
+    if (signal.aborted) clearTimeout(keepAlive);
+    else signal.addEventListener('abort', () => clearTimeout(keepAlive), { once: true });
+    return new Promise<never>(() => {});
+  }
   it('gives the client more budget than the server can serially spend', () => {
     // The entitlement check runs in createDomainGateway BEFORE the handler
     // starts its own read deadline, so the two server costs are SERIAL. At the
@@ -44,7 +55,7 @@ describe('five-factor scorecard service deadline', () => {
     let requestSignal: AbortSignal | null = null;
     const request = withScorecardDeadline((signal) => {
       requestSignal = signal;
-      return new Promise<never>(() => {});
+      return hangUntilAbort(signal);
     }, undefined, 10);
 
     await assert.rejects(request, (error: unknown) =>
@@ -54,9 +65,12 @@ describe('five-factor scorecard service deadline', () => {
 
   it('keeps a late response from replacing the deadline result', async () => {
     let resolveLate!: (value: string) => void;
-    const request = withScorecardDeadline(() => new Promise<string>((resolve) => {
-      resolveLate = resolve;
-    }), undefined, 10);
+    const request = withScorecardDeadline((signal) => {
+      void hangUntilAbort(signal); // keep-alive side channel; the test only races the deadline
+      return new Promise<string>((resolve) => {
+        resolveLate = resolve;
+      });
+    }, undefined, 10);
 
     await assert.rejects(request, (error: unknown) =>
       error instanceof Error && error.name === 'TimeoutError');

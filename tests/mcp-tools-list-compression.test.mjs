@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { SERVER_VERSION } from '../api/mcp/constants.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 
 const originalEnv = { ...process.env };
@@ -138,12 +139,15 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       return body.result.tools;
     }
 
-    it('compressDescriptions=true returns the public shape plus access metadata and no internal keys', async () => {
+    it('compressDescriptions=true returns the public shape plus access and weight metadata and no internal keys', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
       assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
-      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
+      assert.deepEqual(t._meta, {
+        'worldmonitor/access': 'free-account',
+        'worldmonitor/weight': 1,
+      });
     });
 
     it('every cache-tool result has inputSchema.properties.summary STRUCTURALLY equal to SUMMARY_SCHEMA (deepEqual not ===)', async () => {
@@ -156,32 +160,20 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.deepEqual(cacheTool.inputSchema.properties.summary, SUMMARY_SCHEMA);
     });
 
-    it('every projection-safe tool has the JMESPath schema and attribution-bound tools omit it', async () => {
+    it('EVERY tool has the JMESPath schema — the projection is universal', async () => {
       const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
       const tools = await getRegistry();
-      // Derived from the registry's own `_jmespathDisabled` flag rather than a
-      // hardcoded list: a new attribution-bound tool used to pass this assertion
-      // silently, which is exactly how the supply-vulnerability tools shipped
-      // advertising a projection over BGS-licensed evidence.
-      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
-      const attributionBoundTools = new Set(
-        TOOL_REGISTRY.filter((tool) => tool._jmespathDisabled === true).map((tool) => tool.name),
-      );
-      assert.ok(
-        attributionBoundTools.size > 0,
-        'expected at least one attribution-bound tool to be declared',
-      );
       for (const t of tools) {
-        if (attributionBoundTools.has(t.name)) {
-          assert.ok(!('jmespath' in (t.inputSchema?.properties ?? {})), `tool "${t.name}" must omit jmespath`);
-          continue;
-        }
         assert.ok(t.inputSchema?.properties?.jmespath, `tool "${t.name}" missing jmespath schema`);
         assert.deepEqual(t.inputSchema.properties.jmespath, JMESPATH_SCHEMA, `tool "${t.name}" jmespath shape differs`);
       }
+      // No roster of tools that omit it. A licence-bearing tool declares an
+      // `_attribution` extraction instead and the dispatcher re-attaches its
+      // sources after the projection runs — see shared/attribution-rider.ts
+      // and the gate in tests/mcp-attribution-rider.test.mjs.
       assert.deepEqual(
         tools.filter((t) => !('jmespath' in (t.inputSchema?.properties ?? {}))).map((t) => t.name),
-        [...attributionBoundTools],
+        [],
       );
     });
 
@@ -307,11 +299,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
-    it('a tool WITHOUT a UI surface carries only its access marker in _meta', async () => {
+    it('a tool WITHOUT a UI surface carries only the universal markers in _meta', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
+      assert.deepEqual(t._meta, {
+        'worldmonitor/access': 'free-account',
+        'worldmonitor/weight': 1,
+      });
     });
 
     it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {
@@ -378,6 +373,21 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       }
     });
 
+    it('discovery descriptions identify supply and economic data without unsupported capabilities', async () => {
+      const tools = await getToolsList();
+      const supply = tools.find(t => t.name === 'get_supply_vulnerabilities');
+      const chokepoint = tools.find(t => t.name === 'get_chokepoint_dependencies');
+      const economic = tools.find(t => t.name === 'get_economic_data');
+      assert.match(supply.description, /country.*commodity.*supply/i);
+      assert.match(chokepoint.description, /country.*commodity.*chokepoint/i);
+      for (const tool of [supply, chokepoint]) {
+        assert.match(tool.description, /absent score means insufficient.*never zero risk/i);
+      }
+      assert.match(economic.description, /rates.*calendars.*fuel prices/i);
+      const full = await callDescribeTool('get_economic_data');
+      assert.doesNotMatch(full.description, /energy storage/i);
+    });
+
     it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
       const tools = await getToolsList();
       const compressed = tools.find(t => t.name === 'get_market_data');
@@ -427,14 +437,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.18.0"', async () => {
+    it('serverInfo.version === SERVER_VERSION', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.18.0');
+      assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -451,9 +461,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.18.0) and tools[] matches the registry count', () => {
+    it('server-card.json version matches SERVER_VERSION and tools[] matches the registry count', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.18.0');
+      assert.equal(card.serverInfo.version, SERVER_VERSION);
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.

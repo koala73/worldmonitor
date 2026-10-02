@@ -24,6 +24,8 @@ import {
   countPublisherFamilies,
   publisherFamiliesFor,
   publisherFamilyFor,
+  publisherFamilyForDomain,
+  PUBLISHER_FAMILY_DOMAIN_TABLE,
   publisherNameForFamily,
 } from '../shared/publisher-families.js';
 
@@ -194,15 +196,52 @@ describe('publisher-families map data', () => {
     assert.deepEqual(duplicates, [], duplicates.join('\n'));
   });
 
+  it('maps curated domains to existing families, one family per domain (#7748)', () => {
+    for (const [familyId, domains] of Object.entries(PUBLISHER_FAMILY_DOMAIN_TABLE)) {
+      assert.ok(familyId in PUBLISHER_FAMILIES, `${familyId} lists domains but is not a curated family`);
+      assert.ok(domains.length > 0, `${familyId} lists no domains`);
+      for (const domain of domains) {
+        assert.match(domain, /^[a-z0-9-]+(\.[a-z0-9-]+)+$/, `${familyId}: ${domain} is not a bare registrable domain`);
+      }
+    }
+    const seen = new Map();
+    for (const [familyId, domains] of Object.entries(PUBLISHER_FAMILY_DOMAIN_TABLE)) {
+      for (const domain of domains) {
+        assert.ok(!seen.has(domain), `${domain} is listed under ${seen.get(domain)} and ${familyId}`);
+        seen.set(domain, familyId);
+      }
+    }
+    assert.equal(publisherFamilyForDomain('www.bbc.co.uk'), 'bbc');
+    assert.equal(publisherFamilyForDomain('bbc.com'), 'bbc');
+    assert.equal(publisherFamilyForDomain('amp.theguardian.com'), 'guardian');
+    assert.equal(publisherFamilyForDomain('APNEWS.COM'), 'ap-news');
+    assert.equal(publisherFamilyForDomain('news.google.com'), '', 'an aggregator host names no newsroom');
+    assert.equal(publisherFamilyForDomain('rnz.co.nz'), '', 'an unlisted domain stays its own family');
+    assert.equal(publisherFamilyForDomain('com'), '');
+    assert.equal(publisherFamilyForDomain(''), '');
+    assert.equal(publisherFamilyForDomain(undefined), '');
+  });
+
   it('keeps curated family ids out of the singleton namespace', () => {
     const colliding = Object.keys(PUBLISHER_FAMILIES).filter((id) => id.startsWith('label:'));
     assert.deepEqual(colliding, [], 'a curated id starting with "label:" can collide with an unmapped label');
   });
 
   it('gives every family a publisher display name and at least two labels', () => {
+    // #8398: domain-only families (labels: []) declare an article-host
+    // allowance without folding any label — the ingest/relay link gates
+    // need wsj.com for Dow Jones delivery-host feeds, but the label must
+    // NOT merge (that would understate corroboration). Exempt from the
+    // two-label minimum: that rule targets label folding, and an empty
+    // label list cannot merge anything.
+    const DOMAIN_ONLY_FAMILIES = new Set(['wsj']);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);
+      if (DOMAIN_ONLY_FAMILIES.has(familyId)) {
+        assert.deepEqual(entry.labels, [], `${familyId} must stay domain-only (no label folding)`);
+        continue;
+      }
       assert.ok(
         entry.labels.length >= 2,
         `${familyId} lists ${entry.labels.length} label(s) — a one-label family is what the ` +

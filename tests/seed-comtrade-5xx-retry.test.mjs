@@ -142,23 +142,21 @@ test('fetchBilateral: retries twice on consecutive 503s, succeeds on third', asy
   assert.deepEqual(sleepCalls, [5_000, 15_000]);
 });
 
-test('fetchBilateral: gives up (returns []) after 3 consecutive 5xx', async () => {
+test('fetchBilateral: rejects after 3 consecutive 5xx to preserve the whole country', async () => {
   fetchResponses = [
     { status: 503, body: {} },
     { status: 502, body: {} },
     { status: 500, body: {} },
   ];
-  const result = await fetchBilateral('699', ['2709']);
+  await assert.rejects(fetchBilateral('699', ['2709']), /HTTP 500/);
   assert.equal(fetchCalls.length, 3, 'caps at 3 attempts');
-  assert.deepEqual(result, [], 'empty array after exhausting retries — caller can skip write');
   assert.deepEqual(sleepCalls, [5_000, 15_000], 'no sleep after final attempt');
 });
 
 test('fetchBilateral: does NOT retry on 4xx (non-transient)', async () => {
   fetchResponses = [{ status: 403, body: {} }];
-  const result = await fetchBilateral('699', ['2709']);
+  await assert.rejects(fetchBilateral('699', ['2709']), /HTTP 403/);
   assert.equal(fetchCalls.length, 1, 'no retry on client error');
-  assert.deepEqual(result, []);
 });
 
 test('fetchBilateral: 429 then 503 still consumes the 5xx retries (regression for PR review)', async () => {
@@ -185,9 +183,8 @@ test('fetchBilateral: 429 once → 429 again does NOT re-wait 60s (one 429 cap)'
     { status: 429, body: {} },
     { status: 429, body: {} },
   ];
-  const result = await fetchBilateral('699', ['2709']);
+  await assert.rejects(fetchBilateral('699', ['2709']), /HTTP 429/);
   assert.equal(fetchCalls.length, 2, 'cap 429 retries at one wait');
-  assert.deepEqual(result, []);
   assert.deepEqual(sleepCalls, [60_000], 'only one 60s wait, no second 429 backoff');
 });
 

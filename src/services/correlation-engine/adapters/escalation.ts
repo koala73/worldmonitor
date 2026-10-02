@@ -1,7 +1,8 @@
 // boundary-ignore: AppContext is an aggregate type that lives in app/ by design
 import type { AppContext } from '@/app/app-context';
 import type { DomainAdapter, SignalEvidence } from '../types';
-import { matchCountryNamesInText, getCountryAtCoordinates, nameToCountryCode, getCountryNameByCode, iso3ToIso2Code } from '@/services/country-geometry';
+import { matchCountryNamesInText, getCountryNameByCode } from '@/services/country-geometry';
+import { normalizeToCountryCode } from '../country-normalization';
 
 // v1 weights: displacement and cii_delta deferred — renormalized to sum to 1.0.
 const WEIGHTS: Record<string, number> = {
@@ -9,24 +10,6 @@ const WEIGHTS: Record<string, number> = {
   escalation_outage: 0.25,
   news_severity: 0.30,
 };
-
-function normalizeToCode(country: string | undefined, lat?: number, lon?: number): string | undefined {
-  const trimmed = country?.trim();
-  if (trimmed) {
-    const fromName = nameToCountryCode(trimmed);
-    if (fromName) return fromName;
-    if (trimmed.length === 3) {
-      const fromIso3 = iso3ToIso2Code(trimmed);
-      if (fromIso3) return fromIso3;
-    }
-    if (trimmed.length === 2) return trimmed.toUpperCase();
-  }
-  if (lat != null && lon != null && !(lat === 0 && lon === 0)) {
-    const geo = getCountryAtCoordinates(lat, lon);
-    if (geo?.code) return geo.code;
-  }
-  return undefined;
-}
 
 const ESCALATION_KEYWORDS = /\b((?:military|armed|air)\s*(?:strike|attack|offensive)|invasion|bombing|missile|airstrike|shelling|drone\s+strike|war(?:fare)?|ceasefire|martial\s+law|armed\s+clash(?:es)?|gunfire|coup(?:\s+attempt)?|insurgent|rebel|militia|terror(?:ist|ism)|hostage|siege|blockade|mobiliz(?:ation|e)|escalat(?:ion|ing|e)|retaliat|deploy(?:ment|ed)|incursion|annex(?:ation|ed)|occupation|humanitarian\s+crisis|refugee|evacuat|nuclear|chemical\s+weapon|biological\s+weapon)\b/i;
 
@@ -51,7 +34,7 @@ export const escalationAdapter: DomainAdapter = {
       const age = now - (p.time?.getTime?.() ?? now);
       if (age > windowMs) continue;
 
-      const normalizedCountry = normalizeToCode(p.country, p.lat, p.lon);
+      const normalizedCountry = normalizeToCountryCode(p.country, p.lat, p.lon);
       if (!normalizedCountry) continue;
 
       const severityMap: Record<string, number> = { high: 85, medium: 55, low: 30 };
@@ -77,7 +60,7 @@ export const escalationAdapter: DomainAdapter = {
       if (age > windowMs) continue;
       if (o.lat != null && o.lon != null && o.lat === 0 && o.lon === 0) continue;
 
-      const normalizedCountry = normalizeToCode(o.country, o.lat, o.lon);
+      const normalizedCountry = normalizeToCountryCode(o.country, o.lat, o.lon);
       if (!normalizedCountry) continue;
 
       const severityMap: Record<string, number> = { total: 90, major: 70, partial: 40 };
@@ -110,7 +93,7 @@ export const escalationAdapter: DomainAdapter = {
 
       // Extract country from title text
       const matchedCountries = matchCountryNamesInText(c.primaryTitle);
-      const normalizedCountry = normalizeToCode(matchedCountries[0], c.lat, c.lon);
+      const normalizedCountry = normalizeToCountryCode(matchedCountries[0], c.lat, c.lon);
       if (!normalizedCountry) continue;
 
       signals.push({

@@ -99,6 +99,20 @@ afterEach(() => {
   __setNotificationChannelsClientDepsForTests(null);
 });
 
+describe('email ownership errors', () => {
+  it('turns the ownership denial into recovery guidance without retrying', async () => {
+    const { calls, slept } = installTransport([Response.json({ error: 'EMAIL_OWNERSHIP_REQUIRED' }, { status: 400 })]);
+    await assert.rejects(setEmailChannel('buyer@example.com'), /Verify your account email, then try again\./);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(slept, []);
+  });
+
+  it('uses a safe retry message for an unexpected server error', async () => {
+    installTransport([Response.json({ error: 'private provider details' }, { status: 500 })]);
+    await assert.rejects(setEmailChannel('buyer@example.com'), /Could not connect email\. Please try again\./);
+  });
+});
+
 describe('billingVerificationRetryDelayMs', () => {
   it('honors Retry-After exactly for every retryable code', () => {
     for (const code of RETRYABLE_CODES) {

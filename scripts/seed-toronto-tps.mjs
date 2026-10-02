@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Official Toronto Police Service Calls for Service public map (#6682).
-// Member of seed-bundle-canada, gated on intervalMs 15min (layer refresh
-// 15–20 min). Own key — do not append to canadaAlerts / canadaRoads /
+// Member of seed-bundle-canada, gated on intervalMs 30min with a 90min
+// freshness budget. Own key — do not append to canadaAlerts / canadaRoads /
 // torontoRoads. Privacy exclusions stay empty; do not fill from radio/news.
 // Last-good is this seeder's runSeed path; a TFS failure cannot wipe it.
 

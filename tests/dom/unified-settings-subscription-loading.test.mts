@@ -52,6 +52,7 @@ vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => ({ planKey: 'pro_monthly', validUntil: Date.now() + 1e9 }),
   getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => true,
+  hasEmbedAccessForAccount: () => true,
   isEntitled: () => true,
   onEntitlementChange: () => () => {},
   onEntitlementVerificationChange: () => () => {},

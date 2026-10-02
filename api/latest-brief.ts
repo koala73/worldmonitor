@@ -85,6 +85,7 @@ export async function readWithOneRetry<T>(
       console.warn(`[api/latest-brief] ${label} aborted on timeout — retrying once (${RETRY_ATTEMPT_MS}ms)`);
       captureSilentError(err, {
         tags: { route: 'api/latest-brief', step: 'upstash-retry-attempt', label },
+        fingerprint: ['api/latest-brief', 'upstash-retry-attempt', err instanceof Error ? err.name : 'Error'],
         ctx,
       });
       return await attempt(RETRY_ATTEMPT_MS);
@@ -110,7 +111,10 @@ async function readBriefPreview(
   timeoutMs: number,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<BriefPreview | null> {
-  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs);
+  // Seeder-owned keys (#7674): the Railway digest composer writes
+  // brief:{userId}:{slot} and brief:latest:{userId} bare — read them raw in
+  // every environment so preview resolves the real envelopes.
+  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs, true);
   if (raw == null) return null;
   // Reuse the renderer's strict validator so a "ready" preview never
   // points at an envelope that the hosted magazine route will reject.
@@ -125,6 +129,7 @@ async function readBriefPreview(
     );
     captureSilentError(err, {
       tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
+      fingerprint: ['api/latest-brief', 'envelope-assertion', err instanceof Error ? err.name : 'Error'],
       ctx,
     });
     return null;
@@ -145,7 +150,7 @@ async function readBriefPreview(
  * brief, or the pointer has expired past its 7d TTL).
  */
 async function readLatestPointer(userId: string, timeoutMs: number): Promise<string | null> {
-  const raw = await readRawJsonFromUpstash(`brief:latest:${userId}`, timeoutMs);
+  const raw = await readRawJsonFromUpstash(`brief:latest:${userId}`, timeoutMs, true);
   if (raw == null) return null;
   const slot = (raw as { issueSlot?: unknown } | null)?.issueSlot;
   if (typeof slot !== 'string' || !ISSUE_SLOT_RE.test(slot)) return null;
@@ -265,7 +270,7 @@ export default async function handler(
     // this into "composing", which would falsely signal empty state
     // to the dashboard panel. 503 lets the client show a retry path.
     console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' }, fingerprint: ['api/latest-brief', 'upstash-read', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

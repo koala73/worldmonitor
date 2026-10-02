@@ -270,7 +270,16 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
       definitiveInvalidSymbol = true;
       return null;
     }
-    if (historyOutcome.status !== 'success') return null;
+    // A transient Yahoo failure (network/5xx/parse) must not become a cached
+    // negative: returning null writes the 120s NEG_SENTINEL, which serves
+    // `available: false` to every caller for the whole window. Throwing keeps
+    // it out of Redis because this route sets `cacheFetcherErrors: false`
+    // (that flag only covers thrown errors, not null returns). Only a
+    // definitive invalid-symbol or insufficient-history result may be
+    // negatively cached.
+    if (historyOutcome.status !== 'success') {
+      throw new Error(`[backtestStock] Yahoo history unavailable for ${symbol}`);
+    }
     const history = historyOutcome.history;
     if (history.candles.length < MIN_REQUIRED_BARS) return null;
 
@@ -310,7 +319,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
     const response: BacktestStockResponse = {
       available: true,
       symbol,
-      name: req.name || symbol,
+      name: symbol,
       display: symbol,
       currency: history.currency || 'USD',
       evalWindowDays,
@@ -358,14 +367,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
     if (quotaHold.reservation && (definitiveInvalidSymbol || result.source !== 'fresh' || !result.leader)) {
       await quotaHold.reservation.rollback();
     }
-    // `name` is a caller-supplied display label, not part of the computation,
-    // which is why it is deliberately absent from `cacheKey` — two callers
-    // watching one ticker should share a single Yahoo fetch. But the shared
-    // BODY carries whichever label populated the entry first, so without this
-    // re-stamp caller B gets caller A's spelling echoed back. Custom watchlist
-    // entries make differing names for one symbol reachable in production.
-    // Same `req.name || symbol` rule the fresh-compute and unavailable paths
-    // use, so a caller's echo never depends on who warmed the cache.
+    // Shared records use the symbol; caller display names belong only in this response.
     if (result.data) return { ...result.data, name: req.name || symbol };
   } catch (err) {
     if (quotaHold.reservation) {

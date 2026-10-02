@@ -10,10 +10,12 @@ import {
   isLayerToggleAllowed,
   isLayerEntitled,
   sanitizeLockedLayers,
+  sanitizeResilienceScoreForRenderer,
   shouldSanitizeLockedLayers,
   type RendererKind,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
+import { t } from '@/services/i18n';
 import type { MapComponent, MapComponentOptions } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -116,6 +118,7 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  mapLibreWorkerUrl?: string;
   isFreeTierFallbackActive?: () => boolean;
 }
 
@@ -173,6 +176,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly mapLibreWorkerUrl: string | undefined;
   private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
   private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
@@ -186,6 +190,7 @@ export class MapContainer {
     this.markHumanViewportInteraction();
   };
   private rendererReady = false;
+  private rendererInitError: Error | null = null;
   private rendererReadyWaiters = new Set<{
     resolve: () => void;
     reject: (error: Error) => void;
@@ -266,6 +271,7 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
     this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
       layer,
       currentlyEnabled === true,
@@ -285,8 +291,11 @@ export class MapContainer {
     this.container.addEventListener('touchstart', this.invalidateViewportAuthority, { passive: true });
     this.container.addEventListener('keydown', this.invalidateViewportAuthority);
 
-    if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
-      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    if (this.initialState.layers) {
+      const layers = sanitizeResilienceScoreForRenderer(this.initialState.layers, this.useDeckGL);
+      if (layers !== this.initialState.layers) {
+        this.initialState = { ...this.initialState, layers };
+      }
     }
 
     // init() attaches the resize observer synchronously (before its first await),
@@ -366,8 +375,11 @@ export class MapContainer {
   }
 
   private sanitizeNonDeckLayers(): void {
-    if (this.initialState.layers?.resilienceScore) {
-      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    if (this.initialState.layers) {
+      const layers = sanitizeResilienceScoreForRenderer(this.initialState.layers, false);
+      if (layers !== this.initialState.layers) {
+        this.initialState = { ...this.initialState, layers };
+      }
     }
   }
 
@@ -410,6 +422,7 @@ export class MapContainer {
     // currently selected generation may publish readiness; otherwise an old
     // async renderer could wake callers that are waiting on its replacement.
     if (!this.isCurrentRendererInit(token)) return;
+    this.rendererInitError = null;
     this.rendererReady = true;
     this.rendererDemandRequested = false;
     this.releaseRendererDemand = null;
@@ -628,6 +641,40 @@ export class MapContainer {
     void this.initSvgMap('[MapContainer] Initializing SVG map (globe fallback mode)', fallbackToken);
   }
 
+  private handleDeckGLRuntimeFailure(token: number, error: unknown): void {
+    if (token !== this.rendererInitToken || !this.useDeckGL) return;
+    console.warn('[MapContainer] DeckGL runtime failure, falling back to SVG map', error);
+    const snapshot = this.getState();
+    const center = this.getCenter();
+    this.initialState = snapshot;
+    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    try {
+      this.deckGLMap?.destroy();
+    } catch (destroyError) {
+      console.warn('[MapContainer] DeckGL teardown failed during SVG fallback', destroyError);
+    }
+    this.deckGLMap = null;
+    this.useDeckGL = false;
+    const fallbackToken = ++this.rendererInitToken;
+    this.showRendererShell('svg');
+    void this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL runtime fallback)', fallbackToken).catch((error: unknown) => {
+      if (!this.isCurrentRendererInit(fallbackToken)) return;
+      this.rendererInitError = error instanceof Error ? error : new Error(String(error));
+      console.warn('[MapContainer] SVG fallback initialization failed', this.rendererInitError);
+      try {
+        this.svgMap?.destroy();
+      } catch (destroyError) {
+        console.warn('[MapContainer] Partial SVG teardown failed', destroyError);
+      }
+      this.svgMap = null;
+      this.prepareRendererDom('svg-mode');
+      this.container.textContent = t('common.unavailable');
+      const waiters = Array.from(this.rendererReadyWaiters);
+      this.rendererReadyWaiters.clear();
+      for (const waiter of waiters) waiter.reject(this.rendererInitError);
+    });
+  }
+
   private async createDeckGLMap(token: number): Promise<void> {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
@@ -639,7 +686,13 @@ export class MapContainer {
       this.deckGLMap = new DeckGLMap(this.container, {
         ...this.initialState,
         view: this.initialState.view as DeckMapView,
-      }, { chrome: this.chrome });
+      }, {
+        chrome: this.chrome,
+        // Mid-session MapLibre rebuilds (fallback basemap after WebGL loss)
+        // can throw GPUInitializationError outside whenReady(); degrade to SVG.
+        onFatalError: (error) => this.handleDeckGLRuntimeFailure(token, error),
+        mapLibreWorkerUrl: this.mapLibreWorkerUrl,
+      });
       this.rehydrateActiveMap();
       // DeckGLMap defers MapLibre construction behind an async init. Await it so
       // a WebGL/map-construction throw still reaches this catch and degrades to
@@ -661,6 +714,7 @@ export class MapContainer {
 
   private async init(): Promise<void> {
     const token = ++this.rendererInitToken;
+    this.rendererInitError = null;
     this.rendererReady = false;
     this.showRendererShell(this.getPendingRendererKind());
     this.startResizeObserver();
@@ -693,7 +747,8 @@ export class MapContainer {
       this.destroyFlatMap();
       this.useGlobe = true;
       this.useDeckGL = false;
-      this.initialState = snapshot;
+      const layers = sanitizeResilienceScoreForRenderer(snapshot.layers, false);
+      this.initialState = layers === snapshot.layers ? snapshot : { ...snapshot, layers };
       this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
       void this.init();
     }
@@ -717,9 +772,8 @@ export class MapContainer {
       this.globeMap = null;
       this.useGlobe = false;
       this.useDeckGL = this.shouldUseDeckGL();
-      this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
-        ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
-        : snapshot;
+      const layers = sanitizeResilienceScoreForRenderer(snapshot.layers, this.useDeckGL);
+      this.initialState = layers === snapshot.layers ? snapshot : { ...snapshot, layers };
       this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
       // Cancel any pending deck demand gate from a prior flat init before
       // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
@@ -828,6 +882,7 @@ export class MapContainer {
   public whenRendererReady(): Promise<void> {
     if (this.rendererReady && this.hasActiveRenderer()) return Promise.resolve();
     if (this.destroyed) return Promise.reject(new Error('Map renderer is no longer available.'));
+    if (this.rendererInitError) return Promise.reject(this.rendererInitError);
     this.rendererDemandRequested = true;
     this.releaseRendererDemand?.();
     return new Promise((resolve, reject) => {
@@ -987,11 +1042,11 @@ export class MapContainer {
     return this.svgMap?.getTimeRange() ?? this.initialState.timeRange;
   }
 
-  public setLayers(layers: MapLayers): void {
+  public setLayers(layers: MapLayers, options: { bypassEntitlementSanitization?: boolean } = {}): void {
     // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
     // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
-    let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
-    if (shouldSanitizeLockedLayers(
+    let sanitized = sanitizeResilienceScoreForRenderer(layers, this.useDeckGL);
+    if (!options.bypassEntitlementSanitization && shouldSanitizeLockedLayers(
       hasPremiumAccess(getAuthState()),
       isProTierResolved(),
       this.isFreeTierFallbackActive?.() === true,
@@ -1014,10 +1069,10 @@ export class MapContainer {
 
   // ─── Data setters ────────────────────────────────────────────────────────────
 
-  public setEarthquakes(earthquakes: Earthquake[]): void {
+  public setEarthquakes(earthquakes: Earthquake[], options: { replaceEmpty?: boolean } = {}): void {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes, options); }
   }
 
   public setConflictEvents(events: AcledConflictEvent[]): void {
@@ -1688,8 +1743,8 @@ export class MapContainer {
     }
     const state: ScenarioVisualState = {
       scenarioId,
-      disruptedChokepointIds: result.affectedChokepointIds,
-      affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
+      disruptedChokepointIds: result.template?.disruptionPct === 0 ? [] : result.affectedChokepointIds,
+      affectedIso2s: result.topImpactCountries.filter(c => c.totalImpact > 0).map(c => c.iso2),
     };
     this.cachedScenarioState = state;
     this.applyScenarioState(state);

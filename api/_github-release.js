@@ -1,6 +1,8 @@
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
 
 const RELEASES_URL = 'https://api.github.com/repos/koala73/worldmonitor/releases/latest';
+// App-owned self-cache (#7674): this module is its only writer, so read and
+// write ride the deployment-prefixed helper default.
 const CACHE_KEY = 'github:latest-release:v1';
 // Matches the s-maxage the callers already advertise, so adding the Redis tier
 // does not change how stale a client can observe this — it only stops every

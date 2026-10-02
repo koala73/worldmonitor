@@ -171,6 +171,16 @@ describe('CountryDeepDivePanel sector rows (#7023)', () => {
     }
   });
 
+  it('scopes every rendered header cell to its column', () => {
+    const { body } = renderedRows();
+    const headers = [...body.querySelectorAll<HTMLTableCellElement>('th')];
+
+    expect(headers.map((th) => th.textContent)).toEqual(['Sector', 'Chokepoint', 'Risk']);
+    for (const th of headers) {
+      expect(th.getAttribute('scope')).toBe('col');
+    }
+  });
+
   it('expands and collapses through the real handler while preserving focus', () => {
     const { body } = renderedRows();
     const button = body.querySelector<HTMLButtonElement>('button.cdp-sector-toggle[data-hs2="27"]')!;

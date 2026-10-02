@@ -678,6 +678,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,
+            // The section description above already carries the empty-state hint.
+            showAllHint: false,
             onChange: () => {
               // Debounced save through the existing alertRule pipeline.
               if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
@@ -1118,7 +1120,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }
           setEmailChannel(email, undefined, signal).then(() => {
             if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
-          }).catch(() => {});
+          }).catch((error: unknown) => {
+            if (signal.aborted) return;
+            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
+            if (rowEl) appendNotificationError(rowEl, error instanceof Error ? error.message : 'Could not connect email. Please try again.');
+          });
           return;
         }
 

@@ -1,5 +1,12 @@
 export const EDUCATION_MIN_RANKABLE_RECORD_COUNT = 180;
 
+// Supply-vulnerability rankable-record floor shared by api/health.js and
+// api/seed-health.js so the two health surfaces cannot drift apart. Mirrors
+// MIN_COUNTRY_COVERAGE * MIN_SCORED_COMMODITIES_PER_RANKABLE_COUNTRY (110 * 2) in
+// scripts/shared/supply-vulnerability-coverage.mjs; edge functions cannot import
+// scripts/, so tests/supply-vulnerability-operations.test.mjs pins the parity.
+export const SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT = 220;
+
 // Mirrors scripts/shared/sovereign-status.json (193 UN members + HK/MO/TW).
 // Edge functions may import only api/_*.js helpers, so the parity test pins
 // this runtime-safe set to the canonical manifest.

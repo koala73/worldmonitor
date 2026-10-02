@@ -38,14 +38,14 @@ const GEO_CONCURRENCY = 12;
 const GEO_OVERALL_TIMEOUT_MS = 15_000;
 const GEO_PER_IP_TIMEOUT_MS = 2000;
 
-const THREAT_TYPE_MAP = {
+export const THREAT_TYPE_MAP = {
   c2_server: 'CYBER_THREAT_TYPE_C2_SERVER',
   malware_host: 'CYBER_THREAT_TYPE_MALWARE_HOST',
   phishing: 'CYBER_THREAT_TYPE_PHISHING',
   malicious_url: 'CYBER_THREAT_TYPE_MALICIOUS_URL',
 };
 
-const SOURCE_MAP = {
+export const SOURCE_MAP = {
   feodo: 'CYBER_THREAT_SOURCE_FEODO',
   urlhaus: 'CYBER_THREAT_SOURCE_URLHAUS',
   c2intel: 'CYBER_THREAT_SOURCE_C2INTEL',
@@ -59,7 +59,7 @@ const INDICATOR_TYPE_MAP = {
   url: 'CYBER_THREAT_INDICATOR_TYPE_URL',
 };
 
-const SEVERITY_MAP = {
+export const SEVERITY_MAP = {
   low: 'CRITICALITY_LEVEL_LOW',
   medium: 'CRITICALITY_LEVEL_MEDIUM',
   high: 'CRITICALITY_LEVEL_HIGH',
@@ -509,7 +509,7 @@ async function fetchAbuseIpDb() {
 // Dedup + proto mapping
 // ========================================================================
 
-function dedupeThreats(threats) {
+export function dedupeThreats(threats) {
   const map = new Map();
   for (const t of threats) {
     const key = `${t.source}:${t.indicatorType}:${t.indicator}`;
@@ -575,7 +575,7 @@ async function applyObservedFirstSeen(threats, nowMs) {
   }
 }
 
-function toProto(raw) {
+export function toProto(raw) {
   return {
     id: raw.id,
     type: THREAT_TYPE_MAP[raw.type] || 'CYBER_THREAT_TYPE_UNSPECIFIED',

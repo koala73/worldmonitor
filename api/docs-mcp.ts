@@ -13,9 +13,10 @@
 //      object, preserving the upstream SSE/JSON framing.
 // Genuine tool-execution failures deliberately stay `isError` results — the
 // MCP spec reserves top-level errors for protocol-level failures only.
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
+import { safeJsonRpcId } from './mcp/utils';
 
 export const config = { runtime: 'edge' };
 
@@ -51,7 +52,27 @@ const FORWARDED_REQUEST_HEADERS = [
 
 // Hop-by-hop / recomputed response headers that must not be forwarded after
 // fetch has already decoded the body.
-const STRIPPED_RESPONSE_HEADERS = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection']);
+// Hop-by-hop framing, plus every header that can carry a shared-cache policy:
+// the docs MCP surface is no-store end to end (the #4497 class is a shared-cache
+// HIT of an MCP answer), and the upstream does not promise that. Mintlify answers
+// a bare GET with a 405 carrying its default `public, max-age=0, must-revalidate`,
+// which the live sweep (tests/live-api-cache-auth-regression.test.mjs, docs MCP
+// probe) rejects. Vercel reads Vercel-CDN-Cache-Control > CDN-Cache-Control >
+// Cache-Control and Cloudflare reads Cloudflare-CDN-Cache-Control >
+// CDN-Cache-Control > Cache-Control, so a CDN-specific header left in place
+// would silently outrank the `no-store` set below; the list mirrors
+// tests/helpers/shared-cache-policy.mjs, whose CDN_CACHE_HEADERS pins it.
+const STRIPPED_RESPONSE_HEADERS = new Set([
+  'content-encoding',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'cache-control',
+  'cdn-cache-control',
+  'vercel-cdn-cache-control',
+  'cloudflare-cdn-cache-control',
+  'surrogate-control',
+]);
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -85,8 +106,7 @@ export function classifyJsonRpcRequest(
   if (Array.isArray(parsed)) return { kind: 'forward' };
   if (parsed === null || typeof parsed !== 'object') return { kind: 'invalid-request', id: null };
   const rpc = parsed as Record<string, unknown>;
-  const id: JsonRpcId =
-    typeof rpc.id === 'string' || typeof rpc.id === 'number' ? (rpc.id as string | number) : null;
+  const id = safeJsonRpcId(rpc.id);
   if (rpc.jsonrpc !== '2.0' || typeof rpc.method !== 'string' || rpc.method.length === 0) {
     return { kind: 'invalid-request', id };
   }
@@ -187,6 +207,29 @@ function jsonRpcErrorResponse(status: number, id: JsonRpcId, code: number, messa
   });
 }
 
+async function docsMcpRateLimitResponse(req: Request, id: JsonRpcId): Promise<Response | null> {
+  const proofDenied = checkIpScopedEdgeProof(req, CORS_HEADERS);
+  if (proofDenied) {
+    return jsonRpcErrorResponse(403, id, -32003, 'Cloudflare edge proof required', {
+      'X-RateLimit-Mode': 'edge-proof',
+    });
+  }
+  const ip = getClientIp(req);
+  // Redis-degraded scoped limits intentionally stay availability-first — the
+  // upstream docs MCP is fully public and cheap, so degradation (logged by
+  // checkScopedRateLimit) must not take the docs surface down.
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  if (scoped.allowed) return null;
+  const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
+  return jsonRpcErrorResponse(
+    429,
+    id,
+    RATE_LIMIT_ERROR_CODE,
+    `Rate limit exceeded. Max ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW} per IP.`,
+    { 'Retry-After': String(retryAfter) },
+  );
+}
+
 function upstreamRequestHeaders(req: Request): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -201,6 +244,7 @@ function upstreamResponseHeaders(upstream: Response): Headers {
   upstream.headers.forEach((value, key) => {
     if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) headers.set(key, value);
   });
+  headers.set('Cache-Control', 'no-store');
   return withCors(headers);
 }
 
@@ -212,23 +256,9 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonRpcErrorResponse(405, null, -32600, `Method ${req.method} not allowed`, { Allow: 'GET, POST, DELETE, OPTIONS' });
   }
 
-  const ip = getClientIp(req);
-  // Redis-degraded scoped limits intentionally stay availability-first — the
-  // upstream docs MCP is fully public and cheap, so degradation (logged by
-  // checkScopedRateLimit) must not take the docs surface down.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
-  if (!scoped.allowed) {
-    const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
-    return jsonRpcErrorResponse(
-      429,
-      null,
-      RATE_LIMIT_ERROR_CODE,
-      `Rate limit exceeded. Max ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW} per IP.`,
-      { 'Retry-After': String(retryAfter) },
-    );
-  }
-
   if (req.method !== 'POST') {
+    const limited = await docsMcpRateLimitResponse(req, null);
+    if (limited) return limited;
     // GET opens the SSE listening stream, DELETE terminates a session — both
     // stream through untouched.
     const upstream = await fetch(UPSTREAM_URL, {
@@ -250,6 +280,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const bodyText = new TextDecoder().decode(bodyBytes);
   const classified = classifyJsonRpcRequest(bodyText);
+  // Bounded pre-parse is the explicit abuse/correlation tradeoff for this
+  // anonymous endpoint: the 256 KiB cap rejects before parsing, while an
+  // in-cap body is parsed before the limiter only far enough to recover a
+  // finite numeric or <=256-byte string id. Envelope validation and upstream
+  // work remain behind the unchanged 60/min/IP limiter.
+  const requestId = classified.kind === 'single' || classified.kind === 'invalid-request'
+    ? classified.id
+    : null;
+  const limited = await docsMcpRateLimitResponse(req, requestId);
+  if (limited) return limited;
   if (classified.kind === 'invalid-json') {
     return jsonRpcErrorResponse(400, null, -32700, 'Parse error: request body is not valid JSON');
   }

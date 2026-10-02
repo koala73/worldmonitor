@@ -13,6 +13,7 @@ import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { type ConfirmDialogOptions, resolveConfirmLabels } from '@/components/confirm-dialog-labels';
+import { declareOverlay } from '@/utils/open-modal';
 
 export type { ConfirmDialogOptions, ResolvedConfirmLabels } from '@/components/confirm-dialog-labels';
 export { resolveConfirmLabels } from '@/components/confirm-dialog-labels';
@@ -46,6 +47,7 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     overlay.className = 'confirm-dialog-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
     // Single-instance (guarded below), so the fixed message id is unique.
     overlay.setAttribute('aria-labelledby', 'confirm-dialog-message');
     setTrustedHtml(

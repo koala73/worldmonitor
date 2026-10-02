@@ -38,11 +38,13 @@ export function parseSeries(payload) {
     const n = Number(previousRaw);
     return Number.isFinite(n) ? n : null;
   })();
+  const sourceUnit = String(values[0]?.units ?? values[0]?.unit ?? '');
+  const units = /** @type {Record<string, string>} */ ({ MBBL: 'thousand barrels', 'MBBL/D': 'thousand barrels per day', '$/BBL': 'USD per barrel' });
   return {
     current,
     previous,
     date: String(values[0]?.period ?? ''),
-    unit: String(values[0]?.unit ?? ''),
+    unit: units[sourceUnit] ?? sourceUnit,
   };
 }
 

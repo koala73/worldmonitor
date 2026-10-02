@@ -11,6 +11,14 @@
 // Presence of a numeric `maxContentAgeMin` is the opt-in signal. Legacy seeders
 // without it get `null` back and skip the content-age branch entirely.
 
+// Fleet-wide pre-warning policy, owned by the reader (never the producer): a
+// resource whose content age has consumed this fraction of its budget is
+// flagged CONTENT_AGE_PREWARNING — visible, non-blocking lead time before the
+// hard STALE_CONTENT breach. 0.8 of the 230-day JODI-Gas budget gives ~46
+// days of lead time; the Sep 2026 incident would have surfaced on ~Aug 3
+// instead of at the boundary.
+export const CONTENT_AGE_PREWARNING_RATIO = 0.8;
+
 /**
  * @param {unknown} meta   parsed seed-meta object (already envelope-unwrapped)
  * @param {number} now     epoch ms to age against
@@ -55,11 +63,34 @@ export function assessContentAge(meta, now) {
   // corruption).
   const isFutureDated = contentAgeMin != null && contentAgeMin < 0;
 
+  const contentStale = contentAgeMin == null || isFutureDated || contentAgeMin > maxContentAgeMin;
+
+  // Pre-warning is reader policy, never producer data: fleet operations own
+  // the lead time. Active from ceil(80% of budget) through the exact hard
+  // budget (stale is strict >), and only when the assessment is otherwise
+  // datable and within budget. breachAt is the first instant whose rounded
+  // age strictly exceeds the budget — derived from the same Math.round the
+  // age uses, so the projection and the hard boundary can never disagree.
+  let preWarning = null;
+  if (!contentStale && contentAgeMin != null && Number.isFinite(contentAgeMin)) {
+    const warnAtContentAgeMin = Math.ceil(maxContentAgeMin * CONTENT_AGE_PREWARNING_RATIO);
+    if (Number.isFinite(warnAtContentAgeMin) && warnAtContentAgeMin > 0
+      && contentAgeMin >= warnAtContentAgeMin && contentAgeMin <= maxContentAgeMin) {
+      const breachMs = newestItemAt + (maxContentAgeMin + 0.5) * 60_000;
+      preWarning = {
+        warnAtContentAgeMin,
+        remainingContentAgeMin: maxContentAgeMin - contentAgeMin,
+        breachAt: new Date(Math.round(breachMs)).toISOString(),
+      };
+    }
+  }
+
   return {
     newestItemAt,
     oldestItemAt,
     maxContentAgeMin,
     contentAgeMin,
-    contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > maxContentAgeMin,
+    contentStale,
+    preWarning,
   };
 }

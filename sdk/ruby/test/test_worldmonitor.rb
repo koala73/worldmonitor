@@ -168,3 +168,12 @@ class TestRest < Minitest::Test
     assert_includes err.message, "WORLDMONITOR_API_KEY"
   end
 end
+
+class TestTrailingSlashes < Minitest::Test
+  def test_preserves_internal_slashes_and_unicode
+    ["https://example.com/é", "https://example.com/" + "/" * 20000 + "x"].each do |base|
+      client = WorldMonitor::Client.new(base_url: base + "///", env: {})
+      assert_equal base, client.base_url
+    end
+  end
+end

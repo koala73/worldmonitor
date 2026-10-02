@@ -82,6 +82,8 @@ import {
   PremiumLayerGate,
 } from './premium-layer-gate';
 import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
+import { headingToCompass } from '@/utils/heading-to-compass';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -875,7 +877,7 @@ export class GlobeMap {
       .arcDashLength(0.9)
       .arcDashGap(4)
       .arcDashAnimateTime(5000)
-      .arcLabel((d: TradeRouteSegment) => `${d.routeName} · ${d.volumeDesc}`);
+      .arcLabel((d: TradeRouteSegment) => escapeHtml(`${d.routeName} · ${d.volumeDesc}`));
 
     // Path accessors — set once
     (globe as any)
@@ -940,7 +942,7 @@ export class GlobeMap {
         if (d.pathType === 'stormHistory') return 0;
         return 5000;
       })
-      .pathLabel((d: GlobePath) => d?.name ?? '');
+      .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
 
     // Polygon accessors — set once
     (globe as any)
@@ -975,7 +977,7 @@ export class GlobeMap {
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
-        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${d.score}/100 (${escapeHtml(d.level ?? '')})`;
+        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
         if (d._kind === 'conflict') {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
@@ -987,7 +989,7 @@ export class GlobeMap {
           if (d.datetime) label += `<br><span style="opacity:.7;">${escapeHtml(d.datetime)}</span>`;
           if (d.resolutionM != null || d.mode) {
             const parts: string[] = [];
-            if (d.resolutionM != null) parts.push(`${d.resolutionM}m`);
+            if (d.resolutionM != null) parts.push(`${Number.isFinite(Number(d.resolutionM)) ? Number(d.resolutionM) : '—'}m`);
             if (d.mode) parts.push(escapeHtml(d.mode));
             label += `<br><span style="opacity:.5;">Res: ${parts.join(' \u00B7 ')}</span>`;
           }
@@ -1478,8 +1480,7 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">🎯 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">Escalation: ${d.escalationScore}/5</span>`;
     } else if (d._kind === 'flight') {
-      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-      const compass = dirs[Math.round(((d.heading ?? 0) % 360 + 360) % 360 / 22.5) % 16];
+      const compass = headingToCompass(d.heading);
       html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)}</span>` +
              `<br><span style="opacity:.5;">Heading: ${compass} (${Math.round(d.heading ?? 0)}°)</span>`;
@@ -2675,6 +2676,10 @@ export class GlobeMap {
     research:   '#44ffff',
     icebreaker: '#88ccff',
     special:    '#ff44ff',
+    // An AIS-only military contact (#8611) has no hull class. Without this it
+    // fell through to patrol's own blue and read as a coast-guard vessel; the
+    // icon fallback is already the generic ship glyph, which is correct here.
+    unknown:    '#6688aa',
   };
 
   private static readonly VESSEL_TYPE_ICONS: Record<string, string> = {
@@ -2721,7 +2726,7 @@ export class GlobeMap {
       id: v.id,
       name: v.name ?? 'vessel',
       type: v.vesselType,                                                    // raw enum — color/icon key
-      typeLabel: GlobeMap.VESSEL_TYPE_LABELS[v.vesselType] ?? v.vesselType,  // display string
+      typeLabel: vesselTypeLabel(v, GlobeMap.VESSEL_TYPE_LABELS),            // display string
       hullNumber: v.hullNumber,
       operator: v.operator !== 'other' ? v.operator : undefined,
       operatorCountry: v.operatorCountry,

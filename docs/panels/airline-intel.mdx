@@ -43,7 +43,7 @@ hydration first; the tab-specific calls below are direct REST RPCs.
 | Carrier delay / cancellation rollups | `GET /api/aviation/v1/get-carrier-ops` | `airlines` tab for watched airports. |
 | Specific flight status | `GET /api/aviation/v1/get-flight-status` | `tracking` tab lookup. |
 | Aircraft position tracking | `GET /api/aviation/v1/track-aircraft` | `tracking` tab and civil-airspace map workflows. |
-| YouTube live stream metadata | `GET /api/aviation/v1/get-youtube-live-stream-info` | Service RPC for aviation live-stream metadata; not part of the six-tab auto-refresh loop. |
+| YouTube video metadata | `GET /api/aviation/v1/get-youtube-live-stream-info` | Names a YouTube video through oEmbed. Channel live detection is retired: a channel-only query returns error `channel_live_detection_retired`, and the `channel`, `isLive` and `hlsUrl` fields are deprecated. Not part of the six-tab auto-refresh loop. |
 | Legacy flight price quotes | `GET /api/aviation/v1/search-flight-prices` | Direct quote search path with provider/degraded-state metadata. |
 | Aviation news | `GET /api/aviation/v1/list-aviation-news` | `news` tab. |
 | Google Flights itinerary search | `GET /api/aviation/v1/search-google-flights` | `prices` tab explicit search. |

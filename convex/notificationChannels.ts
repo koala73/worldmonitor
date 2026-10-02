@@ -1,4 +1,5 @@
-import { ConvexError, v } from "convex/values";
+import { assertAccountWritable } from "./accountDeletion/guard";
+import { ConvexError, v, type Infer } from "convex/values";
 import {
   internalAction,
   internalMutation,
@@ -9,6 +10,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
+import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
+
+type ChannelType = Infer<typeof channelTypeValidator>;
 
 // Versioned queue: old Railway relays only poll wm:events:queue and ignore
 // welcomeId. Keeping connection-scoped events on a new queue means they wait
@@ -186,10 +190,13 @@ export const queueChannelWelcome = internalAction({
 export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const channels = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .collect();
+    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
+      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
+      ? { ...channel, verified: false } : channel);
   },
 });
 
@@ -202,9 +209,12 @@ export const setChannelForUser = internalMutation({
     email: v.optional(v.string()),
     webhookLabel: v.optional(v.string()),
     scheduleWelcome: v.optional(v.boolean()),
+    // Internal-only: derived by the relay HTTP handler from Clerk, never the body.
+    verifiedAccountEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { userId, channelType, chatId, webhookEnvelope, email, webhookLabel } = args;
+    await assertAccountWritable(ctx, args.userId);
+    const { userId, channelType, webhookEnvelope, email, webhookLabel } = args;
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -215,16 +225,15 @@ export const setChannelForUser = internalMutation({
     let channelId = existing ? String(existing._id) : "";
     const now = Date.now();
     if (channelType === "telegram") {
-      if (!chatId) throw new ConvexError("chatId required for telegram channel");
-      const doc = { userId, channelType: "telegram" as const, chatId, verified: true, linkedAt: now };
-      if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
+      throw new ConvexError("telegram channel must be linked through bot pairing");
     } else if (channelType === "slack") {
       if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for slack channel");
       const doc = { userId, channelType: "slack" as const, webhookEnvelope, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
     } else if (channelType === "email") {
-      if (!email) throw new ConvexError("email required for email channel");
-      const doc = { userId, channelType: "email" as const, email, verified: true, linkedAt: now };
+      await assertProEntitlement(ctx, userId);
+      const recipient = requireVerifiedAccountEmail(email, args.verifiedAccountEmail);
+      const doc = { userId, channelType: "email" as const, email: recipient, emailOwnership: "verified_account" as const, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
     } else if (channelType === "webhook") {
       if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
@@ -274,6 +283,7 @@ export const setWebPushChannelForUser = internalMutation({
     scheduleWelcome: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     // Step 1: find the current user's row before cross-account endpoint
     // cleanup. A retry with the same endpoint must remain a re-link rather
     // than deleting its own row and appearing to be a first connection.
@@ -348,6 +358,7 @@ export const setSlackOAuthChannelForUser = internalMutation({
     slackConfigurationUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -382,6 +393,7 @@ export const setDiscordOAuthChannelForUser = internalMutation({
     discordChannelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -407,33 +419,63 @@ export const setDiscordOAuthChannelForUser = internalMutation({
   },
 });
 
+// Shared by the relay-facing `*ForUser` mutations and the identity-scoped
+// internal twins below. Deletion/deactivation are de-escalation: never gate
+// on Pro (#8430).
+async function deleteChannelRow(
+  ctx: MutationCtx,
+  userId: string,
+  channelType: ChannelType,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user_channel", (q) =>
+      q.eq("userId", userId).eq("channelType", channelType),
+    )
+    .unique();
+  if (!existing) return;
+  await ctx.db.delete(existing._id);
+  const rules = await ctx.db
+    .query("alertRules")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const rule of rules) {
+    const filtered = rule.channels.filter((c) => c !== channelType);
+    if (filtered.length !== rule.channels.length) {
+      await ctx.db.patch(rule._id, { channels: filtered });
+    }
+  }
+}
+
+async function deactivateChannelRow(
+  ctx: MutationCtx,
+  userId: string,
+  channelType: ChannelType,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user_channel", (q) =>
+      q.eq("userId", userId).eq("channelType", channelType),
+    )
+    .unique();
+  if (existing) {
+    await ctx.db.patch(existing._id, { verified: false });
+  }
+}
+
+// Production delete path. The dashboard reaches this via the shared-secret
+// `/relay/notification-channels` action `delete-channel` (convex/http.ts).
 export const deleteChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", args.userId).eq("channelType", args.channelType),
-      )
-      .unique();
-    if (!existing) return;
-    await ctx.db.delete(existing._id);
-    const rules = await ctx.db
-      .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const rule of rules) {
-      const filtered = rule.channels.filter((c) => c !== args.channelType);
-      if (filtered.length !== rule.channels.length) {
-        await ctx.db.patch(rule._id, { channels: filtered });
-      }
-    }
+    await deleteChannelRow(ctx, args.userId, args.channelType);
   },
 });
 
 export const createPairingTokenForUser = internalMutation({
   args: { userId: v.string(), variant: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant } = args;
     const existing = await ctx.db
       .query("telegramPairingTokens")
@@ -459,10 +501,13 @@ export const getChannels = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
-    return await ctx.db
+    const channels = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .collect();
+    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
+      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
+      ? { ...channel, verified: false } : channel);
   },
 });
 
@@ -478,6 +523,7 @@ export const setChannel = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     const existing = await ctx.db
@@ -490,13 +536,7 @@ export const setChannel = mutation({
     const now = Date.now();
 
     if (args.channelType === "telegram") {
-      if (!args.chatId) throw new ConvexError("chatId required for telegram channel");
-      const doc = { userId, channelType: "telegram" as const, chatId: args.chatId, verified: true, linkedAt: now };
-      if (existing) {
-        await ctx.db.replace(existing._id, doc);
-      } else {
-        await ctx.db.insert("notificationChannels", doc);
-      }
+      throw new ConvexError("telegram channel must be linked through bot pairing");
     } else if (args.channelType === "slack") {
       if (!args.webhookEnvelope) throw new ConvexError("webhookEnvelope required for slack channel");
       const doc = { userId, channelType: "slack" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now };
@@ -506,8 +546,8 @@ export const setChannel = mutation({
         await ctx.db.insert("notificationChannels", doc);
       }
     } else if (args.channelType === "email") {
-      if (!args.email) throw new ConvexError("email required for email channel");
-      const doc = { userId, channelType: "email" as const, email: args.email, verified: true, linkedAt: now };
+      const email = requireVerifiedAccountEmail(args.email, identity.emailVerified === true ? identity.email : undefined);
+      const doc = { userId, channelType: "email" as const, email, emailOwnership: "verified_account" as const, verified: true, linkedAt: now };
       if (existing) {
         await ctx.db.replace(existing._id, doc);
       } else {
@@ -527,73 +567,35 @@ export const setChannel = mutation({
   },
 });
 
-export const deleteChannel = mutation({
-  args: { channelType: channelTypeValidator },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("UNAUTHENTICATED");
-    const userId = identity.subject;
-    await assertProEntitlement(ctx, userId);
-
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", userId).eq("channelType", args.channelType),
-      )
-      .unique();
-
-    if (!existing) return;
-    await ctx.db.delete(existing._id);
-
-    // Remove this channel from all alert rules for this user
-    const rules = await ctx.db
-      .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-    for (const rule of rules) {
-      const filtered = rule.channels.filter((c) => c !== args.channelType);
-      if (filtered.length !== rule.channels.length) {
-        await ctx.db.patch(rule._id, { channels: filtered });
-      }
-    }
-  },
-});
-
 // Called by the notification relay via /relay/deactivate HTTP action
-// when Telegram returns 403 or Slack returns 404/410.
+// when Telegram returns 403 or Slack returns 404/410. Ungated by design —
+// delivery-side deactivation must work after Pro lapses (see #8430).
 export const deactivateChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", args.userId).eq("channelType", args.channelType),
-      )
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, { verified: false });
-    }
+    await deactivateChannelRow(ctx, args.userId, args.channelType);
   },
 });
 
-export const deactivateChannel = mutation({
+// INTERNAL ONLY — #8430. Formerly public `mutation`s with a Pro gate that
+// contradicted the ungated relay path. Kept as identity-scoped internals so
+// authenticated deploy-key callers and Sentry probe filters still resolve the
+// historical names; production traffic uses `*ForUser` above.
+export const deleteChannel = internalMutation({
   args: { channelType: channelTypeValidator },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
-    const userId = identity.subject;
-    await assertProEntitlement(ctx, userId);
+    await deleteChannelRow(ctx, identity.subject, args.channelType);
+  },
+});
 
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", userId).eq("channelType", args.channelType),
-      )
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { verified: false });
-    }
+export const deactivateChannel = internalMutation({
+  args: { channelType: channelTypeValidator },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("UNAUTHENTICATED");
+    await deactivateChannelRow(ctx, identity.subject, args.channelType);
   },
 });
 
@@ -603,6 +605,7 @@ export const createPairingToken = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     // Invalidate any existing unused tokens for this user
@@ -636,7 +639,7 @@ export const createPairingToken = mutation({
   },
 });
 
-export const claimPairingToken = mutation({
+export const claimPairingToken = internalMutation({
   args: { token: v.string(), chatId: v.string() },
   handler: async (ctx, args) => {
     const record = await ctx.db
@@ -645,6 +648,7 @@ export const claimPairingToken = mutation({
       .unique();
 
     if (!record) return { ok: false, reason: "NOT_FOUND" as const };
+    await assertAccountWritable(ctx, record.userId);
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const };
     if (!(await hasProEntitlement(ctx, record.userId))) {
@@ -667,6 +671,7 @@ export const claimPairingToken = mutation({
       channelType: "telegram" as const,
       chatId: args.chatId,
       verified: true,
+      telegramOwnership: "verified_callback" as const,
       linkedAt: Date.now(),
     };
 

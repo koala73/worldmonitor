@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BUNDLE_COMPLETION_META_KEY_ENV,
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
   GRACEFUL_FETCH_FAILURE_EXIT_CODE,
   loadEnvFile,
   PUBLISH_BLOCKED_EXIT_CODE,
@@ -78,6 +79,35 @@ async function readRedisKey(key) {
     return body.result ? JSON.parse(body.result) : null;
   } catch {
     return null;
+  }
+}
+
+export const SOURCE_RETRY_CLAIM_SCRIPT = [
+  "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end",
+  "redis.call('SET', KEYS[1], ARGV[2], 'XX', 'KEEPTTL')",
+  'return 1',
+].join('\n');
+
+async function claimSourceRetry(claim) {
+  if (!REDIS_URL || !REDIS_TOKEN) return false;
+  try {
+    const response = await fetch(REDIS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REDIS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-bundle-runner/1.0',
+      },
+      body: JSON.stringify([
+        'EVAL',
+        SOURCE_RETRY_CLAIM_SCRIPT,
+        1, claim.key, claim.previousValue, claim.nextValue,
+      ]),
+      signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
+    });
+    return response.ok && (await response.json()).result === 1;
+  } catch {
+    return false;
   }
 }
 
@@ -130,7 +160,7 @@ async function writeBundleHeartbeat(label) {
 /**
  * Read section freshness for the interval gate.
  *
- * Returns `{ fetchedAt }` or null. A declared `freshnessMetaKey` is authoritative
+ * Returns `{ fetchedAt, retryAt?, retryClaim? }` or null. A declared `freshnessMetaKey` is authoritative
  * for sources whose canonical envelope may be republished from retained
  * last-good data. When `completionMetaKey` is also declared, its timestamp must
  * be at or after source transport success; an older completion belongs to a
@@ -207,7 +237,32 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
     // Legacy seed-meta is `{ fetchedAt, recordCount, sourceVersion }` at top
     // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
     const meta = unwrapEnvelope(raw).data;
-    if (meta?.fetchedAt && acceptsVersion(meta)) return { fetchedAt: meta.fetchedAt };
+    if (meta?.fetchedAt && acceptsVersion(meta)) {
+      const freshness = { fetchedAt: meta.fetchedAt };
+      if (raw === meta && section.sourceRetryMetaKey && Number.isFinite(section.sourceRetryDelayMs) && section.sourceRetryDelayMs > 0) {
+        const source = unwrapEnvelope(await readKey(section.sourceRetryMetaKey)).data;
+        const firstAt = source?.firstSourceFailureAt;
+        if (
+          source?.sourceState === 'degraded' && source.stale === true
+          && Number.isInteger(source.recordCount) && source.recordCount > 0
+          && Number.isFinite(source.fetchedAt) && source.fetchedAt > 0
+          && Number.isFinite(firstAt) && firstAt > source.fetchedAt
+          && source.lastSourceAttemptAt === firstAt && source.consecutiveSourceFailures === 1
+          && typeof source.errorCode === 'string' && source.errorCode.length > 0
+          && source.lastSourceFailureCode === source.errorCode
+          && Number.isFinite(meta.fetchedAt) && firstAt <= meta.fetchedAt && meta.fetchedAt <= Date.now()
+          && meta.sourceRetryClaimedFor == null
+        ) {
+          freshness.retryAt = firstAt + section.sourceRetryDelayMs;
+          freshness.retryClaim = {
+            key: `seed-meta:${section.seedMetaKey}`,
+            previousValue: JSON.stringify(raw),
+            nextValue: JSON.stringify({ ...meta, sourceRetryClaimedFor: firstAt }),
+          };
+        }
+      }
+      return freshness;
+    }
   }
   return null;
 }
@@ -297,7 +352,7 @@ function streamLines(stream, onLine) {
   stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
-function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completionMetaKey }) {
+function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completionMetaKey, useBundledCa }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     // Capture the child's structured `seed_complete` event if emitted, so
@@ -312,10 +367,14 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
     // peer's seed-meta predates the current bundle run and fall back to a
     // hard default instead of reading a stale peer key. See plan
     // 2026-04-24-003 §"Phase 2 — SWF seeder" bundle-freshness guard.
-    const child = spawn(process.execPath, [scriptPath], {
+    const nodeArgs = useBundledCa === true ? ['--use-bundled-ca'] : [];
+    const child = spawn(process.execPath, [...nodeArgs, scriptPath], {
       env: {
         ...process.env,
         BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+        // Lets runSeed clamp its fetch deadline inside this wall clock so the
+        // graceful path fires before we SIGTERM (#8479).
+        [BUNDLE_SECTION_TIMEOUT_MS_ENV]: String(timeoutMs),
         [BUNDLE_COMPLETION_META_KEY_ENV]: completionMetaKey || '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -402,6 +461,8 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
  *   label: string,
  *   script: string,
  *   seedMetaKey?: string,    // legacy (pre-contract); reads `seed-meta:<key>`
+ *   sourceRetryMetaKey?: string, // opt-in source-attempt meta for legacy completion gates
+ *   sourceRetryDelayMs?: number, // one early retry after the first failed attempt
  *   freshnessMetaKey?: string, // authoritative explicit seed-meta key
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
  *   completionMetaKey?: string, // full key written LAST by the run; must not
@@ -624,9 +685,13 @@ export async function runBundle(label, sections, opts = {}) {
     const freshness = freshnessByLabel
       ? freshnessByLabel.get(section.label) || null
       : await readSectionFreshness(section);
+    let earlyRetry = false;
     if (freshness?.fetchedAt) {
-      const elapsed = Date.now() - freshness.fetchedAt;
-      if (elapsed < section.intervalMs * 0.8) {
+      const now = Date.now();
+      const elapsed = now - freshness.fetchedAt;
+      const retryDue = Number.isFinite(freshness.retryAt) && now >= freshness.retryAt;
+      earlyRetry = elapsed < section.intervalMs * 0.8 && retryDue;
+      if (elapsed < section.intervalMs * 0.8 && !retryDue) {
         const agoMin = Math.round(elapsed / 60_000);
         const intervalMin = Math.round(section.intervalMs / 60_000);
         console.log(`  [${section.label}] Skipped, last seeded ${agoMin}min ago (interval: ${intervalMin}min)`);
@@ -640,7 +705,7 @@ export async function runBundle(label, sections, opts = {}) {
     // and need SIGKILL after grace). Admit only when the full worst-case fits.
     // Shared with the startup check so the two can never disagree about which
     // sections are admittable.
-    const worstCase = sectionWorstCaseMs(section);
+    const worstCase = sectionWorstCaseMs(section) + (earlyRetry ? REDIS_READ_TIMEOUT_MS : 0);
     if (elapsedBundle + worstCase > maxBundleMs) {
       const remainingSec = Math.max(0, Math.round((maxBundleMs - elapsedBundle) / 1000));
       const needSec = Math.round(worstCase / 1000);
@@ -663,11 +728,18 @@ export async function runBundle(label, sections, opts = {}) {
       continue;
     }
 
+    if (earlyRetry && !await claimSourceRetry(freshness.retryClaim)) {
+      console.warn(`  [${section.label}] Early recovery not claimed; keeping normal admission`);
+      skipped++;
+      continue;
+    }
+
     const result = await spawnSeed(scriptPath, {
       timeoutMs: timeout,
       label: section.label,
       bundleStartedAtMs: t0,
       completionMetaKey: section.freshnessMetaKey ? '' : section.completionMetaKey,
+      useBundledCa: section.useBundledCa,
     });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);

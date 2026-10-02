@@ -37,11 +37,30 @@ export function createTimeoutSignal(ms: number): AbortSignal {
       // to tell a request that timed out from one the caller cancelled — so the
       // fallback reproduces the native reason rather than silently reclassifying
       // every old-engine timeout as a cancellation.
-      controller.abort(
-        typeof DOMException === 'function'
-          ? new DOMException('signal timed out', 'TimeoutError')
-          : undefined,
-      );
+      let reason: DOMException | undefined;
+      if (typeof DOMException === 'function') {
+        reason = new DOMException('signal timed out', 'TimeoutError');
+        // Match the native reason's stack too, which is the header only.
+        // Chromium leaves a JS-built DOMException stackless, and Sentry's
+        // fetch instrumentation backfills a stackless rejection with the fetch
+        // call site; engines that do record a stack give it this timer's
+        // frames. Either way a browser extension's fetch hook that leaked this
+        // reason would report as a first-party rejection and escape the
+        // dashboard's zero-frame `signal timed out` suppression, as the
+        // insights loader's own reason did (WORLDMONITOR-125/12Z/11N). The
+        // cost is the native one: a caller that must surface a timeout has to
+        // catch it or report it with a `kind` tag.
+        try {
+          Object.defineProperty(reason, 'stack', {
+            value: 'TimeoutError: signal timed out',
+            configurable: true,
+            writable: true,
+          });
+        } catch {
+          /* engine pins `stack`; an unstamped reason must still abort below */
+        }
+      }
+      controller.abort(reason);
     } catch {
       /* already aborted or exotic AbortController */
     }

@@ -100,6 +100,28 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.equal(rootBytes.equals(publicPlugin), true, 'public/plugin.json must match plugin.json exactly');
   });
 
+  it('OpenAI listing metadata references packaged assets and respects submission text limits', () => {
+    const listing = plugin.extensions['com.openai'].interface;
+    assert.ok([
+      'Productivity', 'Creativity', 'Developer Tools', 'Business & Operations',
+      'Data & Analytics', 'Communication', 'Education & Research', 'Security',
+      'Finance', 'Healthcare', 'Travel', 'Entertainment', 'Other',
+    ].includes(listing.category), 'category must be supported by the ChatGPT directory');
+    for (const [field, limit] of Object.entries({ displayName: 30, shortDescription: 30, longDescription: 4000, developerName: 80 })) {
+      assert.ok(typeof listing[field] === 'string' && listing[field].length > 0 && listing[field].length <= limit, field);
+    }
+    for (const field of ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL']) {
+      assert.equal(new URL(listing[field]).protocol, 'https:', field);
+    }
+    assert.ok(listing.defaultPrompt.length <= 3);
+    for (const prompt of listing.defaultPrompt) assert.ok(prompt.length <= 128);
+    for (const field of ['composerIcon', 'logo']) {
+      const path = listing[field];
+      assert.ok(path.startsWith('./') && !path.includes('..'), field);
+      assert.ok(existsSync(join(ROOT, path)), `${field} must exist inside the package source`);
+    }
+  });
+
   it('mcp.json is a closed Agent Plugins MCP config pointing at the live servers', () => {
     assert.equal(mcp.$schema, MCP_SCHEMA);
     for (const key of Object.keys(mcp)) {
@@ -305,14 +327,19 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.doesNotThrow(() => materializePluginSkills({ check: true, ...paths }));
   });
 
-  it('rewrites worldmonitor API subdomains to the public site origin', () => {
+  // Rewrites to www, not the apex (#7660): `/api/*` is not on the Cloudflare
+  // apex-exemption list, so an apex REST example 301s and a plain
+  // `curl -s` (no -L) against the documented URL returns an empty body.
+  it('rewrites worldmonitor API subdomains to the www site origin', () => {
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://edge.worldmonitor.app/api/foo'),
-      'GET https://worldmonitor.app/api/foo',
+      'GET https://www.worldmonitor.app/api/foo',
     );
+    // The apex is rewritten too — `/api/*` is not on the exemption list, so an
+    // apex REST example 301s exactly like a variant-host one.
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://worldmonitor.app/api/foo'),
-      'GET https://worldmonitor.app/api/foo',
+      'GET https://www.worldmonitor.app/api/foo',
     );
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://www.worldmonitor.app/api/foo'),
@@ -361,9 +388,10 @@ describe('agent readiness: Agent Plugins manifest', () => {
     const hrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((value) => (Array.isArray(value) ? value.map((entry) => entry.href) : [])),
     );
-    assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'api-catalog must advertise /plugin.json');
+    // www, not apex: /plugin.json 301s off the apex (#7660).
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/plugin.json'), 'api-catalog must advertise /plugin.json');
     const view = JSON.parse(readFileSync(join(ROOT, 'public/agent-view.json'), 'utf-8'));
-    assert.equal(view.discovery.agentPlugin, 'https://worldmonitor.app/plugin.json');
+    assert.equal(view.discovery.agentPlugin, 'https://www.worldmonitor.app/plugin.json');
     for (const path of ['docs/agent-discovery.mdx', 'docs/zh/agent-discovery.mdx']) {
       const body = readFileSync(join(ROOT, path), 'utf-8');
       assert.ok(

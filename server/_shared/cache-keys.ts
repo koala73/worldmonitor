@@ -136,13 +136,6 @@ export const COST_SHOCK_KEY = (iso2: string, chokepointId: string) =>
   `supply-chain:cost-shock:${iso2}:${chokepointId}:v1` as const;
 
 /**
- * Per-country + per-HS2 sector dependency cache.
- * NOT in bootstrap — request-varying, PRO-gated.
- */
-export const SECTOR_DEPENDENCY_KEY = (iso2: string, hs2: string) =>
-  `supply-chain:sector-dep:${iso2}:${hs2}:v1` as const;
-
-/**
  * Route Explorer lane cache — per (fromIso2, toIso2, hs2, cargoType).
  * NOT in bootstrap — request-varying, PRO-gated.
  */

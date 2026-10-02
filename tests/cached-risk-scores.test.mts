@@ -375,6 +375,21 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     assert.equal(out.stale, false);
   });
 
+  it('maps an UNSPECIFIED trend (no earlier reading) to the legacy stable bucket', async () => {
+    // The server emits UNSPECIFIED when it has no usable prior reading. The
+    // dashboard's cached shape only knows rising/stable/falling and validates
+    // persisted entries against that set, so the adapter must map it before
+    // anything is cached.
+    const { toRiskScores } = await loadAdapter();
+    const out = toRiskScores({
+      ciiScores: [{ ...makeCii('US', 1_700_000_000_000, 0), trend: 'TREND_DIRECTION_UNSPECIFIED' }],
+      strategicRisks: [{ region: 'GLOBAL', level: 'SEVERITY_LEVEL_LOW', score: 12, factors: [], trend: 'TREND_DIRECTION_UNSPECIFIED' }],
+    });
+    assert.equal(out.cii[0]!.trend, 'stable');
+    assert.equal(out.cii[0]!.change24h, 0);
+    assert.equal(out.strategicRisk.trend, 'stable');
+  });
+
   it('strategicRisk.lastUpdated and aggregate.computedAt are null when no CII carries a timestamp', async () => {
     const { toRiskScores } = await loadAdapter();
     const out = toRiskScores({

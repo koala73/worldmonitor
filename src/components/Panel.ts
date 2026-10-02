@@ -3,11 +3,10 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
-import { trackPanelResized } from '@/services/analytics';
+import { trackLayoutCustomized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
-import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { createCheckoutConsentElement } from '@/utils/legal-links';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
@@ -184,6 +183,12 @@ export class Panel {
   // holds the actual DOM nodes; reattaching preserves any listeners and
   // any subclass references like `this.inputEl`.
   private _savedContent: ChildNode[] | null = null;
+  // User id bound by updatePanelGating. unlock compares this to snapshotPrincipal.
+  private contentPrincipal: string | null = null;
+  // Principal that owned the panel when the snapshot was taken. null means
+  // unowned constructor chrome (safe to restore). A non-null id must match
+  // the current principal or unlock refuses the snapshot.
+  private snapshotPrincipal: string | null = null;
   private _collapsed = false;
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
@@ -206,6 +211,7 @@ export class Panel {
 
     const title = document.createElement('span');
     title.className = 'panel-title';
+    title.id = `${options.id}Title`;
     title.textContent = options.title;
     // Panels are the dashboard's sections, but a real <h2> would drag along
     // element styles; role/aria-level gives the outline with zero visual change.
@@ -290,6 +296,13 @@ export class Panel {
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
+    // #8460: `.panel-content` is `overflow-y: auto`. Axe `scrollable-region-focusable`
+    // (WCAG 2.1.1) requires a keyboard path whenever that region overflows.
+    // Always-on tabIndex=0 avoids a layout read on every render (#7112, #7045).
+    this.content.tabIndex = 0;
+    // Name the tab stop from the heading. No role=region — that would add a
+    // landmark per panel.
+    this.content.setAttribute('aria-labelledby', title.id);
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
@@ -432,7 +445,7 @@ export class Panel {
       if (next === current) return;
       setSpanClass(this.element, next);
       savePanelSpan(this.panelId, next);
-      trackPanelResized(this.panelId, next);
+      trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     });
   }
@@ -459,6 +472,7 @@ export class Panel {
       if (next === current) return;
       setColSpanClass(this.element, next);
       persistPanelColSpan(this.panelId, this.element);
+      trackLayoutCustomized('panel-resize');
       this.syncKeyboardColResizeAria();
     });
   }
@@ -505,7 +519,7 @@ export class Panel {
 
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
-      trackPanelResized(this.panelId, currentSpan);
+      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     };
 
@@ -578,7 +592,7 @@ export class Panel {
       this.removeRowTouchDocumentListeners();
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
-      trackPanelResized(this.panelId, currentSpan);
+      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     };
     this.onTouchCancel = this.onTouchEnd;
@@ -648,6 +662,7 @@ export class Panel {
       const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
+        trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardColResizeAria();
     };
@@ -720,6 +735,7 @@ export class Panel {
       const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
+        trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardColResizeAria();
     };
@@ -1128,17 +1144,11 @@ export class Panel {
     // that page carries its own assent line above every tier CTA.
     if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
-    if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => {
-        void openExternalUrl('https://worldmonitor.app/pro');
+    ctaBtn.addEventListener('click', () => {
+      import('@/services/upgrade-flow').then((m) => m.openUpgradeCheckout()).catch(() => {
+        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       });
-    } else {
-      ctaBtn.addEventListener('click', () => {
-        import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-          window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-        });
-      });
-    }
+    });
     lockedChildren.push(ctaBtn);
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, ...lockedChildren));
@@ -1248,12 +1258,25 @@ export class Panel {
     // and fixes constructor-only subclasses (DeductionPanel,
     // ChatAnalystPanel, …) that would otherwise end up with an empty body.
     // Fall back to the legacy empty-content behaviour if nothing was saved.
-    if (this._savedContent !== null) {
-      this.replaceContent(...this._savedContent);
-      this._savedContent = null;
+    const saved = this._savedContent;
+    const ownedBySomeoneElse = this.snapshotPrincipal !== null
+      && this.snapshotPrincipal !== this.contentPrincipal;
+    this._savedContent = null;
+    this.snapshotPrincipal = null;
+    if (saved !== null && !ownedBySomeoneElse) {
+      this.replaceContent(...saved);
     } else {
       this.replaceContent();
     }
+  }
+
+  /**
+   * Record which authenticated user owns the content about to be snapshotted
+   * or restored. updatePanelGating calls this before lock/unlock so a later
+   * account cannot receive the previous principal's DOM.
+   */
+  public bindContentPrincipal(userId: string | null): void {
+    this.contentPrincipal = userId;
   }
 
   /**
@@ -1262,10 +1285,15 @@ export class Panel {
    * downgrade so unlockPanel() cannot resurrect data captured before the
    * entitlement changed.
    */
-  protected clearSensitiveContent(): void {
-    this._savedContent = null;
-    this.cancelPendingContentWrite();
+  public clearSensitiveContent(): void {
+    this.dropContentSnapshot();
     if (!this._locked) this.replaceContent();
+  }
+
+  protected dropContentSnapshot(): void {
+    this._savedContent = null;
+    this.snapshotPrincipal = null;
+    this.cancelPendingContentWrite();
   }
 
   /**
@@ -1292,6 +1320,7 @@ export class Panel {
   private _snapshotContentForRestore(): void {
     if (this._savedContent !== null) return;
     this._savedContent = Array.from(this.content.childNodes);
+    this.snapshotPrincipal = this.contentPrincipal;
   }
 
   public showRetrying(message?: string, countdownSeconds?: number): void {
@@ -1466,11 +1495,21 @@ export class Panel {
     this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
 
-  private setContentHtml(html: string, afterUpdate?: () => void): void {
+  /**
+   * User-action twin of `setSafeContent`. Same safe-HTML boundary, lock bail,
+   * error/retry clear, dirty-check, and `setContentImmediate` commit — without
+   * the 150 ms background coalescing timer. A pending coalesced write and its
+   * callback are cancelled so they cannot paint over this interaction.
+   */
+  public setSafeContentImmediate(html: SafeHtml, afterUpdate?: () => void): void {
+    this.setContentHtml(safeHtmlToString(html), afterUpdate, true);
+  }
+
+  private setContentHtml(html: string, afterUpdate?: () => void, immediate = false): void {
     // #6714: clear error state before the lock bail — see setContentNodes.
     this.clearErrorState();
     if (this._locked) return;
-    if (this.pendingContentHtml === html) {
+    if (!immediate && this.pendingContentHtml === html) {
       if (afterUpdate) this.pendingContentCallback = afterUpdate;
       return;
     }
@@ -1488,6 +1527,10 @@ export class Panel {
 
     this.pendingContentHtml = html;
     this.pendingContentCallback = afterUpdate ?? null;
+    if (immediate) {
+      this.setContentImmediate(html);
+      return;
+    }
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
     }

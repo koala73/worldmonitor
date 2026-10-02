@@ -351,7 +351,8 @@ function normalizeCountryIdentity(code, identity, legacyName, fallbackName) {
   const officialName = identity?.officialName || identity?.commonName || commonName;
   const legacyNames = legacyName && legacyName !== commonName ? [legacyName] : [];
   const alternateNames = [...new Set([legacyName, identity?.commonName, officialName]
-    .filter((name) => name && name !== commonName))];
+    .filter((name) => name && name !== commonName)
+    .map((name) => name === 'Macao S A R' ? 'Macao SAR' : name))];
   return {
     commonName,
     officialName,

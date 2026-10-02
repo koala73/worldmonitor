@@ -119,7 +119,8 @@
       "activeSirens": "Ενεργές σειρήνες",
       "sirens24h": "Σειρήνες / 24ώρο",
       "aviationDisruptions": "Αεροπορικές αναταράξεις",
-      "gpsJammingZones": "Ζώνες παρεμβολής GPS"
+      "gpsJammingZones": "Ζώνες παρεμβολής GPS",
+      "temporalUnavailable": "Οι χρονικές παρατηρήσεις δεν είναι διαθέσιμες"
     },
     "fallback": {
       "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
@@ -192,7 +193,7 @@
       "decisionSignalsUnavailable": "Το στιγμιότυπο σημάτων απόφασης της Κίνας δεν είναι διαθέσιμο αυτή τη στιγμή."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -855,7 +856,6 @@
   "components": {
     "webcams": {
       "paused": "Κάμερες σε παύση",
-      "pausedIdle": "Κάμερες σε παύση — μετακινήστε το ποντίκι για συνέχεια",
       "regions": {
         "all": "ΟΛΑ",
         "mideast": "Μ. ΑΝΑΤΟΛΗ",
@@ -865,7 +865,11 @@
         "space": "ΔΙΑΣΤΗΜΑ"
       },
       "play": "Αναπαραγωγή",
-      "previewStatus": "Ζωντανή προεπισκόπηση"
+      "previewStatus": "Έτοιμο για αναπαραγωγή",
+      "connecting": "Σύνδεση…",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτή η ροή είναι ζωντανή",
+      "offline": "Η {{city}} είναι εκτός σύνδεσης αυτή τη στιγμή",
+      "noFeeds": "Δεν υπάρχουν ζωντανές κάμερες ιστού σε αυτήν την περιοχή αυτή τη στιγμή"
     },
     "positiveNewsFeed": {
       "noStories": "Δεν υπάρχουν ακόμα ιστορίες σε αυτή την κατηγορία"
@@ -1077,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "statusNormal": "ΚΑΝΟΝΙΚΟ",
+      "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
+      "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
+      "vsUsual": "σε σχέση με το σύνηθες",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ενημερώθηκε {{timeAgo}}",
       "tensionsTitle": "Γεωπολιτικές Εντάσεις",
+      "tensionsSource": "Εντάσεις: World Monitor με βάση συμβάντα GDELT",
+      "insufficientData": "Ανεπαρκή δεδομένα",
+      "pizzaUnavailable": "Η δραστηριότητα των πιτσαριών δεν είναι διαθέσιμη",
       "source": "Πηγή:",
       "statusClosed": "ΚΛΕΙΣΤΟ",
       "statusSpike": "ΚΟΡΥΦΩΣΗ",
@@ -1092,11 +1104,11 @@
       "minutesAgo": "{{m}}λ πριν",
       "hoursAgo": "{{h}}ω πριν",
       "defconLabels": {
-        "1": "COCKED PISTOL - ΜΕΓΙΣΤΗ ΕΤΟΙΜΟΤΗΤΑ",
-        "2": "FAST PACE - ΕΝΟΠΛΕΣ ΔΥΝΑΜΕΙΣ ΕΤΟΙΜΕΣ",
-        "3": "ROUND HOUSE - ΑΥΞΗΣΗ ΕΤΟΙΜΟΤΗΤΑΣ ΔΥΝΑΜΕΩΝ",
-        "4": "DOUBLE TAKE - ΑΥΞΗΜΕΝΗ ΕΠΙΤΗΡΗΣΗ ΠΛΗΡΟΦΟΡΙΩΝ",
-        "5": "FADE OUT - ΧΑΜΗΛΟΤΕΡΗ ΕΤΟΙΜΟΤΗΤΑ"
+        "1": "Μέγιστη Δραστηριότητα",
+        "2": "Υψηλή Δραστηριότητα",
+        "3": "Αυξημένη Δραστηριότητα",
+        "4": "Πάνω από το Κανονικό",
+        "5": "Κανονική Δραστηριότητα"
       }
     },
     "strategicPosture": {
@@ -1177,9 +1189,6 @@
       "datacenter": "Κέντρο Δεδομένων",
       "base": "Βάση",
       "nuclear": "Πυρηνικό"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "ΚΡΙΣ",
@@ -1490,7 +1499,10 @@
       "provenanceTitle": "Προέλευση κάλυψης: πόσες καταχωρημένες ιστορίες και διακριτές πηγές επιλέχθησαν για αυτή τη σύνοψη",
       "compiledFrom": "Συντάχθηκε από {{stories}} ιστορίες σε {{sources}} πηγές",
       "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Λεπτομέρειες είδησης ({{count}})",
+      "streamIdleStopLabel": "Διακοπή ζωντανού βίντεο όταν είναι αδρανές",
+      "streamIdleStopDesc": "Διακόπτει τα Live News και τις Live Webcams μετά από αυτή τη διάρκεια χωρίς δραστηριότητα και εμφανίζει ένα σημείωμα στο panel.",
+      "streamIdleStopNever": "Ποτέ"
     },
     "settings": {
       "exportSettings": "Εξαγωγή ρυθμίσεων",
@@ -1902,6 +1914,7 @@
       "etfs": "ETFs",
       "netInflow": "ΚΑΘΑΡΗ ΕΙΣΡΟΗ",
       "netOutflow": "ΚΑΘΑΡΗ ΕΚΡΟΗ",
+      "netNeutral": "ΚΑΘΑΡΗ ΟΥΔΕΤΕΡΗ ΡΟΗ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Εκδότης",
@@ -1984,15 +1997,11 @@
     },
     "liveNews": {
       "notLive": "Το {{name}} δεν είναι ζωντανά αυτή τη στιγμή",
-      "cannotEmbed": "Το {{name}} δεν μπορεί να αναπαραχθεί εδώ — ενδέχεται να είναι περιορισμένο στην περιοχή σας (σφάλμα {{code}})",
-      "botCheck": "Το YouTube ζητάει σύνδεση για αναπαραγωγή {{name}}",
       "signInToYouTube": "Σύνδεση στο YouTube",
       "openOnYouTube": "Άνοιγμα στο YouTube",
       "manage": "Διαχείριση καναλιών",
       "addChannel": "Προσθήκη καναλιού",
       "remove": "Αφαίρεση",
-      "youtubeHandle": "YouTube handle (π.χ. @Channel)",
-      "youtubeHandleOrUrl": "YouTube handle ή URL",
       "displayName": "Εμφανιζόμενο όνομα (προαιρετικό)",
       "channelSettings": "Ρυθμίσεις Καναλιού",
       "save": "Αποθήκευση",
@@ -2008,12 +2017,24 @@
       "regionMiddleEast": "Μέση Ανατολή",
       "regionAfrica": "Αφρική",
       "regionOceania": "Ωκεανία",
-      "invalidHandle": "Εισάγετε ένα έγκυρο YouTube handle (π.χ. @ChannelName)",
       "verifying": "Επαλήθευση…",
       "hlsUrl": "URL ροής HLS (προαιρετικό)",
       "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)",
       "playLiveFeed": "Αναπαραγωγή ζωντανής ροής",
-      "readyStatus": "Έτοιμο όταν είστε"
+      "readyStatus": "Έτοιμο όταν είστε",
+      "embedBlocked": "Το YouTube δεν αναπαράγει το {{name}} σε άλλες σελίδες αυτή τη στιγμή",
+      "unavailable": "Δεν είναι δυνατή η αναπαραγωγή του {{name}} αυτή τη στιγμή",
+      "noStream": "Δεν έχει ρυθμιστεί ακόμη live stream για το {{name}}",
+      "needsChannelUrl": "Προσθέστε το {{name}} ξανά με τη διεύθυνση URL του καναλιού του (youtube.com/channel/UC…) ή με τη διεύθυνση URL ενός live βίντεο",
+      "insecureStream": "Το {{name}} χρησιμοποιεί ένα μη ασφαλές stream (http), το οποίο φραγμένο από τους περιηγητές. Προσθέστε το ξανά με μια ασφαλή διεύθυνση URL stream (https)",
+      "connecting": "Σύνδεση στο {{name}}…",
+      "recording": "Εγγραφή",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτό το stream είναι live",
+      "playNextChannel": "Αναπαραγωγή του επόμενου καναλιού",
+      "channelOrVideoUrl": "Κανάλι YouTube ή διεύθυνση URL βίντεο",
+      "channelUrlHint": "Επικολλήστε μια διεύθυνση URL καναλιού (youtube.com/channel/UC…) ή μια διεύθυνση URL live βίντεο",
+      "youtubeChannel": "Κανάλι YouTube",
+      "httpsStreamHint": "Οι περιηγητές μπλοκάρουν τα μη ασφαλή streams (http). Επικολλήστε μια ασφαλή διεύθυνση URL stream (https)"
     },
     "map": {
       "showMap": "Εμφάνιση χάρτη",
@@ -2172,7 +2193,7 @@
       "infoTooltip": "<strong>Οικονομικό Ημερολόγιο</strong> Προγραμματισμένες μακροοικονομικές δημοσιεύσεις: CPI, NFP, GDP, PMI και αποφάσεις κεντρικών τραπεζών. Εμφανίζει πρόβλεψη έναντι πραγματικής έναντι προηγούμενης τιμής. Γεγονότα υψηλού αντίκτυπου επισημαίνονται. Πηγή: πάροχοι οικονομικών δεδομένων."
     },
     "fsi": {
-      "infoTooltip": "<strong>Δείκτης Χρηματοοικονομικού Στρες</strong> Δείκτης χρηματοοικονομικού στρες της Ομοσπονδιακής Τράπεζας του Κάνσας Σίτι (KCFSI): μετρά το στρες στις αμερικανικές χρηματαγορές χρησιμοποιώντας 11 δείκτες, συμπεριλαμβανομένων των spreads αποδόσεων, της μεταβλητότητας και των διασταυρωμένων συσχετίσεων. Θετικές τιμές υποδηλώνουν στρες άνω του μέσου όρου. Πηγή: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Δείκτης χρηματοοικονομικού στρες</strong> Ο λόγος του WorldMonitor για πίστωση υψηλής απόδοσης προς μακροπρόθεσμα αμερικανικά ομόλογα, προσαρμοσμένος για τη μεταβλητότητα των μετοχών και το spread υψηλής απόδοσης: (HYG / TLT) / (VIX × HY spread / 100). Δεν είναι ο Δείκτης Χρηματοοικονομικού Στρες της Ομοσπονδιακής Τράπεζας του Κάνσας Σίτι. Τιμή 1.5 ή υψηλότερη σημαίνει χαμηλό στρες· κάτω από 0.3 σημαίνει υψηλό στρες.",
       "title": "Δείκτης Χρηματοοικονομικού Στρες",
       "usFsiValue": "ΤΙΜΗ US FSI",
       "cissTitle": "EU CISS (Συστημικό Στρες Ευρωζώνης)",
@@ -2627,7 +2648,14 @@
       "signals_one": "{{count}} σήμα",
       "signals_other": "{{count}} σήματα",
       "analyzing": "Ανάλυση...",
-      "viewOnMap": "Προβολή στον χάρτη"
+      "viewOnMap": "Προβολή στον χάρτη",
+      "waiting": "Αναμονή για την επόμενη ενημέρωση δεδομένων. Αυτός ο πίνακας ενημερώνεται αυτόματα.",
+      "offline": "Αναμονή για σύνδεση. Αυτός ο πίνακας ενημερώνεται αυτόματα όταν συνδεθείτε ξανά.",
+      "updated": "Ενημερώθηκε {{time}}",
+      "saved": "Τελευταία γνωστή ενημέρωση {{time}} · Έλεγχος για ενημερώσεις",
+      "savedOffline": "Τελευταία γνωστή ενημέρωση {{time}} · Εκτός σύνδεσης",
+      "localSignals": "Με βάση τα σήματα που έχουν φορτωθεί στον πίνακα ελέγχου",
+      "emptySaved": "Δεν υπήρχε σύγκλιση στην τελευταία γνωστή ενημέρωση."
     },
     "thermalEscalation": {
       "title": "Θερμική Κλιμάκωση",
@@ -2789,6 +2817,56 @@
       "succeeded": "Το κλειδί πρόσβασης αποθηκεύτηκε. Μπορείς να το χρησιμοποιήσεις την επόμενη φορά που θα συνδεθείς.",
       "retryable": "Δεν ολοκληρώθηκε. Μπορείς να προσπαθήσεις ξανά.",
       "failed": "Δεν μπορέσαμε να αποθηκεύσουμε ένα κλειδί πρόσβασης σε αυτήν τη συσκευή."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Ενημέρωση αποφάσεων για εμπορεύματα",
+      "commodity": "Εμπόρευμα / προϊόν",
+      "blockedChokepoint": "Στενό που θεωρείται αποκλεισμένο",
+      "commodityCapture": "Καταγραφή σύγκρισης εμπορευμάτων",
+      "title": "Σύνοψη απόφασης",
+      "fuel": "Καύσιμο",
+      "chokepoint": "Στενό πέρασμα",
+      "baseline": "Διακοπή αναφοράς",
+      "comparison": "Διακοπή σύγκρισης",
+      "capture": "Λήψη / ανανέωση και των δύο",
+      "downloadHtml": "Λήψη σύνοψης σε HTML",
+      "downloadJson": "Λήψη σύνοψης σε JSON",
+      "back": "← Επιστροφή στη σύνοψη χώρας",
+      "select": "Επιλέξτε μια διακοπή ενεργειακού εφοδιασμού και λάβετε τα δύο σενάρια.",
+      "changed": "Η επιλογή άλλαξε. Λάβετε τα δύο σενάρια πριν από την εξαγωγή.",
+      "loading": "Λήψη των δύο σεναρίων…",
+      "captured": "Η λήψη ολοκληρώθηκε. Ελέγξτε τις ημερομηνίες παρατήρησης και τους περιορισμούς πριν κατεβάσετε το αρχείο.",
+      "failed": "Δεν ήταν δυνατή η λήψη των σεναρίων. Ελέγξτε την πρόσβασή σας και δοκιμάστε ξανά. Δεν υπάρχει αποτέλεσμα για εξαγωγή.",
+      "locked": "Η σύνοψη απόφασης είναι διαθέσιμη με Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Σε παύση λόγω αδράνειας",
+      "idleBody": "Το ζωντανό βίντεο σταμάτησε μετά από {{duration}} χωρίς δραστηριότητα ποντικιού, πληκτρολογίου ή αφής.",
+      "idleResume": "Συνέχεια",
+      "idleKeepPlaying": "Συνέχιση αναπαραγωγής όταν είναι αδρανές",
+      "idleSettingsHint": "Αλλάξτε αυτό ανά πάσα στιγμή στο Ρυθμίσεις › Μέσα.",
+      "idleKeepPlayingToast": "Το ζωντανό βίντεο θα συνεχίσει να παίζει όταν είναι αδρανές. Αλλάξτε στο Ρυθμίσεις › Μέσα."
+    },
+    "corroboration": {
+      "singlePublisher": "Μόνο ένας δημοσιογράφος",
+      "singlePublisherHint": "Μόνο ένας δημοσιογράφος αναφέρει αυτό προς το παρόν. Αυτό περιγράφει την κάλυψη, όχι την ακρίβεια.",
+      "tier4Only": "Μόνο πηγές χαμηλής βαθμίδας",
+      "tier4OnlyHint": "Κάθε μέσο που αναφέρει αυτό είναι μια πηγή tier-4 (συγκεντρωτές και ιστολόγια). Αυτό περιγράφει την κάλυψη, όχι την ακρίβεια.",
+      "rosterListed": "({{listed}} καταχωρημένα)",
+      "rosterFeeds": "Ροές που εντοπίστηκαν: {{labels}}",
+      "rosterLegend": "Τα επίπεδα κατατάσσουν τις πηγές· δεν κρίνουν αυτόν τον ισχυρισμό.",
+      "tierDocsLink": "Πώς αποδίδονται τα επίπεδα",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Επίπεδο 1: Υπηρεσίες ειδήσεων και επίσημοι οργανισμοί",
+      "tierTitle2": "Επίπεδο 2: Μεγάλα μέσα ενημέρωσης",
+      "tierTitle3": "Επίπεδο 3: Εξειδικευμένες και περιφερειακές πηγές και δεξαμενές σκέψης",
+      "tierTitle4": "Επίπεδο 4: Συγκεντρωτές και ιστολόγια",
+      "tierTitleUndeclared": "Επίπεδο μη δηλωμένο: δεν έχει εξεταστεί ακόμη",
+      "rosterSummary": "Αναφέρθηκε από {{publishers}}",
+      "rosterSummaryTier1": "Αναφέρθηκε από {{publishers}}, συμπεριλαμβανομένων {{tier1}} επιπέδου 1",
+      "rosterPublishers_one": "{{count}} εκδότης",
+      "rosterPublishers_other": "{{count}} εκδότες"
     }
   },
   "popups": {
@@ -2827,14 +2905,18 @@
     "protest": {
       "acledVerified": "ACLED (επαληθευμένο)",
       "gdelt": "GDELT",
+      "records": "εγγραφές",
+      "mediaSignal": "Μη επαληθευμένη αναφορά μέσων",
+      "relatedArticle": "Σχετικό άρθρο",
+      "mediaSignalDetail": "Αυτή η τοποθεσία αναφέρεται σε άρθρα για αναταραχές. Δεν έχει επαληθευτεί τοπικό συμβάν.",
       "riots": "Ταραχές",
       "highSeverity": "Υψηλή Σοβαρότητα"
     },
     "gpsJamming": {
       "title": "Παρεμβολή GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Επηρεαζόμενα αεροσκάφη",
+      "samples": "Αριθμός επηρεαζόμενων αεροσκαφών",
+      "aircraft": "Εντοπισμένα αεροσκάφη",
       "h3Hex": "H3 Hex"
     },
     "flight": {

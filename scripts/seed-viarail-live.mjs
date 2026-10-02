@@ -2,8 +2,8 @@
 /**
  * Optional seeder for VIA Rail Tracker unofficial live JSON (#6615).
  *
- * Best-effort, undocumented, no customer-facing SLA. 404 / shape-break skip
- * publish and record sourceState 'unavailable'. Do not fail the box.
+ * Best-effort, undocumented, no customer-facing SLA. Source failures skip
+ * publish, preserve last-good, and remain visible to freshness health.
  *
  * Runs as the VIA-Rail-Live member of seed-bundle-canada (#6711), not as its own
  * Railway service, gated on intervalMs 15min — an optional unofficial feed does
@@ -40,9 +40,9 @@ async function fetchViaRailLiveSnapshot() {
 
     console.warn(
       `  VIA Rail live skip (${decision.reason || 'unavailable'}): `
-      + (decision.keepLastGood ? 'keeping last-good' : 'sourceState=unavailable'),
+      + (decision.keepLastGood ? 'keeping last-good' : `sourceState=${decision.sourceState}`),
     );
-    if (decision.sourceState === 'unavailable') {
+    if (decision.sourceState) {
       try {
         await writeFreshnessMetadata(
           'transit',
@@ -52,10 +52,10 @@ async function fetchViaRailLiveSnapshot() {
           VIA_RAIL_LIVE_TTL_SECONDS,
           undefined,
           undefined,
-          { sourceState: 'unavailable', skipReason: decision.reason || 'unavailable' },
+          { sourceState: decision.sourceState, skipReason: decision.reason || 'unavailable' },
         );
       } catch (err) {
-        console.warn(`  VIA Rail live unavailable-meta write failed: ${err?.message || err}`);
+        console.warn(`  VIA Rail live source-meta write failed: ${err?.message || err}`);
       }
     }
     return { sourceUnavailable: true, trains: [] };

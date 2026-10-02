@@ -8,15 +8,27 @@
  *   - auth errors must be no-store and dynamic
  *   - anonymous public surfaces remain cacheable
  *   - MCP auth/protocol surfaces remain functional and no-store
+ *
+ * It also carries the corpus edge-cache probe from #7659: the same class of
+ * failure (a Cloudflare cache rule silently overriding correct origin headers)
+ * seen from the opposite direction — content that should be cached and is not.
  */
 
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
+import agentPolicy from '../shared/agent-request-policy.json' with { type: 'json' };
 
 const LIVE = process.env.LIVE_API_CACHE_TESTS === '1';
 const API_BASE = stripTrailingSlash(process.env.WM_LIVE_API_BASE_URL || 'https://api.worldmonitor.app');
 const WEB_BASE = stripTrailingSlash(process.env.WM_LIVE_WEB_BASE_URL || 'https://worldmonitor.app');
+// The corpus cache rule is scoped to the www document host; apex only 301s here.
+const WWW_BASE = stripTrailingSlash(process.env.WM_LIVE_WWW_BASE_URL || 'https://www.worldmonitor.app');
 const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
+/** The shared edge TTL vercel.json advertises on every corpus family. */
+const CORPUS_EDGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=60';
+// One always-present corpus document. Any family member would do; a country page
+// is the shape AI crawlers and Googlebot fetch most.
+const CORPUS_DOCUMENT_URL = `${WWW_BASE}/countries/iran/`;
 // The CDN-shielded weather read. `&public=1` marks a URL whose response is the
 // shared seed payload for EVERY caller, so it can be cached without the cache
 // key ever having to know about credentials (#5386).
@@ -51,6 +63,8 @@ function bust(url) {
 }
 const USER_AGENT = 'WorldMonitor-Live-Cache-Auth-Sweep/1.0';
 const LIVE_API_CACHE_TIMEOUT_MS = positiveIntegerFromEnv(process.env.LIVE_API_CACHE_TIMEOUT_MS, 15_000);
+const LIVE_API_CACHE_TIMEOUT_RETRIES = 1;
+const LIVE_API_CACHE_RETRY_DELAY_MS = 250;
 
 function positiveIntegerFromEnv(value, fallback) {
   const parsed = Number(value);
@@ -106,16 +120,110 @@ function assertPublicCacheable(resp, name) {
   assert.match(cacheControl(resp), /\bpublic\b/i, `${name}: anonymous public request should remain public-cacheable`);
 }
 
+function fetchRequestDescription(pathOrUrl, method, headers) {
+  const representation = [];
+  if (headers.has('accept')) representation.push(`Accept: ${headers.get('accept')}`);
+  if (headers.has('rsc')) representation.push(`RSC: ${headers.get('rsc')}`);
+  return `${method} ${String(pathOrUrl)}${representation.length ? ` (${representation.join(', ')})` : ''}`;
+}
+
 async function fetchText(pathOrUrl, init = {}) {
   const headers = new Headers(init.headers || {});
-  headers.set('User-Agent', USER_AGENT);
-  const timeoutSignal = AbortSignal.timeout(LIVE_API_CACHE_TIMEOUT_MS);
-  const signal = init.signal && typeof AbortSignal.any === 'function'
-    ? AbortSignal.any([init.signal, timeoutSignal])
-    : init.signal || timeoutSignal;
-  const resp = await fetch(pathOrUrl, { ...init, headers, signal });
-  const bodyText = await resp.text();
-  return { resp, bodyText };
+  // A probe may impersonate a declared AI agent on purpose (#7804); everything
+  // else identifies as the sweep.
+  if (!headers.has('user-agent')) headers.set('User-Agent', USER_AGENT);
+  const method = String(init.method || 'GET').toUpperCase();
+  const maxAttempts = method === 'GET' ? LIVE_API_CACHE_TIMEOUT_RETRIES + 1 : 1;
+  const description = fetchRequestDescription(pathOrUrl, method, headers);
+  const startedAt = Date.now();
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const timeoutSignal = AbortSignal.timeout(LIVE_API_CACHE_TIMEOUT_MS);
+    const signal = init.signal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : init.signal || timeoutSignal;
+    try {
+      const resp = await fetch(pathOrUrl, { ...init, headers, signal });
+      const bodyText = await resp.text();
+      return { resp, bodyText };
+    } catch (error) {
+      const timedOut = timeoutSignal.aborted
+        || (!init.signal && error && typeof error === 'object' && error.name === 'TimeoutError');
+      if (!timedOut) throw error;
+      if (attempt === maxAttempts) {
+        const attemptLabel = attempt === 1 ? 'attempt' : 'attempts';
+        throw new Error(
+          `${description} timed out after ${attempt} ${attemptLabel} `
+            + `(${Date.now() - startedAt} ms elapsed; ${LIVE_API_CACHE_TIMEOUT_MS} ms limit per attempt)`,
+          { cause: error },
+        );
+      }
+      console.warn(`LIVE_SWEEP_FETCH_RETRY ${JSON.stringify({
+        request: description,
+        attempt,
+        maxAttempts,
+        timeoutMs: LIVE_API_CACHE_TIMEOUT_MS,
+      })}`);
+      await new Promise((resolve) => setTimeout(resolve, LIVE_API_CACHE_RETRY_DELAY_MS));
+    }
+  }
+
+  throw new Error(`${description} exhausted its fetch attempts`);
+}
+
+async function assertRepeatedNeverCloudflareHit(url, { expectedStatus, label, init = {} }) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { resp } = await fetchText(url, init);
+    assert.equal(resp.status, expectedStatus, `${label} attempt ${attempt}: expected HTTP ${expectedStatus}`);
+    assert.notEqual(
+      cfCacheStatus(resp).toUpperCase(),
+      'HIT',
+      `${label} attempt ${attempt}: must never be a Cloudflare HIT`,
+    );
+  }
+}
+
+/**
+ * Fetch a corpus document until Cloudflare reports a stored HIT.
+ *
+ * Asserting merely "not DYNAMIC" proves the cache rule made the document
+ * ELIGIBLE — which a zone that never actually stores anything also satisfies. It
+ * would answer MISS forever and this probe would stay green while the edge HITs
+ * #7659 exists to deliver never happened. A cold edge server legitimately answers
+ * MISS once, so retry rather than demanding a HIT on the first request: six fresh
+ * country documents each reached HIT on their second attempt when measured.
+ *
+ * The retry budget is sized for the one condition observed to need more than two:
+ * changing the zone ruleset purges the edge cache, so requests in the seconds
+ * after `--apply` legitimately MISS repeatedly. The 6-hourly schedule never
+ * coincides with an apply, but a manual re-run right after one would, and the
+ * failure message says so.
+ */
+async function waitForCloudflareHit(url, name, init = {}) {
+  const seen = [];
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    const result = await fetchText(url, init);
+    assert.equal(result.resp.status, 200, `${name}: corpus document must still be served`);
+    const status = cfCacheStatus(result.resp).toUpperCase();
+    seen.push(status || 'absent');
+    if (status === 'HIT') return result;
+    // DYNAMIC/BYPASS is the cache-rule fingerprint and is worth its own message;
+    // any other status means eligible-but-not-yet-stored, so keep trying.
+    assert.ok(
+      !['DYNAMIC', 'BYPASS'].includes(status),
+      `${name}: not edge-cacheable (cf-cache-status: ${status || 'absent'});`
+        + ' the "WWW corpus HTML" cache rule is missing, disabled, or no longer sits after the'
+        + ' "Bypass cache - WWW documents" rule — regenerate it with'
+        + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  assert.fail(
+    `${name}: eligible for the Cloudflare cache but never returned a HIT (${seen.join(' -> ')}) —`
+    + ' the rule is in force yet nothing is being stored, so the corpus still pays full origin TTFB.'
+    + ' If a `cloudflare-cache-rule.mjs --apply` just ran, the ruleset change purged the edge cache'
+    + ' and this clears on its own; otherwise the origin has stopped sending a cacheable response.',
+  );
 }
 
 async function waitForSharedCacheHit(url, name) {
@@ -131,13 +239,14 @@ async function waitForSharedCacheHit(url, name) {
 }
 
 describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - set LIVE_API_CACHE_TESTS=1'})`, { skip: !LIVE }, () => {
-  it('documents the Cloudflare rule assumptions being validated', () => {
+  it('documents the Cloudflare rule assumptions and validates sweep guardrails', async () => {
     console.info([
       'Cloudflare/API cache assumptions under test:',
       'fake-auth responses are dynamic no-store and never cached 200s;',
       'anonymous public REST/RPC responses remain public-cacheable;',
       'MCP auth/protocol responses are no-store;',
-      'OAuth metadata remains discoverable and cacheable.',
+      'OAuth metadata remains discoverable and cacheable;',
+      'corpus, docs, blog, agent text files and the entry documents are Cloudflare-cached in their HTML representation only.',
     ].join(' '));
     assert.equal(LIVE, true);
     // Mutation guard: reverting assertNotCached200 to inspect only
@@ -150,6 +259,80 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
       ),
       /shared-cache HIT/,
     );
+
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const retryWarnings = [];
+    let fetchCalls = 0;
+    try {
+      console.warn = (message) => retryWarnings.push(String(message));
+      globalThis.fetch = async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) throw new DOMException('', 'TimeoutError');
+        return new Response('recovered');
+      };
+      const recovered = await fetchText('https://retry.invalid/document');
+      assert.equal(recovered.bodyText, 'recovered');
+      assert.equal(fetchCalls, 2, 'a GET should retry one transient timeout');
+      assert.match(retryWarnings[0], /LIVE_SWEEP_FETCH_RETRY.*GET https:\/\/retry\.invalid\/document/);
+
+      fetchCalls = 0;
+      globalThis.fetch = async () => {
+        fetchCalls += 1;
+        throw new DOMException('', 'TimeoutError');
+      };
+      await assert.rejects(
+        fetchText('https://retry.invalid/document', { headers: { Accept: 'text/markdown' } }),
+        /GET https:\/\/retry\.invalid\/document \(Accept: text\/markdown\) timed out after 2 attempts/,
+      );
+      assert.equal(fetchCalls, 2, 'a persistent timeout should stop after one retry');
+
+      fetchCalls = 0;
+      await assert.rejects(
+        fetchText('https://retry.invalid/mcp', { method: 'POST' }),
+        /POST https:\/\/retry\.invalid\/mcp timed out after 1 attempt/,
+      );
+      assert.equal(fetchCalls, 1, 'a POST must not be retried');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+    }
+  });
+
+  it('API User-Agent denials retain JSON 403s and nonblocked routes retain JSON 404s on both hosts', async () => {
+    // Pin both production entry points: an override must not silently turn this
+    // acceptance matrix into two reads of www or a preview deployment.
+    for (const origin of ['https://worldmonitor.app', 'https://www.worldmonitor.app']) {
+      for (const path of ['/api/agent-readiness-missing-endpoint', '/api/graphql']) {
+        for (const ua of ['ora-agent', 'curl/8.7.1', 'WorldMonitor-ReadinessCheck/1.0']) {
+          const url = `${origin}${path}`;
+          const { resp, bodyText } = await fetchText(url, {
+            redirect: 'follow', headers: { 'User-Agent': ua, Accept: 'application/json' },
+          });
+          const label = `${url} (${ua})`;
+          console.info(`LIVE_AGENT_API_RESPONSE ${JSON.stringify({
+            at: new Date().toISOString(), url, ua, finalUrl: resp.url,
+            status: resp.status, contentType: resp.headers.get('content-type'),
+            ray: resp.headers.get('cf-ray'), vercelId: resp.headers.get('x-vercel-id'),
+            body: bodyText.slice(0, 600),
+          })}`);
+          const control = ua === 'WorldMonitor-ReadinessCheck/1.0';
+          assert.equal(resp.status, control ? 404 : 403, `${label}: preserve access policy and missing-route status`);
+          assert.match(resp.headers.get('content-type') || '', /application\/json/i, `${label}: error must be application/json`);
+          const payload = JSON.parse(bodyText);
+          if (control) {
+            assert.equal(payload.error?.code, 'not_found', `${label}: origin must still report no endpoint`);
+            assert.ok(payload.error.message?.includes(path), `${label}: missing endpoint must be identified`);
+            assert.ok(typeof payload.error.hint === 'string' && payload.error.hint.trim(), `${label}: recovery hint required`);
+          } else {
+            for (const [field, value] of Object.entries(agentPolicy.blockedResponse)) {
+              assert.equal(payload[field], value, `${label}: denial field ${field} must match the shared policy`);
+            }
+          }
+        }
+      }
+    }
+    markProbeCompleted('agent-api-errors');
   });
 
   it('bootstrap rejects fake auth as dynamic no-store while public weather stays cacheable', async () => {
@@ -268,9 +451,16 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assertNotCached200(fake.resp, 'generated RPC fake auth');
     assertNoSentinelLeak(fake.bodyText, 'generated RPC fake auth');
 
-    const publicRpc = await fetchText(`${API_BASE}/api/conflict/v1/list-acled-events`);
+    const publicRpc = await fetchText(`${API_BASE}/api/intelligence/v1/get-china-decision-signals`);
     assertPublicCacheable(publicRpc.resp, 'public no-auth RPC');
-    assert.match(publicRpc.bodyText, /"events"\s*:/, 'public no-auth RPC: expected events payload');
+    assert.match(publicRpc.bodyText, /"payloadJson"\s*:/, 'public no-auth RPC: expected signal payload');
+
+    // The four map RPCs left the anonymous surface once the embed moved to
+    // /api/embed/map-frame. Anonymous callers now get the ordinary 401, and it
+    // must be no-store so no shared entry can answer one.
+    const closedRpc = await fetchText(`${API_BASE}/api/conflict/v1/list-acled-events`);
+    assert.equal(closedRpc.resp.status, 401, 'the former anonymous map RPC must require a credential');
+    assertNoStore(closedRpc.resp, 'former anonymous map RPC');
     markProbeCompleted('generated-rpc');
   });
 
@@ -310,9 +500,9 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.equal(bareGet.resp.status, 405, 'unauthenticated standalone SSE-stream open must be 405, never 401');
     assert.match(bareGet.resp.headers.get('allow') || '', /\bPOST\b/, '405 must advertise Allow (RFC 9110 §15.5.6)');
 
-    // Discovery is public: unauthenticated `initialize` succeeds (200) and must
-    // still be no-store (the #4497 cached-200 hazard applies to any 200).
-    const discover = await fetchText(`${WEB_BASE}/mcp`, {
+    // The transport challenges the handshake so connectors offer sign-in.
+    // Machine discovery remains anonymous on the well-known alias.
+    const initializeRequest = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -328,10 +518,24 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
           clientInfo: { name: 'worldmonitor-live-sweep', version: '1.0' },
         },
       }),
-    });
+    };
+    const challenge = await fetchText(`${WEB_BASE}/mcp`, initializeRequest);
+    assert.equal(challenge.resp.status, 401, 'anonymous transport initialize must challenge for sign-in');
+    assert.match(challenge.resp.headers.get('www-authenticate') || '', /^Bearer .*resource_metadata=/);
+    assertNoStore(challenge.resp, 'MCP anonymous transport initialize');
+    assert.equal(isSharedCacheHit(challenge.resp), false, 'the auth challenge must not be a shared-cache HIT');
+    const challengeBody = JSON.parse(challenge.bodyText);
+    assert.equal(challengeBody.id, 1);
+    assert.equal(challengeBody.error?.code, -32001);
+
+    const discover = await fetchText(`${WEB_BASE}/.well-known/mcp`, initializeRequest);
     assert.equal(discover.resp.status, 200, 'unauthenticated initialize is public discovery');
     assertNoStore(discover.resp, 'MCP anonymous initialize');
-    assert.notEqual(cfCacheStatus(discover.resp).toUpperCase(), 'HIT', 'anonymous discovery 200 must not be a shared-cache HIT');
+    assert.equal(isSharedCacheHit(discover.resp), false, 'anonymous discovery must not be a shared-cache HIT');
+    const discoveryBody = JSON.parse(discover.bodyText);
+    assert.equal(discoveryBody.id, 1);
+    assert.equal(discoveryBody.result?.protocolVersion, '2025-03-26');
+    assert.ok(discover.resp.headers.get('mcp-session-id'), 'discovery must issue an MCP session id');
 
     // resources/list is catalog-enumeration discovery (like tools/list): the
     // `initialize` handshake advertises the `resources` capability, so an
@@ -427,6 +631,225 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.equal(authBody.issuer, API_BASE);
     assert.equal(authBody.token_endpoint, `${API_BASE}/oauth/token`);
     markProbeCompleted('oauth-metadata');
+  });
+
+  // The Cloudflare half of the corpus edge-cache pair (#7659). `isSharedCacheHit`
+  // above accepts a Vercel HIT, and the corpus was ALWAYS a Vercel HIT — that is
+  // precisely why this regression survived unseen for months while every offline
+  // assertion stayed green. Only cf-cache-status can see it.
+  //
+  // `DYNAMIC` is the exact fingerprint: Cloudflare reports it when a cache rule
+  // has declared the response ineligible, before origin cache headers get a vote.
+  // An eligible document reports MISS / HIT / EXPIRED / REVALIDATED depending on
+  // which edge server answered, so "not DYNAMIC" is the deterministic form of
+  // "the rule is in force" — demanding a HIT would be a coin flip on a cold POP.
+  it('serves the corpus from the Cloudflare edge, and only its query-free canonical', async () => {
+    const canonical = await waitForCloudflareHit(CORPUS_DOCUMENT_URL, 'corpus document');
+    assert.equal(
+      canonical.resp.headers.get('cdn-cache-control'),
+      CORPUS_EDGE_CACHE_CONTROL,
+      'corpus document must still advertise the 600s shared TTL the cache rule honours',
+    );
+
+    // Negative control, and the safety boundary the rule was scoped around:
+    // middleware.ts answers a bot-UA request carrying utm_*/ref with a 308 to the
+    // clean URL under `Vary: User-Agent`, and Cloudflare honours Vary only for
+    // Accept-Encoding. Query-bearing corpus URLs must therefore stay ineligible,
+    // or a crawler's redirect could be replayed to a human and strip `ref`
+    // before referral capture. This sweep's own UA is not bot-shaped, so the
+    // tagged request gets the page rather than the redirect.
+    // `redirect: 'manual'` so a 308 fails on the assertion that names it. Following
+    // the redirect would land on the cached canonical and fail the DYNAMIC check
+    // below instead — still red, but pointing at the wrong cause.
+    const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`, { redirect: 'manual' });
+    assert.equal(tagged.resp.status, 200, 'the tagged URL must reach the page, not the bot redirect —'
+      + ' otherwise this control passes for the wrong reason');
+    // Same two-value set the positive assertion treats as "not edge-cached".
+    // Demanding exactly DYNAMIC would turn this 6-hourly gate red the day
+    // Cloudflare answers BYPASS for an unrelated reason.
+    assert.ok(
+      ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(tagged.resp).toUpperCase()),
+      'query-bearing corpus URLs must stay out of the Cloudflare cache — they reach a'
+        + ` User-Agent-dependent redirect that Cloudflare cannot vary on (got ${cfCacheStatus(tagged.resp) || 'absent'})`,
+    );
+
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries`, {
+      expectedStatus: 308,
+      label: 'bare corpus family redirect',
+      init: { redirect: 'manual' },
+    });
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries/live-cache-sweep-not-a-country/`, {
+      expectedStatus: 404,
+      label: 'missing corpus document',
+    });
+    markProbeCompleted('corpus-edge-cache');
+  });
+
+  // #7747: the same rule re-admits the rest of the sitemap-declared surface. One
+  // document per origin type — the Mintlify proxy, Astro static output, a plain
+  // public/ text file — because each reaches Cloudflare through a different path
+  // and can regress alone (a vercel.json header rule, a rewrite reorder, a
+  // Mintlify header change). The negative controls are the boundary the rule was
+  // widened around: these URLs answer with an RSC flight or markdown when asked,
+  // Cloudflare keys only on the URL, so a negotiating request must stay
+  // ineligible — never a HIT, and still the negotiated body — or a browser could
+  // be handed a crawler's markdown for ten minutes.
+  it('serves the docs, blog and agent text files from the Cloudflare edge, HTML representation only', async () => {
+    for (const [url, name] of [
+      [`${WWW_BASE}/docs/documentation`, 'docs document'],
+      [`${WWW_BASE}/blog/`, 'blog index'],
+      [`${WWW_BASE}/llms.txt`, 'llms.txt'],
+      // #7869. The sitemaps are the one claimed family whose eligibility no
+      // probe covered, and the half that grants it lives in the live Cloudflare
+      // zone, not in the repo — so a merge that never runs
+      // `scripts/cloudflare-cache-rule.mjs --apply` leaves them DYNAMIC with
+      // every offline test still green. This is the probe that notices. Both
+      // are listed: the index and the URL set reach Cloudflare as separate
+      // objects and #7749 already shipped a half-pair for them once.
+      [`${WWW_BASE}/sitemap.xml`, 'root sitemap index'],
+      [`${WWW_BASE}/sitemap-main.xml`, 'root sitemap URL set'],
+    ]) {
+      const { resp } = await waitForCloudflareHit(url, name);
+      assert.equal(
+        resp.headers.get('cdn-cache-control'),
+        CORPUS_EDGE_CACHE_CONTROL,
+        `${name} must advertise the 600s shared TTL the cache rule honours`,
+      );
+    }
+
+    // Single-representation files are exempt from the representation guard, so an
+    // agent that advertises its media type still gets the edge cache. Positive
+    // control for the exemption; the markdown checks below are its negative.
+    const plainText = await waitForCloudflareHit(
+      `${WWW_BASE}/llms.txt`,
+      'llms.txt for an agent sending Accept: text/plain',
+      { headers: { Accept: 'text/plain' } },
+    );
+    assert.match(plainText.resp.headers.get('content-type') || '', /text\/plain/);
+
+    const flight = await fetchText(`${WWW_BASE}/docs/documentation`, { headers: { RSC: '1' } });
+    assert.equal(flight.resp.status, 200, 'docs RSC request must still be served');
+    assert.match(
+      flight.resp.headers.get('content-type') || '',
+      /text\/x-component/,
+      'an RSC request must receive the flight, not a cached HTML document',
+    );
+    // "Not HIT" is the wrong assertion for a negative control: MISS means the
+    // edge just stored the negotiated body under the HTML URL, which is the
+    // poisoning itself. A declined request reads DYNAMIC (or BYPASS).
+    assert.ok(
+      ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(flight.resp).toUpperCase()),
+      `RSC flights must stay out of the Cloudflare cache — MISS means one was just stored under the HTML URL (got ${cfCacheStatus(flight.resp) || 'absent'})`,
+    );
+
+    for (const url of [`${WWW_BASE}/blog/`, `${WWW_BASE}/docs/documentation`]) {
+      const markdown = await fetchText(url, { headers: { Accept: 'text/markdown' } });
+      assert.equal(markdown.resp.status, 200, `${url}: markdown request must still be served`);
+      assert.match(
+        markdown.resp.headers.get('content-type') || '',
+        /text\/markdown/,
+        `${url}: Accept: text/markdown must still negotiate markdown, not a cached HTML document`,
+      );
+      assert.ok(
+        ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(markdown.resp).toUpperCase()),
+        `${url}: the markdown representation must stay out of the Cloudflare cache — MISS means it was just stored under the HTML URL (got ${cfCacheStatus(markdown.resp) || 'absent'})`,
+      );
+    }
+
+    // The docs MCP server shares the /docs prefix and is carved out by exact path.
+    // Its status for a bare GET is the handler's business; that it is no-store
+    // and never a Cloudflare HIT is this rule's. `Accept: application/json` keeps
+    // the handler on its JSON-RPC branch — a `text/event-stream` GET would open
+    // a stream that fetchText() could only end by timing out.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const mcp = await fetchText(`${WWW_BASE}/docs/mcp`, { headers: { Accept: 'application/json' } });
+      assertNoStore(mcp.resp, `docs MCP endpoint attempt ${attempt}`);
+      assert.notEqual(cfCacheStatus(mcp.resp).toUpperCase(), 'HIT', `docs MCP endpoint attempt ${attempt}: must never be a Cloudflare HIT`);
+    }
+    markProbeCompleted('document-edge-cache');
+  });
+
+  // #7804: the two entry documents moved out of the dashboard-managed "WWW
+  // entry HTML" rule, which had no representation guard, into the same rule as
+  // the corpus. Three representations meet at `/`: the HTML shell, Vercel's
+  // markdown rendering for `Accept: text/markdown` (under the same cacheable
+  // header, so an admitted request would be STORED under / for every browser
+  // on that edge server), and middleware.ts's /home.md rewrite for the declared
+  // AI agents (no-store). Only the first may ever come from the Cloudflare cache.
+  //
+  // Order matters and each step protects the next. The canary asks for the
+  // document with `RSC: 1`: the guarded rule declines it (DYNAMIC), while the
+  // retired rule admitted it — and the shell answers HTML to that header, so an
+  // admitted canary can only ever store the HTML the URL should hold, on a warm
+  // or a cold edge server alike. Only a declined canary licenses the markdown
+  // probe, the request that would poison an unguarded zone; MISS on that probe
+  // is the store itself, so it is asserted as DYNAMIC/BYPASS, never merely
+  // "not HIT". The final read with the sweep's own User-Agent is the
+  // after-the-fact detector: if it ever answers markdown, the edge is handing a
+  // crawler's body to browsers and needs a purge before anything else.
+  it('serves the entry documents from the Cloudflare edge, HTML representation only (#7804)', async () => {
+    const guardHint = 'the guarded "WWW corpus HTML" rule does not own this URL yet: run'
+      + ' `node scripts/cloudflare-cache-rule.mjs --apply` (it retires the unguarded "WWW entry HTML" rule)'
+      + ' before this probe may continue';
+    for (const [url, name] of [
+      [`${WWW_BASE}/`, 'homepage'],
+      [`${WWW_BASE}/dashboard`, 'dashboard entry'],
+    ]) {
+      const { resp } = await waitForCloudflareHit(url, name);
+      assert.match(resp.headers.get('content-type') || '', /text\/html/, `${name}: the stored representation must be the HTML shell`);
+      assert.equal(
+        resp.headers.get('cdn-cache-control'),
+        CORPUS_EDGE_CACHE_CONTROL,
+        `${name} must advertise the 600s shared TTL the cache rule honours`,
+      );
+
+      const canary = await fetchText(url, { headers: { RSC: '1' } });
+      assert.equal(canary.resp.status, 200, `${name}: the canary request must still be served`);
+      assert.ok(
+        ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(canary.resp).toUpperCase()),
+        `${name}: a request the representation guard declines was admitted to the cache`
+          + ` (cf-cache-status: ${cfCacheStatus(canary.resp) || 'absent'}); ${guardHint}`,
+      );
+
+      const markdown = await fetchText(url, { headers: { Accept: 'text/markdown' } });
+      assert.equal(markdown.resp.status, 200, `${name}: markdown request must still be served`);
+      assert.match(
+        markdown.resp.headers.get('content-type') || '',
+        /text\/markdown/,
+        `${name}: Accept: text/markdown must still negotiate markdown, not a cached HTML document`,
+      );
+      assert.ok(
+        ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(markdown.resp).toUpperCase()),
+        `${name}: the markdown representation must stay out of the Cloudflare cache — MISS means it was just stored under the HTML URL (got ${cfCacheStatus(markdown.resp) || 'absent'})`,
+      );
+
+      const after = await fetchText(url);
+      assert.match(
+        after.resp.headers.get('content-type') || '',
+        /text\/html/,
+        `${name}: browsers are being handed a negotiated body from the edge — purge ${url} at Cloudflare now, then repair the rule`,
+      );
+    }
+
+    // The homepage's third representation: middleware.ts rewrites GET / to
+    // /home.md for the declared AI agents under `Vary: User-Agent`, which
+    // Cloudflare ignores. The rule carves those agents out of the / claim, so a
+    // crawler must get its markdown from the origin and never the stored
+    // browser HTML. This probe cannot store anything (the origin answers
+    // no-store); it is not the canary because on a cold edge server an unguarded
+    // zone would also fetch the markdown from the origin and pass it.
+    const crawler = await fetchText(`${WWW_BASE}/`, { headers: { 'User-Agent': 'GPTBot/1.0 (+live-cache-sweep)' } });
+    assert.equal(crawler.resp.status, 200, 'homepage for a declared AI agent must still be served');
+    assert.match(
+      crawler.resp.headers.get('content-type') || '',
+      /text\/markdown/,
+      'a declared AI agent must receive the markdown homepage, not the cached HTML shell',
+    );
+    assert.ok(
+      ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(crawler.resp).toUpperCase()),
+      `the agent homepage must stay out of the Cloudflare cache (got ${cfCacheStatus(crawler.resp) || 'absent'})`,
+    );
+    markProbeCompleted('entry-document-edge-cache');
   });
 
   // The #4497 incident class is a CACHED 200 of private/authenticated data — the

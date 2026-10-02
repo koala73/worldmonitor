@@ -131,6 +131,11 @@ export function trimFireDetectionsToByteBudget(detections, {
 
 export function compactWildfireDashboardPayload(value, limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT, options = {}) {
   if (!value || typeof value !== 'object' || !Array.isArray(value.fireDetections)) return value;
+  if (limit === WILDFIRE_DASHBOARD_DETECTION_LIMIT) {
+    // Public bootstrap excludes producer diagnostics; canonical consumers need them.
+    const { fireDetections, pagination, fetchedAt, dataAvailable } = value;
+    value = { fireDetections, pagination, fetchedAt, dataAvailable };
+  }
   const needsCountCap = value.fireDetections.length > limit;
   // Dashboard/bootstrap 500 must always run limitFire so prescribed EX burns
   // are dropped even on a quiet day (count ≤ 500). Canonical 15k keeps the mix.
@@ -138,6 +143,8 @@ export function compactWildfireDashboardPayload(value, limit = WILDFIRE_DASHBOAR
   const needsByteCap = Number.isFinite(options.maxBytes) && typeof options.measureBytes === 'function';
   if (!needsCountCap && !needsDashboardFilter && !needsByteCap) return value;
 
+  // A bootstrap payload may already be capped by the producer.
+  const totalCount = Math.max(numeric(value.pagination?.totalCount), value.fireDetections.length);
   let fireDetections = (needsCountCap || needsDashboardFilter)
     ? limitFireDetectionsForDashboard(value.fireDetections, limit)
     : value.fireDetections;
@@ -145,13 +152,13 @@ export function compactWildfireDashboardPayload(value, limit = WILDFIRE_DASHBOAR
     fireDetections = trimFireDetectionsToByteBudget(fireDetections, {
       maxBytes: options.maxBytes,
       measureBytes: (candidate) => options.measureBytes({ ...value, ...candidate }),
-      totalCount: value.fireDetections.length,
+      totalCount,
     });
   }
   if (fireDetections === value.fireDetections) return value;
   return {
     ...value,
     fireDetections,
-    pagination: { nextCursor: '', totalCount: value.fireDetections.length },
+    pagination: { nextCursor: '', totalCount },
   };
 }

@@ -1,12 +1,23 @@
 #!/usr/bin/env node
 // Freeze last-known-good crawlable live-pulse values for country risk,
-// chokepoint status, and crisis HAPI summaries. Writes
+// chokepoint status, crisis HAPI summaries, the top news headlines,
+// the market tape, the forecast resolution scorecard published at /accuracy/, and
+// per-country recent developments (digest and cached RSS headlines matched per country,
+// topped up from the per-country GDELT article index where the curated pool
+// leaves a country short, plus the intel brief and timeline where a service
+// key unlocks the tier-gated routes). Writes
 // docs/snapshots/crawlable-live-pulse-<YYYY-MM-DD>.json.
 //
 // Usage:
 //   API_BASE=https://www.worldmonitor.app node scripts/freeze-crawlable-live-pulse.mjs
+//   WORLDMONITOR_API_KEY=<tier-1+ key> API_BASE=... node scripts/freeze-crawlable-live-pulse.mjs
 //
-// Uses the anonymous wm-session mint path (same contract as live-tools.js).
+// Uses the anonymous wm-session mint path (same contract as live-tools.js),
+// upgraded with X-WorldMonitor-Key when a service key is configured — the
+// weekly cron provides it via the WORLDMONITOR_API_KEY secret, mirroring the
+// resilience-snapshot workflow. Without a key the brief/timeline captures are
+// skipped per country (recorded, never fabricated) and the freeze still
+// publishes digest headlines.
 // Builds remain deterministic: the corpus generator only reads the committed
 // snapshot and never fetches live data.
 
@@ -19,10 +30,41 @@ import {
   crisisTrackerViewModel,
   liveRiskViewModel,
 } from './crawlable-live-tools.mjs';
+import { loadEnvFile } from './_seed-utils.mjs';
+import {
+  briefCitationGroundingGap,
+  briefGroundingGap,
+  briefGroundingPublisherCount,
+  COUNTRY_INDEX_ORIGIN,
+  developmentsHasDatedItem,
+  hasBriefGrounding,
+  isVerifiableArticleUrl,
+  MIN_BRIEF_GROUNDING_PUBLISHERS,
+  normalizeFrozenDevelopments,
+  parseBriefSections,
+} from './crawlable-developments.mjs';
+import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
+import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
+import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
+import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+// Tier-gated captures (intel brief, intel timeline) need a service key; the
+// anonymous wm-session the cron mints otherwise gets a 401 on those routes
+// (ENDPOINT_ENTITLEMENTS tier 1). Same pattern as
+// scripts/freeze-resilience-ranking.mjs: key when available, graceful
+// headlines-only degradation when absent. Inert under test runners.
+loadEnvFile(import.meta.url, {
+  only: ['WORLDMONITOR_API_KEY', 'WM_API_KEY'],
+});
+
+function serviceApiKey() {
+  return process.env.WM_API_KEY || process.env.WORLDMONITOR_API_KEY || '';
+}
 
 const API_BASE = (process.env.API_BASE || 'https://www.worldmonitor.app').replace(/\/$/, '');
 const USER_AGENT = process.env.USER_AGENT
@@ -41,25 +83,191 @@ const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
-// the freeze is considered too thin to publish. Chokepoints and crises are small
-// enough sets that partial capture is never acceptable.
+// the freeze is considered too thin to publish. Chokepoints and crises are
+// small enough sets that partial capture is never acceptable.
 const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
+
+// The welcome strip's headline card renders four rows, and
+// scripts/build-welcome-teasers.mjs derives them from this capture.
+//
+// A shortfall is recorded and warned about, NOT thrown. This step runs last,
+// just before the only write, so throwing here would discard ~196 successfully
+// captured countries over a news-content problem -- and two such Mondays in a
+// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and hard-
+// fail the whole crawlable corpus build. The strip degrades to fewer rows (or
+// none); it can never fill the gap with something unattributable, because the
+// generator publishes exactly what this capture vouched for.
+const HEADLINE_CAPTURE_COUNT = 4;
+
+// Share of headline-matched countries that must come back with a publishable
+// brief before the freeze is considered healthy. Proportional because the
+// matched set varies run to run, and generous because each brief is an LLM
+// response that must clear grounding and citation checks — a genuine outage
+// shows up as the zero-brief check, not as a few rejections.
+export const MIN_BRIEF_CAPTURE_RATIO = 0.6;
+
+// Lose at most one country, or the ratio's share of them -- whichever is more
+// forgiving. Neither rule works alone: a bare ratio demands 2 of 2 on a
+// two-country set, where a single LLM rejection is noise rather than a signal;
+// a bare "all but one" demands 50 of 51 on a real run. Taking the lower bound
+// of the two keeps a majority collapse failing at every set size (1 of 7 still
+// rejects) while letting an ordinary run's handful of rejections through.
+export function minimumBriefCaptures(briefMatchedCount) {
+  return Math.max(1, Math.min(
+    briefMatchedCount - 1,
+    Math.ceil(briefMatchedCount * MIN_BRIEF_CAPTURE_RATIO),
+  ));
+}
+
+// isVerifiableArticleUrl (https on the publisher's own host, never an
+// aggregator redirect) lives in scripts/crawlable-developments.mjs with the
+// other publish rules and is re-exported below for
+// scripts/build-welcome-teasers.mjs, so the capture-time rule and the
+// publish-time re-check cannot drift apart.
+
+// The market card's twelve rows, and the labels it renders them under.
+//
+// Mirrors QUOTE_SYMBOLS / QUOTE_LABELS in pro-test/src/services/teasers.ts.
+// pro-test is an isolated package that must not import from here, so the lists
+// are duplicated on purpose; tests/welcome-teasers.test.mjs imports both and
+// fails if they drift.
+const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
+const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
+export const QUOTE_SYMBOLS = [
+  '^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH',
+  'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X',
+];
+export const QUOTE_LABELS = {
+  '^GSPC': 'S&P 500',
+  '^IXIC': 'Nasdaq',
+  '^VIX': 'VIX',
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  'CL=F': 'WTI crude',
+  'BZ=F': 'Brent',
+  'GC=F': 'Gold',
+  'HG=F': 'Copper',
+  'NG=F': 'Nat gas',
+  'EURUSD=X': 'EUR/USD',
+  'USDJPY=X': 'USD/JPY',
+};
+
+// The card paints a 14x5px sparkline, so the upstream's 48-530 point series is
+// far more resolution than it can show and far more bytes than the committed
+// snapshot should carry. Reduce to an evenly spaced sample that keeps the first
+// and last observation, so the frozen curve starts and ends where the real one
+// does instead of being a truncated tail.
+const QUOTE_SPARKLINE_POINTS = 12;
+
+// Round to a precision that survives every instrument on the card: FX quotes
+// live in the fourth decimal (EUR/USD 1.0821) while index levels need none.
+function roundQuoteValue(value) {
+  return Math.round(Number(value) * 10_000) / 10_000;
+}
+
+export function downsampleSparkline(points, target = QUOTE_SPARKLINE_POINTS) {
+  const values = (Array.isArray(points) ? points : [])
+    .map(Number)
+    .filter((value) => Number.isFinite(value));
+  if (values.length <= target) return values.map(roundQuoteValue);
+  const step = (values.length - 1) / (target - 1);
+  return Array.from({ length: target }, (_, i) => roundQuoteValue(values[Math.round(i * step)]));
+}
+
+// A quote row names a real instrument, so every field has to come from the
+// upstream rather than be filled in. #7608 shipped a hand-written market tape
+// that drifted to a 22% error on the S&P and a 30% error on Bitcoin -- specific
+// false numbers about named instruments, published as "live data". A row
+// missing a usable price or change is dropped, never defaulted.
+export function selectFrozenQuotes(payloads) {
+  const bySymbol = new Map();
+  for (const payload of payloads) {
+    for (const quote of Array.isArray(payload?.quotes) ? payload.quotes : []) {
+      const symbol = String(quote?.symbol || '').trim();
+      const price = Number(quote?.price);
+      const change = quote?.change;
+      if (!QUOTE_LABELS[symbol]) continue;
+      if (!Number.isFinite(price) || price <= 0) continue;
+      if (typeof change !== 'number' || !Number.isFinite(change)) continue;
+      bySymbol.set(symbol, {
+        symbol,
+        display: QUOTE_LABELS[symbol],
+        price: roundQuoteValue(price),
+        change: Math.round(change * 100) / 100,
+        sparkline: downsampleSparkline(quote?.sparkline),
+      });
+    }
+  }
+  // Card order, not response order: the strip renders equities, crypto, energy,
+  // metals and FX in a fixed sequence.
+  return QUOTE_SYMBOLS.map((symbol) => bySymbol.get(symbol)).filter(Boolean);
+}
+
+// Per-country "Recent developments" cap (#7615): 3-5 dated, attributed,
+// linked headlines per country page. Below 3 the section is thin; above 5 the
+// frozen snapshot bloats for no crawlable gain.
+const COUNTRY_HEADLINE_LIMIT = 5;
+
+// Timeline depth per country (#7615: "where populated"). A dated event
+// sequence, not the whole history store — the corpus renders these as a short
+// list, and each record carries its own occurredAt.
+const COUNTRY_TIMELINE_LIMIT = 10;
+
+// A crawlable country page should describe recent developments, not the full
+// durable history store. Keep the query window explicit and derive its lower
+// bound from the single freeze clock so every country uses the same interval.
+const COUNTRY_TIMELINE_WINDOW_DAYS = 10;
+const COUNTRY_TIMELINE_WINDOW_MS = COUNTRY_TIMELINE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+// Brief context budget (#7615). The dashboard sends 3800 chars of grounding
+// (src/app/country-intel.ts); the freeze builds the same `Source [n]` block
+// from the same digest so citation indexes align with the frozen sources.
+const BRIEF_CONTEXT_MAX_CHARS = 3800;
+
+// Digest variants pooled for per-country matching (#7748). The global strip
+// still reads `full` alone (the homepage promise is the general digest), but
+// every variant is a different slice of the same feed set capped at 20 items
+// per category, and country mentions are spread across them: on 2026-09-05
+// `full` alone named 48 of 194 countries, the five variants pooled named 68.
+// `full` goes first so its rows win ties and URL de-duplication.
+const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', 'tech', 'finance', 'commodity', 'happy']);
+// The per-country index top-up (#7748) that fills the countries the pool
+// leaves short lives in scripts/crawlable-country-index.mjs.
 
 // Operator-facing review-hygiene text the chokepoint status contract appends
 // (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
 // It is useful in the live tool but must not be frozen into the crawlable corpus,
 // where it becomes indexed, quotable page content.
 const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
+const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
 
+// Returns null, never a placeholder sentence. "No additional status note was
+// supplied." used to be frozen here and rendered as a real <p> in <main> — an
+// absence described in prose reads to a crawler as published content, and it
+// was the only body text 7 of 13 chokepoint pages carried (#7530). An absent
+// note has no page representation: the paragraph is emitted `hidden`.
 function publishableDescription(value) {
   const cleaned = String(value || '')
     .replace(INTERNAL_NOTE_RE, '')
     .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
     .trim();
-  return cleaned || 'No additional status note was supplied.';
+  return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
+}
+
+// Every capture gate below reports a bare count. That number says a refresh
+// failed but never why, so a red scheduled run (or a hand-run freeze) starts
+// from zero — the per-item errors are collected and then dropped on the throw
+// path. Carry the first one into the message.
+function firstCaptureCause(errors) {
+  const first = errors[0];
+  if (!first) return '';
+  const scope = first.id ?? first.code ?? first.slug ?? 'unknown';
+  return `; first error (${scope}): ${first.message}`;
 }
 
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
+const LIVE_PULSE_SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
 const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 function sleep(ms) {
@@ -68,6 +276,18 @@ function sleep(ms) {
 
 function normalizeApiBase(apiBase) {
   return String(apiBase || API_BASE).replace(/\/$/, '');
+}
+
+// Parse before accepting an external URL. Besides enforcing HTTPS, URL's
+// serialization gives digest and enrichment responses one canonical form
+// (host casing and default ports included) for provenance comparisons.
+function normalizeHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE } = {}) {
@@ -119,12 +339,16 @@ async function mintSession(apiBase = API_BASE) {
   return token;
 }
 
-async function authedGet(pathname, token, apiBase = API_BASE) {
+async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' } = {}) {
   const base = normalizeApiBase(apiBase);
-  return fetchJson(`${base}${pathname}`, {
-    headers: { Cookie: `wm-session=${token}` },
-    apiBase: base,
-  });
+  // Service-key callers pass the tier-gated routes (intel brief, timeline)
+  // that reject the anonymous session with a 401. Same either/or contract as
+  // freeze-resilience-ranking.mjs: key when configured, session cookie
+  // otherwise — never both, so a keyed freeze cannot mint session state.
+  const headers = serviceKey
+    ? { 'X-WorldMonitor-Key': serviceKey }
+    : { Cookie: `wm-session=${token}` };
+  return fetchJson(`${base}${pathname}`, { headers, apiBase: base });
 }
 
 async function resolveLatestResilienceSnapshot() {
@@ -138,10 +362,11 @@ async function resolveLatestResilienceSnapshot() {
   }
   const relativePath = path.join('docs', 'snapshots', candidates[0].filename);
   const snapshot = JSON.parse(await fs.readFile(path.join(REPO_ROOT, relativePath), 'utf8'));
-  const codes = [
+  const rows = [
     ...(Array.isArray(snapshot.items) ? snapshot.items : []),
     ...(Array.isArray(snapshot.greyedOut) ? snapshot.greyedOut : []),
-  ]
+  ];
+  const codes = rows
     .map((row) => String(row?.code || row?.countryCode || '').toUpperCase())
     .filter((code) => /^[A-Z]{2}$/.test(code));
   return { relativePath, codes: [...new Set(codes)].sort() };
@@ -198,9 +423,13 @@ function chokepointRecord(view) {
     disruptionScore: view.disruptionScore,
     status: view.status,
     congestion: view.congestion,
-    warnings: view.warnings,
+    navigationalWarnings: view.navigationalWarnings,
+    navigationalWarningsAvailable: view.navigationalWarnings !== null,
+    aisDisruptions: view.aisDisruptions,
+    aisSnapshotAvailable: view.aisDisruptions !== null,
     description: publishableDescription(view.description),
     todayTransits: view.todayTransits,
+    todayCountsAvailable: view.todayCountsAvailable,
     weekMovement: view.weekMovement,
     partial: view.partial === true,
     asOf: new Date(view.fetchedAt).toISOString(),
@@ -227,6 +456,288 @@ function crisisRecord(view) {
       updatedAt: new Date(row.updatedAt).toISOString(),
     })),
   };
+}
+
+// Normalize one get-country-intel-brief response into the frozen shape, or
+// return null when the response carries no publishable brief. An LLM outage
+// surfaces as an empty brief (the handler returns `empty` on failure), which
+// must degrade into developmentsErrors — freezing an empty string would let
+// the corpus render a "Recent developments" section with no developments.
+function briefRecord(payload, digestUrls) {
+  const text = String(payload?.brief || '').trim();
+  if (!text) return null;
+  const generatedMs = Number(payload?.generatedAt);
+  if (!Number.isFinite(generatedMs) || generatedMs <= 0) {
+    throw new Error('brief response carried no valid generatedAt');
+  }
+  const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+  if (sources.length === 0) {
+    throw new Error('brief response carried no sources from the frozen grounding pool');
+  }
+  const normalizedSources = sources.map((source) => {
+    const title = String(source?.title || '').trim();
+    const outlet = String(source?.source || '').trim();
+    const url = normalizeHttpsUrl(source?.url);
+    const publishedMs = new Date(String(source?.publishedAt || '')).getTime();
+    if (!title || !outlet || !url || !Number.isFinite(publishedMs)) {
+      throw new Error('brief response carried an invalid source');
+    }
+    if (!digestUrls.has(url)) {
+      throw new Error(`brief source was not in the frozen grounding pool: ${url}`);
+    }
+    return {
+      title,
+      source: outlet,
+      url,
+      publishedAt: new Date(publishedMs).toISOString(),
+    };
+  });
+  const citations = [...text.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
+  if (citations.length === 0) {
+    throw new Error('brief response carried no source citation');
+  }
+  if (citations.some((citation) => citation < 1 || citation > normalizedSources.length)) {
+    throw new Error('brief response carried an out-of-range source citation');
+  }
+  // An evidence-grounded brief always returns an evidence array (possibly
+  // empty); its presence is what marks the text as the sectioned format.
+  const evidence = Array.isArray(payload?.evidence) ? briefEvidenceRecords(payload.evidence) : null;
+  if (evidence) {
+    const ids = new Set(evidence.map((item) => item.id));
+    for (const match of text.matchAll(/\[(E\d{1,2})\]/g)) {
+      if (!ids.has(match[1])) throw new Error(`brief response cited evidence it did not return: ${match[1]}`);
+    }
+  }
+  return {
+    text,
+    generatedAt: new Date(generatedMs).toISOString(),
+    // Preserve the returned order exactly: [n] citations index this array.
+    // Any invalid or unfrozen entry rejects the whole brief above rather than
+    // being removed and silently shifting later citation indexes.
+    sources: normalizedSources,
+    // The model id is deliberately not frozen: pages credit an automated
+    // summary, not a vendor model.
+    ...(evidence ? { evidence } : {}),
+  };
+}
+
+// World Monitor data points an evidence-grounded brief cites. Claims were
+// validated against factText server-side; the corpus re-checks against the
+// same text, so it is frozen verbatim. A non-https link is dropped, not the
+// item: the value stands without it.
+function briefEvidenceRecords(value) {
+  return value.map((item) => {
+    const id = String(item?.id || '').trim();
+    const fields = ['kind', 'label', 'value', 'factText'].map((field) => String(item?.[field] || '').trim());
+    const asOfMs = new Date(String(item?.asOf || '')).getTime();
+    if (!/^E\d{1,2}$/.test(id) || fields.some((field) => !field) || !Number.isFinite(asOfMs)) {
+      throw new Error('brief response carried an invalid evidence item');
+    }
+    const [kind, label, displayValue, factText] = fields;
+    const url = normalizeHttpsUrl(item?.url);
+    return { id, kind, label, value: displayValue, factText, asOf: new Date(asOfMs).toISOString(), ...(url ? { url } : {}) };
+  });
+}
+
+// Normalize one get-intel-timeline record. Attribution is mandatory: an
+// otherwise publishable event without a safe source URL is not crawlable
+// evidence and must not enter the frozen timeline.
+function timelineRecord(record) {
+  const title = String(record?.title || '').trim();
+  const occurredMs = Number(record?.occurredAt);
+  const sourceUrl = normalizeHttpsUrl(record?.sourceUrl);
+  if (!title || !Number.isFinite(occurredMs) || occurredMs <= 0 || !sourceUrl) return null;
+  const summary = String(record?.summary || '').replace(/\s+/g, ' ').trim();
+  return {
+    title,
+    summary: summary.length > 400 ? `${summary.slice(0, 399).trim()}...` : summary,
+    sourceUrl,
+    occurredAt: new Date(occurredMs).toISOString(),
+    domain: String(record?.domain || ''),
+  };
+}
+
+// `briefSkipped` states, published as-is in the corpus dataset download:
+//   'unsupported-citation' a claim names entities absent from its cited source
+//   null              a brief was requested and captured
+//   'no-service-key'  keyless run; tier-gated routes not attempted
+//   'no-grounding'    no digest or index headline named the country
+//   'thin-grounding'  fewer than MIN_BRIEF_GROUNDING_PUBLISHERS distinct
+//                     publishers behind the headlines (or the returned
+//                     sources), so no forecast is published
+//   'uncurated-grounding'
+//                     enough publishers, but every headline came from the
+//                     open-web index; index rows corroborate a brief, they
+//                     do not ground one alone
+//   'empty'           the route answered with no brief text (LLM outage)
+//   'failed'          the request itself failed; see errors.developments
+// The timeline sibling uses timelineStatus the same way.
+function emptyDevelopments(freezeStartedAt, briefSkipped) {
+  return {
+    headlines: [],
+    brief: null,
+    timeline: null,
+    timelineStatus: 'not-requested',
+    briefSkipped,
+    capturedAt: new Date(freezeStartedAt).toISOString(),
+  };
+}
+
+// Reduce a ListFeedDigest response to the publishable headline rows.
+//
+// A row reaches the homepage with a masthead beside it, so it must carry
+// everything a reader needs to check that attribution: the outlet, an https
+// article URL on the publisher's own host, and the publication time. #7608
+// shipped four invented headlines under real Reuters/FT/AP/BBC bylines because
+// the strip's fallback was hand-written prose with none of those. An item
+// missing any of them is dropped here rather than published unverifiable.
+//
+// Ranking is importance-first like the browser path in
+// pro-test/src/services/teasers.ts, but this selector is deliberately STRICTER:
+// it also requires a masthead, a publication time and a non-aggregator link, so
+// the frozen rows are a publishable subset of what a live fetch would show, not
+// necessarily the identical four.
+//
+// Returns the accepted rows plus a rejection tally. A silent `.filter()` here
+// would leave a shortfall with no recorded cause, since the request itself
+// succeeded -- the operator would see a count and no reason.
+export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0 };
+  const categories = payload && typeof payload === 'object' ? payload.categories : null;
+  if (!categories || typeof categories !== 'object') return { rows: [], rejections };
+  const rows = Object.values(categories)
+    .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
+    .map((item) => {
+      const title = String(item?.title || '').trim();
+      const source = String(item?.source || '').trim();
+      const url = String(item?.link || '').trim();
+      const publishedAt = Number(item?.publishedAt);
+      if (!title) { rejections.noTitle += 1; return null; }
+      if (!source) { rejections.noSource += 1; return null; }
+      if (!isVerifiableArticleUrl(url)) { rejections.unverifiableUrl += 1; return null; }
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) { rejections.noPublishedAt += 1; return null; }
+      return {
+        row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
+        importanceScore: Number(item?.importanceScore) || 0,
+        publishedAtMs: publishedAt,
+      };
+    })
+    .filter((entry) => entry !== null)
+    .sort((a, b) => (
+      b.importanceScore - a.importanceScore
+      || b.publishedAtMs - a.publishedAtMs
+      || a.row.title.localeCompare(b.row.title)
+    ));
+
+  // Dedupe BEFORE the cap so a second edition of one story never occupies a
+  // slot the next distinct story could fill — the same ordering the digest uses
+  // for its own revoked-URL suppression. Ranked input means the surviving copy
+  // is the best-ranked one (#8339).
+  const deduped = dedupeByArticleUrl(rows, (entry) => entry.row.url);
+  rejections.duplicateUrl = rows.length - deduped.length;
+
+  return { rows: deduped.slice(0, limit).map((entry) => entry.row), rejections };
+}
+
+// Country matching is the shared matcher (shared/country-mention.js), the
+// same one the server's anonymous grounding and the MCP tool use: display
+// names, aliases and demonyms; bare ISO codes only for the allowlist. The
+// freeze used to carry a local copy that also matched every uppercase code
+// token, which grounded Australia on "African Union (AU)" and Ethiopia on an
+// outage timed "2pm ET" (#7748).
+//
+// Per-country slice of the pooled digest fetch (#7615, widened in #7748).
+// Rows carry the same publishability bar as the global strip (masthead,
+// https URL, publication time); ranking mirrors the browser path so frozen
+// rows match what live would show. A title carrying markdown emphasis is
+// unpublishable: it would render literally in <main> (#7738 guard).
+function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMIT) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized) || !Array.isArray(digestItems)) return [];
+  const terms = countryMentionTerms(normalized);
+  return digestItems
+    .map((item) => {
+      const title = String(item?.title || '').trim();
+      const source = String(item?.source || '').trim();
+      const url = normalizeHttpsUrl(item?.link);
+      const publishedAt = Number(item?.publishedAt);
+      if (!title || !source || !url || title.includes('**')) return null;
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      const text = `${title} ${typeof item?.snippet === 'string' ? item.snippet : ''}`;
+      if (!mentionsCountry(text, terms)) return null;
+      return {
+        row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
+        importanceScore: Number(item?.importanceScore) || 0,
+        publishedAtMs: publishedAt,
+      };
+    })
+    .filter((entry) => entry !== null)
+    .sort((a, b) => (
+      b.importanceScore - a.importanceScore
+      || b.publishedAtMs - a.publishedAtMs
+      || a.row.title.localeCompare(b.row.title)
+    ))
+    .slice(0, limit)
+    .map((entry) => entry.row);
+}
+
+// Every English brief is offered the country's CII, advisory and resilience
+// data points, so a large sample citing none of them means the evidence pack
+// is down. A small sample can be Situation-only by chance (the model leaves
+// unsupported sections empty, and a mis-bound number is withheld); failing
+// on it would discard the whole snapshot, the failure an absolute floor on a
+// small, variable set already caused for the brief gate (#7620).
+export const MIN_EVIDENCE_GATE_BRIEFS = 10;
+
+/**
+ * What the freeze does about evidence-grounded briefs that cite no data
+ * point: 'fail' the run for a sample large enough to mean an outage,
+ * 'record' a capture error for a smaller one, or null when nothing is wrong.
+ */
+export function evidenceGateVerdict({ formatCount, citedCount }) {
+  if (formatCount === 0 || citedCount > 0) return null;
+  return formatCount >= MIN_EVIDENCE_GATE_BRIEFS ? 'fail' : 'record';
+}
+
+function evidenceFormatBriefs(countries) {
+  return Object.entries(countries)
+    .map(([code, row]) => ({ code, brief: row.developments?.brief }))
+    .filter(({ brief }) => brief && Array.isArray(brief.evidence) && typeof brief.text === 'string');
+}
+
+// Rows a brief may cite: the same title predicate the server grounding and
+// the MCP tool apply. Order is preserved, so citation indexes built over the
+// result stay aligned with the frozen sources.
+function briefGroundingRows(rows) {
+  return rows.filter((row) => isBriefRelevantTitle(row?.title));
+}
+
+// Brief grounding block in the server's `Source [n]` format
+// (_country-brief-context.ts briefSourceContextLines). The brief endpoint
+// verifies citation indexes against entry sources, so the block and the
+// frozen sources below must describe the same rows in the same order.
+//
+// Titles are whitespace-collapsed before composing EITHER section. Digest
+// titles are untrusted RSS: a newline in a title forges an extra headline
+// line the brief reads as a real story, and a crafted `Source [n]:` line
+// parses into sources[] server-side (the #5857 gap the server closes with
+// sanitizeForPromptLine). JSON.stringify already keeps the Source lines
+// single-line; the Headlines: lines need the same treatment here.
+function buildBriefContext(headlines, maxChars = BRIEF_CONTEXT_MAX_CHARS) {
+  // cleanTitle applies ONLY to the Headlines: lines. The Source JSON keeps
+  // the exact frozen title (JSON.stringify already neutralizes newlines, and
+  // exact parity keeps citation indexes aligned with the frozen rows).
+  const cleanTitle = (headline) => String(headline.title || '').replace(/\s+/g, ' ').trim();
+  const lines = headlines.map((headline, index) => {
+    const payload = { title: headline.title, source: headline.source, url: headline.url };
+    if (headline.publishedAt) payload.publishedAt = headline.publishedAt;
+    return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
+  });
+  // Dash-prefixed: a hostile title shaped like `Source [9]: {...}` must never
+  // parse as a source line server-side (parseCountryBriefSources scans
+  // /^Source \[\d+\]:/mg over the whole context block).
+  const headlineLines = headlines.map((headline) => `- ${cleanTitle(headline)}`);
+  return [...lines, 'Headlines:', ...headlineLines].join('\n').slice(0, maxChars);
 }
 
 function signalConvergenceReference(capturedAt) {
@@ -276,17 +787,104 @@ function signalConvergenceReference(capturedAt) {
   };
 }
 
+// The newest committed pulse snapshot that carried a usable scorecard. Read only
+// when the current capture fails: the alternative is publishing nothing, and a
+// dated older measurement is more useful than a blank page as long as the page
+// ages it on its own clock. The weekly workflow prunes superseded snapshots
+// AFTER this runs, so the previous week's file is still on disk here.
+async function retainedForecastScorecard(rootDir) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(path.join(rootDir, 'docs', 'snapshots'));
+  } catch {
+    return null;
+  }
+  const candidates = entries
+    .filter((filename) => LIVE_PULSE_SNAPSHOT_RE.test(filename))
+    .sort()
+    .reverse();
+  for (const filename of candidates) {
+    try {
+      const snapshot = JSON.parse(
+        await fs.readFile(path.join(rootDir, 'docs', 'snapshots', filename), 'utf8'),
+      );
+      const previous = snapshot?.forecastScorecard;
+      const scorecard = selectDeclaredScorecardFields(previous?.scorecard);
+      const generatedAt = Number(previous?.generatedAt);
+      if (scorecard && Number.isFinite(generatedAt) && generatedAt > 0) {
+        return { scorecard, generatedAt, capturedAt: previous.capturedAt ?? null };
+      }
+    } catch {
+      // A malformed sibling snapshot is not this run's problem; keep looking.
+    }
+  }
+  return null;
+}
+
+/** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
+function scorecardFailureCode(error) {
+  if (error?.code) return error.code;
+  if (Number.isFinite(error?.status)) return 'http-error';
+  return 'request-failed';
+}
+
+async function captureForecastScorecard({
+  token, base, authOpts, capturedAt, attemptedAtMs, rootDir, errors,
+}) {
+  try {
+    const payload = await authedGet('/api/forecast/v1/get-forecast-scorecard', token, base, authOpts);
+    // The RPC handler strips only `judgedLane` before spreading the seeder
+    // value, so undeclared fields reach the response. Whitelisting at capture
+    // keeps them out of the committed snapshot, which is a public repo file,
+    // and not only out of the rendered page.
+    const scorecard = selectDeclaredScorecardFields(payload);
+    if (!scorecard) {
+      throw Object.assign(new Error('forecast scorecard response was not an object'), { code: 'malformed-response' });
+    }
+    if (!Number.isFinite(scorecard.generatedAt) || scorecard.generatedAt <= 0) {
+      throw Object.assign(new Error('forecast scorecard response carried no usable generatedAt'), { code: 'undated-response' });
+    }
+    return {
+      attemptedAt: capturedAt,
+      attemptedAtMs,
+      capturedAt,
+      generatedAt: scorecard.generatedAt,
+      scorecard,
+      failureCode: '',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failureCode = scorecardFailureCode(error);
+    errors.push({ id: '*', code: failureCode, message });
+    const retained = await retainedForecastScorecard(rootDir);
+    return {
+      attemptedAt: capturedAt,
+      attemptedAtMs,
+      capturedAt: retained?.capturedAt ?? null,
+      generatedAt: retained?.generatedAt ?? null,
+      scorecard: retained?.scorecard ?? null,
+      failureCode,
+    };
+  }
+}
+
 export async function freezeCrawlableLivePulse({
   apiBase = API_BASE,
   rootDir = REPO_ROOT,
   // Injectable so the coverage gates can be exercised without a 20+ second
   // inter-request delay; production callers keep the throttled default.
   requestGapMs = REQUEST_GAP_MS,
+  // Tier-gated captures (intel brief, timeline) authenticate with this key.
+  // Default reads the operator environment (WORLDMONITOR_API_KEY secret in the
+  // weekly cron); tests inject a stub value. Empty means headlines-only.
+  serviceKey = serviceApiKey(),
 } = {}) {
   const base = normalizeApiBase(apiBase);
   const freezeStartedAt = Date.now();
   const capturedAt = isoDate(freezeStartedAt);
-  const token = await mintSession(base);
+  const keyed = serviceKey.trim().length > 0;
+  const token = keyed ? '' : await mintSession(base);
+  const authOpts = keyed ? { serviceKey } : {};
   const { relativePath: resilienceSnapshotPath, codes } = await resolveLatestResilienceSnapshot();
   const crises = await loadCrises();
   const chokepointIds = await loadChokepointIds();
@@ -299,6 +897,7 @@ export async function freezeCrawlableLivePulse({
         `/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
         token,
         base,
+        authOpts,
       );
       const view = liveRiskViewModel(payload, freezeStartedAt);
       countries[code] = countryRecord(view, payload, freezeStartedAt);
@@ -314,7 +913,7 @@ export async function freezeCrawlableLivePulse({
   let chokepointPayload = null;
   const chokepointErrors = [];
   try {
-    chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base);
+    chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base, authOpts);
   } catch (error) {
     chokepointErrors.push({
       id: '*',
@@ -344,6 +943,7 @@ export async function freezeCrawlableLivePulse({
             `/api/conflict/v1/get-humanitarian-summary?country_code=${encodeURIComponent(country.code)}`,
             token,
             base,
+            authOpts,
           );
           results.push({ code: country.code, payload });
         } catch (error) {
@@ -360,6 +960,326 @@ export async function freezeCrawlableLivePulse({
       });
     }
   }
+
+  // Guarded like every other network step, and unlike the others it never
+  // throws: a digest outage costs the strip its headline rows, not the whole
+  // snapshot (see HEADLINE_CAPTURE_COUNT).
+  // The `full` items are ALSO the first slice of the per-country developments
+  // pool below — one capture path feeds the global strip (#7608) and every
+  // country page (#7615); the other variants only widen the country pool.
+  const headlineErrors = [];
+  let headlines = [];
+  const digestItemsByVariant = new Map();
+  // ListFeedDigest self-reports how it is being served. Four well-formed rows
+  // off a six-hour-old last-good replay look identical to a complete capture
+  // unless that verdict is carried into the artifact, so record it.
+  let headlineDigestState = null;
+  let headlineServedStale = null;
+  const digestVariantStates = {};
+  const digestVariantErrors = [];
+  for (const variant of COUNTRY_DIGEST_VARIANTS) {
+    try {
+      const digest = await authedGet(`/api/news/v1/list-feed-digest?variant=${variant}&lang=en`, token, base, authOpts);
+      digestVariantStates[variant] = digest?.coverage?.state ?? null;
+      if (variant === 'full') {
+        headlineDigestState = digest?.coverage?.state ?? null;
+        headlineServedStale = typeof digest?.coverage?.servedStale === 'boolean'
+          ? digest.coverage.servedStale
+          : null;
+        const { rows, rejections } = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+        headlines = rows;
+        if (rows.length < HEADLINE_CAPTURE_COUNT) {
+          headlineErrors.push({
+            id: '*',
+            message: `only ${rows.length} of ${HEADLINE_CAPTURE_COUNT} digest items were publishable `
+              + `(rejected: ${Object.entries(rejections).map(([k, v]) => `${k}=${v}`).join(', ')}; `
+              + `digest state=${headlineDigestState ?? 'unknown'})`,
+          });
+        }
+      }
+      const categories = digest && typeof digest === 'object' ? digest.categories : null;
+      const items = categories && typeof categories === 'object'
+        ? Object.values(categories).flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
+        : [];
+      digestItemsByVariant.set(variant, items);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // The strip is only ever the `full` digest; a failed sibling variant
+      // narrows the country pool and is recorded with the developments. The
+      // state is a value, not a missing key, so an artifact reader can tell
+      // "fetch failed" from "fetched, state unreported".
+      digestVariantStates[variant] = 'error';
+      if (variant === 'full') headlineErrors.push({ id: '*', message });
+      digestVariantErrors.push({ code: '*', stage: 'digest', message: `${variant}: ${message}` });
+    }
+    await sleep(requestGapMs);
+  }
+  // One article can sit in several variants; the pool keeps its first
+  // appearance so `full` rows win and citation provenance stays URL-keyed.
+  const digestItems = [];
+  const pooledUrls = new Set();
+  for (const variant of COUNTRY_DIGEST_VARIANTS) {
+    for (const item of digestItemsByVariant.get(variant) || []) {
+      const url = normalizeHttpsUrl(item?.link);
+      if (!url || pooledUrls.has(url)) continue;
+      pooledUrls.add(url);
+      digestItems.push(item);
+    }
+  }
+
+  // Market tape (#7608). Three endpoints, captured individually so one bad
+  // upstream costs the card its rows rather than the whole tape, and never
+  // throwing for the same reason the headline capture does not: a market
+  // outage must not discard the country work or arm the corpus staleness fuse.
+  const quoteErrors = [];
+  let quotes = [];
+  let quotesAsOf = null;
+  let quotesRateLimited = null;
+  const quotePayloads = [];
+  const quoteRequests = [
+    ['market', `/api/market/v1/list-market-quotes?${MARKET_QUOTE_SYMBOLS.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join('&')}`],
+    ['commodities', `/api/market/v1/list-commodity-quotes?${COMMODITY_QUOTE_SYMBOLS.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join('&')}`],
+    ['crypto', `/api/market/v1/list-crypto-quotes?${CRYPTO_QUOTE_IDS.map((id) => `ids=${encodeURIComponent(id)}`).join('&')}`],
+  ];
+  for (const [id, pathname] of quoteRequests) {
+    try {
+      const payload = await authedGet(pathname, token, base, authOpts);
+      quotePayloads.push(payload);
+      if (id === 'market') {
+        quotesAsOf = typeof payload?.asOf === 'string' ? payload.asOf : null;
+        quotesRateLimited = typeof payload?.rateLimited === 'boolean' ? payload.rateLimited : null;
+      }
+    } catch (error) {
+      quoteErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
+    }
+    await sleep(requestGapMs);
+  }
+  quotes = selectFrozenQuotes(quotePayloads);
+  if (quotes.length < QUOTE_SYMBOLS.length) {
+    const missing = QUOTE_SYMBOLS.filter((symbol) => !quotes.some((quote) => quote.symbol === symbol));
+    quoteErrors.push({
+      id: '*',
+      message: `captured ${quotes.length} of ${QUOTE_SYMBOLS.length} quotes; missing ${missing.join(', ')}`,
+    });
+  }
+
+  // Per-country recent developments (#7615). Headlines match from the digest
+  // pool fetched above; the brief and timeline ride the tier-gated routes, so
+  // they run only with a service key. Briefs additionally require grounding:
+  // an ungrounded brief is energy-data prose with no events, which is the
+  // defect this enrichment removes rather than replicates — and a brief off a
+  // single outlet is a multi-horizon forecast from one source, so the floor
+  // is MIN_BRIEF_GROUNDING_PUBLISHERS distinct publishers (#7748).
+  // Brief and timeline errors first: firstCaptureCause reads errors[0] into
+  // the gate's thrown message, and a sibling digest hiccup must not be named
+  // as the cause of a brief collapse. Variant errors are appended after the
+  // loop.
+  const developmentsErrors = [];
+  const headlinesByCode = new Map();
+  for (const code of Object.keys(countries)) {
+    headlinesByCode.set(code, selectCountryHeadlines(digestItems, code, COUNTRY_HEADLINE_LIMIT));
+  }
+
+  // Country reporting is useful even when it falls below the dashboard's
+  // category cap. Read the already-acquired RSS pool once before GDELT top-up.
+  const curatedFeeds = { state: 'unavailable', feedTotal: 0, feedCached: 0, recoveredCountryCount: 0, addedHeadlineCount: 0 };
+  const curatedFeedErrors = [];
+  const curatedFeedUrls = new Set();
+  try {
+    const query = new URLSearchParams();
+    for (const code of Object.keys(countries)) query.append('country_codes', code);
+    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, authOpts);
+    if (!['complete', 'partial', 'unavailable'].includes(payload?.state)
+      || !payload.countries || typeof payload.countries !== 'object') {
+      throw new Error('country headline response did not report cache coverage');
+    }
+    curatedFeeds.state = payload.state;
+    curatedFeeds.feedTotal = Number.isInteger(payload.feedTotal) ? payload.feedTotal : 0;
+    curatedFeeds.feedCached = Number.isInteger(payload.feedCached) ? payload.feedCached : 0;
+    if (payload.state === 'unavailable') throw new Error('country headline caches or revocation controls unavailable');
+    for (const code of Object.keys(countries)) {
+      const existing = headlinesByCode.get(code);
+      const candidates = selectCountryHeadlines(payload.countries[code]?.items, code)
+        .filter(row => !existing.some(headline => headline.url === row.url));
+      const rows = [];
+      while (existing.length + rows.length < COUNTRY_HEADLINE_LIMIT && candidates.length) {
+        const selected = [...existing, ...rows];
+        const publishers = briefGroundingPublisherCount(selected);
+        const independent = candidates.findIndex(row => briefGroundingPublisherCount([...selected, row]) > publishers);
+        rows.push(candidates.splice(Math.max(0, independent), 1)[0]);
+      }
+      if (rows.length === 0) continue;
+      if (existing.length === 0) curatedFeeds.recoveredCountryCount++;
+      curatedFeeds.addedHeadlineCount += rows.length;
+      for (const row of rows) curatedFeedUrls.add(row.url);
+      headlinesByCode.set(code, [...existing, ...rows]);
+    }
+  } catch (error) {
+    curatedFeedErrors.push({ code: '*', stage: 'curated-feeds', message: error instanceof Error ? error.message : String(error) });
+  }
+  await sleep(requestGapMs);
+
+  // Per-country index top-up (#7748): every country the pool leaves short
+  // asks the index; digest rows keep precedence and index rows fill the
+  // remaining slots. The top-up is never a reason to lose the capture — its
+  // errors are recorded per country, or once for a missing index — and they
+  // are appended AFTER the brief loop below so the gate's thrown cause is
+  // never a top-up hiccup.
+  const { countryIndex, errors: countryIndexErrors, urls: countryIndexUrls } = await topUpCountryIndex({
+    codes: Object.keys(countries),
+    headlinesByCode,
+    headlineLimit: COUNTRY_HEADLINE_LIMIT,
+    fetchIndex: (code) => authedGet(countryIndexPath(code), token, base, authOpts),
+    nowMs: freezeStartedAt,
+    requestGapMs,
+    sleep,
+  });
+
+  // Provenance cross-check (#7615): a brief source renders headline-grade on
+  // the page, so its URL must have been in this run's frozen grounding pool —
+  // the pooled digest, recovered RSS headlines and index rows accepted above.
+  // The brief request passes those rows as numbered Source lines; anything
+  // returned outside the pool rejects the entire brief
+  // rather than being removed and shifting citation indexes. Both sides use
+  // the same HTTPS-only URL serialization.
+  const groundingUrls = new Set([...countryIndexUrls, ...curatedFeedUrls]);
+  for (const item of digestItems) {
+    const url = normalizeHttpsUrl(item?.link);
+    if (url) groundingUrls.add(url);
+  }
+  const timelineFrom = freezeStartedAt - COUNTRY_TIMELINE_WINDOW_MS;
+  // Countries a brief was requested for. The brief gate divides by this set,
+  // taken at request time: a brief the server returned and normalization then
+  // withheld must stay in the denominator (and be recorded as an error), or a
+  // server that starts returning one source per brief would empty the
+  // denominator and pass the gate with zero briefs.
+  const briefAttemptedCodes = new Set();
+  // Countries whose rows cleared the grounding floor until the relevance
+  // filter removed their sports/entertainment rows. Counted apart from
+  // briefThinGroundingCount so a lexicon change shows up as its own number.
+  const briefRelevanceFilteredCodes = new Set();
+  for (const code of Object.keys(countries)) {
+    const countryHeadlines = headlinesByCode.get(code) || [];
+    // Recent developments keeps every row; the brief sees only the eligible
+    // subset, in the same order, so buildBriefContext's Source [n] and the
+    // sources the server echoes back describe the same rows.
+    const groundingHeadlines = briefGroundingRows(countryHeadlines);
+    if (hasBriefGrounding(countryHeadlines) && !hasBriefGrounding(groundingHeadlines)) {
+      briefRelevanceFilteredCodes.add(code);
+    }
+    const briefSkipped = !keyed
+      ? 'no-service-key'
+      : countryHeadlines.length === 0
+        ? 'no-grounding'
+        : briefGroundingGap(groundingHeadlines);
+    const developments = {
+      ...emptyDevelopments(freezeStartedAt, briefSkipped),
+      headlines: countryHeadlines,
+    };
+    if (briefSkipped === null) {
+      briefAttemptedCodes.add(code);
+      try {
+        const context = buildBriefContext(groundingHeadlines);
+        const briefPayload = await authedGet(
+          `/api/intelligence/v1/get-country-intel-brief?country_code=${encodeURIComponent(code)}&lang=en&context=${encodeURIComponent(context)}`,
+          token,
+          base,
+          authOpts,
+        );
+        const brief = briefRecord(briefPayload, groundingUrls);
+        if (brief) {
+          // The server echoes the Source lines without provenance; restore
+          // the origin stamp by URL so the corpus's publish-time floor sees
+          // the same curated-versus-index split the freeze saw.
+          developments.brief = {
+            ...brief,
+            sources: brief.sources.map((source) => (
+              countryIndexUrls.has(source.url) ? { ...source, origin: COUNTRY_INDEX_ORIGIN } : source
+            )),
+          };
+        } else {
+          developments.briefSkipped = 'empty';
+          developmentsErrors.push({ code, stage: 'brief', message: 'response carried no publishable brief text' });
+        }
+      } catch (error) {
+        developments.briefSkipped = 'failed';
+        developmentsErrors.push({ code, stage: 'brief', message: error instanceof Error ? error.message : String(error) });
+      }
+      await sleep(requestGapMs);
+    }
+    if (keyed) {
+      try {
+        const timelinePayload = await authedGet(
+          `/api/intelligence/v1/get-intel-timeline?country=${encodeURIComponent(code)}&from=${timelineFrom}&limit=${COUNTRY_TIMELINE_LIMIT}`,
+          token,
+          base,
+          authOpts,
+        );
+        if (timelinePayload?.upstreamUnavailable === true) {
+          developments.timelineStatus = 'unavailable';
+          developmentsErrors.push({ code, stage: 'timeline', message: 'timeline upstream unavailable' });
+        } else {
+          const records = Array.isArray(timelinePayload?.records) ? timelinePayload.records : [];
+          const publishableRecords = records
+            .map(timelineRecord)
+            .filter((record) => record !== null);
+          const droppedCount = records.length - publishableRecords.length;
+          developments.timeline = publishableRecords;
+          developments.timelineStatus = timelinePayload?.partial === true || droppedCount > 0
+            ? 'partial'
+            : 'available';
+          if (droppedCount > 0) {
+            developmentsErrors.push({
+              code,
+              stage: 'timeline',
+              message: `dropped ${droppedCount} of ${records.length} timeline records without publishable attribution`,
+            });
+          }
+        }
+      } catch (error) {
+        developments.timelineStatus = 'failed';
+        developmentsErrors.push({ code, stage: 'timeline', message: error instanceof Error ? error.message : String(error) });
+      }
+      await sleep(requestGapMs);
+    }
+    // Publish-time shape rules applied at capture so the committed JSON
+    // carries the text the page shows: no markdown markers, no model
+    // preamble, the publisher floor. The "WHAT THIS MEANS FOR <CODE>" heading
+    // is deliberately left for the corpus build to repair, because the name a
+    // page uses ("DR Congo") comes from the build's own display table, not
+    // from any source the freeze can read; the server no longer emits the
+    // bare code for new briefs (#7738).
+    const normalized = normalizeFrozenDevelopments(developments, { countryCode: code });
+    if (developments.brief && !normalized.brief) {
+      developmentsErrors.push({
+        code,
+        stage: 'brief',
+        message: normalized.briefSkipped === 'unsupported-citation'
+          ? `brief withheld: ${briefCitationGroundingGap(developments.brief)}`
+          : `brief withheld: ${normalized.briefSkipped} (${developments.brief.sources.length} grounding sources; `
+            + `requires ${MIN_BRIEF_GROUNDING_PUBLISHERS} distinct publishers and a curated source)`,
+      });
+    }
+    countries[code].developments = normalized;
+  }
+  developmentsErrors.push(...digestVariantErrors, ...curatedFeedErrors, ...countryIndexErrors);
+
+  // Forecast resolution scorecard (#6646), published at /accuracy/. Guarded and
+  // never throwing, like every other step: a scoring outage must cost the page
+  // its numbers, not discard the country work or arm the corpus staleness fuse.
+  // The section is always written, so the page names the failure instead of
+  // silently omitting itself.
+  const scorecardErrors = [];
+  const forecastScorecard = await captureForecastScorecard({
+    token,
+    base,
+    authOpts,
+    capturedAt,
+    attemptedAtMs: freezeStartedAt,
+    rootDir,
+    errors: scorecardErrors,
+  });
+  await sleep(requestGapMs);
 
   const geoLeaders = Object.entries(countries)
     .filter(([, row]) => Number.isFinite(row.geoConvergence) && row.geoConvergence > 0)
@@ -381,10 +1301,14 @@ export async function freezeCrawlableLivePulse({
     countries,
     chokepoints,
     crises: crisisSnapshots,
+    headlines,
+    quotes,
+    quotesAsOf,
     signalConvergence: {
       ...signalConvergenceReference(capturedAt),
       ciiGeoConvergenceLeaders: geoLeaders,
     },
+    forecastScorecard,
     coverage: {
       countryCount: Object.keys(countries).length,
       countryErrorCount: countryErrors.length,
@@ -392,11 +1316,86 @@ export async function freezeCrawlableLivePulse({
       chokepointErrorCount: chokepointErrors.length,
       crisisCount: Object.keys(crisisSnapshots).length,
       crisisErrorCount: crisisErrors.length,
+      headlineCount: headlines.length,
+      headlineErrorCount: headlineErrors.length,
+      headlineDigestState,
+      headlineServedStale,
+      quoteCount: quotes.length,
+      quoteErrorCount: quoteErrors.length,
+      quotesRateLimited,
+      headlineCountryCount: Object.values(countries)
+        .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
+      briefCountryCount: Object.values(countries)
+        .filter((row) => row.developments?.brief != null).length,
+      // Evidence-grounded briefs (the server returned an evidence array), the
+      // ones among them citing at least one World Monitor data point, and the
+      // ones a page shows beyond Situation (which "Recent developments" covers).
+      briefEvidenceFormatCount: evidenceFormatBriefs(countries).length,
+      briefEvidenceCitedCount: evidenceFormatBriefs(countries)
+        .filter(({ brief }) => /\[E\d{1,2}\]/.test(brief.text)).length,
+      briefAnalysisCount: evidenceFormatBriefs(countries)
+        .filter(({ code, brief }) => parseBriefSections(brief.text, { countryCode: code })
+          .some((section) => section.key !== 'situation')).length,
+      // Grounding eligibility is independent of credentials or request outcome,
+      // and measured on the rows a brief may cite.
+      briefEligibleCount: [...headlinesByCode.values()]
+        .filter((rows) => hasBriefGrounding(briefGroundingRows(rows))).length,
+      // Countries the relevance filter (shared/brief-relevance.js) pushed
+      // below the floor. Disjoint from briefThinGroundingCount, which counts
+      // rows that were thin before filtering.
+      briefRelevanceFilteredCount: briefRelevanceFilteredCodes.size,
+      briefUnsupportedCitationCount: Object.values(countries)
+        .filter((row) => row.developments?.briefSkipped === 'unsupported-citation').length,
+      // Countries a brief was requested for: keyed, and grounded on at least
+      // MIN_BRIEF_GROUNDING_PUBLISHERS distinct publishers. The gate below is
+      // measured against this request-time set. Only explicit citation
+      // suppression is counted as completed validation rather than an outage.
+      briefMatchedCount: briefAttemptedCodes.size,
+      // Countries whose grounding was too thin to request a brief at all.
+      briefThinGroundingCount: Object.values(countries)
+        .filter((row) => row.developments?.briefSkipped === 'thin-grounding'
+          && !hasBriefGrounding(row.developments?.headlines)).length,
+      // Countries the open-web index named but no curated feed did: dated
+      // headlines, no brief (#7748 review).
+      briefUncuratedGroundingCount: Object.entries(countries)
+        .filter(([code, row]) => row.developments?.briefSkipped === 'uncurated-grounding'
+          && !briefRelevanceFilteredCodes.has(code)).length,
+      timelineCountryCount: Object.values(countries)
+        .filter((row) => (row.developments?.timeline?.length || 0) > 0).length,
+      // The enrichment tail (#7748): indexed pages with no dated item at all.
+      // Reported here and in the run summary so the tail is a number in every
+      // weekly PR, never a silent absence.
+      developmentsCountryCount: Object.values(countries)
+        .filter((row) => developmentsHasDatedItem(row.developments)).length,
+      developmentsMissingCount: Object.values(countries)
+        .filter((row) => !developmentsHasDatedItem(row.developments)).length,
+      developmentsDigestVariants: digestVariantStates,
+      developmentsDigestItemCount: digestItems.length,
+      developmentsCuratedFeeds: curatedFeeds,
+      // The per-country index top-up (#7748): whether the route served,
+      // how many countries were asked, and how many gained at least one
+      // index row. The corpus build raises its coverage floor when the
+      // state is 'available', so a freeze that ran with the index can no
+      // longer publish a digest-sized tail as a green build.
+      developmentsCountryIndex: countryIndex,
+      serviceKeyPresent: keyed,
+      developmentsErrorCount: developmentsErrors.length,
+      // Captured means THIS run read the scorecard. A retained older payload
+      // still publishes, so `retained` distinguishes the two rather than
+      // letting a carried-forward measurement look like a fresh read.
+      forecastScorecardCaptured: forecastScorecard.failureCode === '',
+      forecastScorecardRetained: forecastScorecard.failureCode !== '' && forecastScorecard.scorecard !== null,
+      forecastScorecardFailureCode: forecastScorecard.failureCode,
+      forecastScorecardScored: forecastScorecard.scorecard?.totals?.scored ?? null,
     },
     errors: {
       countries: countryErrors,
       chokepoints: chokepointErrors,
       crises: crisisErrors,
+      headlines: headlineErrors,
+      quotes: quoteErrors,
+      developments: developmentsErrors,
+      forecastScorecard: scorecardErrors,
     },
   };
 
@@ -408,17 +1407,85 @@ export async function freezeCrawlableLivePulse({
   if (Object.keys(countries).length < minCountries) {
     throw new Error(
       `Pulse freeze captured only ${Object.keys(countries).length} of ${codes.length} countries; `
-      + `expected at least ${minCountries}`,
+      + `expected at least ${minCountries}`
+      + firstCaptureCause(countryErrors),
     );
   }
   if (Object.keys(chokepoints).length < chokepointIds.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`,
+      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`
+      + firstCaptureCause(chokepointErrors),
     );
   }
   if (Object.keys(crisisSnapshots).length < crises.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`,
+      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`
+      + firstCaptureCause(crisisErrors),
+    );
+  }
+
+  // Brief gate (#7615, retuned in the #7620 follow-up): with a service key,
+  // every headline-matched country is owed a brief attempt. Zero briefs means
+  // the key is wrong-tiered, the route moved, or the model is down, and
+  // shipping that silently would revert every enriched page to headlines-only.
+  //
+  // The tolerance is PROPORTIONAL, not the absolute MAX_COUNTRY_CAPTURE_SHORTFALL
+  // this originally borrowed. That constant is calibrated against ~196 countries
+  // (a 2.5% allowance); applied to a headline-matched set that varies run to run
+  // — 51 on 2026-09-04 — it became a 90% demand on a stochastic upstream, where
+  // each brief must pass grounding and citation checks. A run capturing 41 of 51
+  // threw and wrote no snapshot at all, taking the country, chokepoint and
+  // crisis captures down with it.
+  // Without a key there is nothing to gate: briefSkipped=no-service-key is
+  // the documented degraded state, not a failure.
+  if (keyed && snapshot.coverage.briefMatchedCount > 0) {
+    // A valid response withheld for unsupported names is a completed check,
+    // not an upstream outage. Publish its headlines and explicit gap without
+    // making the other pulse datasets age out. Empty/failed/thin responses
+    // still count against the existing capture floor.
+    const checkedBriefs = snapshot.coverage.briefCountryCount + snapshot.coverage.briefUnsupportedCitationCount;
+    if (checkedBriefs === 0) {
+      throw new Error(
+        `Pulse freeze captured briefs for 0 of ${snapshot.coverage.briefMatchedCount} headline-matched countries`
+        + firstCaptureCause(developmentsErrors),
+      );
+    }
+    // An evidence-pack outage fails soft on the server (every source drops
+    // out), so the briefs still arrive, Situation-only, and every page renders
+    // no brief block. Legacy-format responses (a server that predates the
+    // evidence pack) do not engage this gate.
+    const evidenceVerdict = evidenceGateVerdict({
+      formatCount: snapshot.coverage.briefEvidenceFormatCount,
+      citedCount: snapshot.coverage.briefEvidenceCitedCount,
+    });
+    const evidenceMessage = `${snapshot.coverage.briefEvidenceFormatCount} evidence-grounded briefs cited no World Monitor data point`;
+    if (evidenceVerdict === 'fail') {
+      throw new Error(`Pulse freeze: ${evidenceMessage}; the evidence pack is unavailable`);
+    }
+    if (evidenceVerdict === 'record') {
+      snapshot.errors.developments.push({ code: '*', stage: 'brief-evidence', message: evidenceMessage });
+    }
+    const minBriefs = minimumBriefCaptures(snapshot.coverage.briefMatchedCount);
+    if (checkedBriefs < minBriefs) {
+      throw new Error(
+        `Pulse freeze captured or withheld unsupported briefs for only ${checkedBriefs} of ${snapshot.coverage.briefMatchedCount} headline-matched countries; `
+        + `expected at least ${minBriefs}`
+        + firstCaptureCause(developmentsErrors),
+      );
+    }
+  }
+
+  // Strip invariant (#8339): the four published headlines must be four distinct
+  // articles. selectFrozenHeadlines already dedupes by normalized URL, so a
+  // duplicate here is a defect in that dedupe rather than an upstream
+  // condition, and it would put one story in two of the homepage's four rows.
+  // Unlike the coverage gates above this cannot be caused by a news outage, so
+  // it throws instead of recording a partial.
+  const duplicateHeadlineUrls = duplicateArticleUrls(snapshot.headlines, (row) => row?.url);
+  if (duplicateHeadlineUrls.length > 0) {
+    throw new Error(
+      `Pulse freeze selected ${snapshot.headlines.length} headlines carrying a repeated article: `
+      + `${duplicateHeadlineUrls.join(', ')}`,
     );
   }
 
@@ -436,15 +1503,116 @@ if (isMain) {
       console.log(
         `[freeze-crawlable-live-pulse] countries=${snapshot.coverage.countryCount} `
         + `chokepoints=${snapshot.coverage.chokepointCount} `
-        + `crises=${snapshot.coverage.crisisCount}`,
+        + `crises=${snapshot.coverage.crisisCount} `
+        + `headlines=${snapshot.coverage.headlineCount} `
+        + `quotes=${snapshot.coverage.quoteCount} `
+        + `headlineCountries=${snapshot.coverage.headlineCountryCount} `
+        + `briefCountries=${snapshot.coverage.briefCountryCount} `
+        + `briefEvidenceCited=${snapshot.coverage.briefEvidenceCitedCount}/${snapshot.coverage.briefEvidenceFormatCount} `
+        + `briefAnalysis=${snapshot.coverage.briefAnalysisCount} `
+        + `briefEligible=${snapshot.coverage.briefEligibleCount} `
+        + `briefUnsupportedCitations=${snapshot.coverage.briefUnsupportedCitationCount} `
+        + `briefThinGrounding=${snapshot.coverage.briefThinGroundingCount} `
+        + `briefRelevanceFiltered=${snapshot.coverage.briefRelevanceFilteredCount} `
+        + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
+        + `developmentsCountries=${snapshot.coverage.developmentsCountryCount} `
+        + `developmentsMissing=${snapshot.coverage.developmentsMissingCount} `
+        + `digestPool=${snapshot.coverage.developmentsDigestItemCount} `
+        + `curatedFeeds=${snapshot.coverage.developmentsCuratedFeeds.state}`
+        + `:${snapshot.coverage.developmentsCuratedFeeds.feedCached}/${snapshot.coverage.developmentsCuratedFeeds.feedTotal} `
+        + `curatedRecovered=${snapshot.coverage.developmentsCuratedFeeds.recoveredCountryCount} `
+        + `countryIndex=${snapshot.coverage.developmentsCountryIndex.state}`
+        + `:${snapshot.coverage.developmentsCountryIndex.countryCount} `
+        + `keyed=${snapshot.coverage.serviceKeyPresent} `
+        + `forecastScorecard=${snapshot.coverage.forecastScorecardCaptured}`
+        + `:${snapshot.coverage.forecastScorecardScored ?? 'none'}`,
       );
+      if (!snapshot.coverage.forecastScorecardCaptured) {
+        // /accuracy/ reports the failed capture and, when an older measurement
+        // was retained, ages it on its own clock. Either way the page publishes
+        // the state rather than a number it did not read, so the run continues.
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: forecast scorecard capture failed (${snapshot.coverage.forecastScorecardFailureCode}); `
+          + `/accuracy/ will report the failure and ${snapshot.coverage.forecastScorecardRetained ? 'publish the retained measurement, dated' : 'publish no figures'}. `
+          + `Cause: ${snapshot.errors.forecastScorecard[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.developmentsMissingCount > 0) {
+        // The remaining tail is the countries neither the digest pool nor the
+        // per-country index named this week. Logged so every weekly PR
+        // states the number (#7748).
+        console.warn(
+          `[freeze-crawlable-live-pulse] ${snapshot.coverage.developmentsMissingCount} of `
+          + `${snapshot.coverage.countryCount} countries have no dated development this run `
+          + '(no digest or index mention, brief or timeline event).',
+        );
+      }
+      if (snapshot.coverage.briefRelevanceFilteredCount > 0) {
+        // Separate from the thin-grounding tail: these countries had enough
+        // publishers until their sports/entertainment rows were set aside.
+        console.log(
+          `[freeze-crawlable-live-pulse] ${snapshot.coverage.briefRelevanceFilteredCount} countries skipped a brief `
+          + 'because the relevance filter left them below the grounding floor.',
+        );
+      }
+      if (snapshot.coverage.developmentsCountryIndex.state !== 'available') {
+        // Loud like the keyless warning: without the index the tail reverts
+        // to the digest-only size, and the corpus build's raised floor does
+        // not apply, so a green weekly PR would look complete while shipping
+        // ~130 pages with no dated item.
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: per-country article index ${snapshot.coverage.developmentsCountryIndex.state}; `
+          + 'country pages the digest does not name carry no dated development. '
+          + `Cause: ${snapshot.errors.developments.find((entry) => entry.stage === 'country-index')?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.headlineCount < HEADLINE_CAPTURE_COUNT) {
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: only ${snapshot.coverage.headlineCount} publishable `
+          + 'headline(s) captured; the welcome strip will show that many rows. '
+          + `Cause: ${snapshot.errors.headlines[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.quoteCount < QUOTE_SYMBOLS.length) {
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: only ${snapshot.coverage.quoteCount} of `
+          + `${QUOTE_SYMBOLS.length} market quotes captured; the tape will show that many rows. `
+          + `Cause: ${snapshot.errors.quotes[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.quotesRateLimited) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] WARNING: market upstream reported rateLimited; '
+          + 'frozen prices may be older than this run.',
+        );
+      }
+      if (snapshot.coverage.headlineServedStale) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] WARNING: news digest served stale content '
+          + `(state=${snapshot.coverage.headlineDigestState}); frozen headlines are older than this run.`,
+        );
+      }
       if (
         snapshot.coverage.countryErrorCount
         || snapshot.coverage.chokepointErrorCount
         || snapshot.coverage.crisisErrorCount
+        || snapshot.coverage.headlineErrorCount
+        || snapshot.coverage.quoteErrorCount
+        || snapshot.coverage.developmentsErrorCount
       ) {
         console.warn('[freeze-crawlable-live-pulse] partial errors recorded in snapshot.errors');
       }
+      // Loud by design: a keyless cron (missing/expired WORLDMONITOR_API_KEY)
+      // is green but headlines-only — indistinguishable from healthy without
+      // this line. The weekly workflow declares the secret; if this warning
+      // appears there, the enrichment is silently off.
+      if (!snapshot.coverage.serviceKeyPresent) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] no service key configured: tier-gated brief/timeline captures skipped '
+          + '(briefSkipped=no-service-key). Set WORLDMONITOR_API_KEY for full enrichment.',
+        );
+      }
+      console.log('[freeze-crawlable-live-pulse] next: npm run teasers:welcome (regenerates the welcome strip)');
     })
     .catch((error) => {
       console.error('[freeze-crawlable-live-pulse] failed:', error);
@@ -452,4 +1620,14 @@ if (isMain) {
     });
 }
 
-export { normalizeApiBase, mintSession, authedGet };
+export {
+  normalizeApiBase,
+  mintSession,
+  authedGet,
+  selectCountryHeadlines,
+  buildBriefContext,
+  isVerifiableArticleUrl,
+  COUNTRY_DIGEST_VARIANTS,
+  normalizeHttpsUrl,
+  timelineRecord,
+};

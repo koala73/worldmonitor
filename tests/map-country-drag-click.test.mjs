@@ -98,5 +98,20 @@ describe('map country drag/click guard', () => {
       /this\.attachMapLibreInteractionHandlers\(\);[\s\S]*localizeMapLabels\(this\.maplibreMap\);/,
       'fallback load handler must reattach country click handlers before continuing map initialization',
     );
+    assert.match(
+      fallbackMatch[0],
+      /if \(this\.webglLost\)/,
+      'fallback recreate must refuse to rebuild MapLibre while the WebGL context is lost',
+    );
+    assert.match(
+      fallbackMatch[0],
+      /try \{[\s\S]*new maplibregl\.Map\([\s\S]*\} catch \(error\)/,
+      'fallback MapLibre construction must catch GPUInitializationError instead of leaking to window.onerror',
+    );
+    assert.match(
+      fallbackMatch[0],
+      /reportFatalBasemapFailure\(error, center\)/,
+      'failed fallback construction must hand off via reportFatalBasemapFailure',
+    );
   });
 });

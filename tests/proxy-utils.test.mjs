@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
-import { Readable } from 'node:stream';
+import net from 'node:net';
+import tls from 'node:tls';
+import { PassThrough, Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 
 const {
   _readBoundedResponseStream,
   parseProxyConfig,
   parseProxyConfigForAttempt,
+  proxyConnectTunnel,
   proxyFetch,
   resolveProxyString,
   resolveProxyStringForAttempt,
@@ -31,6 +34,91 @@ function proxyFetchHarness(response, { maxResponseBytes = Infinity } = {}) {
 }
 
 describe('proxy utilities', () => {
+  for (const stage of ['proxy_connection', 'proxy_connect', 'target_tls']) {
+    it(`preserves the error and reports the observed ${stage} failure`, async (t) => {
+      const failure = Object.assign(new Error('fixture connection reset'), { code: 'ECONNRESET' });
+      const socket = Object.assign(new EventEmitter(), {
+        destroy() {}, pause() {}, resume() {},
+        write() {
+          queueMicrotask(() => socket.emit('data', Buffer.from(
+            stage === 'proxy_connect' ? 'HTTP/1.1 407 Proxy Authentication Required\r\n\r\n'
+              : 'HTTP/1.1 200 Connection established\r\n\r\n',
+          )));
+        },
+      });
+      t.mock.method(net, 'connect', (_options, onConnect) => {
+        queueMicrotask(() => stage === 'proxy_connection' ? socket.emit('error', failure) : onConnect());
+        return socket;
+      });
+      t.mock.method(tls, 'connect', () => {
+        const target = new EventEmitter();
+        queueMicrotask(() => target.emit('error', failure));
+        return target;
+      });
+      await assert.rejects(proxyConnectTunnel('origin.test', {
+        host: 'proxy.test', port: 8080, auth: 'user:secret', tls: false,
+      }), error => {
+        if (stage === 'proxy_connect') {
+          assert.equal(error.proxyConnect, true);
+          assert.equal(error.status, 407);
+        } else {
+          assert.equal(error, failure);
+          assert.equal(error.code, 'ECONNRESET');
+        }
+        assert.deepEqual(error.proxyFailure, {
+          stage, httpStatus: null,
+          proxyConnectStatus: stage === 'proxy_connection' ? null : stage === 'proxy_connect' ? 407 : 200,
+        });
+        assert.equal(Object.keys(error).includes('proxyFailure'), false);
+        return true;
+      });
+    });
+  }
+
+  for (const stage of ['response_headers', 'response_body']) {
+    it(`retains status and rejection identity for a proxy ${stage} failure`, async () => {
+      const failure = Object.assign(new Error('fixture response reset'), { code: 'ECONNRESET' });
+      let destroyed = 0;
+      await assert.rejects(proxyFetch('https://origin.test/report', { host: 'proxy.test', port: 8080 }, {
+        connectTunnel: async () => ({ socket: {}, destroy() { destroyed += 1; } }),
+        requestFn: (_options, onResponse) => {
+          const req = new EventEmitter();
+          req.end = () => {
+            if (stage === 'response_headers') queueMicrotask(() => req.emit('error', failure));
+            else {
+              const response = Object.assign(new PassThrough(), { statusCode: 200, headers: {} });
+              onResponse(response);
+              response.destroy(failure);
+            }
+          };
+          return req;
+        },
+      }), error => {
+        assert.equal(error, failure);
+        assert.equal(error.code, 'ECONNRESET');
+        assert.deepEqual(error.proxyFailure, {
+          stage, httpStatus: stage === 'response_body' ? 200 : null, proxyConnectStatus: null,
+        });
+        return true;
+      });
+      assert.equal(destroyed, 1);
+    });
+  }
+
+  it('does not replace frozen or primitive abort reasons for diagnostics', async () => {
+    for (const reason of [Object.freeze(new Error('frozen failure')), 'plain failure']) {
+      const controller = new AbortController();
+      await assert.rejects(proxyFetch('https://origin.test/report', { host: 'proxy.test', port: 8080 }, {
+        signal: controller.signal,
+        connectTunnel: async () => ({ socket: {}, destroy() {} }),
+        requestFn: () => Object.assign(new EventEmitter(), { end() { controller.abort(reason); } }),
+      }), error => {
+        assert.equal(error, reason);
+        return true;
+      });
+    }
+  });
+
   it('applies standard ports when URL parsing normalizes them away', () => {
     assert.deepEqual(
       parseProxyConfig('https://proxy-user:proxy-secret@proxy.test:443'),
@@ -138,6 +226,31 @@ describe('proxy utilities', () => {
     );
   });
 
+  it('rotates China sticky ports within their country range without changing the route', () => {
+    for (const host of ['cn.decodo.com', 'CN.DECODO.COM', 'Cn.Decodo.Com', 'cn.decodo.com.']) {
+      const raw = `${host}:30001:proxy-user:proxy-secret`;
+      const initial = parseProxyConfig(raw);
+      assert.deepEqual(parseProxyConfigForAttempt(raw, 0), initial);
+      assert.deepEqual(parseProxyConfigForAttempt(raw, 1), { ...initial, port: 30002 });
+      assert.equal(parseProxyConfigForAttempt(`${host}:39999:proxy-user:proxy-secret`, 1).port, 30001);
+      for (const port of [7000, 10000, 29999, 30000, 40000, 49999]) {
+        assert.equal(parseProxyConfigForAttempt(`${host}:${port}:proxy-user:proxy-secret`, 1).port, port);
+      }
+    }
+    for (const protocol of ['http', 'https']) {
+      const raw = `${protocol}://proxy-user:proxy-secret@cn.decodo.com:30001`;
+      assert.deepEqual(parseProxyConfigForAttempt(raw, 1), { ...parseProxyConfig(raw), port: 30002 });
+    }
+    for (const host of ['cn.decodo.com.proxy.test', 'cn.proxy.test', 'jp.decodo.com']) {
+      const raw = `${host}:30001:proxy-user:proxy-secret`;
+      assert.deepEqual(parseProxyConfigForAttempt(raw, 1), parseProxyConfig(raw));
+    }
+    assert.equal(
+      resolveProxyStringForAttempt(1, 'cn.decodo.com:30001:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@cn.decodo.com:30002',
+    );
+  });
+
   it('rotates the curl proxy string onto a distinct Decodo sticky exit per attempt', () => {
     const decodo = 'gate.decodo.com:10001:proxy-user:proxy-secret';
 
@@ -221,6 +334,39 @@ describe('proxy utilities', () => {
     );
   });
 
+  it('sanitizes a hostile attempt index instead of leaving the sticky range', () => {
+    // The clamp lives HERE rather than at each entry point because this is now
+    // a second door into the same arithmetic: #7963 exposed it through
+    // httpsProxyFetchRaw's `proxyAttempt` option, and that helper is injected
+    // into seeders that run their own 1-based retry loops. Its sibling
+    // resolveProxyStringForAttempt has always clamped (see 'reads the attempt
+    // as the first argument' above), so before this the guarantee depended on
+    // which door the caller came through.
+    //
+    // Unclamped, `+` concatenates before `%` coerces: attempt '2' on port 10005
+    // computes 4 + '2' === '42' and lands on 10043, a live exit nobody asked
+    // for. A negative index resolves BELOW the sticky floor (10000), which is
+    // not a sticky exit at all.
+    const sticky = 'gate.decodo.com:10005:proxy-user:proxy-secret';
+    assert.equal(
+      parseProxyConfigForAttempt(sticky, '2').port,
+      10007,
+      'a numeric string is an index, not a suffix',
+    );
+    for (const badAttempt of [undefined, null, NaN, 'two', {}, [], Infinity, -5]) {
+      assert.equal(
+        parseProxyConfigForAttempt(sticky, badAttempt).port,
+        10005,
+        `attempt=${String(badAttempt)} must degrade to the configured exit`,
+      );
+    }
+    assert.equal(
+      parseProxyConfigForAttempt(sticky, 2.9).port,
+      10007,
+      'a fractional attempt truncates rather than producing a fractional port',
+    );
+  });
+
   it('rejects a response stream as soon as it exceeds the byte limit', async () => {
     await assert.rejects(
       _readBoundedResponseStream(
@@ -279,5 +425,33 @@ describe('proxy utilities', () => {
       (error) => error.code === 'RESPONSE_TOO_LARGE',
     );
     assert.equal(oversizedHarness.destroyed(), 1);
+  });
+
+  // The tunnel is always to :443, but https.request given only `createConnection`
+  // has no agent and defaults to port 80, so it wrote `Host: <host>:80` on a TLS
+  // request. ENTSO-E's gateway rejects that ("inconsistent Forwarded/Host
+  // headers", HTTP 400), so the electricity proxy fallback never worked. This runs
+  // the real https.request so the header on the wire is what gets checked.
+  it('sends the bare target host on the wire, not a :80 port', async () => {
+    let written = '';
+    const socket = new PassThrough();
+    socket.write = (chunk, encoding, callback) => {
+      written += chunk.toString();
+      if (written.includes('\r\n\r\n')) {
+        queueMicrotask(() => socket.push('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'));
+      }
+      (typeof encoding === 'function' ? encoding : callback)?.();
+      return true;
+    };
+
+    const result = await proxyFetch('https://web-api.tp.entsoe.eu/api?documentType=A44', {
+      host: 'proxy.example', port: 443, auth: 'user:pass', tls: true,
+    }, {
+      connectTunnel: async () => ({ socket, destroy() {} }),
+    });
+
+    assert.equal(result.status, 200);
+    const hostLine = written.split('\r\n').find((line) => /^host:/i.test(line));
+    assert.equal(hostLine, 'Host: web-api.tp.entsoe.eu');
   });
 });

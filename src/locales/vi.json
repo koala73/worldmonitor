@@ -119,7 +119,8 @@
       "activeSirens": "Còi báo động hoạt động",
       "sirens24h": "Còi báo động / 24h",
       "aviationDisruptions": "Gián đoạn hàng không",
-      "gpsJammingZones": "Vùng nhiễu GPS"
+      "gpsJammingZones": "Vùng nhiễu GPS",
+      "temporalUnavailable": "Quan sát theo thời gian không khả dụng"
     },
     "fallback": {
       "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",
@@ -190,7 +191,7 @@
       "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -852,7 +853,6 @@
   "components": {
     "webcams": {
       "paused": "Webcam đã tạm dừng",
-      "pausedIdle": "Webcam đã tạm dừng — di chuyển chuột để tiếp tục",
       "regions": {
         "all": "TẤT CẢ",
         "mideast": "TRUNG ĐÔNG",
@@ -862,7 +862,11 @@
         "space": "KHÔNG GIAN"
       },
       "play": "Phát",
-      "previewStatus": "Xem trước trực tiếp"
+      "previewStatus": "Sẵn sàng phát",
+      "connecting": "Đang kết nối…",
+      "unverified": "Không thể xác nhận luồng này đang phát trực tiếp",
+      "offline": "{{city}} hiện đang ngoại tuyến",
+      "noFeeds": "Không có webcam trực tiếp trong khu vực này lúc này"
     },
     "positiveNewsFeed": {
       "noStories": "Chưa có bài viết trong danh mục này"
@@ -1074,10 +1078,18 @@
       "skipToEnd": "Tới cuối"
     },
     "pizzint": {
+      "indexSource": "Chỉ số: World Monitor · dữ liệu địa điểm:",
+      "statusNormal": "BÌNH THƯỜNG",
+      "statusNoData": "KHÔNG CÓ DỮ LIỆU",
+      "statusNoBaseline": "KHÔNG CÓ MỐC CHUẨN",
+      "vsUsual": "so với thường lệ",
       "title": "Chỉ số Pizza Lầu Năm Góc",
       "defcon": "DEFCON {{level}}",
       "updated": "Cập nhật {{timeAgo}}",
       "tensionsTitle": "Căng thẳng Địa chính trị",
+      "tensionsSource": "Căng thẳng: World Monitor tính từ các sự kiện GDELT",
+      "insufficientData": "Không đủ dữ liệu",
+      "pizzaUnavailable": "Không có dữ liệu hoạt động của các tiệm pizza",
       "source": "Nguồn:",
       "statusClosed": "ĐÓNG CỬA",
       "statusSpike": "ĐỘT BIẾN",
@@ -1089,11 +1101,11 @@
       "minutesAgo": "{{m}}ph trước",
       "hoursAgo": "{{h}}g trước",
       "defconLabels": {
-        "1": "COCKED PISTOL - SẴN SÀNG TỐI ĐA",
-        "2": "FAST PACE - LỰC LƯỢNG VŨ TRANG SẴN SÀNG",
-        "3": "ROUND HOUSE - TĂNG MỨC SẴN SÀNG",
-        "4": "DOUBLE TAKE - TĂNG CƯỜNG GIÁM SÁT TÌNH BÁO",
-        "5": "FADE OUT - MỨC SẴN SÀNG THẤP NHẤT"
+        "1": "Hoạt động tối đa",
+        "2": "Hoạt động cao",
+        "3": "Hoạt động gia tăng",
+        "4": "Trên bình thường",
+        "5": "Hoạt động bình thường"
       }
     },
     "strategicPosture": {
@@ -1174,9 +1186,6 @@
       "datacenter": "Trung tâm Dữ liệu",
       "base": "Căn cứ",
       "nuclear": "Hạt nhân"
-    },
-    "community": {
-      "joinDiscussion": "Đóng góp ý kiến phát triển"
     },
     "threatLabels": {
       "critical": "N.TRỌNG",
@@ -1486,7 +1495,10 @@
       "provenanceTitle": "Nguồn gốc bài viết: số lượng bài viết được nhập và các nguồn riêng biệt mà bài viết này được chọn từ đó",
       "compiledFrom": "Được biên soạn từ {{stories}} câu chuyện trên {{sources}} nguồn",
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Chi tiết tin tức ({{count}})",
+      "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
+      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
+      "streamIdleStopNever": "Không bao giờ"
     },
     "settings": {
       "exportSettings": "Xuất cài đặt",
@@ -1898,6 +1910,7 @@
       "etfs": "ETF",
       "netInflow": "DÒNG VÀO RÒNG",
       "netOutflow": "DÒNG RA RÒNG",
+      "netNeutral": "DÒNG TRUNG LẬP",
       "table": {
         "ticker": "Mã",
         "issuer": "Tổ chức Phát hành",
@@ -1980,15 +1993,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} hiện không phát trực tiếp",
-      "cannotEmbed": "Không thể phát {{name}} tại đây — có thể bị hạn chế ở khu vực của bạn (lỗi {{code}})",
-      "botCheck": "YouTube yêu cầu đăng nhập để phát {{name}}",
       "signInToYouTube": "Đăng nhập YouTube",
       "openOnYouTube": "Mở trên YouTube",
       "manage": "Quản lý kênh",
       "addChannel": "Thêm kênh",
       "remove": "Xóa",
-      "youtubeHandle": "Handle YouTube (vd: @Channel)",
-      "youtubeHandleOrUrl": "Tên kênh hoặc URL YouTube",
       "displayName": "Tên hiển thị (tùy chọn)",
       "channelSettings": "Cài đặt kênh",
       "save": "Lưu",
@@ -2004,12 +2013,24 @@
       "regionMiddleEast": "Trung Đông",
       "regionAfrica": "Châu Phi",
       "regionOceania": "Châu Đại Dương",
-      "invalidHandle": "Nhập handle YouTube hợp lệ (ví dụ: @TênKênh)",
       "verifying": "Đang xác minh…",
       "hlsUrl": "URL luồng HLS (tùy chọn)",
       "invalidHlsUrl": "Nhập URL luồng HLS hợp lệ (.m3u8)",
       "playLiveFeed": "Phát luồng trực tiếp",
-      "readyStatus": "Sẵn sàng khi bạn sẵn sàng"
+      "readyStatus": "Sẵn sàng khi bạn sẵn sàng",
+      "embedBlocked": "YouTube không phát {{name}} bên trong các trang web khác ngay bây giờ",
+      "unavailable": "Không thể phát {{name}} ngay bây giờ",
+      "noStream": "Chưa có luồng trực tiếp nào được thiết lập cho {{name}}",
+      "needsChannelUrl": "Thêm {{name}} lại với URL kênh của nó (youtube.com/channel/UC…) hoặc URL video trực tiếp",
+      "connecting": "Đang kết nối với {{name}}…",
+      "recording": "Đang ghi hình",
+      "unverified": "Không thể xác nhận luồng này đang trực tiếp",
+      "playNextChannel": "Phát kênh tiếp theo",
+      "channelOrVideoUrl": "Kênh YouTube hoặc URL video",
+      "channelUrlHint": "Dán URL kênh (youtube.com/channel/UC…) hoặc URL video trực tiếp",
+      "youtubeChannel": "Kênh YouTube",
+      "insecureStream": "{{name}} sử dụng luồng không an toàn (http), trình duyệt sẽ chặn. Thêm lại với URL luồng an toàn (https)",
+      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)"
     },
     "map": {
       "showMap": "Hiển thị bản đồ",
@@ -2163,7 +2184,7 @@
       "infoTooltip": "<strong>Lịch kinh tế</strong> Các công bố kinh tế vĩ mô theo lịch: CPI, NFP, GDP, PMI và quyết định ngân hàng trung ương. Hiển thị dự báo so với thực tế so với trước đó. Sự kiện tác động cao được đánh dấu. Nguồn: nhà cung cấp dữ liệu kinh tế."
     },
     "fsi": {
-      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Tỷ lệ WorldMonitor giữa tín dụng lợi suất cao và trái phiếu Kho bạc Mỹ dài hạn, được điều chỉnh theo biến động cổ phiếu và chênh lệch lợi suất cao: (HYG / TLT) / (VIX × HY spread / 100). Đây không phải là Chỉ số Căng thẳng Tài chính của Cục Dự trữ Liên bang Kansas City. Giá trị 1.5 hoặc cao hơn là căng thẳng thấp; dưới 0.3 là căng thẳng cao.",
       "title": "Chỉ Số Áp Lực Tài Chính",
       "usFsiValue": "GIÁ TRỊ FSI CỦA MỸ",
       "cissTitle": "EU CISS (Áp Lực Hệ Thống Vùng Euro)",
@@ -2613,7 +2634,14 @@
       "empty": "Không phát hiện sự hội tụ hoạt động",
       "signals_other": "{{count}} tín hiệu",
       "analyzing": "Đang phân tích...",
-      "viewOnMap": "Xem trên bản đồ"
+      "viewOnMap": "Xem trên bản đồ",
+      "waiting": "Đang chờ lần cập nhật dữ liệu tiếp theo. Bảng này tự động cập nhật.",
+      "offline": "Đang chờ kết nối. Bảng này tự động cập nhật khi bạn trực tuyến trở lại.",
+      "updated": "Đã cập nhật {{time}}",
+      "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
+      "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
+      "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
@@ -2770,6 +2798,55 @@
       "succeeded": "Khóa truy cập đã lưu. Bạn có thể sử dụng nó lần tới khi đăng nhập.",
       "retryable": "Quá trình chưa hoàn tất. Bạn có thể thử lại.",
       "failed": "Chúng tôi không thể lưu khóa truy cập trên thiết bị này."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Bản tóm tắt quyết định về hàng hóa",
+      "commodity": "Hàng hóa / sản phẩm",
+      "blockedChokepoint": "Điểm nghẽn giả định bị phong tỏa",
+      "commodityCapture": "Ghi lại so sánh hàng hóa",
+      "title": "Bản tóm tắt quyết định",
+      "fuel": "Nhiên liệu",
+      "chokepoint": "Điểm nghẽn",
+      "baseline": "Gián đoạn cơ sở",
+      "comparison": "Gián đoạn so sánh",
+      "capture": "Lấy / làm mới cả hai",
+      "downloadHtml": "Tải bản tóm tắt HTML",
+      "downloadJson": "Tải bản tóm tắt JSON",
+      "back": "← Về bản tóm tắt quốc gia",
+      "select": "Chọn một gián đoạn năng lượng, rồi lấy cả hai kịch bản.",
+      "changed": "Lựa chọn đã thay đổi. Hãy lấy cả hai kịch bản trước khi xuất.",
+      "loading": "Đang lấy cả hai kịch bản…",
+      "captured": "Đã lấy. Kiểm tra ngày quan sát và các hạn chế trước khi tải xuống.",
+      "failed": "Không thể lấy các kịch bản. Kiểm tra quyền truy cập và thử lại. Không có kết quả để xuất.",
+      "locked": "Bản tóm tắt quyết định có trong Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Tạm dừng do không hoạt động",
+      "idleBody": "Video trực tiếp đã dừng sau {{duration}} không có hoạt động chuột, bàn phím hoặc chạm.",
+      "idleResume": "Tiếp tục",
+      "idleKeepPlaying": "Tiếp tục phát khi không hoạt động",
+      "idleSettingsHint": "Thay đổi bất kỳ lúc nào trong Cài đặt › Media.",
+      "idleKeepPlayingToast": "Video trực tiếp sẽ tiếp tục phát khi không hoạt động. Thay đổi trong Cài đặt › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Một nhà xuất bản duy nhất",
+      "singlePublisherHint": "Hiện tại chỉ có một nhà xuất bản đưa tin về điều này. Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "tier4Only": "Chỉ các nguồn cấp thấp",
+      "tier4OnlyHint": "Mọi cơ quan báo chí đưa tin về điều này đều là nguồn cấp 4 (các trang tổng hợp tin tức và blog). Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "rosterListed": "({{listed}} được liệt kê)",
+      "rosterFeeds": "Kênh tin đã thấy: {{labels}}",
+      "rosterLegend": "Các cấp xếp hạng nguồn; chúng không đánh giá tuyên bố này.",
+      "tierDocsLink": "Cách phân cấp",
+      "tierChip": "C{{tier}}",
+      "tierChipUndeclared": "C?",
+      "tierTitle1": "Cấp 1: Hãng thông tấn và cơ quan chính thức",
+      "tierTitle2": "Cấp 2: Các cơ quan báo chí lớn",
+      "tierTitle3": "Cấp 3: Nguồn chuyên ngành, khu vực và viện nghiên cứu chính sách",
+      "tierTitle4": "Cấp 4: Trang tổng hợp tin tức và blog",
+      "tierTitleUndeclared": "Chưa khai báo cấp: chưa được xem xét",
+      "rosterSummary": "Được đưa tin bởi {{publishers}}",
+      "rosterSummaryTier1": "Được đưa tin bởi {{publishers}}, trong đó {{tier1}} thuộc cấp 1",
+      "rosterPublishers_other": "{{count}} nhà xuất bản"
     }
   },
   "popups": {
@@ -2808,14 +2885,18 @@
     "protest": {
       "acledVerified": "ACLED (đã xác minh)",
       "gdelt": "GDELT",
+      "records": "bản ghi",
+      "mediaSignal": "Tín hiệu truyền thông chưa xác minh",
+      "relatedArticle": "Bài viết liên quan",
+      "mediaSignalDetail": "Địa điểm này được nhắc đến trong các bài viết về bất ổn. Sự kiện tại địa phương chưa được xác minh.",
       "riots": "Bạo loạn",
       "highSeverity": "Mức nghiêm trọng Cao"
     },
     "gpsJamming": {
       "title": "Nhiễu GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Máy bay bị ảnh hưởng",
+      "samples": "Số máy bay bị ảnh hưởng",
+      "aircraft": "Tổng số máy bay quan sát được",
       "h3Hex": "H3 Hex"
     },
     "flight": {

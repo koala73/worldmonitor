@@ -1,0 +1,90 @@
+{
+  "countries": {
+    "AF": { "terms": ["afghan", "afghans"] },
+    "AR": { "terms": ["argentine", "argentinian", "argentinians"] },
+    "AT": { "terms": ["austrian", "austrians"] },
+    "AU": { "terms": ["australian", "australians"] },
+    "BE": { "terms": ["belgian", "belgians"] },
+    "BR": { "terms": ["brazilian", "brazilians"] },
+    "CA": { "terms": ["canadian", "canadians"] },
+    "CD": {
+      "terms": ["democratic republic of congo", "democratic republic of the congo"],
+      "excludedBaseTerms": ["congo"]
+    },
+    "CH": { "terms": ["swiss"] },
+    "CN": { "terms": ["chinese"] },
+    "CU": { "terms": ["cuban", "cubans"] },
+    "DE": { "terms": ["german", "germans"] },
+    "DK": { "terms": ["danish", "danes"] },
+    "EG": { "terms": ["egyptian", "egyptians"] },
+    "ES": { "terms": ["spanish"] },
+    "ET": { "terms": ["ethiopian", "ethiopians"] },
+    "FI": { "terms": ["finnish", "finns"] },
+    "FR": {
+      "terms": ["french"],
+      "excludedPhrases": ["french hill"]
+    },
+    "GB": {
+      "terms": ["british", "briton", "britons", "uk", "uk election", "uk economy", "uk prime minister"]
+    },
+    "GE": {
+      "terms": ["georgian"],
+      "requiredContext": ["tbilisi", "georgian", "abkhazia", "ossetia", "caucasus", "saakashvili", "ivanishvili", "batumi", "kutaisi"]
+    },
+    "GR": {
+      "terms": ["greek", "greeks"],
+      "excludedPhrases": ["greek letters"]
+    },
+    "ID": { "terms": ["indonesian", "indonesians"] },
+    "IL": { "terms": ["israeli", "israelis"] },
+    "IN": {
+      "terms": ["indian", "indians"],
+      "excludedPhrases": ["indian wells"]
+    },
+    "IQ": { "terms": ["iraqi", "iraqis"] },
+    "IR": { "terms": ["iranian", "iranians"] },
+    "IT": { "terms": ["italian", "italians"] },
+    "JO": {
+      "terms": ["jordanian"],
+      "requiredContext": ["jordanian", "amman"]
+    },
+    "JP": { "terms": ["japanese"] },
+    "KE": { "terms": ["kenyan", "kenyans"] },
+    "KP": { "terms": ["dprk", "north korean", "north koreans"] },
+    "KR": { "terms": ["south korean", "south koreans"] },
+    "LB": { "terms": ["lebanese"] },
+    "MX": { "terms": ["mexican", "mexicans"] },
+    "NG": { "terms": ["nigerian", "nigerians"] },
+    "NL": {
+      "terms": ["dutch"],
+      "excludedPhrases": ["dutch bros", "dutch auction"]
+    },
+    "NO": { "terms": ["norwegian", "norwegians"] },
+    "PH": { "terms": ["filipino", "filipinos"] },
+    "PK": { "terms": ["pakistani", "pakistanis"] },
+    "PL": { "terms": ["polish election", "polish government", "polish president", "polish parliament"] },
+    "PT": { "terms": ["portuguese"] },
+    "RU": { "terms": ["russian", "russians"] },
+    "SA": { "terms": ["saudi", "saudis"] },
+    "SE": { "terms": ["swedish", "swedes"] },
+    "SY": { "terms": ["syrian", "syrians"] },
+    "TD": {
+      "terms": ["chadian", "n djamena"],
+      "requiredContext": ["chadian", "n djamena", "ndjamena"]
+    },
+    "TH": { "terms": ["thai", "thais"] },
+    "TR": { "terms": ["turkish", "turks"] },
+    "UA": { "terms": ["ukrainian", "ukrainians"] },
+    "US": {
+      "terms": ["american", "americans", "congress", "white house", "federal reserve", "the fed", "fed rate", "fed chair", "fed cut", "fed hike", "us recession", "us gdp", "us election", "us tariff", "us president", "us presidency"],
+      "excludedBaseTerms": ["america", "washington"]
+    },
+    "VE": { "terms": ["venezuelan", "venezuelans"] },
+    "VN": { "terms": ["vietnamese"] },
+    "YE": { "terms": ["yemeni", "yemenis"] },
+    "AE": { "terms": ["emirati"] }
+  },
+  "termShadows": {
+    "CG": { "term": "congo", "specificCountryCode": "CD" }
+  }
+}

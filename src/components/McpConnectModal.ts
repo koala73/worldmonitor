@@ -13,6 +13,7 @@ import { proxyUrl } from '@/utils/proxy';
 import { premiumFetch } from '@/services/premium-fetch';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 interface McpConnectOptions {
@@ -65,6 +66,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   overlay.className = 'modal-overlay active';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-label', t('mcp.modalTitle'));
 
   const modal = document.createElement('div');
@@ -214,6 +216,32 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     return parseAuthHeader(authInput.value);
   }
 
+  /** A panel saved to a keyed preset without that preset's key is rejected by
+   *  the upstream on every refresh (WORLDMONITOR-172). The requirement follows
+   *  the URL being saved, not the card last clicked, and only a non-empty value
+   *  in the preset's own header satisfies it. Custom servers keep keys optional. */
+  function hasRequiredKey(): boolean {
+    const template = MCP_PRESETS.find(p => p.serverUrl === urlInput.value.trim())?.apiKeyHeader;
+    if (!template) return true;
+    const headerName = template.slice(0, template.indexOf(':')).trim();
+    // Header names are case-insensitive; the advanced field may spell it either way.
+    const entry = Object.entries(getEffectiveHeaders())
+      .find(([k]) => k.toLowerCase() === headerName.toLowerCase());
+    return !!entry && extractKeyFromHeaders({ [headerName]: entry[1] }, template) !== null;
+  }
+
+  function canAdd(): boolean {
+    return selectedTool !== null && hasRequiredKey();
+  }
+
+  function syncAddEnabled(): void {
+    addBtn.disabled = !canAdd();
+  }
+
+  urlInput.addEventListener('input', syncAddEnabled);
+  apiKeyInput.addEventListener('input', syncAddEnabled);
+  authInput.addEventListener('input', syncAddEnabled);
+
   function showSimpleMode(preset: McpPreset): void {
     activeApiKeyHeader = preset.apiKeyHeader ?? '';
     apiKeyGroup.style.display = '';
@@ -235,7 +263,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     if (activeApiKeyHeader) toSimpleBtn.style.display = '';
   }
 
-  toAdvancedBtn.addEventListener('click', () => showAdvancedMode(true));
+  toAdvancedBtn.addEventListener('click', () => {
+    showAdvancedMode(true);
+    syncAddEnabled();
+  });
   toSimpleBtn.addEventListener('click', () => {
     // Re-extract key from any edits made in advanced mode
     if (activeApiKeyHeader) {
@@ -246,6 +277,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     apiKeyGroup.style.display = '';
     authHeaderGroup.style.display = 'none';
     toSimpleBtn.style.display = 'none';
+    syncAddEnabled();
   });
 
   // Set hint if editing in simple mode
@@ -284,6 +316,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         authHeaderGroup.style.display = 'none';
         toSimpleBtn.style.display = 'none';
       }
+      syncAddEnabled();
     });
   }
 
@@ -327,10 +360,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         argsInput.value = presetArgs || '{}';
         if (presetTitle) titleInput.value = presetTitle;
         toolConfig.style.display = '';
-        addBtn.disabled = false;
         toolsSection.style.display = '';
         setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected"><span class="mcp-tool-name">${escapeHtml(presetTool)}</span></div>`, "legacy direct innerHTML migration"));
       }
+      syncAddEnabled();
     });
   });
 
@@ -342,7 +375,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     toolConfig.style.display = '';
     toolsSection.style.display = '';
     setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected">${escapeHtml(existing.toolName)}</div>`, "legacy direct innerHTML migration"));
-    addBtn.disabled = false;
+    syncAddEnabled();
   }
 
   function parseAuthHeader(raw: string): Record<string, string> {
@@ -389,7 +422,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
           argsInput.value = '{}';
         }
         toolConfig.style.display = '';
-        addBtn.disabled = false;
+        syncAddEnabled();
       });
       toolsList.appendChild(item);
     }
@@ -404,13 +437,14 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     connectBtn.disabled = true;
     try {
       const headers = getEffectiveHeaders();
-      const qs = new URLSearchParams({ serverUrl });
-      if (Object.keys(headers).length) qs.set('headers', JSON.stringify(headers));
       // premiumFetch attaches the Clerk Pro Bearer for normal web Pro
       // users. /api/mcp-proxy is in PREMIUM_RPC_PATHS so the path gate
       // fires; the server-side isCallerPremium check accepts Bearer,
       // wm_ user keys, and enterprise keys (PR #3768).
-      const resp = await premiumFetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
+      const resp = await premiumFetch(proxyUrl('/api/mcp-proxy'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tools/list', serverUrl, customHeaders: headers }),
         signal: AbortSignal.timeout(20_000),
       });
       const data = await resp.json() as { tools?: McpToolDef[]; error?: string };
@@ -431,7 +465,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   });
 
   addBtn.addEventListener('click', () => {
-    if (!selectedTool) return;
+    if (!selectedTool || !canAdd()) return;
     track('mcp-panel-add', { tool: selectedTool.name });
     argsError.style.display = 'none';
     let toolArgs: Record<string, unknown> = {};

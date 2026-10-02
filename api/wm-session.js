@@ -12,8 +12,8 @@ import { emitWmSessionUsage } from './_usage-telemetry.js';
 export const config = { runtime: 'edge' };
 
 const SESSION_COOKIE = 'wm-session';
-const WIDGET_KEY_COOKIE = 'wm-widget-key';
-const PRO_KEY_COOKIE = 'wm-pro-key';
+const WIDGET_KEY_COOKIE = '__Host-wm-widget-key';
+const PRO_KEY_COOKIE = '__Host-wm-pro-key';
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const LEGACY_KEY_MAX_LEN = 512;
 const SESSION_RATE_LIMIT_SCOPE = 'wm-session';
@@ -86,7 +86,7 @@ function cookieDomainAttribute(req) {
 }
 
 function sessionCookie(req, name, value) {
-  return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}${cookieDomainAttribute(req)}; HttpOnly; Secure; SameSite=Lax`;
+  return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}${name === SESSION_COOKIE ? cookieDomainAttribute(req) : ''}; HttpOnly; Secure; SameSite=Lax`;
 }
 
 /**
@@ -242,15 +242,23 @@ export default async function handler(req, ctx) {
   }
   headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
 
-  // Best-effort cleanup for old JS-readable cookies only when replacing that
-  // key. A no-key session refresh must preserve existing HttpOnly key cookies.
-  if (widgetKey) {
-    headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(WIDGET_KEY_COOKIE));
-    headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, WIDGET_KEY_COOKIE, widgetKey));
+  // Retire both old scopes on every refresh. Never consume these names: a
+  // parent-domain cookie cannot prove which sibling issued it. __Host- also
+  // prevents siblings from planting a Domain cookie under the replacement name.
+  for (const name of ['wm-widget-key', 'wm-pro-key']) {
+    headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(name));
+    headers = appendHeader(headers, 'Set-Cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
   }
-  if (proKey) {
-    headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(PRO_KEY_COOKIE));
-    headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
+  for (const [field, name, key] of [
+    ['widgetKey', WIDGET_KEY_COOKIE, widgetKey],
+    ['proKey', PRO_KEY_COOKIE, proKey],
+  ]) {
+    if (key) {
+      headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, name, key));
+    } else if (typeof body[field] === 'string' && !body[field].trim()) {
+      // Explicit empty string clears; an omitted field preserves the session.
+      headers = appendHeader(headers, 'Set-Cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
+    }
   }
 
   // The HttpOnly cookie remains the primary transport. The anonymous token is

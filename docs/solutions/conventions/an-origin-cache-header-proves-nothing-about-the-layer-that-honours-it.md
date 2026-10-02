@@ -1,0 +1,252 @@
+---
+title: "An origin cache header proves nothing about the layer that honours it"
+date: 2026-09-04
+last_updated: 2026-09-08
+category: conventions
+module: crawlable corpus / CDN cache configuration
+problem_type: convention
+component: deploy_config
+severity: high
+applies_when:
+  - "Asserting cache headers in tests/deploy-config.test.mjs and treating that as proof a route is cached"
+  - "Adding a new route family to vercel.json with CDN-Cache-Control and expecting the CDN to honour it"
+  - "Diagnosing cf-cache-status DYNAMIC on a route whose origin headers look correct"
+  - "Changing anything about the crawlable corpus' caching, TTFB, or crawl budget"
+  - "Reviewing a fix whose only evidence is a green offline config assertion"
+  - "Deferring half of a two-part change and pinning the deferral with a passing test"
+  - "Shipping a claim whose other half is applied by hand outside the repo"
+  - "Caching a proxied or content-negotiated route (Accept, RSC) at a shared edge"
+symptoms:
+  - "Every corpus route answers with the configured CDN-Cache-Control and Cloudflare still reports cf-cache-status: DYNAMIC"
+  - "tests/deploy-config.test.mjs is green on every family while production serves none of them from cache"
+  - "CrUX field TTFB stays flat across dozens of windows despite repeated caching 'fixes'"
+  - "A route family is configured identically to a working one but behaves differently in production"
+---
+
+# An origin cache header proves nothing about the layer that honours it
+
+## The recurrence
+
+The crawlable corpus' `CDN-Cache-Control` header went silently inert **twice in
+two days, from two different layers**, and `tests/deploy-config.test.mjs` was
+green through both.
+
+| | Layer that broke it | Why the offline assertion missed it |
+|---|---|---|
+| **#7590** (2026-09-03) | Vercel route matching. `vercel.json`'s `:param*` source compiles under path-to-regexp strict mode and never matches a trailing-slash URL — which is the only form the corpus serves. All ~22 corpus rules were inert. | The test modelled `:param*` as `(?:/.*)?`, which matches both forms. The model was more permissive than Vercel. |
+| **#7659** (2026-09-04) | Cloudflare cache rules. A zone rule, "Bypass cache - WWW documents", sets `cache: false` for every extensionless/HTML path on `www`. A cache rule outranks origin cache headers, so the (now correctly delivered) header got no vote. | The test asserts what `vercel.json` declares. It cannot see a CDN that declined to honour it. |
+
+Same header, same corpus, same green suite, two different downstream layers.
+Fixing the first made the second visible — and the second had been true the
+whole time.
+
+## The convention
+
+**A config assertion proves what you declared, never what a downstream layer
+did with it.** Every hop between the config file and the user's browser can
+independently nullify it:
+
+```
+vercel.json  ->  Vercel route matching  ->  Vercel edge cache  ->  Cloudflare cache rules  ->  browser
+   (asserted offline)        #7590                                        #7659
+```
+
+So: any change whose *value* is delivered by a layer you do not control needs a
+**live probe of the observable outcome**, not just an offline assertion of the
+input. For caching that outcome is `cf-cache-status`, and its
+`DYNAMIC` / `BYPASS` values are the precise fingerprint of "a rule declared this
+ineligible before your header was read".
+
+Note that a Vercel HIT is not evidence here. The corpus was *always*
+`x-vercel-cache: HIT`; the live sweep's existing `isSharedCacheHit()` accepts a
+Vercel HIT, which is exactly why it could not see this. Only `cf-cache-status`
+distinguishes the two caches.
+
+## What this looks like in the repo
+
+- `scripts/cloudflare-cache-rule.mjs` generates the corrective Cloudflare rule
+  from `CONTENT_CORPUS_PREFIXES` (and, since #7747, `EDGE_CACHED_FAMILIES` and
+  `AGENT_TEXT_FILES`), so the CDN rule cannot drift from the `vercel.json`
+  header rules it mirrors. `--check` compares it to the live zone;
+  `--apply` reconciles it through the per-rule endpoints.
+- `tests/cloudflare-cache-rule.test.mjs` pins the rule's shape offline **and**
+  asserts it covers exactly the families `vercel.json` advertises — the drift
+  that caused #7659.
+- `tests/live-api-cache-auth-regression.test.mjs` carries the `corpus-edge-cache`
+  probe: a real production document must reach a Cloudflare **HIT**, and its
+  query-bearing form must stay uncached. This is the assertion neither incident
+  had.
+- `tests/deploy-config.test.mjs` still asserts the headers, with a comment
+  naming both incidents so the next reader knows the assertion is necessary and
+  not sufficient.
+
+## Gotchas found while fixing it
+
+- **Cloudflare's `status_code_ttl.value: 0` means `no-cache`, not "do not
+  cache".** It *stores* the response and revalidates. Production showed a corpus
+  404 sitting at `cf-cache-status: MISS` under `0`, i.e. stored. `-1` is
+  `no-store`. This matters wherever a per-request-rendered non-2xx sits under a
+  cached prefix — `middleware.ts`'s `originNotFoundResponse` negotiates on
+  `Accept`, and Cloudflare honours `Vary` only for `Accept-Encoding`.
+- **Cloudflare re-serialises `action_parameters` with keys sorted.** A drift
+  check using `JSON.stringify` reports a false difference on a rule it just
+  applied unchanged. Compare with a key-order-independent stringify.
+- **The phase entrypoint `PUT` replaces every rule in the phase.** Use the
+  per-rule endpoints instead: a read-modify-write of the whole ruleset silently
+  reverts any concurrent dashboard edit, and round-trips other rules'
+  user-owned `ref` values.
+- **Changing the ruleset purges the edge cache.** Requests in the seconds after
+  an `--apply` legitimately MISS repeatedly; size any retry loop for it.
+- **`--apply` and a live probe are different guards.** `--check` catches config
+  drift before it changes behaviour; the live probe catches behaviour whatever
+  the config says. The probe is the one that would have caught both incidents.
+
+## Third time: #7747 (2026-09-05)
+
+The 582 sitemap URLs outside the corpus — `/docs/**`, `/blog/**`, the root
+agent text files — were still DYNAMIC after #7659, and the issue read the gap
+off a perfect correlation: every HIT carried `cdn-cache-control`, every DYNAMIC
+did not. The correlation was real and the causal reading was wrong. Header and
+Cloudflare rule were generated from the same prefix list, so every route had
+both or neither; adding the header alone would have changed nothing, because
+the bypass rule outranks it. The fix needed both halves again, and
+`tests/cloudflare-cache-rule.test.mjs` now fails when they disagree.
+
+What the widening surfaced:
+
+- **One URL, several bodies.** Vercel answers `Accept: text/markdown` with a
+  markdown rendering of any HTML document (corpus and blog, `Vary: accept`);
+  Mintlify does the same for `text/markdown` and `text/plain`, serves an RSC
+  flight for `RSC: 1` and the `next-router-*` headers, and both match media
+  types case-insensitively. Cloudflare keys on the URL. The rule therefore
+  admits an HTML document only when the request asks for it the way browsers
+  and crawlers do — inspecting every `Accept` value, since the header may
+  arrive as several lines and the origins honour the combined list — while
+  `.md`/`.txt`/`.xml` files, which answer one body whatever is asked, are
+  exempt so agents advertising their media type keep the cache. Negotiating
+  requests for documents fall through to the bypass, exactly as before. Probe
+  representations, not just routes, before caching anything behind a proxy.
+- **Vercel's own cache is a third layer with the same problem.** For the
+  Mintlify proxy `Vercel-CDN-Cache-Control: no-store` keeps Vercel from keying
+  the HTML and markdown bodies under one URL while `CDN-Cache-Control` still
+  gives Cloudflare its TTL.
+- **Cloudflare fills an unset rule `ref` with the rule's id.** The first
+  corpus rule was applied before the script set a `ref`, so the live `ref`
+  echoed the `id`, and the identity check read that as a foreign ref on our
+  description: `--check` said "ambiguous" against a zone holding exactly one
+  copy. A description match whose `ref === id` is a legacy rule to adopt.
+- **`curl -I` cannot see the rule.** It sends HEAD; the rule requires GET. A
+  HEAD probe reports DYNAMIC on a route every real client gets as HIT. Verify
+  with `curl -s -o /dev/null -D -`.
+
+## Fourth time: #7804 (2026-09-06)
+
+The corpus rule's representation guard was correct and inert on the two
+busiest URLs on the site. A dashboard-managed sibling, `WWW entry HTML - use
+origin CDN cache headers`, sat one position earlier and set `cache: true` for
+any query-free `GET /` or `GET /dashboard` with no guard at all. Cloudflare
+takes the last matching writer of a field, so a request the corpus rule
+declined — `Accept: text/markdown`, which Vercel answers with a markdown
+rendering of the homepage under the same cacheable header — still found
+`cache: true` there. `--check` said "current" throughout: the managed rule
+*was* current; the hole was in a rule the generator did not know existed.
+
+What this adds to the convention:
+
+- **A sibling rule with the same action and no guard reopens the hole.** The
+  generator now owns the whole document surface (`ENTRY_DOCUMENTS` joined the
+  model) and knows which rules it superseded (`RETIRED_CACHE_RULES`):
+  `--check` reports one still in the zone as drift wherever it sits, and
+  `--apply` deletes it after the claim lands.
+- **Pin the invariant, not the two names that broke it.** The retired list
+  names the rules that were wrong; a third dashboard rule under a fresh name
+  would have slipped past it, which is the shape
+  `pinned-value-allowlist-freezes-a-snapshot-not-the-invariant.md` warns
+  about. So `--check` also scans structurally: any enabled earlier rule that
+  sets `cache: true` and quotes a path the generator claims is reported, and
+  it blocks `--apply` rather than being deleted — a name the generator does
+  not know is a human's call. The claim set comes from the surface model, not
+  from the generated expression, because the expression also quotes its own
+  carve-outs (`/blog/_astro/`) and the zone's static-asset rule quotes that
+  one legitimately.
+- **A document that varies by User-Agent needs the UA in the guard.**
+  `middleware.ts` routes the declared AI agents on `/` to `/home.md` under
+  `Vary: User-Agent`, which Cloudflare ignores. The origin's `no-store` keeps
+  that markdown out of the edge, but not the reverse: a crawler on a warm edge
+  server was handed the stored browser HTML before middleware ran. The `/`
+  claim carves those agents out; the corpus is UA-invariant and keeps them.
+  The UA-keyed bypass `scripts/cloudflare-agent-readiness.mjs` used to append
+  for the same purpose is gone — two scripts each insisting on the last
+  position would have moved each other's rule on every run.
+- **The safe probe for a representation is the query-bearing URL.** The rule
+  requires an empty query, so `/?probe=1` with the suspect `Accept` or UA
+  falls through to the bypass and shows the origin's answer without storing
+  anything. Sending the suspect request to the bare URL *is* the poisoning.
+
+## Fifth time: #7869 (2026-09-08) — a deferred half, pinned by a confident test name
+
+The root sitemaps had been reported uncached in two consecutive audit rounds
+before anyone looked at why. The reason turns out to be a new shape of this same
+failure, and the most transferable one yet: **the incomplete half had been
+written down as a decision.**
+
+#7749 gave `/sitemap.xml` and `/sitemap-main.xml` the Vercel half of the pair and
+stopped there, which is a defensible place to stop. What made it durable was the
+test that pinned it:
+
+```
+it('caches root sitemaps at Vercel without changing the Cloudflare bypass (#7749)', ...)
+```
+
+— asserting `CDN-Cache-Control` was `null`. That test is green, confidently
+named, and reads as a deliberate scope boundary rather than an unfinished job. So
+nothing prompted anyone to finish it, and production kept answering
+`cf-cache-status: DYNAMIC` until an external audit re-measured it two rounds
+later. A TODO decays into a decision the moment it is expressed as a passing
+assertion.
+
+**The counter-practice, when a claim's other half lives outside the repo.** The
+Cloudflare rule is only reachable through a manual `--apply`, so nothing in the
+repo can prove it ran. Every in-repo guard here compares `vercel.json` against
+`scripts/cloudflare-cache-rule.mjs` — two constants in the same tree, neither of
+which knows what the zone contains. The fix is not a better offline assertion; it
+is to put the URLs in the live post-deploy probe
+(`tests/live-api-cache-auth-regression.test.mjs`), so *merged but never applied*
+turns the sweep red instead of staying quietly inert. That workflow runs on
+`deployment_status` and on a schedule, not on pull requests, so it cannot block
+the merge — it reports afterwards, which is the correct shape for a claim that
+only becomes true after an operator acts.
+
+Both of these are the same lesson the rest of this document keeps arriving at,
+one level up: **an assertion proves what was declared, and the thing worth
+proving usually lives somewhere the assertion cannot see.** When it does, say so
+in the test's name — a test called "…without changing the Cloudflare bypass"
+should have been called "…pending the Cloudflare claim (#7749)".
+
+### Two measurement traps, restated because both recurred here
+
+- `curl -I` sends HEAD, and the rule's method guard excludes it, so HEAD reports
+  `DYNAMIC` on routes that HIT for real clients. Every cache measurement in this
+  repo must use GET. This is already recorded above and still produced a wrong
+  round-6 measurement.
+- The naive birthday figure is the wrong number for a namespaced key. Sizing the
+  risk of a truncated-digest collision over 748 providers looked like ~1.65%
+  until the namespace was read correctly: an anchor collision needs the slug to
+  match *as well as* the digest, and every slug was distinct, so the path was
+  unreachable rather than a one-in-sixty gamble. Overstating a risk buys the
+  wrong fix; the defect there was a guarantee the code asserted and did not have.
+  (See `docs/solutions/design-patterns/published-citation-anchors-need-identity-based-ids-and-visible-scroll-targets.md`.)
+
+## Related
+
+- `docs/solutions/design-patterns/pinned-value-allowlist-freezes-a-snapshot-not-the-invariant.md`
+  — why `RETIRED_CACHE_RULES` is paired with a structural earlier-writer scan
+  instead of standing alone.
+- `docs/solutions/conventions/verify-the-verifier-mutation-test-every-detection-layer.md`
+  — the corpus probe is registered in the sweep's mandatory-probe gate
+  (threshold *and* marker list) so it cannot itself go silently missing.
+- `docs/solutions/conventions/ref-param-is-affiliate-attribution-use-utm-for-internal-source-tags.md`
+  — why the cache rule deliberately excludes query-bearing corpus URLs.
+- `docs/solutions/design-patterns/published-citation-anchors-need-identity-based-ids-and-visible-scroll-targets.md`
+  — the other half of #7869: what changes once a fragment id becomes published
+  citation data, and why an anchor must read only its own key.

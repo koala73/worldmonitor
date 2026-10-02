@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import ts from 'typescript';
 
 import {
   DELEGATING_ADAPTERS,
   PREMIUM_FETCH_SRC,
   assertDelegatingAdapters,
+  hasScopedCountrySource,
 } from '../scripts/enforce-premium-fetch.mjs';
 
 const ADAPTERS = new Set(['proFreshRpcFetch']);
@@ -89,4 +91,19 @@ describe('assertDelegatingAdapters — affirmative premium delegation', () => {
       /no longer routes isPremiumRpcTarget/,
     );
   });
+});
+
+
+
+it('country source accepts only its private browser and fixed host factories', () => {
+  const source = readFileSync(new URL('../src/services/country-brief-source.ts', import.meta.url), 'utf8');
+  const accepted = text => hasScopedCountrySource(ts.createSourceFile('country-source.ts', text, ts.ScriptTarget.Latest, true));
+  assert.equal(accepted(source), true);
+  for (const broken of [
+    source.replace("createCountryBriefSource(premiumFetch, 'website')", "createCountryBriefSource(fetch, 'website')"),
+    source.replace('createHostCountryFetch(call)', 'fetch'),
+    source.replace('{ fetch: fetcher }', '{ fetch: globalThis.fetch }'),
+    source.replace('function createCountryBriefSource(', 'export function createCountryBriefSource('),
+    source + '\nconst leaked = createCountryBriefSource;',
+  ]) assert.equal(accepted(broken), false);
 });

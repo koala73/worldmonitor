@@ -720,6 +720,35 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     });
   }
 
+  it('resolves focal-point country names and alpha-3 codes before entity matching', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('get_focal_points');
+    const expected = await tool._execute({ country_code: 'IR' }, '', {}, {});
+    assert.ok(expected.data.focal_points.length > 0);
+    for (const country_code of ['Iran', 'IRN', ' ir ']) {
+      const actual = await tool._execute({ country_code }, '', {}, {});
+      assert.deepEqual(actual.data, expected.data);
+    }
+  });
+
+  it('reports unsupported focal-point coverage for Iraq instead of an empty calm answer', async () => {
+    installUpstashStub(analysisPayloads());
+    for (const country_code of ['Iraq', 'IQ', 'IRQ']) {
+      await assert.rejects(
+        () => findTool('get_focal_points')._execute({ country_code }, '', {}, {}),
+        (error) => error.name === 'RpcValidationError' && /No focal-point coverage for IQ/.test(error.violations[0].description),
+      );
+    }
+  });
+
+  it('rejects an unresolved focal-point country before reading caches', async () => {
+    globalThis.fetch = async () => { throw new Error('unexpected fetch'); };
+    await assert.rejects(
+      () => findTool('get_focal_points')._execute({ country_code: 'Atlantis' }, '', {}, {}),
+      (error) => error.name === 'RpcValidationError' && error.violations[0].field === 'country_code',
+    );
+  });
+
   it('executes every hybrid success path against producer-shaped cache payloads', async () => {
     installUpstashStub(analysisPayloads());
 
@@ -1071,32 +1100,41 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.cii_available, true);
   });
 
-  it('keeps foreign-presence detections when filtering by theater id', async () => {
-    const payloads = analysisPayloads();
-    payloads['military:flights:v1'].flights = Array.from({ length: 2 }, (_, i) => ({
-      id: `gulf-flight-${i}`,
-      callsign: `GULF${i}`,
-      lat: 26.5,
-      lon: 52,
-      lastSeenMs: Date.now(),
-      operator: 'usaf',
-      aircraftType: 'fighter',
-      sourceMeta: { source: 'wingbits' },
-    }));
-    installUpstashStub(payloads);
+  for (const [theater, regionId, lat, lon] of [
+    ['iran-theater', 'persian-gulf', 26.5, 52],
+    ['korea-theater', 'japan-sea', 40, 135],
+    ['east-med-theater', 'east-med', 34.5, 33],
+    ['israel-gaza-theater', 'east-med', 34.5, 33],
+    ['yemen-redsea-theater', 'horn-africa', 10, 45],
+    ['south-china-sea', 'south-china-sea', 14, 114],
+  ]) {
+    it(`keeps foreign-presence detections when filtering by ${theater}`, async () => {
+      const payloads = analysisPayloads();
+      payloads['military:flights:v1'].flights = Array.from({ length: 2 }, (_, i) => ({
+        id: `gulf-flight-${i}`,
+        callsign: `GULF${i}`,
+        lat,
+        lon,
+        lastSeenMs: Date.now(),
+        operator: 'usaf',
+        aircraftType: 'fighter',
+        sourceMeta: { source: 'wingbits' },
+      }));
+      installUpstashStub(payloads);
 
-    const result = await findTool('get_military_surge')._execute(
-      { theater: 'iran-theater' },
-      '',
-      {},
-      {},
-    );
+      const result = await findTool('get_military_surge')._execute(
+        { theater },
+        '',
+        {},
+        {},
+      );
 
-    assert.deepEqual(
-      result.data.foreign_presence.map((alert) => alert.region_id),
-      ['persian-gulf'],
-    );
-  });
+      assert.deepEqual(
+        result.data.foreign_presence.map((alert) => alert.region_id),
+        [regionId],
+      );
+    });
+  }
 
   it('ranks every producer event before applying the final exposure limit', async () => {
     const payloads = analysisPayloads();
@@ -1128,6 +1166,65 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.events.length, 1);
     assert.equal(result.data.events[0].id, 'palestine-quake');
   });
+
+  for (const view of ['today', 'weekly']) {
+    for (const sourceVersion of ['wingbits', 'OpenSky Network', undefined, '', '   ', 42]) {
+      it(`${view} digest enforces surge attribution ${JSON.stringify(sourceVersion)}`, async () => {
+        const payloads = analysisPayloads();
+        payloads['military:surges:v1'].sourceVersion = sourceVersion;
+        const fetchedAt = Date.now() - MIN;
+        payloads['seed-meta:intelligence:risk-scores'] = { fetchedAt, recordCount: 3 };
+        installUpstashStub(payloads);
+
+        const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
+        const allowed = sourceVersion === 'wingbits';
+        const military = result.data.tripped.filter((alert) => alert.domain === 'military_surge');
+        assert.equal(military.length, allowed ? 1 : 0);
+        if (allowed) assert.equal(military[0].value, 2.1);
+        assert.equal(result.data.unavailable.includes('military_surge'), !allowed);
+        assert.equal(result.data.quiet.includes('military_surge'), false);
+        assert.equal(result.stale, !allowed);
+        assert.equal(result.cached_at, new Date(fetchedAt).toISOString());
+        assert.deepEqual(result.unavailable_inputs, allowed ? [] : ['military:surges:v1']);
+        assert.deepEqual(result.failed_inputs, []);
+        for (const domain of ['cable_health', 'outages', 'thermal', 'shipping_stress']) {
+          assert.ok(result.data.tripped.some((alert) => alert.domain === domain));
+        }
+        assert.ok(result.data.quiet.includes('temporal_anomaly'));
+        if (view === 'weekly') {
+          assert.equal(result.data.weekly.history_available, true);
+          assert.ok(result.data.weekly.trends.length > 0);
+        } else {
+          assert.equal(result.data.weekly, null);
+        }
+      });
+    }
+
+    it(`${view} digest keeps an attributed empty surge feed quiet`, async () => {
+      installUpstashStub({ 'military:surges:v1': { sourceVersion: 'wingbits', surges: [] } });
+      const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
+      assert.ok(result.data.quiet.includes('military_surge'));
+      assert.ok(!result.data.unavailable.includes('military_surge'));
+      assert.ok(!result.unavailable_inputs.includes('military:surges:v1'));
+    });
+
+    for (const sourceVersion of ['opensky', undefined]) {
+      it(`${view} digest rejects when only withheld surges are available (${sourceVersion})`, async () => {
+        installUpstashStub({
+          'military:surges:v1': { ...analysisPayloads()['military:surges:v1'], sourceVersion },
+        });
+        await assert.rejects(
+          () => findTool('get_alert_digest')._execute({ view }, '', {}, {}),
+          (error) => {
+            assert.ok(error instanceof McpSourceUnavailableError);
+            assert.ok(error.unavailableInputs.includes('military:surges:v1'));
+            assert.deepEqual(error.failedInputs, []);
+            return true;
+          },
+        );
+      });
+    }
+  }
 
   it('surfaces missing weekly history in both freshness and digest availability', async () => {
     installUpstashStub(analysisPayloads(), { misses: ['military:surges:history:v1'] });

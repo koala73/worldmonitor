@@ -473,7 +473,11 @@ paths:
                         type: string
                 - name: min_flights
                   in: query
-                  description: 'Minimum number of flights required to include a carrier (default: 1).'
+                  description: |-
+                    Minimum number of flights required to include a carrier (default: 3).
+                     The generated GET decoder emits 0 when the query param is absent, and 0
+                     means "use the default" in the handler — an explicit 0 is not a usable
+                     filter (every group has >= 1 flight).
                   required: false
                   example: 1
                   schema:
@@ -734,7 +738,7 @@ paths:
             tags:
                 - AviationService
             summary: TrackAircraft
-            description: TrackAircraft retrieves live position stream for a specific aircraft hex.
+            description: Track an aircraft by ICAO24 hex or callsign within map bounds, returning position observations, altitude, speed, source and update time for flight monitoring.
             operationId: TrackAircraft
             parameters:
                 - name: icao24
@@ -895,19 +899,20 @@ paths:
             tags:
                 - AviationService
             summary: GetYoutubeLiveStreamInfo
-            description: GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+            description: 'GetYoutubeLiveStreamInfo names a YouTube video (title and channel name) through YouTube oEmbed. Channel live detection is retired: a channel-only query returns error "channel_live_detection_retired", and the channel, is_live and hls_url fields are deprecated.'
             operationId: GetYoutubeLiveStreamInfo
             parameters:
                 - name: channel
+                  deprecated: true
                   in: query
-                  description: YouTube channel handle or ID.
+                  description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: video_id
                   in: query
-                  description: Specific video ID to check.
+                  description: YouTube video ID to name.
                   required: false
                   example: "example-id"
                   schema:
@@ -927,10 +932,12 @@ paths:
                         application/json:
                             example:
                                 "channelExists": true
-                                "channelName": "WorldMonitor Analyst"
-                                "error": "example"
-                                "hlsUrl": "https://example.com/worldmonitor"
-                                "isLive": true
+                                "channelName": "DW News"
+                                "error": ""
+                                "hlsUrl": ""
+                                "isLive": false
+                                "title": "DW News livestream"
+                                "videoId": "LuKwFajn37U"
                             schema:
                                 $ref: '#/components/schemas/GetYoutubeLiveStreamInfoResponse'
                 "400":
@@ -1021,7 +1028,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route. PRO-gated. Requires an active Pro subscription.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
             security:
                 - WorldMonitorKey: []
@@ -1360,7 +1367,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchGoogleFlights
-            description: SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+            description: Search Google Flights itineraries by route and dates, with cabin, stops, airline and passenger filters, returning flight legs, duration and availability status.
             operationId: SearchGoogleFlights
             parameters:
                 - name: origin
@@ -2339,7 +2346,11 @@ components:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: 'Minimum number of flights required to include a carrier (default: 1).'
+                    description: |-
+                        Minimum number of flights required to include a carrier (default: 3).
+                         The generated GET decoder emits 0 when the query param is absent, and 0
+                         means "use the default" in the handler — an explicit 0 is not a usable
+                         filter (every group has >= 1 flight).
             description: GetCarrierOpsRequest specifies parameters for carrier operations metrics.
         GetCarrierOpsResponse:
             type: object
@@ -2518,37 +2529,41 @@ components:
             type: object
             properties:
                 channel:
+                    deprecated: true
                     type: string
-                    description: YouTube channel handle or ID.
+                    description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                 videoId:
                     type: string
-                    description: Specific video ID to check.
-            description: GetYoutubeLiveStreamInfoRequest parameters for detecting live status.
+                    description: YouTube video ID to name.
+            description: GetYoutubeLiveStreamInfoRequest names the YouTube video to look up.
         GetYoutubeLiveStreamInfoResponse:
             type: object
             properties:
                 videoId:
                     type: string
-                    description: Video ID of the live stream (if found).
+                    description: Video ID that was looked up.
                 isLive:
+                    deprecated: true
                     type: boolean
-                    description: Whether the stream is currently live.
+                    description: 'Always false: oEmbed does not report whether a video is live.'
                 channelExists:
+                    deprecated: true
                     type: boolean
-                    description: Whether the channel exists.
+                    description: 'Deprecated: true only when the oEmbed lookup succeeded, so it now carries exactly error == "".'
                 channelName:
                     type: string
                     description: Human-readable channel name.
                 hlsUrl:
+                    deprecated: true
                     type: string
-                    description: HLS manifest URL (if available).
+                    description: 'Always empty: YouTube manifest URLs are no longer returned.'
                 title:
                     type: string
-                    description: Stream title.
+                    description: Video title.
                 error:
                     type: string
-                    description: Optional error message.
-            description: GetYoutubeLiveStreamInfoResponse containing detection results.
+                    description: '"channel_live_detection_retired" for a channel-only query, or why the video lookup failed.'
+            description: GetYoutubeLiveStreamInfoResponse containing the oEmbed lookup result.
         SearchFlightPricesRequest:
             type: object
             properties:

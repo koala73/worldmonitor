@@ -19,22 +19,33 @@ import {
   beginStandaloneIdempotency,
   completeStandaloneIdempotency,
   getIdempotencyKey,
+  peekStandaloneIdempotency,
 } from './_idempotency.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
+import { CHECKOUT_PER_IP_RATE_POLICY, ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
 import { validateBearerToken } from '../server/auth-session';
 // From the canonical shared module, not via api/mcp/upgrade — the checkout edge
 // function has no reason to depend on the MCP transport tree (#6716).
 import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
+import { publicCheckoutError } from '../shared/checkout-errors';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-checkout-edge/1.0';
+const CHECKOUT_RATE_POLICY_LOOKUP = ENDPOINT_RATE_POLICIES['/api/create-checkout'];
+if (!CHECKOUT_RATE_POLICY_LOOKUP) {
+  throw new Error("[create-checkout] missing ENDPOINT_RATE_POLICIES['/api/create-checkout']");
+}
+const CHECKOUT_RATE_POLICY = CHECKOUT_RATE_POLICY_LOOKUP;
 
 type CreateCheckoutDeps = {
   validateBearerToken: typeof validateBearerToken;
   fetch: typeof fetch;
+  checkRateLimit: typeof checkRateLimit;
 };
 
 type RelayErrorBody = {
@@ -48,6 +59,7 @@ function createDefaultCreateCheckoutDeps(): CreateCheckoutDeps {
   return {
     validateBearerToken,
     fetch: (...args) => globalThis.fetch(...args),
+    checkRateLimit,
   };
 }
 
@@ -122,6 +134,46 @@ export default async function handler(
   }
 
   const idempotencyRequest = req.clone();
+  const idempotencyKey = getIdempotencyKey(req);
+  const idempotencyOptions = idempotencyKey
+    ? {
+      request: idempotencyRequest,
+      pathname: '/api/create-checkout',
+      scope: `user:${session.userId}`,
+      idempotencyKey,
+      corsHeaders: cors,
+      completedTtlSeconds: 10 * 60,
+    }
+    : null;
+  // A completed replay is not a new Dodo session. Peek before the limiter so
+  // confirmation retries are not charged against the per-user budget.
+  if (idempotencyOptions) {
+    const existing = await peekStandaloneIdempotency(idempotencyOptions);
+    if (existing.kind !== 'miss' && existing.kind !== 'disabled') return existing.response;
+  }
+
+  // Per-user, fail-closed. Keyed on the validated Clerk id, not the edge
+  // egress IP. A Redis outage must not open the paid checkout relay.
+  const limited = await createCheckoutDeps.checkRateLimit(req, cors, {
+    scope: 'create-checkout',
+    identifier: session.userId,
+    limit: CHECKOUT_RATE_POLICY.limit,
+    window: CHECKOUT_RATE_POLICY.window,
+    failClosed: true,
+    ctx,
+  });
+  if (limited) return limited;
+
+  // Per-client-IP, fail-closed. The per-user budget cannot see one client
+  // cycling many free accounts against Dodo's shared API-key rate limit.
+  const ipLimited = await createCheckoutDeps.checkRateLimit(req, cors, {
+    scope: 'create-checkout-ip',
+    limit: CHECKOUT_PER_IP_RATE_POLICY.limit,
+    window: CHECKOUT_PER_IP_RATE_POLICY.window,
+    failClosed: true,
+    ctx,
+  });
+  if (ipLimited) return ipLimited;
 
   // Parse request body
   let body: {
@@ -142,16 +194,8 @@ export default async function handler(
     return json({ error: 'productId is required' }, 400, cors);
   }
 
-  const idempotencyKey = getIdempotencyKey(req);
-  const idempotency = idempotencyKey
-    ? await beginStandaloneIdempotency({
-      request: idempotencyRequest,
-      pathname: '/api/create-checkout',
-      scope: `user:${session.userId}`,
-      idempotencyKey,
-      corsHeaders: cors,
-      completedTtlSeconds: 10 * 60,
-    })
+  const idempotency = idempotencyOptions
+    ? await beginStandaloneIdempotency(idempotencyOptions)
     : null;
   if (
     idempotency &&
@@ -161,7 +205,7 @@ export default async function handler(
     return idempotency.response;
   }
 
-  if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
+  if (!CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET) {
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
@@ -173,7 +217,7 @@ export default async function handler(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
         'User-Agent': CHECKOUT_RELAY_USER_AGENT,
       },
       body: JSON.stringify({
@@ -192,6 +236,12 @@ export default async function handler(
 
     const data = await resp.json();
     if (!resp.ok) {
+      if (resp.status === 400 && data?.error === 'INVALID_CHECKOUT_PRODUCT') {
+        return completeStandaloneIdempotency(
+          idempotency,
+          json({ error: 'INVALID_CHECKOUT_PRODUCT' }, 400, cors),
+        );
+      }
       if (resp.status === 429) {
         const retryAfter = resp.headers.get('retry-after');
         return completeStandaloneIdempotency(
@@ -231,14 +281,14 @@ export default async function handler(
       const edgeStatus = resp.status === 500 ? 500 : 502;
       return completeStandaloneIdempotency(
         idempotency,
-        json({ error: data?.error || 'Checkout creation failed' }, edgeStatus, cors),
+        json({ error: publicCheckoutError(data?.error) }, edgeStatus, cors),
       );
     }
 
     return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, fingerprint: ['api/create-checkout', 'relay', err instanceof Error ? err.name : 'Error'], ctx });
     return completeStandaloneIdempotency(idempotency, json({ error: 'Checkout service unavailable' }, 502, cors));
   }
 }

@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 /**
  * The Pro-MCP access decision, shared by the five entitlement gates listed below.
  *
@@ -23,19 +24,9 @@
  * `entitlement-check.ts::classifyBillingVerification`. That function, not this
  * one, is the single source for billing classification.
  *
- * SCOPE — this does not own every Pro-MCP check in the repo. Two sites still
- * spell the predicate out by hand and are deliberately NOT routed here:
- *
- *   - `server/_shared/premium-check.ts` (internal-MCP trusted-marker branch) —
- *     tier + mcpAccess only, WITHOUT the `validUntil` clause. Safe today because
- *     `server/gateway.ts` is the sole setter of the trusted markers that reach
- *     it and applies this gate — validUntil included — before minting them. It
- *     is a weaker second layer, not a mirror.
- *   - `convex/mcpProTokens.ts::issueProMcpToken` — all four clauses, kept inline
- *     because the Convex runtime does not import from `server/_shared`.
- *
- * Both are comment-enforced mirrors. Tighten the predicate below and you must
- * check those two by hand; "cannot drift" is a claim about the five above only.
+ * Coverage validity is shared with the premium resolver and gateway through
+ * `hasCurrentEntitlementCoverage`. Convex token issuance retains its own check
+ * because the Convex runtime does not import from `server/_shared`.
  */
 
 import {
@@ -128,7 +119,7 @@ export function checkProMcpAccess(
     entitlements.features &&
     entitlements.features.tier >= 1 &&
     entitlements.features.mcpAccess === true &&
-    entitlements.validUntil >= now
+    hasCurrentEntitlementCoverage(entitlements, now)
   ) {
     return null;
   }
@@ -216,6 +207,17 @@ const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
 };
+
+/** Preserve the consent page's retryable error vocabulary for session outages. */
+export function grantSessionVerificationUnavailableResponse(): Response {
+  const denial = unverifiableEntitlementDenial();
+  return jsonError(
+    'SERVICE_UNAVAILABLE',
+    'Session verification is temporarily unavailable. Please try again in a moment.',
+    503,
+    { 'Retry-After': String(denial.retryAfterSeconds) },
+  );
+}
 
 /**
  * Renders a gate denial in the grant handshake's `{error, error_description}`

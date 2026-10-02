@@ -9,7 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
-import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
@@ -404,7 +404,10 @@ export function deriveCiiTrendDelta(
     priorAgeMs < CII_TREND_PRIOR_MIN_AGE_MS ||
     priorAgeMs > CII_TREND_PRIOR_MAX_AGE_MS
   ) {
-    return { dynamicScore: 0, trend: 'TREND_DIRECTION_STABLE' as TrendDirection };
+    // No usable prior reading means the movement is unknown, not zero. STABLE
+    // is reserved for a real comparison inside the deadband; readers render
+    // UNSPECIFIED as "no earlier reading" instead of "unchanged".
+    return { dynamicScore: 0, trend: 'TREND_DIRECTION_UNSPECIFIED' as TrendDirection };
   }
 
   const dynamicScore = roundCiiDelta(combinedScore - previous);
@@ -709,34 +712,86 @@ function emptyAuxiliarySources(): AuxiliarySources {
 // restore. Mirrors the *_ENABLED env idiom in resilience/v1/_shared.ts.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
+/** A Redis key the build consumes. `raw` is explicit because seeder keys are bare and app-owned keys are prefixed (#7674). */
+interface RiskInput {
+  readonly key: string;
+  readonly raw: boolean;
+}
+
+/** Only the class is kept: a JSON SyntaxError message quotes the stored payload. */
+type RiskInputFailureClass = 'timeout' | 'redis' | 'parse';
+
+interface RiskInputReadFailure {
+  readonly key: string;
+  readonly failure: RiskInputFailureClass;
+}
+
+/**
+ * Thrown by readRiskInputs when any input read errored, so no payload can be
+ * computed from a failed read. getRiskScores' catch serves the stale payload.
+ */
+export class RiskInputsUnavailableError extends Error {
+  constructor(readonly failures: readonly RiskInputReadFailure[]) {
+    super(`risk-scores build rejected: ${failures.map((f) => `${f.key}(${f.failure})`).join(', ')}`);
+    this.name = 'RiskInputsUnavailableError';
+  }
+}
+
+function classifyReadFailure(error: unknown): RiskInputFailureClass {
+  if (error instanceof SyntaxError) return 'parse';
+  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'timeout';
+  return 'redis';
+}
+
+/**
+ * Reads every input in parallel and resolves positionally: a hit to its value,
+ * a genuine miss (or a disabled `null` input) to null. If any read errored it
+ * waits for the rest to settle and throws, naming every failed key.
+ */
+async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<unknown[]> {
+  const results = await Promise.all(inputs.map((input) => (input ? readCachedJson(input.key, input.raw) : null)));
+  const failures = inputs.flatMap((input, i) => {
+    const result = results[i];
+    return input && result?.status === 'error' ? [{ key: input.key, failure: classifyReadFailure(result.error) }] : [];
+  });
+  if (failures.length > 0) throw new RiskInputsUnavailableError(failures);
+  return results.map((result) => (result?.status === 'hit' ? result.value : null));
+}
+
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
-    getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
-    getCachedJson('infra:outages:v1', true).catch(() => null),
-    getCachedJson(CLIMATE_ANOMALIES_KEY, true).catch(() => null),
-    getCachedJson('cyber:threats-bootstrap:v2', true).catch(() => null),
-    getCachedJson('wildfire:fires:v1', true).catch(() => null),
-    getCachedJson('intelligence:gpsjam:v2', true).catch(() => null),
-    IRAN_EVENTS_ENABLED ? getCachedJson('conflict:iran-events:v1', true).catch(() => null) : Promise.resolve(null),
-    getCachedJson('relay:oref:history:v1', true).catch(() => null),
-    getCachedJson('intelligence:advisories:v1', true).catch(() => null),
-    // Try current year, fall back to previous year if not yet seeded
-    getCachedJson(`displacement:summary:v1:${currentYear}`, true)
-      .catch(() => null)
-      .then(d => d ?? getCachedJson(`displacement:summary:v1:${currentYear - 1}`, true).catch(() => null)),
-    getCachedJson('news:insights:v1', true).catch(() => null),
-    getCachedJson('news:threat:summary:v1', true).catch(() => null),
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await readRiskInputs([
+    { key: 'conflict:ucdp-events:v1', raw: true },
+    { key: 'infra:outages:v1', raw: true },
+    { key: CLIMATE_ANOMALIES_KEY, raw: true },
+    { key: 'cyber:threats-bootstrap:v2', raw: true },
+    { key: 'wildfire:fires:v1', raw: true },
+    { key: 'intelligence:gpsjam:v2', raw: true },
+    IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
+    { key: 'relay:oref:history:v1', raw: true },
+    { key: 'intelligence:advisories:v1', raw: true },
+    { key: `displacement:summary:v1:${currentYear}`, raw: true },
+    { key: 'news:insights:v1', raw: true },
+    { key: 'news:threat:summary:v1', raw: true },
     // Pre-merged bootstrap (seed-aviation.mjs writes it after merging FAA + intl +
     // NOTAM-synthesized closures). Reading the intl-only key here silently dropped US
     // FAA delays and NOTAM closures from aviationScore.
-    getCachedJson('aviation:delays-bootstrap:v2', true).catch(() => null),
-    getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
-    getCachedJson('sanctions:pressure:v1', true).catch(() => null),
-    getCachedJson('sanctions:country-counts:v1', true).catch(() => null),
-    getCachedJson('temporal:anomalies:v1', true).catch(() => null),
-    getCachedJson('intelligence:military-cii:v1', true).catch(() => null),
+    { key: 'aviation:delays-bootstrap:v2', raw: true },
+    { key: 'seismology:earthquakes:v1', raw: true },
+    { key: 'sanctions:pressure:v1', raw: true },
+    { key: 'sanctions:country-counts:v1', raw: true },
+    // App-owned snapshot (#7674): the temporal-anomalies route stamps
+    // temporal:anomalies:v1 through the prefix-aware helpers, so unlike the
+    // seeder-owned sources around it this read must ride the deployment
+    // prefix — otherwise a preview deployment's risk scores consume the
+    // production snapshot instead of the one this deployment rebuilt.
+    { key: 'temporal:anomalies:v1', raw: false },
+    { key: 'intelligence:military-cii:v1', raw: true },
   ]);
+  // The previous year covers a year not yet seeded. An errored current-year
+  // read has already thrown above, so it never masquerades as that.
+  const displacementRaw = displacementCurrentRaw
+    ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
     if (field && v && Array.isArray(v[field])) a = v[field];
@@ -1245,7 +1300,9 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
           : 'SEVERITY_LEVEL_LOW') as SeverityLevel,
       score: overallScore,
       factors: topN.map((s) => s.region),
-      trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
+      // The global roll-up is never compared with a prior roll-up, so there is
+      // no measured direction to report.
+      trend: 'TREND_DIRECTION_UNSPECIFIED' as TrendDirection,
     },
   ];
 }
@@ -1397,12 +1454,15 @@ export function filterRiskScoresResponse(
 const RISK_CACHE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
 const RISK_STALE_CACHE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
 const RISK_TREND_HISTORY_CACHE_KEY_PREFIX = `risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}`;
+// Latest rejected build, for operators: function logs do not survive in prod.
+const RISK_REJECTED_BUILD_KEY = `risk:scores:sebuf:rejected:${CII_FORMULA_VERSION}`;
 // `region` is deliberately excluded from the Redis key: this endpoint caches
 // the all-country payload once and applies any region filter as a read-only
 // projection at return time, so per-region requests cannot poison global cache.
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
 const CII_TREND_HISTORY_TTL = 3 * 24 * 60 * 60;
+const RISK_REJECTED_BUILD_TTL = 7 * 24 * 60 * 60;
 
 export function getCiiTrendHistoryBucket(capturedAtMs: number): number {
   const capturedAt = finiteNumber(capturedAtMs);
@@ -1468,10 +1528,13 @@ function ciiTrendSnapshotFromResponse(response: GetRiskScoresResponse): CiiTrend
   return { capturedAt: latestComputedAt, ciiScores: response.ciiScores };
 }
 
+// Not a readRiskInputs input: the prior only sets movement labels, and a
+// missing prior already degrades to "stable". getCachedJson logs an errored
+// bucket and treats it as absent.
 async function readCiiTrendPriorScores(nowMs: number): Promise<CiiScore[] | null> {
   const snapshots = await Promise.all(
     getCiiTrendPriorCandidateBuckets(nowMs).map(async (bucket) => {
-      const value = await getCachedJson(ciiTrendHistoryCacheKey(bucket)).catch(() => null);
+      const value = await getCachedJson(ciiTrendHistoryCacheKey(bucket));
       return isCiiTrendSnapshot(value) ? value : null;
     }),
   );
@@ -1503,6 +1566,19 @@ async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise
   );
 }
 
+/**
+ * Awaited because a serverless runtime may drop a promise still pending after
+ * the response; it runs only on the rejection path and never throws.
+ */
+async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): Promise<void> {
+  console.error('[cii] risk-scores build rejected; input reads failed', { failedReads: err.failures });
+  await setCachedJson(
+    RISK_REJECTED_BUILD_KEY,
+    { at: Date.now(), failedReads: err.failures },
+    RISK_REJECTED_BUILD_TTL,
+  ).catch(() => undefined);
+}
+
 async function buildRiskScoresPayload(): Promise<{
   response: GetRiskScoresResponse;
   realtimeSignalDensityCoverageCount: number;
@@ -1512,7 +1588,10 @@ async function buildRiskScoresPayload(): Promise<{
     fetchACLEDEvents(),
     fetchAuxiliarySources(),
     readCiiTrendPriorScores(nowMs),
-  ]);
+  ]).catch(async (err: unknown) => {
+    if (err instanceof RiskInputsUnavailableError) await recordRejectedRiskScoresBuild(err);
+    throw err;
+  });
   if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
   const realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux, nowMs);
   const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
@@ -1560,6 +1639,10 @@ export async function getRiskScores(
         realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
         return built.response;
       },
+      undefined,
+      // A rejected build must leave RISK_CACHE_KEY untouched: no NEG_SENTINEL,
+      // only the helper's short isolate-local backoff before the next rebuild.
+      { cacheFetcherErrors: false },
     );
     if (result) {
       let freshResult = withRiskScoreRuntimeState(result, { degraded: false, stale: false });

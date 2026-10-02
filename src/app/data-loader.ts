@@ -1,12 +1,12 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { enqueuePanelCall } from '@/app/pending-panel-data';
+import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -46,8 +46,8 @@ import {
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
+import { fetchPredictionCandidates, reprioritizeMarketsForRegion as reprioritizePredictionMarketsForRegion } from '@/services/prediction';
 import {
-  fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
   fetchCanadaRoads,
@@ -109,9 +109,9 @@ import {
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
-import { clusterNewsHybrid } from '@/services/clustering';
+import { clusterNewsHybrid, clusterNewsWithWorkerFallback } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
+import { consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
@@ -121,16 +121,16 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
-import { fetchTelegramFeed } from '@/services/telegram-intel';
+import { fetchTelegramFeed, getTelegramIntelGeneration } from '@/services/telegram-intel';
 import { fetchXFeed, isUsableHydratedXFeed } from '@/services/x-intel';
-import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
+import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate, type OrefAlertsResponse } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
@@ -160,7 +160,6 @@ import type {
   SectorValuation,
 } from '@/components/MarketPanel';
 import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
-import { mountCommunityWidget } from '@/components/CommunityWidget';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
@@ -208,7 +207,6 @@ import type {
   SectorBriefContext,
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
-import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
@@ -224,9 +222,8 @@ import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
-// The proto-level -> label map lives in shared/news-clustering-core.js so the
-// client digest loader and the server-side MCP tools cannot drift (#5697).
-import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
+import { protoItemToNewsItem } from '@/services/news-digest-items';
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
 type PhysicalDivergenceFetcher = typeof import('@/services/market')['fetchPhysicalDivergence'];
@@ -265,52 +262,6 @@ export async function loadPhysicalPremiumComparisonIfNeeded(
   return true;
 }
 
-const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
-  STORY_PHASE_BREAKING:   'breaking',
-  STORY_PHASE_DEVELOPING: 'developing',
-  STORY_PHASE_SUSTAINED:  'sustained',
-  STORY_PHASE_FADING:     'fading',
-};
-
-function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
-  return {
-    source: p.source,
-    title: p.title,
-    link: p.link,
-    pubDate: new Date(p.publishedAt),
-    isAlert: p.isAlert,
-    importanceScore: p.importanceScore || undefined,
-    credibilityScore: Number.isFinite(p.credibilityScore) ? p.credibilityScore : undefined,
-    corroborationCount: p.corroborationCount || undefined,
-    storyMeta: p.storyMeta && p.storyMeta.phase !== 'STORY_PHASE_UNSPECIFIED' ? {
-      firstSeen:    p.storyMeta.firstSeen,
-      mentionCount: p.storyMeta.mentionCount,
-      sourceCount:  p.storyMeta.sourceCount,
-      phase: PROTO_TO_CLIENT_PHASE[p.storyMeta.phase] ?? 'breaking',
-    } : undefined,
-    threat: p.threat ? {
-      level,
-      category: p.threat.category as import('@/services/threat-classifier').EventCategory,
-      confidence: p.threat.confidence,
-      source: (p.threat.source || 'keyword') as 'keyword' | 'ml' | 'llm',
-    } : undefined,
-    ...(p.locationName && { locationName: p.locationName }),
-    ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
-    ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
-    ...(Number.isFinite(p.credibilityScore) ? { credibilityScore: p.credibilityScore } : {}),
-    ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
-    // Cleaned RSS description (U3 proto field 12). Only populated when the
-    // upstream feed carried a usable <description>/<content:encoded>/<summary>;
-    // empty string otherwise. Consumers render the headline and fall back to
-    // snippet as a secondary line when non-empty.
-    ...(p.snippet ? { snippet: p.snippet } : {}),
-    // Ingest-extracted tickers (#4922a, proto field 13). Runtime guard on
-    // top of the generated type: persisted last-good digests from before
-    // the rollout carry items without the field.
-    ...(p.tickers && p.tickers.length ? { tickers: p.tickers } : {}),
-  };
-}
 
 interface SelectedNewsDigest {
   digest: ListFeedDigestResponse;
@@ -325,6 +276,8 @@ const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true'
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
   refreshOpenCountryBrief: () => void;
+  refreshOpenCountryMilitary?: () => void;
+  refreshOpenCountryTimeline?: () => void;
 }
 
 type HydrationTier = 1 | 2 | 3 | 4;
@@ -436,6 +389,29 @@ const HYDRATION_TIER_FOUR = new Set([
 ]);
 const HYDRATION_TIERS: HydrationTier[] = [1, 2, 3, 4];
 
+type NewsClusteringProfilePath = 'hybrid' | 'analysis-worker';
+
+interface NewsClusteringProfileResult {
+  generation: number;
+  selectedPath: NewsClusteringProfilePath;
+  mlAvailableAtSelection: boolean;
+  itemCount: number;
+  clusterCount: number;
+}
+
+interface NewsClusteringProfileHook {
+  getState(): {
+    mlAvailable: boolean;
+    capabilities: typeof mlWorker.mlCapabilities;
+    loadedModelIds: string[];
+  };
+  run(path: NewsClusteringProfilePath, items: ProtoNewsItem[]): Promise<NewsClusteringProfileResult>;
+}
+
+type NewsClusteringProfileWindow = Window & {
+  __wmNewsClusteringProfile?: NewsClusteringProfileHook;
+};
+
 export class DataLoaderManager implements AppModule {
   private ctx: AppContext;
   private callbacks: DataLoaderCallbacks;
@@ -449,13 +425,10 @@ export class DataLoaderManager implements AppModule {
   public updateSearchIndex: () => void = () => {};
 
   private callPanel(key: string, method: string, ...args: unknown[]): void {
-    const panel = this.ctx.panels[key];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const obj = panel as any;
-    if (obj && typeof obj[method] === 'function') {
-      obj[method](...args);
-      return;
-    }
+    // Panel update methods are async; invokePanelMethod keeps a rejection
+    // observable instead of letting it escape to onunhandledrejection
+    // (WORLDMONITOR-11N).
+    if (invokePanelMethod(this.ctx.panels[key], key, method, args)) return;
     enqueuePanelCall(key, method, args);
   }
 
@@ -476,11 +449,17 @@ export class DataLoaderManager implements AppModule {
   private readonly marketLoadGuard = new LatestRequestGuard();
   private readonly physicalComparisonLoadGuard = new LatestRequestGuard();
   private readonly mineralProductionLoadGuard = new LatestRequestGuard();
+  // Prediction ranking snapshots ctx.resolvedLocation at fetch start. A late
+  // region arrival (e.g. delayed geolocation, #7778) bumps the generation so
+  // the re-ranking pass — not the stale in-flight request — owns the commit.
+  private readonly predictionRegionGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
   private activeGlobalTenderScopedGeneration: number | null = null;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
+  private orefUnsubscribe: (() => void) | null = null;
+  private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
@@ -548,6 +527,16 @@ export class DataLoaderManager implements AppModule {
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
+    if (import.meta.env.VITE_E2E === '1') {
+      (window as NewsClusteringProfileWindow).__wmNewsClusteringProfile = {
+        getState: () => ({
+          mlAvailable: mlWorker.isAvailable,
+          capabilities: mlWorker.mlCapabilities,
+          loadedModelIds: mlWorker.loadedModelIds,
+        }),
+        run: (path, items) => this.runNewsClusteringProfile(path, items),
+      };
+    }
   }
 
   private getHydrationTier(name: string): HydrationTier {
@@ -617,6 +606,11 @@ export class DataLoaderManager implements AppModule {
   }
 
   destroy(): void {
+    this.newsLoadGeneration += 1;
+    if (import.meta.env.VITE_E2E === '1') {
+      const profileWindow = window as NewsClusteringProfileWindow;
+      delete profileWindow.__wmNewsClusteringProfile;
+    }
     this.globalTenderGeneration += 1;
     this.activeGlobalTenderScopedGeneration = null;
     this.stopSatellitePropagation();
@@ -624,6 +618,9 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced.cancel();
     this.xIntelAbortController?.abort();
     this.xIntelAbortController = null;
+    this.orefDisposed = true;
+    this.orefUnsubscribe?.();
+    this.orefUnsubscribe = null;
     stopOrefPolling();
     if (this.boundMarketWatchlistHandler) {
       window.removeEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
@@ -1203,6 +1200,7 @@ export class DataLoaderManager implements AppModule {
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
       await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
+      this.callbacks.refreshOpenCountryBrief();
     } else {
       this.refreshTemporalBaseline().catch(() => {});
     }
@@ -1211,6 +1209,7 @@ export class DataLoaderManager implements AppModule {
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
     await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
+    this.callbacks.refreshOpenCountryBrief();
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {
@@ -1311,7 +1310,13 @@ export class DataLoaderManager implements AppModule {
   async loadSatellites(): Promise<void> {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) {
+      // Confirmed empty, expired, or unavailable without last-good data:
+      // clear the layer instead of leaving the previous orbits on the map.
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     try {
       this.cachedSatRecs = await initSatRecs(data);
     } catch (err) {
@@ -2008,6 +2013,74 @@ export class DataLoaderManager implements AppModule {
     return generation === this.newsLoadGeneration;
   }
 
+  private async clusterNewsForGeneration(
+    items: NewsItem[],
+    generation: number,
+    forcedPath?: NewsClusteringProfilePath,
+  ): Promise<NewsClusteringProfileResult & { clusters: ClusteredEvent[] }> {
+    const mlAvailableAtSelection = mlWorker.isAvailable;
+    const selectedPath = forcedPath ?? (mlAvailableAtSelection ? 'hybrid' : 'analysis-worker');
+    if (selectedPath === 'hybrid' && !mlAvailableAtSelection) {
+      throw new Error('Hybrid clustering profile requested before local ML became available');
+    }
+
+    const startedAt = import.meta.env.VITE_E2E === '1' ? performance.now() : 0;
+    const clusters = selectedPath === 'hybrid'
+      ? await clusterNewsHybrid(items, { shouldContinue: () => this.isCurrentNewsLoad(generation) })
+      : await clusterNewsWithWorkerFallback(items, {
+        shouldContinue: () => this.isCurrentNewsLoad(generation),
+      });
+    if (import.meta.env.VITE_E2E === '1') {
+      performance.measure(`wm:news-clustering:path:${selectedPath}`, {
+        start: startedAt,
+        end: performance.now(),
+        detail: {
+          generation,
+          selectedPath,
+          mlAvailableAtSelection,
+          itemCount: items.length,
+          clusterCount: clusters.length,
+        },
+      });
+    }
+
+    return {
+      generation,
+      selectedPath,
+      mlAvailableAtSelection,
+      itemCount: items.length,
+      clusterCount: clusters.length,
+      clusters,
+    };
+  }
+
+  private async runNewsClusteringProfile(
+    path: NewsClusteringProfilePath,
+    protoItems: ProtoNewsItem[],
+  ): Promise<NewsClusteringProfileResult> {
+    if (path === 'hybrid' && !mlWorker.isAvailable) {
+      throw new Error('Hybrid clustering profile requested before local ML became available');
+    }
+
+    const generation = this.beginNewsLoad();
+    const items = protoItems.map(protoItemToNewsItem);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (!this.isCurrentNewsLoad(generation)) {
+      throw new Error('News clustering profile generation was superseded');
+    }
+    const profiled = await this.clusterNewsForGeneration(items, generation, path);
+    if (!this.isCurrentNewsLoad(generation)) {
+      throw new Error('News clustering profile generation was superseded');
+    }
+    return {
+      generation: profiled.generation,
+      selectedPath: profiled.selectedPath,
+      mlAvailableAtSelection: profiled.mlAvailableAtSelection,
+      itemCount: profiled.itemCount,
+      clusterCount: profiled.clusterCount,
+    };
+  }
+
   private commitNewsFreshness(generation: number, servedStale: boolean): boolean {
     if (!this.isCurrentNewsLoad(generation)) return false;
     this.committedNewsGeneration = generation;
@@ -2145,16 +2218,18 @@ export class DataLoaderManager implements AppModule {
     const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
     if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
-    mountCommunityWidget();
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
 
     this.updateMonitorResults();
 
     try {
-      const clusters = mlWorker.isAvailable
-        ? await clusterNewsHybrid(this.ctx.allNews)
-        : await analysisWorker.clusterNews(this.ctx.allNews);
+      // Snapshot local-ML availability AT this generation's clustering choice
+      // (#7779): available takes the hybrid path, unavailable the analysis
+      // path. Worker readiness alone must never force a news reload or
+      // retroactively regroup committed first-load results — a later normal
+      // refresh re-reads availability and may use newly available ML.
+      const { clusters } = await this.clusterNewsForGeneration(this.ctx.allNews, generation);
       if (!this.isCurrentNewsLoad(generation)) return;
       this.ctx.latestClusters = clusters;
       // Only now is an empty cluster set a real answer. Set inside the try, after
@@ -2190,7 +2265,7 @@ export class DataLoaderManager implements AppModule {
           threatLevel: c.threat?.level ?? 'info',
           timestamp: c.lastUpdated,
         }));
-      if (geoLocated.length > 0) {
+      if (geoLocated.length > 0 || landed) {
         this.ctx.map?.setNewsLocations(geoLocated);
       }
     } catch (error) {
@@ -2263,15 +2338,15 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // preserve still-fresh cached snapshots for symbols we did NOT refetch,
       // and use live results for symbols we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const resultBySymbol = new Map(results.map((r) => [normalizeStockSymbol(r.symbol), r]));
       const combined: StockAnalysisResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(normalizeStockSymbol(target.symbol));
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedHistory[target.symbol]?.[0];
+        const cached = storedHistory[normalizeStockSymbol(target.symbol)]?.[0];
         if (cached?.available) combined.push(cached);
       }
       const snapshotsToRender = combined.length > 0 ? combined : results;
@@ -2345,16 +2420,16 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // keep still-fresh cached backtests for symbols we did NOT refetch, swap
       // in live results for the ones we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
-      const storedBySymbol = new Map(stored.map((s) => [s.symbol, s]));
+      const resultBySymbol = new Map(results.map((r) => [normalizeStockSymbol(r.symbol), r]));
+      const storedBySymbol = new Map(stored.map((s) => [normalizeStockSymbol(s.symbol), s]));
       const combined: StockBacktestResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(normalizeStockSymbol(target.symbol));
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedBySymbol.get(target.symbol);
+        const cached = storedBySymbol.get(normalizeStockSymbol(target.symbol));
         if (cached) combined.push(cached);
       }
       panel.renderBacktests(combined.length > 0 ? combined : results);
@@ -2977,24 +3052,66 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  // Full 25-candidate pool behind the displayed 15. The late-region path
+  // re-ranks this pool so region matches at positions 16-25 can still promote
+  // exactly as if the region had resolved before the fetch (#7778).
+  private latestPredictionCandidates: import('@/services/prediction').PredictionMarket[] = [];
+
   async loadPredictions(): Promise<void> {
+    // Capture the region at fetch start: a late region arrival re-ranks the
+    // kept candidate pool (reprioritizeLateRegionPredictions) instead of
+    // letting this stale request overwrite the panel with the old ordering.
+    const expectedRegion = this.ctx.resolvedLocation;
+    const regionGeneration = this.predictionRegionGuard.begin();
     try {
-      const predictions = await fetchPredictions({ region: this.ctx.resolvedLocation });
-      this.ctx.latestPredictions = predictions;
-      (this.ctx.panels['polymarket'] as PredictionPanel | undefined)?.renderPredictions(predictions);
-
-      this.ctx.statusPanel?.updateFeed('Polymarket', { status: 'ok', itemCount: predictions.length });
-      this.ctx.statusPanel?.updateApi('Polymarket', { status: 'ok' });
-      dataFreshness.recordUpdate('polymarket', predictions.length);
-      dataFreshness.recordUpdate('predictions', predictions.length);
-
+      const { candidates, displayed } = await fetchPredictionCandidates({ region: expectedRegion });
+      if (this.ctx.isDestroyed || !this.predictionRegionGuard.isCurrent(regionGeneration)) return;
+      this.commitPredictionResults(displayed, candidates);
       void this.runCorrelationAnalysis();
     } catch (error) {
+      if (this.ctx.isDestroyed || !this.predictionRegionGuard.isCurrent(regionGeneration)) return;
       this.ctx.statusPanel?.updateFeed('Polymarket', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('Polymarket', { status: 'error' });
       dataFreshness.recordError('polymarket', String(error));
       dataFreshness.recordError('predictions', String(error));
     }
+  }
+
+  /**
+   * Re-rank the kept candidate pool after a late region arrival without
+   * another network request solely for geolocation (#7778). Same regional
+   * match rules and normal relevance order as fetchPredictions.
+   *
+   * In-flight safety: the generation is bumped only when the re-rank actually
+   * commits, so a cold-start load whose result has not arrived yet keeps its
+   * result instead of being discarded into an empty panel — the bump then
+   * makes that late commit apply the CURRENT region, not the stale one. No
+   * eligibility, limit, market-selection, or freshness-schedule changes.
+   */
+  reprioritizeLateRegionPredictions(region: string): void {
+    if (this.ctx.isDestroyed || !region || region === 'global') return;
+    const pool = this.latestPredictionCandidates.length > 0
+      ? this.latestPredictionCandidates
+      : this.ctx.latestPredictions;
+    if (pool.length === 0) return;
+    this.predictionRegionGuard.begin();
+    this.commitPredictionResults(reprioritizePredictionMarketsForRegion(pool, region, 15), pool);
+  }
+
+  private commitPredictionResults(
+    predictions: import('@/services/prediction').PredictionMarket[],
+    candidates?: import('@/services/prediction').PredictionMarket[],
+  ): void {
+    this.ctx.latestPredictions = predictions;
+    if (candidates) this.latestPredictionCandidates = candidates;
+    this.ctx.latestPredictions = predictions;
+    if (candidates) this.latestPredictionCandidates = candidates;
+    (this.ctx.panels['polymarket'] as PredictionPanel | undefined)?.renderPredictions(predictions);
+
+    this.ctx.statusPanel?.updateFeed('Polymarket', { status: 'ok', itemCount: predictions.length });
+    this.ctx.statusPanel?.updateApi('Polymarket', { status: 'ok' });
+    dataFreshness.recordUpdate('polymarket', predictions.length);
+    dataFreshness.recordUpdate('predictions', predictions.length);
   }
 
   async loadForecasts(): Promise<void> {
@@ -3071,6 +3188,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('USGS', { status: 'error' });
       dataFreshness.recordError('usgs', String(earthquakeResult.reason));
     }
+    this.callbacks.refreshOpenCountryTimeline?.();
 
     const imdEvents = imdResult.status === 'fulfilled' ? imdResult.value.cycloneEvents : [];
     if (eonetResult.status === 'fulfilled') {
@@ -3255,6 +3373,31 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  private readonly applyOrefAlerts = (data: OrefAlertsResponse): void => {
+    if (this.orefDisposed) return;
+    this.callPanel('oref-sirens', 'setData', data);
+    this.ctx.intelligenceCache.orefAlerts = {
+      alertCount: data.alerts?.length ?? 0,
+      historyCount24h: data.historyCount24h ?? 0,
+    };
+    if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
+  };
+
+  async loadOrefAlerts(): Promise<void> {
+    if (this.orefDisposed) return;
+    this.orefUnsubscribe ??= onOrefAlertsUpdate(this.applyOrefAlerts);
+    try {
+      const data = await fetchOrefAlerts();
+      if (this.orefDisposed) return;
+      this.applyOrefAlerts(data);
+      startOrefPolling();
+    } catch (error) {
+      if (this.orefDisposed) return;
+      console.error('[Intelligence] OREF alerts fetch failed:', error);
+      this.callPanel('oref-sirens', 'showError');
+    }
+  }
+
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
@@ -3289,6 +3432,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
+        this.callbacks.refreshOpenCountryTimeline?.();
         ingestProtests(protestData.events);
         await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
@@ -3314,17 +3458,21 @@ export class DataLoaderManager implements AppModule {
     })();
     tasks.push(protestsTask.then(() => undefined));
 
-    tasks.push((async () => {
+    const conflictsTask = (async () => {
       try {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCountryData(conflictData.events);
+        this.callbacks.refreshOpenCountryTimeline?.();
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
+        return conflictData.events;
       } catch (error) {
         console.error('[Intelligence] Conflict events fetch failed:', error);
         dataFreshness.recordError('acled_conflict', String(error));
+        return [];
       }
-    })());
+    })();
+    tasks.push(conflictsTask.then(() => undefined));
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
 
@@ -3344,6 +3492,8 @@ export class DataLoaderManager implements AppModule {
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
         };
+        this.callbacks.refreshOpenCountryMilitary?.();
+        this.callbacks.refreshOpenCountryTimeline?.();
         fetchUSNIFleetReport().then((report) => {
           if (report) this.ctx.intelligenceCache.usniFleet = report;
         }).catch(() => {});
@@ -3354,14 +3504,6 @@ export class DataLoaderManager implements AppModule {
           aggregator.ingestVessels(vesselData.vessels);
         });
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
-        updateAndCheck([
-          { type: 'military_flights', region: 'global', count: flightData.flights.length },
-          { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-        ]).then(async anomalies => {
-          if (anomalies.length > 0) {
-            await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-          }
-        }).catch(() => { });
         if (this.ctx.mapLayers.military) {
           this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
           this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
@@ -3386,7 +3528,6 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        const protestEvents = await protestsTask;
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
         // counts from the precomputed aggregates), but the map draws every event.
@@ -3401,13 +3542,9 @@ export class DataLoaderManager implements AppModule {
           this.showColdLoadError('ucdp-events');
           return;
         }
-        const acledEvents = protestEvents.map(e => ({
-          latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
-        }));
-        const events = deduplicateAgainstAcled(result.data, acledEvents);
-        const aggregates = !wantsFullUcdpSet && hydratedUcdp?.aggregates && hydratedUcdp.dedupeIndex
-          ? deduplicateUcdpProjectionAggregates(hydratedUcdp.aggregates, hydratedUcdp.dedupeIndex, acledEvents)
-          : undefined;
+        // Keep each source's claims intact, even when ACLED reports an overlapping event.
+        const events = result.data;
+        const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
           aggregates,
@@ -3480,27 +3617,7 @@ export class DataLoaderManager implements AppModule {
 
     // OREF sirens (premium-locked on desktop without API key)
     if (!_desktopLocked) {
-      tasks.push((async () => {
-        try {
-          const data = await fetchOrefAlerts();
-          this.callPanel('oref-sirens', 'setData', data);
-          const alertCount = data.alerts?.length ?? 0;
-          const historyCount24h = data.historyCount24h ?? 0;
-          this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
-          if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
-          onOrefAlertsUpdate((update) => {
-            this.callPanel('oref-sirens', 'setData', update);
-            const updAlerts = update.alerts?.length ?? 0;
-            const updHistory = update.historyCount24h ?? 0;
-            this.ctx.intelligenceCache.orefAlerts = { alertCount: updAlerts, historyCount24h: updHistory };
-            if (update.alerts?.length) dispatchOrefBreakingAlert(update.alerts);
-          });
-          startOrefPolling();
-        } catch (error) {
-          console.error('[Intelligence] OREF alerts fetch failed:', error);
-          this.callPanel('oref-sirens', 'showError');
-        }
-      })());
+      tasks.push(this.loadOrefAlerts());
     }
 
     // GPS/GNSS jamming (cloud-only — seeded by Wingbits API via fetch-gpsjam.mjs)
@@ -3648,13 +3765,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setAisData(disruptions, density);
       this.ctx.intelligenceCache.aisDisruptions = disruptions;
       await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
-      updateAndCheck([
-        { type: 'ais_gaps', region: 'global', count: disruptions.length },
-      ]).then(async anomalies => {
-        if (anomalies.length > 0) {
-          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-        }
-      }).catch(() => { });
 
       const hasData = disruptions.length > 0 || density.length > 0;
       this.ctx.map?.setLayerReady('ais', hasData);
@@ -3732,6 +3842,7 @@ export class DataLoaderManager implements AppModule {
       const degradedCount = cableIds.filter((id) => healthData.cables[id]?.status === 'degraded').length;
       this.ctx.statusPanel?.updateFeed('CableHealth', { status: 'ok', itemCount: faultCount + degradedCount });
     } catch {
+      this.ctx.map?.setCableHealth({});
       this.ctx.statusPanel?.updateFeed('CableHealth', { status: 'error' });
     }
   }
@@ -3759,6 +3870,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const protestData = await fetchProtestEvents();
       this.ctx.intelligenceCache.protests = protestData;
+      this.callbacks.refreshOpenCountryTimeline?.();
       this.ctx.map?.setProtests(protestData.events);
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
@@ -3885,6 +3997,8 @@ export class DataLoaderManager implements AppModule {
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
       };
+      this.callbacks.refreshOpenCountryMilitary?.();
+      this.callbacks.refreshOpenCountryTimeline?.();
       fetchUSNIFleetReport().then((report) => {
         if (report) this.ctx.intelligenceCache.usniFleet = report;
       }).catch(() => {});
@@ -3896,14 +4010,6 @@ export class DataLoaderManager implements AppModule {
         aggregator.ingestFlights(flightData.flights);
         aggregator.ingestVessels(vesselData.vessels);
       });
-      updateAndCheck([
-        { type: 'military_flights', region: 'global', count: flightData.flights.length },
-        { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-      ]).then(async anomalies => {
-        if (anomalies.length > 0) {
-          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-        }
-      }).catch(() => { });
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       if (!isInLearningMode()) {
         await this.runMilitarySurgeAnalysis(flightData.flights);
@@ -4127,6 +4233,7 @@ export class DataLoaderManager implements AppModule {
       procurementPanel.setRequestHandler((nextFilters, shouldAppend, requestSignal) => {
         return this.loadGlobalTenders(nextFilters, shouldAppend, requestSignal);
       });
+      procurementPanel.setPrincipalResetHandler(() => this.resetGlobalTendersForPrincipal());
       if (!hasPremiumAccess()) {
         if (isCanceledOrStale()) return;
         procurementPanel.clear();
@@ -4161,6 +4268,23 @@ export class DataLoaderManager implements AppModule {
     } finally {
       releaseScopedRequest();
     }
+  }
+
+  /**
+   * The procurement panel was reset for a principal change (sign-out,
+   * downgrade, or a switch to another Pro account). Drop the previous
+   * account's filters and cached results, then reload for the current account
+   * (loadGlobalTenders applies the access gate itself). App fires its
+   * account-transition loaders before panel gating runs, so the load already
+   * in flight carries the old filters; clearGlobalTenders() supersedes it and
+   * the reload replaces it.
+   */
+  private resetGlobalTendersForPrincipal(): void {
+    void this.clearGlobalTenders();
+    void Promise.resolve().then(() => {
+      if (this.ctx.isDestroyed) return;
+      void this.loadGlobalTenders();
+    });
   }
 
   async clearGlobalTenders(): Promise<void> {
@@ -4236,6 +4360,7 @@ export class DataLoaderManager implements AppModule {
     if (!hasPremiumAccess()) return;
     const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
     if (!tradePanel) return;
+    const generation = tradePanel.beginDataLoad();
 
     try {
       const {
@@ -4255,6 +4380,7 @@ export class DataLoaderManager implements AppModule {
         fetchCustomsRevenue(),
         fetchComtradeFlows(),
       ]);
+      if (!tradePanel.acceptsDataLoad(generation)) return;
 
       const r = restrictions.status === 'fulfilled' ? restrictions.value : null;
       const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
@@ -4284,6 +4410,7 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordUpdate('treasury_revenue', rev.months.length);
       }
     } catch (e) {
+      if (!tradePanel.acceptsDataLoad(generation)) return;
       console.error('[App] Trade policy failed:', e);
       this.callPanel('trade-policy', 'showError', undefined, () => void this.loadTradePolicy());
       this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });
@@ -4388,7 +4515,7 @@ export class DataLoaderManager implements AppModule {
   async loadDiseaseOutbreaks(): Promise<void> {
     try {
       const data = await fetchDiseaseOutbreaks();
-      if (data.outbreaks?.length) {
+      if (Array.isArray(data.outbreaks) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0) {
         const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
         panel?.updateData(data.outbreaks);
         this.ctx.map?.setDiseaseOutbreaks(data.outbreaks);
@@ -4474,10 +4601,13 @@ export class DataLoaderManager implements AppModule {
     const newsGeneration = this.committedNewsGeneration;
     const newsServedStale = this.committedNewsServedStale;
     try {
+      // Same per-generation availability snapshot as loadNews (#7779): pair
+      // the clustering path with THIS call's news body, never with a later
+      // worker-ready event that would regroup already-committed clusters.
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
-        this.ctx.latestClusters = mlWorker.isAvailable
-          ? await clusterNewsHybrid(this.ctx.allNews)
-          : await analysisWorker.clusterNews(this.ctx.allNews);
+        const { clusters } = await this.clusterNewsForGeneration(this.ctx.allNews, newsGeneration);
+        if (!this.isCurrentNewsLoad(newsGeneration)) return;
+        this.ctx.latestClusters = clusters;
         this.ctx.clustersSettled = true;
       }
 
@@ -4578,16 +4708,15 @@ export class DataLoaderManager implements AppModule {
         fetchGdeltTensions()
       ]);
 
+      this.ctx.pizzintIndicator?.show();
+      this.ctx.pizzintIndicator?.updateStatus(status);
+      this.ctx.pizzintIndicator?.updateTensions(tensions);
       if (status.locationsMonitored === 0) {
-        this.ctx.pizzintIndicator?.hide();
         this.ctx.statusPanel?.updateApi('PizzINT', { status: 'error' });
         dataFreshness.recordError('pizzint', 'No monitored locations returned');
         return;
       }
 
-      this.ctx.pizzintIndicator?.show();
-      this.ctx.pizzintIndicator?.updateStatus(status);
-      this.ctx.pizzintIndicator?.updateTensions(tensions);
       this.ctx.statusPanel?.updateApi('PizzINT', { status: 'ok' });
       dataFreshness.recordUpdate('pizzint', Math.max(status.locationsMonitored, tensions.length));
     } catch (error) {
@@ -4781,9 +4910,13 @@ export class DataLoaderManager implements AppModule {
   async loadSecurityAdvisories(): Promise<void> {
     try {
       const result = await fetchSecurityAdvisories();
-      if (result.ok) {
-        this.callPanel('security-advisories', 'setData', result.advisories);
-        this.ctx.intelligenceCache.advisories = result.advisories;
+      // A failed read carries last-good advisories for at most an hour (or
+      // none): show them under an error header, or the full error view.
+      this.callPanel('security-advisories', 'setData', result.advisories);
+      this.ctx.intelligenceCache.advisories = result.advisories;
+      if (!result.ok) {
+        if (result.advisories.length > 0) this.callPanel('security-advisories', 'setErrorState', true);
+        else this.callPanel('security-advisories', 'showError');
       }
     } catch (error) {
       console.error('[App] Security advisories fetch failed:', error);
@@ -4852,14 +4985,20 @@ export class DataLoaderManager implements AppModule {
 
   async loadTelegramIntel(): Promise<void> {
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
+    const generation = getTelegramIntelGeneration();
+    const isCurrent = () => !this.ctx.isDestroyed
+      && generation === getTelegramIntelGeneration()
+      && (!isDesktopRuntime() || hasPremiumAccess());
     try {
       const result = await fetchTelegramFeed();
-      this.callPanel('telegram-intel', 'setData', result);
+      if (!isCurrent()) return;
+      this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
-      });
+      }, generation);
     }
   }
 

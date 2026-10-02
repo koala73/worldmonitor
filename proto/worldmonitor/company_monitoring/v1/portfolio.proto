@@ -117,10 +117,10 @@ message ListMonitoredCompaniesRequest {
     (buf.validate.field).repeated.items.string.pattern = "^(?:active|paused|removed|MONITORED_COMPANY_LIFECYCLE_(?:ACTIVE|PAUSED|REMOVED))$",
     (sebuf.http.query) = {name: "lifecycle"}
   ];
-  // Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.
+  // Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation.
   repeated string coverage_states = 2 [
-    (buf.validate.field).repeated.max_items = 6,
-    (buf.validate.field).repeated.items.string.pattern = "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$",
+    (buf.validate.field).repeated.max_items = 7,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$",
     (sebuf.http.query) = {name: "coverage"}
   ];
   // Maximum rows to return, from 1 through 100; zero requests the server default.

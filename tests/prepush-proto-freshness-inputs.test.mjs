@@ -170,19 +170,11 @@ describe('proto-freshness inputs cover every make generate script and generation
   });
 
   test('the CI path registry covers every pre-push proto input', () => {
-    const inputRegex = new RegExp(PROTO_WORKFLOW.env?.CODEGEN_INPUT_REGEX ?? '(?!)');
-    const generatedPaths = (PROTO_WORKFLOW.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
-    const isGenerated = (path) => generatedPaths.some((generated) =>
-      generated.endsWith('/')
-        ? path === generated.slice(0, -1) || path.startsWith(generated)
-        : path === generated,
-    );
-    const missing = protoInputs.filter((path) => !inputRegex.test(path) && !isGenerated(path));
-    assert.deepEqual(
-      missing,
-      [],
-      `proto-check.yml omits PROTO_INPUTS paths:\n${missing.map((path) => `  ${path}`).join('\n')}`,
-    );
+    const ciInputs = [
+      ...(PROTO_WORKFLOW.env?.CODEGEN_INPUT_PATHS ?? '').split(/\s+/),
+      ...(PROTO_WORKFLOW.env?.GENERATED_PATHS ?? '').split(/\s+/),
+    ].filter(Boolean).map((path) => path.replace(/\/$/, ''));
+    assert.deepEqual([...protoInputs].sort(), ciInputs.sort(), 'local and CI registries must be identical');
   });
 
   test('the proto trigger uses PROTO_INPUTS so an injector-only edit cannot skip the gate', () => {

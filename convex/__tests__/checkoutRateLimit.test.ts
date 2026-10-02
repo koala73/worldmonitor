@@ -1,7 +1,8 @@
+import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import {
@@ -87,7 +88,7 @@ afterEach(() => {
   // once-values/implementations so no test inherits another's provider script.
   vi.mocked(createDodoCheckoutSession).mockReset();
   delete process.env.DODO_IDENTITY_SIGNING_SECRET;
-  delete process.env.RELAY_SHARED_SECRET;
+  delete process.env.CONVEX_TENANT_RELAY_SECRET;
 });
 
 describe("checkout rate-limit classification", () => {
@@ -125,7 +126,7 @@ describe("checkout rate-limit classification", () => {
       isCheckoutRateLimitedOutcome({
         checkoutFailed: true,
         code: CHECKOUT_RATE_LIMITED,
-        retryAfterSeconds: 999,
+        retryAfterSeconds: 10_000,
       }),
     ).toBe(false);
   });
@@ -255,10 +256,10 @@ describe("checkout rate-limit classification", () => {
   });
 });
 
-describe("relay and public action contracts", () => {
+describe("relay action contracts", () => {
   test("a transient provider 429 is absorbed by the bounded retry and checkout succeeds (#6027)", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     const sleeps = pinRetryClock();
     // Local call counter instead of chained *Once mocks: an unconsumed once-
     // queue entry would leak into the next test (restoreAllMocks does not
@@ -283,7 +284,7 @@ describe("relay and public action contracts", () => {
       },
       body: JSON.stringify({
         userId: TEST_USER.subject,
-        productId: "prod_rate_limited",
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
       }),
     });
 
@@ -297,7 +298,7 @@ describe("relay and public action contracts", () => {
 
   test("an anonymous user keeps the claim token through an absorbed 429", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     pinRetryClock();
     let providerCalls = 0;
     vi.mocked(createDodoCheckoutSession).mockImplementation(async () => {
@@ -319,7 +320,7 @@ describe("relay and public action contracts", () => {
       },
       body: JSON.stringify({
         userId: ANON_USER_ID,
-        productId: "prod_rate_limited",
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
       }),
     });
 
@@ -334,7 +335,7 @@ describe("relay and public action contracts", () => {
 
   test("the internal relay preserves the real action outcome as HTTP 429", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     mockSustainedProviderRateLimit();
     const sleeps = pinRetryClock();
     const t = convexTest(schema, modules);
@@ -347,7 +348,7 @@ describe("relay and public action contracts", () => {
       },
       body: JSON.stringify({
         userId: TEST_USER.subject,
-        productId: "prod_rate_limited",
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
       }),
     });
 
@@ -370,7 +371,7 @@ describe("relay and public action contracts", () => {
 
   test("a non-429 provider timeout remains relay HTTP 500 after one provider call", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     const sleeps = pinRetryClock();
     vi.mocked(createDodoCheckoutSession).mockRejectedValue(
       Object.assign(new Error("Request timed out."), { name: "TimeoutError" }),
@@ -385,38 +386,16 @@ describe("relay and public action contracts", () => {
       },
       body: JSON.stringify({
         userId: TEST_USER.subject,
-        productId: "prod_provider_timeout",
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
       }),
     });
 
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
-      error: expect.stringContaining("Checkout failed: Request timed out."),
+      error: "Operation failed",
     });
     expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
     expect(sleeps).not.toHaveBeenCalled();
-  });
-
-  test("the public action keeps provider rate limits on its error channel", async () => {
-    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    mockSustainedProviderRateLimit();
-    pinRetryClock();
-    const t = convexTest(schema, modules);
-
-    const request = t.withIdentity(TEST_USER).action(
-      api.payments.checkout.createCheckout,
-      {
-        productId: "prod_rate_limited",
-      },
-    );
-    await expect(request).rejects.toBeInstanceOf(Error);
-    await request.catch((error: unknown) => {
-      const data = JSON.parse(String((error as { data?: unknown }).data));
-      expect(data).toMatchObject({
-        code: CHECKOUT_RATE_LIMITED,
-        retryAfterSeconds: CHECKOUT_RETRY_AFTER_SECONDS,
-      });
-    });
   });
 });
 
@@ -670,7 +649,7 @@ describe("provider client retry contract", () => {
 // ---------------------------------------------------------------------------
 describe("terminal rate-limit alarm", () => {
   const ALARM_USER = "user_alarm_probe";
-  const ALARM_PRODUCT = "prod_alarm_probe";
+  const ALARM_PRODUCT = PRODUCT_CATALOG.pro_monthly.dodoProductId!;
 
   async function readAlarmRows(t: ReturnType<typeof convexTest>) {
     return t.run(async (ctx) =>
@@ -697,7 +676,7 @@ describe("terminal rate-limit alarm", () => {
 
   test("an exhausted ladder records exactly one occurrence with its buyer context", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     mockSustainedProviderRateLimit();
     pinRetryClock();
     const t = convexTest(schema, modules);
@@ -721,7 +700,7 @@ describe("terminal rate-limit alarm", () => {
 
   test("a checkout the ladder rescues records nothing", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     pinRetryClock();
     // 429 once, then success — #6027 working as designed. Counting this would
     // make the alarm measure provider turbulence the buyer never saw.
@@ -741,22 +720,6 @@ describe("terminal rate-limit alarm", () => {
 
     expect(response.status).toBe(200);
     expect(await readAlarmRows(t)).toHaveLength(0);
-  });
-
-  test("the public action path records too, so neither entry point is blind", async () => {
-    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    mockSustainedProviderRateLimit();
-    pinRetryClock();
-    const t = convexTest(schema, modules);
-
-    await t
-      .withIdentity(TEST_USER)
-      .action(api.payments.checkout.createCheckout, { productId: ALARM_PRODUCT })
-      .catch(() => undefined);
-
-    const rows = await readAlarmRows(t);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].userId).toBe(TEST_USER.subject);
   });
 
   test("crossing the 24h threshold pages once and stamps the alert", async () => {

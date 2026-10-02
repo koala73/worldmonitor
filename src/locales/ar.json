@@ -129,7 +129,8 @@
       "activeSirens": "صفارات إنذار نشطة",
       "sirens24h": "صفارات / 24 ساعة",
       "aviationDisruptions": "اضطرابات الطيران",
-      "gpsJammingZones": "مناطق تشويش GPS"
+      "gpsJammingZones": "مناطق تشويش GPS",
+      "temporalUnavailable": "الملاحظات الزمنية غير متاحة"
     },
     "countryFacts": "حقائق عن البلد",
     "loadingFacts": "جارٍ تحميل حقائق البلد...",
@@ -200,7 +201,7 @@
       "decisionSignalsUnavailable": "لقطة إشارات قرار الصين غير متاحة حالياً."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -875,9 +876,12 @@
         "space": "الفضاء"
       },
       "paused": "كاميرات الويب متوقفة",
-      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف",
       "play": "تشغيل",
-      "previewStatus": "معاينة مباشرة"
+      "previewStatus": "جاهز للتشغيل",
+      "connecting": "جاري الاتصال…",
+      "unverified": "لا يمكن تأكيد أن البث مباشر",
+      "offline": "{{city}} غير متصل الآن",
+      "noFeeds": "لا توجد كاميرات ويب مباشرة في هذه المنطقة الآن"
     },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
@@ -1040,10 +1044,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "المؤشر: World Monitor · بيانات المطاعم:",
+      "statusNormal": "طبيعي",
+      "statusNoData": "لا توجد بيانات",
+      "statusNoBaseline": "لا يوجد خط أساس",
+      "vsUsual": "مقارنة بالمعتاد",
       "title": "مؤشر بيتزا البنتاغون",
       "defcon": "DEFCON {{level}}",
       "updated": "تم التحديث {{timeAgo}}",
       "tensionsTitle": "التوترات الجيوسياسية",
+      "tensionsSource": "التوترات: World Monitor استنادًا إلى أحداث GDELT",
+      "insufficientData": "بيانات غير كافية",
+      "pizzaUnavailable": "نشاط مطاعم البيتزا غير متاح",
       "source": "المصدر:",
       "statusClosed": "مغلق",
       "statusSpike": "ارتفاع حاد",
@@ -1055,11 +1067,11 @@
       "minutesAgo": "{{m}}د مضت",
       "hoursAgo": "{{h}}س مضت",
       "defconLabels": {
-        "1": "مسدس مُعدّ - أقصى جاهزية",
-        "2": "وتيرة سريعة - القوات المسلحة جاهزة",
-        "3": "بيت دائري - زيادة جاهزية القوات",
-        "4": "نظرة مزدوجة - تعزيز المراقبة الاستخباراتية",
-        "5": "تلاشي - أدنى مستوى جاهزية"
+        "1": "النشاط الأقصى",
+        "2": "نشاط مرتفع",
+        "3": "نشاط متزايد",
+        "4": "فوق المعدل الطبيعي",
+        "5": "النشاط الطبيعي"
       }
     },
     "strategicPosture": {
@@ -1140,9 +1152,6 @@
       "datacenter": "مركز بيانات",
       "base": "قاعدة",
       "nuclear": "نووي"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "حرج",
@@ -1457,7 +1466,10 @@
       "provenanceTitle": "أصل التغطية: عدد القصص المأخوذة والمصادر المميزة التي تم اختيار هذا الملخص منها",
       "compiledFrom": "مجمّع من {{stories}} قصة عبر {{sources}} مصادر",
       "briefFreshness": "تم الإنشاء منذ {{minutes}}د · أحدث مصدر عمره {{hours}}س",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "تفاصيل القصة ({{count}})",
+      "streamIdleStopLabel": "إيقاف الفيديو المباشر عند عدم النشاط",
+      "streamIdleStopDesc": "يوقف الأخبار المباشرة وكاميرات الويب المباشرة بعد هذه المدة بدون نشاط ويعرض إشعارًا في اللوحة.",
+      "streamIdleStopNever": "أبدًا"
     },
     "cascade": {
       "filters": {
@@ -1773,6 +1785,7 @@
       "etfs": "ETFs",
       "netInflow": "صافي تدفق داخل",
       "netOutflow": "صافي تدفق خارج",
+      "netNeutral": "صافي محايد",
       "table": {
         "ticker": "الرمز",
         "issuer": "الجهة المصدرة",
@@ -1856,13 +1869,10 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "لا يمكن تشغيل {{name}} هنا — قد يكون مقيدًا في منطقتك (خطأ {{code}})",
       "openOnYouTube": "Open on YouTube",
       "manage": "إدارة القنوات",
       "addChannel": "إضافة قناة",
       "remove": "إزالة",
-      "youtubeHandle": "معرّف YouTube (مثال: @Channel)",
-      "youtubeHandleOrUrl": "رابط أو معرّف يوتيوب",
       "displayName": "اسم العرض (اختياري)",
       "channelSettings": "إعدادات القناة",
       "save": "حفظ",
@@ -1877,15 +1887,26 @@
       "regionMiddleEast": "الشرق الأوسط",
       "regionAfrica": "أفريقيا",
       "regionOceania": "أوقيانوسيا",
-      "botCheck": "يطلب YouTube تسجيل الدخول لتشغيل {{name}}",
-      "invalidHandle": "أدخل معرّف YouTube صالح (مثال: @ChannelName)",
       "signInToYouTube": "تسجيل الدخول إلى YouTube",
       "verifying": "جارٍ التحقق…",
       "noResults": "لم يُعثر على قنوات تطابق \"{{term}}\"",
       "hlsUrl": "رابط بث HLS (اختياري)",
       "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)",
       "playLiveFeed": "تشغيل البث المباشر",
-      "readyStatus": "جاهز عندما تكون مستعدا"
+      "readyStatus": "جاهز عندما تكون مستعدا",
+      "embedBlocked": "YouTube لا يشغّل {{name}} داخل مواقع أخرى في الوقت الحالي",
+      "unavailable": "لا يمكن تشغيل {{name}} الآن",
+      "noStream": "لم يتم إعداد بث مباشر لـ {{name}} بعد",
+      "needsChannelUrl": "أضف {{name}} مجددًا مع عنوان قناته (youtube.com/channel/UC…) أو عنوان فيديو مباشر",
+      "connecting": "جاري الاتصال بـ {{name}}…",
+      "recording": "جاري التسجيل",
+      "unverified": "لا يمكن تأكيد أن هذا البث مباشر",
+      "playNextChannel": "تشغيل القناة التالية",
+      "channelOrVideoUrl": "قناة YouTube أو عنوان فيديو",
+      "channelUrlHint": "الصق عنوان قناة (youtube.com/channel/UC…) أو عنوان فيديو مباشر",
+      "youtubeChannel": "قناة YouTube",
+      "insecureStream": "{{name}} يستخدم بث غير آمن (http)، والمتصفحات تحظره. أضفه مجددًا ببث آمن (https)",
+      "httpsStreamHint": "المتصفحات تحظر البث غير الآمن (http). الصق عنوان بث آمن (https)"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
@@ -2208,7 +2229,7 @@
       "infoTooltip": "<strong>التقويم الاقتصادي</strong> إصدارات الاقتصاد الكلي المجدولة: CPI وNFP وGDP وPMI وقرارات البنوك المركزية. يعرض التوقعات مقابل الفعلي مقابل السابق. الأحداث عالية التأثير مميزة. المصدر: مزودو البيانات الاقتصادية."
     },
     "fsi": {
-      "infoTooltip": "<strong>مؤشر الضغوط المالية</strong> مؤشر الضغوط المالية لبنك كانساس سيتي الفيدرالي (KCFSI): يقيس الضغوط في الأسواق المالية الأمريكية باستخدام 11 مؤشراً تشمل فروق العوائد والتقلبات والارتباطات المتبادلة. القيم الموجبة تشير إلى ضغوط أعلى من المتوسط. المصدر: بنك الاحتياطي الفيدرالي في كانساس سيتي.",
+      "infoTooltip": "<strong>مؤشر الإجهاد المالي</strong> نسبة WorldMonitor للائتمان عالي العائد إلى سندات الخزانة طويلة الأجل، معدلة لتقلبات الأسهم وفارق العائد المرتفع: (HYG / TLT) / (VIX × HY spread / 100). هذا ليس مؤشر الإجهاد المالي لبنك الاحتياطي الفيدرالي في كانساس سيتي. قراءة 1.5 أو أعلى تعني إجهادًا منخفضًا؛ وأقل من 0.3 تعني إجهادًا مرتفعًا.",
       "title": "مؤشر الضغط المالي",
       "usFsiValue": "قيمة مؤشر الضغط المالي الأمريكي",
       "cissTitle": "مؤشر الضغط النظامي في منطقة اليورو",
@@ -2683,7 +2704,14 @@
       "signals_zero": "{{count}} إشارات",
       "signals_two": "{{count}} إشارتان",
       "signals_few": "{{count}} إشارات",
-      "signals_many": "{{count}} إشارة"
+      "signals_many": "{{count}} إشارة",
+      "waiting": "في انتظار التحديث التالي للبيانات. يتم تحديث هذه اللوحة تلقائيًا.",
+      "offline": "في انتظار الاتصال. يتم تحديث هذه اللوحة تلقائيًا عند عودة الاتصال بالإنترنت.",
+      "updated": "تم التحديث {{time}}",
+      "saved": "آخر تحديث معروف {{time}} · جارٍ البحث عن تحديثات",
+      "savedOffline": "آخر تحديث معروف {{time}} · غير متصل",
+      "localSignals": "استنادًا إلى الإشارات المحمّلة في لوحة المعلومات",
+      "emptySaved": "لم يظهر تقارب في آخر تحديث معروف."
     },
     "thermalEscalation": {
       "title": "التصعيد الحراري",
@@ -2865,6 +2893,60 @@
       "succeeded": "تم حفظ مفتاح المرور. يمكنك استخدامه في المرة القادمة التي تسجل فيها الدخول.",
       "retryable": "لم ينته الإجراء. يمكنك المحاولة مرة أخرى.",
       "failed": "لم نتمكن من حفظ مفتاح مرور على هذا الجهاز."
+    },
+    "decisionBrief": {
+      "commodityTitle": "موجز قرار السلع",
+      "commodity": "السلعة / المنتج",
+      "blockedChokepoint": "المضيق المفترض إغلاقه",
+      "commodityCapture": "تسجيل مقارنة السلع",
+      "title": "موجز القرار",
+      "fuel": "الوقود",
+      "chokepoint": "نقطة اختناق",
+      "baseline": "التعطل الأساسي",
+      "comparison": "التعطل المقارن",
+      "capture": "التقاط / تحديث كليهما",
+      "downloadHtml": "تنزيل الموجز بصيغة HTML",
+      "downloadJson": "تنزيل الموجز بصيغة JSON",
+      "back": "← العودة إلى موجز البلد",
+      "select": "اختر تعطلًا في إمدادات الطاقة، ثم التقط كلا السيناريوهين.",
+      "changed": "تغير الاختيار. التقط كلا السيناريوهين قبل التصدير.",
+      "loading": "جارٍ التقاط كلا السيناريوهين…",
+      "captured": "تم الالتقاط. راجع تواريخ الرصد والقيود قبل التنزيل.",
+      "failed": "تعذر التقاط السيناريوهين. تحقق من صلاحية الوصول وحاول مجددًا. لا توجد نتيجة متاحة للتصدير.",
+      "locked": "موجز القرار متاح مع Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "متوقف مؤقتًا بسبب عدم النشاط",
+      "idleBody": "توقف الفيديو المباشر بعد {{duration}} بدون نشاط الفأرة أو لوحة المفاتيح أو اللمس.",
+      "idleResume": "استئناف",
+      "idleKeepPlaying": "الاستمرار في التشغيل عند عدم النشاط",
+      "idleSettingsHint": "غيّر هذا في أي وقت في الإعدادات › الوسائط.",
+      "idleKeepPlayingToast": "سيستمر الفيديو المباشر في التشغيل عند عدم النشاط. غيّر هذا في الإعدادات › الوسائط."
+    },
+    "corroboration": {
+      "singlePublisher": "ناشر واحد",
+      "singlePublisherHint": "ناشر واحد فقط يغطي هذا حتى الآن. هذا يصف نطاق التغطية، وليس الدقة.",
+      "tier4Only": "مصادر منخفضة المستوى فقط",
+      "tier4OnlyHint": "كل منفذ ينشر هذا هو مصدر من المستوى 4 (المجمّعات والمدونات). هذا يصف نطاق التغطية، وليس الدقة.",
+      "rosterListed": "({{listed}} مدرجة)",
+      "rosterFeeds": "الخلاصات التي شوهدت: {{labels}}",
+      "rosterLegend": "المستويات ترتّب المصادر؛ ولا تحكم على هذا الادعاء.",
+      "tierDocsLink": "كيفية تعيين المستويات",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T؟",
+      "tierTitle1": "المستوى 1: وكالات الأنباء والهيئات الرسمية",
+      "tierTitle2": "المستوى 2: المنافذ الإعلامية الرئيسية",
+      "tierTitle3": "المستوى 3: مصادر متخصصة وإقليمية ومراكز بحثية",
+      "tierTitle4": "المستوى 4: المجمّعات والمدونات",
+      "tierTitleUndeclared": "المستوى غير محدد: لم تتم مراجعته بعد",
+      "rosterSummary": "نقلها {{publishers}}",
+      "rosterSummaryTier1": "نقلها {{publishers}}، بينهم {{tier1}} من المستوى 1",
+      "rosterPublishers_zero": "{{count}} ناشر",
+      "rosterPublishers_one": "{{count}} ناشر",
+      "rosterPublishers_two": "{{count}} ناشران",
+      "rosterPublishers_few": "{{count}} ناشرين",
+      "rosterPublishers_many": "{{count}} ناشراً",
+      "rosterPublishers_other": "{{count}} ناشر"
     }
   },
   "popups": {
@@ -2903,14 +2985,18 @@
     "protest": {
       "acledVerified": "ACLED (موثّق)",
       "gdelt": "GDELT",
+      "records": "سجلات",
+      "mediaSignal": "إشارة إعلامية غير مؤكدة",
+      "relatedArticle": "مقال ذو صلة",
+      "mediaSignalDetail": "ورد ذكر هذا الموقع في مقالات عن اضطرابات. لم يتم التحقق من وقوع حدث محلي.",
       "riots": "أعمال شغب",
       "highSeverity": "شدة عالية"
     },
     "gpsJamming": {
       "title": "تداخل GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "الطائرات المتأثرة",
+      "samples": "عدد الطائرات المتأثرة",
+      "aircraft": "الطائرات المرصودة",
       "h3Hex": "H3 Hex"
     },
     "flight": {

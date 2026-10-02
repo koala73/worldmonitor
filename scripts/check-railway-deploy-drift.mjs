@@ -184,11 +184,16 @@ export function classifyServiceDeploy({
   // Paths changed by one commit, used to judge whether a single refusal was the
   // filter working. Same default, same reason.
   changedPathsIn = () => null,
+  // The service's cron expression from the live deployment config, or null for
+  // an always-on service. Decides whether a crashed serving deployment behind a
+  // failed or in-flight build is reported as a stopped cron.
+  cronSchedule = null,
 }) {
   const base = {
     service,
     runningSha: null,
     runningAt: null,
+    runningStatus: null,
     rejectedShas: [],
     unknownStatuses: [],
   };
@@ -223,6 +228,7 @@ export function classifyServiceDeploy({
       unknownStatuses,
       runningSha: running?.meta?.commitHash ?? null,
       runningAt: running?.createdAt ?? null,
+      runningStatus: running?.status ?? null,
       detail: `Railway reported ${unknownStatuses.join(', ')}, which this check cannot classify`,
     };
   }
@@ -284,16 +290,42 @@ export function classifyServiceDeploy({
     ...base,
     runningSha,
     runningAt: running?.createdAt ?? null,
+    runningStatus: running?.status ?? null,
     rejectedShas,
   };
 
-  // A failed build for head outranks an outstanding rejection when it is the
-  // newer event: that is exactly the #6142 recovery path, where the trigger is
-  // fixed, the build finally fires, and it breaks. Reporting REJECTED_PUSH
-  // there would name a cause that has already been resolved.
+  // A failed build newer than the serving source outranks an outstanding
+  // rejection when it is the newer event: that is exactly the #6142 recovery
+  // path, where the trigger is fixed, the build finally fires, and it breaks.
+  // Reporting REJECTED_PUSH there would name a cause that has already been
+  // resolved.
   const forHead = (statuses) => ordered.find((deployment) => statuses.includes(deployment.status)
     && deployment.meta?.commitHash === headSha);
-  const failedForHead = forHead(FAILED_STATUSES);
+  // The newest build attempt since the serving source was built. A failure
+  // counts only until a later attempt starts; an in-flight attempt reports
+  // through the PENDING_BUILD and BUILD_STALLED branches below.
+  const newestAttempt = running
+    ? ordered.find((deployment) => (FAILED_STATUSES.includes(deployment.status)
+      || IN_FLIGHT_STATUSES.includes(deployment.status)) && newerThanRunning(deployment))
+    : null;
+  const failedBuild = newestAttempt && FAILED_STATUSES.includes(newestAttempt.status) ? newestAttempt : null;
+  const inFlightForHead = forHead(IN_FLIGHT_STATUSES);
+  // Railway ticks a cron service's serving deployment while a newer build is
+  // FAILED or in flight; once that deployment crashes nothing is left to
+  // schedule. An always-on service is restarted instead. See
+  // docs/solutions/integration-issues/railway-cron-crash-behind-failed-build-never-self-heals.md.
+  const servingCrashedBehindBuild = running?.status === 'CRASHED' && Boolean(failedBuild || inFlightForHead);
+  const stoppedCron = !servingCrashedBehindBuild
+    ? ''
+    : cronSchedule
+      ? '; that deployment has CRASHED and its cron will not tick again until a build succeeds'
+      : '; that deployment has CRASHED';
+  const buildFailedDetail = () => {
+    const failedSha = failedBuild.meta?.commitHash;
+    return `the build for ${failedSha ? failedSha.slice(0, 9) : 'an unidentified commit'} failed, so ${runningSha ? runningSha.slice(0, 9) : 'an unidentified source'} is still serving`
+      + stoppedCron
+      + `; nothing has built since, so run \`railway redeploy --service ${service} --from-source\` to rebuild at head`;
+  };
   // A frozen comparison head can have a failed build even after a newer
   // descendant is serving. Production is ahead in that case. Keep outstanding
   // rejection handling below ahead of the final AHEAD verdict: a later refused
@@ -306,11 +338,11 @@ export function classifyServiceDeploy({
   const newestRejectionAt = outstandingRejections.length > 0
     ? Math.max(...outstandingRejections.map(createdAtMs))
     : Number.NEGATIVE_INFINITY;
-  if (!runningIsAhead && failedForHead && createdAtMs(failedForHead) > newestRejectionAt) {
+  if (!runningIsAhead && failedBuild && createdAtMs(failedBuild) > newestRejectionAt) {
     return {
       ...identified,
       verdict: 'BUILD_FAILED',
-      detail: `the build for ${headSha.slice(0, 9)} failed, so ${runningSha?.slice(0, 9) ?? 'an unidentified source'} is still serving`,
+      detail: buildFailedDetail(),
     };
   }
 
@@ -363,25 +395,24 @@ export function classifyServiceDeploy({
     };
   }
 
-  if (failedForHead) {
+  if (failedBuild) {
     return {
       ...identified,
       verdict: 'BUILD_FAILED',
-      detail: `the build for ${headSha.slice(0, 9)} failed, so ${identified.runningSha.slice(0, 9)} is still serving`,
+      detail: buildFailedDetail(),
     };
   }
   // A build that started must also still be plausibly running. Without the age
   // bound a build that wedged days ago kept reporting PENDING_BUILD — a healthy
   // verdict — for as long as head did not move, which is precisely the
   // green-while-stale outcome this check exists to prevent.
-  const inFlightForHead = forHead(IN_FLIGHT_STATUSES);
   if (inFlightForHead) {
     const startedMs = createdAtMs(inFlightForHead);
     if (Number.isFinite(now) && now - startedMs > buildGraceMs) {
       return {
         ...identified,
         verdict: 'BUILD_STALLED',
-        detail: `a build for ${headSha.slice(0, 9)} has been ${inFlightForHead.status} since ${inFlightForHead.createdAt}, longer than the ${Math.round(buildGraceMs / 60_000)}m grace`,
+        detail: `a build for ${headSha.slice(0, 9)} has been ${inFlightForHead.status} since ${inFlightForHead.createdAt}, longer than the ${Math.round(buildGraceMs / 60_000)}m grace${stoppedCron}`,
       };
     }
     return { ...identified, verdict: 'PENDING_BUILD', detail: `a build for ${headSha.slice(0, 9)} is under way` };
@@ -605,7 +636,7 @@ function normalizeAuthorizedLineage(result, isOnAuthorizedMainLineage) {
   return {
     ...result,
     verdict: 'AHEAD_LINEAGE_UNPROVEN',
-    detail: 'the running descendant is not proven reachable from the authorized main ref',
+    detail: `running ${result.runningSha ?? 'unknown'}; cannot prove this descendant belongs to refreshed origin/main. Verify the deployment source branch and Git fetch access before redeploying.`,
   };
 }
 
@@ -720,9 +751,10 @@ export function resolveOriginMainRelation(headSha, originMainSha, ancestry) {
 export function resolveComparisonHead(argv, {
   git = runGit,
   ancestry = () => 'unknown',
+  refreshMain = false,
 } = {}) {
   const explicit = readArgument(argv, '--head', null);
-  if (explicit === null) {
+  if (explicit === null || refreshMain) {
     git([
       'fetch',
       '--quiet',
@@ -734,7 +766,12 @@ export function resolveComparisonHead(argv, {
   try {
     originMainSha = git(['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}']);
   } catch (error) {
-    if (explicit === null) {
+    // Symmetric with the fetch condition above. A refresh call always passes an
+    // explicit --head, so keying this on `explicit === null` alone would swallow
+    // the failure and hand back originMainSha: null — which reads downstream as
+    // "no commit is on authorized main" and blocks the whole fleet with a detail
+    // string blaming the deployment source rather than this resolution failure.
+    if (explicit === null || refreshMain) {
       throw new Error(
         'cannot resolve origin/main for the deploy-drift comparison; fetch main or pass --head explicitly',
         { cause: error },
@@ -771,7 +808,7 @@ function printReport(results, summary, headSha, graceSha, headContext) {
   console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} ${formatComparisonHead(headContext)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
 
   if (summary.blocking.length > 0) {
-    console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
+    console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) with deployment or source-verification problems:`);
     for (const problem of summary.blocking) {
       console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
     }
@@ -824,8 +861,8 @@ async function main() {
   // "cannot prove it keeps the service reported" behaviour.
   const ancestry = createAncestryResolver({ git: runGit });
   const isAncestor = (ancestor, descendant) => ancestry(ancestor, descendant) === 'yes';
-  const headContext = resolveComparisonHead(process.argv, { git: runGit, ancestry });
-  const { headSha, originMainSha: authorizedMainSha } = headContext;
+  let headContext = resolveComparisonHead(process.argv, { git: runGit, ancestry });
+  const { headSha } = headContext;
   // The newest commit that has been available longer than the build grace.
   // On a checkout too shallow to reach back that far, rev-list answers with
   // nothing and this falls back to head — the stricter reading.
@@ -852,7 +889,7 @@ async function main() {
   // What each service's container can be affected by. The registry is the
   // repository's declaration and the live config is what Railway is actually
   // filtering on; resolveServiceClosure unions them, because between a merged
-  // registry edit and the audit's --apply each knows a path the other does not.
+  // registry edit and verified registry sync each knows a path the other does not.
   const registry = JSON.parse(readFileSync(REGISTRY_URL, 'utf8'));
   const registryByService = new Map(registry.map((entry) => [entry.service, entry]));
   // The dedicated Viewer cannot see environment-variable values. Read only the
@@ -925,6 +962,33 @@ async function main() {
     monotonicNow: () => performance.now(),
   });
 
+  // Main can advance while Railway is read. Fetch after that observation so a
+  // newly deployed main commit has both its object and lineage available.
+  // Keep the original target: refreshing evidence must not move the goalpost.
+  //
+  // Two guards, both about what sits immediately after this line. The next step
+  // is classifyFleetWithinDeadline, which DISCARDS every history already read
+  // once the deadline has passed — so a refresh that runs past the deadline, or
+  // that spends its 30s git timeout crossing it, converts a fully-read fleet
+  // into a fleet-wide deadline error. That is the same false alarm this refresh
+  // exists to remove. And an unhandled throw here would strand the completed
+  // Railway read with no report at all, which is strictly worse than judging
+  // against a stale ref: a stale authorized main only ever OVER-blocks, so
+  // degrading to the pre-refresh context stays fail-closed.
+  if (performance.now() < deepPassDeadlineAt) {
+    try {
+      headContext = {
+        ...resolveComparisonHead(['--head', headSha], { git: runGit, ancestry, refreshMain: true }),
+        headSource: headContext.headSource,
+      };
+    } catch (error) {
+      console.error(`Could not refresh origin/main after the Railway read; judging lineage against the pre-refresh ref, which can only over-report: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    console.error('Skipped the post-observation origin/main refresh: the run deadline was reached while reading Railway. Lineage is judged against the pre-refresh ref, which can only over-report.');
+  }
+  const { originMainSha: authorizedMainSha } = headContext;
+
   // One classifier closure for both passes: the shallow fleet read and the
   // deep per-service re-read must judge a history identically, or the deepen
   // pass could reach a different verdict for reasons other than depth.
@@ -948,6 +1012,9 @@ async function main() {
     changedPathsIn: (sha) => (
       classificationDeadlineReached() ? null : changedPathsIn(sha)
     ),
+    cronSchedule: liveById[service.id]?.deploy?.cronSchedule
+      ?? registryByService.get(service.name)?.cronSchedule
+      ?? null,
   });
 
   const shallowResults = classifyFleetWithinDeadline(services, histories, {

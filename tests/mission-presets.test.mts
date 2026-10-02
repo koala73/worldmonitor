@@ -12,6 +12,9 @@ import {
   DEFAULT_MAP_LAYERS,
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  restoreProGatedPanels,
 } from '../src/config/panels.ts';
 import {
   LAYER_REGISTRY,
@@ -31,6 +34,7 @@ import {
   isMissionPresetAvailableForVariant,
   isMissionPresetPromptDismissed,
   loadStoredMissionPreset,
+  onMissionPresetChange,
   resetMissionPresetState,
   saveMissionPreset,
 } from '../src/services/mission-presets.ts';
@@ -329,8 +333,12 @@ function defineBrowserGlobals(): MiniDocument {
 async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const tempDir = mkdtempSync(join(tmpdir(), 'mission-handler-test-'));
   const outfile = join(tempDir, 'event-handlers.mjs');
+  // The URL-sync predicate is pure and lives beside its type, so the stub
+  // re-exports the real one rather than carrying a copy that could drift.
+  const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
+      export { urlHasAsyncFlyTo, withUrlFragment } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
@@ -448,7 +456,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
       export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
       export function trackGateHit(...args) { push('trackGateHit', args); }
-      export function trackPanelResized(...args) { push('trackPanelResized', args); }
+      export function trackLayoutCustomized(...args) { push('trackLayoutCustomized', args); }
     `],
     ['@/services', `
       export async function saveSnapshot() {}
@@ -512,6 +520,9 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       buildApi.onLoad({ filter: /.*/, namespace: 'mission-stub' }, (args) => ({
         contents: stubs.get(args.path) ?? '',
         loader: 'js' as const,
+        // A stub may re-export a real source file; without a resolve
+        // directory esbuild refuses to look on disk even for absolute paths.
+        resolveDir: fileURLToPath(new URL('..', import.meta.url)),
       }));
       buildApi.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'css' as const }));
     },
@@ -644,6 +655,7 @@ describe('mission preset definitions', () => {
         'tech-ai-watch',
         'good-news-explorer',
         'nq-day-trader',
+        'country-watcher',
       ],
     );
   });
@@ -712,11 +724,11 @@ describe('applyMissionPresetToState', () => {
 
   it('lists NQ Day Trader only on finance and rejects it on other variants', () => {
     const financeIds = getMissionPresetsForVariant('finance').map((preset) => preset.id);
-    assert.equal(financeIds.length, 8);
+    assert.equal(financeIds.length, 9);
     assert.ok(financeIds.includes('nq-day-trader'));
     for (const variant of VARIANTS.filter((item) => item !== 'finance')) {
       const ids = getMissionPresetsForVariant(variant).map((preset) => preset.id);
-      assert.equal(ids.length, 7, `${variant} should keep the seven shared missions`);
+      assert.equal(ids.length, 8, `${variant} should keep the eight shared missions`);
       assert.ok(!ids.includes('nq-day-trader'), `${variant} must not offer NQ Day Trader`);
     }
 
@@ -796,6 +808,7 @@ describe('applyMissionPresetToState', () => {
   it('falls back to variant defaults when a preset has too few matching panels', () => {
     for (const preset of MISSION_PRESETS.filter((preset) => (
       preset.id !== 'good-news-explorer'
+      && preset.id !== 'country-watcher'
       && isMissionPresetAvailableForVariant(preset, 'happy')
     ))) {
       const applied = applyMissionPresetToState(
@@ -825,6 +838,25 @@ describe('applyMissionPresetToState', () => {
     ]);
     assert.equal(happyApplied.mapLayers.positiveEvents, true);
     assert.equal(happyApplied.mapLayers.speciesRecovery, true);
+
+    const happyCountryWatcher = applyMissionPresetToState(
+      'country-watcher',
+      makePanelSettings('happy'),
+      DEFAULT_MAP_LAYERS,
+      'happy',
+    );
+    assert.deepEqual(happyCountryWatcher.panelOrder, [
+      'positive-feed',
+      'progress',
+      'spotlight',
+      'species',
+      'renewable',
+    ]);
+    assert.notDeepEqual(
+      enabledWorkspacePanelKeys(happyCountryWatcher.panelSettings),
+      defaultWorkspacePanelKeys('happy'),
+    );
+    assert.equal(happyCountryWatcher.mapLayers.happiness, true);
 
     const techApplied = applyMissionPresetToState(
       'tech-ai-watch',
@@ -1012,10 +1044,26 @@ describe('mission preset persistence', () => {
     });
 
     assert.doesNotThrow(() => saveMissionPreset('crisis-desk'));
+    assert.equal(loadStoredMissionPreset()?.id, 'crisis-desk');
     assert.doesNotThrow(() => clearMissionPreset());
     assert.doesNotThrow(() => dismissMissionPresetPrompt());
     assert.equal(loadStoredMissionPreset(), null);
     assert.equal(isMissionPresetPromptDismissed(), true);
+  });
+
+  it('publishes same-tab mission changes and isolates listener failures', () => {
+    const seen: Array<string | null> = [];
+    const stopThrowing = onMissionPresetChange(() => { throw new Error('consumer failed'); });
+    const stop = onMissionPresetChange((preset) => seen.push(preset?.id ?? null));
+
+    saveMissionPreset('crisis-desk');
+    clearMissionPreset();
+
+    assert.deepEqual(seen, ['crisis-desk', null]);
+    stopThrowing();
+    stop();
+    saveMissionPreset('country-watcher');
+    assert.deepEqual(seen, ['crisis-desk', null]);
   });
 });
 
@@ -1121,6 +1169,7 @@ function createMissionHarness(options: {
   storage?: MemoryStorage;
   map?: ReturnType<typeof makeMapSpy>;
   freeTierFallback?: boolean;
+  onApplyPanels?: (settings: Record<string, PanelConfig>) => void;
 } = {}): MissionHarness {
   const storage = options.storage ?? new MemoryStorage();
   defineLocalStorage(storage);
@@ -1211,7 +1260,10 @@ function createMissionHarness(options: {
     loadDataForLayer: (layer: string) => callbacks.loadDataForLayer.push(layer),
     waitForAisData: () => { callbacks.waitForAisCalls += 1; },
     syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
-    applyPanelSettings: () => { callbacks.applyPanelSettingsCalls += 1; },
+    applyPanelSettings: () => {
+      callbacks.applyPanelSettingsCalls += 1;
+      options.onApplyPanels?.(ctx.panelSettings);
+    },
     applySavedPanelOrder: (panelOrder?: string[]) => {
       callbacks.appliedOrderArgs.push(panelOrder);
       callbacks.appliedOrders.push([...(panelOrder ?? [])]);
@@ -1269,6 +1321,23 @@ describe('mission preset shell integration', () => {
       [{ id: 'mobileMenuMission', mobile: true }],
       'mobile WebMCP opens should use the menu trigger and mobile popover mode',
     );
+  });
+
+  it('defines country-watcher with the verified panel keys and no variant gate', () => {
+    const preset = MISSION_PRESETS.find((p) => p.id === 'country-watcher');
+    assert.ok(preset, 'country-watcher preset missing');
+    // KTD6: keys verified against the FULL catalog — displacement is the
+    // UNHCR panel (there is no `unhcr` key) and there is no `world-news`.
+    assert.deepEqual(preset!.panels, [
+      'map', 'live-news', 'cii', 'strategic-risk', 'sanctions-pressure',
+      'security-advisories', 'gdelt-intel', 'displacement',
+      'population-exposure', 'economic',
+    ]);
+    for (const key of preset!.panels) {
+      if (key === 'map') continue;
+      assert.ok(key in ALL_PANELS, `country-watcher panel '${key}' not in ALL_PANELS`);
+    }
+    assert.equal(preset!.variants, undefined, 'country-watcher must be offered on every variant');
   });
 
   it('tags agent-applied presets and suppresses the panel views they trigger', async () => {
@@ -1363,6 +1432,63 @@ describe('mission preset shell integration', () => {
     assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'));
     assert.equal(callbacks.loadDataForLayer.includes('resilienceScore'), false);
     assert.equal(callbacks.stopLayerActivity.includes('resilienceScore'), false);
+  });
+
+  for (const action of ['applyMissionPreset', 'applyMissionPresetForWebMcp', 'resetMissionPreset'] as const) {
+    for (const access of [
+      { label: 'settled free', premium: false, tierResolved: true, fallback: false, capped: true },
+      { label: 'pending', premium: false, tierResolved: false, fallback: false, capped: false },
+      { label: 'fallback free', premium: false, tierResolved: false, fallback: true, capped: true },
+      { label: 'Pro', premium: true, tierResolved: true, fallback: false, capped: false },
+      { label: 'Pro during fallback', premium: true, tierResolved: false, fallback: true, capped: false },
+    ]) {
+      it(`${action} commits the correct panel limit for ${access.label}`, () => {
+        setMissionAccess(access);
+        let rendered: Record<string, PanelConfig> | undefined;
+        const { ctx, manager } = createMissionHarness({
+          freeTierFallback: access.fallback,
+          onApplyPanels: (settings) => {
+            rendered = structuredClone(settings);
+            assert.deepEqual(readJsonStorage('worldmonitor-panels'), settings,
+              'the same selection must be persisted before rendering');
+          },
+        });
+        // Retained MCP panels count toward the cap and can overflow a small mission.
+        for (let i = 0; i < FREE_MAX_PANELS; i++) {
+          ctx.panelSettings[`mcp-feed-${i}`] = { name: `Feed ${i}`, enabled: true, priority: 99 };
+        }
+        const candidate = action === 'resetMissionPreset'
+          ? resetMissionPresetState(ctx.panelSettings).panelSettings
+          : applyMissionPresetToState('crisis-desk', ctx.panelSettings).panelSettings;
+        assert.ok(countFreePanelCapUsage(candidate) > FREE_MAX_PANELS);
+        manager[action]('crisis-desk');
+        assert.deepEqual(rendered, ctx.panelSettings);
+        assert.equal(ctx.panelSettings.map?.enabled, true);
+        if (access.capped) {
+          assert.equal(countFreePanelCapUsage(ctx.panelSettings), FREE_MAX_PANELS);
+          assert.equal(ctx.panelSettings['cw-market-note']?.enabled, false);
+          assert.equal(ctx.panelSettings['cw-market-note']?.proGated, true);
+          assert.deepEqual(enabledPanelKeys(restoreProGatedPanels(ctx.panelSettings)), enabledPanelKeys(candidate),
+            'an upgrade can restore the panels disabled by this gate');
+        } else {
+          assert.deepEqual(ctx.panelSettings, candidate, 'Pro and pending layouts keep the exact mission selection');
+        }
+      });
+    }
+  }
+
+  it('caps the live reset even when storage writes fail', () => {
+    setMissionAccess({ premium: false, tierResolved: true });
+    const storage = new MemoryStorage();
+    storage.throwOnSet = true;
+    let renderedCount = -1;
+    const { ctx, manager } = createMissionHarness({
+      storage,
+      onApplyPanels: (settings) => { renderedCount = countFreePanelCapUsage(settings); },
+    });
+    manager.resetMissionPreset();
+    assert.equal(countFreePanelCapUsage(ctx.panelSettings), FREE_MAX_PANELS);
+    assert.equal(renderedCount, FREE_MAX_PANELS);
   });
 
   it('sanitizes locked mission layers only for settled free users or the bounded fallback', () => {

@@ -142,28 +142,11 @@ describe('dedupeRulesByUser', () => {
 });
 
 describe('aiDigestEnabled default parity', () => {
-  // The composer's main loop short-circuits on `rule.aiDigestEnabled
-  // === false`. Exercising the predicate directly so a refactor that
-  // re-inverts it (back to `!rule.aiDigestEnabled`) fails loud.
-
-  function shouldSkipForAiDigest(rule) {
-    return rule.aiDigestEnabled === false;
-  }
-
-  it('includes rules with aiDigestEnabled: true', () => {
-    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: true }), false);
-  });
-
-  it('includes rules with aiDigestEnabled: undefined (legacy rows)', () => {
-    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: undefined }), false);
-  });
-
-  it('includes rules with no aiDigestEnabled field at all (legacy rows)', () => {
-    assert.equal(shouldSkipForAiDigest({}), false);
-  });
-
-  it('excludes only when explicitly false', () => {
-    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: false }), true);
+  it('groupEligibleRulesByUser: legacy rule without aiDigestEnabled remains eligible', () => {
+    const legacyRule = rule();
+    delete legacyRule.aiDigestEnabled;
+    const grouped = groupEligibleRulesByUser([legacyRule]);
+    assert.equal(grouped.get('user_abc')?.[0], legacyRule);
   });
 
   it('groupEligibleRulesByUser: opted-out preferred variant falls back to opted-in sibling', () => {

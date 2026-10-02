@@ -100,31 +100,27 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
     });
   });
 
-  test("LAPSED Pro Business bearer loses the paid allowance", async () => {
+  test("LAPSED Pro Business bearer loses premium access", async () => {
     validateBearerToken.mockResolvedValue({ valid: true, role: "free", userId: "u1" });
     getEntitlements.mockResolvedValue(entitlement(1, 2_500, LAPSED()));
 
     const identity = await resolvePremiumCallerIdentity(bearerRequest());
 
-    // Premium-ness itself keys on tier alone (pre-existing); the SPEND limit
-    // must not inherit a lapsed plan's allowance.
     expect(identity).toMatchObject({
-      directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+      isPremium: false,
     });
   });
 
-  test("LAPSED Enterprise bearer does not stay unlimited (null would skip the meter)", async () => {
+  test("LAPSED Enterprise bearer loses premium access", async () => {
     validateBearerToken.mockResolvedValue({ valid: true, role: "free", userId: "u1" });
     getEntitlements.mockResolvedValue(entitlement(3, null, LAPSED()));
 
     const identity = await resolvePremiumCallerIdentity(bearerRequest());
 
     expect(identity).toMatchObject({
-      directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+      isPremium: false,
     });
-    // A null here would make api/chat-analyst.ts skip reserveDirectLlmQuota
-    // entirely -- no counter, and no fail-closed-on-Redis-outage path.
-    expect((identity as { directLlmDailyLimit?: number | null }).directLlmDailyLimit).not.toBeNull();
+    expect(identity).not.toHaveProperty("directLlmDailyLimit");
   });
 
   test("active Enterprise bearer IS unlimited", async () => {
@@ -148,7 +144,7 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
     });
   });
 
-  test("user-api-key caller with a LAPSED row loses the paid allowance", async () => {
+  test("user-api-key caller with a LAPSED row loses premium access", async () => {
     validateUserApiKey.mockResolvedValue({ userId: "u2" });
     getEntitlements.mockResolvedValue(entitlement(2, 10_000, LAPSED()));
 
@@ -160,8 +156,7 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
     );
 
     expect(identity).toMatchObject({
-      kind: "user-api-key",
-      directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+      isPremium: false,
     });
   });
 

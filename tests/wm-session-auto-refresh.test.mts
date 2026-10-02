@@ -2301,6 +2301,58 @@ describe('wm-session mint failure cause (WORLDMONITOR-WG)', () => {
     assert.equal(dead.length, 1);
     assert.equal(dead[0].ctx.tags?.mint_cause, 'timeout', 'an aborted mint is a timeout, not a network error');
   });
+
+  it('does not black out the tab when the BROWSER aborted the mint', async () => {
+    // A mint cancelled by the browser — the user navigated away, the tab went
+    // into bfcache, the page unloaded mid-request — rejects with AbortError
+    // while our own budget timer has NOT fired. `timedOut` is false, so the
+    // catch at wm-session.ts:623 labelled it `network`, the one cause that
+    // still earns a route strike. Two of those inside the corroboration window
+    // tipped the quorum and suppressed every anonymous panel for 15 minutes,
+    // for a user who simply clicked a link.
+    //
+    // This is WORLDMONITOR-WG's live half. Production 2026-09-06..08: the
+    // `mint_cause=network` rate stepped ~25x (0.94 -> 25.78 per 100k mints)
+    // while Axiom showed /api/wm-session answering 100% 200 with a flat p95
+    // through the same window. The server was healthy; the client cancelled
+    // its own requests and then declared the session dead.
+    //
+    // A browser-issued abort is not evidence about the session at all — it is
+    // weaker than the transport causes that already need corroboration, so it
+    // must not strike the route in the first place.
+    memoryStorage.clear();
+    const captures = captureSink();
+    // Long enough that our own timer cannot fire: the only abort here is the
+    // browser's, which is the whole point of the test.
+    mod.__setWmSessionFetchTimeoutForTests(5000);
+
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    let third: Response;
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+      third = await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(
+      isDegraded(third),
+      false,
+      'a mint the browser cancelled must not suppress anonymous calls',
+    );
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 0, 'no blackout, so no wm_session_dead capture');
+  });
 });
 
 describe('wm-session cookie-persistence detection (Layer 3)', () => {

@@ -50,6 +50,28 @@ const call = (name, args = {}) => ({
 });
 
 describe('free-account allowance — tool scope', () => {
+  it('requires a subscription for sanctions before spending a free slot', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => FREE_ENT_ACTIVE });
+    const res = await mcpHandler(proReq(call('get_sanctions_data')), deps);
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).error?.data?.reason, 'upgrade-required');
+    assert.equal(pipe.count, 0);
+    const { TOOL_REGISTRY, toolAccess } = await import('../api/mcp/registry/index.ts');
+    assert.equal(toolAccess(TOOL_REGISTRY.find(t => t.name === 'get_sanctions_data')), 'subscription');
+  });
+
+  it('allows sanctions cache reads for a current Pro subscription', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => ({
+      planKey: 'pro', validUntil: Date.now() + 86_400_000,
+      features: { tier: 1, mcpAccess: true, planLimits: { mcpCallsPerDay: 50 } },
+    }) });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ entries: [] }) }));
+    const response = await mcpHandler(proReq(call('get_sanctions_data')), deps);
+    assert.equal(response.status, 200);
+    assert.ok((await response.json()).result);
+  });
   it('refuses a GATEWAY-BACKED tool with 403 upgrade-required and charges NO slot', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => FREE_ENT_ACTIVE });
     const res = await mcpHandler(proReq(call('get_country_risk', { country: 'FR' })), deps);

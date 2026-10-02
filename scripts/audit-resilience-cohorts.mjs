@@ -541,7 +541,7 @@ function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha, fail
     if (failureList.length) {
       failBody += `| CC | Country | Error |\n|---|---|---|\n`;
       for (const [cc, msg] of failureList) {
-        failBody += `| ${cc} | ${nameMap[cc] ?? cc} | ${String(msg).replace(/\|/g, '\\|').slice(0, 200)} |\n`;
+        failBody += `| ${cc} | ${nameMap[cc] ?? cc} | ${String(msg).slice(0, 200).replace(/\\/g, '\\\\').replace(/\|/g, '\\|')} |\n`;
       }
     }
     if (missingCohortMembers.length) {

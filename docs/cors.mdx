@@ -7,26 +7,31 @@ description: "How cross-origin request protection works in World Monitor and wha
 
 ## Overview
 
-Every API response must include CORS headers so browsers allow the frontend to read it. Two parallel implementations exist — one for standalone edge functions, one for the sebuf gateway — but they share the same origin allowlist and logic.
+Every API response must include CORS headers so browsers allow the frontend to read it. Standalone edge functions, the sebuf gateway, and the API Worker share the production origin allowlist. The Worker overrides CORS headers on `api.worldmonitor.app`.
 
 | File | Used by | Methods |
 | --- | --- | --- |
 | `api/_cors.js` | Standalone edge functions (`api/*.js`) | `GET, OPTIONS` (configurable) |
 | `server/cors.ts` | Sebuf gateway (`api/[domain]/v1/[rpc].ts`) | `GET, POST, OPTIONS` |
+| `workers/api-cors-preflight/src/index.js` | Cloudflare Worker for `api.worldmonitor.app` | Union of supported API methods |
 
 ## Allowed Origins
 
-Both files use the same regex patterns:
+The production policies use the same origin patterns:
 
 | Pattern | Matches |
 | --- | --- |
-| `(*.)?worldmonitor.app` | Production + subdomains (`tech.`, `finance.`, etc.) |
+| HTTPS app hosts | `worldmonitor.app`, `www.`, `app.`, `api.`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` |
 | `worldmonitor-*-eliewm.vercel.app` | Vercel preview deploys (literal `-eliewm` suffix) |
 | `localhost:*` / `127.0.0.1:*` | Local development only when `NODE_ENV !== "production"` |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | Desktop app (Tauri v2) |
 | `tauri://localhost` / `asset://localhost` | Desktop app (Tauri v2 asset protocol) |
 
+Trailing DNS dots and Google Translate rewrites of these app hosts are supported. Translated origins must use the default HTTPS port. Other subdomains do not inherit app-origin trust.
+
 Requests from any other origin receive a 403 response when the handler calls `isDisallowedOrigin(req)`. Requests with **no** `Origin` header (server-to-server, curl) are allowed through — the `isDisallowedOrigin` check only blocks when an origin is present and not on the allowlist.
+
+CORS is a browser response boundary, not credential isolation. The shared `Domain=.worldmonitor.app` session and legacy tester-key cookies also reach sibling hosts. Narrowing the origin allowlist does not change that cookie transport. Anonymous `wm-session` tokens do not provide Pro identity; privileged tester keys remain a separate credential.
 
 ## Adding CORS to a New Edge Function
 
@@ -72,8 +77,8 @@ RPC endpoints defined in `.proto` files do **not** need manual CORS handling. Th
 
 To allow a new origin:
 
-1. Add a regex pattern to `ALLOWED_ORIGIN_PATTERNS` in **both** `api/_cors.js` and `server/cors.ts`.
-2. Update the test in `api/_cors.test.mjs`.
+1. Update the origin policy in `api/_cors.js`, `server/cors.ts`, and `workers/api-cors-preflight/src/index.js`. For an app host, update `APP_ORIGIN_PATTERN` and the app-host inventory in `convex/payments/returnUrlOrigin.ts`. The Worker overrides CORS on `api.worldmonitor.app`; its deployment must be updated with the functions.
+2. Update the behavioral parity tests in `tests/cors-fail-closed.test.mts`.
 3. If the origin is a new production subdomain, also add it to the Cloudflare R2 CORS rules (see MEMORY.md notes on R2 CORS in the repo root).
 
 ## Allowed Headers

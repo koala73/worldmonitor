@@ -13,6 +13,7 @@ describe('computeSupplierRouteRisk', () => {
     const hormuz = risk.transitChokepoints.find(cp => cp.chokepointId === 'hormuz_strait');
     assert.ok(hormuz, 'Should detect Hormuz on SA-to-IN route');
     assert.equal(hormuz.disruptionScore, 80);
+    assert.ok(!risk.transitChokepoints.some(cp => cp.chokepointId === 'malacca_strait'), 'The India leg ends before Malacca');
   });
 
   it('marks route as critical when Hormuz disruptionScore is 80', () => {
@@ -23,15 +24,43 @@ describe('computeSupplierRouteRisk', () => {
     assert.ok(risk.recommendation.includes('Consider alternative'));
   });
 
-  it('marks Canada to US as safe (no chokepoints on direct routes)', () => {
+  it('does not turn shared transoceanic routes into a Canada-US route', () => {
     const scores = new Map([['hormuz_strait', 90], ['suez', 85]]);
     const risk = computeSupplierRouteRisk('CA', 'US', scores);
-    const directRoutes = risk.routeIds;
-    assert.ok(directRoutes.length > 0, 'Should have overlapping routes (transatlantic, china-us-west)');
-    const hasDisruptedCp = risk.transitChokepoints.some(cp => cp.disruptionScore >= 70);
-    if (!hasDisruptedCp) {
-      assert.equal(risk.riskLevel, 'safe');
+    assert.equal(risk.riskLevel, 'unknown');
+    assert.deepEqual(risk.routeIds, []);
+    assert.deepEqual(risk.transitChokepoints, []);
+  });
+
+  for (const [exporter, importer] of [['AU', 'JP'], ['FR', 'DE'], ['CZ', 'DE'], ['AT', 'JP'], ['US', 'BR'], ['JP', 'JP']]) {
+    it(`withholds a full corridor for ${exporter}-${importer} when its endpoints do not connect the pair`, () => {
+      for (const [from, to] of [[exporter, importer], [importer, exporter]]) {
+        const risk = computeSupplierRouteRisk(from, to, new Map([['hormuz_strait', 90], ['suez', 90]]));
+        assert.equal(risk.riskLevel, 'unknown');
+        assert.deepEqual(risk.routeIds, []);
+        assert.deepEqual(risk.transitChokepoints, []);
+      }
+    });
+  }
+
+  it('retains cross-region corridor models and keeps US-Japan unresolved', () => {
+    assert.deepEqual(computeSupplierRouteRisk('QA', 'JP', new Map()).routeIds, ['qatar-asia-lng']);
+    assert.ok(computeSupplierRouteRisk('CN', 'DE', new Map()).routeIds.includes('china-europe-suez'));
+    assert.ok(computeSupplierRouteRisk('US', 'DE', new Map()).routeIds.includes('transatlantic'));
+    assert.equal(computeSupplierRouteRisk('US', 'JP', new Map()).riskLevel, 'unknown');
+  });
+
+  it('retains the China-Africa corridor and Malacca exposure for coastal African members', () => {
+    for (const country of ['KE', 'TZ', 'NG']) {
+      for (const [from, to] of [['CN', country], [country, 'CN']]) {
+        const risk = computeSupplierRouteRisk(from, to, new Map([['malacca_strait', 80]]));
+        assert.deepEqual(risk.routeIds, ['china-africa']);
+        assert.equal(risk.riskLevel, 'critical');
+        assert.deepEqual(risk.transitChokepoints.map(cp => cp.chokepointId), ['malacca_strait']);
+      }
     }
+    assert.equal(computeSupplierRouteRisk('KE', 'NG', new Map()).riskLevel, 'unknown');
+    assert.equal(computeSupplierRouteRisk('CN', 'UG', new Map()).riskLevel, 'unknown');
   });
 
   it('returns unknown when no cluster entry exists for exporter/importer', () => {

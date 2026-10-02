@@ -1,0 +1,13 @@
+[
+  {
+    "id": "RUSTSEC-2024-0429",
+    "owner": "#5935 / desktop maintainers",
+    "expiresAt": "2026-10-08",
+    "reason": "Temporary exception explicitly approved by the user on 2026-09-08: glib 0.18.5 is tied to the GTK 0.18 API used by the Tauri/Wry Linux webview. The patch starts at glib 0.20 and cannot be substituted as a lockfile-only update. No Variant::array_iter_str or VariantStrIter caller was found in application code or the inspected GTK/GIO/Wry/Tao consumers. This is source evidence, not proof about a deployed Linux binary. Re-review the upstream GTK migration or backport and Linux runtime evidence before expiry; do not silently extend this decision.",
+    "status": "approved",
+    "mitigation": "Do not introduce calls to Variant::array_iter_str / VariantStrIter; verify the Linux webview and pursue a compatible backport or coordinated GTK upgrade. This mitigation is source-limited and is not proof of production safety.",
+    "fixAvailability": "Upstream patch starts at glib 0.20.0; the locked GTK 0.18 family cannot take that version as a lockfile-only update.",
+    "approvedBy": "User (explicit approval in the parent Codex task)",
+    "approvedAt": "2026-09-08"
+  }
+]

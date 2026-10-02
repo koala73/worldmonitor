@@ -16,20 +16,36 @@ missing source cannot silently become a zero or a site-wide vanity score.
   first-party exports; it emits only the normalized baseline contract.
 - `scripts/seo-ai-visibility-scorecard.mjs` — validator, scorecard renderer, and
   monthly comparison.
+- `gsc/<date>.json` and `gsc/<date>.md` — Search Console snapshots produced by
+  `scripts/seo-gsc-collect.mjs`, which reads the API rather than a UI export.
+  See `gsc/README.md`. Its per-family rows feed
+  `sources.googleSearchConsole` here rather than starting a parallel report.
 - `tests/seo-ai-visibility-collector.test.mjs` and
   `tests/seo-ai-visibility-scorecard.test.mjs` — importer, schema, missingness,
   aggregation, comparison, and reproducibility coverage.
 
-The committed initial period is `2026-07-27`. It contains a four-platform manual
-observation for `q01`. Search Console, Bing Webmaster, and referral values are
-explicitly unavailable because the clean worktree had no property access or
-supported exports. That is an incomplete data source, not zero demand.
+The committed initial period is `2026-07-27`. It uses baseline contract v1 and
+contains a four-platform manual observation for `q01`. Search Console, Bing
+Webmaster, and referral values are explicitly unavailable because the clean
+worktree had no property access or supported exports. That is an incomplete
+data source, not zero demand.
 
 Committed source `property` fields must remain `null`; property identifiers and
 credentials belong only in secure operator configuration. `aiSurfaces` records
 whether each requested surface was available, partial, or unavailable, with a
 reason for any non-available state. `aiObservations` contains only
 query/platform pairs that were actually inspected.
+
+Baseline contract v1 is the historical four-surface contract. Its identifiers
+are `chatgpt_search`, `perplexity`, `google_ai`, and `copilot_search`, for a full
+target of 25 × 4 = 100 query/surface pairs. Keep `google_ai` and its recorded
+Google AI Overview label unchanged in historical files.
+
+Baseline contract v2 is the five-surface contract for new cycles. Its
+identifiers are `chatgpt_search`, `perplexity`, `google_ai_overview`,
+`google_ai_mode`, and `copilot_search`, for a full target of 25 × 5 = 125 pairs.
+Do not use legacy `google_ai` in a v2 baseline. Overview and Mode are separate
+observations even when they answer the same query in the same cycle.
 
 ## Reproduce the current scorecard
 
@@ -43,11 +59,13 @@ node scripts/seo-ai-visibility-scorecard.mjs \
   --check
 ```
 
-To generate a later scorecard, copy the prior baseline to a new dated file,
-replace only observations and supported-export values, then omit `--check` and
-point `--output` at the new date. Do not edit an older observation in place.
-The copied `querySetDigest` pins the exact query text, intent, target, conversion,
-and reference-entity contract used by the period.
+To generate a later scorecard under the same baseline contract, copy the prior
+baseline to a new dated file, replace only observations and supported-export
+values, then omit `--check` and point `--output` at the new date. Do not edit an
+older observation in place. Start the first v2 cycle through the collector with
+`schemaVersion: 2`; do not relabel a historical v1 observation. The copied
+`querySetDigest` pins the exact query text, intent, target, conversion, and
+reference-entity contract used by the period.
 
 If any comparison-critical query field changes, assign a new `querySetId` and
 start a new baseline series with the digest computed by
@@ -74,6 +92,8 @@ node scripts/seo-ai-visibility-collector.mjs \
 
 The manifest is intentionally narrow:
 
+- `schemaVersion` selects the baseline contract. Omit it only when reproducing
+  a v1 template. Set it to `2` for every new five-surface cycle.
 - `googleSearchConsole` and `bingWebmaster.search` contain trailing `28d` and
   `90d` windows with aggregate metrics, exact reviewed `query`/`queryId` rows,
   and `page`/`pageFamily` rows. Query text must exactly match `query-set.json`;
@@ -92,6 +112,34 @@ The manifest is intentionally narrow:
   whitelist. Unknown provider fields and raw prompt, account/session, key, and
   user-level payload fields are never written to the baseline; keep personal
   prompt content out of the reviewed summary fields as well.
+
+For a v2 cycle, `aiSurfaces` is required and must contain every v2 identifier
+exactly once. Use `available`, `partial` with a reason, or `unavailable` with a
+reason based on the actual collection result. The collector does not infer one
+Google experience from the other. A minimal manifest can start with all five
+surfaces explicitly unavailable and no observations:
+
+```json
+{
+  "schemaVersion": 2,
+  "aiSurfaces": [
+    { "platform": "chatgpt_search", "status": "unavailable", "reason": "Record the actual reason." },
+    { "platform": "perplexity", "status": "unavailable", "reason": "Record the actual reason." },
+    { "platform": "google_ai_overview", "status": "unavailable", "reason": "Record the actual reason." },
+    { "platform": "google_ai_mode", "status": "unavailable", "reason": "Record the actual reason." },
+    { "platform": "copilot_search", "status": "unavailable", "reason": "Record the actual reason." }
+  ],
+  "aiObservations": []
+}
+```
+
+Add an observation only after that exact surface was inspected. Each observation
+requires `queryId`, the v2 `platform` identifier, `observedAt`, `geography`,
+`locale`, `signedInState`, `brandMention`, `directCitation`, `citedUrls`,
+`competitorsCited`, `sentiment`, `accuracy`, `summary`, and `limitations`.
+`geography`, `locale`, and `signedInState` must match the declared
+`collectionContext`. Extra fields such as raw prompts, account/session IDs,
+tokens, property IDs, and provider payload extensions are discarded.
 
 For every source, use `status: "partial"` when only some windows/metrics are
 supported and `status: "unavailable"` with a reason when access is missing.
@@ -123,7 +171,9 @@ For both the trailing 28-day and 90-day windows:
    impressions, CTR, and average position.
 2. Export or record the supported Page Indexing summary for indexed pages.
 3. Join reviewed query rows to `query-set.json` by the exact query text.
-4. Group target pages into the ten `targetPage.family` values in the query set.
+4. Group target pages into the `targetPage.family` values the query set
+   declares for its schema version. `scripts/lib/seo-url-taxonomy.mjs` performs
+   that mapping for any site URL and refuses an unmapped one.
 5. Put site aggregates in `search.googleSearchConsole.windows`, reviewed-query
    rows in `queryRows` (`windowLabel`, `queryId`, performance metrics), and
    bounded page-family rows in `pageFamilyRows` (`windowLabel`, `pageFamily`,
@@ -147,12 +197,13 @@ impressions, clicks, or rank.
 
 ### 3. Manual AI-answer panel
 
-Run the exact query text without paraphrasing. The target matrix is 25 queries
-by four surfaces:
+Run the exact query text without paraphrasing. New v2 cycles use a target matrix
+of 25 queries by five surfaces:
 
 - ChatGPT Search
 - Perplexity
-- Google AI Overview/AI Mode where available
+- Google AI Overview
+- Google AI Mode
 - Copilot Search
 
 For each observation record:
@@ -219,6 +270,8 @@ node scripts/seo-ai-visibility-scorecard.mjs \
 
 The comparison reports:
 
+- the platform coverage in each period, including surfaces that exist in only
+  one contract or are unavailable in either period;
 - new and lost direct citations only when the same exact query, platform,
   geography, locale, and signed-in context was observed in both periods and its
   citation state changed;
@@ -238,6 +291,13 @@ device, or signed-in schedule. The report prints the exact previous/current
 provider date ranges beside meaningful deltas. Change comparison dimensions by
 starting a new baseline series instead of presenting incomparable audits as
 month-over-month movement.
+
+For a v1-to-v2 comparison, legacy `google_ai` is comparable only with
+`google_ai_overview`, which preserves its recorded Google AI Overview meaning.
+It is never treated as an AI Mode observation. `google_ai_mode` observations are
+reported as not comparable until both periods use that independently measured
+surface. Like-for-like v2 periods can then report real AI Mode citation gains or
+losses.
 
 Thresholds are diagnostics, not causal claims. A single answer, citation, or
 traffic change never proves uplift. Sparse observations, a missing provider, or

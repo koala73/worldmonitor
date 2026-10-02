@@ -44,7 +44,8 @@ export async function getInsiderTransactions(
   _ctx: ServerContext,
   req: GetInsiderTransactionsRequest,
 ): Promise<GetInsiderTransactionsResponse> {
-  const symbol = sanitizeSymbol(req.symbol);
+  const input = req.symbol.trim();
+  const symbol = /^[A-Za-z0-9][A-Za-z0-9.-]{0,31}$/.test(input) ? sanitizeSymbol(input) : '';
   if (!symbol) {
     return { unavailable: true, symbol: '', totalBuys: 0, totalSells: 0, netValue: 0, transactions: [], fetchedAt: '' };
   }

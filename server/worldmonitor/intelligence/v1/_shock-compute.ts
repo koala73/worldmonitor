@@ -59,6 +59,7 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
   let totalImports = 0;
   let gulfImports = 0;
   for (const flow of flows) {
+    if (/^0+$/.test(String(flow.partnerCode))) continue;
     const val = Number.isFinite(flow.tradeValueUsd) ? flow.tradeValueUsd : 0;
     if (val <= 0) continue;
     totalImports += val;
@@ -183,29 +184,20 @@ export function parseFuelMode(raw: string | undefined | null): FuelMode {
 }
 
 export function computeGasDisruption(
-  lngImportsTj: number,
-  totalDemandTj: number,
+  lngImportsTj: number | null | undefined,
+  totalDemandTj: number | null | undefined,
   chokepointId: string,
   disruptionPct: number,
-  liveFlowRatio?: number | null,
-): { lngDisruptionTj: number; deficitPct: number } {
+): { lngDisruptionTj: number; deficitPct: number } | undefined {
+  if (typeof lngImportsTj !== 'number' || !Number.isFinite(lngImportsTj) || lngImportsTj < 0
+    || typeof totalDemandTj !== 'number' || !Number.isFinite(totalDemandTj) || totalDemandTj <= 0) return undefined;
   const baseExposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0;
-  const exposure = liveFlowRatio != null ? baseExposure * liveFlowRatio : baseExposure;
-  const lngDisruptionTj = lngImportsTj * exposure * (disruptionPct / 100);
-  const deficitPct = totalDemandTj > 0
-    ? clamp((lngDisruptionTj / totalDemandTj) * 100, 0, 100)
-    : 0;
+  const lngDisruptionTj = lngImportsTj * baseExposure * (disruptionPct / 100);
+  const deficitPct = (lngDisruptionTj / totalDemandTj) * 100;
   return {
-    lngDisruptionTj: Math.round(lngDisruptionTj * 10) / 10,
-    deficitPct: Math.round(deficitPct * 10) / 10,
+    lngDisruptionTj: Math.round(lngDisruptionTj * 10) / 10 || lngDisruptionTj,
+    deficitPct: Math.round(deficitPct * 10) / 10 || deficitPct,
   };
-}
-
-export function computeGasBufferDays(gasTwh: number, lngDisruptionTj: number): number {
-  if (lngDisruptionTj <= 0 || gasTwh <= 0) return 0;
-  const storedTj = gasTwh * 3600;
-  const dailyLossTj = lngDisruptionTj / 30;
-  return Math.round(storedTj / dailyLossTj);
 }
 
 export function buildGasAssessment(
@@ -213,24 +205,17 @@ export function buildGasAssessment(
   chokepointId: string,
   dataAvailable: boolean,
   lngImportsTj: number,
-  lngShareOfImports: number,
   deficitPct: number,
-  bufferDays: number,
   disruptionPct: number,
-  hasStorage: boolean,
+  dataMonth: string,
 ): string {
   if (!dataAvailable) {
     return `Insufficient gas import data for ${code} to model ${chokepointId} LNG exposure.`;
   }
   if (lngImportsTj === 0) {
-    return `${code} imports gas via pipeline only (no LNG); ${chokepointId} disruption has no direct LNG impact.`;
+    return `${code} recorded zero LNG imports in ${dataMonth || 'an unknown observation month'}. The modeled direct LNG loss is zero; this does not establish total gas supply security.`;
   }
-  if (lngShareOfImports < 0.1) {
-    return `${code} has low LNG dependence (${Math.round(lngShareOfImports * 100)}% of gas imports via LNG); ${chokepointId} disruption has limited gas impact.`;
-  }
-  if (hasStorage && bufferDays > 90) {
-    return `${code} has ${bufferDays} days of gas storage buffer under ${disruptionPct}% ${chokepointId} LNG disruption.`;
-  }
-  const storageNote = hasStorage ? `; gas storage covers ~${bufferDays} days` : '';
-  return `${code} faces ${deficitPct.toFixed(1)}% gas supply deficit under ${disruptionPct}% ${chokepointId} LNG disruption${storageNote}.`;
+  const exposurePct = (CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0) * 100;
+  const demandPct = deficitPct > 0 && deficitPct < 0.1 ? '<0.1' : deficitPct.toFixed(1);
+  return `${code} gas sensitivity assumes ${exposurePct}% of recorded LNG imports use ${chokepointLabel(chokepointId)}. Under ${disruptionPct}% disruption of that assumed route baseline, modeled loss equals ${demandPct}% of JODI demand for ${dataMonth || 'an unknown observation month'}. This is not measured country-specific exposure or a supply-shortage forecast.`;
 }

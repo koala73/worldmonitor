@@ -26,7 +26,16 @@ describe('widget-agent unified tester key auth', () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
 
     fetchMock = mock.method(globalThis, 'fetch', () => Promise.resolve(fakeRelayResponse()));
-    ({ default: handler } = await import('../api/widget-agent.ts'));
+    const mod = await import('../api/widget-agent.ts');
+    handler = mod.default;
+    mod.__setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+      runRedisPipeline: async (commands) => {
+        const op = String(commands[0]?.[0] ?? '');
+        if (op === 'DECR') return [{ result: 0 }];
+        return [{ result: 1 }, { result: 1 }];
+      },
+    });
   });
 
   beforeEach(() => {
@@ -105,13 +114,71 @@ describe('widget-agent unified tester key auth', () => {
     });
   });
 
+  it('validates protected cookie candidates independently across stale and valid values', async () => {
+    for (const [pro, widget, tier] of [
+      ['stale', 'browser-test-key', 'pro'],
+      ['browser-test-key', 'stale', 'pro'],
+      ['stale', 'server-widget-key', 'basic'],
+      ['server-pro-key', 'stale', 'pro'],
+    ]) {
+      for (const sessionHeader of ['', 'wms_automatic-anonymous-session']) {
+        fetchMock.mock.resetCalls();
+        const res = await handler(new Request('https://api.worldmonitor.app/api/widget-agent', {
+          method: 'POST',
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            'Content-Type': 'application/json',
+            ...(sessionHeader ? { 'X-WorldMonitor-Key': sessionHeader } : {}),
+            Cookie: `__Host-wm-pro-key=${pro}; __Host-wm-widget-key=${widget}`,
+          },
+          body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+        }));
+        assert.equal(res.status, 200, `${pro}/${widget}/${sessionHeader}`);
+        assert.equal(fetchMock.mock.calls.length, 1);
+        const init = fetchMock.mock.calls[0].arguments[1] as RequestInit;
+        assert.equal(JSON.parse(String(init.body)).tier, tier);
+      }
+    }
+  });
+
+  it('does not rescue explicit invalid enterprise headers with ambient cookies', async () => {
+    for (const name of ['X-WorldMonitor-Key', 'X-Api-Key']) {
+      for (const cookie of [
+        '__Host-wm-pro-key=stale; __Host-wm-widget-key=browser-test-key',
+        '__Host-wm-pro-key=server-pro-key; __Host-wm-widget-key=server-widget-key',
+      ]) {
+        const res = await handler(new Request('https://api.worldmonitor.app/api/widget-agent', {
+          method: 'POST',
+          headers: { Origin: 'https://worldmonitor.app', 'Content-Type': 'application/json', [name]: 'wrong-key', Cookie: cookie },
+          body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+        }));
+        assert.equal(res.status, 403, `${name}/${cookie}`);
+      }
+    }
+    assert.equal(fetchMock.mock.calls.length, 0);
+  });
+
+  it('rejects retired domain cookie names before invoking the paid relay', async () => {
+    const res = await handler(new Request('https://api.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        Cookie: 'wm-widget-key=server-widget-key; wm-pro-key=browser-test-key',
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+    assert.equal(res.status, 403);
+    assert.equal(fetchMock.mock.calls.length, 0);
+  });
+
   it('accepts HttpOnly legacy tester key cookies without JS-readable auth headers', async () => {
     const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',
       headers: {
         Origin: 'https://www.worldmonitor.app',
         'Content-Type': 'application/json',
-        Cookie: `wm-widget-key=${encodeURIComponent('server-widget-key')}; wm-pro-key=${encodeURIComponent('server-pro-key')}`,
+        Cookie: `__Host-wm-widget-key=${encodeURIComponent('server-widget-key')}; __Host-wm-pro-key=${encodeURIComponent('server-pro-key')}`,
       },
       body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
     }));
@@ -138,7 +205,7 @@ describe('widget-agent unified tester key auth', () => {
         Origin: 'https://www.worldmonitor.app',
         'Content-Type': 'application/json',
         'X-WorldMonitor-Key': 'wms_automatic-anonymous-session',
-        Cookie: `wm-pro-key=${encodeURIComponent('browser-test-key')}`,
+        Cookie: `__Host-wm-pro-key=${encodeURIComponent('browser-test-key')}`,
       },
       body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
     }));
@@ -162,7 +229,7 @@ describe('widget-agent unified tester key auth', () => {
       headers: {
         Origin: 'https://evil.example.com',
         'Content-Type': 'application/json',
-        Cookie: `wm-widget-key=${encodeURIComponent('server-widget-key')}; wm-pro-key=${encodeURIComponent('server-pro-key')}`,
+        Cookie: `__Host-wm-widget-key=${encodeURIComponent('server-widget-key')}; __Host-wm-pro-key=${encodeURIComponent('server-pro-key')}`,
       },
       body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
     }));

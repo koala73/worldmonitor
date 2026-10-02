@@ -89,8 +89,8 @@ function decodeHtml(value) {
 function stripHtml(value) {
   return decodeHtml(
     String(value)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
       .replace(/<[^>]+>/g, ' '),
   ).replace(/\s+/g, ' ').trim();
 }

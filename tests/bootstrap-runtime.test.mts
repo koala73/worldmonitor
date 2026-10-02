@@ -135,6 +135,36 @@ describe('Frontend bootstrap runtime behavior', () => {
     assert.equal(await waitForBootstrapSlowTier(100), true, 'a settled slow tier still clears');
   });
 
+  it('reports an in-flight slow tier as unsettled, then fires onSlowSettled exactly once', async () => {
+    // App.ts's `if (!settled)` boot branch: when the bounded wait times out it runs
+    // loadAllData() once and defers the visible fan-out to onSlowSettled. That is one
+    // extra data pass only while the callback stays single-shot and still fires after a
+    // timed-out wait, so pin both halves. The wait budget and the slow tier's own abort
+    // budget are clocked independently, which is what makes this branch reachable in
+    // production rather than only under a synthetic timeout.
+    const requests = installFetchStub();
+    let settledCalls = 0;
+    const boot = fetchBootstrapData(() => { settledCalls += 1; });
+
+    await tick();
+    tierRequests(requests, 'fast')[0]!.deferred.resolve(jsonResponse({ fastKey: 'fast' }));
+    await boot;
+    await tick();
+    assert.equal(tierRequests(requests, 'slow').length, 1, 'the slow tier should be in flight');
+
+    assert.equal(
+      await waitForBootstrapSlowTier(50),
+      false,
+      'a slow tier still in flight must not report settled',
+    );
+    assert.equal(settledCalls, 0, 'onSlowSettled must not fire while the slow tier is in flight');
+
+    tierRequests(requests, 'slow')[0]!.deferred.resolve(jsonResponse({ slowKey: 'slow' }));
+    assert.equal(await waitForBootstrapSlowTier(100), true, 'the settled slow tier clears the checkpoint');
+    await tick();
+    assert.equal(settledCalls, 1, 'the deferred fan-out must be armed exactly once');
+  });
+
   it('releases a superseded bootstrap checkpoint instead of stranding its awaiters', async () => {
     // The reservation must be resolved on EVERY path out of fetchBootstrapData,
     // not just the happy one. waitForBootstrapSlowTier captures `pending` at

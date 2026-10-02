@@ -5,6 +5,7 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
 import type { BriefSource } from '@/utils/brief-sources';
+import type { IntelBriefEvidence } from '@/utils/format-intel-brief';
 import type { DecisionSignalProvenance } from '../../shared/decision-signal-provenance-contract';
 import type { ChinaDecisionSignalGroupId } from '../../shared/china-decision-signals';
 
@@ -19,6 +20,7 @@ export interface CountryIntelData {
   reason?: string;
   fallback?: boolean;
   sources?: BriefSource[];
+  evidence?: IntelBriefEvidence[];
 }
 
 export interface StockIndexData {
@@ -200,6 +202,7 @@ export interface CountryPortActivityData {
 }
 
 export interface CountryBriefPanel {
+  setSectionFailure?(id: import('../../shared/country-brief-sections').BriefSectionId, state: 'locked' | 'unavailable', reason: string): void;
   show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
   hide(): void;
   showLoading(): void;
@@ -209,8 +212,6 @@ export interface CountryBriefPanel {
   getTimelineMount(): HTMLElement | null;
   readonly signal: AbortSignal;
   onClose(cb: () => void): void;
-  setShareStoryHandler(handler: (code: string, name: string) => void): void;
-  setExportImageHandler(handler: (code: string, name: string) => void): void;
   updateBrief(data: CountryIntelData): void;
   updateNews(headlines: NewsItem[]): void;
   updateMarkets(markets: PredictionMarket[]): void;
@@ -218,6 +219,7 @@ export interface CountryBriefPanel {
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
   updateScore?(score: CountryScore | null, signals: CountryBriefSignals): void;
+  isFallbackBrief?(): boolean;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;

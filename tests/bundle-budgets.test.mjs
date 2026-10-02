@@ -13,6 +13,7 @@ import {
   buildBudgetSnapshot,
   chunkNameFromFileName,
   compareBundleBudgets,
+  deferredDashboardAppDependencies,
   initialDashboardAssetNames,
   measureDistChunks,
   measureEmbedJs,
@@ -67,6 +68,158 @@ function makeEmbedFixture(bytes) {
   writeFileSync(join(root, 'embed.js'), chunkContent(bytes));
   return root;
 }
+
+const FIXTURE_ENTRY = 'main-DYSz1bMh.js';
+const FIXTURE_APP = 'App-Ab12Cd34.js';
+
+/** Writes an entry that loads its chunks the way the built dashboard entry does. */
+function writeEntryLoader(root, bytes, table, loaders) {
+  const source = `const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=${JSON.stringify(table)})))=>i.map(i=>d[i]);`
+    + `${loaders.join(';')};`;
+  assert.ok(source.length <= bytes, `fixture entry needs at least ${source.length} bytes`);
+  writeFileSync(join(root, 'assets', FIXTURE_ENTRY), source + chunkContent(bytes - source.length));
+}
+
+/**
+ * A dashboard dist whose entry defers App behind
+ * `P(async()=>{…await import("./App-…js")…},__vite__mapDeps([…]))`, after an
+ * unrelated lazy loader, with the App preload list starting at the App chunk.
+ */
+function makeDeferredAppFixture({
+  initial = { [FIXTURE_ENTRY]: 10_000 },
+  appDeps = {},
+  appBytes = 50_000,
+} = {}) {
+  const root = makeAssetsFixture(
+    { ...initial, [FIXTURE_APP]: appBytes, 'lazy-panel-Qq77Rr66.js': 9_000, ...appDeps },
+    { writeIndex: false },
+  );
+  writeDashboardIndex(root, Object.keys(initial));
+  const table = [
+    'assets/lazy-panel-Qq77Rr66.js',
+    `assets/${FIXTURE_APP}`,
+    ...Object.keys(appDeps).map((name) => `assets/${name}`),
+    'assets/app-Ab12Cd34.css',
+  ];
+  const appPreloads = table.slice(1).map((_, index) => index + 1);
+  writeEntryLoader(root, initial[FIXTURE_ENTRY], table, [
+    'P(()=>import("./lazy-panel-Qq77Rr66.js"),__vite__mapDeps([0]))',
+    `P(async()=>{const{App:r}=await import("./${FIXTURE_APP}").then(i=>i.c0);return{App:r}},`
+      + `__vite__mapDeps([${appPreloads.join(',')}]))`,
+  ]);
+  return root;
+}
+
+describe('deferred dashboard App graph', () => {
+  test('is measured apart from the initial payload, counting shared chunks once', () => {
+    const dist = makeDeferredAppFixture({
+      initial: { [FIXTURE_ENTRY]: 10_000, 'shared-Cd34Ef56.js': 7_000 },
+      appDeps: { 'vendor-Ef56Gh78.js': 20_000, 'shared-Cd34Ef56.js': 7_000 },
+    });
+    assert.deepEqual(
+      deferredDashboardAppDependencies(dist),
+      [FIXTURE_APP, 'vendor-Ef56Gh78.js', 'shared-Cd34Ef56.js', 'app-Ab12Cd34.css'],
+    );
+    const measured = measureDistChunks(dist);
+    assert.deepEqual(Object.keys(measured.chunks).sort(), ['main', 'shared']);
+    assert.equal(measured.total.raw, 17_000);
+    assert.deepEqual(Object.keys(measured.deferred.chunks).sort(), ['App', 'vendor']);
+    assert.equal(measured.deferred.total.raw, 70_000);
+    const budget = buildBudgetSnapshot(measured);
+    assert.equal(budget.deferred.total.raw, 70_000);
+    assert.deepEqual(validateBudgetSnapshot(budget), []);
+    assert.equal(compareBundleBudgets(measured, budget).ok, true);
+  });
+
+  test('is absent when the entry has no deferred App import', () => {
+    const measured = measureDistChunks(makeDistFixture({ [FIXTURE_ENTRY]: 10_000 }));
+    assert.equal(measured.deferred, null);
+    assert.equal(Object.hasOwn(buildBudgetSnapshot(measured), 'deferred'), false);
+  });
+
+  test('App growth fails under its own chunk and total labels without touching the initial gate', () => {
+    const budget = buildBudgetSnapshot(measureDistChunks(makeDeferredAppFixture({ appBytes: 800_000 })));
+    const result = compareBundleBudgets(
+      measureDistChunks(makeDeferredAppFixture({ appBytes: 851_200 })),
+      budget,
+    );
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some((f) => f.startsWith('deferred App chunk "App" grew')), JSON.stringify(result.failures));
+    assert.ok(result.failures.some((f) => f.startsWith('deferred App JS payload grew')), JSON.stringify(result.failures));
+    assert.ok(
+      !result.failures.some((f) => f.startsWith('chunk ') || f.startsWith('total JS payload')),
+      JSON.stringify(result.failures),
+    );
+  });
+
+  test('a new App dependency fails until the snapshot is regenerated', () => {
+    const budget = buildBudgetSnapshot(measureDistChunks(makeDeferredAppFixture()));
+    const result = compareBundleBudgets(
+      measureDistChunks(makeDeferredAppFixture({ appDeps: { 'heavy-dep-Ab12Cd34.js': 90_000 } })),
+      budget,
+    );
+    assert.ok(
+      result.failures.some((f) => f.startsWith('deferred App chunk "heavy-dep"') && f.includes('not in the budget')),
+      JSON.stringify(result.failures),
+    );
+  });
+
+  test('moving App between the initial and deferred payloads fails in both directions', () => {
+    const deferredMeasured = measureDistChunks(makeDeferredAppFixture());
+    const staticMeasured = measureDistChunks(makeDistFixture({ [FIXTURE_ENTRY]: 10_000 }));
+    assert.ok(
+      compareBundleBudgets(staticMeasured, buildBudgetSnapshot(deferredMeasured)).failures
+        .some((f) => f.includes('no longer has one')),
+    );
+    assert.ok(
+      compareBundleBudgets(deferredMeasured, buildBudgetSnapshot(staticMeasured)).failures
+        .some((f) => f.includes('no "deferred" section')),
+    );
+  });
+
+  test('a preload list that belongs to a later import is refused, not measured', () => {
+    const dist = makeDeferredAppFixture();
+    writeEntryLoader(dist, 10_000, [`assets/${FIXTURE_APP}`, 'assets/lazy-panel-Qq77Rr66.js'], [
+      `P(async()=>{const{App:r}=await import("./${FIXTURE_APP}").then(i=>i.c0);return{App:r}})`,
+      'P(()=>import("./lazy-panel-Qq77Rr66.js"),__vite__mapDeps([0,1]))',
+    ]);
+    assert.throws(() => measureDistChunks(dist), /no Vite preload list/);
+  });
+
+  test('a preload list that does not start with the App chunk is refused', () => {
+    const dist = makeDeferredAppFixture();
+    writeEntryLoader(dist, 10_000, ['assets/lazy-panel-Qq77Rr66.js', `assets/${FIXTURE_APP}`], [
+      `P(async()=>{const{App:r}=await import("./${FIXTURE_APP}").then(i=>i.c0);return{App:r}},__vite__mapDeps([0,1]))`,
+    ]);
+    assert.throws(() => measureDistChunks(dist), /does not start with the imported chunk/);
+  });
+
+  test('a hand-inflated deferred total is rejected', () => {
+    const budget = buildBudgetSnapshot(measureDistChunks(makeDeferredAppFixture()));
+    budget.deferred.total.raw += 500_000;
+    assert.ok(validateBudgetSnapshot(budget).some((p) => p.includes('deferred.total.raw')));
+  });
+
+  test('a deferred section is rejected outside the dashboard surface', () => {
+    const dist = makeAssetsFixture({ 'index-BLxGuKBb.js': 50_000 }, { writeIndex: false });
+    const budget = {
+      ...buildBudgetSnapshot(measureProDistChunks(dist), 'pro'),
+      deferred: { total: { raw: 0 }, chunks: {} },
+    };
+    assert.ok(validateBudgetSnapshot(budget, 'pro').some((p) => p.includes('only the dashboard')));
+  });
+
+  test('--check exits 1 when the deferred App graph grew past tolerance', () => {
+    const dist = makeDeferredAppFixture({ appBytes: 100_000 });
+    const budgetPath = join(dist, 'budget.json');
+    const cli = (args) => spawnSync(process.execPath, [SCRIPT_PATH, ...args], { encoding: 'utf8' });
+    assert.equal(cli(['--dist', dist, '--budget', budgetPath]).status, 0);
+    writeFileSync(join(dist, 'assets', FIXTURE_APP), chunkContent(160_000));
+    const check = cli(['--check', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 1, check.stderr);
+    assert.ok(check.stderr.includes('deferred App chunk "App" grew'), check.stderr);
+  });
+});
 
 describe('chunkNameFromFileName', () => {
   test('strips the trailing content hash', () => {

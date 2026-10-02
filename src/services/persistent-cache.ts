@@ -1,6 +1,7 @@
 import { isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
 import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from '@/utils/storage-quota';
+import { safeStorageKeys, safeStorageRemove } from '@/utils/safe-storage';
 
 type CacheEnvelope<T> = {
   key: string;
@@ -94,22 +95,19 @@ async function deleteFromIndexedDbByPrefix(prefix: string): Promise<void> {
   });
 }
 
+// The old `typeof localStorage === 'undefined'` gate here never fired for the
+// shape it was written for: Android WebView with DOM storage disabled exposes
+// `localStorage` as NULL, and `typeof null` is `'object'`, so the function fell
+// straight through to an unguarded `localStorage.length` (#7833). It was latent
+// only because the sole caller wraps it in a bare catch.
 function deleteFromLocalStorageByPrefix(prefix: string): void {
-  if (typeof localStorage === 'undefined') return;
-
   const storagePrefix = `${CACHE_PREFIX}${prefix}`;
-  const keysToDelete: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key?.startsWith(storagePrefix)) {
-      keysToDelete.push(key);
-    }
-  }
-
-  for (const key of keysToDelete) {
-    localStorage.removeItem(key);
+  for (const key of safeStorageKeys()) {
+    if (key.startsWith(storagePrefix)) safeStorageRemove(key);
   }
 }
+
+export const __testing__ = { deleteFromLocalStorageByPrefix };
 
 function validateBreakerPrefix(prefix: string): void {
   const trimmed = prefix.trim();

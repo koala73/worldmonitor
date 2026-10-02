@@ -7,6 +7,7 @@
 export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/market/v1/analyze-stock',
   '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/get-insider-transactions',
   '/api/market/v1/backtest-stock',
   '/api/market/v1/list-stored-stock-backtests',
   // Physical-vs-paper metals: the SGE/COMEX premium series (#6436) and the
@@ -25,7 +26,21 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // Browser calls must attach Clerk auth and bypass wm-session recovery:
   // anonymous 401s here are expected Pro denials, not dead session cookies.
   '/api/intelligence/v1/get-country-intel-brief',
+  // Country coverage (#7526) is an agent surface, not a panel dependency — the
+  // browser builds its own timeline client-side and never calls this. Each call
+  // costs two live outbound feed fetches plus five upstream reads, so it is
+  // gated like get-country-intel-brief rather than like the cheap Redis read
+  // get-country-risk. This is what makes the Pro decision real on the REST
+  // path; the MCP `subscription` class only covers MCP callers.
+  //
+  // Keep every comment in this block free of single quotes. readPremiumRpcPaths
+  // (scripts/lib/openapi-codegen.mjs) recovers these paths with a bare
+  // quoted-string regex over the whole block, so one apostrophe in a comment
+  // pairs with the next opening quote and silently eats a path out of the
+  // published security contract.
+  '/api/intelligence/v1/get-country-coverage',
   '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',
   '/api/intelligence/v1/get-regime-history',
   '/api/intelligence/v1/get-regional-brief',

@@ -125,6 +125,16 @@ describe('cloud prefs panel sync guardrails', () => {
       'App must update an already-mounted My Monitors panel when cloud prefs change monitors',
     );
     assert.match(
+      cloudApplyHandler,
+      /void applyVisibleMapDimension\(this\.state, mode === 'globe' \? '3d' : '2d'\)/,
+      'cloud map-mode changes must reconcile renderer, application layer state, and persistence through the visible control path',
+    );
+    assert.doesNotMatch(
+      cloudApplyHandler,
+      /this\.state\.map\?\.switchTo(?:Globe|Flat)\(\)/,
+      'cloud map-mode changes must not bypass application layer-state reconciliation',
+    );
+    assert.match(
       appSrc,
       /const panelOrderKey = this\.state\.PANEL_ORDER_KEY;/,
       'App must derive the panel order key from PANEL_ORDER_KEY',
@@ -187,7 +197,7 @@ describe('cloud prefs panel sync guardrails', () => {
     const authBody = appSrc.slice(authStart, authEnd);
     assert.match(
       authBody,
-      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(\);/,
+      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(accountTransition\);/,
       'a new account must receive a fresh grace window before auth enforcement runs',
     );
   });
@@ -268,7 +278,11 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudSyncSrc,
-      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*Storage\.prototype\.removeItem\.call\(localStorage, KEY_DIRTY_KEYS\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
+      // Accessor-agnostic on purpose: #7833 moved this module onto
+      // safeStorageRemove, and pinning a spelling just re-breaks on the next
+      // migration. What this pins is the ORDER — the empty-set delete has to
+      // happen before the ownerless bail.
+      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*(?:safeStorageRemove|rawRemove|Storage\.prototype\.removeItem\.call)\([^)]*KEY_DIRTY_KEYS[^)]*\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
       'ownerless dirty writes before sign-in must not delete the previous persisted dirty-key marker',
     );
     assert.match(

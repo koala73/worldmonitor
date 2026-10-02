@@ -511,6 +511,7 @@ export const advanceCompanyPurge = internalMutation({
         return { status: "candidates" };
       }
     }
+    await deleteCompanyClaims(ctx, args.ownerAccountId, args.companyId);
     await ctx.db.patch(company._id, {
       name: undefined,
       sortName: undefined,

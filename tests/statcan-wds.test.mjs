@@ -409,7 +409,7 @@ test('the StatCan and BoC EMPTY waivers are retired with independent issue owner
     assert.doesNotMatch(row.expiresAt ?? '', /T13:00/, `${row.name} must not anchor on a 13:00 tick`);
     assert.doesNotMatch(row.reason ?? '', /13:00/, `${row.name} must not cite a 13:00 tick`);
   }
-  assert.match(runbook, /0 8 \* \* \*[^\n]*daily 08:00 UTC/);
+  assert.match(runbook, /0 8,9 \* \* \*[^\n]*daily 08:00 and 09:00 UTC/);
 });
 
 test('STATCAN_MAX_CONTENT_AGE_MIN clears retained healthy cycles, catches a missed release, and is wired into the seeder', () => {

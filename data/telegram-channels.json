@@ -1,9 +1,72 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-09T00:00:00Z",
+  "updatedAt": "2026-09-15T00:00:00Z",
   "note": "Product-managed curated list. Not user-configurable.",
   "channels": {
     "full": [
+      {
+        "handle": "SaudiDCD",
+        "label": "Saudi Civil Defense",
+        "topic": "middleeast",
+        "tier": 1,
+        "enabled": true,
+        "region": "saudi-arabia",
+        "maxMessages": 25
+      },
+      {
+        "handle": "InaTEWS_BMKG",
+        "label": "BMKG InaTEWS",
+        "topic": "breaking",
+        "tier": 1,
+        "enabled": true,
+        "region": "indonesia",
+        "maxMessages": 25
+      },
+      {
+        "handle": "dsns_telegram",
+        "label": "Ukraine State Emergency Service",
+        "topic": "breaking",
+        "tier": 1,
+        "enabled": true,
+        "region": "ukraine",
+        "maxMessages": 25
+      },
+      {
+        "handle": "PikudHaOref_all",
+        "label": "Israel Home Front Command",
+        "topic": "middleeast",
+        "tier": 1,
+        "enabled": true,
+        "region": "israel",
+        "maxMessages": 25
+      },
+      {
+        "handle": "cnalatest",
+        "label": "CNA",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "southeast-asia",
+        "maxMessages": 25
+      },
+      {
+        "handle": "govsg",
+        "label": "Singapore Government",
+        "topic": "geopolitics",
+        "tier": 1,
+        "enabled": true,
+        "region": "singapore",
+        "maxMessages": 25
+      },
+      {
+        "handle": "wamnews_en",
+        "label": "Emirates News Agency (WAM)",
+        "topic": "middleeast",
+        "tier": 2,
+        "enabled": true,
+        "region": "united-arab-emirates",
+        "maxMessages": 25
+      },
       {
         "handle": "VahidOnline",
         "label": "Vahid Online",

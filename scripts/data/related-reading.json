@@ -1,0 +1,40 @@
+{
+  "generatedBy": "node scripts/internal-links.mjs related",
+  "model": "jev-1.13.0",
+  "pages": {
+    "/compare/chokepoint-monitoring-tools/": [
+      {
+        "href": "/blog/posts/supply-chain-early-warning-dashboard-worldmonitor-api/",
+        "title": "Build a Supply Chain Early Warning Dashboard with WorldMonitor's API"
+      }
+    ],
+    "/compare/mcp-servers-for-geopolitical-data/": [
+      {
+        "href": "/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/",
+        "title": "Give Your AI Agent Eyes on the World: The World Monitor MCP Server"
+      }
+    ],
+    "/countries/china/": [
+      {
+        "href": "/docs/china-decision-signals",
+        "title": "China Decision Signals"
+      },
+      {
+        "href": "/docs/china-data-coverage",
+        "title": "China Data Coverage"
+      }
+    ],
+    "/countries/israel/": [
+      {
+        "href": "/docs/panels/oref-sirens",
+        "title": "Israel Sirens"
+      }
+    ],
+    "/crises/hormuz-gulf-security/": [
+      {
+        "href": "/docs/panels/hormuz-tracker",
+        "title": "Hormuz Trade Tracker"
+      }
+    ]
+  }
+}

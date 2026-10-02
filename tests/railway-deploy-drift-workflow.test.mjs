@@ -32,6 +32,14 @@ function stepNamed(job, name) {
   return step;
 }
 
+// Resolved once, before the fixture puts its own `git` on PATH, so the shim can
+// delegate to the real binary by absolute path instead of recursing into itself.
+function realGit() {
+  const result = spawnSync('command', ['-v', 'git'], { encoding: 'utf8', shell: true });
+  assert.equal(result.status, 0, 'git must be on PATH');
+  return result.stdout.trim();
+}
+
 function gitRevision(revision) {
   const result = spawnSync('git', ['rev-parse', revision], {
     cwd: repoRoot,
@@ -79,7 +87,7 @@ function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha, queryLog 
       rootDirectory,
       watchPatterns: entry?.watchPatterns ?? [],
       dockerfilePath: entry?.dockerfile ?? null,
-      startCommand: null,
+      startCommand: entry?.startCommand ?? null,
       cronSchedule: entry?.cronSchedule ?? null,
     };
   };
@@ -192,15 +200,28 @@ function createProbeFixture() {
   const startedAtMs = Date.now();
   const fakeRailway = join(directory, 'railway');
   const fakeDate = join(directory, 'date');
+  const fakeGit = join(directory, 'git');
   const queryLog = join(directory, 'query-log');
+  const gitLog = join(directory, 'git-log');
   writeFileSync(
     fakeRailway,
     `#!/usr/bin/env node\nconst fixture = ${JSON.stringify({ repoRoot, headSha, previousSha, queryLog })};\n(${fakeRailwayCli.toString()})(fixture);\n`,
   );
   writeFileSync(fakeDate, `#!/bin/sh\nprintf '%s\\n' '${startedAtMs}'\n`);
+  // The script fetches origin/main after reading the fleet. Unshimmed, this
+  // probe would perform live network I/O and force-update refs/remotes/origin/main
+  // in the real checkout — a remote-tracking ref every worktree shares — making a
+  // unit test both network-dependent and a mutation of the developer's repository.
+  // Record the fetch and no-op it; everything else must reach real git, because
+  // the classifier depends on genuine merge-base/rev-parse/diff/rev-list answers.
+  writeFileSync(
+    fakeGit,
+    `#!/bin/sh\nif [ "$1" = 'fetch' ]; then\n  printf '%s\\n' "$*" >> '${gitLog}'\n  exit 0\nfi\nexec '${realGit()}' "$@"\n`,
+  );
   chmodSync(fakeRailway, 0o755);
   chmodSync(fakeDate, 0o755);
-  return { directory, headSha, queryLog, startedAtMs };
+  chmodSync(fakeGit, 0o755);
+  return { directory, headSha, queryLog, gitLog, startedAtMs };
 }
 
 function executeWorkflowShell(run, fixture, {
@@ -321,17 +342,27 @@ describe('Railway Native Deploy Health workflow', () => {
       assert.match(healthyDrift.stdout, /Every service this repository deploys is running/);
       assert.match(
         healthyDrift.stderr,
-        // 82 since seed-bundle-static-ref-heavy was provisioned; FLEET_PAGE_SIZE
-        // is 500, so it is still one fleet page.
-        /Read 82 service histories in 1 fleet page\(s\) \(82 records\), 0 direct fallback\(s\)\./,
+        // 85 since seed-live-video-resolved was provisioned; FLEET_PAGE_SIZE is
+        // 500, so it is still one fleet page.
+        /Read 85 service histories in 1 fleet page\(s\) \(85 records\), 0 direct fallback\(s\)\./,
       );
       const queries = readFileSync(fixture.queryLog, 'utf8').trim().split('\n');
       assert.equal(
         queries.filter((query) => query === 'ViewerDeploymentConfig').length,
-        82,
-        'the config audit must reuse the deployment projection instead of reading 82 services twice',
+        85,
+        'the config audit must reuse the deployment projection instead of reading 85 services twice',
       );
       assert.equal(queries.filter((query) => query === 'FleetDeployments').length, 1);
+      // The refresh is the whole point of the post-observation fetch: without it
+      // a service running a commit merged during the Railway read is judged
+      // against a stale origin/main and reported as a problem. Drive main() far
+      // enough to prove the fetch actually fires, which unit-testing
+      // resolveComparisonHead in isolation cannot show.
+      assert.match(
+        readFileSync(fixture.gitLog, 'utf8'),
+        /fetch --quiet origin \+refs\/heads\/main:refs\/remotes\/origin\/main/,
+        'main() must refresh origin/main so lineage is judged against current ancestry',
+      );
 
       const projectedConfigDrift = executeWorkflowShell(check.run, fixture, {
         mode: 'config-drift',
@@ -354,7 +385,7 @@ describe('Railway Native Deploy Health workflow', () => {
     const drift = workflow.jobs.monitor;
     const driftCheckout = steps(drift).find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.ok(driftCheckout);
-    assert.equal(driftCheckout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
+    assert.equal(driftCheckout.uses, 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803');
     assert.equal(driftCheckout.with?.['fetch-depth'], 0);
     assert.equal(driftCheckout.with?.filter, 'blob:none');
     assert.equal(driftCheckout.with?.ref, undefined);

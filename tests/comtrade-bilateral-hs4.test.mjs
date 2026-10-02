@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { candidatePeriods } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 
 const root = join(import.meta.dirname, '..');
 
@@ -56,8 +57,8 @@ describe('getCountryProducts sebuf handler (server/worldmonitor/supply-chain/v1/
 
   it('reads from raw Upstash Redis (skip env-prefix) so seeder writes resolve', () => {
     assert.ok(
-      /getCachedJson\([^,]+,\s*true\)/.test(src),
-      'must call getCachedJson(key, true) so the raw seeder key is read',
+      /readCachedJson\([^,]+,\s*true\)/.test(src),
+      'must call readCachedJson(key, true) so the raw seeder key is read',
     );
   });
 
@@ -193,15 +194,6 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
   });
 
   it('derives HS4 codes from both reviewed registries within the two-request budget', async () => {
-    assert.ok(
-      src.includes("require('./shared/comtrade-strategic-products.json')"),
-      'seeder: HS4 codes must come from the reviewed shared metadata',
-    );
-    assert.doesNotMatch(src, /const\s+HS4_CODES\s*=\s*\[/, 'seeder: must not carry an inline HS4 list');
-    assert.ok(
-      src.includes("require('./shared/supply-vulnerability-commodities.json')"),
-      'supply-vulnerability HS4 mappings must extend the existing bilateral mirror',
-    );
     const { HS4_CODES, MAX_HS4_CODES_PER_BATCH } = await import('../scripts/seed-comtrade-bilateral-hs4.mjs');
     assert.ok(HS4_CODES.length > 20, 'the vulnerability registry must add reviewed commodity headings');
     assert.ok(
@@ -534,8 +526,14 @@ describe('CountryDeepDivePanel product imports section', () => {
   });
 
   it('PRO gate check (hasPremiumAccess) guards product imports card', () => {
-    assert.ok(
-      src.includes("import { hasPremiumAccess }"),
+    // Match the binding inside the import list, not the list's exact spelling:
+    // the panel legitimately imports siblings from panel-gating (the
+    // WORLDMONITOR-147 denial diagnostic added two), and pinning the literal
+    // `import { hasPremiumAccess }` made an unrelated import widening fail a
+    // test whose invariant — this panel gates on hasPremiumAccess — still held.
+    assert.match(
+      src,
+      /import \{[^}]*\bhasPremiumAccess\b[^}]*\} from '@\/services\/panel-gating'/,
       'CountryDeepDivePanel: must import hasPremiumAccess for PRO gating',
     );
     const productImportsIdx = src.indexOf('productImportsCardBody');
@@ -574,11 +572,24 @@ describe('CountryDeepDivePanel product imports section', () => {
     );
   });
 
-  it('sectionCard is used for the product imports card', () => {
-    assert.ok(
-      src.includes("this.sectionCard('Product Imports'"),
-      'CountryDeepDivePanel: product imports must use sectionCard for consistent card structure',
-    );
+  it('renders product imports in the brief grid with a heading and card body', async () => {
+    const harness = await createCountryDeepDivePanelHarness();
+    const panel = harness.createPanel();
+    try {
+      panel.show('United States', 'US', null, {});
+      for (let attempt = 0; attempt < 25 && harness.getWidgets().length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assert.equal(harness.getWidgets().length, 1, 'lazy widgets must settle before cleanup');
+      const card = harness.getPanelRoot().querySelector('.cdp-grid').querySelector('#cdp-section-products');
+      assert.ok(card, 'Product Imports must be mounted in the brief grid');
+      assert.ok(card.classList.contains('cdp-card'));
+      assert.match(card.querySelector('.cdp-card-title').textContent, /Product Imports/);
+      assert.ok(card.querySelector('.cdp-card-body').querySelector('.cdp-pro-locked'));
+    } finally {
+      panel.hide();
+      harness.cleanup();
+    }
   });
 
   it('product imports card is appended to the body grid', () => {

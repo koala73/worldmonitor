@@ -130,12 +130,13 @@ export function shouldProxyExchangeFailure(error) {
 
 export function shouldRetryExchangeProxyFailure(error) {
   const reason = transportFailureReason(error);
-  // A CONNECT-layer rejection is the gateway refusing the tunnel -- proxy auth,
-  // an exhausted account traffic limit, a provider policy block. Every sticky
-  // port on the same account answers identically, so retrying only burns the
-  // bounded budget. Socket-level codes still retry: those are transient.
+  // Authentication, quota, and policy denials from the gateway are account-wide,
+  // so rotating a sticky exit only burns the bounded budget. Gateway 5xx errors
+  // are different: production has returned CONNECT 522 on one China sticky exit
+  // while the next exit succeeds, so those transient failures earn one rotation.
   if (error?.cause?.proxyConnect === true || error?.proxyConnect === true) {
-    return RETRYABLE_EXCHANGE_PROXY_FAILURE_CODES.has(reason);
+    return RETRYABLE_EXCHANGE_PROXY_FAILURE_CODES.has(reason)
+      || isRetryableExchangeHttpStatus(reason);
   }
   return reason === 'FETCH_FAILED'
     || reason === 'TIMEOUT'

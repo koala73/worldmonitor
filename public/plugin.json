@@ -19,5 +19,36 @@
     "country-risk",
     "markets",
     "chokepoints"
-  ]
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "WorldMonitor",
+        "shortDescription": "News and global intelligence",
+        "longDescription": "Explore source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints with WorldMonitor tools and task-focused skills. Inspect gold positioning and holdings, traffic anomalies and global DDoS observations. Compare dated CPI and rate histories, research stocks and technical backtests, and model energy or import-cost exposure to chokepoint closures. Research and scenario results retain model limitations and do not establish future performance. Browse curated news panels and a 2D map or 3D globe, search headlines, and summarize or translate selected headlines. Data can be partial, stale or unavailable; answers retain coverage and attribution. Connect your WorldMonitor account through OAuth; some workflows require a subscription. Research generation may save shared snapshots. The plugin does not trade, publish articles or change account settings. Map controls work in the UI; model control of an already-open map depends on host support.",
+        "developerName": "WorldMonitor",
+        "category": "Data & Analytics",
+        "capabilities": [
+          "Browse curated news",
+          "Summarize and translate headlines",
+          "Read country risk and intelligence",
+          "Inspect news on a map",
+          "Compare macro histories",
+          "Research stocks and backtests",
+          "Model chokepoint supply and cost exposure"
+        ],
+        "websiteURL": "https://www.worldmonitor.app",
+        "supportURL": "https://www.worldmonitor.app/support.md",
+        "privacyPolicyURL": "https://www.worldmonitor.app/docs/privacy",
+        "termsOfServiceURL": "https://www.worldmonitor.app/legal/terms.pdf",
+        "defaultPrompt": [
+          "Show today’s world headlines with sources and coverage.",
+          "Summarize the latest energy news.",
+          "Translate one current headline into Arabic."
+        ],
+        "composerIcon": "./public/favico/worldmonitor-icon-1024.png",
+        "logo": "./public/favico/worldmonitor-icon-1024.png"
+      }
+    }
+  }
 }

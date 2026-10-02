@@ -22,6 +22,12 @@ const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
 const protoWorldmonitorDir = resolve(root, 'proto/worldmonitor');
 const CHECK = process.argv.includes('--check');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+// sebuf v0.11.1 places repeated bounds on the item schema. Move the new
+// country-headline contract's bounds to its arrays until the generator fixes this.
+const COUNTRY_HEADLINE_ARRAY_FIELDS = [
+  ['ListCountryHeadlinesRequest', 'countryCodes'],
+  ['CountryHeadlineBucket', 'items'],
+];
 
 // Fields that are required in the public OpenAPI request contract but are not
 // safe to express as buf.validate.required because runtime code has a
@@ -62,6 +68,7 @@ const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|inv
 const ISO2_PATTERN = '^[A-Z]{2}$';
 const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
 const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
+const BASELINE_REGION_DESCRIPTION = 'Only the global baseline is defined. Omitted or empty defaults to global.';
 
 function scorecardResponseOneOf(unavailableReasons) {
   return [
@@ -335,6 +342,23 @@ function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
   if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
+  // The generator emits const but does not account for IGNORE_IF_ZERO_VALUE.
+  const baselineRegion = schemas.GetTemporalBaselineRequest?.properties?.region;
+  if (baselineRegion && (baselineRegion.const !== undefined || !eq(baselineRegion.enum, ['global', '']))) {
+    delete baselineRegion.const;
+    baselineRegion.enum = ['global', ''];
+    changed = true;
+  }
+
+  for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
+    const property = schemas[schemaName]?.properties?.[field];
+    for (const bound of ['minItems', 'maxItems']) {
+      if (typeof property?.items?.[bound] !== 'number') continue;
+      property[bound] = property.items[bound];
+      delete property.items[bound];
+      changed = true;
+    }
+  }
 
   for (const [schemaName, schema] of Object.entries(schemas)) {
     if ((!schemaName.endsWith('Request') && !OPENAPI_REQUIRED_SCHEMA_FIELDS.has(schemaName)) || !schema || typeof schema !== 'object') continue;
@@ -799,6 +823,38 @@ function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
   if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
+  for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
+    for (const block of [...yamlSchemaBlocks(lines, schemaName)].reverse()) {
+      const indent = leadingSpaces(lines[block.start]) + 8;
+      const start = lines.findIndex((line, i) => i > block.start && i < block.end
+        && leadingSpaces(line) === indent && line.trim() === `${field}:`);
+      if (start === -1) continue;
+      let end = start + 1;
+      while (end < block.end && (!lines[end].trim() || leadingSpaces(lines[end]) > indent)) end++;
+      const existing = new Set(lines.slice(start + 1, end)
+        .filter(line => leadingSpaces(line) === indent + 4)
+        .map(line => line.trim().split(':')[0]));
+      const bounds = [];
+      for (let i = end - 1; i > start; i--) {
+        if (leadingSpaces(lines[i]) !== indent + 8 || !/^(?:minItems|maxItems): \d+$/.test(lines[i].trim())) continue;
+        if (!existing.has(lines[i].trim().split(':')[0])) bounds.unshift(`${' '.repeat(indent + 4)}${lines[i].trim()}`);
+        lines.splice(i, 1);
+        changed = true;
+      }
+      if (bounds.length) {
+        lines.splice(start + 1, 0, ...bounds);
+        changed = true;
+      }
+    }
+  }
+  if (replaceYamlSchemaProperty(lines, 'GetTemporalBaselineRequest', 'region', (pad) => [
+    `${pad}region:`,
+    `${pad}    type: string`,
+    `${pad}    description: ${BASELINE_REGION_DESCRIPTION}`,
+    `${pad}    enum:`,
+    `${pad}        - 'global'`,
+    `${pad}        - ''`,
+  ])) changed = true;
   for (const { operationId, paramName } of contracts.params) {
     if (operationId && setYamlOperationParamRequired(lines, operationId, paramName)) changed = true;
   }

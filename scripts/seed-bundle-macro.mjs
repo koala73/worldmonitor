@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
+import { orderMacroSections } from './_macro-bundle-order.mjs';
 import { EDUCATION_SECTION_TIMEOUT_MS } from './seed-education-attainment.mjs';
 import { PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS } from './seed-physical-premiums.mjs';
 
-const EDUCATION_PRIORITY_UTC_DAY = 0;
 const EDUCATION_SECTION = { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', completionMetaKey: 'seed-completion:resilience:education-attainment', intervalMs: 7 * DAY, timeoutMs: EDUCATION_SECTION_TIMEOUT_MS };
+// SGE SHAU/SHAG daily PM benchmarks joined only to the already-seeded
+// commodity and FX snapshots. Keep this section outside MACRO_SECTIONS so it
+// always receives an early admission slot with 80 seconds of bundle headroom.
+const PHYSICAL_PREMIUM_SECTION = { label: 'Physical-Premiums', script: 'seed-physical-premiums.mjs', seedMetaKey: 'market:physical-premium', canonicalKey: 'market:physical-premium:v1', completionMetaKey: 'seed-completion:market:physical-premium', intervalMs: DAY, timeoutMs: PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS };
 
 const MACRO_SECTIONS = [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', completionMetaKey: 'seed-completion:economic:bis', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
@@ -33,12 +37,6 @@ const MACRO_SECTIONS = [
   { label: 'China-Policy-Events', script: 'seed-china-policy-events.mjs', seedMetaKey: 'china:policy-events', canonicalKey: 'china:policy-events:v1', intervalMs: 6 * HOUR, timeoutMs: 220_000 },
   { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', canonicalKey: 'economic:bis:dsr:v1', completionMetaKey: 'seed-completion:economic:bis-extended', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
   { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', canonicalKey: 'bls:series:v1', completionMetaKey: 'seed-completion:economic:bls-series', intervalMs: DAY, timeoutMs: 120_000 },
-  // SGE SHAU/SHAG daily PM benchmarks joined only to the already-seeded
-  // commodity and FX snapshots. The seeder fails closed unless the deployment
-  // has explicitly activated the documented redistribution/display license.
-  // The fetch, canonical switch, three derived Redis waves, and shared
-  // bookkeeping all fit this exported structural budget with failure headroom.
-  { label: 'Physical-Premiums', script: 'seed-physical-premiums.mjs', seedMetaKey: 'market:physical-premium', canonicalKey: 'market:physical-premium:v1', completionMetaKey: 'seed-completion:market:physical-premium', intervalMs: DAY, timeoutMs: PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', canonicalKey: 'economic:eurostat-country-data:v1', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-HousePrices', script: 'seed-eurostat-house-prices.mjs', seedMetaKey: 'economic:eurostat-house-prices', canonicalKey: 'economic:eurostat:house-prices:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-GovDebtQ', script: 'seed-eurostat-gov-debt-q.mjs', seedMetaKey: 'economic:eurostat-gov-debt-q', canonicalKey: 'economic:eurostat:gov-debt-q:v1', intervalMs: 2 * DAY, timeoutMs: 300_000 },
@@ -58,18 +56,36 @@ const MACRO_SECTIONS = [
   // 300_000 gives ~50s margin and matches peer sections. Pre-PR-#3415 the section
   // was 120_000 — too tight for the multi-tier fallback, would SIGTERM mid-fetch.
   { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
+  // Full CPI history is six FRED series from 1947. Kept at the tail so a slow
+  // FRED day cannot take the admission slot of an established member.
+  { label: 'US-CPI', script: 'seed-us-cpi.mjs', seedMetaKey: 'economic:us-cpi', canonicalKey: 'economic:us-cpi:v1', completionMetaKey: 'seed-completion:economic:us-cpi', intervalMs: DAY, timeoutMs: 180_000 },
+  // One Treasury XML document per year since 1990. The tail placement is the
+  // same admission choice as US-CPI.
+  { label: 'US-Treasury-Par-Yield', script: 'seed-us-treasury-par-yield.mjs', seedMetaKey: 'economic:us-treasury-par-yield', canonicalKey: 'economic:us-treasury-par-yield:v1', completionMetaKey: 'seed-completion:economic:us-treasury-par-yield', intervalMs: DAY, timeoutMs: 180_000 },
+  // Twelve full-history FRED series. Kept at the tail for the same reason as US-CPI.
+  { label: 'US-Interest-Rates', script: 'seed-us-interest-rates.mjs', seedMetaKey: 'economic:us-interest-rates', canonicalKey: 'economic:us-interest-rates:v1', completionMetaKey: 'seed-completion:economic:us-interest-rates', intervalMs: DAY, timeoutMs: 180_000 },
+  // Worldwide CPI: five sources feeding one country-indexed read
+  // (GetWorldCpiMonthly). Each section is a small, bounded fetch — the IMF
+  // section is the largest at two ~2 MB CSV documents — and they share the
+  // #8481 tail placement so a slow overlay cannot take an established member's
+  // admission slot. Absent sources are tolerated by the read path, which
+  // selects a per-country source with a staleness fall-through.
+  { label: 'World-CPI-IMF', script: 'seed-world-cpi-imf.mjs', seedMetaKey: 'economic:world-cpi-imf', canonicalKey: 'economic:world-cpi:imf:v1', completionMetaKey: 'seed-completion:economic:world-cpi-imf', intervalMs: DAY, timeoutMs: 240_000 },
+  { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
+  { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
+  { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark
 // producer cannot starve established production members every day. Give it
-// first priority on one UTC day each week so sustained production load cannot
-// defer its first successful envelope forever. A persistent education outage
-// can consume at most one day's first slot per week; production keeps the other
-// six days.
-const educationRunsFirst = new Date().getUTCDay() === EDUCATION_PRIORITY_UTC_DAY;
-const sections = educationRunsFirst
-  ? [EDUCATION_SECTION, ...MACRO_SECTIONS]
-  : [...MACRO_SECTIONS, EDUCATION_SECTION];
+// first priority on the 08:00 Sunday tick. The 09:00 retry always restores
+// Physical to the first slot, even if Education failed and remains due.
+const sections = orderMacroSections(
+  new Date(),
+  EDUCATION_SECTION,
+  PHYSICAL_PREMIUM_SECTION,
+  MACRO_SECTIONS,
+);
 
 await runBundle('macro', sections, {
   // Railway kills cron containers at 10 minutes. Defer sections whose full

@@ -176,6 +176,11 @@ body {
   font-weight: 700;
 }
 
+.wm-embed-cp-warning {
+  color: var(--warning, #f59e0b);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
 .wm-embed-cp-strip {
   display: flex;
   flex-wrap: wrap;

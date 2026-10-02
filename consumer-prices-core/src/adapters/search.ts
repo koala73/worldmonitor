@@ -7,8 +7,8 @@
  *
  * Pin path: if a matching pin exists in ctx.pinnedUrls, discovery is skipped and the
  * configured extraction providers are called directly on the stored URL. On failure,
- * the adapter falls back to the normal Exa discovery flow in the same run so the basket
- * item is never left uncovered.
+ * the adapter tries a configured item seed, then the normal Exa discovery flow in the
+ * same run so the basket item is never left uncovered.
  *
  * Replaces ExaSearchAdapter's fragile regex-on-AI-summary approach.
  * Firecrawl renders JS so dynamic prices (Noon, etc.) are visible.
@@ -22,8 +22,8 @@ import type { RetailerConfig } from '../config/types.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
-import { validateSearchHit, type ValidatorResult } from './validator.js';
-import { priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
+import { AUTO_MATCH_THRESHOLD, validateSearchHit, type ValidatorResult } from './validator.js';
+import { normalizeExaBrlMinorUnitPrice, priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
 import { ProviderCooldownGate } from './provider-cooldown.js';
 import type { BasketItem } from '../config/types.js';
 import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../acquisition/types.js';
@@ -132,13 +132,18 @@ export function normalizePathFilters(value: string | string[] | undefined): stri
 
 /**
  * URL passes the path filter if filters list is empty OR any listed substring
- * appears in the URL. Multi-pattern support is required for retailers like
+ * appears in the pathname. Multi-pattern support is required for retailers like
  * Carrefour BR that mix legacy `/produto/<slug>` URLs with VTEX `<slug>/p`
  * URLs — a single substring can't match both.
  */
 export function matchesAnyPathFilter(url: string, filters: string[]): boolean {
   if (filters.length === 0) return true;
-  return filters.some((p) => url.includes(p));
+  try {
+    const { pathname } = new URL(url);
+    return filters.some((filter) => pathname.includes(filter));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -161,6 +166,14 @@ export function matchesRequiredPathSegments(url: string, segments: string[]): bo
   } catch {
     return false;
   }
+}
+
+export function isUrlInPolicy(url: string, cfg: RetailerConfig['searchConfig'], hosts: readonly string[]): boolean {
+  return (
+    isAllowedHost(url, hosts) &&
+    matchesAnyPathFilter(url, normalizePathFilters(cfg?.urlPathContains)) &&
+    matchesRequiredPathSegments(url, cfg?.urlPathMustContain ?? [])
+  );
 }
 
 /** Build the exact Exa discovery request shared by production and diagnostics. */
@@ -255,6 +268,18 @@ interface SearchPayload {
   matchId?: string;
 }
 
+type SearchTargetMetadata = {
+  canonicalName: string;
+  domain: string;
+  basketSlug: string;
+  currency: string;
+  itemConstraints?: ItemConstraints;
+  direct: boolean;
+  seedUrl: string | undefined;
+  pinnedProductId?: string;
+  matchId?: string;
+};
+
 const REJECTION_FAILURES = new Set<ExtractionFailureReason>([
   'validator-rejected',
   'quantity-as-price',
@@ -324,6 +349,11 @@ export class SearchAdapter implements RetailerAdapter {
       for (const item of basket.items) {
         const pinKey = `${basket.slug}:${item.canonicalName}`;
         const pinned = ctx.pinnedUrls?.get(pinKey);
+        const seed = ctx.config.discovery.seeds.find((candidate) => candidate.id === item.id);
+        const seedUrl = seed && isUrlInPolicy(seed.url, ctx.config.searchConfig, allowedHosts) ? seed.url : undefined;
+        if (seed && !seedUrl) {
+          ctx.logger.warn(`  [search:seed] ignored out-of-policy URL for "${item.canonicalName}": ${seed.url}`);
+        }
         const itemConstraints: ItemConstraints = {
           baseUnit: item.baseUnit,
           minBaseQty: item.minBaseQty,
@@ -348,9 +378,10 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: true,
+              seedUrl,
               pinnedProductId: pinned.productId,
               matchId: pinned.matchId,
-            },
+            } satisfies SearchTargetMetadata,
           });
         } else {
           if (pinned) {
@@ -361,7 +392,7 @@ export class SearchAdapter implements RetailerAdapter {
           }
           targets.push({
             id: item.id,
-            url: ctx.config.baseUrl,
+            url: seedUrl ?? ctx.config.baseUrl,
             category: item.category,
             metadata: {
               canonicalName: item.canonicalName,
@@ -370,7 +401,8 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: false,
-            },
+              seedUrl,
+            } satisfies SearchTargetMetadata,
           });
         }
       }
@@ -478,10 +510,25 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      const price = data.price;
+      let price = data.price;
       if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
         failures.push({ provider, reason: 'missing-price' });
         continue;
+      }
+
+      if (provider === 'exa' && currency.toUpperCase() === 'BRL') {
+        const normalizedPrice = normalizeExaBrlMinorUnitPrice(price, pageContent);
+        if (normalizedPrice !== price) {
+          if (looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints, canonicalName)) {
+            failures.push({ provider, reason: 'quantity-as-price', detail: `${price} for ${data.sizeText}` });
+            continue;
+          }
+          ctx.logger.info(
+            `  [search:price-normalized] ${ctx.config.slug}/${canonicalName}: Exa BRL minor units ${price} -> ${normalizedPrice}`,
+          );
+          price = normalizedPrice;
+          data.price = normalizedPrice;
+        }
       }
 
       // Anti-fabrication proof (#6182): an accepted price must be visible in
@@ -502,6 +549,10 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
       if (priceEvidence === 'no-content') {
+        if (provider === 'exa' && currency.toUpperCase() === 'BRL' && Number.isInteger(price)) {
+          failures.push({ provider, reason: 'price-evidence-missing', detail: `${price} has no page content` });
+          continue;
+        }
         ctx.logger.warn(
           `  [search:price-evidence] ${ctx.config.slug}/${canonicalName}: no page content from ${provider} — evidence gate skipped`,
         );
@@ -593,21 +644,47 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
-    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, pinnedProductId, matchId } = target.metadata as {
-      canonicalName: string;
-      domain: string;
-      currency: string;
-      basketSlug: string;
-      itemConstraints?: ItemConstraints;
-      direct: boolean;
-      pinnedProductId?: string;
-      matchId?: string;
-    };
+    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, seedUrl, pinnedProductId, matchId } =
+      target.metadata as SearchTargetMetadata;
     const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
     const failures: ExtractionFailure[] = [];
+    const attemptedUrls = new Set<string>();
+    let seedCandidate: { url: string; result: ExtractionSuccess } | null = null;
+
+    const buildFetchResult = (
+      productUrl: string,
+      result: ExtractionSuccess,
+      wasDirect: boolean,
+    ): FetchResult => ({
+      url: productUrl,
+      html: JSON.stringify({
+        extracted: result.extracted,
+        productUrl,
+        canonicalName,
+        basketSlug,
+        itemCategory: target.category,
+        itemConstraints,
+        validator: result.validator,
+        extractionProvider: result.provider,
+        priceEvidence: result.priceEvidence,
+        direct: wasDirect,
+        ...(wasDirect ? { pinnedProductId, matchId } : {}),
+      } satisfies SearchPayload),
+      statusCode: 200,
+      fetchedAt: new Date(),
+    });
+
+    const fallbackToSeedCandidate = (reason: string): FetchResult | null => {
+      if (!seedCandidate) return null;
+      ctx.logger.info(
+        `  [search:seed] ${ctx.config.slug}/${canonicalName}: using candidate score=${seedCandidate.result.validator.score.toFixed(3)} after ${reason}`,
+      );
+      return buildFetchResult(seedCandidate.url, seedCandidate.result, false);
+    };
 
     // Direct path: skip Exa discovery, call the configured extractor on the pinned URL.
     if (direct) {
+      attemptedUrls.add(target.url);
       try {
         const attempt = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
         failures.push(...attempt.failures);
@@ -616,33 +693,54 @@ export class SearchAdapter implements RetailerAdapter {
           ctx.logger.info(
             `  [search:pin] ${ctx.config.slug}/${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
           );
-          return {
-            url: target.url,
-            html: JSON.stringify({
-              extracted: result.extracted,
-              productUrl: target.url,
-              canonicalName,
-              basketSlug,
-              itemCategory: target.category,
-              itemConstraints,
-              validator: result.validator,
-              extractionProvider: result.provider,
-              priceEvidence: result.priceEvidence,
-              direct: true,
-              pinnedProductId,
-              matchId,
-            } satisfies SearchPayload),
-            statusCode: 200,
-            fetchedAt: new Date(),
-          };
+          return buildFetchResult(target.url, result, true);
         }
         ctx.logger.warn(
-          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
+          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), trying configured recovery paths`,
         );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
-        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
+        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, trying configured recovery paths: ${err}`);
+      }
+    }
+
+    if (seedUrl && !attemptedUrls.has(seedUrl)) {
+      attemptedUrls.add(seedUrl);
+      try {
+        const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
+        failures.push(...attempt.failures);
+        if (
+          attempt.result &&
+          (!attempt.result.validator.ok || attempt.result.validator.score < AUTO_MATCH_THRESHOLD)
+        ) {
+          const validator = attempt.result.validator;
+          const reasons = validator.reasons.join(',') || 'unknown';
+          if (validator.ok) {
+            seedCandidate = { url: seedUrl, result: attempt.result };
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page score ${validator.score.toFixed(3)} below automatic admission ${AUTO_MATCH_THRESHOLD}, falling back to Exa discovery`,
+            );
+          } else {
+            failures.push({ provider: attempt.result.provider, reason: 'validator-rejected', detail: reasons });
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page rejected by validator (${reasons}), falling back to Exa discovery`,
+            );
+          }
+        } else if (attempt.result) {
+          ctx.logger.info(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
+          );
+          return buildFetchResult(seedUrl, attempt.result, false);
+        } else {
+          ctx.logger.warn(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
+          );
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
+        ctx.logger.warn(`  [search:seed] ${ctx.config.slug}/${canonicalName}: seed fetch error, falling back to Exa discovery: ${err}`);
       }
     }
 
@@ -650,6 +748,8 @@ export class SearchAdapter implements RetailerAdapter {
     // provider-cooldown; the attempt after the window proceeds as the recovery
     // probe (the probe call itself happens inside _extractFromUrl).
     if (ctx.config.searchConfig?.extractionFallback !== 'exa' && this.firecrawlGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Firecrawl cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Firecrawl extraction cooldown is open for "${canonicalName}"`,
         0,
@@ -666,6 +766,8 @@ export class SearchAdapter implements RetailerAdapter {
     // a whole-basket loss, which is the COVERAGE_PARTIAL this adapter exists
     // to prevent.
     if (this.exaDiscoveryGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Exa discovery cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Exa discovery cooldown is open for "${canonicalName}"`,
         0,
@@ -700,6 +802,8 @@ export class SearchAdapter implements RetailerAdapter {
           `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery cooling down after consecutive errors — skipping a bounded window, then probing (last: ${detail})`,
         );
       }
+      const fallback = fallbackToSeedCandidate('Exa discovery failed');
+      if (fallback) return fallback;
       // Carry `detail` into the message: nothing downstream reads `.failures`,
       // so without it the log cannot tell an auth failure from a rate limit
       // from a timeout — the distinction the cooldown exists to surface.
@@ -710,17 +814,8 @@ export class SearchAdapter implements RetailerAdapter {
 
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
     const requiredSegments = cfg?.urlPathMustContain ?? [];
-    const attemptedUrls = direct ? new Set([target.url]) : new Set<string>();
     const filterInPolicy = (results: SearchResult[]) =>
-      results
-        .map((r) => r.url)
-        .filter(
-          (url) =>
-            !!url &&
-            isAllowedHost(url, hostAllowlist) &&
-            matchesAnyPathFilter(url, pathFilters) &&
-            matchesRequiredPathSegments(url, requiredSegments),
-        );
+      results.map((r) => r.url).filter((url) => !!url && isUrlInPolicy(url, cfg, hostAllowlist));
     let discoveredUrls = filterInPolicy(exaResults);
     let survivingUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 
@@ -760,7 +855,9 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     if (exaResults.length === 0) {
-      throw new Error(`Exa: no pages found for "${canonicalName}" on ${domain}`);
+      const fallback = fallbackToSeedCandidate('discovery found no pages');
+      if (fallback) return fallback;
+      throw new SearchTargetError(`Exa: no pages found for "${canonicalName}" on ${domain}`, 0, failures);
     }
     // Discovery may legitimately need a wide net (a retailer whose live route
     // ranks low), but extraction cost must not scale with it — each extra
@@ -787,15 +884,23 @@ export class SearchAdapter implements RetailerAdapter {
       // run goes from "0 passed domain check" straight to a thrown error
       // with no record of what Exa actually returned.
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
-      const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
+      const repeatedAttemptedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
+        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${repeatedAttemptedUrl ? ', URL already attempted' : ''}). Rejected: ${sample}`,
       );
-      if (excludedPinnedUrl) {
-        throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
+      const fallback = fallbackToSeedCandidate('discovery found no usable page');
+      if (fallback) return fallback;
+      if (repeatedAttemptedUrl) {
+        throw new SearchTargetError(
+          `Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`,
+          0,
+          failures,
+        );
       }
-      throw new Error(
+      throw new SearchTargetError(
         `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''}${requiredSegments.length ? `, required path: ${requiredSegments.join('+')}` : ''})`,
+        0,
+        failures,
       );
     }
 
@@ -825,6 +930,8 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     if (picked === null) {
+      const fallback = fallbackToSeedCandidate('discovered pages failed extraction');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `All ${safeUrls.length} URLs failed extraction for "${canonicalName}". Last: ${formatExtractionFailures(failures.slice(-3))}`,
         // Only retailers that opted into the strict validator contribute to
@@ -845,23 +952,7 @@ export class SearchAdapter implements RetailerAdapter {
       `  [search:extract] ${ctx.config.slug}/${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
     );
 
-    return {
-      url: usedUrl,
-      html: JSON.stringify({
-        extracted: picked.extracted,
-        productUrl: usedUrl,
-        canonicalName,
-        basketSlug,
-        itemCategory: target.category,
-        itemConstraints,
-        validator: picked.validator,
-        extractionProvider: picked.provider,
-        priceEvidence: picked.priceEvidence,
-        direct: false,
-      } satisfies SearchPayload),
-      statusCode: 200,
-      fetchedAt: new Date(),
-    };
+    return buildFetchResult(usedUrl, picked, false);
   }
 
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {

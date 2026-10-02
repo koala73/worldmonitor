@@ -14,7 +14,7 @@
          parse time when the provider is already present (native WebMCP), and
          retries once on DOMContentLoaded/load for a provider installed later
          (e.g. a scanner polyfill); the registration guard keeps it idempotent, and
-         it is a no-op in browsers without document.modelContext. The MCP server is
+         it is a no-op in browsers without a supported WebMCP provider. The MCP server is
          the remote HTTP (Streamable HTTP) transport at https://worldmonitor.app/mcp
          — getWorldMonitorMcpEndpoint hands agents that endpoint. The nonce is added
          by Vite (html.cspNonce) at build time, so this inline script needs no CSP
@@ -91,7 +91,27 @@
           } catch (e) {
             return;
           }
-          if (!provider || typeof provider.registerTool !== 'function') return;
+          if (!provider || typeof provider.registerTool !== 'function') {
+            try {
+              provider = typeof navigator !== 'undefined' ? navigator.modelContext : null;
+            } catch (e) {
+              return;
+            }
+          }
+          if (!provider) return;
+          if (typeof provider.registerTool !== 'function') {
+            if (typeof provider.provideContext !== 'function') return;
+            registrationStarted = true;
+            try {
+              Promise.resolve(provider.provideContext({ tools: tools })).then(
+                function () { registered = true; },
+                function () { registered = false; }
+              );
+            } catch (e) {
+              registered = false;
+            }
+            return;
+          }
           registrationStarted = true;
           var registrations = [];
           for (var i = 0; i < tools.length; i++) {
@@ -128,7 +148,8 @@
     <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
     <title>World Monitor — Free Real-Time Global Intelligence Dashboard</title>
     <meta name="description" content="By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup." />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="lastmod" content="2026-09-28" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="keywords" content="global intelligence dashboard, real-time world map, geopolitical monitoring, conflict tracking, OSINT dashboard, market monitoring, shipping chokepoints, satellite tracking, situational awareness, free intelligence platform, world news dashboard, AI news analysis" />
     <link rel="canonical" href="https://www.worldmonitor.app/" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/" />
@@ -163,13 +184,17 @@
       "url": "https://www.worldmonitor.app/",
       "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
       "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data.",
-      "disambiguatingDescription": "World Monitor is the open-source real-time global intelligence dashboard published at www.worldmonitor.app by founder Elie Habib since 2026, catalogued on Wikidata as Q141237754 and developed in the open at github.com/koala73/worldmonitor under AGPL-3.0. It is unaffiliated with the similarly named worldmonitor.io and world-monitor.app, with any \"World Monitor Pro\" repository outside github.com/koala73/worldmonitor, and with unrelated mobile applications published under the same name.",
+      "disambiguatingDescription": "World Monitor is the open-source real-time global intelligence dashboard published at www.worldmonitor.app by founder Elie Habib since 2026, catalogued on Wikidata as the company Q141437464 and the web application Q141237754, and developed in the open at github.com/koala73/worldmonitor under AGPL-3.0. It is unaffiliated with the similarly named worldmonitor.io, world-monitor.app, and world-monitor.com, with any \"World Monitor Pro\" repository outside github.com/koala73/worldmonitor, and with unrelated mobile applications published under the same name.",
       "sameAs": [
+        "https://www.crunchbase.com/organization/world-monitor",
+        "https://www.wikidata.org/wiki/Q141437464",
         "https://github.com/koala73/worldmonitor",
         "https://www.npmjs.com/package/worldmonitor",
+        "https://rubygems.org/gems/worldmonitor",
+        "https://pypi.org/project/worldmonitor-sdk/",
+        "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go",
         "https://x.com/worldmonitorai",
         "https://x.com/eliehabib",
-        "https://discord.gg/re63kWKxaz",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ],
       "contactPoint": {
@@ -200,7 +225,7 @@
       "name": "World Monitor",
       "alternateName": "WorldMonitor",
       "url": "https://www.worldmonitor.app/",
-      "description": "By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup.",
+      "description": "Real-time global intelligence dashboard — live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
       "publisher": {
         "@id": "https://www.worldmonitor.app/#organization"
       },
@@ -221,7 +246,7 @@
       "@type": "SoftwareApplication",
       "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
-      "applicationCategory": "FinanceApplication",
+      "applicationCategory": "BusinessApplication",
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://www.worldmonitor.app/",
       "description": "Free real-time global intelligence dashboard. Curated news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
@@ -236,7 +261,6 @@
         "https://www.npmjs.com/package/worldmonitor",
         "https://www.wikidata.org/wiki/Q141237754",
         "https://x.com/worldmonitorai",
-        "https://discord.gg/re63kWKxaz",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ],
       "author": {
@@ -246,7 +270,7 @@
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2026-01",
-      "dateModified": "2026-08-31",
+      "dateModified": "2026-09-28",
       "offers": [
         {
           "@type": "Offer",
@@ -358,27 +382,27 @@
         {
           "@type": "Question",
           "name": "Where does the data come from?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Named providers include ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus curated news feeds. Every panel cites its sources and timestamps inline." }
+          "acceptedAnswer": { "@type": "Answer", "text": "From {{providers}} attributed providers. Named ones include ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus curated news feeds. Every panel cites its sources and timestamps inline." }
         },
         {
           "@type": "Question",
           "name": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Chokepoints are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each strait's rolling baseline." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. {{chokepoints}} chokepoints, Hormuz and Bab el-Mandeb among them, are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each chokepoint's rolling baseline." }
         },
         {
           "@type": "Question",
           "name": "How is this different from a conflict map like Liveuamap?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Conflict is one map layer. World Monitor fuses conflicts with shipping, military flights, infrastructure, markets and cyber — then AI scores the convergence: instability indices, hotspot escalation, corroborated breaking alerts and daily briefs." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Conflict is one map layer. World Monitor fuses conflicts with shipping, military flights, infrastructure, markets and cyber — then AI scores the convergence: instability indices, hotspot escalation, corroborated breaking alerts and daily briefs. Compare World Monitor with Liveuamap and other conflict maps: worldmonitor.app/compare/liveuamap-alternatives. For broader monitoring options, see worldmonitor.app/compare/best-geopolitical-risk-dashboards." }
         },
         {
           "@type": "Question",
           "name": "Why should I trust an alert?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A breaking banner fires only when independent origin types corroborate — news classification, keyword velocity, hotspot escalation, military surges, official sirens — deduplicated and rate-limited. Fewer alerts, real ones." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Because every alert must pass fixed gates before it reaches you. Alerts come from {{alertOrigins}} independent origins: high-threat news items, keyword spikes, hotspot escalation, military surge detection and civil-defense sirens. Each origin passes the same filters: items older than 15 minutes are dropped, a repeat of the same event is suppressed for 30 minutes, and a 60-second cooldown follows any alert. Lower-tier sources also need an AI-confirmed classification before they can trigger one." }
         },
         {
           "@type": "Question",
           "name": "Can AI agents like Claude or GPT use it?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor ships an MCP server with a live tool registry, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor's MCP server exposes {{mcpTools}} live tools, so Claude, GPT or any MCP-compatible agent can query risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
         },
         {
           "@type": "Question",

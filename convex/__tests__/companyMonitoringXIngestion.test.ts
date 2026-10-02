@@ -27,10 +27,12 @@ async function seedXWork(
     companies?: 1 | 2;
     checkpoint?: string;
     domainTrust?: "verified" | "unverified";
+    includeXHandle?: boolean;
   } = {},
 ) {
   const companies = options.companies ?? 1;
   const domainTrust = options.domainTrust ?? "verified";
+  const includeXHandle = options.includeXHandle ?? true;
   await t.run(async (ctx) => {
     await ctx.db.insert("companyMonitoringAccounts", {
       logicalAccountId: OWNER_ACCOUNT_ID,
@@ -101,17 +103,19 @@ async function seedXWork(
         createdAt: NOW,
         updatedAt: NOW,
       });
-      await ctx.db.insert("companyMonitoringClaims", {
-        ownerAccountId: OWNER_ACCOUNT_ID,
-        companyId: row.companyId,
-        claimId: row.handleClaimId,
-        type: "x_handle",
-        value: row.handle,
-        provenance: "customer",
-        trustState: "unverified",
-        createdAt: NOW,
-        updatedAt: NOW,
-      });
+      if (includeXHandle) {
+        await ctx.db.insert("companyMonitoringClaims", {
+          ownerAccountId: OWNER_ACCOUNT_ID,
+          companyId: row.companyId,
+          claimId: row.handleClaimId,
+          type: "x_handle",
+          value: row.handle,
+          provenance: "customer",
+          trustState: "unverified",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
     }
   });
 
@@ -232,6 +236,16 @@ describe("Company Monitoring compliant X ingestion", () => {
     const t = convexTest(schema, modules);
     const claim = await seedXWork(t, { domainTrust: "unverified" });
     expect(claim.work.subjects[0].domains).toEqual([]);
+    const projectedCompany = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+    expect(projectedCompany).toMatchObject({
+      coverageState: "identity_unresolved",
+      snapshotGeneration: 2,
+    });
 
     expect(await finalize(t, claim)).toMatchObject({
       status: "non_reassuring",
@@ -250,6 +264,26 @@ describe("Company Monitoring compliant X ingestion", () => {
     expect(state.identities).toEqual([]);
     expect(state.evidence).toEqual([]);
     expect(state.obligation?.checkpoint).toBeUndefined();
+  });
+
+  test("marks a company without an X handle identity_unresolved (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const claim = await seedXWork(t, { includeXHandle: false });
+    expect(claim.work.subjects[0]).toMatchObject({
+      domains: [{ claimId: DOMAIN_CLAIM_A, value: "stripe.com" }],
+      xHandles: [],
+    });
+
+    const company = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+    expect(company).toMatchObject({
+      coverageState: "identity_unresolved",
+      snapshotGeneration: 2,
+    });
   });
 
   test("claims exact company evidence and persists authoritative identity, posts, and audit receipt", async () => {
@@ -466,6 +500,123 @@ describe("Company Monitoring compliant X ingestion", () => {
       referenceCount: 0,
     });
   });
+  test("demotion reinstates identity_unresolved coverage with a generation bump (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const firstClaim = await seedXWork(t);
+    await finalize(t, firstClaim);
+    const beforeDemotion = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    // The authoritative binding resolved the company: coverage is cleared.
+    expect(beforeDemotion.coverageState).toBeUndefined();
+
+    await t.run(async (ctx) => {
+      const domainClaim = await ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .filter((q) => q.eq(q.field("claimId"), DOMAIN_CLAIM_A))
+        .unique();
+      await ctx.db.patch(domainClaim!._id, {
+        provenance: "customer",
+        trustState: "unverified",
+        allowedUses: undefined,
+        expiresAt: undefined,
+        updatedAt: NOW + DAY_MS,
+      });
+    });
+
+    vi.setSystemTime(NOW + DAY_MS);
+    const secondClaim = await t.mutation(ORCHESTRATION.claimNextWorkForTest, {
+      workerId: "x-worker",
+    });
+    expect(secondClaim.work.subjects[0].currentIdentity).toMatchObject({
+      state: "demoted",
+      demotionReason: "official_link_lost",
+    });
+
+    const afterDemotion = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    // A company that held a binding and lost it must not read as quiet.
+    expect(afterDemotion.coverageState).toBe("identity_unresolved");
+    expect(afterDemotion.snapshotGeneration).toBe(
+      beforeDemotion.snapshotGeneration! + 1,
+      "a coverage flip must advance the company row's snapshotGeneration",
+    );
+  });
+
+  test("an authoritative identity clears a previously unresolved company (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const firstClaim = await seedXWork(t);
+    await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      await ctx.db.patch(company!._id, {
+        coverageState: "identity_unresolved",
+      });
+    });
+
+    await finalize(t, firstClaim);
+
+    const resolved = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    expect(resolved.coverageState).toBeUndefined();
+    expect(resolved.snapshotGeneration).toBeGreaterThan(1);
+  });
+
+  test("a complete result without an identity keeps the company non-quiet (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const claim = await seedXWork(t);
+    const before = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+
+    expect(await finalize(t, claim, {
+      itemCount: 0,
+      emptyValidated: true,
+      xIngestion: xIngestion(claim, {
+        identities: [],
+        posts: [],
+      }),
+    })).toMatchObject({ status: "completed" });
+
+    const after = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+    expect(after?.coverageState).toBe("identity_unresolved");
+    expect(after?.snapshotGeneration).toBe(before!.snapshotGeneration + 1);
+  });
 
   test("preserves the immutable account ID after a reassignment demotion", async () => {
     const t = convexTest(schema, modules);
@@ -502,6 +653,16 @@ describe("Company Monitoring compliant X ingestion", () => {
       state: "demoted",
       demotionReason: "account_reassigned",
       allowedUses: [],
+    });
+    const companyAfterDemotion = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+    expect(companyAfterDemotion).toMatchObject({
+      coverageState: "identity_unresolved",
+      snapshotGeneration: 3,
     });
 
     vi.setSystemTime(NOW + 2 * DAY_MS);

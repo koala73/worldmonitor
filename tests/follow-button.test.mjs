@@ -18,6 +18,7 @@
 
 import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------
 // Browser-global stubs
@@ -597,41 +598,28 @@ describe('renderFollowButton — entitlement-loading window', () => {
   });
 });
 
-describe('renderFollowButton — P2 #16 assertNever exhaustiveness on unknown reason', () => {
-  it('hypothetical new reason → click handler logs/throws via assertNever runtime guard', async () => {
-    // The compile-time exhaustiveness guard fires at typecheck if a
-    // new variant is added to FollowMutationResult. The runtime branch
-    // catches a malformed test fake. Here we monkey-patch addCountry
-    // to return a not-yet-known reason and assert that the unhandled-
-    // discriminant path runs (we observe the console.error path via a
-    // captured originalError stub).
+describe('renderFollowButton — P2 #16 INVALID_INPUT and assertNever exhaustiveness', () => {
+  it('keeps the compile-time guard and logs an invalid mounted country code', async (t) => {
+    const source = readFileSync(new URL('../src/utils/follow-button.ts', import.meta.url), 'utf8');
+    assert.match(
+      source,
+      /^[ \t]+assertNever\(result\);[ \t]*$/m,
+      'the switch must pass its fully narrowed result to the exhaustiveness guard',
+    );
+
     setupAnonymousFree();
-    const originalError = console.error;
-    let captured = null;
-    console.error = (...args) => { captured = args; };
-    // Stub addCountry on the module — node's ESM bindings are
-    // read-only, so we can't simply reassign. Instead, drive the
-    // service via a fake that returns INVALID_INPUT for an unknown
-    // code (the existing INVALID_INPUT branch fires, NOT assertNever).
-    // We assert the typecheck guard exists by inspecting the source
-    // file for the `assertNever(result.reason)` call.
-    try {
-      const { renderFollowButton: rfb } = await import('../src/utils/follow-button.ts');
-      const handle = rfb({ countryCode: 'NotAValidCode' });
-      const host = makeHost();
-      const teardown = handle.attach(host);
-      host.clickButton();
-      await flushMicrotasks();
-      teardown();
-      // The `INVALID_INPUT` reason is handled (not assertNever-fall-through).
-      // The presence of `assertNever(result.reason)` in the source is
-      // what the typecheck enforces; here we just verify the test
-      // didn't throw and the existing branches still fire correctly.
-      assert.ok(true, 'INVALID_INPUT branch executed without assertNever fallthrough');
-    } finally {
-      console.error = originalError;
-      void captured;
-    }
+    const warn = t.mock.method(console, 'warn', () => {});
+    const handle = renderFollowButton({ countryCode: 'NotAValidCode' });
+    const host = makeHost();
+    const teardown = handle.attach(host);
+    host.clickButton();
+    await flushMicrotasks();
+    teardown();
+    assert.equal(warn.mock.callCount(), 1);
+    assert.deepEqual(warn.mock.calls[0].arguments, [
+      '[follow-button] invalid country code at mount site:',
+      'NotAValidCode',
+    ]);
   });
 });
 

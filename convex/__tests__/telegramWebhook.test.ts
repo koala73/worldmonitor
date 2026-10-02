@@ -1,6 +1,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
+import { api, internal } from "../_generated/api";
+import { claimPairingToken } from "../notificationChannels";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -156,6 +158,10 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
 
     expect(res.status).toBe(200);
     expect(await tokenUsed(t)).toBe(true); // handler ran and claimed the token
+    const channels = await t.run((ctx) => ctx.db.query("notificationChannels").collect());
+    expect(channels).toMatchObject([{ userId: USER_ID, chatId: "12345", verified: true, telegramOwnership: "verified_callback" }]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toMatchObject({ chat_id: "12345" });
   });
 
   test.each([null, [], "not-an-object", 42, true])(
@@ -178,4 +184,145 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
       expect(await tokenUsed(t)).toBe(false);
     },
   );
+
+  test.each([undefined, null, "54321", 0, -12345, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid private chat ID %j without state changes or delivery",
+    async (id) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+      const t = convexTest(schema, modules);
+      await seedPairingToken(t);
+      const payload = makeStartPayload();
+      const res = await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET },
+        body: JSON.stringify({ message: { ...payload.message, chat: { type: "private", id } } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await tokenUsed(t)).toBe(false);
+      expect(await t.run((ctx) => ctx.db.query("notificationChannels").collect())).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["expired", "used", "unknown", "group", "stale", "invalid text"])(
+    "rejects %s pairing without delivery",
+    async (failure) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+      const t = convexTest(schema, modules);
+      await seedPairingToken(t);
+      const payload = makeStartPayload();
+      if (failure === "group") payload.message.chat.type = "group";
+      if (failure === "stale") payload.message.date -= 901;
+      if (failure === "invalid text") payload.message.text = "/start invalid";
+      if (failure === "unknown") payload.message.text = `/start ${"X".repeat(43)}`;
+      if (failure === "expired" || failure === "used") {
+        await t.run(async (ctx) => {
+          const token = await ctx.db.query("telegramPairingTokens").unique();
+          await ctx.db.patch(token!._id, failure === "used" ? { used: true } : { expiresAt: Date.now() - 1 });
+        });
+      }
+      await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET },
+        body: JSON.stringify(payload),
+      });
+      expect(await tokenUsed(t)).toBe(failure === "used");
+      expect(await t.run((ctx) => ctx.db.query("notificationChannels").collect())).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([{ text: 42 }, { date: "123" }, { date: null }])(
+    "rejects malformed message fields %j without delivery",
+    async (fields) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+      const t = convexTest(schema, modules);
+      await seedPairingToken(t);
+      const res = await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET },
+        body: JSON.stringify({ message: { ...makeStartPayload().message, ...fields } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await tokenUsed(t)).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  test("an owned token cannot authorize a forged callback; trusted redemption binds only its owner and update chat", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+    const t = convexTest(schema, modules);
+    await seedPairingToken(t);
+    const owner = t.withIdentity({ subject: USER_ID });
+    const pairing = await owner.mutation(api.notificationChannels.createPairingToken, {});
+    const payload = { ...makeStartPayload(), userId: "another-user", chatId: "98765" };
+    payload.message.text = `/start ${pairing.token}`;
+    for (const secret of ["wrong-secret", VALID_SECRET, VALID_SECRET]) {
+      await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": secret },
+        body: JSON.stringify(payload),
+      });
+      if (secret === "wrong-secret") {
+        expect(await owner.query(api.notificationChannels.getChannels, {})).toEqual([]);
+        expect(fetch).not.toHaveBeenCalled();
+      }
+    }
+    const channels = await t.run((ctx) => ctx.db.query("notificationChannels").collect());
+    expect(channels).toHaveLength(1);
+    expect(channels[0]).toMatchObject({ userId: USER_ID, chatId: "12345", verified: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("token redemption is internal, so a caller cannot submit its own token with a chosen chat", () => {
+    // convex-test permits internal calls. Check the real registration boundary
+    // as well as the callback behavior, as in alertRules-visibility.test.ts.
+    const registered = claimPairingToken as unknown as { isInternal?: boolean; isPublic?: boolean };
+    expect(registered.isInternal).toBe(true);
+    expect(registered.isPublic).toBeUndefined();
+  });
+
+  test("legacy verification is hidden from both account and delivery reads until the owner pairs again", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+    const t = convexTest(schema, modules);
+    await seedPairingToken(t);
+    const owner = t.withIdentity({ subject: USER_ID });
+    await t.run((ctx) => ctx.db.insert("notificationChannels", {
+      userId: USER_ID, channelType: "telegram", chatId: "98765", verified: true, linkedAt: Date.now(),
+    }));
+    expect(await owner.query(api.notificationChannels.getChannels, {})).toMatchObject([{ verified: false }]);
+    expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ verified: false }]);
+    await t.fetch("/api/telegram-pair-callback", {
+      method: "POST",
+      headers: { "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET },
+      body: JSON.stringify(makeStartPayload()),
+    });
+    expect(await owner.query(api.notificationChannels.getChannels, {})).toMatchObject([{ chatId: "12345", verified: true }]);
+    expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ chatId: "12345", verified: true }]);
+    await t.mutation(internal.notificationChannels.deactivateChannelForUser, {
+      userId: USER_ID,
+      channelType: "telegram",
+    });
+    expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ verified: false }]);
+  });
+
+  test.each(["public", "server bridge"])("%s setter cannot enroll or replace an arbitrary Telegram chat", async (surface) => {
+    const t = convexTest(schema, modules);
+    await seedPairingToken(t);
+    const owner = t.withIdentity({ subject: USER_ID });
+    const attempt = () => surface === "public"
+      ? owner.mutation(api.notificationChannels.setChannel, { channelType: "telegram", chatId: "98765" })
+      : t.mutation(internal.notificationChannels.setChannelForUser, {
+        userId: USER_ID, channelType: "telegram", chatId: "98765", scheduleWelcome: true,
+      });
+    await expect(attempt()).rejects.toThrow(/telegram.*pair/i);
+    expect(await owner.query(api.notificationChannels.getChannels, {})).toEqual([]);
+    await t.run((ctx) => ctx.db.insert("notificationChannels", {
+      userId: USER_ID, channelType: "telegram", chatId: "12345", verified: true, linkedAt: Date.now(),
+    }));
+    await expect(attempt()).rejects.toThrow(/telegram.*pair/i);
+    const stored = await t.run((ctx) => ctx.db.query("notificationChannels").collect());
+    expect(stored).toMatchObject([{ chatId: "12345", verified: true }]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

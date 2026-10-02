@@ -3,6 +3,8 @@ title: "咽喉要道方法论"
 description: "World Monitor 如何对全球 13 个受监控的海事咽喉要道进行评分，其中包括基于 EIA 能源基线通行量校准的七项实时流量子集：霍尔木兹、马六甲、苏伊士、曼德海峡、土耳其海峡、丹麦海峡与巴拿马运河，详解评分算法权重、数据来源、更新频率与全球油气航运态势的方法论。"
 ---
 
+_本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/) 维护。已发布的修订记录在[更正日志](/zh/corrections)中。_
+
 ## 从这里开始
 
 少数几条狭窄水道，承担着与其宽度极不相称的世界贸易份额。仅霍尔木兹海峡的基线通行量就约为每日 2100 万桶——大致相当于全球石油液体消费量的五分之一。关掉其中任何一条，影响会在几周内抵达每一块大陆。
@@ -103,6 +105,10 @@ disruptionScore = min(
   AIS 拥堵严重度映射为 1/2/3。
 - `anomalyBonus = 10`，仅当通行历史显示相对于先前 30 天通行计数基线出现 50% 或更大的流量
   下降，且威胁等级为 `war_zone` 或 `critical` 时。
+
+这四项即为公式全部。AIS 事件计数、中继通行计数和 PortWatch 周环比变动均作为背景信息发布，
+不进入评分。PortWatch 同时服务于两侧：`anomalyBonus` 通过 `supply_chain:portwatch:v1`
+读取其每日通行历史，而周环比数字仅用于展示。
 
 评分徽章阈值为：
 

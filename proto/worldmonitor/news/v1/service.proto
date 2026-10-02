@@ -6,12 +6,13 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/news/v1/summarize_article.proto";
 import "worldmonitor/news/v1/get_summarize_article_cache.proto";
 import "worldmonitor/news/v1/list_feed_digest.proto";
+import "worldmonitor/news/v1/list_country_headlines.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
   option (sebuf.http.service_config) = {base_path: "/api/news/v1"};
 
-  // SummarizeArticle generates an LLM summary with provider selection and fallback support.
+  // Generate an article summary with language-model provider selection and fallback support, returning the chosen provider, model and reported processing errors.
   rpc SummarizeArticle(SummarizeArticleRequest) returns (SummarizeArticleResponse) {
     option (sebuf.http.config) = {path: "/summarize-article"};
   }
@@ -24,5 +25,10 @@ service NewsService {
   // ListFeedDigest returns a pre-aggregated digest of all RSS feeds for a site variant.
   rpc ListFeedDigest(ListFeedDigestRequest) returns (ListFeedDigestResponse) {
     option (sebuf.http.config) = {path: "/list-feed-digest", method: HTTP_METHOD_GET};
+  }
+
+  // ListCountryHeadlines reads fresh country reporting from existing RSS caches without fetching publishers or applying dashboard category caps.
+  rpc ListCountryHeadlines(ListCountryHeadlinesRequest) returns (ListCountryHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/list-country-headlines", method: HTTP_METHOD_GET};
   }
 }

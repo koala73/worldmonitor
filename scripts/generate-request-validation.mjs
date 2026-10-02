@@ -24,6 +24,8 @@ const GENERATED_SERVER_ROOT = join(ROOT, 'src', 'generated', 'server');
 const OUTPUT = join(GENERATED_SERVER_ROOT, 'request_validation.ts');
 const CHECK_ONLY = process.argv.includes('--check');
 const RULE_PREFIX = '(buf.validate.field).';
+// Keep in sync with server/request-validator.ts DEFAULT_STRING_MAX_BYTES (#8402).
+const DEFAULT_STRING_MAX_BYTES = 64 * 1024;
 
 const SUPPORTED_RULES = new Set([
   'required',
@@ -330,14 +332,44 @@ function buildFieldRule(field) {
     }
   }
 
+  // Every request string gets an explicit max_bytes in the generated registry.
+  // Un-annotated fields inherit the global ceiling; fields that need more must
+  // declare max_bytes in proto rather than relying on the default. (#8402)
+  if (rule.kind === 'string' && rule.stringMaxBytes == null) {
+    rule.stringMaxBytes = DEFAULT_STRING_MAX_BYTES;
+  }
+
   return rule;
+}
+
+function collectStringBearingTypes(reachable) {
+  const bearing = new Set(
+    [...reachable].filter((type) => type.fieldsArray.some((field) => field.type === 'string')),
+  );
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const type of reachable) {
+      if (bearing.has(type)) continue;
+      if (type.fieldsArray.some((field) => (
+        field.resolvedType instanceof protobuf.Type && bearing.has(field.resolvedType)
+      ))) {
+        bearing.add(type);
+        changed = true;
+      }
+    }
+  }
+
+  return bearing;
 }
 
 function buildMessageRules(requestTypeByMethod) {
   const reachable = collectReachableTypes(requestTypeByMethod);
   const validated = collectValidatedTypes(reachable);
+  const stringBearing = collectStringBearingTypes(reachable);
   const requestTypes = new Set(requestTypeByMethod.values());
-  const emittedTypes = new Set([...validated, ...requestTypes]);
+  const emittedTypes = new Set([...validated, ...stringBearing, ...requestTypes]);
   const messageRules = {};
 
   for (const type of [...emittedTypes].sort((a, b) => a.fullName.localeCompare(b.fullName))) {
@@ -345,8 +377,9 @@ function buildMessageRules(requestTypeByMethod) {
     for (const field of type.fieldsArray) {
       const hasDirectRules = Object.keys(validationOptions(field)).length > 0;
       const reachesRules = field.resolvedType instanceof protobuf.Type
-        && validated.has(field.resolvedType);
-      if (!hasDirectRules && !reachesRules) continue;
+        && (validated.has(field.resolvedType) || stringBearing.has(field.resolvedType));
+      const isString = field.type === 'string';
+      if (!hasDirectRules && !reachesRules && !isString) continue;
       fields[field.name] = buildFieldRule(field);
     }
     messageRules[normalizedTypeName(type)] = { fields };

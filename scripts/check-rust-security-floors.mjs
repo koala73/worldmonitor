@@ -44,6 +44,16 @@ export const RUST_SECURITY_FLOORS = [
     // cannot silently diverge (asserted in tests/check-rust-security-floors.test.mjs).
     manifestFile: 'src-tauri/Cargo.toml',
   },
+  {
+    crate: 'openssl',
+    minVersion: '0.10.80',
+    advisory:
+      'GHSA-ghm9-cr32-g9qj, GHSA-hppc-g8h3-xhp3, GHSA-8c75-8mhr-p7r9, GHSA-pqf5-4pqq-29f5, GHSA-xp3w-r5p5-63rr (HIGH); GHSA-xv59-967r-8726, GHSA-phqj-4mhp-q6mq (MEDIUM); GHSA-xmgf-hq76-4vx2 (LOW)',
+    reason:
+      'Eight advisories against 0.10.75, five of them HIGH and all memory-safety: digest_final() and PkeyCtxRef::derive write past caller buffers, PSK/cookie trampolines leak adjacent memory to the peer, AES key wrap asserts the wrong bound, and X509Ref::ocsp_responders is UB on non-UTF-8 OCSP URLs. This is not a dormant transitive: reqwest is a direct dependency built with default-features = false + native-tls, and on Linux native-tls IS this crate, so it is the live TLS implementation in the x86_64 and aarch64 desktop binaries build-desktop.yml ships. 0.10.80 is the first release patching the newest of the eight (GHSA-phqj-4mhp-q6mq); no manifestFile because openssl is transitive through reqwest -> native-tls and has no direct constraint to pin.',
+    // No issue was filed; the provenance is the Dependabot alert set itself.
+    issue: 'Dependabot alerts #75, #76, #77, #78, #79, #97, #101, #133',
+  },
 ];
 
 /**

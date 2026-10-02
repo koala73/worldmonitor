@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
 import {
@@ -12,6 +12,7 @@ import {
 import handler from '../api/not-found.ts';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const DEPRECATION_TEST_KEY = 'deprecation-policy-test-operator-key';
 const htmlPolicyUrl = 'https://www.worldmonitor.app/docs/api-versioning';
 const staticPolicyUrl = 'https://www.worldmonitor.app/api-versioning.md';
 
@@ -113,6 +114,13 @@ describe('appendDeprecationPolicyLink', () => {
 });
 
 describe('deprecation policy Link on live API handlers', () => {
+  const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+
+  afterEach(() => {
+    if (originalValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+    else process.env.WORLDMONITOR_VALID_KEYS = originalValidKeys;
+  });
+
   it('gateway success and OPTIONS responses carry rel="deprecation"', async () => {
     const gateway = createDomainGateway([
       {
@@ -122,7 +130,10 @@ describe('deprecation policy Link on live API handlers', () => {
       },
     ]);
 
-    const ok = await gateway(new Request('https://worldmonitor.app/api/seismology/v1/list-earthquakes'));
+    process.env.WORLDMONITOR_VALID_KEYS = DEPRECATION_TEST_KEY;
+    const ok = await gateway(new Request('https://worldmonitor.app/api/seismology/v1/list-earthquakes', {
+      headers: { 'X-WorldMonitor-Key': DEPRECATION_TEST_KEY },
+    }));
     assert.equal(ok.status, 200);
     assert.match(ok.headers.get('link') ?? '', /rel="deprecation"/);
     assert.match(ok.headers.get('link') ?? '', /api-versioning\.md/);

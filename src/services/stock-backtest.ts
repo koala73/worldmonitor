@@ -1,3 +1,4 @@
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { BacktestStockResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
@@ -49,19 +50,29 @@ export async function fetchStoredStockBacktests(
   return response.items.filter((result) => result.available);
 }
 
+function indexBacktestsBySymbol(items: StockBacktestResult[]): Map<string, StockBacktestResult> {
+  const bySymbol = new Map<string, StockBacktestResult>();
+  for (const item of items) {
+    const symbol = normalizeStockSymbol(item.symbol);
+    if (symbol) bySymbol.set(symbol, item);
+  }
+  return bySymbol;
+}
+
+function isFreshBacktest(item: StockBacktestResult | undefined, now: number, maxAgeMs: number): boolean {
+  const ts = Date.parse(item?.generatedAt || '');
+  return !!item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
+}
+
 export function hasFreshStoredStockBacktests(
   items: StockBacktestResult[],
   symbols: string[],
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): boolean {
   if (symbols.length === 0) return false;
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = indexBacktestsBySymbol(items);
   const now = Date.now();
-  return symbols.every((symbol) => {
-    const item = bySymbol.get(symbol);
-    const ts = Date.parse(item?.generatedAt || '');
-    return !!item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
-  });
+  return symbols.every((symbol) => isFreshBacktest(bySymbol.get(normalizeStockSymbol(symbol)), now, maxAgeMs));
 }
 
 export function getMissingOrStaleStoredStockBacktests(
@@ -69,11 +80,7 @@ export function getMissingOrStaleStoredStockBacktests(
   symbols: string[],
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): string[] {
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = indexBacktestsBySymbol(items);
   const now = Date.now();
-  return symbols.filter((symbol) => {
-    const item = bySymbol.get(symbol);
-    const ts = Date.parse(item?.generatedAt || '');
-    return !(item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs);
-  });
+  return symbols.filter((symbol) => !isFreshBacktest(bySymbol.get(normalizeStockSymbol(symbol)), now, maxAgeMs));
 }

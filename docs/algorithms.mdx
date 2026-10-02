@@ -82,7 +82,7 @@ compositeScore =
 - `sanctionsScore` — Up to 10 points from new sanctions entries, largest-country entry volume, and sanctioned vessel/aircraft counts
 - `radiationScore` — Up to 12 points from radiation-watch spikes, elevated readings, and corroborated observations, reduced by low-confidence or conflicting observations
 
-**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
+**Alert fusion**: Alerts from [convergence detection](/geographic-convergence), CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
 
 **Trend detection**: Delta ≥3 from previous composite = "escalating", ≤−3 = "de-escalating", otherwise "stable". A 15-minute learning period after panel initialization suppresses CII spike alerts to prevent false positives from initial data loading.
 
@@ -251,7 +251,7 @@ The AI Insights panel ranks news clusters by geopolitical significance using `sc
 
 **Demotion keywords** — corporate and financial noise reduces scores to 35% when no corroborated entity or strong non-keyword signal is present, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
 
-**Theater posture integration** — when the Strategic Posture Assessment detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
+**Theater posture integration** — when the [Strategic Posture Assessment](/panels/strategic-posture) detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
 
 The scored list feeds into the World Brief generation pipeline, where the top-ranked stories are selected for LLM summarization. Server-side insights (via `seed-insights.mjs`) pre-compute the scored digest and cache it as `news:insights:v1` for bootstrap hydration, so the panel renders instantly with pre-ranked stories on page load.
 
@@ -360,16 +360,24 @@ to `85/65/45`.
 
 The dashboard integrates two complementary geopolitical pulse indicators:
 
-**PizzINT DEFCON scoring** — monitors foot traffic patterns at key military, intelligence, and government locations worldwide via the PizzINT API. Aggregate activity levels across monitored sites are converted into a 5-level DEFCON-style readout:
+**World Monitor Pentagon Pizza Index** measures sustained deviations from expected hourly busyness at Pentagon-area venues. PizzINT supplies venue data, with BestTime as the fallback. World Monitor computes the index with the same rule for either provider and ignores PizzINT's own `defcon_level` and `overall_index`. This avoids a change in scoring when the provider changes. The header pairs the DEFCON-style level with an activity label, from Normal Activity (5) to Maximum Activity (1); it is not an assessment of military readiness.
 
-| Adjusted Activity | DEFCON Level | Label             |
+Each open venue needs at least **150% of its hourly usual busyness** and at least **25 busyness points above its forecast** to be an anomaly candidate. Thus 100 versus a forecast of 100 contributes nothing, and 10 versus 5 cannot qualify despite being 200% of usual. BestTime supplies the forecast directly; for PizzINT, the forecast is recovered as `current_popularity × 100 / percentage_of_usual`. An absent or zero ratio cannot establish that baseline and cannot qualify.
+
+A candidate becomes a spike only after **three consecutive fresh observations**. The relay polls every 15 minutes (the BestTime plan budget), so this normally means readings at minute 0, 15, and 30. Each observation must have a newer timestamp (PizzINT recording time or BestTime poll time), be no more than one polling interval (15 minutes) old, and follow the last successful publication by 0.9–1.5 intervals (13.5–22.5 minutes), which absorbs scheduler jitter. A spike needs 1.8 intervals (27 minutes) elapsed since the sequence started: two gaps of at least 0.9 intervals reach it, and one gap of at most 1.5 intervals cannot, so two readings alone never qualify. Closed, missing, stale, repeated, below-threshold, or interrupted observations reset persistence. Provider switches start a new sequence. PizzINT’s live update cadence has not yet been verified during its outage; if recordings refresh less often than these bounds, they will not qualify as sustained spikes. Persistence is stored in the existing seed payload so relay restarts do not erase it; old payloads without persistence fields start a new sequence.
+
+Each confirmed spike contributes `min(25, (percentage_of_usual − 100) / 5)` points. The sum, capped at 100, determines the level:
+
+| Index points | DEFCON Level | Label             |
 | ----------------- | ------------ | ----------------- |
-| ≥ 85%             | 1            | Maximum Activity  |
-| 70% – 84%         | 2            | High Activity     |
-| 50% – 69%         | 3            | Elevated Activity |
-| 25% – 49%         | 4            | Above Normal      |
-| &lt; 25%             | 5            | Normal Activity   |
+| ≥ 85              | 1            | Maximum Activity  |
+| ≥ 70 and &lt; 85  | 2            | High Activity     |
+| ≥ 50 and &lt; 70  | 3            | Elevated Activity |
+| ≥ 25 and &lt; 50  | 4            | Above Normal      |
+| &lt; 25           | 5            | Normal Activity   |
 
-Activity spikes at individual locations boost the aggregate score (+10 per spike, capped at 100). Data freshness is tracked per-location — the system distinguishes between stale readings (location sensor lag) and genuine low activity. Per-location detail includes current popularity percentage, spike magnitude, and open/closed status.
+The September 27 example (70/45, 0/40, 65/35, 100/100) starts at DEFCON 5. After the third reading, the two qualifying venues contribute about 28 points together: DEFCON 4. Three venues at twice their forecast and at least 25 points above it contribute 60 points after persistence: DEFCON 3. A normal lunch or a single-reading blip stays at DEFCON 5. These are heuristic thresholds, not a validated predictor of geopolitical events. The hourly baseline accounts for normal meal-time demand; there is no additional clock-based multiplier.
+
+An open venue with live busyness 0 and forecast at least 20 has **no live signal**. Zero readings with no recoverable baseline (including PizzINT’s zero/zero ratio or an absent live value) are also treated as missing rather than assumed quiet. It is excluded from the open count and the mean busyness and displayed as `NO DATA`. The BestTime fallback polls its six registered venues in parallel and publishes all of them whenever at least one has a live reading; a venue without one (unavailable, failed, or timed out) is shown as `NO DATA`, or `CLOSED` when BestTime reports it closed. Domino's is live-only: BestTime cannot forecast it, so it never has a baseline or counts toward a spike, and BestTime's closed flag is ignored for it because BestTime has no opening hours for that venue. Without any available live readings the relay publishes nothing and preserves the existing observation and expiry. When BestTime answers every venue cleanly but has no usable live reading (venues closed or not yet reporting, or only readings treated as missing, such as a closing venue reading 0), the relay still advances the seed heartbeat, so health stays OK once the observation expires. This lasts up to 24 hours after the last live reading, meaning a fresh reading from an open venue; a closed venue's zero or a stale reading does not renew it, even when it is published. Provider errors, a stopped relay, or a longer silence stop the heartbeat, and health reports the seed as stale. The header shows the DEFCON level without an absolute-busyness percentage. A valid zero against a known forecast below 20 is shown as `−100% vs usual`, not `NO BASELINE`. The API retains mean live busyness in `aggregateActivity` for existing consumers; it does not set DEFCON. Per-venue labels show deviation (`SPIKE +56%` means 156% of usual), `NORMAL` within 10% of usual, or `NO BASELINE` when a comparison cannot be computed. The footer credits World Monitor for the index and names the venue-data provider.
 
 **GDELT bilateral tension pairs** — six strategic country pairs (USA↔Russia, Russia↔Ukraine, USA↔China, China↔Taiwan, USA↔Iran, USA↔Venezuela) are tracked via GDELT's GPR (Goldstein Political Relations) batch API. Each pair shows a current tension score, a percentage change from the previous data point, and a trend direction (rising/stable/falling, with ±5% thresholds). Rising bilateral tension scores that coincide with military signal spikes in the same region feed into the focal point detection algorithm.

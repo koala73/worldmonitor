@@ -2,74 +2,40 @@
  * Standalone channel management window (LIVE panel: add/remove/reorder channels).
  * Loaded when the app is opened with ?live-channels=1 (e.g. from "Manage channels" button).
  */
-import type { LiveChannel } from '@/components/LiveNewsPanel';
+import type { LiveChannel } from '@/services/live-channels';
 import {
   loadChannelsFromStorage,
   saveChannelsToStorage,
   BUILTIN_IDS,
+  customChannelEntry,
   getDefaultLiveChannels,
   getFilteredOptionalChannels,
   getFilteredChannelRegions,
-} from '@/components/LiveNewsPanel';
+} from '@/services/live-channels';
 import { t } from '@/services/i18n';
+import { parseSourceEntry, type Candidate, type EntryProblem } from '@/services/live-video/model';
 import { escapeHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
-/** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
-function customChannelIdFromHandle(handle: string): string {
-  const normalized = handle
-    .replace(/^@/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return 'custom-' + normalized;
+/**
+ * The custom channel a pasted entry describes. Video and channel ids are stable, so the same paste
+ * cannot be added twice; an edited HLS channel keeps its id.
+ */
+function customChannelFor(candidate: Candidate, name: string, current?: LiveChannel): LiveChannel {
+  if (candidate.kind === 'channel') return { id: `custom-uc-${candidate.channelId}`, name, channelId: candidate.channelId };
+  if (candidate.kind === 'video') return { id: `custom-vid-${candidate.videoId}`, name, videoId: candidate.videoId };
+  const id = current?.id.startsWith('custom-hls-') ? current.id : `custom-hls-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  return { id, name, hlsUrl: candidate.url };
 }
 
-/** Parse YouTube URL into a handle or video ID. Returns null if not a YouTube URL. */
-function parseYouTubeInput(raw: string): { handle: string } | { videoId: string } | null {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (!url.hostname.match(/^(www\.)?(youtube\.com|youtu\.be)$/)) return null;
-
-  // youtu.be/VIDEO_ID
-  if (url.hostname.includes('youtu.be')) {
-    const vid = url.pathname.slice(1);
-    if (/^[A-Za-z0-9_-]{11}$/.test(vid)) return { videoId: vid };
-    return null;
-  }
-  // youtube.com/watch?v=VIDEO_ID
-  const v = url.searchParams.get('v');
-  if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return { videoId: v };
-  // youtube.com/@Handle
-  const handleMatch = url.pathname.match(/^\/@([\w.-]{3,30})$/);
-  if (handleMatch) return { handle: `@${handleMatch[1]}` };
-  // youtube.com/c/ChannelName or /channel/ID
-  const channelMatch = url.pathname.match(/^\/(c|channel)\/([\w.-]+)$/);
-  if (channelMatch) return { handle: `@${channelMatch[2]}` };
-  // youtube.com/ChannelName (bare path, no @/c/channel prefix)
-  const bareMatch = url.pathname.match(/^\/([\w.-]{3,30})$/);
-  if (bareMatch) return { handle: `@${bareMatch[1]}` };
-
-  return null;
-}
-
-/** Check if input is an HLS stream URL (.m3u8) */
-function isHlsUrl(raw: string): boolean {
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
-    return url.pathname.endsWith('.m3u8') || raw.includes('.m3u8');
-  } catch {
-    return false;
-  }
+/** What to paste instead of a source that cannot play: an https stream for an http one, else a channel or video URL. */
+function sourceProblemHint(problem: EntryProblem): string {
+  return problem === 'not-https'
+    ? t('components.liveNews.httpsStreamHint') ?? 'Browsers block insecure (http) streams. Paste a secure (https) stream URL'
+    : t('components.liveNews.channelUrlHint') ?? 'Paste a channel URL (youtube.com/channel/UC…) or a live video URL';
 }
 
 // Persist active region tab across re-renders
@@ -221,7 +187,8 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   }
 
   /**
-   * Applies edit form state to channels and returns the new array, or null if nothing to save.
+   * Applies edit form state to channels and returns the new array, the parse problem when the edited
+   * source is not a channel, video or https stream URL, or null if nothing to save.
    * Used by the Save button in the edit form.
    */
   function applyEditFormToChannels(
@@ -229,23 +196,22 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     formRow: HTMLElement,
     isCustom: boolean,
     displayName: string,
-  ): LiveChannel[] | null {
+  ): LiveChannel[] | EntryProblem | null {
     const idx = channels.findIndex((c) => c.id === currentCh.id);
     if (idx === -1) return null;
 
+    const next = channels.slice();
     if (isCustom) {
-      const handleRaw = (formRow.querySelector('.live-news-manage-edit-handle') as HTMLInputElement | null)?.value?.trim();
-      if (handleRaw) {
-        const handle = handleRaw.startsWith('@') ? handleRaw : `@${handleRaw}`;
-        const newId = customChannelIdFromHandle(handle);
-        const existing = channels.find((c) => c.id === newId && c.id !== currentCh.id);
-        if (existing) return null;
-        const next = channels.slice();
-        next[idx] = { ...currentCh, id: newId, handle, name: displayName };
+      const sourceRaw = (formRow.querySelector('.live-news-manage-edit-handle') as HTMLInputElement | null)?.value?.trim();
+      if (sourceRaw && sourceRaw !== customChannelEntry(currentCh)) {
+        const parsed = parseSourceEntry(sourceRaw);
+        if (!parsed.ok) return parsed.problem;
+        const replacement = customChannelFor(parsed.candidate, displayName, currentCh);
+        if (channels.some((c) => c.id === replacement.id && c.id !== currentCh.id)) return null;
+        next[idx] = replacement;
         return next;
       }
     }
-    const next = channels.slice();
     next[idx] = { ...currentCh, name: displayName };
     return next;
   }
@@ -255,13 +221,21 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     setTrustedHtml(row, trustedHtml('', "legacy direct innerHTML migration"));
     row.className = 'live-news-manage-row live-news-manage-row-editing';
 
-    if (isCustom) {
-      const handleInput = document.createElement('input');
-      handleInput.type = 'text';
-      handleInput.className = 'live-news-manage-edit-handle';
-      handleInput.value = ch.handle ?? '';
-      handleInput.placeholder = t('components.liveNews.youtubeHandle') ?? 'YouTube handle';
-      row.appendChild(handleInput);
+    const sourceInput = isCustom ? document.createElement('input') : null;
+    const editHint = document.createElement('div');
+    editHint.className = 'live-news-manage-hint';
+    editHint.hidden = true;
+    if (sourceInput) {
+      sourceInput.type = 'text';
+      sourceInput.className = 'live-news-manage-edit-handle';
+      sourceInput.value = customChannelEntry(ch) ?? '';
+      sourceInput.placeholder = t('components.liveNews.channelOrVideoUrl') ?? 'YouTube channel or video URL';
+      sourceInput.addEventListener('input', () => {
+        sourceInput.classList.remove('invalid');
+        editHint.hidden = true;
+      });
+      row.appendChild(sourceInput);
+      row.appendChild(editHint);
     }
 
     const nameInput = document.createElement('input');
@@ -289,6 +263,13 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     saveBtn.addEventListener('click', () => {
       const displayName = nameInput.value.trim() || ch.name || ch.handle || '';
       const next = applyEditFormToChannels(ch, row, isCustom, displayName);
+      if (typeof next === 'string') {
+        // Keep the edit open and say why, the same guidance the add form gives.
+        sourceInput?.classList.add('invalid');
+        editHint.textContent = sourceProblemHint(next);
+        editHint.hidden = false;
+        return;
+      }
       if (next) {
         channels = next;
         saveChannelsToStorage(channels);
@@ -472,8 +453,9 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
           <span class="live-news-manage-add-title">${escapeHtml(t('components.liveNews.customChannel') ?? 'Custom channel')}</span>
           <div class="live-news-manage-add">
             <div class="live-news-manage-add-field">
-              <label class="live-news-manage-add-label" for="liveChannelsHandle">${escapeHtml(t('components.liveNews.youtubeHandleOrUrl') ?? 'YouTube handle or URL')}</label>
-              <input type="text" class="live-news-manage-handle" id="liveChannelsHandle" placeholder="@Channel or youtube.com/watch?v=..." />
+              <label class="live-news-manage-add-label" for="liveChannelsHandle">${escapeHtml(t('components.liveNews.channelOrVideoUrl') ?? 'YouTube channel or video URL')}</label>
+              <input type="text" class="live-news-manage-handle" id="liveChannelsHandle" placeholder="youtube.com/channel/UC… or youtube.com/watch?v=…" aria-describedby="liveChannelsHandleHint" />
+              <div class="live-news-manage-hint" id="liveChannelsHandleHint" hidden></div>
             </div>
             <div class="live-news-manage-add-field">
               <label class="live-news-manage-add-label" for="liveChannelsHlsUrl">${escapeHtml(t('components.liveNews.hlsUrl') ?? 'HLS Stream URL (optional)')}</label>
@@ -496,12 +478,24 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   renderList(listEl);
   renderAvailableChannels(listEl);
 
+  const sourceHint = document.getElementById('liveChannelsHandleHint');
+  const hideSourceHint = () => {
+    if (sourceHint) sourceHint.hidden = true;
+  };
+  const showSourceHint = (problem: EntryProblem) => {
+    if (!sourceHint) return;
+    sourceHint.textContent = sourceProblemHint(problem);
+    sourceHint.hidden = false;
+  };
+
   // Clear validation state on input
   document.getElementById('liveChannelsHandle')?.addEventListener('input', (e) => {
     (e.target as HTMLInputElement).classList.remove('invalid');
+    hideSourceHint();
   });
   document.getElementById('liveChannelsHlsUrl')?.addEventListener('input', (e) => {
     (e.target as HTMLInputElement).classList.remove('invalid');
+    hideSourceHint();
   });
 
   document.getElementById('liveChannelsRestoreBtn')?.addEventListener('click', () => {
@@ -522,123 +516,69 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     if (!raw && !hlsUrl) return;
     if (handleInput) handleInput.classList.remove('invalid');
     if (hlsInput) hlsInput.classList.remove('invalid');
+    hideSourceHint();
+    const chosenName = nameInput?.value?.trim() || '';
 
-    // Check if HLS URL is provided
+    const addChannel = (channel: LiveChannel) => {
+      if (channels.some((c) => c.id === channel.id)) return;
+      channels.push(channel);
+      saveChannelsToStorage(channels);
+      renderList(listEl);
+      if (handleInput) handleInput.value = '';
+      if (hlsInput) hlsInput.value = '';
+      if (nameInput) nameInput.value = '';
+    };
+
     if (hlsUrl) {
-      if (!isHlsUrl(hlsUrl)) {
+      const parsed = parseSourceEntry(hlsUrl);
+      if (!parsed.ok || parsed.candidate.kind !== 'hls') {
         if (hlsInput) {
           hlsInput.classList.add('invalid');
           hlsInput.setAttribute('title', t('components.liveNews.invalidHlsUrl') ?? 'Enter a valid HLS stream URL (.m3u8)');
         }
+        if (!parsed.ok && parsed.problem === 'not-https') showSourceHint(parsed.problem);
         return;
       }
-
-      // Create custom HLS channel
-      const id = `custom-hls-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-      if (channels.some((c) => c.id === id)) return;
-
-      const name = nameInput?.value?.trim() || 'HLS Stream';
-      channels.push({ id, name, hlsUrl, useFallbackOnly: true });
-      saveChannelsToStorage(channels);
-      renderList(listEl);
-      if (handleInput) handleInput.value = '';
-      if (hlsInput) hlsInput.value = '';
-      if (nameInput) nameInput.value = '';
+      addChannel(customChannelFor(parsed.candidate, chosenName || 'HLS Stream'));
       return;
     }
 
-    // Handle YouTube input (existing logic)
     if (!raw) return;
+    // A handle or bare name has no keyless way to its live video, so ask for a channel or video URL instead.
+    const parsed = parseSourceEntry(raw);
+    if (!parsed.ok) {
+      handleInput?.classList.add('invalid');
+      showSourceHint(parsed.problem);
+      return;
+    }
 
-    // Try parsing as a YouTube URL first
-    const parsed = parseYouTubeInput(raw);
+    const { candidate } = parsed;
+    if (candidate.kind !== 'video') {
+      addChannel(customChannelFor(candidate, chosenName || (candidate.kind === 'hls' ? 'HLS Stream' : t('components.liveNews.youtubeChannel') ?? 'YouTube channel')));
+      return;
+    }
+    if (channels.some((c) => c.id === `custom-vid-${candidate.videoId}`)) return;
 
-    // Direct video URL (watch?v= or youtu.be/)
-    if (parsed && 'videoId' in parsed) {
-      const videoId = parsed.videoId;
-      const id = `custom-vid-${videoId}`;
-      if (channels.some((c) => c.id === id)) return;
-
+    let resolvedName = chosenName;
+    if (!resolvedName) {
       if (addBtn) {
         addBtn.disabled = true;
         addBtn.textContent = t('components.liveNews.verifying') ?? 'Verifying…';
       }
-
-      // Try to resolve video/channel title via our proxy (YouTube oembed has no CORS)
-      let resolvedName = nameInput?.value?.trim() || '';
-      if (!resolvedName) {
-        try {
-          const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(videoId)}`));
-          if (res.ok) {
-            const data = await res.json();
-            resolvedName = data.channelName || data.title || '';
-          }
-        } catch { /* use fallback */ }
-      }
-      if (!resolvedName) resolvedName = `Video ${videoId}`;
-
-      if (addBtn) {
-        addBtn.disabled = false;
-        addBtn.textContent = t('components.liveNews.addChannel') ?? 'Add channel';
-      }
-
-      channels.push({ id, name: resolvedName, handle: `@video`, fallbackVideoId: videoId, useFallbackOnly: true });
-      saveChannelsToStorage(channels);
-      renderList(listEl);
-      if (handleInput) handleInput.value = '';
-      if (hlsInput) hlsInput.value = '';
-      if (nameInput) nameInput.value = '';
-      return;
-    }
-
-    // Extract handle from URL, or treat raw input as handle
-    const handle = parsed && 'handle' in parsed
-      ? parsed.handle
-      : raw.startsWith('@') ? raw : `@${raw}`;
-
-    // Validate YouTube handle format: @<3-30 alphanumeric/dot/hyphen/underscore chars>
-    if (!/^@[\w.-]{3,30}$/i.test(handle)) {
-      if (handleInput) {
-        handleInput.classList.add('invalid');
-        handleInput.setAttribute('title', t('components.liveNews.invalidHandle') ?? 'Enter a valid YouTube handle (e.g. @ChannelName)');
-      }
-      return;
-    }
-
-    const id = customChannelIdFromHandle(handle);
-    if (channels.some((c) => c.id === id)) return;
-
-    // Validate channel exists on YouTube + resolve name
-    if (addBtn) {
-      addBtn.disabled = true;
-      addBtn.textContent = t('components.liveNews.verifying') ?? 'Verifying…';
-    }
-
-    let resolvedName = '';
-    try {
-      const res = await fetch(toApiUrl(`/api/youtube/live?channel=${encodeURIComponent(handle)}`));
-      if (res.ok) {
-        const data = await res.json();
-        resolvedName = data.channelName || '';
-      }
-      // Non-OK status (429, 5xx) or ambiguous response — allow adding anyway
-    } catch (e) {
-      // Network/parse error — allow adding anyway (offline tolerance)
-      console.warn('[LiveChannels] YouTube validation failed, allowing add:', e);
-    } finally {
+      // Name the video through our oEmbed proxy (YouTube oEmbed has no CORS)
+      try {
+        const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(candidate.videoId)}`));
+        if (res.ok) {
+          const data = await res.json();
+          resolvedName = data.channelName || data.title || '';
+        }
+      } catch { /* use fallback */ }
       if (addBtn) {
         addBtn.disabled = false;
         addBtn.textContent = t('components.liveNews.addChannel') ?? 'Add channel';
       }
     }
-
-    const name = nameInput?.value?.trim() || resolvedName || handle;
-    channels.push({ id, name, handle });
-    saveChannelsToStorage(channels);
-    renderList(listEl);
-    if (handleInput) handleInput.value = '';
-    if (hlsInput) hlsInput.value = '';
-    if (nameInput) nameInput.value = '';
+    addChannel(customChannelFor(candidate, resolvedName || `Video ${candidate.videoId}`));
   });
 
   let searchDebounce: ReturnType<typeof setTimeout> | null = null;

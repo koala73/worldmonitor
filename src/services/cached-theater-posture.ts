@@ -4,6 +4,7 @@ import type { GetTheaterPostureResponse, TheaterPosture } from '@/generated/clie
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
+import { POSTURE_FRESH_MS, postureAssessedAtIso, withPostureFreshness } from '@/services/posture-freshness';
 
 // ---- Sebuf client ----
 
@@ -93,7 +94,7 @@ export function toPostureData(resp: GetTheaterPostureResponse): CachedTheaterPos
   return {
     postures,
     totalFlights,
-    timestamp: new Date().toISOString(),
+    timestamp: postureAssessedAtIso(resp.theaters.map((theater) => theater.assessedAt)),
     cached: true,
   };
 }
@@ -102,7 +103,7 @@ export function toPostureData(resp: GetTheaterPostureResponse): CachedTheaterPos
 
 const breaker = createCircuitBreaker<CachedTheaterPosture>({
   name: 'Theater Posture',
-  cacheTtlMs: 15 * 60 * 1000,
+  cacheTtlMs: POSTURE_FRESH_MS,
   persistCache: true,
 });
 
@@ -175,14 +176,17 @@ function saveToStorage(data: CachedTheaterPosture): void {
 const stored = loadFromStorage();
 if (stored) breaker.recordSuccess(stored);
 
-export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
+export async function fetchCachedTheaterPosture(
+  signal?: AbortSignal,
+  options?: { forceRefresh?: boolean },
+): Promise<CachedTheaterPosture | null> {
   if (signal?.aborted) throw createAbortError();
 
   // Layer 1: Bootstrap hydration (one-time, only when breaker has no cached data)
-  if (breaker.getCached() === null) {
+  if (!options?.forceRefresh && breaker.getCached() === null) {
     const hydrated = getHydratedData('theaterPosture') as GetTheaterPostureResponse | undefined;
     if (hydrated?.theaters?.length) {
-      const data = toPostureData(hydrated);
+      const data = withPostureFreshness(toPostureData(hydrated));
       breaker.recordSuccess(data);
       saveToStorage(data);
       return data;
@@ -196,7 +200,10 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
       const data = toPostureData(resp);
       saveToStorage(data);
       return data;
-    }, emptyFallback(), { shouldCache: (r) => r.postures.length > 0 }),
+    }, emptyFallback(), {
+      shouldCache: (r) => r.postures.length > 0,
+      forceRefresh: options?.forceRefresh,
+    }),
     signal,
   );
 
@@ -204,7 +211,7 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
     return null;
   }
 
-  return result;
+  return withPostureFreshness(result);
 }
 
 export function getCachedPosture(): CachedTheaterPosture | null {

@@ -6,8 +6,10 @@ import type {
     AirportDelayAlert,
     FlightDelaySeverity,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { MONITORED_AIRPORTS, AVIATIONSTACK_AIRPORTS } from '../../../../src/config/airports';
-import { getCachedJson } from '../../../_shared/redis';
+import { readCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import {
@@ -15,20 +17,37 @@ import {
     severityFromCancelRate,
     parseStringArray,
     DEFAULT_WATCHED_AIRPORTS,
+    isValidAirportDelayAlert,
+    isValidIntlCoverage,
     loadNotamClosures,
+    IATA_RE,
 } from './_shared';
 
 const SEED_CACHE_KEY = 'aviation:delays:intl:v3';
+const MAX_OPS_AIRPORTS = 20; // get_airport_ops_summary.proto repeated.max_items
+const MAX_AIRPORT_INPUT_LENGTH = 1024;
 const AVIATIONSTACK_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
-type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
-
 export async function getAirportOpsSummary(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: GetAirportOpsSummaryRequest,
 ): Promise<GetAirportOpsSummaryResponse> {
-    const rawAirports = parseStringArray(req.airports);
-    const requested = rawAirports.length > 0
-        ? rawAirports.map(a => a.toUpperCase())
+    const raw: unknown = req.airports;
+    if (raw != null && !(typeof raw === 'string'
+        ? raw.length <= MAX_AIRPORT_INPUT_LENGTH
+        : Array.isArray(raw) && raw.length <= MAX_OPS_AIRPORTS
+            && raw.every(code => typeof code === 'string' && code.length <= MAX_AIRPORT_INPUT_LENGTH))) {
+        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+    }
+    const rawAirports = parseStringArray(raw);
+    if (rawAirports.length > MAX_OPS_AIRPORTS) {
+        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+    }
+    const normalized = rawAirports.map(code => code.trim().toUpperCase());
+    if (normalized.some(code => !IATA_RE.test(code))) {
+        throw new ApiError(400, 'Expected three-letter IATA airport codes', '');
+    }
+    const requested = normalized.length > 0
+        ? [...new Set(normalized)]
         : DEFAULT_WATCHED_AIRPORTS;
 
     const now = Date.now();
@@ -37,9 +56,6 @@ export async function getAirportOpsSummary(
         const airports = MONITORED_AIRPORTS.filter(a => requested.includes(a.iata));
         const summaries: AirportOpsSummary[] = [];
 
-        // Read delay alerts from relay seed cache (no direct AviationStack call)
-        // PERF: seed read and NOTAM loader are independent — start the NOTAM
-        // fetch now so it overlaps the cache round-trip below.
         const notamRead = loadNotamClosures();
         let alerts: AirportDelayAlert[] = [];
         let healthy = false;
@@ -50,12 +66,19 @@ export async function getAirportOpsSummary(
         // are never covered by this source at all. See #7106.
         let intlCoveredIatas = new Set<string>();
         try {
-            const seedData = await getCachedJson(SEED_CACHE_KEY, true) as { alerts?: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
-            if (seedData?.alerts) {
-                alerts = seedData.alerts;
+            const seed = await readCachedJson(SEED_CACHE_KEY, true);
+            const seedData = seed.status === 'hit'
+                ? seed.value as { alerts?: unknown[]; coverage?: unknown[] } | null
+                : null;
+            const validAlerts = Array.isArray(seedData?.alerts) && seedData.alerts.every(isValidAirportDelayAlert);
+            const validCoverage = seedData?.coverage === undefined
+                || (Array.isArray(seedData.coverage) && seedData.coverage.every(isValidIntlCoverage));
+            if (validAlerts && validCoverage) {
+                alerts = seedData.alerts! as AirportDelayAlert[];
                 healthy = true;
                 if (Array.isArray(seedData.coverage)) {
                     intlCoveredIatas = new Set(seedData.coverage
+                        .filter(isValidIntlCoverage)
                         .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
                         .map((hub) => hub.iata));
                 }
@@ -66,14 +89,20 @@ export async function getAirportOpsSummary(
             // from an empty seed.
             console.warn(`[Aviation] Ops summary seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
             void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'seed-read' } });
+            healthy = false;
+            alerts = [];
+            intlCoveredIatas = new Set();
         }
 
         // Fetch NOTAM closures via shared loader
         let notamClosedIcaos = new Set<string>();
         let notamRestrictedIcaos = new Set<string>();
         let notamReasons: Record<string, string> = {};
+        let notamUnavailable = false;
         try {
-            const notamResult = await notamRead;
+            const notamReadResult = await notamRead;
+            notamUnavailable = notamReadResult.unavailable;
+            const notamResult = notamReadResult.data;
             if (notamResult) {
                 notamClosedIcaos = new Set(notamResult.closedIcaos);
                 notamRestrictedIcaos = new Set(notamResult.restrictedIcaos ?? []);
@@ -168,9 +197,13 @@ export async function getAirportOpsSummary(
 
         // This endpoint composes a fresh response from independent delay and
         // NOTAM seed reads. A seed-cache hit is not a response-cache hit.
-        return { summaries, cacheHit: false };
+        const response = { summaries, cacheHit: false };
+        return healthy && !notamUnavailable
+            ? response
+            : markNoStoreFallbackResponse(ctx.request, response);
     } catch (err) {
         console.warn(`[Aviation] GetAirportOpsSummary failed: ${err instanceof Error ? err.message : err}`);
-        return { summaries: [], cacheHit: false };
+        void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'response' } });
+        return markNoStoreFallbackResponse(ctx.request, { summaries: [], cacheHit: false });
     }
 }

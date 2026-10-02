@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -13,10 +14,12 @@
  * A lookup that was attempted but produced no answer — Redis/Convex failure,
  * Convex 5xx, or a Convex 4xx that means our own credential is wrong — returns a
  * verificationUnavailable marker so callers answer with a retryable 503 instead
- * of a misleading hard denial. A null means either that no lookup was attempted
- * (backend unconfigured) or that Convex confirmed the user has no entitlement.
- * The user-key gateway fails closed on null when the backend is configured and
- * retains a logged fail-open exception only when lookup is wholly unconfigured.
+ * of a misleading hard denial. A null from getEntitlements means either that no
+ * lookup was attempted (backend unconfigured) or that Convex confirmed the user
+ * has no entitlement. wm_ user-key gateway traffic fails closed on null in both
+ * cases: callers get a retryable 503 with code
+ * entitlement_verification_unavailable, including when the entitlement backend
+ * is wholly unconfigured.
  *
  * classifyBillingVerification() is the single decision point for that denial;
  * getBillingVerificationDenial() renders it as JSON, and the HTML / OAuth-grant
@@ -75,6 +78,15 @@ export interface CachedEntitlements {
      */
     dataExport?: boolean;
     /**
+     * Partner-embed key issuance (`wme_…`). Mirrors the catalog field so the
+     * edge can read what the Convex read-time merge already puts on the wire;
+     * without it a caller cannot reach the value without a type error, and
+     * `shared/embed-access.ts` would silently see `undefined`. Like
+     * `mcpAccess` and unlike `dataExport`, `undefined` is **fail-CLOSED** —
+     * embedding is a publishable credential, so a stale row must not mint one.
+     */
+    embedAccess?: boolean;
+    /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
      * it and because the Convex read path only merges what the catalog holds.
@@ -82,11 +94,15 @@ export interface CachedEntitlements {
      * `planLimits` altogether) means unknown, and consumers resolve unknown
      * toward cost protection — never toward the higher allowance. The MCP
      * daily quota (plan 2026-07-25-001 U3) and dashboard-AI quota are consumers.
+     *
+     * `mcpCallsPerDay` also carries the catalog's `SHARED_API_BUDGET` marker on
+     * the API tiers, so it is not a plain number: mirroring it as `number | null`
+     * made the value the API tiers actually ship an impossible one here.
      */
     planLimits?: {
       apiRequestsPerDay?: number | null;
       apiBurstRequestsPerMinute?: number | null;
-      mcpCallsPerDay?: number | null;
+      mcpCallsPerDay?: number | null | 'shared-api-budget';
       mcpBurstRequestsPerMinute?: number | null;
       dashboardAiCallsPerDay?: number | null;
     };
@@ -111,9 +127,8 @@ export interface CachedEntitlements {
   // or visible to another isolate).
   //
   // A null return therefore means one of exactly two things: the backend is
-  // unconfigured so no lookup was attempted (server/gateway.ts detects that
-  // with isEntitlementBackendConfigured() and keeps its wm_-key fail-open
-  // exception), or Convex answered and this user has no entitlement row — a
+  // unconfigured so no lookup was attempted, or Convex answered and this user
+  // has no entitlement row — a
   // confirmed free account, which is the one state that may honestly upsell.
   verificationUnavailable?: true;
 }
@@ -153,6 +168,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/intelligence/v1/get-similar-events': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
+  '/api/market/v1/get-insider-transactions': 1,
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
   '/api/economic/v1/list-global-tenders': 1,
@@ -534,10 +550,16 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 
     if (cached && typeof cached === 'object') {
       const ent = cached as CachedEntitlements;
+      const hasCurrentEmbedAccessShape = typeof ent.features?.embedAccess === 'boolean';
       // Verification markers have their own short Redis TTL. Serve them even
       // though validUntil is expired so cooldown requests stop at Redis instead
-      // of repeating the Convex action/claim chain.
-      if (entitlementMarkerTtlSeconds(ent) !== null) return ent;
+      // of repeating the Convex action/claim chain. A marker can carry a paid
+      // fallback whose validUntil lapses during this TTL; consumers must check
+      // expiry before granting access and retain the marker for denial details.
+      // The cache-shape check must
+      // run first: a pre-embedAccess marker is still an authorization row, and
+      // serving it would bypass the canonical Convex merge below.
+      if (hasCurrentEmbedAccessShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
       // Only use cached data if it hasn't expired AND has the post-U10 shape.
       //
       // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
@@ -558,10 +580,23 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       // and every paid tier above Pro would silently resolve to the Pro default
       // (Pro Business 2,500 -> 500, API Business 10,000 -> 500). Require the
       // member the same way, so those rows self-heal through Convex instead.
+      // Third instance of the same trap, for `planLimits.mcpCallsPerDay`. An
+      // API-tier entry written before the shared-budget marker carries the old
+      // numeric 1,000/10,000, which satisfies both checks above and resolves
+      // `{allowance: 'mcp'}` — same counter and same ceiling as the correct
+      // `{allowance: 'api', counter: 'mcp'}`, but one unit per call instead of
+      // the per-tool weight, so those callers under-pay until the entry ages
+      // out. No paid plan legitimately pairs `apiAccess` with a NUMERIC
+      // mcpCallsPerDay (the API tiers carry the marker, enterprise carries
+      // `null`), so that pairing identifies a pre-marker entry exactly.
+      const legacySharedBudgetShape = ent.features.apiAccess === true
+        && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
       if (
         ent.validUntil >= Date.now() &&
         typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean' &&
-        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined
+        hasCurrentEmbedAccessShape &&
+        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
+        !legacySharedBudgetShape
       ) {
         return ent;
       }
@@ -571,11 +606,8 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     // Convex fallback on cache miss or expired cache
     const convexSiteUrl = getConvexSiteUrl();
     const convexSharedSecret = getConvexSharedSecret();
-    // MISCONFIGURATION HAZARD: a deploy missing CONVEX_SITE_URL or
-    // CONVEX_SERVER_SHARED_SECRET returns null for every user on every request.
-    // The gateway recognizes that configuration state and logs before using its
-    // explicit fail-open deploy-defect exception; other entitlement gates remain
-    // fail closed. Warn once per variable here so neither missing value is silent.
+    // Missing configuration cannot resolve a cache miss. Both access gates
+    // fail closed; the getters warn once per missing variable.
     if (!convexSiteUrl || !convexSharedSecret) return null;
 
     const response = await fetch(`${convexSiteUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
@@ -908,7 +940,7 @@ export async function checkEntitlementDetailed(
   // only to capabilities above the fallback.
   if (
     ent.features.tier >= requiredTier &&
-    ent.validUntil >= Date.now()
+    hasCurrentEntitlementCoverage(ent)
   ) {
     return { response: null, entitlements: ent };
   }

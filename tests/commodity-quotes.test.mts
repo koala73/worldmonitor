@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createMarketServiceRoutes, ValidationError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
+import { __resetRateLimitForTest } from '../api/_rate-limit.js';
+import { issueSessionToken } from '../api/_session.js';
+import marketGateway from '../api/market/v1/[rpc].ts';
 import { marketHandler } from '../server/worldmonitor/market/v1/handler.ts';
 import {
   SUPPORTED_COMMODITY_SYMBOLS,
@@ -136,6 +139,8 @@ function routeHandler() {
   return descriptor.handler;
 }
 
+let limiterDecisions = 0;
+
 function installRedisMock(redis: RedisMode) {
   mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -149,7 +154,17 @@ function installRedisMock(redis: RedisMode) {
       }
       return new Response(JSON.stringify({ result: null }), { status: 200 });
     }
-    void init;
+    if (url === 'https://redis.test/pipeline') {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      const results = commands.map((command) => {
+        const verb = String(command[0]).toUpperCase();
+        assert.ok(verb === 'EVALSHA' || verb === 'EVAL', `unexpected limiter command: ${verb}`);
+        limiterDecisions++;
+        // Same successful [remaining, limit] wire shape as gateway-internal-mcp.
+        return { result: [1, 1] };
+      });
+      return new Response(JSON.stringify(results), { status: 200 });
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
 }
@@ -161,6 +176,8 @@ function requestFor(path: string): Request {
 const DEFAULT_SEED = ['GC=F', 'CL=F', 'SI=F', 'BZ=F'].map(seedQuote);
 
 beforeEach(() => {
+  __resetRateLimitForTest();
+  limiterDecisions = 0;
   for (const key of ENV_KEYS) {
     originalEnv.set(key, process.env[key]);
     delete process.env[key];
@@ -228,4 +245,60 @@ describe('ListCommodityQuotes async handler paths (mocked Redis)', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { quotes: [] });
   });
+});
+
+
+describe('commodity seed cache policy through the market gateway', () => {
+  async function request() {
+    process.env.WM_SESSION_SECRET = "synthetic-commodity-cache-session-secret";
+    const { token } = await issueSessionToken();
+    return new Request('https://worldmonitor.app/api/market/v1/list-commodity-quotes?_debug=1', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': token },
+    });
+  }
+
+  it('requires authentication before reading the seed', async () => {
+    installRedisMock({ kind: 'error' });
+    const response = await marketGateway(new Request('https://worldmonitor.app/api/market/v1/list-commodity-quotes', {
+      headers: { Origin: 'https://worldmonitor.app' },
+    }));
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get('CDN-Cache-Control'), null);
+    assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), null);
+  });
+
+  for (const redis of [
+    { kind: 'null' },
+    { kind: 'seed', payload: { quotes: [] } },
+    { kind: 'error' },
+  ] as RedisMode[]) {
+    it(`does not cache ${redis.kind === 'seed' ? 'empty seed' : redis.kind} fallbacks and permits recovery`, async () => {
+      const errors = mock.method(console, 'error', () => {});
+      const warnings = mock.method(console, 'warn', () => {});
+      installRedisMock(redis);
+      const response = await marketGateway(await request());
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { quotes: [] });
+      assert.ok(limiterDecisions > 0, 'limiter returned a successful wire decision');
+      assert.doesNotMatch([...errors.mock.calls, ...warnings.mock.calls].flatMap((call) => call.arguments).join(' '), /\[rate-limit\]/);
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.equal(response.headers.get('X-Cache-Tier'), 'no-store');
+      assert.equal(response.headers.get('CDN-Cache-Control'), null);
+      assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), null);
+      assert.equal(response.headers.get('X-No-Cache'), null);
+
+      const beforeRecovery = limiterDecisions;
+      installRedisMock({ kind: 'seed', payload: { quotes: DEFAULT_SEED } });
+      const recovered = await marketGateway(await request());
+      assert.equal(recovered.status, 200);
+      assert.deepEqual((await recovered.json()).quotes, DEFAULT_SEED);
+      assert.equal(recovered.headers.get('X-Cache-Tier'), 'slow-browser');
+      assert.match(recovered.headers.get('Cache-Control') ?? '', /private.*max-age=300/);
+      assert.equal(recovered.headers.get('CDN-Cache-Control'), null);
+      assert.equal(recovered.headers.get('Vercel-CDN-Cache-Control'), null);
+      assert.ok(limiterDecisions > beforeRecovery, 'recovery also passes the Redis limiter');
+      const diagnostics = [...errors.mock.calls, ...warnings.mock.calls].flatMap((call) => call.arguments).join(' ');
+      assert.doesNotMatch(diagnostics, /\[rate-limit\]/, 'no degraded limiter path or warning');
+    });
+  }
 });

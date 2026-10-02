@@ -101,7 +101,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, Commercial license — for your organization"
+      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
     },
     {
       "planKey": "api_starter_annual",
@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
     },
     {
       "planKey": "api_business_annual",
@@ -163,7 +163,30 @@ export const PUBLIC_PRODUCT_FACTS = {
       "dashboardAiCallsPerDay": null,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
-  ]
+  ],
+  "heroProofStats": {
+    "mapLayers": 57,
+    "feeds": 461,
+    "providers": 757,
+    "alertOrigins": 5
+  },
+  "depthProofStats": {
+    "mapLayers": 57,
+    "feeds": 461,
+    "providers": 757,
+    "alertOrigins": 5,
+    "chokepoints": 13,
+    "instabilityCountries": 31,
+    "resilienceRanked": 170,
+    "submarineCables": 86,
+    "pipelinesLng": 159,
+    "aiDatacenters": 313,
+    "hotspots": 29,
+    "stockExchanges": 29,
+    "mcpTools": 86,
+    "commands": 619,
+    "languages": 28
+  }
 };
 
 export const PRODUCT_CATALOG = {
@@ -231,7 +254,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
-      "mcpBurstRequestsPerMinute": 0
+      "mcpBurstRequestsPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
@@ -260,7 +284,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": true
   },
@@ -285,7 +310,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": false
   },
@@ -298,7 +324,7 @@ export const TIER_CONFIG = {
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications"
     ],
     "highlightFeatures": [
@@ -309,7 +335,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 60,
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
   },
@@ -319,9 +346,9 @@ export const TIER_CONFIG = {
     "description": "Launch your own product on WorldMonitor data",
     "features": [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
-      "10,000 requests/day included",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
@@ -333,7 +360,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 300,
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
-      "mcpBurstRequestsPerMinute": 300
+      "mcpBurstRequestsPerMinute": 300,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
   },
@@ -359,7 +387,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 1000,
       "mcpCallsPerDay": null,
       "dashboardAiCallsPerDay": null,
-      "mcpBurstRequestsPerMinute": 1000
+      "mcpBurstRequestsPerMinute": 1000,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",

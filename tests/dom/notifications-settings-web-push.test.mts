@@ -14,6 +14,7 @@ const channelMocks = vi.hoisted(() => ({
   getChannelsData: vi.fn(),
   saveAlertRules: vi.fn(),
   deleteChannel: vi.fn(),
+  setEmailChannel: vi.fn(),
 }));
 
 vi.mock('@/services/push-notifications', () => ({
@@ -27,7 +28,7 @@ vi.mock('@/services/notification-channels', () => ({
   getChannelsData: channelMocks.getChannelsData,
   saveAlertRules: channelMocks.saveAlertRules,
   createPairingToken: vi.fn(),
-  setEmailChannel: vi.fn(),
+  setEmailChannel: channelMocks.setEmailChannel,
   setWebhookChannel: vi.fn(),
   startSlackOAuth: vi.fn(),
   startDiscordOAuth: vi.fn(),
@@ -116,6 +117,7 @@ beforeEach(() => {
     userAgent: 'test',
   });
   channelMocks.getChannelsData.mockReset();
+  channelMocks.setEmailChannel.mockReset().mockResolvedValue(undefined);
   channelMocks.saveAlertRules.mockReset();
   channelMocks.saveAlertRules.mockResolvedValue(undefined);
   channelMocks.deleteChannel.mockReset();
@@ -467,6 +469,24 @@ describe('notification Settings browser push', () => {
     const row = webPushRow(container);
     expect(row.dataset.webPushState).toBe('available');
     expect(row.querySelector('.us-notif-error')).toBeNull();
+    expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('email connection recovery', () => {
+  it('saves the email rule after linking succeeds', async () => {
+    const container = await mount();
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalled());
+    expect(channelMocks.setEmailChannel).toHaveBeenCalledWith('push@worldmonitor.test', undefined, expect.any(AbortSignal));
+  });
+
+  it('shows a failed link and does not save email rules', async () => {
+    channelMocks.setEmailChannel.mockRejectedValueOnce(new Error('Verify your account email, then try again.'));
+    const container = await mount();
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('Verify your account email, then try again.'));
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
   });
 });

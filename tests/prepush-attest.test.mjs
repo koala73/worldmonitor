@@ -45,6 +45,9 @@ const GIT_LOCAL_ENV_VARS = execFileSync('git', ['rev-parse', '--local-env-vars']
 function isolatedGitEnv(overrides = {}) {
   const env = { ...process.env, ...overrides, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
   for (const name of GIT_LOCAL_ENV_VARS) delete env[name];
+  // A stacked push exports WM_BASE_REF for the real hook, and the pre-push run of this file inherits
+  // it. base-guard reads it, so a fixture sees it only when a case passes it explicitly.
+  if (!Object.hasOwn(overrides, 'WM_BASE_REF')) delete env.WM_BASE_REF;
   return env;
 }
 
@@ -664,14 +667,15 @@ describe('base-guard fetches lazily and only to disprove a violation (#6764)', (
       const fixture = makeCloneWithOrigin({ aheadCommits });
       if (removeRef) git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
       const path = makeTimeoutlessPath(fixture);
-      const started = Date.now();
       const result = baseGuard(fixture, ['main', '20'], {
         path,
         WM_PREPUSH_FETCH_TIMEOUT_MS: '200',
       });
 
-      const elapsed = Date.now() - started;
-      assert.ok(elapsed < 3000, `${label} must return after the portable deadline`);
+      // No elapsed-time bound here: origin is a local clone, so the fetch is
+      // fast whether or not the portable deadline binds. The assertion could
+      // only ever measure runner load, and it flaked doing exactly that. That
+      // the guard RAN without timeout/gtimeout on PATH is what this proves.
       assert.ok(fetchCount(fixture) >= 1, `${label} must exercise the corrective fetch (result=${JSON.stringify(result)})`);
       if (removeRef) {
         assert.equal(result.status, 0);

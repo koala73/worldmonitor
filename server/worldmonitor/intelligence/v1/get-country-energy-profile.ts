@@ -3,9 +3,11 @@ import type {
   GetCountryEnergyProfileRequest,
   GetCountryEnergyProfileResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-fields.json';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { getRawJson } from '../../../_shared/redis';
+import { setResponseHeader } from '../../../_shared/response-headers';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
 import {
   resolveEnergyImportDependency,
@@ -389,35 +391,41 @@ export function buildResponseFromSpine(
 }
 
 export async function getCountryEnergyProfile(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetCountryEnergyProfileRequest,
 ): Promise<GetCountryEnergyProfileResponse> {
   const code = req.countryCode?.trim().toUpperCase() ?? '';
   if (!code || code.length !== 2) return EMPTY;
 
+  // A missing seed is valid partial coverage. A failed read cannot establish
+  // absence and must not publish a successful profile with false availability.
+  const readSeed = async <T>(key: string): Promise<T | null> => {
+    try {
+      return await getRawJson(key) as T | null;
+    } catch {
+      setResponseHeader(ctx.request, 'Cache-Control', 'no-store');
+      throw new ApiError(503, 'Energy profile cache unavailable', '');
+    }
+  };
+
   // Always read gas-storage and electricity directly — both update sub-daily
   // (gas storage ~10:30 UTC, electricity ~14:00 UTC) while the spine seeds once
   // at 06:00 UTC. Serving them from the spine would return stale data for up to 8h.
-  const [spineResult, gasStorageResult, electricityResult, sprRegistryResult, staticRecordResult] = await Promise.allSettled([
-    getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${code}`, true),
-    getCachedJson(`energy:gas-storage:v1:${code}`, true),
-    getCachedJson(`energy:electricity:v1:${code}`, true),
-    getCachedJson(SPR_POLICIES_KEY, true),
-    getCachedJson(`resilience:static:${code}`, true),
+  const [spine, gasStorage, electricity, sprRegistry, staticRecord] = await Promise.all([
+    readSeed<EnergySpine>(`${ENERGY_SPINE_KEY_PREFIX}${code}`),
+    readSeed<GasStorage>(`energy:gas-storage:v1:${code}`),
+    readSeed<ElectricityEntry>(`energy:electricity:v1:${code}`),
+    readSeed<SprRegistry>(SPR_POLICIES_KEY),
+    readSeed<unknown>(`resilience:static:${code}`),
   ]);
 
-  const spine = spineResult.status === 'fulfilled' ? (spineResult.value as EnergySpine | null) : null;
-  const gasStorage = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorage | null) : null;
-  const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
-  const sprRegistry = sprRegistryResult.status === 'fulfilled' ? (sprRegistryResult.value as SprRegistry | null) : null;
   const sprPolicy = sprRegistry?.policies?.[code] ?? null;
-  const staticRecord = staticRecordResult.status === 'fulfilled' ? staticRecordResult.value : null;
   const importDependency = resolveEnergyImportDependency(staticRecord);
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
     let emberFallback: EmberData | null = null;
     if (!spine.electricity || typeof spine.electricity.fossilShare !== 'number') {
-      const directEmber = await getCachedJson(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`, true).catch(() => null);
+      const directEmber = await readSeed<EmberData>(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`);
       if (directEmber && typeof directEmber === 'object') {
         emberFallback = directEmber as EmberData;
       }
@@ -425,20 +433,14 @@ export async function getCountryEnergyProfile(
     return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy, importDependency);
   }
 
-  const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult, emberResult] =
-    await Promise.allSettled([
-      getCachedJson(`energy:mix:v1:${code}`, true),
-      getCachedJson(`energy:jodi-oil:v1:${code}`, true),
-      getCachedJson(`energy:jodi-gas:v1:${code}`, true),
-      getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
-      getCachedJson(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`, true),
+  const [mix, jodiOil, jodiGas, ieaStocks, emberData] =
+    await Promise.all([
+      readSeed<OwidMix>(`energy:mix:v1:${code}`),
+      readSeed<JodiOil>(`energy:jodi-oil:v1:${code}`),
+      readSeed<JodiGas>(`energy:jodi-gas:v1:${code}`),
+      readSeed<IeaStocks>(`energy:iea-oil-stocks:v1:${code}`),
+      readSeed<EmberData>(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`),
     ]);
-
-  const mix = mixResult.status === 'fulfilled' ? (mixResult.value as OwidMix | null) : null;
-  const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
-  const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
-  const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
-  const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as EmberData | null) : null;
 
   const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
 

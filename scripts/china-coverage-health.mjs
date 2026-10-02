@@ -170,6 +170,93 @@ function reasonCodesFor(transport, content) {
   return reasons;
 }
 
+export function normalizeChinaProblemIdentity(entries) {
+  const problems = entries
+    .filter((entry) => entry?.launchStatus === 'launched' && entry?.status !== 'healthy')
+    .map((entry) => ({
+      id: typeof entry.id === 'string' ? entry.id : '',
+      status: typeof entry.status === 'string' ? entry.status : '',
+      reasonCodes: [...new Set(
+        Array.isArray(entry.reasonCodes)
+          ? entry.reasonCodes.filter((reason) => typeof reason === 'string')
+          : [],
+      )].sort(),
+    }))
+    .sort((left, right) => {
+      const leftKey = JSON.stringify(left);
+      const rightKey = JSON.stringify(right);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+  return problems.length > 0 ? JSON.stringify(problems) : null;
+}
+
+function isConsistentCoverageSummary(summary, currentEntries, evaluatedAt, now) {
+  if (
+    !Array.isArray(summary?.entries)
+    || summary.entries.length === 0
+    || summary.entries.length > 100
+  ) return false;
+
+  const ids = new Set();
+  for (const entry of summary.entries) {
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || typeof entry.id !== 'string'
+      || entry.id.length === 0
+      || entry.id.length > 100
+      || ids.has(entry.id)
+      || !['launched', 'planned', 'blocked'].includes(entry.launchStatus)
+      || !Array.isArray(entry.reasonCodes)
+      || entry.reasonCodes.length > 16
+      || entry.reasonCodes.some((reason) => typeof reason !== 'string' || reason.length > 64)
+      || (entry.launchStatus === 'launched'
+        ? !['healthy', 'degraded', 'unavailable'].includes(entry.status)
+        : entry.status !== entry.launchStatus)
+    ) {
+      return false;
+    }
+    ids.add(entry.id);
+  }
+
+  const launched = summary.entries.filter((entry) => entry.launchStatus === 'launched');
+  const currentLaunchedIds = currentEntries
+    .filter((entry) => entry.launchStatus === 'launched')
+    .map((entry) => entry.id)
+    .sort();
+  const previousLaunchedIds = launched.map((entry) => entry.id).sort();
+  if (
+    currentLaunchedIds.length !== previousLaunchedIds.length
+    || currentLaunchedIds.some((id, index) => id !== previousLaunchedIds[index])
+  ) {
+    return false;
+  }
+
+  const healthy = launched.filter((entry) => entry.status === 'healthy').length;
+  const degraded = launched.filter((entry) => entry.status === 'degraded').length;
+  const unavailable = launched.filter((entry) => entry.status === 'unavailable').length;
+  const expectedStatus = unavailable === launched.length
+    ? 'unavailable'
+    : degraded > 0 || unavailable > 0
+      ? 'degraded'
+      : 'healthy';
+  return summary?.schemaVersion === 1
+    && summary?.countryCode === 'CN'
+    && launched.length > 0
+    && healthy + degraded + unavailable === launched.length
+    && summary.status === expectedStatus
+    && summary?.counts?.total === summary.entries.length
+    && summary?.counts?.launched === launched.length
+    && summary.counts.planned === summary.entries.filter((entry) => entry.launchStatus === 'planned').length
+    && summary.counts.blocked === summary.entries.filter((entry) => entry.launchStatus === 'blocked').length
+    && summary.counts.healthy === healthy
+    && summary.counts.degraded === degraded
+    && summary.counts.unavailable === unavailable
+    && Number.isSafeInteger(evaluatedAt)
+    && evaluatedAt > 0
+    && evaluatedAt <= now;
+}
+
 export function evaluateChinaCoverage({
   entries = CHINA_COVERAGE_ENTRIES,
   data = {},
@@ -221,29 +308,37 @@ export function evaluateChinaCoverage({
   if (launched.length > 0 && counts.unavailable === launched.length) status = 'unavailable';
   else if (counts.degraded > 0 || counts.unavailable > 0) status = 'degraded';
 
-  // How many CONSECUTIVE evaluations have landed non-healthy. `status` stays
-  // instantaneous and truthful — isValidChinaCoverageSummary recomputes it from
-  // counts and rejects any summary whose status disagrees, so debouncing the
-  // field itself would make every held summary read CHINA_UNAVAILABLE. The
-  // streak is published alongside it and the CONSUMER decides how many
-  // observations it wants before alarming.
-  //
-  // This runs hourly against 16 sources, so a source that is degraded at the
-  // sampling instant and healthy moments later freezes the verdict for a full
-  // hour. Observed 2026-08-25: the evaluator sampled market.china-stock-connect
-  // at 17:03:23 and its snapshot published `status: healthy` at 17:05:26 — a
-  // two-minute miss that cost ~50 minutes of CHINA_DEGRADED, with 13 of the
-  // surrounding 16 monitor runs clean.
-  const previousStreak = Number.isInteger(previous?.degradedStreak) && previous.degradedStreak > 0
+  // Keep the instantaneous status truthful while retaining the last proven
+  // healthy clock. Non-healthy evaluations never advance it.
+  const degradedProblemKey = normalizeChinaProblemIdentity(evaluated);
+  const previousStreak = Number.isInteger(previous?.degradedStreak)
+    && previous.degradedStreak > 0
+    && previous.degradedProblemKey === degradedProblemKey
     ? previous.degradedStreak
     : 0;
   const degradedStreak = status === 'healthy' ? 0 : previousStreak + 1;
+  const previousEvaluatedAt = Date.parse(previous?.evaluatedAt ?? '');
+  const explicitLastHealthyAt = Number.isSafeInteger(previous?.lastHealthyAt)
+    && previous.lastHealthyAt > 0
+    && previous.lastHealthyAt <= previousEvaluatedAt
+    && previous.lastHealthyAt <= now
+      ? previous.lastHealthyAt
+      : null;
+  const previousSummaryValid = isConsistentCoverageSummary(previous, evaluated, previousEvaluatedAt, now);
+  const legacyLastHealthyAt = previousSummaryValid && previous.status === 'healthy'
+      ? previousEvaluatedAt
+      : null;
+  const lastHealthyAt = status === 'healthy'
+    ? now
+    : previousSummaryValid ? explicitLastHealthyAt ?? legacyLastHealthyAt : null;
 
   return {
     schemaVersion: 1,
     countryCode: 'CN',
     status,
     degradedStreak,
+    degradedProblemKey,
+    lastHealthyAt,
     evaluatedAt: new Date(now).toISOString(),
     counts,
     entries: evaluated,

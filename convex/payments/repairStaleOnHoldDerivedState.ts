@@ -15,12 +15,13 @@
 
 import { internalMutation } from "../_generated/server";
 import {
+  isBusinessPlan,
   recomputeEntitlementFromAllSubs,
   revokeBusinessProGrantsForSubscription,
 } from "./subscriptionHelpers";
 
 const REPAIR_MARKER =
-  "payments.repairStaleOnHoldDerivedState.v1.completedAt";
+  "payments.repairStaleOnHoldDerivedState.v2.completedAt";
 const MAX_SUBSCRIPTIONS = 500;
 
 export const run = internalMutation({
@@ -68,7 +69,7 @@ export const run = internalMutation({
     let grantsRevoked = 0;
     let grantFailures = 0;
     for (const subscription of staleSubscriptions) {
-      if (subscription.planKey !== "api_business") continue;
+      if (!isBusinessPlan(subscription.planKey)) continue;
       const result = await revokeBusinessProGrantsForSubscription(
         ctx,
         subscription.dodoSubscriptionId,

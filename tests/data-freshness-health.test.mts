@@ -22,6 +22,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
+  it('does not synthesize healthy sources or a Redis outage while refresh is pending', async () => {
+    __resetHealthFreshnessForTests();
+    const before = structuredClone(dataFreshness.getSource('gdelt'));
+    await assert.rejects(refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({ status: 'REFRESH_PENDING', retryAfterSeconds: 3 }, 503),
+    }), /health freshness fetch failed: 503/);
+    assert.deepEqual(dataFreshness.getSource('gdelt'), before);
+  });
+
   it('identifies the weather source and outage gap as NWS/ECCC/WMO SWIC coverage', async () => {
     __resetHealthFreshnessForTests();
     await refreshDataFreshnessFromHealth({
@@ -354,17 +364,116 @@ describe('health freshness ingestion', () => {
     assert.equal(gdelt?.healthStatus, 'STALE_SEED');
     assert.equal(gdelt?.itemCount, 6);
 
-    // weather maps from weatherAlerts, which is absent from `problems` — the
-    // server evaluated it and found it within budget. It must read fresh as of
-    // checkedAt, NOT no_data (a bare OK with no age would leave lastUpdate
-    // null and calculateStatus reports no_data).
     const weather = dataFreshness.getSource('weather');
     assert.equal(weather?.status, 'fresh');
     assert.equal(weather?.healthStatus, 'OK');
     assert.equal(weather?.lastUpdate?.toISOString(), new Date(checkedAtMs).toISOString());
   });
 
-  it('marks all mapped sources healthy on a compact payload with no problems key', async () => {
+  it('degrades only the mapped source when HEALTHY availability contains a problem', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'HEALTHY',
+        summary: {
+          total: 292, ok: 291, warn: 1, containedWarn: 1,
+          onDemandWarn: 0, staleContent: 0, crit: 0,
+        },
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        problems: {
+          gdeltIntel: {
+            status: 'COVERAGE_PARTIAL', records: 12,
+            seedAgeMin: 1, maxStaleMin: 420,
+          },
+        },
+      }),
+    });
+
+    const mappedSources = new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat());
+    assert.equal(applied, mappedSources.size);
+    assert.equal(dataFreshness.getSource('gdelt')?.status, 'stale');
+    assert.equal(dataFreshness.getSource('gdelt')?.healthStatus, 'COVERAGE_PARTIAL');
+    assert.equal(dataFreshness.getSource('weather')?.status, 'fresh');
+    assert.equal(dataFreshness.getSource('weather')?.healthStatus, 'OK');
+  });
+
+  it('preserves stale content and its vintage from a pending-only compact payload', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    await refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'HEALTHY',
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        pending: {
+          blsSeries: {
+            status: 'STALE_CONTENT', records: 9,
+            seedAgeMin: 1, maxStaleMin: 360,
+            contentAgeMin: 90, maxContentAgeMin: 60,
+          },
+        },
+      }),
+    });
+
+    const bls = dataFreshness.getSource('bls');
+    assert.equal(bls?.status, 'stale');
+    assert.equal(bls?.healthStatus, 'STALE_CONTENT');
+    assert.equal(bls?.itemCount, 9);
+    assert.equal(bls?.maxStaleMin, 60);
+    assert.equal(bls?.lastUpdate?.toISOString(), new Date(checkedAtMs - 90 * 60_000).toISOString());
+  });
+
+  it('prefers a compact problem over a duplicate pending check', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    await refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'DEGRADED',
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        pending: {
+          weatherAlerts: { status: 'STALE_CONTENT', records: 2, contentAgeMin: 60, maxContentAgeMin: 45 },
+        },
+        problems: {
+          weatherAlerts: { status: 'STALE_SEED', records: 4, seedAgeMin: 90, maxStaleMin: 45 },
+        },
+      }),
+    });
+
+    const weather = dataFreshness.getSource('weather');
+    assert.equal(weather?.healthStatus, 'STALE_SEED');
+    assert.equal(weather?.itemCount, 4);
+    assert.equal(weather?.maxStaleMin, 45);
+    assert.equal(weather?.lastUpdate?.toISOString(), new Date(checkedAtMs - 90 * 60_000).toISOString());
+  });
+
+  it('keeps full checks authoritative over both compact maps', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'HEALTHY',
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          weatherAlerts: { status: 'OK', records: 3, seedAgeMin: 5, maxStaleMin: 45 },
+        },
+        pending: { weatherAlerts: { status: 'STALE_CONTENT' } },
+        problems: { weatherAlerts: { status: 'SEED_ERROR' }, gdeltIntel: { status: 'SEED_ERROR' } },
+      }),
+    });
+
+    assert.equal(applied, 1);
+    const weather = dataFreshness.getSource('weather');
+    assert.equal(weather?.status, 'fresh');
+    assert.equal(weather?.healthStatus, 'OK');
+    assert.equal(weather?.itemCount, 3);
+    assert.equal(weather?.lastUpdate?.toISOString(), new Date(checkedAtMs - 5 * 60_000).toISOString());
+  });
+
+  it('marks all mapped sources healthy on a compact payload with no problems or pending keys', async () => {
     __resetHealthFreshnessForTests();
     const mappedSources = new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat());
     const checkedAtMs = Date.now();

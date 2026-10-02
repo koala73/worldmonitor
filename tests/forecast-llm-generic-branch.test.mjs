@@ -319,6 +319,7 @@ test('named-provider keys in the same call suppress generic from the resolved ch
   await callForecastLLM('sys', 'user', {
     stage: 'default',
     returnFailureReason: true,
+    retryDelayMs: 0,
   });
   // callForecastLLM may retry over multiple named providers; we only care that
   // generic did NOT receive the call. With OPENROUTER_API_KEY set, generic is

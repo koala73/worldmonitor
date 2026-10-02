@@ -36,6 +36,7 @@ const VALID_SOURCES = new Set([
 const VALID_FACILITY_TYPES = new Set([
   'ugs', 'spr', 'lng_export', 'lng_import', 'crude_tank_farm',
 ]);
+const LNG_FACILITY_TYPES = new Set(['lng_export', 'lng_import']);
 
 // Capacity unit pairings per facility type.
 // ugs   → capacityTwh (TWh working gas volume)
@@ -136,6 +137,12 @@ export function buildPayload() {
  */
 export function recordCount(data) {
   return Object.keys(data?.facilities ?? {}).length;
+}
+
+export function lngFacilityCount(data = loadRegistry()) {
+  return Object.values(data?.facilities ?? {})
+    .filter((facility) => LNG_FACILITY_TYPES.has(facility?.facilityType))
+    .length;
 }
 
 /**

@@ -3,6 +3,8 @@ title: "Five-factor country scorecard"
 description: "A plain-English guide to World Monitor's 1-5 food, energy, demographics, technology, and defense capability scores — how to read them, how they are built, and where the numbers come from."
 ---
 
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
 ## Start here
 
 The five-factor scorecard asks five blunt questions about a country, and answers
@@ -235,8 +237,8 @@ conversion table before anything is aggregated.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
-| Calorie production / consumption | 0.55 | higher; `0.50 -> 0`, `1.25 -> 100` | USDA PSD / FAOSTAT food stocks |
-| Calorie ending stocks / total use | 0.25 | higher; `0.05 -> 0`, `0.25 -> 100` | USDA PSD / FAOSTAT food stocks |
+| Calorie production / consumption | 0.55 | higher; `0.50 -> 0`, `1.25 -> 100` | USDA PSD / FAOSTAT Food Balances |
+| Calorie ending stocks / total use | 0.25 | higher; `0.05 -> 0`, `0.25 -> 100` | USDA PSD |
 | Water security | 0.15 | lower stress; `100 -> 0`, `10 -> 100` | World Bank AQUASTAT static evidence |
 | Import partner diversity proxy | 0.05 | lower HHI; `0.65 -> 0`, `0.15 -> 100` | UN Comtrade import HHI |
 

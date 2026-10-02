@@ -63,7 +63,7 @@ export const listClimateDisasters: ClimateServiceHandler['listClimateDisasters']
   req: ListClimateDisastersRequest,
 ): Promise<ListClimateDisastersResponse> => {
   try {
-    const limit = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const limit = clampInt(req.pageSize || DEFAULT_LIMIT, DEFAULT_LIMIT, 1, MAX_LIMIT);
     const offset = parseCursor(req.cursor);
     const result = await getCachedJson(SEED_CACHE_KEY, true) as { disasters?: unknown[] } | null;
     if (!result || !Array.isArray(result.disasters)) {

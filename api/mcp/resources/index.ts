@@ -49,9 +49,10 @@ import type {
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
-import { resolveDailyLimit } from '../quota';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
   FREE_ACCOUNT_IDLE_GAP_MS,
@@ -60,8 +61,8 @@ import {
   freeAccountLastActivityKey,
   freeAccountRequestsKey,
 } from '../free-account-allowance';
-import { dailyCounterKey } from '../../../server/_shared/pro-mcp-token';
 import { CHOKEPOINT_SLUGS } from './slugs';
+import { READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT } from '../../../shared/free-account-allowance-scripts.mjs';
 
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
@@ -77,7 +78,9 @@ import { CHOKEPOINT_SLUGS } from './slugs';
 const MARKET_FRESHNESS_CHECK = { key: 'seed-meta:market:stocks', maxStaleMin: 30 } as const;
 
 async function readMarketFreshness(): Promise<string> {
-  const meta = await readJsonFromUpstash(MARKET_FRESHNESS_CHECK.key).catch(() => null);
+  // Seeder-owned seed-meta (#7674): the seeder fleet stamps it bare, so the
+  // probe reads raw in every environment.
+  const meta = await readJsonFromUpstash(MARKET_FRESHNESS_CHECK.key, 3_000, true).catch(() => null);
   const { cached_at, stale } = evaluateFreshness([MARKET_FRESHNESS_CHECK], [meta]);
   return JSON.stringify({ cached_at, stale });
 }
@@ -115,13 +118,9 @@ export function isAccountResourceUri(uri: unknown): boolean {
 
 // A pipeline is not a Redis transaction. Read all three free-account keys in
 // one read-only Lua command so the resource cannot expose an impossible
-// snapshot while a concurrent allowance reservation is committing.
-const READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT = `
-local calls = redis.call('GET', KEYS[1])
-local requests = redis.call('GET', KEYS[2])
-local activityPttl = redis.call('PTTL', KEYS[3])
-return {calls or false, requests or false, activityPttl}
-`;
+// snapshot while a concurrent allowance reservation is committing. The script
+// is pinned in shared/free-account-allowance-scripts.mjs (and the redis-rest
+// proxy allowlist) so this read cannot drift into a writer.
 
 function redisInteger(raw: unknown, missingValue?: number): number | null {
   if (raw === null || raw === undefined) return missingValue ?? null;
@@ -149,7 +148,7 @@ export async function buildAccountAllowanceResourceResponse(
   deps: McpHandlerDeps,
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
-  mcpDailyLimit?: number | null,
+  budget?: McpBudget,
   freeAccountAllowance = false,
   nowMs = Date.now(),
 ): Promise<Response> {
@@ -170,7 +169,7 @@ export async function buildAccountAllowanceResourceResponse(
   )).toISOString();
   const limit = freeAccountAllowance
     ? FREE_ACCOUNT_CALLS_PER_DAY
-    : resolveDailyLimit(mcpDailyLimit);
+    : resolveDailyLimit(budget?.limit);
 
   const commands: Array<Array<string | number>> = freeAccountAllowance
     ? [[
@@ -181,11 +180,14 @@ export async function buildAccountAllowanceResourceResponse(
         freeAccountRequestsKey(context.userId, nowMs),
         freeAccountLastActivityKey(context.userId, nowMs),
       ]]
-    : [['GET', dailyCounterKey(context.userId, now)]];
+    : [['GET', budgetCounterKey(budget, context.userId, now)]];
 
   let result: Array<{ result?: unknown; error?: unknown }> | null;
   try {
-    result = await deps.redisPipeline(commands);
+    // The allowance/quota counter keys are already deployment-prefixed by
+    // free-account-allowance.ts / quota.ts — send the commands verbatim
+    // (#7674).
+    result = await deps.redisPipeline(commands, 5_000, true);
   } catch {
     result = null;
   }
@@ -263,6 +265,12 @@ export async function buildAccountAllowanceResourceResponse(
     remaining,
     resetsAt,
     requestWindows,
+    // Whose traffic `used` counts. On an API plan with REST enforcement on,
+    // this budget IS the REST meter, so `used` includes requests the agent
+    // never made and it must not read the number as its own tool history. A
+    // boolean rather than the counter name: the agent can act on "someone else
+    // spends this too", and the Redis key is ours to move.
+    sharedWithRestApi: !freeAccountAllowance && isSharedRestCounter(budget),
   });
   return rpcOk(id, {
     contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }],
@@ -304,7 +312,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
   {
     uriTemplate: 'worldmonitor://chokepoints/{slug}/status',
     name: 'Chokepoint Status',
-    description: 'Maritime chokepoint transit summary: today total / tanker / cargo counts, week-over-week change, risk level, incident count, disruption percentage, and risk narrative. URI param {slug} is one of the hand-curated kebab-case identifiers (suez, strait-of-malacca, strait-of-hormuz, bab-el-mandeb, panama-canal, taiwan-strait, cape-of-good-hope, strait-of-gibraltar, bosphorus, korea-strait, dover-strait, kerch-strait, lombok-strait).',
+    description: 'Maritime chokepoint transit summary: today total / tanker / cargo counts, week-over-week change, risk level, incident count, and disruption percentage. Generated riskSummary and riskReportAction prose is withheld as empty strings; this does not indicate low risk. URI param {slug} is one of the hand-curated kebab-case identifiers (suez, strait-of-malacca, strait-of-hormuz, bab-el-mandeb, panama-canal, taiwan-strait, cape-of-good-hope, strait-of-gibraltar, bosphorus, korea-strait, dover-strait, kerch-strait, lombok-strait).',
     mimeType: 'application/json',
     tool: 'get_chokepoint_status',
     paramExtractor: (uri: string) => {
@@ -482,7 +490,7 @@ export async function buildResourceResponse(
   // Forwarded verbatim to the dispatcher so a template read is capped at the
   // caller's PLAN allowance, exactly like the equivalent tools/call. Dropping
   // it here would reopen the quota asymmetry this path exists to close.
-  mcpDailyLimit?: number | null,
+  budget?: McpBudget,
   freeAccountAllowance?: boolean,
   // Forwarded so a denial raised inside the dispatcher carries the same
   // WWW-Authenticate as the equivalent tools/call (#6716).
@@ -538,7 +546,7 @@ export async function buildResourceResponse(
     innerBody,
     corsHeaders,
     ctx,
-    mcpDailyLimit,
+    budget,
     freeAccountAllowance,
     resourceMetadataUrl,
   );
@@ -610,7 +618,11 @@ export async function buildResourceResponse(
       wrappedText = innerText;
     } else {
       const { seedMetaKey, maxStaleMin } = matched.def.freshnessWrap;
-      const meta = await readJsonFromUpstash(seedMetaKey).catch(() => null);
+      const meta = await readJsonFromUpstash(
+        seedMetaKey,
+        3_000,
+        !isAppOwnedRedisKey(seedMetaKey),
+      ).catch(() => null);
       const { cached_at, stale } = evaluateFreshness(
         [{ key: seedMetaKey, maxStaleMin }],
         [meta],

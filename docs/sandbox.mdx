@@ -35,7 +35,7 @@ curl https://www.worldmonitor.app/sandbox/get-resilience-score.json
 Guarantees:
 
 - **Deterministic** — fixtures are generated from the published OpenAPI examples (`scripts/generate-sandbox-fixtures.mjs`) and only change when the API contract changes. Safe to snapshot in CI.
-- **Schema-valid** — every `response.body` validates against the operation's response schema in [openapi.json](https://worldmonitor.app/openapi.json).
+- **Schema-valid** — every `response.body` validates against the operation's response schema in [openapi.json](https://www.worldmonitor.app/openapi.json).
 - **Clearly synthetic** — every fixture carries `"sandbox": true`. Never treat fixture payloads as live data.
 
 ## 2. Anonymous, quota-free discovery on the live MCP server
@@ -55,7 +55,7 @@ Every data operation in the [REST API](/api-reference) and every MCP data tool i
 
 ## Going live
 
-1. Issue a key at [worldmonitor.app/pro](https://worldmonitor.app/pro) and send it as `X-WorldMonitor-Key: wm_<40-hex>` (or use [OAuth 2.1](/api-oauth) with `scope=mcp`).
+1. Issue a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro) and send it as `X-WorldMonitor-Key: wm_<40-hex>` (or use [OAuth 2.1](/api-oauth) with `scope=mcp`).
 2. Swap the fixture URL for the `productionUrl` from the sandbox index — the envelope shape is identical.
 3. Mind the [rate limits](/usage-rate-limits) and honor `Retry-After` on 429.
 

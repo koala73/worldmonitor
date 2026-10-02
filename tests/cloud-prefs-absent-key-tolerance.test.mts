@@ -23,6 +23,7 @@ import {
 const SOURCE_OWNERSHIP = 'worldmonitor-free-tier-source-ownership';
 const LAYER_OWNERSHIP = 'worldmonitor-free-tier-layer-ownership';
 const FONT_SCALE = 'wm-font-scale';
+const LIVE_MEDIA_IDLE_STOP = 'wm-live-media-idle-stop';
 
 describe('cloud blob absent-key tolerance', () => {
   it('keeps both ownership sidecars when the row predates them', () => {
@@ -98,7 +99,7 @@ describe('cloud blob absent-key tolerance', () => {
     // representation, so preserving omission cannot resurrect cleared state.
     assert.deepEqual(
       [...ABSENCE_TOLERANT_SYNC_KEYS].sort(),
-      [FONT_SCALE, LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
+      [FONT_SCALE, LAYER_OWNERSHIP, LIVE_MEDIA_IDLE_STOP, SOURCE_OWNERSHIP].sort(),
     );
     for (const key of ABSENCE_TOLERANT_SYNC_KEYS) {
       assert.ok(
@@ -122,7 +123,7 @@ describe('cloud blob absent-key tolerance', () => {
     );
     assert.deepEqual(
       notDeletable.sort(),
-      [FONT_SCALE, LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
+      [FONT_SCALE, LAYER_OWNERSHIP, LIVE_MEDIA_IDLE_STOP, SOURCE_OWNERSHIP].sort(),
     );
   });
 });

@@ -28,14 +28,18 @@ import {
 } from '@/components/unified-settings-interactions';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
+import { safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { signOut } from '@/services/clerk';
+import { requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackApiAction } from '@/services/analytics';
 import {
   getEntitlementState,
   getEntitlementVerificationStatus,
+  hasEmbedAccessForAccount,
   hasFeature,
   isEntitled,
   onEntitlementChange,
@@ -51,6 +55,7 @@ import {
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
+import { createEmbedKey, listEmbedKeys, revokeEmbedKey, type EmbedKeyInfo } from '@/services/embed-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
   acknowledgePlanLimitNotice,
@@ -72,6 +77,7 @@ import {
   parseFontScale,
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
+import { declareOverlay } from '@/utils/open-modal';
 
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
@@ -154,6 +160,12 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  // ---- Embeds tab (partner-embed `wme_` keys) ----
+  private embedKeys: EmbedKeyInfo[] = [];
+  private embedKeysLoading = false;
+  private embedKeyCreating = false;
+  private embedKeysError = '';
+  private newlyCreatedEmbedKey: string | null = null;
   private planLimitNotices: ApiPlanLimitNotice[] = [];
   private planLimitNoticesLoading = false;
   private planLimitNoticesError = '';
@@ -173,6 +185,11 @@ export class UnifiedSettings {
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
+  private deletionDialog: HTMLElement | null = null;
+  private deletionFocusTrap: FocusTrap | null = null;
+  private deletionBusy = false;
+  private deletionError = '';
+  private deletionPhraseHandler: (() => void) | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -182,6 +199,7 @@ export class UnifiedSettings {
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(this.overlay, { reload: 'blocking' });
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
@@ -189,11 +207,20 @@ export class UnifiedSettings {
     this.resetPanelDraft();
 
     this.escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape') {
+        if (this.deletionDialog) {
+          e.stopPropagation();
+          if (!this.deletionBusy) this.closeDeletionDialog();
+          return;
+        }
+        this.close();
+      }
     };
 
     this.overlay.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+
+      if (this.deletionDialog) return;
 
       if (target === this.overlay) {
         this.close();
@@ -232,10 +259,15 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
+        return;
+      }
+
+      if (target.closest('[data-delete-account]')) {
+        this.openDeletionDialog();
         return;
       }
 
@@ -259,7 +291,7 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
@@ -397,6 +429,28 @@ export class UnifiedSettings {
         return;
       }
 
+      if (target.closest('.embed-keys-create-btn')) {
+        void this.handleCreateEmbedKey();
+        return;
+      }
+
+      const embedRevokeBtn = target.closest<HTMLElement>('.embed-keys-revoke-btn');
+      if (embedRevokeBtn?.dataset.keyId) {
+        void this.handleRevokeEmbedKey(embedRevokeBtn.dataset.keyId);
+        return;
+      }
+
+      if (target.closest('.embed-keys-copy-btn')) {
+        const key = this.newlyCreatedEmbedKey;
+        if (key) {
+          void navigator.clipboard.writeText(key).then(() => {
+            const btn = this.overlay.querySelector<HTMLElement>('.embed-keys-copy-btn');
+            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
+          });
+        }
+        return;
+      }
+
       const mcpRevokeBtn = target.closest<HTMLElement>('.mcp-clients-revoke-btn');
       if (mcpRevokeBtn?.dataset.tokenId) {
         void this.handleRevokeMcpClient(mcpRevokeBtn.dataset.tokenId);
@@ -487,6 +541,7 @@ export class UnifiedSettings {
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    this.closeDeletionDialog();
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
     this.accountEntitlementRefreshPending = true;
@@ -494,6 +549,11 @@ export class UnifiedSettings {
     this.apiKeysLoading = false;
     this.apiKeysError = '';
     this.newlyCreatedKey = null;
+    this.embedKeys = [];
+    this.embedKeysLoading = false;
+    this.embedKeyCreating = false;
+    this.embedKeysError = '';
+    this.newlyCreatedEmbedKey = null;
     this.planLimitNotices = [];
     this.planLimitNoticesLoading = false;
     this.planLimitNoticesError = '';
@@ -525,9 +585,10 @@ export class UnifiedSettings {
 
   public open(tab?: TabId, replaceOverlayId?: OverlayId): void {
     const requestedTab = tab ?? this.activeTab;
-    this.activeTab = requestedTab === 'mcp-clients' && !hasFeature('mcpAccess')
-      ? 'settings'
-      : requestedTab;
+    const unavailable =
+      (requestedTab === 'mcp-clients' && !hasFeature('mcpAccess')) ||
+      (requestedTab === 'embeds' && !hasEmbedAccessForAccount(getAuthState().user?.role));
+    this.activeTab = unavailable ? 'settings' : requestedTab;
     this.resetPanelDraft();
     // Only on a FRESH session. open() is re-entrant on an overlay that is
     // already up (the deep-dive "Notify me about this country" jump to the
@@ -546,7 +607,7 @@ export class UnifiedSettings {
       if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'settings', close);
       else overlayHistory.open('settings', close);
     }
-    localStorage.setItem('wm-settings-open', '1');
+    safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
     track('settings-open', { tab: tab ?? 'default' });
@@ -567,10 +628,15 @@ export class UnifiedSettings {
       }
 
       const hasMcpClientsTab = this.overlay.querySelector('[data-tab="mcp-clients"]') !== null;
-      if (hasMcpClientsTab !== hasFeature('mcpAccess')) {
+      const hasEmbedsTab = this.overlay.querySelector('[data-tab="embeds"]') !== null;
+      if (
+        hasMcpClientsTab !== hasFeature('mcpAccess') ||
+        hasEmbedsTab !== hasEmbedAccessForAccount(getAuthState().user?.role)
+      ) {
         // Entitlements can legitimately progress from a free/default snapshot
         // to Pro after the account handoff's first non-null emission. Rebuild
-        // the tab shape whenever MCP capability changes in either direction.
+        // the tab shape whenever MCP or embed capability changes in either
+        // direction.
         this.render();
         return;
       }
@@ -581,6 +647,14 @@ export class UnifiedSettings {
         this.attachApiKeysHandlers();
         if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
           void this.loadApiKeys();
+        }
+      }
+      const embedsPanel = this.overlay.querySelector<HTMLElement>('[data-panel-id="embeds"]');
+      if (embedsPanel) {
+        setTrustedHtml(embedsPanel, trustedHtml(this.renderEmbedKeysContent(), "legacy direct innerHTML migration"));
+        this.attachEmbedKeysHandlers();
+        if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
+          void this.loadEmbedKeys();
         }
       }
       this.replaceUpgradeSection();
@@ -621,6 +695,22 @@ export class UnifiedSettings {
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
     if (origin === 'history') this.historyRegistered = false;
+    // An in-flight deletion owns the overlay until it settles. The overlay
+    // click handler and escapeHandler already refuse while deletionBusy is
+    // set; without this guard the mobile back gesture reaches teardownSettings
+    // -> closeDeletionDialog, which clears the latch mid-await and re-permits
+    // a second confirmAccountDeletion against the same account. Re-arm the
+    // history entry the gesture just consumed, matching the unsaved-changes
+    // branch below, so a later back press still closes the overlay. This sits
+    // after the flag is cleared above, because that is what makes the
+    // re-registration condition reachable.
+    if (this.deletionBusy) {
+      if (origin === 'history' && !this.historyRegistered) {
+        this.historyRegistered = true;
+        overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
+      }
+      return;
+    }
     // Unsaved panel changes → confirm before tearing down. The confirm is a
     // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
     // and defers teardown to the user's choice instead of a blocking confirm().
@@ -663,8 +753,9 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     this.resetPanelDraft();
-    localStorage.removeItem('wm-settings-open');
+    safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
@@ -727,6 +818,7 @@ export class UnifiedSettings {
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
@@ -771,6 +863,12 @@ export class UnifiedSettings {
       ? renderNotificationsSettings({ isSignedIn })
       : null;
     const showMcpClientsTab = hasFeature('mcpAccess');
+    // Gated on `embedAccess`, NOT `apiAccess`, for the same reason MCP Clients
+    // is gated on `mcpAccess`: both Pro tiers are `apiAccess: false`, so an
+    // apiAccess gate would hide embed keys from most of the customers who
+    // bought embedding. A tab of its own rather than a section of API Keys so
+    // the two credential classes never look interchangeable.
+    const showEmbedsTab = hasEmbedAccessForAccount(getAuthState().user?.role);
     const availableTabs: TabId[] = [
       'settings',
       ...(isSignedIn ? ['billing' as const] : []),
@@ -778,6 +876,7 @@ export class UnifiedSettings {
       'sources',
       ...(showNotificationsTab ? ['notifications' as const] : []),
       'api-keys',
+      ...(showEmbedsTab ? ['embeds' as const] : []),
       ...(showMcpClientsTab ? ['mcp-clients' as const] : []),
     ];
     this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
@@ -797,6 +896,7 @@ export class UnifiedSettings {
           <button class="${tabClass('sources')}" tabindex="${this.activeTab === 'sources' ? 0 : -1}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" tabindex="${this.activeTab === 'notifications' ? 0 : -1}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
           <button class="${tabClass('api-keys')}" tabindex="${this.activeTab === 'api-keys' ? 0 : -1}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
+          ${showEmbedsTab ? `<button class="${tabClass('embeds')}" tabindex="${this.activeTab === 'embeds' ? 0 : -1}" data-tab="embeds" role="tab" aria-selected="${this.activeTab === 'embeds'}" id="us-tab-embeds" aria-controls="us-tab-panel-embeds">Embeds <span class="panel-pro-badge">PRO</span></button>` : ''}
           ${showMcpClientsTab ? `<button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
@@ -809,6 +909,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
@@ -855,6 +956,11 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
           ${this.renderApiKeysContent()}
         </div>
+        ${showEmbedsTab ? `
+        <div class="unified-settings-tab-panel${this.activeTab === 'embeds' ? ' active' : ''}" data-panel-id="embeds" id="us-tab-panel-embeds" role="tabpanel" aria-labelledby="us-tab-embeds">
+          ${this.renderEmbedKeysContent()}
+        </div>
+        ` : ''}
         ${showMcpClientsTab ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
@@ -892,12 +998,16 @@ export class UnifiedSettings {
     this.updateSourcesCounter();
 
     this.attachApiKeysHandlers();
+    this.attachEmbedKeysHandlers();
     if (loadAccountData) {
       if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
         void this.loadPlanLimitNotices();
       }
       if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
         void this.loadApiKeys();
+      }
+      if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
+        void this.loadEmbedKeys();
       }
       if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
         void this.loadMcpClients();
@@ -940,6 +1050,10 @@ export class UnifiedSettings {
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
       void this.loadApiKeys();
+    }
+
+    if (tab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
+      void this.loadEmbedKeys();
     }
 
     if (tab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
@@ -1104,6 +1218,153 @@ export class UnifiedSettings {
     `;
   }
 
+  private renderAccountDeletionSection(): string {
+    return `
+      <section class="account-deletion-zone" data-account-deletion>
+        <h3 class="account-deletion-title">Delete account</h3>
+        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
+        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+      </section>
+    `;
+  }
+
+  private syncDeletionConfirmEnabled(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    const confirm = overlay.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
+    if (!input || !confirm) return;
+    confirm.disabled = this.deletionBusy || input.value.trim() !== 'DELETE';
+    input.disabled = this.deletionBusy;
+    const error = overlay.querySelector('[data-deletion-error]');
+    if (error) error.textContent = this.deletionError;
+  }
+
+  private openDeletionDialog(): void {
+    if (this.deletionDialog || this.deletionBusy) return;
+    this.deletionError = '';
+    const overlay = document.createElement('div');
+    this.deletionDialog = overlay;
+    overlay.className = 'account-deletion-dialog-overlay active';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
+    overlay.setAttribute('aria-labelledby', 'account-deletion-dialog-title');
+    setTrustedHtml(
+      overlay,
+      trustedHtml(
+        `
+      <div class="account-deletion-dialog">
+        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
+        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
+        <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
+        <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
+        <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
+        <div class="account-deletion-dialog-actions">
+          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>Cancel</button>
+          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>Delete account</button>
+        </div>
+      </div>
+    `,
+        'account deletion confirm dialog; static copy only',
+      ),
+    );
+    overlay.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target === overlay || target.closest('[data-deletion-cancel]')) {
+        if (!this.deletionBusy) this.closeDeletionDialog();
+        return;
+      }
+      if (target.closest('[data-deletion-confirm]')) {
+        void this.confirmAccountDeletion();
+      }
+    });
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    this.deletionPhraseHandler = () => this.syncDeletionConfirmEnabled();
+    input?.addEventListener('input', this.deletionPhraseHandler);
+    document.body.appendChild(overlay);
+    this.syncDeletionConfirmEnabled();
+    // aria-modal is a promise to the keyboard: without a trap, Tab walks out
+    // of a destructive-action dialog into the settings modal behind it, which
+    // is still interactive. Escape stays with escapeHandler (no onEscape here)
+    // so an in-flight deletion still cannot be dismissed.
+    this.deletionFocusTrap = createFocusTrap(overlay, { initialFocus: () => input });
+    this.deletionFocusTrap.activate();
+  }
+
+  private closeDeletionDialog(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (input && this.deletionPhraseHandler) {
+      input.removeEventListener('input', this.deletionPhraseHandler);
+    }
+    this.deletionPhraseHandler = null;
+    // Deactivate before the node leaves the document so the trap can hand
+    // focus back to the [data-delete-account] button that opened it.
+    this.deletionFocusTrap?.deactivate();
+    this.deletionFocusTrap = null;
+    overlay.remove();
+    this.deletionDialog = null;
+    this.deletionBusy = false;
+    this.deletionError = '';
+  }
+
+  private async confirmAccountDeletion(): Promise<void> {
+    const overlay = this.deletionDialog;
+    const input = overlay?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (!overlay || !input || input.value.trim() !== 'DELETE' || this.deletionBusy) return;
+    this.deletionBusy = true;
+    this.deletionError = '';
+    this.syncDeletionConfirmEnabled();
+    try {
+      await requestOwnAccountDeletion();
+      this.closeDeletionDialog();
+      // Tear down directly rather than via close(): the account is gone, so an
+      // unsaved draft in another panel has nothing to be saved to, and close()
+      // would stop to ask "discard changes?" for it while signOut() proceeds.
+      this.teardownSettings('control');
+      await signOut();
+      showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
+      if (message.includes('Account changed')) {
+        // Only speak if this attempt still owns the dialog. When the account
+        // switch already tore it down, the user has moved on and a late
+        // "Account changed... Try again." is about a request they no longer
+        // remember starting.
+        const stillOurs = this.deletionDialog === overlay;
+        this.closeDeletionDialog();
+        if (stillOurs) showToast(message);
+        return;
+      }
+      // The dialog is the only place the error text renders, and an account
+      // switch can tear it down mid-await. Without this fallback the failure
+      // is written into a detached overlay and the user is told nothing.
+      if (!this.deletionDialog) {
+        showToast(message);
+        return;
+      }
+      // The server is still working when the poll gives up — its external
+      // retry ladder outlasts the client timeout by design. Clearing the
+      // phrase leaves Confirm disabled so the reflex second submission is not
+      // one click away, while still releasing the busy latch so the dialog can
+      // be dismissed; re-submitting takes a deliberate re-type.
+      if (message.includes('still running')) {
+        this.deletionBusy = false;
+        this.deletionError = message;
+        const phrase = this.deletionDialog
+          ?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+        if (phrase) phrase.value = '';
+        this.syncDeletionConfirmEnabled();
+        return;
+      }
+      this.deletionBusy = false;
+      this.deletionError = message;
+      this.syncDeletionConfirmEnabled();
+    }
+  }
+
   // Business Pro seats (#4634/#4635) state/render/handlers live in
   // BusinessSeatsSection — see this.businessSeatsSection.
 
@@ -1124,7 +1385,7 @@ export class UnifiedSettings {
         }
         if (result.outcome === 'no-customer') {
           showToast(
-            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            'Billing portal unavailable. Email support@worldmonitor.app for help.',
           );
         }
       });
@@ -1605,7 +1866,7 @@ export class UnifiedSettings {
           return;
         }
         if (result.outcome === 'no-customer') {
-          showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+          showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
         }
       });
       return;
@@ -1629,7 +1890,7 @@ export class UnifiedSettings {
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+            showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
           }
         });
         return;
@@ -1880,6 +2141,233 @@ export class UnifiedSettings {
   }
 
   // ---------------------------------------------------------------------------
+  // Embeds tab — partner-embed keys (`wme_…`)
+  //
+  // Gated on `embedAccess`, never `apiAccess`: both Pro tiers sell embedding
+  // without REST access, and the API Keys tab above would hide embed keys from
+  // exactly the customers this feature exists for. Same split, same reason as
+  // the MCP Clients tab below.
+  //
+  // A separate tab rather than a second list inside API Keys, because the two
+  // credentials have opposite handling rules and must never read as
+  // interchangeable: an embed key is MEANT to be published in the partner's
+  // page HTML; a `wm_` key there hands over the account's whole REST allowance.
+  // ---------------------------------------------------------------------------
+
+  private attachEmbedKeysHandlers(): void {
+    const input = this.overlay.querySelector<HTMLInputElement>('.embed-keys-name-input');
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void this.handleCreateEmbedKey();
+    });
+  }
+
+  private renderEmbedKeysContent(): string {
+    const authState = getAuthState();
+
+    if (!authState.user) {
+      const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${lockIcon}</div>
+          <div class="panel-locked-desc">Sign in to manage embed keys</div>
+        </div>`;
+    }
+
+    if (!hasEmbedAccessForAccount(authState.user?.role)) {
+      // Defensive — the tab is hidden entirely without embedAccess, so this
+      // only shows if the subscription lapsed while the modal was open.
+      const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${upgradeIcon}</div>
+          <div class="panel-locked-desc">Put World Monitor panels on your own site with a scoped embed key.</div>
+        </div>`;
+    }
+
+    return `
+      <div class="embed-keys-section">
+        <div class="embed-keys-header">
+          <p class="embed-keys-desc">Embed keys authorise World Monitor panels on your site and nothing else, and each one is shown once at creation. Paste it into the <code>data-key</code> attribute of the <a class="embed-keys-docs-link" ${LEGAL_LINK_ATTR} href="${escapeHtml(`${WEB_APP_ORIGIN}/docs/embed-live-map`)}" target="_blank" rel="noopener noreferrer">embed loader</a>.</p>
+        </div>
+        <div class="embed-keys-note">
+          <strong>These are meant to be public.</strong> An embed key sits in your page's HTML where anyone can read it — that is the point, and it is why it exists as its own credential. Never put an API key (<code>wm_…</code>) there instead: that one carries your whole REST allowance. New reads with a revoked key are denied within about a minute. Already rendered paid-only panels remain visible until reload. A live map already showing its paid tier holds a session grant for up to 30 more minutes, then drops to the free tier.
+        </div>
+        <div class="embed-keys-create-form">
+          <input type="text" class="embed-keys-name-input" placeholder="Key name (e.g. marketing-site)" aria-label="Embed key name" maxlength="64" />
+          <button class="btn btn-primary embed-keys-create-btn" ${this.embedKeyCreating ? 'disabled' : ''}>${this.embedKeyCreating ? 'Creating...' : 'Create Embed Key'}</button>
+        </div>
+        <div class="embed-keys-created-banner" id="usEmbedKeysBanner" style="display:none;"></div>
+        <div class="embed-keys-error" id="usEmbedKeysError" style="display:none;"></div>
+        <div class="embed-keys-list" id="usEmbedKeysList">
+          <div class="embed-keys-loading">Loading...</div>
+        </div>
+      </div>`;
+  }
+
+  private async loadEmbedKeys(): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request || this.embedKeysLoading) return;
+    this.embedKeysLoading = true;
+    this.embedKeysError = '';
+    this.renderEmbedKeysList();
+
+    try {
+      const keys = await listEmbedKeys();
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.embedKeys = keys;
+    } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.embedKeysError = err instanceof Error ? err.message : 'Failed to load embed keys';
+    } finally {
+      if (this.isAccountRequestCurrent(request)) {
+        this.embedKeysLoading = false;
+        this.renderEmbedKeysList();
+      }
+    }
+  }
+
+  private async handleCreateEmbedKey(): Promise<void> {
+    if (this.embedKeyCreating) return;
+    const input = this.overlay.querySelector<HTMLInputElement>('.embed-keys-name-input');
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.embed-keys-create-btn');
+    const name = input?.value.trim();
+    if (!name || !input || !btn) return;
+    const request = this.captureAccountRequest();
+    if (!request) return;
+
+    this.embedKeyCreating = true;
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    this.embedKeysError = '';
+    this.newlyCreatedEmbedKey = null;
+    this.hideEmbedKeysBanner();
+
+    try {
+      const result = await createEmbedKey(name);
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.newlyCreatedEmbedKey = result.key;
+      const currentInput = this.overlay.querySelector<HTMLInputElement>('.embed-keys-name-input');
+      if (currentInput) currentInput.value = '';
+      this.showEmbedKeysCreatedBanner(result.key);
+      await this.loadEmbedKeys();
+    } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
+      const msg = err instanceof Error ? err.message : 'Failed to create embed key';
+      this.embedKeysError = msg.includes('KEY_LIMIT_REACHED')
+        ? 'Maximum of 5 active embed keys reached. Revoke an existing key first.'
+        : msg.includes('EMBED_ACCESS_REQUIRED')
+        ? 'Embed keys require an active paid plan.'
+        : msg;
+      this.renderEmbedKeysError();
+    } finally {
+      if (this.isAccountRequestCurrent(request)) {
+        this.embedKeyCreating = false;
+        const currentBtn = this.overlay.querySelector<HTMLButtonElement>('.embed-keys-create-btn');
+        if (currentBtn) {
+          currentBtn.disabled = false;
+          currentBtn.textContent = 'Create Embed Key';
+        }
+      }
+    }
+  }
+
+  private async handleRevokeEmbedKey(keyId: string): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
+    const keyInfo = this.embedKeys.find(k => k.id === keyId);
+    const keyName = keyInfo?.name ?? 'this key';
+    if (!confirm(`Revoke "${keyName}"? This cannot be undone. New reads with this key will be denied within about a minute. Already rendered paid-only panels remain visible until reload. A live map can retain its paid tier for up to 30 more minutes.`)) return;
+
+    try {
+      await revokeEmbedKey(keyId);
+      if (!this.isAccountRequestCurrent(request)) return;
+      await this.loadEmbedKeys();
+    } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.embedKeysError = err instanceof Error ? err.message : 'Failed to revoke embed key';
+      this.renderEmbedKeysError();
+    }
+  }
+
+  private showEmbedKeysCreatedBanner(key: string): void {
+    const banner = this.overlay.querySelector<HTMLElement>('#usEmbedKeysBanner');
+    if (!banner) return;
+
+    banner.style.display = 'block';
+    setTrustedHtml(banner, trustedHtml(`
+      <div class="embed-keys-banner-title">Embed key created — copy it now, it won't be shown again</div>
+      <div class="embed-keys-banner-key">
+        <code class="embed-keys-key-value">${escapeHtml(key)}</code>
+        <button class="btn btn-secondary embed-keys-copy-btn">Copy</button>
+      </div>
+    `, "legacy direct innerHTML migration"));
+  }
+
+  private hideEmbedKeysBanner(): void {
+    const banner = this.overlay.querySelector<HTMLElement>('#usEmbedKeysBanner');
+    if (banner) {
+      banner.style.display = 'none';
+      setTrustedHtml(banner, trustedHtml('', "legacy direct innerHTML migration"));
+    }
+  }
+
+  private renderEmbedKeysError(): void {
+    const el = this.overlay.querySelector<HTMLElement>('#usEmbedKeysError');
+    if (!el) return;
+    if (this.embedKeysError) {
+      el.style.display = 'block';
+      el.textContent = this.embedKeysError;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }
+
+  private renderEmbedKeysList(): void {
+    const container = this.overlay.querySelector('#usEmbedKeysList');
+    if (!container) return;
+
+    if (this.embedKeysLoading && this.embedKeys.length === 0) {
+      setTrustedHtml(container, trustedHtml('<div class="embed-keys-loading">Loading...</div>', "legacy direct innerHTML migration"));
+      return;
+    }
+
+    this.renderEmbedKeysError();
+
+    const active = this.embedKeys.filter(k => !k.revokedAt);
+    const revoked = this.embedKeys.filter(k => k.revokedAt);
+
+    if (active.length === 0 && revoked.length === 0) {
+      setTrustedHtml(container, trustedHtml('<div class="embed-keys-empty">No embed keys yet. Create one above, then paste it into the loader snippet from the Embed button on the map.</div>', "legacy direct innerHTML migration"));
+      return;
+    }
+
+    const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+    const renderKey = (k: EmbedKeyInfo) => {
+      const isRevoked = !!k.revokedAt;
+      return `
+        <div class="embed-keys-item${isRevoked ? ' revoked' : ''}">
+          <div class="embed-keys-item-main">
+            <span class="embed-keys-item-name">${escapeHtml(k.name)}</span>
+            <code class="embed-keys-item-prefix">${escapeHtml(k.keyPrefix)}${'*'.repeat(8)}</code>
+          </div>
+          <div class="embed-keys-item-meta">
+            <span>Created ${formatDate(k.createdAt)}</span>
+            ${k.lastUsedAt ? `<span>Last used ${formatDate(k.lastUsedAt)}</span>` : ''}
+            ${isRevoked ? `<span class="embed-keys-item-revoked-badge">Revoked ${formatDate(k.revokedAt!)}</span>` : ''}
+          </div>
+          ${!isRevoked ? `<button class="btn btn-ghost embed-keys-revoke-btn" data-key-id="${escapeHtml(k.id)}">Revoke</button>` : ''}
+        </div>
+      `;
+    };
+
+    setTrustedHtml(container, trustedHtml(active.map(renderKey).join('')
+      + (revoked.length > 0 ? `<div class="embed-keys-revoked-section"><div class="embed-keys-revoked-label">Revoked</div>${revoked.map(renderKey).join('')}</div>` : ''), "legacy direct innerHTML migration"));
+  }
+
+  // ---------------------------------------------------------------------------
   // Connected MCP clients tab (plan 2026-05-10-001 U9)
   //
   // Distinct from the API Keys tab above (gated on `apiAccess`). This tab is
@@ -2069,7 +2557,7 @@ export class UnifiedSettings {
     const revoked = this.mcpClients.filter(c => c.revokedAt);
 
     if (active.length === 0 && revoked.length === 0) {
-      const mcpUrl = 'https://api.worldmonitor.app/mcp';
+      const mcpUrl = 'https://worldmonitor.app/mcp';
       setTrustedHtml(container, trustedHtml(`
         <div class="mcp-clients-empty">
           <div class="mcp-clients-empty-title">No connected MCP clients yet</div>

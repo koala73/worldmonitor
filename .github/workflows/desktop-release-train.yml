@@ -41,7 +41,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
@@ -83,8 +83,45 @@ jobs:
             "$RESOLUTION" >> "$GITHUB_OUTPUT"
           echo "Resolved package $VERSION against ${LATEST_TAG:-no published release}."
 
-      - name: Create or verify release tag
+      - name: Require release configuration
         if: steps.release.outputs.action == 'release'
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        shell: bash
+        run: |
+          MISSING=""
+          for k in VITE_CLERK_PUBLISHABLE_KEY VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+            [ -n "${!k}" ] || MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Desktop release configuration is missing:$MISSING. Configure the repository secrets before release preparation."
+            exit 1
+          fi
+
+      - name: Check for an active desktop build
+        id: active
+        if: steps.release.outputs.action == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNNING=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-desktop.yml/runs?per_page=100" --paginate --slurp |
+            jq -er --arg tag "$TAG" 'if type == "array" and length > 0 and all(.[]; (.workflow_runs | type) == "array")
+              then any(.[].workflow_runs[]; .status != "completed" and
+                (.head_branch == $tag or .display_title == ("Build Desktop App (" + $tag + ")"))) | tostring
+              else error("Incomplete desktop workflow-run response") end')
+          echo "running=$RUNNING" >> "$GITHUB_OUTPUT"
+          if [ "$RUNNING" = "true" ]; then
+            echo "::notice::Desktop build for $TAG is already active; no new build will be dispatched."
+          fi
+
+      - name: Create or verify release tag
+        if: steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'
         env:
           TAG: ${{ steps.release.outputs.tag }}
           TARGET_VERSION: ${{ steps.release.outputs.package_version }}
@@ -116,17 +153,21 @@ jobs:
           echo "Created release tag $TAG at $RELEASE_SHA."
 
       - name: Dispatch desktop build
-        if: steps.release.outputs.action == 'release'
+        # Existing tags can contain an older dispatch schema. The current
+        # workflow checks out TAG explicitly for validation, builds and notes.
+        if: steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
+          WORKFLOW_REF: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
           gh workflow run build-desktop.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$TAG" \
-            -f draft=false
+            --ref "$WORKFLOW_REF" \
+            -f draft=false \
+            -f release_tag="$TAG"
           echo "::notice::Dispatched Build Desktop App for $TAG."
 
       - name: Report no pending release

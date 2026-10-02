@@ -14,11 +14,9 @@
  *      avoid collision with unrelated query strings and to make the origin
  *      intent-explicit. NO PRODUCER REMAINS: #7222 deleted /pro's
  *      `initOverlay` and `DASHBOARD_CHECKOUT_SUCCESS_URL`, and the
- *      dashboard's own `openCheckout` is dormant with zero callers. The
- *      acceptor below is retained only for the dormant dashboard overlay —
- *      retire it together with that machinery, or an attacker-supplied link
- *      stays the only way to reach it. It grants no entitlement (Convex
- *      stays authoritative); the effect is UX/analytics only.
+ *      dashboard overlay has also been removed. The legacy acceptor grants
+ *      no entitlement (Convex stays authoritative); its effect is UX/analytics
+ *      only. Hosted checkout does not produce this marker.
  *   4. Dashboard full-page return bridge: `?wm_checkout=return` — set
  *      as the merchant return URL for Dodo sessions so 3DS returns land
  *      on the dashboard route instead of `/`, which is now the public

@@ -35,6 +35,14 @@ function constNumber(path: string, name: string): number {
   return evalNumberExpression(match[1]);
 }
 
+function refreshIntervalMinutes(name: string): number {
+  const block = readSource('src/config/variants/base.ts').match(/export const REFRESH_INTERVALS = \{([\s\S]*?)\n\};/);
+  assert.ok(block, 'src/config/variants/base.ts must define REFRESH_INTERVALS');
+  const match = block[1].match(new RegExp(`\\n\\s*${name}:\\s*([^,\\n]+),`));
+  assert.ok(match, `REFRESH_INTERVALS must define ${name}`);
+  return evalNumberExpression(match[1]) / 60_000;
+}
+
 function relayConstMinutes(name: string): number {
   const match = relaySource.match(new RegExp(`const\\s+${name}\\s*=\\s*([^;\\n]+);`));
   assert.ok(match, `scripts/ais-relay.cjs must define ${name}`);
@@ -215,11 +223,12 @@ describe('layer explanation metadata', () => {
       assertDuration(text, /refresh\s+every\s+([0-9]+)\s+(minute)s?/i, relayConstMinutes('TRANSIT_SUMMARY_INTERVAL_MS'), `${layer} transit-summary cadence`);
     }
 
+    // Hotspot levels are recomputed from the dashboard news, which reloads on the feeds refresh loop.
     assertDuration(
       renderedFreshnessText('hotspots'),
-      /around\s+([0-9]+)\s+(minute)s?/i,
-      constNumber('src/services/live-news.ts', 'CACHE_TTL') / 60_000,
-      'hotspot live-news RSS cache',
+      /around\s+([0-9]+)\s+(minute)s?\s+apart/i,
+      refreshIntervalMinutes('feeds'),
+      'hotspot news refresh cadence',
     );
   });
 

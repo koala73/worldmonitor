@@ -1,11 +1,18 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
+import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
 import { RPC_TOOLS } from './rpc-tools';
+import { COUNTRY_VIEW_TOOLS } from './country-view';
+import { NEWS_DASHBOARD_TOOLS } from './news-dashboard';
 import { SOURCE_TOOLS } from './source-tools';
+import { MACRO_TOOLS } from './macro-tools';
+import { STOCK_TOOLS } from './stock-tools';
+import { COST_SHOCK_TOOLS } from './cost-shock-tools';
+import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
@@ -13,7 +20,7 @@ import { SOURCE_TOOLS } from './source-tools';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS];
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
 );
@@ -23,8 +30,33 @@ export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
   return tool.name === 'describe_tool';
 }
 
+/**
+ * What one `tools/call` COSTS, in REST-request units.
+ *
+ * Whether that cost is charged is `reserveQuota`'s call: only an `api`
+ * allowance pays the weight, because only there is an MCP call meant to be
+ * comparable to a REST request. A dedicated MCP allowance charges one unit per
+ * call regardless of what this returns.
+ *
+ * A cache tool answers from the Upstash bootstrap cache and costs what a REST
+ * request costs, so it charges 1. A tool with `_execute` fetches downstream
+ * through the gateway, which `server/gateway.ts` deliberately exempts from the
+ * per-account meter for internal-MCP callers — so the edge has to charge that
+ * work here or it goes unbilled entirely.
+ *
+ * Most execution tools make one downstream call. Per-tool overrides cover
+ * the maximum fan-out of country briefs (two) and airspace (four when split
+ * at the dateline). The weight is fixed before execution, including when a
+ * request selects fewer sources or needs only one longitude interval.
+ */
+export function toolWeight(tool: ToolDef): number {
+  if (tool._weight !== undefined) return tool._weight;
+  return tool._execute === undefined ? 1 : 2;
+}
+
 /** Single access classifier used by tools/list, describe_tool, and resources. */
 export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._subscriptionOnly) return 'subscription';
   if (tool._freeTier === true) return 'free';
   // Local metadata escape hatch: authenticated free accounts may call it and
   // dispatch exempts it from both the allowance and Pro daily quota.
@@ -96,9 +128,12 @@ export function buildPublicTool(
   if (isCacheTool) {
     clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
   }
-  if (tool._jmespathDisabled !== true) {
-    clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
-  }
+  // Universal, with no roster: a licence-bearing tool declares `_attribution`
+  // instead, and the dispatcher re-attaches its sources to every projection
+  // (shared/attribution-rider.ts). Nothing here is allowed to gate it, because
+  // a tool advertising no `jmespath` is exactly the state that made the old
+  // roster's gaps invisible.
+  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
@@ -106,6 +141,7 @@ export function buildPublicTool(
 
   const publicTool: PublicToolShape = {
     name: tool.name,
+    ...(tool.title ? { title: tool.title } : {}),
     description,
     inputSchema: {
       type: tool.inputSchema.type,
@@ -115,13 +151,17 @@ export function buildPublicTool(
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.
-    outputSchema: structuredClone(tool.outputSchema),
+    // Advertised as `anyOf [documented shape, projection / soft-envelope
+    // shapes]` so the `structuredContent` every call returns validates in a
+    // strict client whatever the response kind (api/mcp/structured-content.ts).
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema)),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
     annotations: structuredClone(tool.annotations),
     _meta: {
       'worldmonitor/access': toolAccess(tool),
+      'worldmonitor/weight': toolWeight(tool),
     },
   };
 
@@ -134,6 +174,9 @@ export function buildPublicTool(
   if (tool._uiResourceUri) {
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    if (tool._openaiEntrypoints) {
+      publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
+    }
   }
 
   return publicTool;

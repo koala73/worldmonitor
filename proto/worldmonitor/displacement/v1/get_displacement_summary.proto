@@ -8,8 +8,14 @@ import "worldmonitor/displacement/v1/displacement.proto";
 
 // GetDisplacementSummaryRequest specifies parameters for retrieving displacement data.
 message GetDisplacementSummaryRequest {
-  // Data year to retrieve (e.g., 2023). Uses latest available if zero.
-  int32 year = 1 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "year" }];
+  // Data year: 1951 through the current year. Zero returns the latest seeded data.
+  // An explicit year is available only if it matches the published snapshot.
+  int32 year = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1951,
+    (buf.validate.field).int32.lte = 9999,
+    (sebuf.http.query) = { name: "year" }
+  ];
   // Maximum number of country entries to return.
   int32 country_limit = 2 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "country_limit" }];
   // Maximum number of displacement flows to return.
@@ -21,12 +27,12 @@ message GetDisplacementSummaryResponse {
   // The displacement summary.
   DisplacementSummary summary = 1;
 
-  // Time the seed or live fallback snapshot was fetched, as Unix epoch
+  // Time the seed snapshot was fetched, as Unix epoch
   // milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
   // that global displacement is zero.
   int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 
-  // True when summary came from a seed snapshot or live fallback. False means
+  // True when summary came from the requested seed snapshot. False means
   // an absent/empty summary is graceful degradation because the snapshot is
   // unavailable.
   bool data_available = 3;

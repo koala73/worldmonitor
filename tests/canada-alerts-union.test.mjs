@@ -268,3 +268,25 @@ test('defaults union metadata writes to the non-throwing seed-meta helper', () =
   assert.match(UNION_SOURCE, /writeMeta = writeFreshnessMetadataSafely/);
   assert.match(UNION_SOURCE, /import \{[\s\S]*writeFreshnessMetadataSafely[\s\S]*\} from '\.\.\/_seed-utils\.mjs'/);
 });
+
+test('retention removes expired alerts and applies current source updates within the union cap', async () => {
+  const existing = { alerts: Array.from({ length: 200 }, (_, index) => ({
+    ...ab, id: `ab-${index}`, expires: index === 0 ? new Date(NOW - 1).toISOString() : '',
+  })) };
+  const current = [{ ...sk, id: 'new-1', severity: 'Extreme' }, { ...sk, id: 'new-2', severity: 'Extreme' }];
+  const writes = [];
+  const result = await rebuildCanadaAlertsUnion({
+    nowMs: NOW,
+    currentSource: { province: 'SK', snapshot: { alerts: current } },
+    readSnapshot: async key => key === CANADA_ALERTS_KEY ? existing : null,
+    writeKey: async (...args) => writes.push(args),
+    writeMeta: async () => {},
+    extendTtl: async () => { throw new Error('changed union must be rewritten'); },
+  });
+  assert.equal(result.alerts.length, 200);
+  assert.deepEqual(result.alerts.slice(0, 2), current);
+  assert.equal(result.alerts.some(alert => alert.id === 'ab-0'), false);
+  assert.equal(writes[0][2], 5400);
+  assert.equal(writes[0][3].recordCount, 200);
+  assert.equal(writes[0][3].state, 'ERROR');
+});

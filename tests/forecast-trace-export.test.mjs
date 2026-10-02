@@ -16,6 +16,7 @@ import {
   getMacroRegion,
   attachSituationContext,
   projectSituationClusters,
+  computeSituationSimilarity,
   refreshPublishedNarratives,
   selectPublishedForecastPool,
   deriveStateDrivenForecasts,
@@ -4841,6 +4842,72 @@ describe('forecast replay lifecycle helpers', () => {
     assert.ok(sortedByPriority[0].label === 'Red Sea maritime disruption state', 'highest-priority unit keeps clean label');
     assert.ok(sortedByPriority[1].label !== 'Red Sea maritime disruption state', 'collision unit gets disambiguated label');
     assert.ok(sortedByPriority[1].label.startsWith('Red Sea maritime disruption state'), 'disambiguated label keeps base');
+  });
+
+  it('retains every situation member through context attachment and projection', () => {
+    const predictions = Array.from({ length: 20 }, (_, i) => makePrediction(
+      'cyber', 'United States', `Cyber threat concentration ${i}`, 0.5, 0.6, '7d',
+      [{ type: 'cyber', value: 'Concentrated cyber activity', weight: 0.4 }],
+    ));
+    const ids = predictions.map(pred => pred.id).sort();
+    for (const input of [predictions, [...predictions].reverse()]) {
+      const clusters = attachSituationContext(input);
+      assert.equal(clusters.length, 1);
+      assert.equal(clusters[0].forecastCount, 20);
+      assert.deepEqual([...clusters[0].forecastIds].sort(), ids);
+      assert.equal(input.filter(pred => pred.situationContext?.id === clusters[0].id).length, 20);
+      const projected = projectSituationClusters(clusters, input);
+      assert.deepEqual([...projected[0].forecastIds].sort(), ids);
+    }
+  });
+
+  it('retains complete state membership beyond the former 16-ID sample', () => {
+    const ids = Array.from({ length: 31 }, (_, i) => `fc-cyber-${String(i).padStart(3, '0')}`);
+    const cluster = {
+      id: 'sit-cyber-membership', label: 'United States cyber situation',
+      dominantRegion: 'United States', dominantDomain: 'cyber',
+      regions: ['United States'], domains: ['cyber'], actors: ['National CERT teams'],
+      branchKinds: ['base'], forecastIds: ids, forecastCount: ids.length,
+      avgProbability: 0.5, avgConfidence: 0.6,
+      topSignals: [{ type: 'cyber', count: ids.length }], sampleTitles: ['Cyber concentration'],
+    };
+    const units = buildCanonicalStateUnits([cluster], []);
+    assert.equal(units.length, 1);
+    assert.equal(units[0].forecastCount, 31);
+    assert.deepEqual(units[0].forecastIds, ids);
+  });
+
+  it('caps shared forecast-id similarity so complete membership cannot outweigh region and actor evidence', () => {
+    const ids = count => Array.from({ length: count }, (_, i) => `fc-cyber-${String(i).padStart(3, '0')}`);
+    const current = { regions: ['United States'], actors: ['National CERT teams'], domains: [], branchKinds: [], forecastIds: ids(31) };
+    const idsOnly = count => ({ regions: [], actors: [], domains: [], branchKinds: [], forecastIds: ids(count) });
+    assert.equal(computeSituationSimilarity(current, idsOnly(8)), 4, 'eight shared ids still clear the continuity threshold alone');
+    assert.equal(computeSituationSimilarity(current, idsOnly(31)), 4, 'ids beyond eight add nothing');
+    const regionAndActor = { regions: ['United States'], actors: ['National CERT teams'], domains: [], branchKinds: [], forecastIds: [] };
+    assert.ok(computeSituationSimilarity(current, regionAndActor) > computeSituationSimilarity(current, idsOnly(31)));
+  });
+
+  it('carries every forecast through actor and simulation membership to trace context', () => {
+    const predictions = Array.from({ length: 20 }, (_, index) => {
+      const pred = makePrediction('cyber', 'United States', `Cyber concentration ${index}`, 0.5, 0.6, '7d', [
+        { type: 'cyber', value: 'Concentrated cyber activity', weight: 0.4 },
+      ]);
+      buildForecastCase(pred);
+      return pred;
+    });
+    const ids = predictions.map(pred => pred.id).sort();
+    const artifacts = buildForecastTraceArtifacts({ predictions });
+    assert.ok(artifacts.worldState.actorRegistry.length > 0);
+    for (const actor of artifacts.worldState.actorRegistry) {
+      assert.deepEqual([...actor.forecastIds].sort(), ids);
+    }
+    assert.equal(artifacts.worldState.simulationState.situationSimulations.length, 1);
+    assert.deepEqual([...artifacts.worldState.simulationState.situationSimulations[0].forecastIds].sort(), ids);
+    assert.equal(artifacts.forecasts.length, 20);
+    for (const forecast of artifacts.forecasts) {
+      assert.equal(forecast.payload.caseFile.worldState.stateId, artifacts.worldState.stateUnits[0].id);
+      assert.ok(forecast.payload.caseFile.worldState.simulationSummary, forecast.payload.id);
+    }
   });
 
   it('flags invalid deep snapshots with unresolved selected state ids and duplicate labels', () => {

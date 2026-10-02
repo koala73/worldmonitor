@@ -1,0 +1,281 @@
+import { strict as assert } from 'node:assert';
+import { beforeEach, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import {
+  hasCompleteWorldwideWildfireCoverage,
+  mergeWildfireSourcesWithBc,
+} from '../scripts/wildfire/bc-fire-points.mjs';
+
+import {
+  fetchAllFirmsRegions,
+  fetchFirmsRegionSource,
+  FIRMS_API_BASE_URL,
+  FIRMS_SOURCES,
+  MONITORED_REGIONS,
+} from '../scripts/wildfire/firms-area.mjs';
+
+const EMPTY_CSV = 'latitude,longitude,acq_date,acq_time,bright_ti4,frp,confidence,satellite,daynight\n';
+const DETECTION_CSV = `${EMPTY_CSV}34.1,36.2,2026-09-04,0425,391.2,91.5,h,N,D\n`;
+
+function response(status, body = EMPTY_CSV) {
+  return new Response(body, { status });
+}
+
+function captureLogger() {
+  const messages = { log: [], warn: [], error: [] };
+  return {
+    messages,
+    logger: {
+      log: (message) => messages.log.push(message),
+      warn: (message) => messages.warn.push(message),
+      error: (message) => messages.error.push(message),
+    },
+  };
+}
+
+describe('NASA FIRMS Area API sequence', () => {
+  beforeEach((t) => t.mock.method(Date, 'now', () => Date.parse('2026-09-04T12:00:00Z')));
+  it('recovers complete coverage with one paced retry on the primary host', async () => {
+    const urls = [];
+    const sleeps = [];
+    const { logger, messages } = captureLogger();
+    const failedPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Ukraine}/`;
+    let affectedAttempts = 0;
+    const firms = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async (url) => {
+        urls.push(url);
+        if (new URL(url).pathname.includes(failedPath)) {
+          affectedAttempts++;
+          if (affectedAttempts === 1) throw new TypeError('fetch failed');
+          return response(200, DETECTION_CSV);
+        }
+        return response(200);
+      },
+      sleepFn: async (ms) => sleeps.push(ms),
+      logger,
+    });
+    const merged = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => firms,
+      fetchCwfis: async () => ({ fireDetections: [] }),
+      fetchBcWildfire: async () => ({ fireDetections: [] }),
+    });
+    assert.equal(hasCompleteWorldwideWildfireCoverage(merged), true);
+    assert.equal(firms._firmsFulfilledCalls, 27);
+    assert.equal(firms._firmsFailedCalls, 0);
+    assert.equal(firms.fireDetections.length, 1);
+    assert.deepEqual(urls.slice(0, 2).map((url) => new URL(url).origin), [
+      FIRMS_API_BASE_URL, FIRMS_API_BASE_URL,
+    ]);
+    assert.equal(new Set(urls.slice(0, 2).map((url) => new URL(url).pathname)).size, 1);
+    assert.equal(urls.length, 28);
+    assert.equal(sleeps.length, 28);
+    assert.ok(sleeps.every((ms) => ms === 6_000));
+    assert.equal(messages.error.length, 0);
+    assert.doesNotMatch(messages.warn.join('\n'), /test-map-key/);
+  });
+
+  it('bounds an exhausted run below the seed lock with publication headroom', async (t) => {
+    let attempts = 0;
+    let budgetMs = 0;
+    t.mock.method(AbortSignal, 'timeout', (ms) => {
+      budgetMs += ms;
+      return new AbortController().signal;
+    });
+    const { logger } = captureLogger();
+    const firms = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async () => {
+        attempts++;
+        throw new DOMException('timed out', 'TimeoutError');
+      },
+      sleepFn: async (ms) => { budgetMs += ms; },
+      logger,
+    });
+    assert.equal(attempts, 54);
+    assert.equal(firms._firmsFulfilledCalls, 0);
+    assert.equal(firms._firmsFailedCalls, 27);
+    const source = readFileSync(new URL('../scripts/seed-fire-detections.mjs', import.meta.url), 'utf8');
+    const lockMs = Number(source.match(/lockTtlMs:\s*([\d_]+)/)[1].replaceAll('_', ''));
+    const deadlineMatch = source.match(/fetchPhaseTimeoutMs:\s*([\d_]+)/);
+    assert.ok(deadlineMatch, 'bound outer all-source retries before the seed lock expires');
+    const deadlineMs = Number(deadlineMatch[1].replaceAll('_', ''));
+    assert.ok(deadlineMs >= budgetMs + 5 * 60_000, `${deadlineMs} must cover ${budgetMs} plus fetch headroom`);
+    assert.ok(lockMs >= deadlineMs + 5 * 60_000, 'leave publication and cleanup headroom inside the lock');
+  });
+  it('retries the primary host after a transient HTTP failure', async () => {
+    const urls = [];
+    const sleeps = [];
+    const { logger, messages } = captureLogger();
+    const rows = await fetchFirmsRegionSource(
+      'test-map-key',
+      'Ukraine',
+      MONITORED_REGIONS.Ukraine,
+      FIRMS_SOURCES[0],
+      {
+        fetchFn: async (url) => {
+          urls.push(url);
+          return response(urls.length === 1 ? 500 : 200);
+        },
+        sleepFn: async (milliseconds) => sleeps.push(milliseconds),
+        logger,
+      },
+    );
+
+    assert.deepEqual(rows, []);
+    assert.deepEqual(
+      urls.map((url) => new URL(url).origin),
+      [FIRMS_API_BASE_URL, FIRMS_API_BASE_URL],
+    );
+    assert.equal(new URL(urls[0]).pathname, new URL(urls[1]).pathname);
+    assert.deepEqual(sleeps, [6_000]);
+    assert.match(messages.warn[0], /VIIRS_SNPP_NRT\/Ukraine: primary HTTP 500; trying primary retry/);
+    assert.doesNotMatch(messages.warn[0], /test-map-key/);
+  });
+
+
+  it('does not retry key rejection or permanent HTTP errors', async () => {
+    for (const status of [400, 401, 403, 404]) {
+      let attempts = 0;
+      const { logger } = captureLogger();
+      await assert.rejects(fetchFirmsRegionSource('test-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+        fetchFn: async () => { attempts++; return response(status, 'Invalid MAP_KEY.'); },
+        sleepFn: async () => assert.fail('permanent errors must not schedule a retry'),
+        logger,
+      }), new RegExp(`primary HTTP ${status}`));
+      assert.equal(attempts, 1);
+    }
+  });
+
+  it('bounds transient HTTP retries to one attempt with six-second pacing', async () => {
+    for (const status of [408, 429, 500, 503]) {
+      const urls = [];
+      const sleeps = [];
+      const { logger } = captureLogger();
+      await fetchFirmsRegionSource('test-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+        fetchFn: async (url) => { urls.push(url); return response(urls.length === 1 ? status : 200); },
+        sleepFn: async (ms) => sleeps.push(ms),
+        logger,
+      });
+      assert.equal(urls.length, 2);
+      assert.equal(urls[0], urls[1]);
+      assert.deepEqual(sleeps, [6_000]);
+    }
+  });
+
+  it('keeps the source-major 27-call worldwide sequence and six-second cadence', async () => {
+    const urls = [];
+    const sleeps = [];
+    const { logger } = captureLogger();
+    const result = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async (url) => {
+        urls.push(url);
+        return response(200, urls.length === 1 ? DETECTION_CSV : EMPTY_CSV);
+      },
+      sleepFn: async (milliseconds) => sleeps.push(milliseconds),
+      logger,
+    });
+
+    assert.equal(result._firmsFulfilledCalls, 27);
+    assert.equal(result._firmsFailedCalls, 0);
+    assert.deepEqual(result.fireDetections, [{
+      id: '34.1-36.2-2026-09-04-0425',
+      location: { latitude: 34.1, longitude: 36.2 },
+      brightness: 391.2,
+      frp: 91.5,
+      confidence: 'FIRE_CONFIDENCE_HIGH',
+      satellite: 'N',
+      detectedAt: Date.parse('2026-09-04T04:25:00Z'),
+      region: 'Ukraine',
+      dayNight: 'D',
+      possibleExplosion: true,
+      source: 'firms',
+      kind: 'active',
+      emergency: true,
+    }]);
+    assert.equal(urls.length, FIRMS_SOURCES.length * Object.keys(MONITORED_REGIONS).length);
+    assert.equal(sleeps.length, 27);
+    assert.ok(sleeps.every((milliseconds) => milliseconds === 6_000));
+    const requestPaths = urls.map((url) => new URL(url).pathname);
+    assert.deepEqual(
+      requestPaths.slice(0, 9),
+      Object.values(MONITORED_REGIONS).map(
+        (bbox) => `/api/area/csv/test-map-key/${FIRMS_SOURCES[0]}/${bbox}/2`,
+      ),
+    );
+    assert.match(requestPaths[9], new RegExp(`/${FIRMS_SOURCES[1]}/`));
+    assert.match(requestPaths[18], new RegExp(`/${FIRMS_SOURCES[2]}/`));
+  });
+
+  it('keeps region and satellite diagnostics when both primary attempts fail', async () => {
+    const urls = [];
+    const { logger, messages } = captureLogger();
+    const failedPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Ukraine}/`;
+    const result = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async (url) => {
+        urls.push(url);
+        return response(new URL(url).pathname.includes(failedPath) ? 500 : 200);
+      },
+      sleepFn: async () => {},
+      logger,
+    });
+
+    assert.equal(result._firmsFulfilledCalls, 26);
+    assert.equal(result._firmsFailedCalls, 1);
+    assert.equal(urls.length, 28);
+    assert.match(
+      messages.error[0],
+      /VIIRS_SNPP_NRT\/Ukraine failed \(primary HTTP 500, primary retry HTTP 500\)/,
+    );
+    assert.doesNotMatch(messages.error[0], /test-map-key/);
+  });
+});
+
+describe('NASA FIRMS rolling observation window', () => {
+  const csv = readFileSync(new URL('./fixtures/wildfire/firms-ukraine-2026-09-06.csv', import.meta.url), 'utf8');
+  const header = `${csv.split('\n')[0]}\n`;
+
+  for (const [at, count] of [
+    ['2026-09-07T00:00:00Z', 4],
+    ['2026-09-07T02:41:00Z', 2],
+    ['2026-09-07T23:44:00Z', 1],
+    ['2026-09-07T23:44:00.001Z', 0],
+    ['2026-09-06T12:00:00Z', 3],
+  ]) {
+    it(`keeps only the rolling 24-hour observations at ${at}`, async (t) => {
+      const now = Date.parse(at);
+      t.mock.method(Date, 'now', () => now);
+      const urls = [];
+      const { logger } = captureLogger();
+      const result = await fetchAllFirmsRegions('test-map-key', {
+        fetchFn: async (url) => {
+          urls.push(url);
+          return response(200, url.includes('/VIIRS_SNPP_NRT/22,44,40,53/2') ? csv : header);
+        },
+        sleepFn: async () => {},
+        logger,
+      });
+      assert.equal(result.fireDetections.length, count);
+      assert.equal(result._firmsFulfilledCalls, 27);
+      assert.equal(result._firmsFailedCalls, 0);
+      assert.equal(urls.length, 27);
+      assert.ok(result.fireDetections.every(({ detectedAt }) => detectedAt <= now && detectedAt >= now - 86_400_000));
+      if (at === '2026-09-07T02:41:00Z') {
+        assert.deepEqual(result.fireDetections.map(({ detectedAt }) => detectedAt), [
+          Date.parse('2026-09-06T11:30:00Z'), Date.parse('2026-09-06T23:44:00Z'),
+        ]);
+      }
+    });
+  }
+
+  it('does not publish undatable satellite observations', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-09-07T02:41:00Z'));
+    const { logger } = captureLogger();
+    const result = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async () => response(200, csv.replaceAll('2026-09-06', 'invalid-date')),
+      sleepFn: async () => {},
+      logger,
+    });
+    assert.deepEqual(result.fireDetections, []);
+    assert.equal(result._firmsFulfilledCalls, 27);
+    assert.equal(result._firmsFailedCalls, 0);
+  });
+});

@@ -562,6 +562,14 @@ describe('grantContextHandler', () => {
     assert.deepEqual(body, { client_name: 'Claude Desktop', redirect_host: 'claude.ai' });
   });
 
+  it('a custom-scheme redirect surfaces its scheme, not a bare pseudo-host (cursor:// deeplink)', async () => {
+    const { deps, redis } = makeContextDeps();
+    redis.set('oauth:nonce:nonce_xyz', { ...BASE_NONCE_DATA, redirect_uri: 'cursor://anysphere.cursor-mcp/oauth/callback' });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).redirect_host, 'cursor://anysphere.cursor-mcp');
+  });
+
   it('returns 401 UNAUTHENTICATED when Clerk session is null', async () => {
     const { deps } = makeContextDeps({ resolveUserId: async () => null });
     const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);

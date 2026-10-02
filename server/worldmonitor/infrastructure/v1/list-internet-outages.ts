@@ -10,7 +10,7 @@ import type {
   InternetOutage,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const SEED_CACHE_KEY = 'infra:outages:v1';
 
@@ -33,10 +33,9 @@ export async function listInternetOutages(
   _ctx: ServerContext,
   req: ListInternetOutagesRequest,
 ): Promise<ListInternetOutagesResponse> {
-  try {
-    const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListInternetOutagesResponse | null;
-    return { outages: filterOutages(seedData?.outages || [], req), pagination: undefined };
-  } catch {
-    return { outages: [], pagination: undefined };
-  }
+  const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => {
+    const data = value as ListInternetOutagesResponse | null;
+    return data && Array.isArray(data.outages) ? data : undefined;
+  });
+  return { outages: filterOutages(seedData.outages, req), pagination: undefined };
 }

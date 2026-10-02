@@ -5,6 +5,7 @@ import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../se
 import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
+import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -220,10 +221,8 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
 
   const isLoading = loadingProductId === cta.productId;
   const isDisabled = isLoading || rateLimited;
-  // Only the clicked tier disables during creating_checkout.
-  // Sibling tiers stay clickable; if the user changes their
-  // mind mid-flow, their next click simply updates the
-  // pending intent. The pricing page is never hard-locked.
+  // Only the clicked tier disables while sign-in or checkout is loading.
+  // The service guards repeated clicks until that attempt settles.
   // Assent sits immediately above the button, inside the same fragment, so a
   // card can never render the CTA without it (#6976).
   return (
@@ -259,22 +258,27 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
 export function PricingSection({
   refCode,
   attributionSource,
+  checkoutAttribution,
+  desktopHandoff,
 }: {
   refCode?: string;
   attributionSource?: string;
+  checkoutAttribution?: CheckoutAttribution;
+  desktopHandoff?: boolean;
 }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
     return planKey?.endsWith('_annual') ? 'annual' : 'monthly';
   });
   // Loading state is driven by the service's checkout phase. Only the
-  // `creating_checkout` phase (post-auth, inside doCheckout) disables
-  // the clicked CTA. During the Clerk modal window, phase stays idle —
+  // auth loading and `creating_checkout` phases disable the clicked CTA.
+  // During the Clerk modal window, phase stays idle —
   // the modal backdrop is the user's feedback, so locking the pricing
   // section underneath adds no value and creates recovery problems
   // (watchdogs, DOM polling) that we don't need.
   const [phase, setPhase] = useState<CheckoutPhase>({ kind: 'idle' });
-  const loadingProductId = phase.kind === 'creating_checkout' ? phase.productId : null;
+  const loadingProductId = phase.kind === 'loading_auth' || phase.kind === 'creating_checkout'
+    ? phase.productId : null;
   const rateLimited = phase.kind === 'rate_limited';
   const TIERS = usePricingData();
   // Enterprise leaves the card grid and renders as a full-width band below
@@ -291,8 +295,13 @@ export function PricingSection({
   // checkoutInFlight in the service guards concurrent doCheckout runs.
   // The handler is fire-and-forget — no local loading state to manage.
   const handleCheckout = useCallback((productId: string) => {
-    void startCheckout(productId, { referralCode: refCode, attributionSource });
-  }, [refCode, attributionSource]);
+    void startCheckout(productId, {
+      referralCode: refCode,
+      attributionSource,
+      checkoutAttribution,
+      desktopHandoff,
+    });
+  }, [refCode, attributionSource, checkoutAttribution, desktopHandoff]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">

@@ -2,12 +2,18 @@
 import {
   CROSS_STRAIT_ACTIVITY_KEY,
   CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
+  MND_RETENTION_REPORTING_DAYS,
+  REVIEWED_JAPAN_MOD_OBSERVATIONS,
   fetchCrossStraitActivitySnapshot,
   validateCrossStraitActivitySnapshot,
 } from './cross-strait-activity/adapters.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-utils.mjs';
-import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
+import {
+  HISTORY_MAX_RECORDS_PER_RUN,
+  appendSeedHistory,
+  makeSeedHistoryAfterPublish,
+} from './_seed-history.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -21,6 +27,13 @@ export const CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS = 240_000;
 // archive, its compact bootstrap projection, and both source-health records.
 export const CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS = 40_000;
 export const CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS = 320_000;
+// One-off recovery batches the full retained archive through the shared
+// 150-row embedding cap. Each batch still spends the 30s history append
+// budget, so the lock has to cover fetch + every batch + publish cleanup.
+export const CROSS_STRAIT_ACTIVITY_ONE_OFF_LOCK_TTL_MS = 480_000;
+export const CROSS_STRAIT_HISTORY_MAX_RECORDS =
+  MND_RETENTION_REPORTING_DAYS + REVIEWED_JAPAN_MOD_OBSERVATIONS.length;
+const HISTORY_APPEND_BUDGET_MS = 30_000;
 // Keep this literal inside scripts/: Railway's nixpacks service copies only
 // scripts/, so importing the shared browser/Edge registry would crash at boot.
 // The production-registration test pins it to BOOTSTRAP_CACHE_KEYS.
@@ -35,6 +48,20 @@ if (CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS <= (
   CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS + CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS
 )) {
   throw new Error('cross-Strait activity lock TTL must exceed fetch deadline plus publish cleanup headroom');
+}
+
+if (CROSS_STRAIT_ACTIVITY_ONE_OFF_LOCK_TTL_MS <= (
+  CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS
+  + CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS
+  + Math.ceil(CROSS_STRAIT_HISTORY_MAX_RECORDS / HISTORY_MAX_RECORDS_PER_RUN) * HISTORY_APPEND_BUDGET_MS
+)) {
+  throw new Error('cross-Strait one-off lock TTL must cover fetch, full-archive history batches, and publish cleanup');
+}
+
+export function crossStraitActivityLockTtlMs(env = process.env) {
+  return env.WM_ONE_OFF_HISTORY_RECEIPT === '1'
+    ? CROSS_STRAIT_ACTIVITY_ONE_OFF_LOCK_TTL_MS
+    : CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS;
 }
 
 function withoutRevisionHistory(observation) {
@@ -60,6 +87,7 @@ function withoutOperatorOnlyDiagnostics(source) {
     proxyControlProbe: _proxyControlProbe,
     shadowIndexProbe: _shadowIndexProbe,
     candidates: _candidates,
+    requestDiagnostics: _requestDiagnostics,
     ...publicSource
   } = source;
   return publicSource;
@@ -107,13 +135,107 @@ function sourceRecordCount(snapshot, sourceId) {
   return (snapshot?.observations ?? []).filter((row) => row?.sourceId === sourceId).length;
 }
 
-export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
+const MND_SOURCE_FAILURE_CODE = /^MND_[A-Z0-9_]{1,60}$/;
+
+function positiveTimestamp(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function sourceAttemptMeta(previous, source, attemptedAt) {
+  const errorCode = typeof source?.errorCodes?.[0] === 'string'
+    && MND_SOURCE_FAILURE_CODE.test(source.errorCodes[0])
+    ? source.errorCodes[0]
+    : 'MND_SOURCE_ERROR';
+  const priorAttemptAt = previous?.lastSourceAttemptAt ?? previous?.fetchedAt;
+  const ordered = positiveTimestamp(attemptedAt)
+    && positiveTimestamp(priorAttemptAt)
+    && attemptedAt > priorAttemptAt;
+  const reset = {
+    firstSourceFailureAt: null,
+    lastSourceAttemptAt: positiveTimestamp(attemptedAt) ? attemptedAt : 0,
+    lastSourceFailureCode: null,
+    consecutiveSourceFailures: 0,
+  };
+  const currentSuccess = source?.transportStatus === 'fresh'
+    && positiveTimestamp(attemptedAt)
+    && Date.parse(source.lastSuccessAt ?? '') === attemptedAt;
+  if (currentSuccess && (
+    !positiveTimestamp(priorAttemptAt)
+    || ordered
+    || (attemptedAt === priorAttemptAt && previous?.sourceState === 'ok')
+  )) return reset;
+
+  const actionable = {
+    errorCode,
+    ...reset,
+    lastSourceAttemptAt: Math.max(reset.lastSourceAttemptAt, positiveTimestamp(priorAttemptAt) ? priorAttemptAt : 0),
+    lastSourceFailureCode: errorCode,
+    consecutiveSourceFailures: 2,
+  };
+  if (source?.transportStatus === 'fresh') return actionable;
+  const priorSuccess = previous?.sourceState === 'ok'
+    && previous?.stale === false
+    && positiveTimestamp(previous?.fetchedAt)
+    && previous.fetchedAt <= priorAttemptAt
+    && Number.isInteger(previous?.recordCount) && previous.recordCount > 0
+    && (Object.keys(reset).every((field) => !Object.hasOwn(previous, field)) || (
+      previous.consecutiveSourceFailures === 0
+      && previous.firstSourceFailureAt === null
+      && previous.lastSourceFailureCode === null
+      && previous.lastSourceAttemptAt === previous.fetchedAt
+    ));
+  if (ordered && priorSuccess) {
+    return { ...actionable, consecutiveSourceFailures: 1, firstSourceFailureAt: attemptedAt };
+  }
+  const priorFailure = previous?.sourceState === 'degraded'
+    && previous?.stale === true
+    && positiveTimestamp(previous?.firstSourceFailureAt)
+    && positiveTimestamp(previous?.lastSourceAttemptAt)
+    && previous.firstSourceFailureAt <= priorAttemptAt
+    && positiveTimestamp(previous?.fetchedAt)
+    && previous.fetchedAt <= previous.firstSourceFailureAt
+    && Number.isInteger(previous?.recordCount) && previous.recordCount > 0
+    && MND_SOURCE_FAILURE_CODE.test(previous?.errorCode ?? '')
+    && previous.errorCode === previous.lastSourceFailureCode
+    && Number.isInteger(previous.consecutiveSourceFailures)
+    && previous.consecutiveSourceFailures >= 1 && previous.consecutiveSourceFailures <= 100;
+  if (!priorFailure) return actionable;
+  const sameCode = previous.lastSourceFailureCode === errorCode;
+  if (attemptedAt === priorAttemptAt && sameCode) {
+    return {
+      ...actionable,
+      consecutiveSourceFailures: previous.consecutiveSourceFailures,
+      firstSourceFailureAt: previous.firstSourceFailureAt,
+    };
+  }
+  if (!ordered) return actionable;
+  return {
+    ...actionable,
+    consecutiveSourceFailures: sameCode ? Math.min(previous.consecutiveSourceFailures + 1, 100) : 1,
+    firstSourceFailureAt: previous.firstSourceFailureAt,
+  };
+}
+
+export async function writeSourceHealth(snapshot, writer = writeExtraKey, reader = readSeedSnapshot) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
-    const healthy = source?.transportStatus === 'fresh';
-    const blocked = CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source?.blockedReason);
+    let healthy = source?.transportStatus === 'fresh';
+    const blocked = source.id !== 'taiwan-mnd'
+      && CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source?.blockedReason);
     const fetchedAt = Date.parse(
       blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
     );
+    let attemptMeta = {};
+    if (source.id === 'taiwan-mnd') {
+      let previous = null;
+      try {
+        previous = await reader(sourceHealthMetaKey(source.id), { strict: true });
+      } catch {
+        previous = null;
+      }
+      const attemptedAt = Date.parse(snapshot?.generatedAt ?? '');
+      attemptMeta = sourceAttemptMeta(previous, source, attemptedAt);
+      healthy = healthy && attemptMeta.consecutiveSourceFailures === 0;
+    }
     const metaTtlSeconds = healthy || blocked
       ? CROSS_STRAIT_ACTIVITY_TTL_SECONDS
       : CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS;
@@ -125,8 +247,9 @@ export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
     const writeMeta = () => writer(sourceHealthMetaKey(source.id), {
       fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : 0,
       recordCount: sourceRecordCount(snapshot, source.id),
-      sourceState: healthy ? 'ok' : (blocked ? 'blocked' : 'error'),
+      sourceState: healthy ? 'ok' : (source.id === 'taiwan-mnd' ? 'degraded' : (blocked ? 'blocked' : 'error')),
       stale: !healthy && !blocked,
+      ...attemptMeta,
     }, metaTtlSeconds);
 
     // Never leave health claiming success when an error detail write fails.
@@ -203,6 +326,12 @@ export async function fetchCrossStraitActivitySeedSnapshot({
     ? null
     : await readSnapshot(CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY);
   const snapshot = await fetchSnapshotFn({ previousSnapshot, previousSourceHealth });
+  const failures = snapshot.sources?.find(source => source.id === 'taiwan-mnd')?.requestDiagnostics;
+  if (failures?.length) {
+    console.warn('[cross-strait] MND request failures', JSON.stringify({
+      attemptedAt: snapshot.generatedAt, failures,
+    }));
+  }
   // A first-run MND failure cannot publish the durable archive, but its source
   // health still needs to tell operators why no archive exists yet.
   if (!validateCrossStraitActivitySnapshot(snapshot)) await writeHealth(snapshot);
@@ -247,13 +376,73 @@ export function buildCrossStraitHistoryRecords(snapshot) {
   }).filter(Boolean);
 }
 
+/**
+ * Scheduled ticks keep the shared 150-row embedding cap. The guarded one-off
+ * reuses that cap as a batch size so the full retained archive can still
+ * satisfy lossless postflight (validation drops fail; cap slicing does not).
+ */
+export async function appendCrossStraitHistoryArchive(
+  args,
+  { append = appendSeedHistory } = {},
+) {
+  const records = Array.isArray(args?.records) ? args.records : [];
+  if (records.length > CROSS_STRAIT_HISTORY_MAX_RECORDS) {
+    throw new Error(
+      `cross-Strait history archive has ${records.length} records; maximum is ${CROSS_STRAIT_HISTORY_MAX_RECORDS}`,
+    );
+  }
+
+  const aggregate = {
+    inserted: 0,
+    skipped: 0,
+    retracted: 0,
+    chunks: 0,
+    abandoned: 0,
+    failedChunks: 0,
+    inputRecords: 0,
+    normalizedRecords: 0,
+    droppedRecords: 0,
+  };
+  const batches = records.length > 0
+    ? Array.from(
+      { length: Math.ceil(records.length / HISTORY_MAX_RECORDS_PER_RUN) },
+      (_, index) => records.slice(
+        index * HISTORY_MAX_RECORDS_PER_RUN,
+        (index + 1) * HISTORY_MAX_RECORDS_PER_RUN,
+      ),
+    )
+    : [[]];
+
+  for (const batch of batches) {
+    const result = await append({ ...args, records: batch });
+    if (result?.skipped === 'unconfigured') return result;
+    for (const field of Object.keys(aggregate)) {
+      aggregate[field] += Number(result?.[field]) || 0;
+    }
+  }
+  return aggregate;
+}
+
 // This seeder's completion marker rides afterFreshness, so history takes the
 // afterPublish slot.
-export const crossStraitHistoryAfterPublish = makeSeedHistoryAfterPublish({
+const standardCrossStraitHistoryAfterPublish = makeSeedHistoryAfterPublish({
   domain: 'military',
   resource: 'cross-strait-activity',
   buildRecords: buildCrossStraitHistoryRecords,
 });
+
+export function crossStraitHistoryAfterPublish(data, meta, deps = {}) {
+  const fullArchive = process.env.WM_ONE_OFF_HISTORY_RECEIPT === '1';
+  const append = fullArchive
+    ? (args) => appendCrossStraitHistoryArchive(args, {
+      append: deps.append ?? appendSeedHistory,
+    })
+    : (deps.append ?? appendSeedHistory);
+  return standardCrossStraitHistoryAfterPublish(data, meta, {
+    ...deps,
+    append,
+  });
+}
 
 function validatePublishableSnapshot(snapshot) {
   if (!validateCrossStraitActivitySnapshot(snapshot)) return false;
@@ -269,7 +458,7 @@ function validatePublishableSnapshot(snapshot) {
 if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
   runSeed('military', 'cross-strait-activity', CROSS_STRAIT_ACTIVITY_KEY, fetchSnapshot, {
     ttlSeconds: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
-    lockTtlMs: CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS,
+    lockTtlMs: crossStraitActivityLockTtlMs(),
     fetchPhaseTimeoutMs: CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
     validateFn: validatePublishableSnapshot,
     declareRecords: (snapshot) => snapshot.observations.length,

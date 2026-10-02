@@ -4,6 +4,13 @@
   "description": "Agent-facing concierge for WorldMonitor's live global-intelligence platform. Send a natural-language description of the data you need (conflicts, markets, chokepoints, country risk, energy, cyber, forecasts…) and it routes you to the best-fit WorldMonitor MCP tools and REST operations, with auth guidance and a live data-freshness probe. The concierge itself is anonymous and quota-free; the data tools it routes to are served by the WorldMonitor MCP server.",
   "url": "https://www.worldmonitor.app/a2a",
   "preferredTransport": "JSONRPC",
+  "supportedInterfaces": [
+    {
+      "url": "https://www.worldmonitor.app/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "0.3"
+    }
+  ],
   "version": "1.0.0",
   "iconUrl": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
   "documentationUrl": "https://www.worldmonitor.app/docs/documentation",
@@ -23,7 +30,7 @@
     {
       "id": "route-to-tool",
       "name": "Capability discovery and tool routing",
-      "description": "Describe the intelligence data you need in plain language; returns the best-fit WorldMonitor MCP tools (from the live 74-tool catalog) plus the MCP/REST endpoints and auth needed to call them.",
+      "description": "Describe the intelligence data you need in plain language; returns the best-fit WorldMonitor MCP tools (from the live 86-tool catalog) plus the MCP/REST endpoints and auth needed to call them.",
       "tags": ["discovery", "routing", "mcp", "geopolitics", "markets", "supply-chain"],
       "examples": [
         "Which tool gives live shipping chokepoint status?",

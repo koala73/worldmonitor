@@ -5,7 +5,7 @@
  * /relay/bulk-suppress-emails HTTP action.
  *
  * Usage:
- *   CONVEX_SITE_URL=<your-convex-site-url> RELAY_SHARED_SECRET=<secret> \
+ *   CONVEX_SITE_URL=<your-convex-site-url> CONVEX_EMAIL_SUPPRESSION_SECRET=<secret> \
  *     node scripts/import-bounced-emails.mjs <csv-path>
  *
  * The CSV must have headers including "to" and "last_event".
@@ -14,14 +14,14 @@
 import { readFileSync } from 'node:fs';
 
 const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
-const RELAY_SECRET = process.env.RELAY_SHARED_SECRET;
+const RELAY_SECRET = process.env.CONVEX_EMAIL_SUPPRESSION_SECRET;
 
 if (!CONVEX_SITE_URL) {
   console.error('CONVEX_SITE_URL env var required (e.g. https://your-app.convex.site)');
   process.exit(1);
 }
 if (!RELAY_SECRET) {
-  console.error('RELAY_SHARED_SECRET env var required');
+  console.error('CONVEX_EMAIL_SUPPRESSION_SECRET env var required');
   process.exit(1);
 }
 
@@ -85,6 +85,7 @@ console.log(`Found ${unique.length} unique bounced emails from ${lines.length - 
 const BATCH_SIZE = 100;
 let totalAdded = 0;
 let totalSkipped = 0;
+let totalUpgraded = 0;
 
 for (let i = 0; i < unique.length; i += BATCH_SIZE) {
   const batch = unique.slice(i, i + BATCH_SIZE).map(email => ({
@@ -111,7 +112,10 @@ for (let i = 0; i < unique.length; i += BATCH_SIZE) {
   const result = await res.json();
   totalAdded += result.added;
   totalSkipped += result.skipped;
-  console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: +${result.added} added, ${result.skipped} skipped`);
+  totalUpgraded += result.upgraded ?? 0;
+  console.log(
+    `Batch ${Math.floor(i / BATCH_SIZE) + 1}: +${result.added} added, ${result.upgraded ?? 0} upgraded, ${result.skipped} skipped`,
+  );
 }
 
-console.log(`\nDone: ${totalAdded} added, ${totalSkipped} already suppressed`);
+console.log(`\nDone: ${totalAdded} added, ${totalUpgraded} upgraded, ${totalSkipped} already suppressed`);

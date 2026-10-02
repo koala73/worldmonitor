@@ -1,5 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import forecastRoute from '../api/forecast/v1/[rpc].ts';
+import { issueSessionToken } from '../api/_session.js';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
+import { SCORECARD_DECLARED_FIELDS } from '../scripts/build-accuracy-page.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -93,6 +97,46 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.totals?.entries, 1, 'declared fields still pass through');
     assert.equal(JSON.stringify(res).includes('judgedLane'), false);
     assert.equal(JSON.stringify(res).includes('archive_incomplete'), false);
+  });
+
+  it('the public RPC serializes only declared top-level cache fields', async () => {
+    process.env.WM_SESSION_SECRET = 'synthetic-scorecard-session-secret-long-enough';
+    const token = (await issueSessionToken()).token;
+    const data = {
+      schemaVersion: 1, generatedAt: 456, rollingWindowDays: 180, methodology: 'fixture',
+      totals: { entries: 2, resolved: 1, pending: 1, pendingJudge: 0, scored: 1, void: 0, voidRate: 0, publicationCoverage: 0.5 },
+      overall: { count: 1, brier: 0.04, logScore: 0.22 },
+      byDomain: [{ domain: 'market', resolved: 1, scored: 1, void: 0, voidRate: 0, brier: 0.04, logScore: 0.22 }],
+      byGenerationOrigin: [{ generationOrigin: 'detector', resolved: 1, scored: 1, void: 0, voidRate: 0, brier: 0.04, logScore: 0.22 }],
+      calibration: [{ bucket: '80-90', minProbability: 0.8, maxProbability: 0.9, count: 1, predictedMean: 0.8, realizedRate: 1, brier: 0.04 }],
+      vsMarketSkill: { count: 1, forecastBrier: 0.04, marketBrier: 0.09, brierDelta: 0.05 },
+      skill: { count: 1, brier: 0.04, logScore: 0.22, excludedScored: 1, excludedOrigins: ['bet_engine'] },
+      degraded: false, stale: false, error: '',
+    };
+    const { fetchImpl } = createRedisFetch({});
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`)) {
+        return Response.json({ result: JSON.stringify({
+          _seed: { fetchedAt: Date.now() },
+          data: {
+            ...data,
+            judgedLane: { pendingJudge: 3 },
+            betEngine: { count: 1, vsBaseRate: { brierDelta: 0.02 }, deviationSkill: { count: 1 } },
+            futureInternalMetric: { syntheticMarker: 'not-part-of-response' },
+          },
+        }) });
+      }
+      assert.equal(new URL(url).origin, 'https://fake-upstash.example', 'all I/O must stay in the mock');
+      return fetchImpl(input, init);
+    };
+    const response = await forecastRoute(new Request(makeCtx().request.url, {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': token },
+    }));
+    assert.equal(response.status, 200);
+    const serialized = await response.json();
+    assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS].sort());
+    assert.deepEqual(serialized, data, 'every declared field must survive the real gateway and serializer');
   });
 
   it('marks cached scorecards stale when the seed envelope is older than the health budget', async () => {

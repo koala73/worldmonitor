@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import test from 'node:test';
 
 // #6235: fetchLatestRelease always requests the same URL but had no Redis
@@ -107,9 +108,7 @@ test('a hanging GitHub upstream degrades to null instead of holding the function
       assert.ok(init?.signal instanceof AbortSignal, 'the GitHub fetch must carry an abort signal');
       // Hang until the handler's own timeout aborts us — the exact stall the
       // signal exists to bound.
-      return new Promise((_resolve, reject) => {
-        init.signal.addEventListener('abort', () => reject(init.signal.reason));
-      });
+      return hangUntilAbort(init.signal);
     }
     throw new Error(`unexpected request: ${url}`);
   };

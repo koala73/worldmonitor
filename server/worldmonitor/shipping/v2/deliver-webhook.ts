@@ -1,6 +1,7 @@
 import dns from 'node:dns/promises';
 import { createHmac } from 'node:crypto';
 import https from 'node:https';
+import type { IncomingMessage } from 'node:http';
 
 import {
   isBlockedCallbackUrl,
@@ -39,21 +40,14 @@ export interface WebhookDeliveryResult {
 }
 
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
-
-function responseFromNode(statusCode: number | undefined, statusMessage: string | undefined, headers: Headers, body: Buffer): Response {
-  return new Response(new Uint8Array(body), {
-    status: statusCode ?? 502,
-    statusText: statusMessage,
-    headers,
-  });
-}
+const MAX_WEBHOOK_RESPONSE_BYTES = 1024 * 1024;
 
 async function postJsonWithPinnedAddress(
   url: URL,
   body: string,
   headers: Record<string, string>,
   resolvedAddresses: string[],
-): Promise<Response> {
+): Promise<Pick<Response, 'status' | 'ok'>> {
   const pinnedAddress = resolvedAddresses.find(address => address.includes('.')) ?? resolvedAddresses[0];
   if (!pinnedAddress) {
     throw new WebhookDeliverySsrfError('callbackUrl DNS resolution returned no addresses');
@@ -61,6 +55,17 @@ async function postJsonWithPinnedAddress(
   const family: 4 | 6 = pinnedAddress.includes(':') ? 6 : 4;
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let response: IncomingMessage | undefined;
+    let hardDeadline: ReturnType<typeof setTimeout> | undefined;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hardDeadline);
+      req.destroy();
+      response?.destroy();
+      reject(error);
+    };
     const req = https.request({
       hostname: url.hostname,
       port: url.port || 443,
@@ -73,22 +78,35 @@ async function postJsonWithPinnedAddress(
       family,
       lookup: (_hostname, _options, callback) => callback(null, pinnedAddress, family),
     }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('error', reject);
-      res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-      res.on('end', () => {
-        const responseHeaders = new Headers();
-        for (const [key, value] of Object.entries(res.headers)) {
-          if (!value) continue;
-          responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+      response = res;
+      if (settled) { res.destroy(); return; }
+      let totalBytes = 0;
+      res.on('error', fail);
+      res.on('aborted', () => fail(new Error('webhook response aborted')));
+      // Only delivery status is consumed; discard body chunks without buffering.
+      res.on('data', chunk => {
+        if (settled) return;
+        totalBytes += Buffer.byteLength(chunk);
+        if (totalBytes > MAX_WEBHOOK_RESPONSE_BYTES) {
+          fail(new Error('webhook response too large'));
         }
-        resolve(responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
+      });
+      res.on('end', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(hardDeadline);
+        const status = res.statusCode ?? 502;
+        resolve({ status, ok: status >= 200 && status < 300 });
       });
     });
-    req.on('error', reject);
+    req.on('error', fail);
     req.setTimeout(WEBHOOK_DELIVERY_TIMEOUT_MS, () => {
-      req.destroy(new Error('webhook delivery timed out'));
+      fail(new Error('webhook delivery timed out'));
     });
+    // Socket activity must not extend the total request lifetime.
+    hardDeadline = setTimeout(() => {
+      fail(new Error('webhook delivery timed out'));
+    }, WEBHOOK_DELIVERY_TIMEOUT_MS);
     req.write(body);
     req.end();
   });

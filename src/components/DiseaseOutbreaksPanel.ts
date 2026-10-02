@@ -107,8 +107,9 @@ export class DiseaseOutbreaksPanel extends Panel {
     this.showLoading();
     try {
       const data = await fetchDiseaseOutbreaks();
-      if (!data.outbreaks?.length) {
-        if (!this._hasData) this.showError(t('components.diseaseOutbreaks.errors.noData'), () => void this.fetchData());
+      if (!Array.isArray(data.outbreaks) || !Number.isFinite(data.fetchedAt) || data.fetchedAt <= 0) {
+        if (this._hasData) this._render();
+        else this.showError(t('components.diseaseOutbreaks.errors.noData'), () => void this.fetchData());
         return false;
       }
       this._outbreaks = [...data.outbreaks].sort((a, b) => {
@@ -135,8 +136,8 @@ export class DiseaseOutbreaksPanel extends Panel {
       if (la !== lb) return la - lb;
       return (b.publishedAt ?? 0) - (a.publishedAt ?? 0);
     });
-    this._hasData = this._outbreaks.length > 0;
-    if (this._hasData) this._render();
+    this._hasData = true;
+    this._render();
   }
 
   private _render(): void {

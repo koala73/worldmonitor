@@ -431,7 +431,7 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     assert.match(panel, /model\.sourceHealth/);
     assert.match(panel, /crossStraitSourceHealthHeading\(model\.sourceHealth\.state\)/);
     assert.match(panel, /last success:/);
-    assert.match(basePanel, /protected requestRender\(\): void/);
+    assert.match(basePanel, /protected requestRender\([^)]*\): void/);
     assert.match(renderer, /url\.port === ''/);
   });
 });

@@ -5,19 +5,19 @@ import { t } from '../i18n';
 const TASK_ROUTES = [
   {
     key: 'verify',
-    href: '/crises/?utm_source=welcome&utm_content=task-verify',
+    href: '/crises/',
     eventTarget: 'welcome-task-verify',
     Icon: Newspaper,
   },
   {
     key: 'chokepoint',
-    href: '/chokepoints/?utm_source=welcome&utm_content=task-chokepoint',
+    href: '/chokepoints/',
     eventTarget: 'welcome-task-chokepoint',
     Icon: Anchor,
   },
   {
     key: 'countryRisk',
-    href: '/countries/?utm_source=welcome&utm_content=task-country-risk',
+    href: '/countries/',
     eventTarget: 'welcome-task-country-risk',
     Icon: ShieldCheck,
   },

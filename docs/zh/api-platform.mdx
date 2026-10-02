@@ -15,7 +15,7 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 - **匿名天气**:`?keys=weatherAlerts` 仅在**未发送任何 API 密钥头时**公开。如果你附加 `X-WorldMonitor-Key` / `X-Api-Key`,即使是天气请求也会被完全验证 —— 格式错误的密钥返回 `401`,没有当前 API 访问权限的密钥返回 `403`。始终发送密钥的调用方必须发送有效的、有权限的密钥(或省略该头以使用匿名天气路径)。该 URL 为 `no-store`,这正是该约定在边缘层与源站同样成立的原因:没有任何缓存持有它,因此无效密钥永远不会被已预热的匿名缓存条目应答。
 - **公开天气**:`?keys=weatherAlerts&public=1` 是经 CDN 缓存的天气读取。与 `?tier=fast&public=1` 一样,它对所有调用方返回同一份共享种子负载,并忽略你附加的任何凭据 —— CDN 命中先于鉴权发生,正是该标记让响应可以被安全缓存。高频匿名读取请优先使用它;需要校验自己的密钥时使用不带标记的 URL。
 - **服务器到服务器**:直接用 `X-WorldMonitor-Key: wm_...` 调用 `https://api.worldmonitor.app/api/bootstrap`。此端点没有单独的网关主机、令牌交换、激活步骤或 IP 白名单要求。
-- **缓存**:只有显式标记的 `?...&public=1` URL 可被共享缓存,因为只有它们对每个调用方返回相同结果。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL:on-demand 键(`?keys=<onDemandName>&public=1`)在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`;发布频率高于该缓存时长的键均声明了自有配置:`correlationCards`(浏览器 `max-age=60`、CDN `s-maxage=300`)、`chinaDecisionSignals`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`canadaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`albertaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`manitobaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`marketCorrelationSeries`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`imdCycloneMarine`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`bcOpen511`(浏览器 `max-age=60`、CDN `s-maxage=1800`)、`flightDelays`(浏览器 `max-age=60`、CDN `s-maxage=1800`)和 `forecasts`(浏览器 `max-age=300`、CDN `s-maxage=3600`);`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL,以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头。这一区分是有意为之:CDN 命中先于鉴权发生,因此答案取决于凭据的 URL 绝不能可缓存。
+- **缓存**:只有显式标记的 `?...&public=1` URL 可被共享缓存,因为只有它们对每个调用方返回相同结果。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL:on-demand 键(`?keys=<onDemandName>&public=1`)在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`;发布频率高于该缓存时长的键均声明了自有配置:`correlationCards`(浏览器 `max-age=60`、CDN `s-maxage=300`)、`chinaDecisionSignals`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`canadaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`albertaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`manitobaRoads`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`marketCorrelationSeries`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`imdCycloneMarine`(浏览器 `max-age=60`、CDN `s-maxage=900`)、`bcOpen511`(浏览器 `max-age=60`、CDN `s-maxage=1800`)、`flightDelays`(浏览器 `max-age=60`、CDN `s-maxage=1800`)、`liveVideoResolved`(浏览器 `max-age=300`、CDN `s-maxage=1800`)和 `forecasts`(浏览器 `max-age=300`、CDN `s-maxage=3600`);`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL,以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头。这一区分是有意为之:CDN 命中先于鉴权发生,因此答案取决于凭据的 URL 绝不能可缓存。
 - **速率限制**:此端点上的用户 API 密钥验证具有 fail-closed 的固定每 IP 60 秒 600 次预验证上限,与默认的 API 滑动窗口限流器分开。
 - **结构**:`{ "data": { "earthquakes": ..., "outages": ..., "marketQuotes": ... }, "missing": [] }` —— 约 40+ 个已解包的已 seed 领域负载嵌套在 `data` 之下,外加一个 `missing` 列表用于 Redis 中不存在的缓存键。
 
@@ -65,20 +65,21 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 
 ### `GET /api/health`
 
-针对**所有已注册 seed 键**的聚合新鲜度报告。在 JSON `status` 字段中返回 `HEALTHY`、`WARNING`、`DEGRADED`、`UNHEALTHY` 或 `REDIS_DOWN`。
+针对**所有已注册 seed 键**的聚合新鲜度报告。在 JSON `status` 字段中返回 `HEALTHY`、`WARNING`、`DEGRADED`、`UNHEALTHY` 或 `REDIS_DOWN`。顶层状态表示用户可见平台的可用性，因此，当数据源仍提供可用的最后一次正常数据时，`HEALTHY` 可以与受控的数据源警告同时出现。
 
 除 `REDIS_DOWN` 外的所有状态均返回 HTTP 200。`REDIS_DOWN` 返回 HTTP 503,因为 Redis 不可达且端点无法评估 seed 状态。响应不被缓存(`private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`)。
 
-通过 UptimeRobot / Better Stack 并使用 `?compact=1` 进行监控 —— 任何非 `HEALTHY` 状态都应触发告警。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
+通过 UptimeRobot / Better Stack 并使用 `?compact=1` 监控可用性 —— 任何非 `HEALTHY` 状态都应触发告警。严格的数据质量监控还必须检查 `summary.warn` 和 `problems`，因为受控警告仍会显示在这些字段中。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
 
 ```json
 {
   "status": "HEALTHY",
   "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 290,
-    "ok": 290,
+    "total": 312,
+    "ok": 312,
     "warn": 0,
+    "containedWarn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
     "rolloutPending": 0,
@@ -90,6 +91,8 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
   }
 }
 ```
+
+`summary.warn` 是完整的可操作警告总数。`summary.containedWarn` 是其子集，不是额外的计数桶。`STALE_SEED`、`SEED_ERROR`、`STALE_CONTENT`、`COVERAGE_PARTIAL`、`COVERAGE_DEGRADED` 和 `CHINA_DEGRADED` 有资格受控，但当前健康检查必须找到正在提供的负载，元数据必须证明记录数为正，而且所有必需的读取诊断都必须在结构上可用。陈旧时间仍作为诊断事实显示，但它本身不表示平台已停止提供数据。只要所有可操作警告都受到控制，并且受控警告不超过所有探测键的 3%，可用性就保持 `HEALTHY`。缺失或不可用的数据、格式错误或未知的证据、不兼容的读取策略或缓存状态、`REDIS_PARTIAL`、`ROLLOUT_PENDING`、更广泛的影响和严重故障不适用此规则。
 
 ### `GET /api/seed-health`
 

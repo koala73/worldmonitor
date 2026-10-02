@@ -1,3 +1,4 @@
+import { allowSymbolSearchBudget } from './helpers/symbol-search-budget.mts';
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 
@@ -32,9 +33,8 @@ delete process.env.NODE_TEST_CONTEXT;
 process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
 process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
 process.env.FINNHUB_API_KEY = 'test-key';
-// Leave UPSTASH_* unset: both the cache helpers and the rate limiter guard on
-// those vars and return early WITHOUT fetching, so Finnhub + the Sentry
-// envelope are the only two URLs the handler ever hits.
+// allowSymbolSearchBudget supplies mocked Redis admission and cache misses;
+// this file isolates Finnhub status classification and Sentry delivery.
 
 // parseDsn() derives `${protocol}//${host}/api/${projectId}/envelope/` from the
 // DSN above → this prefix.
@@ -62,22 +62,26 @@ function makeReq(q = 'nvidia'): Request {
  * `ctx.waitUntil` collector lets us await the fire-and-forget delivery before
  * asserting.
  */
-async function runWithFinnhubStatus(finnhubStatus: number): Promise<{ envelopeHits: number; status: number }> {
+async function runWithFinnhubStatus(
+  finnhubStatus: number,
+): Promise<{ envelopeHits: number; status: number; fingerprints: unknown[] }> {
   let envelopeHits = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  const fingerprints: unknown[] = [];
+  globalThis.fetch = allowSymbolSearchBudget((async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url.startsWith(ENVELOPE_URL_PREFIX)) {
       envelopeHits++;
+      fingerprints.push(JSON.parse(String(init?.body).split('\n')[2]).fingerprint);
       return new Response('', { status: 200 });
     }
     if (url.includes('finnhub.io')) return new Response('upstream', { status: finnhubStatus });
     throw new Error(`unexpected fetch: ${url}`);
-  }) as typeof fetch;
+  }) as typeof fetch);
 
   const tasks: Array<Promise<unknown>> = [];
   const res = await handler(makeReq(), { waitUntil: (p: Promise<unknown>) => { tasks.push(p); } });
   await Promise.allSettled(tasks);
-  return { envelopeHits, status: res.status };
+  return { envelopeHits, status: res.status, fingerprints };
 }
 
 describe('symbol-search Sentry-capture policy (WORLDMONITOR-RE)', () => {
@@ -95,6 +99,16 @@ describe('symbol-search Sentry-capture policy (WORLDMONITOR-RE)', () => {
     assert.equal(envelopeHits, 1, 'quota exhaustion must reach Sentry');
     assert.equal(status, 503);
   });
+
+  // A broken API key and an exhausted quota need different fixes, so they must
+  // not share one Sentry issue. The bucket is bounded; the raw status is not
+  // part of the fingerprint.
+  for (const [finnhubStatus, bucket] of [[401, 'auth'], [403, 'auth'], [429, 'quota'], [500, 'http-other']] as const) {
+    it(`fingerprints a Finnhub ${finnhubStatus} into the '${bucket}' bucket`, async () => {
+      const { fingerprints } = await runWithFinnhubStatus(finnhubStatus);
+      assert.deepEqual(fingerprints, [['api/symbol-search', 'finnhub_fetch', bucket]]);
+    });
+  }
 
   // ── The fix: upstream gateway transients are NOT captured ──
   for (const finnhubStatus of [502, 503, 504]) {

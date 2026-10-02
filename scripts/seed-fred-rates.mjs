@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, withRetry, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import {
+  CHROME_UA,
+  getRedisCredentials,
+  loadEnvFile,
+  resolveSeedMetaTtl,
+  runSeed,
+} from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   FRED_KEY_PREFIX,
@@ -23,8 +29,31 @@ export const BATCH_TTL = FRED_TTL;
 // FRED batch has published successfully.
 export const FRED_RATES_ACTIVATION_KEY = 'seed-activated:economic:fred-rates:v1';
 const MIN_SERIES_COUNT = Math.ceil(FRED_SEED_SERIES.length * 0.75);
-const SIDE_WRITE_RETRIES = 2;
-const SIDE_WRITE_RETRY_DELAY_MS = 1_000;
+
+function seedMetaKeyFor(dataKey) {
+  return `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
+}
+
+function fredPreserveKeyTtls() {
+  return [
+    {
+      key: 'seed-meta:economic:fred-rates',
+      ttlSeconds: resolveSeedMetaTtl(undefined, BATCH_TTL),
+    },
+    ...FRED_SEED_SERIES.flatMap((seriesId) => {
+      const key = `${FRED_KEY_PREFIX}:${seriesId}:0`;
+      return [
+        { key, ttlSeconds: FRED_TTL },
+        { key: seedMetaKeyFor(key), ttlSeconds: resolveSeedMetaTtl(undefined, FRED_TTL) },
+      ];
+    }),
+    { key: STRESS_INDEX_KEY, ttlSeconds: STRESS_INDEX_TTL },
+    {
+      key: seedMetaKeyFor(STRESS_INDEX_KEY),
+      ttlSeconds: resolveSeedMetaTtl(undefined, STRESS_INDEX_TTL),
+    },
+  ];
+}
 
 export async function fetchFredBatch({
   fetchFredSeriesImpl = fetchFredSeries,
@@ -72,46 +101,69 @@ export function validateFredBatch(batch) {
   return Number.isInteger(batch?.seriesCount) && batch.seriesCount >= MIN_SERIES_COUNT;
 }
 
-async function writeSideKeyWithMeta(
-  writeFn,
-  withRetryImpl,
-  errorMessage,
-) {
-  await withRetryImpl(async () => {
-    const wroteMeta = await writeFn();
-    if (wroteMeta !== true) throw new Error(errorMessage);
-  }, SIDE_WRITE_RETRIES, SIDE_WRITE_RETRY_DELAY_MS);
-}
-
-export async function publishFredSideKeys(batch, {
-  writeExtraKeyWithMetaImpl = writeExtraKeyWithMeta,
-  withRetryImpl = withRetry,
+export async function publishFredCohortAtomically(batch, {
+  canonicalKey = CANONICAL_KEY,
+  payload,
+  payloadValue,
+  ttlSeconds = BATCH_TTL,
+  fetchImpl = globalThis.fetch,
+  credentials = getRedisCredentials(),
+  fetchedAt = Date.now(),
 } = {}) {
+  if (typeof payload !== 'string') throw new Error('FRED atomic publish requires a serialized canonical payload');
+
+  const seed = payloadValue?._seed;
+  const cohortFetchedAt = Number.isFinite(seed?.fetchedAt) ? seed.fetchedAt : fetchedAt;
+  const values = [];
+  const expirations = [];
+  const addValue = (key, value, keyTtlSeconds) => {
+    values.push(key, typeof value === 'string' ? value : JSON.stringify(value));
+    expirations.push(['EXPIRE', key, keyTtlSeconds]);
+  };
   for (const seriesId of batch.seriesIds) {
+    const key = `${FRED_KEY_PREFIX}:${seriesId}:0`;
     const series = batch.seriesById[seriesId];
-    await writeSideKeyWithMeta(
-      () => writeExtraKeyWithMetaImpl(
-        `${FRED_KEY_PREFIX}:${seriesId}:0`,
-        { series },
-        FRED_TTL,
-        series.observations.length,
-      ),
-      withRetryImpl,
-      `FRED ${seriesId} seed-meta write failed`,
-    );
+    addValue(key, { series }, FRED_TTL);
+    addValue(seedMetaKeyFor(key), {
+      fetchedAt: cohortFetchedAt,
+      recordCount: series.observations.length,
+    }, resolveSeedMetaTtl(undefined, FRED_TTL));
   }
 
   if (batch.stress) {
-    await writeSideKeyWithMeta(
-      () => writeExtraKeyWithMetaImpl(
-        STRESS_INDEX_KEY,
-        batch.stress,
-        STRESS_INDEX_TTL,
-        batch.stress.components?.length ?? 0,
-      ),
-      withRetryImpl,
-      'FRED stress-index seed-meta write failed',
-    );
+    addValue(STRESS_INDEX_KEY, batch.stress, STRESS_INDEX_TTL);
+    addValue(seedMetaKeyFor(STRESS_INDEX_KEY), {
+      fetchedAt: cohortFetchedAt,
+      recordCount: batch.stress.components?.length ?? 0,
+    }, resolveSeedMetaTtl(undefined, STRESS_INDEX_TTL));
+  }
+
+  addValue('seed-meta:economic:fred-rates', {
+    fetchedAt: cohortFetchedAt,
+    recordCount: Number.isInteger(seed?.recordCount) ? seed.recordCount : batch.seriesCount,
+    sourceVersion: typeof seed?.sourceVersion === 'string' ? seed.sourceVersion : 'fred-v1',
+  }, resolveSeedMetaTtl(undefined, ttlSeconds));
+  addValue(canonicalKey, payload, ttlSeconds);
+  const commands = [['MSET', ...values], ...expirations];
+  const response = await fetchImpl(`${credentials.url}/multi-exec`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${credentials.token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': CHROME_UA,
+    },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`FRED atomic publication failed: HTTP ${response.status}`);
+  const results = await response.json();
+  if (
+    !Array.isArray(results)
+    || results.length !== commands.length
+    || results[0]?.result !== 'OK'
+    || results.slice(1).some((result) => result?.result !== 1)
+  ) {
+    throw new Error('FRED atomic publication returned an invalid command result');
   }
 }
 
@@ -138,10 +190,11 @@ export async function runFredRatesSeed(deps = {}) {
     ttlSeconds: BATCH_TTL,
     validateFn: validateFredBatch,
     publishTransform: projectFredBatch,
-    beforePublish: (batch) => publishFredSideKeys(batch, {
-      writeExtraKeyWithMetaImpl: deps.writeExtraKeyWithMetaImpl,
-      withRetryImpl: deps.withRetryImpl,
-    }),
+    preserveKeyTtls: fredPreserveKeyTtls(),
+    emptyDataIsFailure: true,
+    publishAtomically: (batch, context) => (
+      deps.publishFredCohortImpl ?? publishFredCohortAtomically
+    )(batch, context),
     sourceVersion: 'fred-v1',
     recordCount: (data) => data?.seriesCount ?? 0,
     declareRecords: (data) => data?.seriesCount ?? 0,

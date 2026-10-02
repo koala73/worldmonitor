@@ -85,7 +85,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
     return {
       auth_kind: 'widget_key',
       principal_id: hashKeySync(input.widgetKey),
-      customer_id: input.widgetKey,
+      customer_id: 'widget',
       tier,
       plan_key: null,
     };

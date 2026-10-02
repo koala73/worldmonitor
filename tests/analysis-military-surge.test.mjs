@@ -22,6 +22,13 @@ import { MILITARY_BASES_EXPANDED } from '../shared/military-bases-data.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
 
+it('posture theaters reference only regions emitted by the presence detector', () => {
+  const regionIds = new Set(SENSITIVE_REGIONS.map(region => region.id));
+  for (const theater of POSTURE_THEATERS) {
+    for (const region of theater.regions) assert.ok(regionIds.has(region), `${theater.id}: ${region}`);
+  }
+});
+
 // Al Udeid (Qatar) — a `middle-east` theater base, so flights parked on it
 // resolve their theater through the proximity lookup rather than the 1500km
 // center fallback.
@@ -217,6 +224,10 @@ describe('surge detection against regional baselines', () => {
     assert.match(signal.description, /^12 airlift aircraft detected \(4\.0x baseline\)\./);
     assert.deepEqual(signal.location, { lat: 27.0, lon: 50.0, name: 'Middle East / Persian Gulf' });
     assert.equal(signal.metadata.theaterId, 'middle-east');
+    assert.equal(signal.metadata.lat, 27.0);
+    assert.equal(signal.metadata.lon, 50.0);
+    assert.equal(signal.data.lat, 27.0);
+    assert.equal(signal.data.lon, 50.0);
     assert.deepEqual(signal.metadata.aircraftTypes, { transport: 12 });
   });
 });

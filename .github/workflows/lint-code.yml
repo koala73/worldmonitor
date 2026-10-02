@@ -4,6 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+
+# See test.yml. The weekly cron is a standalone detection net, so it lands in
+# a group of one via `github.run_id` and is never evicted (#8443).
+concurrency:
+  group: lint-code-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -18,48 +26,112 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      markdown: ${{ steps.diff.outputs.markdown }}
+      docs: ${{ steps.diff.outputs.docs }}
     steps:
       - id: diff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          set -euo pipefail
+
+          emit_all_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "markdown=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          }
+          if [ "${{ github.event_name }}" = "push" ]; then
+            emit_all_true
             exit 0
           fi
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --paginate --jq '.[].filename')
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            emit_all_true
+            exit 0
+          fi
+          if ! PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}") ||
+             ! FILES_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+               --paginate --slurp | jq -ce 'add | arrays'); then
+            echo "PR file lookup failed; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
+          FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
+          if ! jq -e --arg head "${{ github.event.pull_request.head.sha }}" \
+            --arg base "${{ github.event.pull_request.base.sha }}" --argjson count "$FILE_COUNT" \
+            '.head.sha == $head and .base.sha == $base and .changed_files == $count and $count < 3000' <<< "$PR_JSON" >/dev/null; then
+            echo "PR metadata moved or its file list is incomplete; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
+          # Include both sides of renames. A deleted file remains at filename.
+          if ! FILES=$(jq -er '
+            [.[] | .filename, (.previous_filename // empty)] as $paths
+            | if ($paths | length > 0) and all($paths[]; type == "string" and length > 0 and (explode | all(. != 0 and . != 10 and . != 13)))
+              then $paths[] else error("invalid path listing") end
+          ' <<< "$FILES_JSON"); then
+            echo "Unusable PR file list; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
           CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # markdown job: only the lint:md inputs (the markdown, its config, and
+          # package.json, which holds the command and pins markdownlint-cli2), so
+          # a code-only PR skips it. LINT_MD_INPUTS in .husky/pre-push plus the lockfile.
+          MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lock)?\.json$' || true)
+          echo "markdown=$( [ "$MARKDOWN" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
+          echo "docs=$( [ "$DOCS" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   biome:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run lint:unicode
       - run: npm run lint
       - run: npm run lint:boundaries
       - run: npm run lint:api-contract
       - run: npm run sync:bootstrap-tier-keys:check
+      - run: npm run sync:live-video-channels:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
+      - run: npm run lint:safe-local-storage
+      - run: npm run lint:overlay-reload-policy
       - run: npm run security:vite-env-secrets
-      - name: Markdown lint
-        run: npm run lint:md
       - name: Version sync check
         run: npm run version:check
+
+  # One owner for markdown lint (#7772). It used to run inside biome as well
+  # as in a path-filtered lint.yml, so a code+markdown PR linted twice, and
+  # the path filter published no check run on code PRs, so the deploy gate
+  # could never require it. Here it skips when no markdown changed (the gate
+  # counts skipped as passing) and blocks merge through `gate` when it runs.
+  markdown:
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      - run: npm run lint:md
 
   public-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -68,8 +140,39 @@ jobs:
   mintlify-slugs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
       - run: node scripts/enforce-mintlify-reserved-slugs.mjs
+
+  doc-anchors:
+    # Why this gate exists, and how Mintlify slugs a heading, is documented
+    # once in scripts/check-doc-anchors.mjs. Keep it there, not in both.
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Export rendered docs
+        working-directory: docs
+        # The pin holds the CLI wrapper only. `mint export` downloads its
+        # RENDERER at run time, and that is what assigns the ids this gate
+        # trusts — so a slugging change can still arrive with no repo change.
+        # The version is printed below and the checker carries a canary on a
+        # punctuation-sensitive slug, which is the actual protection.
+        run: |
+          npm i -g mint@4.2.866
+          if ! mint export --output "$RUNNER_TEMP/docs-export.zip"; then
+            echo "::warning::Mint export failed once; retrying once."
+            rm -f "$RUNNER_TEMP/docs-export.zip"
+            mint export --output "$RUNNER_TEMP/docs-export.zip"
+          fi
+          echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"
+      - name: Unpack export
+        run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
+      - name: Every doc anchor resolves
+        run: node scripts/check-doc-anchors.mjs "$RUNNER_TEMP/docs-export"

@@ -11,7 +11,7 @@
  * empty-state work.
  */
 
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeLane } from '../server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts';
@@ -173,13 +173,11 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
     }
   }
 
-  it('gap report summary (informational, never fails)', () => {
-    // Print a compact gap report so plan reviewers can see which pairs
-    // returned synthetic / empty data.
-    if (gapRows.length === 0) {
-      // No-op when run before the matrix above (test ordering is preserved)
-      return;
-    }
+  // A diagnostic, not a test. It used to be declared as an `it` that ended
+  // in assert.ok(true), so it reported as a passing case while asserting
+  // nothing. An after() hook prints the same report without inflating the count.
+  after(() => {
+    if (gapRows.length === 0) return;
     const noLane = gapRows.filter((r) => r.noModeledLane);
     const emptyExposures = gapRows.filter((r) => r.exposures === 0);
     const emptyBypasses = gapRows.filter((r) => r.bypasses === 0);
@@ -202,8 +200,6 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         '\nbypass guidance only for the primary one. Sprint 3 should decide: expand to top-N chokepoints,' +
         '\nor show a "see also" hint in the UI.',
     );
-    // Always passes; informational only.
-    assert.ok(true);
   });
 
   it('cargo-aware route selection: CN->JP tanker picks energy route over container', async () => {

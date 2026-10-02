@@ -77,6 +77,7 @@ import {
   type ActivationStepState,
   type ActivationSummaryLine,
 } from '@/services/pro-activation-state';
+import { declareOverlay } from '@/utils/open-modal';
 
 /**
  * How an in-flow confirm resolved. `blocked` means the platform refused in a
@@ -783,6 +784,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   overlay.className = 'modal-overlay pro-activation-overlay active';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  // Opens with no gesture after a checkout return, yet holds wizard state and
+  // the digest-hour choice: the counterexample to deriving this contract from
+  // who opened the surface.
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute(
     'aria-label',
     t('components.proActivation.ariaLabel', { defaultValue: 'Pro activation setup' }),

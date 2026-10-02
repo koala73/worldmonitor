@@ -72,7 +72,24 @@ describe('cursor skill: sentry-triage', () => {
     assert.match(markdown, /plain resolve/i);
     assert.match(markdown, /UNKNOWN_FUNCTION/);
     assert.match(markdown, /sentry-beforesend\.test\.mjs/);
-    assert.match(markdown, /Fixes WORLDMONITOR-/);
+    const product = sectionBetween(markdown, '**Product bug**', '**Archive / mute (any class)**');
+    const done = markdown.slice(markdown.indexOf('## What "done" looks like'));
+    assert.match(product, /Do not put a resolving keyword next to a short ID/);
+    assert.match(product, /Sentry WORLDMONITOR-12A/);
+    assert.match(product, /Before creating or updating the PR, scan the proposed PR body/);
+    for (const section of [product, done]) {
+      assert.match(section, /read(?:ing)?(?: `status` and)? `statusDetails` back|reading back `status: resolved`/);
+      for (const key of ['inRelease', 'inNextRelease', 'inCommit']) {
+        assert.ok(section.includes('`' + key + '`'), `missing pin key: ${key}`);
+      }
+    }
+    assert.match(product, /when resolution is authorized and the fix is verified/);
+    assert.match(done, /status: resolved/);
+    assert.match(done, /shipped change linked by its Sentry short ID with no resolving keyword beside it/);
+    assert.doesNotMatch(done, /(?:fix(?:es|ed)?|clos(?:e|es|ed)|resolv(?:e|es|ed))\s+WORLDMONITOR-/i);
+    assert.match(markdown, /hosted acceptance.*pending/i);
+    assert.doesNotMatch(markdown, /no browser event can ever outrank|browser events carry the static release/);
+    assert.doesNotMatch(markdown, /statusDetails` back (?:to confirm it is )?empty/);
   });
 
   it('audits archive mode via substatus, not empty statusDetails', () => {

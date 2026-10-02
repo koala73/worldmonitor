@@ -1,15 +1,22 @@
 ---
 name: verify-worldmonitor
-description: Launch and drive the WorldMonitor browser dashboard (Vite app at /dashboard) to prove user-facing behavior with screenshots and transcripts. Use when a change needs proof in the real app rather than only unit tests — panels, map layers, settings, search, country briefs, boot — or when asked to run, screenshot, or verify the dashboard.
+description: Verify WorldMonitor dashboard behavior with existing browser tests or a scoped manual drive. Use for panels, map layers, settings, search, country briefs, boot, or dashboard screenshots.
 ---
 
 # Verify WorldMonitor
 
 WorldMonitor's primary surface is a browser dashboard: a Vite/TypeScript SPA served at `/dashboard`, with a map, a panel grid, a settings overlay, and a command palette. This skill launches one isolated instance of it, drives a feature the way a user does, and leaves evidence behind.
 
-Other surfaces exist and are **out of scope** here: the Vercel Edge API (`api/`), the Tauri desktop app + Node sidecar (`src-tauri/`), Railway seeders (`scripts/`), the embed widget (`embed.html`), and the blog (`blog-site/`). Verify those with their own gates (`npm run test:sidecar`, `npm run test:data`, `npm run typecheck:api`).
+This skill proves browser behavior. Use the [code and check map](../../../AGENTS.md#find-the-code-and-its-checks) for backend, desktop, worker, or documentation changes.
 
 Run everything from the repo root of the worktree under test.
+
+## Choose the proof
+
+1. Name the user action and expected result. Load the matching [feature recipe](features/README.md), including its data path and proof limits.
+2. Follow [worktree preparation](../../../CONTRIBUTING.md#worktrees-and-preflight). Run an existing strict test first when it covers the outcome. Country Brief uses `npm run test:e2e:country-brief`. Playwright owns that test's server; do not also run `launch` for it.
+3. For an interaction the test does not cover, use the manual steps below. Extend an existing test when a lasting regression check is needed.
+4. Report the exercised path, controlled responses, evidence, and unmet criteria. Apply the [local API proof limits](../../../CONTRIBUTING.md#verify-the-changed-path). A successful drive proves only its assertions.
 
 ## Launch
 
@@ -24,7 +31,7 @@ It picks the first free port in 4480-4487, starts `VITE_E2E=1 VITE_VARIANT=full 
 - `VITE_E2E=1` is not optional. It is what stamps `data-wm-event-handlers-ready` and `data-wm-initial-data-ready` on `<html>`; every drive waits on those markers.
 - Pick a variant with `WM_VERIFY_VARIANT=tech|finance|commodity|energy|happy`.
 - Force a port with `launch <port>`. Launch refuses a port someone else holds rather than fighting for it.
-- First run in a fresh worktree needs dependencies: `npm run worktree:bootstrap` (see the `wm-worktree-bootstrap` skill).
+- Prepare dependencies through preflight before launch. If Chromium is missing, run `npx playwright install chromium`.
 
 **Isolation.** Two instances can run side by side on different ports, but they share `.claude/verify-evidence/instance.json`, so this skill supports **one instance per worktree**. If `launch` reports an instance already running, either reuse it (`doctor` first) or `cleanup`. Never adopt a dev server this run did not start — the user's own `npm run dev` and other worktrees are also vite processes.
 
@@ -62,7 +69,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 }
 ```
 
-The harness gives each step `page`, `context`, `base`, `shot(name)`, `log(...)`, and `expectVisible(selector)`. It records console errors and warnings, every response ≥400, a transcript, and a failure screenshot if the step throws.
+The harness gives each step `page`, `context`, `base`, `shot(name)`, `log(...)`, and `expectVisible(selector)`. It records console errors and warnings, every response ≥400, a transcript, and a failure screenshot if the step throws. Recorded errors alone do not fail the drive. Assert the requested result and inspect relevant failures before calling the feature verified.
 
 Ready-made steps, one per mapped feature:
 
@@ -89,8 +96,7 @@ Proof standards for this app:
 - Capture the action and its result, not just the final screen: a screenshot before the change and one after.
 - Check the side effect next to the pixel: the persisted `localStorage` key, the `?layers=` / `?country=` URL, the re-read DOM state. A panel that appears but is not persisted is a bug the screenshot cannot see.
 - Wait on the app's own readiness markers. A fixed sleep either flakes or hides a regression.
-- **The dev server is not the Edge runtime.** `/api/*` mostly returns its own JavaScript source here, so a local run always carries a baseline of console errors and 4xx/5xx responses. UI, routing, persistence and state are provable locally; the *content* of an Edge endpoint (bootstrap payloads, entitlements, auth) is not. Say "unverified — needs a deployed preview" rather than reporting a local pass.
-- `AGENTS.md` governs: locally verified, PR ready, merged, and deployed are different claims.
+- Use the [local API proof limits](../../../CONTRIBUTING.md#verify-the-changed-path). Inspect the response and the handler path before classifying an API failure. Do not dismiss an error merely because the run is local.
 
 ## Cleanup
 
@@ -110,13 +116,21 @@ Run it after the last drive of the run, and after any failed iteration, so a bro
 
 ## Feature map
 
-[`features/README.md`](features/README.md) is the maintained index: baseline preconditions, driving conventions, the local-API reality, and one file per feature with its user entry points, driving recipe, and gotchas. A proof that drives one convenient entry point is incomplete when the map lists others. Keep it honest with `/maintain-verification-skill`.
+[`features/README.md`](features/README.md) indexes user entry points, recipes, and gotchas. Exercise the entry points affected by the change and name those left unverified. Update the relevant recipe when behavior or stable handles change.
 
 ## Registration
 
-The canonical copy lives in `.agents/skills/verify-worldmonitor/` because `.gitignore` excludes `.claude/` — a skill written there could never be reviewed or shipped in a PR. `.claude/skills/verify-worldmonitor` is a symlink to it so Claude Code registers the skill. Edit the `.agents/` copy.
+The canonical copy is `.agents/skills/verify-worldmonitor/`. Edit that copy. An agent
+can read this file directly even when automatic discovery is unavailable.
 
-Two things about that path:
+For Claude Code discovery, run the following only when
+`.claude/skills/verify-worldmonitor` does not exist. Preserve an existing destination
+and inspect it before making changes. Do not maintain a second copy.
 
-- This clone's `.git/info/exclude` also lists `/.agents`, so **new** files here need `git add -f`. That exclude is local and uncommitted; already-tracked files (this skill, once added) stage normally afterwards.
-- The symlink is what makes the skill discoverable. If a fresh session does not list `verify-worldmonitor`, recreate it: `ln -sfn ../../.agents/skills/verify-worldmonitor .claude/skills/verify-worldmonitor`.
+```bash
+mkdir -p .claude/skills
+ln -s ../../.agents/skills/verify-worldmonitor .claude/skills/verify-worldmonitor
+```
+
+If Git ignores a new skill file, inspect `git check-ignore -v <path>` before staging
+that specific file. Ignore rules can differ between clones.

@@ -30,6 +30,11 @@ import { getEnergyCrisisPolicies } from './get-energy-crisis-policies';
 import { listGlobalTenders } from './list-global-tenders';
 import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 import { getChinaActivityNowcast } from './get-china-activity-nowcast';
+import { getUsCpiMonthly } from './get-us-cpi-monthly';
+import { getUsTreasuryParYieldCurve } from './get-us-treasury-par-yield-curve';
+import { getUsInterestRates } from './get-us-interest-rates';
+import { getWorldCpiMonthly } from './get-world-cpi-monthly';
+import { getGovernmentYieldCurve } from './get-government-yield-curve';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -62,4 +67,9 @@ export const economicHandler: EconomicServiceHandler = {
   listGlobalTenders,
   getChinaMacroSnapshot,
   getChinaActivityNowcast,
+  getUsCpiMonthly,
+  getUsTreasuryParYieldCurve,
+  getUsInterestRates,
+  getWorldCpiMonthly,
+  getGovernmentYieldCurve,
 };

@@ -25,10 +25,16 @@ import { strict as assert } from 'node:assert';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 
-const { writeExtraKeyWithMeta, resolveSeedMetaTtl, SEED_META_MIN_TTL_SECONDS } =
+const {
+  writeExtraKeyWithMeta,
+  writeExtraKeyWithMetaAtomically,
+  resolveSeedMetaTtl,
+  SEED_META_MIN_TTL_SECONDS,
+} =
   await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
+const originalRetryDelayMs = process.env.WM_SEED_RETRY_DELAY_MS;
 
 /** seed-economy.mjs CRUDE_INVENTORIES_TTL / NAT_GAS_TTL / SPR_TTL / REFINERY_INPUTS_TTL. */
 const EIA_WEEKLY_DATA_TTL = 1_814_400; // 21 days
@@ -36,6 +42,7 @@ const EIA_WEEKLY_DATA_TTL = 1_814_400; // 21 days
 const EIA_HEALTH_BUDGET_SECONDS = 20160 * 60; // 14 days
 
 let sets;
+let transactions;
 
 function ttlOf(command) {
   const exIndex = command.indexOf('EX');
@@ -44,8 +51,16 @@ function ttlOf(command) {
 
 beforeEach(() => {
   sets = [];
+  transactions = [];
+  // Keep the production retry count and error policy, but do not sleep through
+  // the real Redis backoff in this focused unit suite.
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
   globalThis.fetch = async (url, opts = {}) => {
     const command = opts?.body ? JSON.parse(opts.body) : null;
+    if (String(url).endsWith('/multi-exec')) {
+      transactions.push(command);
+      return Response.json(command.map(() => ({ result: 'OK' })));
+    }
     if (Array.isArray(command) && command[0] === 'SET') sets.push(command);
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
   };
@@ -53,6 +68,8 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalRetryDelayMs === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+  else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelayMs;
 });
 
 test('writeExtraKeyWithMeta: seed-meta outlives the data key it vouches for', async () => {
@@ -99,6 +116,138 @@ test('writeExtraKeyWithMeta: an explicit metaTtlSeconds still wins', async () =>
   const metaSet = sets.find((c) => c[1] === 'seed-meta:intel:cross-strait');
   assert.ok(metaSet, 'seed-meta key was written');
   assert.equal(ttlOf(metaSet), 300);
+});
+
+test('writeExtraKeyWithMeta: `extra` reaches the meta record, and overwrites it last', async () => {
+  // #7658 widened `extra` from writeSeedMeta's direct callers to every
+  // writeExtraKeyWithMeta caller, so the precedence needs to be a pinned
+  // contract rather than an accident. It is copied over the record AFTER
+  // fetchedAt/recordCount/coverage, which means a caller CAN clobber the
+  // heartbeat api/health.js reads. That is deliberate — an explicit override
+  // beats a silent drop — but it is a footgun worth failing loudly on if the
+  // order ever changes, and no test covered `extra` at all before this.
+  await writeExtraKeyWithMeta(
+    'conflict:humanitarian:v1',
+    { countriesCovered: 2 },
+    600,
+    41,
+    'seed-meta:conflict:humanitarian',
+    undefined,
+    undefined,
+    { sourceChannel: 'hapi-api', sourceState: 'degraded', recordCount: 0 },
+  );
+
+  const metaSet = sets.find((c) => c[1] === 'seed-meta:conflict:humanitarian');
+  assert.ok(metaSet, 'seed-meta key was written');
+  const meta = JSON.parse(metaSet[2]);
+  assert.equal(meta.sourceChannel, 'hapi-api', 'producer diagnostics must reach the meta record');
+  assert.equal(meta.sourceState, 'degraded');
+  assert.equal(
+    meta.recordCount,
+    0,
+    '`extra` is applied last, so it wins over the derived fields — pinned so a reorder fails here',
+  );
+  assert.ok(Number.isFinite(meta.fetchedAt), 'the heartbeat survives when `extra` does not name it');
+});
+
+test('writeExtraKeyWithMetaAtomically: marker and health provenance use one Redis transaction', async () => {
+  const fetchedAt = Date.parse('2026-07-26T13:33:00Z');
+  await writeExtraKeyWithMetaAtomically({
+    key: 'conflict:humanitarian:v1',
+    data: { sourceChannel: 'hapi-api', updatedAt: fetchedAt },
+    ttlSeconds: 259_200,
+    recordCount: 41,
+    metaKey: 'seed-meta:conflict:humanitarian',
+    metaTtlSeconds: 259_200,
+    extra: { sourceChannel: 'hapi-api', sourceState: 'degraded' },
+    fetchedAt,
+  });
+
+  assert.equal(transactions.length, 1, 'the marker and seed-meta must share one atomic request');
+  assert.equal(sets.length, 0, 'the atomic path must not issue standalone SET requests');
+  const [markerSet, metaSet] = transactions[0];
+  assert.deepEqual(markerSet.slice(0, 2), ['SET', 'conflict:humanitarian:v1']);
+  assert.deepEqual(metaSet.slice(0, 2), ['SET', 'seed-meta:conflict:humanitarian']);
+  assert.equal(ttlOf(markerSet), 259_200);
+  assert.equal(ttlOf(metaSet), 259_200);
+  assert.equal(JSON.parse(markerSet[2]).updatedAt, fetchedAt);
+  assert.deepEqual(JSON.parse(metaSet[2]), {
+    fetchedAt,
+    recordCount: 41,
+    sourceChannel: 'hapi-api',
+    sourceState: 'degraded',
+  });
+});
+
+test('writeExtraKeyWithMetaAtomically: retries a transient transaction failure without splitting the pair', async () => {
+  let calls = 0;
+  globalThis.fetch = async (url, opts) => {
+    calls += 1;
+    assert.match(String(url), /\/multi-exec$/);
+    const commands = JSON.parse(opts.body);
+    transactions.push(commands);
+    if (calls === 1) return new Response('unavailable', { status: 503 });
+    return Response.json(commands.map(() => ({ result: 'OK' })));
+  };
+
+  await writeExtraKeyWithMetaAtomically({
+    key: 'conflict:humanitarian:v1',
+    data: { sourceChannel: 'hapi-api' },
+    ttlSeconds: 259_200,
+    recordCount: 41,
+    metaKey: 'seed-meta:conflict:humanitarian',
+    metaTtlSeconds: 259_200,
+    extra: { sourceChannel: 'hapi-api', sourceState: 'degraded' },
+  });
+
+  assert.equal(calls, 2, 'a transient Redis failure gets one retry before the transaction succeeds');
+  assert.deepEqual(transactions[1], transactions[0], 'every attempt sends the complete atomic pair');
+});
+
+test('writeExtraKeyWithMetaAtomically: every permanent transaction failure does not retry', async () => {
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    calls += 1;
+    assert.match(String(url), /\/multi-exec$/);
+    return new Response('method not allowed', { status: 405 });
+  };
+
+  await assert.rejects(
+    writeExtraKeyWithMetaAtomically({
+      key: 'conflict:humanitarian:v1',
+      data: { sourceChannel: 'hapi-api' },
+      ttlSeconds: 259_200,
+      recordCount: 41,
+      metaKey: 'seed-meta:conflict:humanitarian',
+      metaTtlSeconds: 259_200,
+    }),
+    /HTTP 405/,
+  );
+  assert.equal(calls, 1, 'a permanent Redis client error must fail fast');
+});
+
+test('writeExtraKeyWithMetaAtomically: a command error rejects the whole publication result', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return Response.json([
+      { result: 'OK' },
+      { error: 'ERR simulated seed-meta failure' },
+    ]);
+  };
+
+  await assert.rejects(
+    writeExtraKeyWithMetaAtomically({
+      key: 'conflict:humanitarian:v1',
+      data: { sourceChannel: 'hapi-api' },
+      ttlSeconds: 259_200,
+      recordCount: 41,
+      metaKey: 'seed-meta:conflict:humanitarian',
+      metaTtlSeconds: 259_200,
+    }),
+    /1 command result/,
+  );
+  assert.equal(calls, 1, 'a command-level failure is explicit and must not be retried');
 });
 
 test('resolveSeedMetaTtl: floor, clamp, and explicit override', () => {

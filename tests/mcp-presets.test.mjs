@@ -12,36 +12,17 @@
  */
 
 import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { after, describe, it } from 'node:test';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
-// Parse presets directly from the TypeScript source (no compilation needed).
-// Extract the MCP_PRESETS array by reading between the markers.
-const src = readFileSync(resolve(root, 'src/services/mcp-store.ts'), 'utf-8');
+import { extractPresets, isTemplatePreset, probePreset } from '../scripts/lib/mcp-preset-liveness.mjs';
 
-// Extract presets from the MCP_PRESETS array in the TS source.
-// Splits on object boundaries delimited by '  {' at the start of each preset block.
-function extractPresets(src) {
-  const start = src.indexOf('export const MCP_PRESETS');
-  const end = src.indexOf('\nexport interface McpToolDef');
-  if (start === -1 || end === -1) throw new Error('Could not locate MCP_PRESETS in mcp-store.ts');
-  const arrSrc = src.slice(start, end);
-  const blocks = arrSrc.split(/\n {2}\{/).slice(1);
-  return blocks
-    .map(block => ({
-      name: /name: '([^']+)'/.exec(block)?.[1] ?? null,
-      serverUrl: /serverUrl: '([^']+)'/.exec(block)?.[1] ?? null,
-      defaultTool: /defaultTool: '([^']+)'/.exec(block)?.[1] ?? null,
-    }))
-    .filter(p => p.name && p.serverUrl);
-}
-
-const presets = extractPresets(src);
+const presets = extractPresets(readFileSync(resolve(root, 'src/services/mcp-store.ts'), 'utf8'));
 
 // Known-dead or moved URLs that must NOT appear in presets
 const BANNED_URLS = [
@@ -49,6 +30,7 @@ const BANNED_URLS = [
   'https://maps.mcp.cloudflare.com/mcp',         // wrong — Cloudflare-hosted Maps doesn't exist
   'https://mcp-fetch.cloudflare.com/mcp',        // wrong — old Browser Fetch URL
   'https://server.smithery.ai/@amadevs/mcp-server-overpass/mcp', // 404 on Smithery
+  'https://weatherforensics.dev/mcp/free', // vendor backend unavailable; replaced by Open-Meteo
 ];
 
 // Private/RFC1918 host patterns (SSRF risk)
@@ -114,7 +96,7 @@ describe('MCP Presets — static validation', () => {
 
   it('expected free presets are present', () => {
     const names = new Set(presets.map(p => p.name));
-    for (const expected of ['Parallel Search', 'Robtex', 'Pyth Price Feeds', 'Weather Forensics']) {
+    for (const expected of ['Parallel Search', 'Robtex', 'Pyth Price Feeds', 'Open-Meteo']) {
       assert.ok(names.has(expected), `Expected preset "${expected}" not found`);
     }
   });
@@ -157,10 +139,17 @@ describe('MCP Presets — static validation', () => {
     assert.equal(bf.serverUrl, 'https://browser.mcp.cloudflare.com/mcp');
   });
 
-  it('WeatherForensics defaultTool is noaa_ncei_daily_weather_for_location_date (not get_current_weather)', () => {
-    const wf = presets.find(p => p.name === 'Weather Forensics');
-    assert.ok(wf, 'Weather Forensics preset not found');
-    assert.equal(wf.defaultTool, 'noaa_ncei_daily_weather_for_location_date');
+  it('Open-Meteo uses the historical weather tool without authentication', () => {
+    const weather = presets.find(p => p.name === 'Open-Meteo');
+    assert.ok(weather, 'Open-Meteo preset not found');
+    assert.equal(weather.defaultTool, 'openmeteo_get_historical');
+    assert.equal(weather.authNote, undefined);
+  });
+
+  it('Open-Meteo uses the community hosted MCP endpoint, not the REST API', () => {
+    const weather = presets.find(p => p.name === 'Open-Meteo');
+    assert.ok(weather, 'Open-Meteo preset not found');
+    assert.equal(weather.serverUrl, 'https://open-meteo.caseyjhand.com/mcp');
   });
 
   it('LunarCrush defaultTool is Cryptocurrencies (not List)', () => {
@@ -177,75 +166,26 @@ describe('MCP Presets — static validation', () => {
 });
 
 // ── Live connectivity tests (opt-in) ─────────────────────────────────────────
-// Run with: LIVE_MCP_TESTS=1 npm run test:data -- tests/mcp-presets.test.mjs
+// Run with: LIVE_MCP_TESTS=1 node --test tests/mcp-presets.test.mjs
 
 const LIVE = process.env.LIVE_MCP_TESTS === '1';
+const livePresets = presets.filter(preset => !isTemplatePreset(preset));
 
-describe(`MCP Presets — live connectivity (${LIVE ? 'ENABLED' : 'SKIPPED — set LIVE_MCP_TESTS=1'})`, { skip: !LIVE }, () => {
-  const EXPECTED_LIVE_URLS = [
-    // Free presets expected to respond (no auth needed for initialize)
-    { name: 'Parallel Search', url: 'https://search.parallel.ai/mcp' },
-    { name: 'Robtex',          url: 'https://mcp.robtex.com/mcp' },
-    { name: 'Pyth Price Feeds', url: 'https://mcp.pyth.network/mcp' },
-    { name: 'Weather Forensics', url: 'https://weatherforensics.dev/mcp/free' },
-  ];
-
-  // Auth-gated presets — expect 401 on initialize (not DNS failure / 404)
-  const EXPECTED_AUTH_URLS = [
-    { name: 'Exa Search',    url: 'https://mcp.exa.ai/mcp' },
-    { name: 'Tavily Search', url: 'https://mcp.tavily.com/mcp/' },
-    { name: 'LunarCrush',   url: 'https://lunarcrush.ai/mcp' },
-    { name: 'Alpha Vantage', url: 'https://mcp.alphavantage.co/mcp' },
-    { name: 'Slack',         url: 'https://mcp.slack.com/mcp' },
-    { name: 'GitHub',        url: 'https://api.githubcopilot.com/mcp/' },
-    { name: 'Linear',        url: 'https://mcp.linear.app/mcp' },
-    { name: 'Sentry',        url: 'https://mcp.sentry.dev/mcp' },
-    { name: 'Stripe',        url: 'https://mcp.stripe.com/' },
-    { name: 'Notion',        url: 'https://mcp.notion.com/mcp' },
-    { name: 'Airtable',      url: 'https://mcp.airtable.com/mcp' },
-    { name: 'Perigon News',  url: 'https://mcp.perigon.io/v1/mcp' },
-    { name: 'Datadog',       url: 'https://mcp.datadoghq.com/api/unstable/mcp-server/mcp' },
-  ];
-
-  const TIMEOUT_MS = 15_000;
-
-  async function postMcpInit(url) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream',
-          'User-Agent': 'WorldMonitor-MCP-Proxy/1.0',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0', id: 1, method: 'initialize',
-          params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'worldmonitor', version: '1.0' } },
-        }),
-        signal: controller.signal,
-      });
-      return resp.status;
-    } finally {
-      clearTimeout(timer);
+describe(`MCP Presets — live connectivity (${LIVE ? 'ENABLED' : 'SKIPPED — set LIVE_MCP_TESTS=1'})`, { skip: !LIVE, concurrency: 4 }, () => {
+  const results = [];
+  after(() => {
+    if (process.env.MCP_PRESET_REPORT) {
+      writeFileSync(process.env.MCP_PRESET_REPORT, JSON.stringify({
+        checkedAt: new Date().toISOString(), expectedCount: livePresets.length, results,
+      }, null, 2));
     }
-  }
+  });
 
-  for (const { name, url } of EXPECTED_LIVE_URLS) {
-    it(`${name} (${url}) responds 200 to initialize`, async () => {
-      const status = await postMcpInit(url);
-      assert.equal(status, 200, `${name}: expected 200, got ${status}`);
-    });
-  }
-
-  for (const { name, url } of EXPECTED_AUTH_URLS) {
-    it(`${name} (${url}) responds 200 or 401 (not DNS failure or 404)`, async () => {
-      const status = await postMcpInit(url);
-      assert.ok(
-        [200, 401, 403].includes(status),
-        `${name}: expected 200/401/403, got ${status} — URL may be dead or changed`,
-      );
+  for (const preset of livePresets) {
+    it(`${preset.name} (${preset.serverUrl}) is reachable`, async () => {
+      const result = await probePreset(preset);
+      results.push(result);
+      assert.ok(result.ok, `${result.name} (${result.serverUrl}): ${result.observed}`);
     });
   }
 });

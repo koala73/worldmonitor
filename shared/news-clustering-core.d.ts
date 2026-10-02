@@ -27,6 +27,8 @@ export interface NewsItemCore {
   lang?: string;
   pubDateMissing?: boolean;
   credibilityScore?: number;
+  /** Server digest's origin-aware publisher-family count for the item's story. */
+  corroborationCount?: number;
 }
 
 export type NewsItemWithTier = NewsItemCore & { tier: number };

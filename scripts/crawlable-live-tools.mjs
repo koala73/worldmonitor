@@ -1,10 +1,13 @@
 const REQUEST_TIMEOUT_MS = 8_000;
 const MIN_VALID_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
-const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
-const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+export const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
 const MAX_AIRSPACE_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_RENDERED_ROWS = 5;
 
+// The country intel brief labels CII bands from shared/cii-band.js; this file
+// cannot import it (see the verbatim-copy note below), so
+// tests/country-brief-evidence.test.mts holds the two tables equal.
 const SCORE_BANDS = [
   { min: 81, label: 'Critical' },
   { min: 66, label: 'High' },
@@ -36,17 +39,11 @@ function formatNumber(value, maximumFractionDigits = 1) {
   }).format(value);
 }
 
-// Today's transits are counts from the relay's in-memory 24h AIS window. That
-// window is empty far more often than it is zero-trafficked, and the seeder
-// cannot tell the two apart (`relayTransit` is only built when
-// `recent.length > 0`), so a count below 1 is unsupplied and must not publish
-// as "0" (#7457 / #7370 class).
-//
 // This module is copied verbatim into public/tools/live-tools.js by
 // build-crawlable-corpus.mjs, so it must stay import-free at module scope. The
 // generator imports THESE exports rather than mirroring them -- a "keep in
 // sync" comment is a contract nothing can fail on.
-export function publishedTransitCountLabel(value) {
+export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
   if (value == null || value === '') return null;
   const numeric = typeof value === 'number'
     ? value
@@ -54,8 +51,50 @@ export function publishedTransitCountLabel(value) {
   // Always re-format the parsed number instead of echoing the input string:
   // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
   // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
-  if (!Number.isFinite(numeric) || numeric < 1) return null;
+  if (
+    !Number.isFinite(numeric)
+    || numeric < 0
+    || (numeric > 0 && numeric < 1)
+    || (numeric === 0 && !allowZero)
+  ) return null;
   return formatNumber(numeric, 0);
+}
+
+export function chokepointCoverageMetrics({
+  todayTransits,
+  todayCountsAvailable,
+  navigationalWarnings,
+  navigationalWarningsAvailable,
+  aisDisruptions,
+  aisSnapshotAvailable,
+  congestionLevel,
+  weekMovement,
+}) {
+  const transitLabel = todayCountsAvailable === false
+    ? null
+    : publishedTransitCountLabel(todayTransits, { allowZero: todayCountsAvailable === true });
+  const warningCount = Math.max(0, nonNegativeNumber(navigationalWarnings) ?? 0);
+  const disruptionCount = Math.max(0, nonNegativeNumber(aisDisruptions) ?? 0);
+  const warningLabel = typeof navigationalWarnings === 'string' && navigationalWarnings.trim()
+    ? navigationalWarnings.trim()
+    : `${formatNumber(warningCount, 0)} ${warningCount === 1 ? 'warning' : 'warnings'}`;
+  const disruptionLabel = typeof aisDisruptions === 'string' && aisDisruptions.trim()
+    ? aisDisruptions.trim()
+    : `${formatNumber(disruptionCount, 0)} AIS ${disruptionCount === 1 ? 'disruption' : 'disruptions'}`;
+  return {
+    todayTransits: transitLabel,
+    todayCountsAvailable,
+    navigationalWarnings: navigationalWarningsAvailable === true
+      ? warningLabel
+      : null,
+    aisDisruptions: aisSnapshotAvailable === true
+      ? disruptionLabel
+      : null,
+    congestion: aisSnapshotAvailable === true
+      ? (humanizeToken(congestionLevel) || 'Not reported')
+      : null,
+    weekMovement,
+  };
 }
 
 export function withheldTransitCountSentence(displayName) {
@@ -66,6 +105,124 @@ export function withheldTransitCountSentence(displayName) {
   // ~4.5h on 2026-08-25) and vice versa during a relay warm-up. Naming the
   // wrong feed would be a false claim on a page whose point is not making any.
   return `World Monitor is not currently publishing a transit count for ${name} for this period.`;
+}
+
+// Strict score coercion: only finite numbers and non-blank numeric strings
+// qualify. A bare Number() would turn null and '' into 0 — a measured calm
+// reading manufactured from an absence.
+function chokepointScoreNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(/,/g, ''));
+  return Number.NaN;
+}
+
+function chokepointBandLabel(score) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  if (numeric < 20) return 'Green';
+  if (numeric < 50) return 'Yellow';
+  return 'Red';
+}
+
+// Segments of the live status note that are NEITHER the threat baseline NOR
+// the anomaly signal: absence/coverage phrasing and operator review-hygiene
+// text. The live API always sends a non-empty description, so without this
+// filter every calm waterway would read as threat-driven.
+const NON_SCORE_DESCRIPTION_PATTERNS = [
+  /no active disruptions/i,
+  /source coverage incomplete/i,
+  /threat baseline last reviewed/i,
+];
+
+// The transit-anomaly signal (+10 score bonus) is observed traffic collapse,
+// not baseline — surface it as its own clause, never as the threat weight.
+const ANOMALY_DESCRIPTION_PATTERN = /traffic down \d+% vs .*baseline.*/i;
+
+function splitScoreDescription(description) {
+  const segments = String(description || '')
+    .split(';')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const anomaly = segments.find((segment) => ANOMALY_DESCRIPTION_PATTERN.test(segment)) ?? null;
+  const threatSegments = segments.filter((segment) => segment !== anomaly
+    && !NON_SCORE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
+  return {
+    threat: threatSegments.length ? threatSegments.join('; ') : null,
+    anomaly,
+  };
+}
+
+function chokepointArticleName(displayName) {
+  const name = String(displayName || '').trim() || 'this chokepoint';
+  return `the ${name}`;
+}
+
+// Shared evidence policy for both static HTML and live hydration. The badge is
+// a disruption-risk signal, not evidence that operators have opened or closed
+// a waterway. AIS severity contributes to the score; the number of AIS events
+// and the transit count are context only.
+export function chokepointEvidenceNarrative({
+  displayName,
+  score,
+  bandLabel,
+  description,
+  asOfText,
+  partial,
+  warningsLabel,
+  congestionLabel,
+  aisEventCountLabel,
+  todayTransits,
+}) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  const band = String(bandLabel || '').trim() || chokepointBandLabel(numeric);
+  const formatted = Number.isInteger(numeric) ? String(numeric) : String(Math.round(numeric * 10) / 10);
+  const warnings = String(warningsLabel || '').trim() || null;
+  const severity = String(congestionLabel || '').trim() || null;
+  const aisEvents = String(aisEventCountLabel || '').trim() || null;
+  const transit = todayTransits == null || String(todayTransits).trim() === ''
+    ? null
+    : String(todayTransits).trim();
+  const name = chokepointArticleName(displayName);
+  const dated = String(asOfText || '').trim();
+  const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
+
+  let passage;
+  if (partial === true) {
+    const transitClause = transit === null
+      ? 'No transit count is published for this snapshot.'
+      : `The observed transit count is ${transit}.`;
+    passage = `${snapshotLead}, source coverage for ${name} is partial. ${transitClause} World Monitor cannot verify operational passage status from this snapshot.`;
+  } else {
+    const transitClause = transit === null
+      ? `no transit count is published for ${name}.`
+      : `the observed transit count for ${name} is ${transit}.`;
+    passage = `${snapshotLead}, ${transitClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
+  }
+
+  const { threat, anomaly } = splitScoreDescription(description);
+  const baseline = threat
+    ? `Configured geopolitical baseline: ${threat.replace(/[.]+$/, '')}.`
+    : 'Configured geopolitical baseline: no additional threat weight.';
+  const observedInputs = [
+    warnings,
+    severity ? `maximum AIS congestion severity ${severity}` : null,
+    anomaly ? `PortWatch daily-transit anomaly: ${anomaly.replace(/[.]+$/, '')}` : null,
+  ].filter(Boolean);
+  const unavailableInputs = [
+    warnings === null ? 'navigational warning count' : null,
+    severity === null ? 'maximum AIS congestion severity' : null,
+  ].filter(Boolean);
+  const observed = observedInputs.length
+    ? `Observed score inputs: ${observedInputs.join('; ')}.`
+    : 'Observed score inputs: none available.';
+  const unavailable = unavailableInputs.length
+    ? ` Unavailable score inputs: ${unavailableInputs.join('; ')}.`
+    : '';
+  const context = `Context only (not score inputs): AIS event count ${aisEvents ? `(${aisEvents})` : 'unavailable'}; transit count ${transit ? `(${transit})` : 'unavailable'}.`;
+  const scoreDriver = `The score of ${formatted} (${band}) has this evidence basis. ${baseline} ${observed}${unavailable} ${context}`;
+
+  return { passage, scoreDriver };
 }
 
 function humanizeToken(value, prefixes = []) {
@@ -108,30 +265,55 @@ export function formatAdvisory(value) {
   return normalized || 'Not present';
 }
 
+export const CII_MOVEMENT_UNCHANGED = 'Unchanged';
+export const CII_MOVEMENT_NO_EARLIER_READING = 'No earlier reading';
+// Labels frozen before "Unchanged" and "No earlier reading" were split. They
+// covered both a measured zero and a missing prior reading, so a snapshot
+// carrying one supports no movement claim at all.
+const LEGACY_CONFLATED_CII_MOVEMENT_LABELS = new Set([
+  'Stable',
+  'Stable / unavailable',
+  'Stable or unavailable',
+]);
+
+export function isLegacyConflatedCiiMovementLabel(label) {
+  return LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(String(label || '').trim());
+}
+
+function hasComparedTrend(trend) {
+  const token = String(trend || '').trim().toUpperCase();
+  return token !== '' && token !== 'TREND_DIRECTION_UNSPECIFIED';
+}
+
 export function formatTrend(dynamicScore, trend) {
   const delta = finiteNumber(dynamicScore);
   if (delta !== null) {
     if (delta > 0) return `Rising +${formatNumber(delta)}`;
     if (delta < 0) return `Falling ${formatNumber(delta)}`;
-    return 'Stable or unavailable';
+    // The server sends dynamicScore 0 with UNSPECIFIED when it had no usable
+    // prior reading; only a compared trend makes the zero a real "no change".
+    return hasComparedTrend(trend) ? CII_MOVEMENT_UNCHANGED : CII_MOVEMENT_NO_EARLIER_READING;
   }
 
   const normalized = humanizeToken(trend, ['TREND_DIRECTION_']);
   if (normalized && normalized !== 'Unspecified') return normalized;
-  return 'Stable or unavailable';
+  return CII_MOVEMENT_NO_EARLIER_READING;
 }
 
-export function parseCiiMovement(trend) {
+export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
+
+export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_INTERVAL } = {}) {
+  const interval = String(intervalPhrase || '').trim() || DEFAULT_CII_MOVEMENT_INTERVAL;
   const normalized = String(trend || '').trim();
+  if (normalized === CII_MOVEMENT_UNCHANGED) {
+    return { change24h: 0, movementText: `unchanged ${interval}` };
+  }
+  // movementText null tells callers to drop the movement clause entirely.
   if (
-    normalized === 'Stable'
-    || normalized === 'Stable / unavailable'
-    || normalized === 'Stable or unavailable'
+    normalized === CII_MOVEMENT_NO_EARLIER_READING
+    || LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(normalized)
   ) {
-    return {
-      change24h: null,
-      movementText: 'stable or unavailable over approximately 24 hours',
-    };
+    return { change24h: null, movementText: null };
   }
   const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
   if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
@@ -141,7 +323,7 @@ export function parseCiiMovement(trend) {
   const direction = match[1] === 'Rising' ? 'up' : 'down';
   return {
     change24h,
-    movementText: `${direction} ${magnitude} ${unit} over approximately 24 hours`,
+    movementText: `${direction} ${magnitude} ${unit} ${interval}`,
   };
 }
 
@@ -324,8 +506,6 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     'Chokepoint status',
     MAX_LIVE_SNAPSHOT_AGE_MS,
   );
-  const activeWarnings = Math.max(0, nonNegativeNumber(row.activeWarnings) ?? 0);
-  const aisDisruptions = Math.max(0, nonNegativeNumber(row.aisDisruptions) ?? 0);
   const transit = row.transitSummary;
   // dataAvailable is PortWatch history presence, so it gates wowChangePct --
   // but NOT today's count, which comes from the relay's AIS window. Gating the
@@ -333,21 +513,38 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   // chokepoint (it dropped two for ~4.5h on 2026-08-25) and then rendered the
   // withhold note over live data. The count carries its own absence.
   const transitAvailable = transit?.dataAvailable === true;
-  const todayTransits = publishedTransitCountLabel(nonNegativeNumber(transit?.todayTotal));
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
+  const coverageMetrics = chokepointCoverageMetrics({
+    todayTransits: nonNegativeNumber(transit?.todayTotal),
+    todayCountsAvailable: transit?.todayCountsAvailable,
+    navigationalWarnings: row.activeWarnings,
+    navigationalWarningsAvailable: row.navigationalWarningsAvailable === true,
+    aisDisruptions: row.aisDisruptions,
+    aisSnapshotAvailable: row.aisSnapshotAvailable === true,
+    congestionLevel: row.congestionLevel,
+    weekMovement: weekMovement === null
+      ? null
+      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+  });
 
   return {
     disruptionScore: formatNumber(score, 0),
     status,
-    congestion: humanizeToken(row.congestionLevel) || 'Not reported',
-    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
-    description: String(row.description || '').trim() || 'No additional status note was supplied.',
-    todayTransits,
-    weekMovement: weekMovement === null
-      ? null
-      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+    congestion: coverageMetrics.congestion,
+    navigationalWarnings: coverageMetrics.navigationalWarnings,
+    aisDisruptions: coverageMetrics.aisDisruptions,
+    // null, never a placeholder sentence — see publishableDescription in
+    // scripts/freeze-crawlable-live-pulse.mjs (#7530).
+    description: String(row.description || '').trim() || null,
+    todayTransits: coverageMetrics.todayTransits,
+    todayCountsAvailable: coverageMetrics.todayCountsAvailable,
+    weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTransits === null,
+    partial: payload.upstreamUnavailable === true
+      || !transitAvailable
+      || coverageMetrics.todayTransits === null
+      || coverageMetrics.navigationalWarnings === null
+      || coverageMetrics.aisDisruptions === null,
   };
 }
 
@@ -778,6 +975,26 @@ function setText(root, selector, value) {
   if (element) element.textContent = value;
 }
 
+function setOptionalMetric(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const metric = element.closest('.metric');
+  const available = value !== null && value !== undefined;
+  element.textContent = available ? value : '';
+  if (metric) metric.hidden = !available;
+}
+
+// The status note is optional prose, not a labelled metric: hide the paragraph
+// itself rather than leaving an empty <p> or writing a placeholder sentence
+// into it (#7530).
+function setOptionalDescription(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const text = value === null || value === undefined ? '' : String(value);
+  element.textContent = text;
+  element.hidden = text === '';
+}
+
 function formatDateTime(timestamp) {
   if (timestamp === null) return 'Time unavailable';
   return new Intl.DateTimeFormat('en-US', {
@@ -786,6 +1003,9 @@ function formatDateTime(timestamp) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    // UTC to match the static page's timestamps (formatStaticDateTime in
+    // build-crawlable-corpus.mjs); the reader's zone put "GMT+4" beside "UTC".
+    timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(new Date(timestamp));
 }
@@ -805,7 +1025,9 @@ function setToolState(tool, state, status) {
     fallback.hidden = revealValues;
   }
   for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
-    if (revealValues) description.hidden = false;
+    // Only reveal a note that has text. The status note is optional (#7530),
+    // so an unconditional reveal would surface an empty paragraph.
+    if (revealValues && description.textContent.trim()) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
@@ -910,10 +1132,12 @@ function updateCountryQuery(select, dashboardLink) {
   else url.searchParams.delete('country');
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   if (dashboardLink) {
-    // Keep conversion attribution on dynamically-rewritten dashboard links.
+    // No utm tag: middleware 308s index-noise query keys away, so a tagged
+    // link is a redirect hop for anything that follows it (#8603). Umami
+    // records the referrer path for same-site navigation.
     dashboardLink.href = code
-      ? `/?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
-      : '/?utm_source=seo-tool';
+      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1`
+      : '/dashboard';
   }
 }
 
@@ -961,8 +1185,8 @@ function renderCountryRiskViewModel(tool, view) {
     }
   }
   markPublishedLivePulse(tool);
-  if (view.partial) setToolState(tool, 'partial', 'Partial API result');
-  else setToolState(tool, 'ready', 'API result');
+  if (view.partial) setToolState(tool, 'partial', 'Partial live reading');
+  else setToolState(tool, 'ready', 'Live reading');
 }
 
 /** True when the score cell still holds a published numeric value. */
@@ -1065,7 +1289,7 @@ function renderCiiRankingViewModel(tool, view) {
   setTime(tool, '[data-cii-ranking-updated]', view.updatedAt, 'Latest score');
   tool.dataset.ciiHydrated = 'true';
   markPublishedLivePulse(tool);
-  setToolState(tool, 'ready', `API result · ${view.methodologyVersion}`);
+  setToolState(tool, 'ready', `Live reading · ${view.methodologyVersion}`);
 }
 
 function renderCiiRankingError(tool) {
@@ -1110,11 +1334,31 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
-    setText(tool, '[data-chokepoint-congestion]', view.congestion);
-    setText(tool, '[data-chokepoint-warnings]', view.warnings);
+    const narrative = chokepointEvidenceNarrative({
+      displayName: tool.dataset.chokepointName || '',
+      score: view.disruptionScore,
+      bandLabel: view.status,
+      description: view.description,
+      asOfText: formatDateTime(view.fetchedAt),
+      partial: view.partial,
+      warningsLabel: view.navigationalWarnings,
+      congestionLabel: view.congestion,
+      aisEventCountLabel: view.aisDisruptions,
+      todayTransits: view.todayTransits,
+    });
+    const openStatus = tool.querySelector('[data-chokepoint-open-status]');
+    if (openStatus && narrative !== null) openStatus.textContent = narrative.passage;
+    const scoreDriver = tool.querySelector('[data-chokepoint-score-driver]');
+    if (scoreDriver && narrative !== null) {
+      scoreDriver.hidden = false;
+      scoreDriver.textContent = narrative.scoreDriver;
+    }
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
     setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
-    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
-    setText(tool, '[data-chokepoint-description]', view.description);
+    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
+    setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
     if (transitsNote) {
       if (view.todayTransits == null) {
@@ -1129,7 +1373,7 @@ export async function loadChokepoint(tool) {
     }
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
+    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -1138,8 +1382,9 @@ export async function loadChokepoint(tool) {
     }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
-    setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
-    setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', null);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', null);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', null);
     // Total fetch failure: match the sibling cells. An em dash here is the
     // "withheld, see the note" signal, and the note is hidden in this branch,
     // so it would read as an unexplained blank next to four "Unavailable"s.
@@ -1150,7 +1395,7 @@ export async function loadChokepoint(tool) {
       transitsNote.hidden = true;
       transitsNote.textContent = '';
     }
-    setText(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
+    setOptionalDescription(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');
   }
@@ -1201,7 +1446,7 @@ export async function loadCrisis(tool) {
     }
     setTime(tool, '[data-live-updated]', view.updatedAt, 'Retrieved');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
+    setToolState(tool, view.state, view.state === 'partial' ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -1242,6 +1487,7 @@ export async function loadHazards(tool) {
       async (signal) => {
         const payload = await requestLiveJson('/api/natural/v1/list-natural-events', {
           signal,
+          preflightSession: true,
         });
         return hazardPulseViewModel(payload, { bounds });
       },
@@ -1254,7 +1500,7 @@ export async function loadHazards(tool) {
           `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
         ));
         setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
-        setToolState(tool, 'ready', 'API result');
+        setToolState(tool, 'ready', 'Live reading');
       },
     );
   } catch {
@@ -1356,8 +1602,8 @@ async function loadAirspace(tool) {
       }
 
       updateCountryQuery(select, dashboardLinkFor(tool));
-      if (readySections === 2) setToolState(tool, 'ready', 'API results');
-      else if (readySections === 1) setToolState(tool, 'partial', 'Partial API result');
+      if (readySections === 2) setToolState(tool, 'ready', 'Live readings');
+      else if (readySections === 1) setToolState(tool, 'partial', 'Partial live reading');
       else setToolState(tool, 'error', 'Temporarily unavailable');
     },
   );

@@ -135,6 +135,36 @@ describe("api plan-limit email delivery", () => {
     expect(notices[0].emailStatus).toBe("suppressed");
   });
 
+  test("broadcast unsubscribe does not suppress a transactional plan-limit notice", async () => {
+    const t = convexTest(schema, modules);
+    await seedNotice(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "user-api",
+        email: "owner@example.com",
+        normalizedEmail: "owner@example.com",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("emailSuppressions", {
+        normalizedEmail: "owner@example.com",
+        reason: "unsubscribe",
+        suppressedAt: NOW,
+      });
+    });
+    process.env.RESEND_API_KEY = "resend-test";
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_1" }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const summary = await t.action(emailFns.sendDuePlanLimitEmails, { now: NOW + 1_000, live: true });
+    expect(summary).toMatchObject({ considered: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
+    expect(notices[0].emailStatus).toBe("sent");
+  });
+
   test("missing recipient marks notice skipped and leaves in-app notice current", async () => {
     const t = convexTest(schema, modules);
     await seedNotice(t);

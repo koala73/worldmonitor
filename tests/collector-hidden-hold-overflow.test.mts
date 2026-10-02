@@ -1,4 +1,4 @@
-import { describe, it, before, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 /**
@@ -26,6 +26,9 @@ import assert from 'node:assert/strict';
  */
 
 const UMAMI_SEND_URL = 'https://abacus.worldmonitor.app/api/send';
+
+before(() => mock.timers.enable({ apis: ['setTimeout'] }));
+after(() => mock.timers.reset());
 
 type WindowLifecycleHandler = (event?: { persisted?: boolean }) => void;
 

@@ -989,3 +989,296 @@ test('a clean close with no recorded error clears throttle escalation', async (t
   // so this pins the clean-close reset rather than the non-throttle error reset.
   assert.equal(recovered.lastFailure, 'position_timeout');
 });
+
+// A refused credential is not a transient failure. Before the classifier existed a
+// 401 was indistinguishable from a failed handshake, so a revoked key walked the
+// ordinary ladder forever — knocking hundreds of times a day on a provider that had
+// already said no.
+test('a refused credential is terminal and probed slowly instead of walking the ladder', async (t) => {
+  let upstreamAttempts = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamAttempts++;
+    res.writeHead(401, { 'Content-Type': 'text/plain', 'Retry-After': '5' });
+    res.end('unauthorized');
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'revoked-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+      // Compress the ordinary ladder so "it did not walk it" is unambiguous: the
+      // terminal state must ignore these entirely.
+      AIS_RECONNECT_BASE_MS: '100',
+      AIS_RECONNECT_MAX_MS: '200',
+      AIS_AUTH_PROBE_MS: '60000',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => stopChild(child));
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  const rejected = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    const upstreamHealth = health.ingestion.aisSnapshot.upstream;
+    return upstreamHealth.lastFailure === 'auth_rejected'
+      && upstreamHealth.connectionAttemptsSinceBoot === 1
+      ? upstreamHealth
+      : null;
+  }, 'the refused credential to be classified', 10_000);
+
+  assert.equal(rejected.terminalFailuresSinceBoot, 1);
+  assert.equal(
+    rejected.throttlesSinceBoot,
+    0,
+    'an auth rejection is not a throttle and must not feed the throttle escalation',
+  );
+  // The slow probe cadence, not the ~200ms ladder the env asked for.
+  assert.ok(
+    rejected.reconnectCooldownRemainingMs > 30_000,
+    `expected the slow auth probe, got a ${rejected.reconnectCooldownRemainingMs}ms cooldown`,
+  );
+
+  // Sticky: the compressed ordinary ladder would have produced several attempts by
+  // now, so staying at one attempt is the observable proof of the terminal state.
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  assert.equal(upstreamAttempts, 1, 'a refused credential must not walk the fast ladder');
+  const stillRejected = await getJson(relayPort, '/health');
+  assert.equal(stillRejected.ingestion.aisSnapshot.upstream.connectionAttemptsSinceBoot, 1);
+});
+
+// `ws` only surfaces the upgrade response through `unexpected-response`, which is
+// also the only place the provider's Retry-After is visible. Installing that
+// listener transfers teardown to the relay, so this test pins BOTH halves: the
+// header wins over the ladder, and the socket still gets released and rescheduled
+// (without the explicit release the socket stays CONNECTING and the feed stops).
+test('a 429 Retry-After overrides the ladder and the socket is still recycled', async (t) => {
+  let upstreamAttempts = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamAttempts++;
+    res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': '30' });
+    res.end('rate limited');
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+      // A ladder that could never produce 30s on its own.
+      AIS_RECONNECT_BASE_MS: '100',
+      AIS_RECONNECT_MAX_MS: '200',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => stopChild(child));
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  const throttled = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    const upstreamHealth = health.ingestion.aisSnapshot.upstream;
+    return upstreamHealth.lastFailure === 'http_429'
+      && upstreamHealth.reconnectCooldownRemainingMs > 20_000
+      ? upstreamHealth
+      : null;
+  }, 'the provider Retry-After to override the ladder', 10_000);
+
+  assert.equal(throttled.throttlesSinceBoot, 1);
+  assert.equal(
+    upstreamAttempts,
+    1,
+    'the cooldown must hold: no second handshake while the Retry-After is pending',
+  );
+});
+
+// Reporting and recycling are deliberately separate budgets: the provider allows ONE
+// stream per key, so aborting on the first whiff of staleness would churn the only
+// connection we are allowed to hold. Stale is what the operator is told; the
+// freshness budget is what actually recycles.
+test('a silent stream is reported stale before it is recycled', async (t) => {
+  let upstreamAttempts = 0;
+  const upstreamSockets = [];
+  const upstream = http.createServer();
+  const upstreamWss = new WebSocketServer({ server: upstream });
+  upstreamWss.on('connection', (socket) => {
+    const attempt = ++upstreamAttempts;
+    upstreamSockets.push(socket);
+    socket.once('message', () => {
+      socket.send(JSON.stringify({
+        MessageType: 'PositionReport',
+        MetaData: { MMSI: `77700077${attempt}`, ShipName: 'GOES SILENT' },
+        Message: {
+          PositionReport: {
+            Latitude: 25,
+            Longitude: 55,
+            Sog: 12,
+            Cog: 90,
+            TrueHeading: 90,
+          },
+        },
+      }));
+    });
+  });
+  const upstreamPort = await listen(upstream);
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      // A wide gap between the two budgets so the reported-stale window is big
+      // enough to sample reliably.
+      AIS_POSITION_FRESHNESS_MS: '8000',
+      AIS_POSITION_STALE_MS: '1000',
+      AIS_SNAPSHOT_INTERVAL_MS: '500',
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(async () => {
+    await stopChild(child);
+    for (const socket of upstreamSockets) socket.terminate();
+    await new Promise((resolve) => upstreamWss.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  await waitForAsync(async () => {
+    await getJson(relayPort, '/ais/snapshot', auth);
+    const health = await getJson(relayPort, '/health');
+    return health.ingestion.aisSnapshot.currentPositionReady ? health : null;
+  }, 'the first accepted PositionReport', 10_000);
+
+  const stale = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    const ais = health.ingestion.aisSnapshot;
+    return ais.positionStale === true && ais.connected === true ? ais : null;
+  }, 'the stale verdict while the socket is still open', 8_000);
+
+  // Stale is a REPORT: the position is still inside the freshness budget, so the
+  // connection is healthy as far as recycling is concerned.
+  assert.equal(stale.currentPositionReady, true);
+  assert.equal(stale.positionStaleMs, 1_000);
+  assert.equal(stale.upstream.lastFailure, null, 'nothing has failed yet, only gone quiet');
+
+  const recycled = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    const upstreamHealth = health.ingestion.aisSnapshot.upstream;
+    return upstreamHealth.lastFailure === 'position_timeout' ? upstreamHealth : null;
+  }, 'the hard recycle at the freshness budget', 12_000);
+  assert.equal(recycled.terminalFailuresSinceBoot, 1);
+});
+
+for (const rejection of ['error frame', 'close reason', 'generic policy close', 'throttled close']) {
+  test(`classifies a subscription rejection from ${rejection} after upgrade`, async (t) => {
+    let upstreamAttempts = 0;
+    const upstreamSockets = [];
+    const upstream = http.createServer();
+    const upstreamWss = new WebSocketServer({ server: upstream });
+    upstreamWss.on('connection', (socket) => {
+      upstreamAttempts++;
+      upstreamSockets.push(socket);
+      socket.once('message', (raw) => {
+        assert.equal(JSON.parse(raw.toString()).APIKey, 'revoked-key');
+        if (rejection === 'error frame') {
+          // No provider close: the relay must recycle the refused subscription.
+          socket.send(JSON.stringify({ error: 'Api Key Is Not Valid' }));
+        } else {
+          socket.close(1008, rejection === 'close reason'
+            ? 'Api Key Is Not Valid'
+            : rejection === 'throttled close' ? 'rate limit exceeded' : 'Invalid bounding box');
+        }
+      });
+    });
+    const upstreamPort = await listen(upstream);
+    const child = spawn(process.execPath, [relayScript], {
+      env: {
+        ...process.env,
+        AISSTREAM_API_KEY: 'revoked-key',
+        AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+        RELAY_SHARED_SECRET: 'relay-secret',
+        RELAY_TEST_MODE: 'true',
+        NODE_ENV: 'test',
+        PORT: '0',
+        AIS_RECONNECT_BASE_MS: '1000',
+        AIS_RECONNECT_MAX_MS: '1000',
+        AIS_AUTH_PROBE_MS: '60000',
+        AIS_THROTTLE_ESCALATE_AFTER: '2',
+        AIS_THROTTLE_RECONNECT_MAX_MS: '2000',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    t.after(async () => {
+      await stopChild(child);
+      for (const socket of upstreamSockets) socket.terminate();
+      await new Promise(resolve => upstreamWss.close(resolve));
+      await new Promise(resolve => upstream.close(resolve));
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk.toString('utf8'); });
+    child.stderr.on('data', chunk => { output += chunk.toString('utf8'); });
+    await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+    const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
+    await getJson(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
+    const authFailure = rejection === 'error frame' || rejection === 'close reason';
+    const throttled = rejection === 'throttled close';
+    const failure = await waitForAsync(async () => {
+      const health = (await getJson(relayPort, '/health')).ingestion.aisSnapshot.upstream;
+      return health.lastFailure === (authFailure ? 'auth_rejected' : throttled ? 'http_429' : 'closed_without_data')
+        && health.reconnectCooldownRemainingMs > 0 ? health : null;
+    }, 'the subscription rejection to schedule a retry');
+    assert.equal(failure.terminalFailuresSinceBoot, throttled ? 0 : 1, 'error plus close must count only once');
+    assert.equal(failure.throttlesSinceBoot, throttled ? 1 : 0);
+    assert.equal(failure.connected, false);
+    if (authFailure) {
+      assert.ok(failure.reconnectCooldownRemainingMs > 30_000);
+      await new Promise(resolve => setTimeout(resolve, 1_500));
+      assert.equal(upstreamAttempts, 1, 'subscription auth must not use the fast ladder');
+    } else {
+      assert.ok(failure.reconnectCooldownRemainingMs <= 1_000);
+      await waitFor(() => upstreamAttempts >= 2, 'ordinary retry after a non-auth policy close');
+      if (throttled) {
+        await waitForAsync(async () => {
+          const health = (await getJson(relayPort, '/health')).ingestion.aisSnapshot.upstream;
+          return health.throttleEscalated && health.consecutiveThrottles >= 2;
+        }, 'close reasons to preserve consecutive throttles');
+      }
+    }
+  });
+}

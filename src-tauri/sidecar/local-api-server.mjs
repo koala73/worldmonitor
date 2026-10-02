@@ -31,6 +31,12 @@ const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
+// The sidecar's own listen origins. A fetch to one of these is a nested call
+// into this same process (MCP registry tools call sibling /api routes this
+// way), not an upstream request, so it must not hold an upstream slot: the
+// nested handler's own upstream fetches draw from the same pool, and six
+// concurrent self-calls would otherwise wedge until their timeouts fire.
+const sidecarSelfFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
   if (body == null) return null;
@@ -117,6 +123,18 @@ function releaseUpstreamSlot() {
   }
 }
 
+// JSON literal safe to interpolate into an inline <script>: escapes the
+// characters that can close the element or start an HTML comment.
+function jsonForScript(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+function isYahooFinanceHost(hostname) {
+  // URL keeps a DNS-absolute trailing dot, which still names the same host.
+  const host = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+  return host === 'finance.yahoo.com' || host.endsWith('.finance.yahoo.com');
+}
+
 // Global Yahoo Finance rate gate — shared across ALL handler bundles.
 let _yahooLastReq = 0;
 let _yahooQueue = Promise.resolve();
@@ -181,14 +199,19 @@ function makePinnedLookup(address, family = 4) {
 }
 
 function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
-  const origins = [
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    ...extraOrigins,
+  // Normalize through URL so a default port (80) compares equal to
+  // `url.origin`, which omits it: `http://127.0.0.1:80` never matches
+  // `new URL('http://127.0.0.1:80/x').origin === 'http://127.0.0.1'`.
+  const selfOrigins = [
+    new URL(`http://127.0.0.1:${port}`).origin,
+    new URL(`http://localhost:${port}`).origin,
   ];
+  const origins = [...selfOrigins, ...extraOrigins];
   for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
+  for (const origin of selfOrigins) sidecarSelfFetchOrigins.add(origin);
   return () => {
     for (const origin of origins) sidecarAllowedPrivateFetchOrigins.delete(origin);
+    for (const origin of selfOrigins) sidecarSelfFetchOrigins.delete(origin);
   };
 }
 
@@ -211,14 +234,15 @@ async function assertSafeSidecarFetchUrl(url) {
 globalThis.fetch = async function ipv4Fetch(input, init) {
   const isRequest = input && typeof input === 'object' && 'url' in input;
   let url;
-  try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
+  try { url = new URL(isRequest ? input.url : input); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
   const allowPrivateNetwork = init?.[ALLOW_PRIVATE_NETWORK_FETCH] === true;
   const safety = allowPrivateNetwork
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
-  if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
-  await acquireUpstreamSlot();
+  if (isYahooFinanceHost(url.hostname)) await sidecarYahooGate();
+  const holdsUpstreamSlot = !sidecarSelfFetchOrigins.has(url.origin);
+  if (holdsUpstreamSlot) await acquireUpstreamSlot();
   try {
     const mod = url.protocol === 'https:' ? https : http;
     const method = init?.method || (isRequest ? input.method : 'GET');
@@ -295,7 +319,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       req.end();
     });
   } finally {
-    releaseUpstreamSlot();
+    if (holdsUpstreamSlot) releaseUpstreamSlot();
   }
 };
 
@@ -310,6 +334,12 @@ const ALLOWED_ENV_KEYS = new Set([
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
+  // RSS publishers are untrusted. The response must not become a same-origin
+  // document if a caller navigates to or frames the proxy URL.
+  'content-security-policy': "sandbox; default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+  'x-content-type-options': 'nosniff',
+});
 
 // ── SSRF protection ──────────────────────────────────────────────────────
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
@@ -345,10 +375,30 @@ const BLOCKED_IPV4_RANGES = [
   return [baseInt, mask];
 });
 
+function ipv4FromMappedIPv6(ip) {
+  const normalized = String(ip).replace(/^\[|\]$/g, '');
+  if (isIP(normalized) !== 6) return null;
+
+  let canonical = normalized;
+  try {
+    canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
+  } catch {
+    return null;
+  }
+
+  const match = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (!match) return null;
+
+  const high = Number.parseInt(match[1], 16);
+  const low = Number.parseInt(match[2], 16);
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+}
+
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — extract the v4 portion
-  const v4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  const addr = v4Mapped ? v4Mapped[1] : ip;
+  // IPv4-mapped IPv6 — WHATWG URL parsing canonicalizes mapped literals to
+  // hexadecimal (for example, ::ffff:127.0.0.1 -> ::ffff:7f00:1), so
+  // normalize every valid IPv6 spelling before extracting the v4 portion.
+  const addr = ipv4FromMappedIPv6(ip) || ip;
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
@@ -435,6 +485,20 @@ function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'content-type': 'application/json', ...extraHeaders },
+  });
+}
+
+function rssProxyJson(data, status = 200) {
+  return json(data, status, RSS_PROXY_SECURITY_HEADERS);
+}
+
+function rssProxyResponse(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      ...RSS_PROXY_SECURITY_HEADERS,
+      'content-type': 'application/xml; charset=utf-8',
+    },
   });
 }
 
@@ -723,6 +787,8 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // hold. They must stay cloud-preferred even when a desktop configures WS relay;
 // relay availability does not provide Upstash credentials to local handlers.
 const cloudPreferredExact = new Set([
+  '/api/intelligence/v1/list-wsb-tickers',
+  '/api/displacement/v1/get-displacement-summary',
   '/api/bootstrap',
   '/api/military/v1/get-defense-industrial-base',
   '/api/supply-chain/v1/get-country-vulnerabilities',
@@ -1367,6 +1433,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 }
 
 async function dispatch(requestUrl, req, routes, context) {
+  // Docker's public proxy supplies transport auth, not native administration authority.
+  if (context.mode === 'docker' && requestUrl.pathname.startsWith('/api/local-')) {
+    return json({ error: 'Native administration is unavailable in Docker mode' }, 403);
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
   }
@@ -1385,75 +1456,27 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
-  // HLS proxy — exempt from auth because <video src="..."> cannot carry
-  // custom headers.  Proxies HLS manifests and segments from allowlisted CDN
-  // hosts, adding the required Referer header that browsers cannot set.
-  // Desktop-only (sidecar); web uses YouTube fallback.
-  if (requestUrl.pathname === '/api/hls-proxy') {
-    const ALLOWED_HLS_HOSTS = new Set(['cdn-ca2-na.lncnetworks.host']);
-    const upstreamRaw = requestUrl.searchParams.get('url');
-    if (!upstreamRaw) return new Response('Missing url param', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    let upstream;
-    try { upstream = new URL(upstreamRaw); } catch { return new Response('Invalid url', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } }); }
-    if (upstream.protocol !== 'https:' || !ALLOWED_HLS_HOSTS.has(upstream.hostname)) {
-      return new Response('Host not allowed', { status: 403, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-    try {
-      const hlsResp = await new Promise((resolve, reject) => {
-        const reqOpts = {
-          hostname: upstream.hostname,
-          port: 443,
-          path: upstream.pathname + upstream.search,
-          method: 'GET',
-          headers: { 'Referer': 'https://livenewschat.eu/', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
-          family: 4,
-        };
-        const r = https.request(reqOpts, (res) => {
-          const chunks = [];
-          res.on('data', c => chunks.push(c));
-          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
-        });
-        r.on('error', reject);
-        r.setTimeout(10000, () => r.destroy(new Error('HLS upstream timeout')));
-        r.end();
-      });
-      if (hlsResp.status < 200 || hlsResp.status >= 300) {
-        return new Response(`Upstream ${hlsResp.status}`, { status: hlsResp.status, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-      }
-      const ct = hlsResp.headers['content-type'] || '';
-      const isManifest = upstreamRaw.endsWith('.m3u8') || ct.includes('mpegurl') || ct.includes('x-mpegurl');
-      if (isManifest) {
-        const basePath = upstream.pathname.substring(0, upstream.pathname.lastIndexOf('/') + 1);
-        const baseOrigin = upstream.origin;
-        let manifest = hlsResp.body.toString('utf-8');
-        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => {
-          const full = match.startsWith('http') ? match : `${baseOrigin}${basePath}${match}`;
-          return `/api/hls-proxy?url=${encodeURIComponent(full)}`;
-        });
-        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => {
-          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
-          return `URI="/api/hls-proxy?url=${encodeURIComponent(full)}"`;
-        });
-        return new Response(manifest, { status: 200, headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-      }
-      return new Response(hlsResp.body, { status: 200, headers: { 'content-type': ct || 'application/octet-stream', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-    } catch (e) {
-      context.logger.warn('[hls-proxy] error:', e.message);
-      return new Response('Proxy error', { status: 502, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-  }
-
   // YouTube embed bridge — exempt from auth because iframe src cannot carry
   // Authorization headers.  Serves a minimal HTML page that loads the YouTube
   // IFrame Player API from a localhost origin (which YouTube accepts, unlike
   // tauri://localhost).  No sensitive data is exposed.
   if (requestUrl.pathname === '/api/youtube-embed') {
+    // Exactly one of videoId (that video) or channel (whatever the channel has live right now).
     const videoId = requestUrl.searchParams.get('videoId');
-    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    const channel = requestUrl.searchParams.get('channel');
+    if ((videoId === null) === (channel === null)) {
+      return new Response('Pass exactly one of videoId or channel', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (videoId !== null && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
       return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (channel !== null && !/^UC[A-Za-z0-9_-]{22}$/.test(channel)) {
+      return new Response('Invalid channel', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
     const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
     const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    // The caller's presentation decides the chrome; a tile that draws its own asks for none.
+    const controls = requestUrl.searchParams.get('controls') === '0' ? '0' : '1';
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
     // parentOrigin is the actual parent window origin (tauri://localhost, asset://localhost, etc.)
@@ -1463,13 +1486,15 @@ async function dispatch(requestUrl, req, routes, context) {
     const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
       || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
       || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
-    const safeVideoId = JSON.stringify(String(videoId));
-    const safeOrigin = JSON.stringify(origin);
-    const safeParentOrigin = JSON.stringify(rawParentOrigin);
+    // A channel embeds as videoId 'live_stream' with a channel player var.
+    const safeVideoId = jsonForScript(videoId ?? 'live_stream');
+    const channelPlayerVar = channel ? `channel:${jsonForScript(channel)},` : '';
+    const safeOrigin = jsonForScript(origin);
+    const safeParentOrigin = jsonForScript(isAllowedParentOrigin ? rawParentOrigin : null);
     const bridgePostMessageScript = isAllowedParentOrigin
       ? `function postToParent(message){window.parent.postMessage(message,${safeParentOrigin})}`
       : 'function postToParent(){}';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function postVideoData(){var d={},duration=null,state=null;try{d=player.getVideoData()||{}}catch(e){}try{duration=player.getDuration()}catch(e){}try{state=player.getPlayerState()}catch(e){}postToParent({type:'yt-video-data',videoId:d.video_id||'',isLive:typeof d.isLive==='boolean'?d.isLive:null,title:d.title||'',author:d.author||'',duration:typeof duration==='number'?duration:null,state:typeof state==='number'?state:null})}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{${channelPlayerVar}autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:${controls},modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${jsonForScript(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!${isAllowedParentOrigin}||e.origin!==${safeParentOrigin}||e.source!==window.parent)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break;case'probe':postVideoData();break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 
@@ -1557,8 +1582,9 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     return json({ verboseMode });
   }
-  // Registration — call Convex directly when CONVEX_URL is available (self-hosted),
-  // otherwise proxy to cloud (desktop sidecar never has CONVEX_URL).
+  // Registration — use the authenticated Convex HTTP bridge when CONVEX_URL is
+  // available (self-hosted), otherwise proxy to cloud (desktop sidecar never
+  // has CONVEX_URL).
   // Keeps the legacy /api/register-interest local path so older desktop builds
   // continue to work; cloud fallback rewrites to the new sebuf RPC path.
   if (requestUrl.pathname === '/api/register-interest' && req.method === 'POST') {
@@ -1589,47 +1615,69 @@ async function dispatch(requestUrl, req, routes, context) {
       if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
-      const response = await fetchWithTimeout(`${convexUrl}/api/mutation`, {
+      const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+      if (!sharedSecret) {
+        context.logger.warn('[local-api] self-hosted register-interest bridge is not configured');
+        return json({ error: 'Registration service unavailable' }, 503);
+      }
+      const convexSiteUrl = (
+        process.env.CONVEX_SITE_URL || convexUrl.replace(/\.convex\.cloud\/?$/, '.convex.site')
+      ).replace(/\/$/, '');
+      const args = {
+        email,
+        source: typeof parsed.source === 'string' ? parsed.source : 'desktop',
+        appVersion: typeof parsed.appVersion === 'string' ? parsed.appVersion : 'unknown',
+      };
+      if (typeof parsed.referredBy === 'string') args.referredBy = parsed.referredBy;
+      const response = await fetchWithTimeout(`${convexSiteUrl}/api/internal-register-interest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: 'registerInterest:register',
-          args: { email, source: parsed.source || 'desktop', appVersion: parsed.appVersion || 'unknown' },
-          format: 'json',
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'worldmonitor-sidecar/1.0',
+          'x-convex-shared-secret': sharedSecret,
+        },
+        body: JSON.stringify(args),
       }, 15000);
+      if (!response.ok) {
+        context.logger.warn(`[local-api] self-hosted register-interest bridge returned ${response.status}`);
+        return json({ error: 'Registration failed' }, 502);
+      }
       const responseBody = await response.text();
       let result;
-      try { result = JSON.parse(responseBody); } catch { result = { status: 'registered' }; }
-      if (result.status === 'error') {
-        return json({ error: result.errorMessage || 'Registration failed' }, 500);
+      try {
+        result = JSON.parse(responseBody);
+      } catch {
+        return json({ error: 'Registration failed' }, 502);
       }
-      return json(result.value || result);
+      if (!result || (result.status !== 'registered' && result.status !== 'already_registered')) {
+        return json({ error: 'Registration failed' }, 502);
+      }
+      return json({ status: 'registered', referralCode: '', referralCount: 0, position: 0, emailSuppressed: false });
     } catch (e) {
       context.logger.error(`[register-interest] error: ${e.message}`);
       return json({ error: 'Registration service unreachable' }, 502);
     }
   }
 
-  // YouTube live detection — requires residential proxy (Railway relay).
-  // Direct fetch from sidecar fails (YouTube blocks datacenter IPs).
-  // Always proxy to cloud, bypassing the cloudFallback flag.
+  // YouTube video naming for channel management (oEmbed). The cloud edge handler owns the
+  // rate limit and the retired channel-detection answer, so always proxy to cloud,
+  // bypassing the cloudFallback flag.
   if (requestUrl.pathname === '/api/youtube/live') {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live needs relay');
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube video names come from the cloud');
     if (cloudResponse) return cloudResponse;
-    return json({ error: 'YouTube live detection unavailable' }, 503);
+    return json({ error: 'YouTube video lookup unavailable' }, 503);
   }
 
   // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');
-    if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
+    if (!feedUrl) return rssProxyJson({ error: 'Missing url parameter' }, 400);
 
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
       context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
-      return json({ error: safety.reason }, 403);
+      return rssProxyJson({ error: safety.reason }, 403);
     }
 
     try {
@@ -1640,7 +1688,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const pinned = pickPinnedAddress(safety.resolvedAddresses);
       if (!pinned) {
         context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
-        return json({ error: 'Could not resolve hostname' }, 403);
+        return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
@@ -1650,16 +1698,12 @@ async function dispatch(requestUrl, req, routes, context) {
         },
         resolvedAddress: pinned.address,
         resolvedFamily: pinned.family,
-      }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
-      const contentType = response.headers?.get?.('content-type') || 'application/xml';
+      }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
       const rssBody = await response.text();
-      return new Response(rssBody || '', {
-        status: response.status,
-        headers: { 'content-type': contentType },
-      });
+      return rssProxyResponse(rssBody || '', response.status);
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
-      return json({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
+      return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
     }
   }
 
@@ -1825,6 +1869,8 @@ async function dispatch(requestUrl, req, routes, context) {
 export const __testing__ = {
   isCloudPreferred,
   canCompress,
+  jsonForScript,
+  isYahooFinanceHost,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

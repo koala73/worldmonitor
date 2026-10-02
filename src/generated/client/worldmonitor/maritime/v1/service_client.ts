@@ -82,6 +82,7 @@ export interface ListNavigationalWarningsRequest {
 export interface ListNavigationalWarningsResponse {
   warnings: NavigationalWarning[];
   pagination?: PaginationResponse;
+  dataAvailable: boolean;
 }
 
 export interface NavigationalWarning {

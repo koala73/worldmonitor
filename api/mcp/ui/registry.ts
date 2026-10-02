@@ -29,6 +29,7 @@ import { NEWS_INTELLIGENCE_APP_HTML } from './news-intelligence-app';
 import { CONFLICT_EVENTS_APP_HTML } from './conflict-events-app';
 import { NATURAL_DISASTERS_APP_HTML } from './natural-disasters-app';
 import { PREDICTION_MARKETS_APP_HTML } from './prediction-markets-app';
+import { COUNTRY_VIEW_UI_URI, COUNTRY_VIEW_META, readCountryView, NEWS_DASHBOARD_UI_URI, NEWS_DASHBOARD_META, readNewsDashboard } from './news-dashboard-app';
 import { FORECASTS_APP_HTML } from './forecasts-app';
 
 // Re-exported from the shared shell so the mimeType has a single source of
@@ -168,7 +169,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
-  return UI_RESOURCE_BY_URI.has(uri);
+  return uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
 // resources/list public shape — {uri, name, description, mimeType} plus the
@@ -194,11 +195,13 @@ export const UI_RESOURCE_LIST_RESPONSE: PublicUiResourceShape[] = UI_RESOURCE_RE
 // as a spec-shaped resources/read result. No auth context, no dispatch, no
 // quota — the caller (handler) has already resolved that this URI is a public
 // UI resource via isUiResourceUri().
-export function buildUiResourceRead(
+export async function buildUiResourceRead(
   id: unknown,
   uri: string,
   corsHeaders: Record<string, string>,
-): Response {
+): Promise<Response> {
+  if (uri === COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders);
+  if (uri === NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders);
   const def = UI_RESOURCE_BY_URI.get(uri);
   if (!def) {
     // Unreachable in practice — the handler only routes here after
@@ -211,3 +214,21 @@ export function buildUiResourceRead(
     corsHeaders,
   );
 }
+
+UI_RESOURCE_LIST_RESPONSE.push({
+  uri: NEWS_DASHBOARD_UI_URI,
+  name: 'WorldMonitor news and maps',
+  description:
+    'WorldMonitor news panels and interactive map, rendered with the dashboard components.',
+  mimeType: UI_RESOURCE_MIME_TYPE,
+  _meta: NEWS_DASHBOARD_META,
+});
+
+UI_RESOURCE_LIST_RESPONSE.push({
+  uri: COUNTRY_VIEW_UI_URI,
+  name: 'WorldMonitor country view',
+  description:
+    'Shared country deep dive with progressive authenticated sections.',
+  mimeType: UI_RESOURCE_MIME_TYPE,
+  _meta: COUNTRY_VIEW_META,
+});

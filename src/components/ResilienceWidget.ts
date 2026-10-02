@@ -1,5 +1,13 @@
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
+import {
+  getEntitlementVerificationStatus,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { loadStoredMissionPreset, onMissionPresetChange } from '@/services/mission-presets';
+import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics';
+import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { createCheckoutConsentElement } from '@/utils/legal-links';
@@ -25,6 +33,7 @@ import {
   getStalenessLabel,
   shouldRenderResilienceBaselineStress,
 } from './resilience-widget-utils';
+import { CountrySectionError } from '@/services/country-brief-error';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
 // LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
@@ -48,28 +57,43 @@ export class ResilienceWidget {
   private readonly element: HTMLElement;
   private authState: AuthSession = getAuthState();
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeVerification: (() => void) | null = null;
+  private unsubscribeMission: (() => void) | null = null;
+  private crisisPreviewObserver: IntersectionObserver | null = null;
+  private crisisPreviewFallbackTimer: number | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
   private errorMessage: string | null = null;
+  private accessDenied = false;
   private requestVersion = 0;
   private energyMixData: CountryEnergyProfileData | null = null;
 
-  constructor(countryCode?: string | null) {
+  constructor(countryCode?: string | null, private readonly managed?: { load: (code: string) => Promise<ResilienceScoreResponse> }) {
     this.element = document.createElement('section');
     this.element.className = 'cdp-card resilience-widget';
-    this.unsubscribeAuth = subscribeAuthState((state) => {
-      this.authState = state;
-      const gateReason = this.getGateReason();
-      const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
-      const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
-      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
-        void this.refresh();
-        return;
-      }
-      this.render();
-    });
+    if (!this.managed) {
+      this.unsubscribeAuth = subscribeAuthState((state) => {
+        this.authState = state;
+        this.reactToAccessChange();
+      });
 
+      // The entitlement snapshot lands on its own channel — production fires no
+      // auth event when it arrives. Subscribing to auth alone meant the access
+      // verdict computed during the pre-snapshot window was never revisited, so
+      // a paying user did not merely see the wrong CTA for a moment, they kept
+      // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
+      // this widget still uses getPanelGateReason, not the billing-aware
+      // refinement panel-layout.ts applies.
+      this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
+      // The terminal "no snapshot is coming" outcome arrives ONLY here — see
+      // isAccessStillResolving. Without this subscription the widget would still
+      // hang on the waiting state until some unrelated event forced a re-render.
+      this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
+      this.unsubscribeMission = onMissionPresetChange(() => this.render());
+
+    }
     this.setCountryCode(countryCode ?? null);
   }
 
@@ -102,7 +126,7 @@ export class ResilienceWidget {
       return;
     }
 
-    if (this.authState.isPending || this.getGateReason() !== PanelGateReason.NONE) {
+    if ((!this.managed && this.authState.isPending) || this.getGateReason() !== PanelGateReason.NONE) {
       this.render();
       return;
     }
@@ -110,10 +134,11 @@ export class ResilienceWidget {
     const requestVersion = ++this.requestVersion;
     this.loading = true;
     this.errorMessage = null;
+    this.accessDenied = false;
     this.render();
 
     try {
-      const response = await getResilienceScore(this.currentCountryCode);
+      const response = await (this.managed ? this.managed.load(this.currentCountryCode) : getResilienceScore(this.currentCountryCode));
       if (requestVersion !== this.requestVersion) return;
       this.currentData = response;
       this.loading = false;
@@ -123,6 +148,7 @@ export class ResilienceWidget {
       if (requestVersion !== this.requestVersion) return;
       this.loading = false;
       this.currentData = null;
+      this.accessDenied = error instanceof CountrySectionError && error.state === 'locked';
       this.errorMessage = error instanceof Error ? error.message : 'Unable to load resilience score.';
       this.render();
     }
@@ -137,10 +163,59 @@ export class ResilienceWidget {
     this.requestVersion += 1;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
+    this.unsubscribeVerification?.();
+    this.unsubscribeVerification = null;
+    this.unsubscribeMission?.();
+    this.unsubscribeMission = null;
+    this.stopCrisisPreviewTracking();
+  }
+
+  /**
+   * Re-evaluate access after any of the signals that feed the gate moved,
+   * fetching the score once the verdict first becomes NONE. Shared by the
+   * auth, entitlement, and verification subscriptions so those paths cannot
+   * drift.
+   */
+  private reactToAccessChange(): void {
+    const gateReason = this.getGateReason();
+    const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
+    const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
+    if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
+      void this.refresh();
+      return;
+    }
+    this.render();
+  }
+
+  /**
+   * Whether the account's plan is still genuinely in flight, as opposed to
+   * unknown for good.
+   *
+   * `isProTierResolved()` answers "do we have a settled tier", and for a
+   * signed-in user that stays false for as long as the entitlement snapshot is
+   * missing — including when it is never coming. The terminal outcome is
+   * published on a DIFFERENT channel: `markEntitlementVerificationUnavailable`
+   * moves only the verification status and leaves the snapshot null, so
+   * `onEntitlementChange` never fires and a wait keyed on the tier alone hangs
+   * forever, denying the panel to free and paying users alike.
+   *
+   * So the wait is bounded by the verification lifecycle: keep waiting only
+   * while the bounded Clerk/Convex retries are actually running (`idle` /
+   * `pending`), and on a terminal `unavailable` fall through to the ordinary
+   * gate verdict — the same pairing `UnifiedSettings.renderPlanCheckingState`
+   * uses on the sibling surface. That leaves the terminal case exactly as it
+   * behaves today while still fixing the common one.
+   */
+  private isAccessStillResolving(): boolean {
+    if (this.managed || isProTierResolved()) return false;
+    const status = getEntitlementVerificationStatus();
+    return status === 'idle' || status === 'pending';
   }
 
   private getGateReason(): PanelGateReason {
-    return getPanelGateReason(this.authState, true);
+    return this.managed ? PanelGateReason.NONE : getPanelGateReason(this.authState, true);
   }
 
   private render(): void {
@@ -165,6 +240,7 @@ export class ResilienceWidget {
       ),
       body,
     );
+    this.reconcileCrisisPreviewTracking();
   }
 
   private renderBody(gateReason: PanelGateReason): HTMLElement {
@@ -172,7 +248,20 @@ export class ResilienceWidget {
       return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience data loads when a country is selected.'));
     }
 
-    if (this.authState.isPending) {
+    // `authState.isPending` covers only the Clerk half of "do we know this
+    // account's plan yet". For a signed-in user the Convex entitlement snapshot
+    // lands seconds AFTER Clerk resolves, and `getPanelGateReason` reads
+    // FREE_TIER for a paying subscriber for that whole window — so rendering the
+    // gate on auth alone showed "Upgrade to Pro" to Pro customers, who clicked
+    // it into a 409 ACTIVE_SUBSCRIPTION_EXISTS from /api/create-checkout
+    // (WORLDMONITOR-NY: 28 events / 15 accounts since April, breadcrumb
+    // `button.panel-locked-cta.resilience-widget__cta`). `isProTierResolved`
+    // is the repo's existing answer to exactly this ambiguity — it treats any
+    // "Pro" signal as definitive and only a *settled* absence as free.
+    // Same class as the 2026-04-17/18 panel-overlay incident fixed in
+    // panel-gating.ts and the renderPlanCheckingState guard in
+    // UnifiedSettings.ts; this is the third surface.
+    if ((!this.managed && this.authState.isPending) || this.isAccessStillResolving()) {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
     }
 
@@ -184,6 +273,7 @@ export class ResilienceWidget {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Loading resilience score…'));
     }
 
+    if (this.accessDenied) return h('div', { className: 'cdp-card-body resilience-widget__locked', 'data-brief-state': 'locked' }, this.makeEmpty(this.errorMessage ?? 'This connection is not authorized for resilience data.'));
     if (this.errorMessage) {
       return this.renderError(this.errorMessage);
     }
@@ -193,6 +283,19 @@ export class ResilienceWidget {
     }
 
     return this.renderScoreCard(this.currentData);
+  }
+
+  // KTD7: crisis-desk's Release 1 preview IS this locked surface — it ships
+  // already, so its treated-mission work is instrumentation only. Events are
+  // scoped to the active mission so ordinary locked renders stay unattributed.
+  private crisisDeskPreviewViewedTracked = false;
+
+  private isCrisisDeskMissionActive(): boolean {
+    try {
+      return loadStoredMissionPreset()?.id === 'crisis-desk';
+    } catch {
+      return false;
+    }
   }
 
   private renderLocked(gateReason: PanelGateReason): HTMLElement {
@@ -214,7 +317,9 @@ export class ResilienceWidget {
             .catch(() => this.showAuthUnavailable());
           return;
         }
-        void this.openUpgradeFlow().catch(() => {
+        const crisisDesk = this.isCrisisDeskMissionActive();
+        if (crisisDesk) trackProPreviewCta('crisis-desk', 'cii');
+        void this.openUpgradeFlow(crisisDesk).catch(() => {
           window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
         });
       },
@@ -233,6 +338,40 @@ export class ResilienceWidget {
         : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       button,
     );
+  }
+
+  private reconcileCrisisPreviewTracking(): void {
+    this.stopCrisisPreviewTracking();
+    if (this.crisisDeskPreviewViewedTracked || !this.isCrisisDeskMissionActive()) return;
+    if (!this.element.querySelector('.resilience-widget__locked')) return;
+
+    const recordView = (): void => {
+      if (this.crisisDeskPreviewViewedTracked) return;
+      if (!this.element.isConnected || !this.isCrisisDeskMissionActive()) return;
+      if (!this.element.querySelector('.resilience-widget__locked')) return;
+      this.crisisDeskPreviewViewedTracked = true;
+      this.stopCrisisPreviewTracking();
+      trackProPreviewViewed('crisis-desk', 'cii');
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      this.crisisPreviewFallbackTimer = window.setTimeout(recordView, 0);
+      return;
+    }
+
+    this.crisisPreviewObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) recordView();
+    }, { threshold: 0.3 });
+    this.crisisPreviewObserver.observe(this.element);
+  }
+
+  private stopCrisisPreviewTracking(): void {
+    this.crisisPreviewObserver?.disconnect();
+    this.crisisPreviewObserver = null;
+    if (this.crisisPreviewFallbackTimer !== null) {
+      window.clearTimeout(this.crisisPreviewFallbackTimer);
+      this.crisisPreviewFallbackTimer = null;
+    }
   }
 
   private async showAuthUnavailable(): Promise<void> {
@@ -487,22 +626,10 @@ export class ResilienceWidget {
     return h('div', { className: 'cdp-empty' }, text);
   }
 
-  private async openUpgradeFlow(): Promise<void> {
-    const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
-      import('@/config/products'),
-      import('@/services/runtime'),
-    ]);
-
-    if (isDesktopRuntime()) {
-      const { openExternalUrl } = await import('@/services/external-navigation');
-      await openExternalUrl('https://worldmonitor.app/pro');
-      return;
-    }
-
-    await import('@/services/checkout')
-      .then((module) => module.startCheckout(DEFAULT_UPGRADE_PRODUCT))
-      .catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-      });
+  private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
+    const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
+    await openUpgradeCheckout(
+      crisisDeskAttribution ? { missionId: 'crisis-desk', panelKey: 'cii' } : undefined,
+    );
   }
 }

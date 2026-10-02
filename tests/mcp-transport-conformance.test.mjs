@@ -7,12 +7,16 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { Ratelimit } from '@upstash/ratelimit';
 
 import {
   HMAC_SECRET,
   PRO_BEARER,
+  PRO_TOKEN_ID,
+  PRO_USER_ID,
   makeProDeps,
 } from './helpers/mcp-pro-deps.mjs';
+import { assertJsonRpcError, assertJsonRpcResult } from './helpers/mcp-jsonrpc-schema.mjs';
 
 const originalEnv = { ...process.env };
 
@@ -224,6 +228,151 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal((await revoked.json()).error?.code, -32001);
   });
 
+  // ── GHSA-5j39-mmw6-cqw6: replay buffers are bound to their owner ──────────
+  //
+  // The replay path authenticated the reconnecting caller and checked
+  // entitlement and per-minute limits, then looked the buffer up by the
+  // caller-supplied Mcp-Session-Id and Last-Event-ID alone. Nothing compared
+  // the authenticated principal against the principal that stored the buffer.
+
+  const SECOND_BEARER = 'pro-bearer-second-principal';
+  const SECOND_USER_ID = 'user_pro_second';
+  const SECOND_TOKEN_ID = 'k57mcptokenid2nd';
+
+  function admitTwoPrincipals() {
+    deps.resolveBearerToContext = async (token) => {
+      if (token === PRO_BEARER) return { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: PRO_TOKEN_ID };
+      if (token === SECOND_BEARER) return { kind: 'pro', userId: SECOND_USER_ID, mcpTokenId: SECOND_TOKEN_ID };
+      return null;
+    };
+    deps.validateProMcpToken = async (id) => {
+      if (id === PRO_TOKEN_ID) return { userId: PRO_USER_ID };
+      if (id === SECOND_TOKEN_ID) return { userId: SECOND_USER_ID };
+      return null;
+    };
+  }
+
+  async function openBufferedStream(bearer) {
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Authorization: `Bearer ${bearer}` }),
+      body: JSON.stringify(initBody(1)),
+    });
+    if (res.status !== 200) {
+      assert.fail(`initialize failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    }
+    const sessionId = res.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'initialize must mint a session id');
+    const [event] = await readAllSseEvents(res);
+    assert.ok(event?.id, 'initialize must buffer one replayable event');
+    return { sessionId, eventId: event.id };
+  }
+
+  function replayAs(bearer, { sessionId, eventId }) {
+    return fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${bearer}`,
+        'Mcp-Session-Id': sessionId,
+        'Last-Event-ID': eventId,
+      },
+    });
+  }
+
+  it('refuses to replay a stream belonging to a different principal', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    const attacker = await replayAs(SECOND_BEARER, victim);
+
+    // This returned 200 before the owner binding. The replay slice is always
+    // empty, so no tool output crossed, but 200-vs-404 still confirmed that
+    // another principal's (session, stream) pair existed.
+    assert.equal(attacker.status, 404, 'a different principal must not replay this session');
+    assert.match(
+      (await attacker.json()).error?.message ?? '',
+      /different server instance/,
+      'an owner mismatch must be indistinguishable from an ordinary replay miss',
+    );
+  });
+
+  it('still replays for the principal that stored the stream', async () => {
+    admitTwoPrincipals();
+    const owner = await openBufferedStream(PRO_BEARER);
+
+    const reconnect = await replayAs(PRO_BEARER, owner);
+    assert.equal(reconnect.status, 200, 'the owner must still resume its own stream');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0, 'nothing follows the delivered response');
+  });
+
+  it('does not let a foreign principal evict the owner\'s buffered stream', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    // Only `initialize` mints a session id onto the response, so every later
+    // call reads it off the request instead. That made the session bucket
+    // reachable by anyone who knew the id: past the per-session stream cap,
+    // foreign writes evicted the owner's own buffered stream. The write path
+    // now refuses a session owned by someone else, so the cap is never reached.
+    for (let i = 0; i < 30; i++) {
+      const foreign = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({
+          Authorization: `Bearer ${SECOND_BEARER}`,
+          'Mcp-Session-Id': victim.sessionId,
+        }),
+        body: JSON.stringify(rpcBody(200 + i, 'ping')),
+      });
+      assert.equal(foreign.status, 200, 'the foreign ping itself is a legitimate request');
+      await foreign.text();
+    }
+
+    const reconnect = await replayAs(PRO_BEARER, victim);
+    assert.equal(reconnect.status, 200, 'foreign writes must not evict the owner\'s buffer');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0);
+  });
+
+  it('binds a JSON-initialized session before the first SSE write', async () => {
+    admitTwoPrincipals();
+    const initialize = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Accept: 'application/json, text/event-stream;q=0',
+        Authorization: `Bearer ${PRO_BEARER}`,
+      }),
+      body: JSON.stringify(initBody(2)),
+    });
+    assert.equal(initialize.status, 200);
+    const sessionId = initialize.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'JSON initialize must mint an owner-bound session id');
+    await initialize.json();
+
+    const foreign = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Authorization: `Bearer ${SECOND_BEARER}`,
+        'Mcp-Session-Id': sessionId,
+      }),
+      body: JSON.stringify(rpcBody(3, 'ping')),
+    });
+    const [foreignEvent] = await readAllSseEvents(foreign);
+    assert.ok(foreignEvent?.id, 'the foreign caller still receives its live response');
+    const foreignReplay = await replayAs(SECOND_BEARER, { sessionId, eventId: foreignEvent.id });
+    assert.equal(foreignReplay.status, 404, 'a foreign first writer must not claim the initialized session');
+
+    const owner = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ 'Mcp-Session-Id': sessionId }),
+      body: JSON.stringify(rpcBody(4, 'ping')),
+    });
+    const [ownerEvent] = await readAllSseEvents(owner);
+    assert.ok(ownerEvent?.id, 'the initializer must still buffer its later SSE response');
+    const ownerReplay = await replayAs(PRO_BEARER, { sessionId, eventId: ownerEvent.id });
+    assert.equal(ownerReplay.status, 200, 'the initializer must own the replay bucket');
+    assert.equal((await readAllSseEvents(ownerReplay)).length, 0);
+  });
+
   it('emits the JSON-RPC result as the FIRST SSE event so strict handshake scanners parse it', async () => {
     // orank's `mcp-server` handshake check (and any non-SDK scanner) reads the
     // FIRST SSE event of a POST initialize and JSON.parse()s its `data`. A
@@ -239,6 +388,10 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(initialize.status, 200);
     assert.match(initialize.headers.get('content-type') ?? '', /text\/event-stream/i);
+    // #8403: jsonResponse advertises Content-Length for the bare JSON body.
+    // SSE framing is larger — the converted stream must not keep that length
+    // or the wire truncates mid-JSON (Unterminated string).
+    assert.equal(initialize.headers.get('content-length'), null);
 
     const events = await readAllSseEvents(initialize);
     assert.ok(events.length >= 1, 'stream must contain at least one event');
@@ -727,5 +880,114 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     });
     assert.equal(res.status, 405);
     assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
+  });
+});
+
+// #7818 — a rate-limit denial has to survive the WIRE, not just the handler
+// return value. An MCP client parses whatever comes back through the spec's
+// `JSONRPCMessage` union (`RequestId = string | number`), so an `id: null`
+// error envelope is rejected as `invalid_union` before the client can see the
+// -32029 at all. `assertJsonRpcError` applies that union rule to the parsed
+// HTTP body, which is why this check belongs at the transport layer rather than
+// beside the in-process handler cases in
+// tests/mcp-rate-limit-request-id.test.mjs.
+//
+// Keep this block LAST in the file. It is the only one that ENABLES the Upstash
+// env; the blocks above delete it, so `getMcpAnonRatelimit()` returns null up
+// there and never memoizes. auth.ts's limiter singletons are module-scoped and
+// the `?t=` cache-bust below does not reach them (api/mcp.ts re-exports
+// ./mcp/auth by a plain specifier), so a describe appended after this one that
+// also enables the env would silently inherit this block's stubbed limiter.
+describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#7818)', () => {
+  const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
+  let server;
+  let denyLimiter;
+  let limiterKeys;
+
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+    denyLimiter = false;
+    limiterKeys = [];
+    // `denyLimiter` is read at CALL time, not captured at construction time.
+    // That matters because auth.ts memoizes its limiter singletons, so the
+    // instance built during the first test survives into the next one; a stub
+    // that closed over a value would freeze the first test's verdict for the
+    // whole describe. `limiterKeys` is what keeps the allowed case honest —
+    // without it, an unstubbed or unconfigured limiter would return null and
+    // the read would pass for the wrong reason.
+    Ratelimit.slidingWindow = (tokens, window) => () => ({
+      async limit(_ctx, key) {
+        limiterKeys.push(key);
+        return {
+          success: !denyLimiter,
+          limit: tokens,
+          remaining: denyLimiter ? 0 : tokens - 1,
+          reset: Date.now() + 60_000,
+          pending: Promise.resolve(),
+          window,
+        };
+      },
+    });
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}-rl`);
+    server = await startMcpServer(mod.mcpHandler, makeProDeps().deps);
+  });
+
+  afterEach(async () => {
+    Ratelimit.slidingWindow = ORIGINAL_SLIDING_WINDOW;
+    if (server) await server.close();
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('an over-limit anonymous resources/read parses as a spec-valid JSONRPCError carrying the request id', async () => {
+    denyLimiter = true;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody('ora-read-7818', 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200, 'a JSON-RPC rate-limit denial rides HTTP 200 on this surface');
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assertJsonRpcError(await res.json(), {
+      id: 'ora-read-7818',
+      code: -32029,
+      label: 'over-the-wire anonymous denial',
+    });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the real anonymous discovery limiter must be what rejected, not a stubbed-out no-op',
+    );
+  });
+
+  it('the same read succeeds and correlates once the window recovers', async () => {
+    denyLimiter = false;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody(9001, 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200);
+    assertJsonRpcResult(await res.json(), { id: 9001, label: 'recovered anonymous read' });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the recovered read must still have been metered — otherwise this control proves nothing',
+    );
   });
 });

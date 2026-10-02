@@ -21,7 +21,15 @@ export const _PROXY_DEFAULTS = Object.freeze({
 });
 
 const MAX_RETRY_AFTER_MS = 60_000;
+const CURL_PROXY_TIMEOUT_MS = 15_000;
 const RETRYABLE_STATUSES = new Set([429, 503]);
+export const OPEN_METEO_DEADLINE_CODE = 'OPEN_METEO_DEADLINE';
+
+function createDeadlineError(label) {
+  return Object.assign(new Error(`Open-Meteo deadline exhausted for ${label}`), {
+    code: OPEN_METEO_DEADLINE_CODE,
+  });
+}
 
 export function chunkItems(items, size) {
   const chunks = [];
@@ -60,9 +68,10 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     timeoutMs = 30_000,
     maxRetries = 3,
     retryBaseMs = 2_000,
+    deadlineAtMs = Number.POSITIVE_INFINITY,
     label = zones.map((zone) => zone.name).join(', '),
     // Test hooks. Production callers leave these unset; the helper uses the
-    // real proxy resolvers + fetchers from _seed-utils.mjs (see _PROXY_DEFAULTS).
+    // real clock, sleeper, proxy resolvers, and fetchers.
     // Tests inject mocks to exercise the cascade without spinning up real
     // Decodo tunnels. Keep these undocumented in PR descriptions — they are
     // implementation-only seams, not a public API surface.
@@ -75,6 +84,8 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     _curlProxyResolver = _PROXY_DEFAULTS.curlProxyResolver,
     _proxyFetcher = _PROXY_DEFAULTS.connectFetcher,
     _proxyCurlFetcher = _PROXY_DEFAULTS.curlFetcher,
+    _now = Date.now,
+    _sleep = sleep,
   } = opts;
 
   const params = new URLSearchParams({
@@ -93,20 +104,50 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   // upstream error (timeout, ECONNRESET, HTTP status code) that triggered
   // the fallback path.
   let lastDirectError = null;
+  let proxyAuthResolved = false;
+  let connectProxyAuth = null;
+  let curlProxyAuth = null;
+
+  const resolveProxyAuth = () => {
+    if (!proxyAuthResolved) {
+      connectProxyAuth = _connectProxyResolver();
+      curlProxyAuth = _curlProxyResolver();
+      proxyAuthResolved = true;
+    }
+    return Boolean(connectProxyAuth || curlProxyAuth);
+  };
+
+  const routeTimeoutMs = (routeLimitMs = timeoutMs) => {
+    const remainingMs = deadlineAtMs - _now();
+    if (!(remainingMs > 0)) throw createDeadlineError(label);
+    return Math.max(1, Math.min(routeLimitMs, Math.floor(remainingMs)));
+  };
+
+  const ensureBeforeDeadline = () => {
+    if (!(deadlineAtMs - _now() > 0)) throw createDeadlineError(label);
+  };
+
+  const waitForDirectRetry = async (retryMs) => {
+    if (retryMs >= deadlineAtMs - _now()) throw createDeadlineError(label);
+    await _sleep(retryMs);
+    ensureBeforeDeadline();
+  };
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let resp;
     try {
       resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(routeTimeoutMs()),
       });
+      ensureBeforeDeadline();
     } catch (err) {
+      if (err?.code === OPEN_METEO_DEADLINE_CODE) throw err;
       lastDirectError = err;
       if (attempt < maxRetries) {
         const retryMs = retryBaseMs * 2 ** attempt;
         console.log(`  [OPEN_METEO] ${err?.message ?? err} for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
-        await sleep(retryMs);
+        await waitForDirectRetry(retryMs);
         continue;
       }
       // Final direct attempt threw (timeout, ECONNRESET, DNS, etc.). Fall
@@ -127,9 +168,10 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     lastDirectError = new Error(`HTTP ${resp.status}`);
 
     if (RETRYABLE_STATUSES.has(resp.status) && attempt < maxRetries) {
+      if (resolveProxyAuth()) break;
       const retryMs = parseRetryAfterMs(resp.headers.get('retry-after')) ?? (retryBaseMs * 2 ** attempt);
       console.log(`  [OPEN_METEO] ${resp.status} for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
-      await sleep(retryMs);
+      await waitForDirectRetry(retryMs);
       continue;
     }
 
@@ -142,9 +184,9 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   }
 
   // Proxy fallback — same pattern as fredFetchJson / imfFetchJson in
-  // _seed-utils.mjs. Decodo gateway gets a different egress IP that is not
-  // (yet) on Open-Meteo's per-IP throttle. Skip silently if no proxy is
-  // configured (preserves existing behavior in non-Railway envs).
+  // _seed-utils.mjs. A retryable direct status transfers control here before
+  // another same-IP wait when a proxy is configured. Non-proxy environments
+  // keep the direct retry loop above.
   //
   // Two-attempt cascade: CONNECT path first (pure-Node, faster, no curl
   // dependency), curl fallback second. Decodo's CONNECT and curl egress
@@ -155,18 +197,20 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   // be a single point of failure if Decodo rebalances pools. The curl
   // attempt costs an exec only when CONNECT also failed, so steady-state
   // overhead is zero.
-  const connectProxyAuth = _connectProxyResolver();
-  const curlProxyAuth = _curlProxyResolver();
+  resolveProxyAuth();
   let lastProxyError = null;
 
   // CONNECT leg via gate.decodo.com pool.
   if (connectProxyAuth) {
     try {
-      console.log(`  [OPEN_METEO] direct exhausted on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy (CONNECT)`);
+      console.log(`  [OPEN_METEO] direct failed on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy (CONNECT)`);
+      const connectTimeoutMs = routeTimeoutMs();
       const { buffer } = await _proxyFetcher(url, connectProxyAuth, {
         accept: 'application/json',
-        timeoutMs,
+        timeoutMs: connectTimeoutMs,
+        signal: AbortSignal.timeout(connectTimeoutMs),
       });
+      ensureBeforeDeadline();
       const data = normalizeArchiveBatchResponse(JSON.parse(buffer.toString('utf8')));
       if (data.length !== zones.length) {
         throw new Error(`Open-Meteo proxy batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
@@ -174,6 +218,7 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       console.log(`  [OPEN_METEO] proxy (CONNECT) succeeded for ${label}`);
       return data;
     } catch (proxyErr) {
+      if (proxyErr?.code === OPEN_METEO_DEADLINE_CODE) throw proxyErr;
       lastProxyError = proxyErr;
       console.warn(`  [OPEN_METEO] proxy (CONNECT) failed for ${label}: ${proxyErr?.message ?? proxyErr}${curlProxyAuth ? '; trying proxy (curl)' : ''}`);
     }
@@ -189,7 +234,13 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       // Promise.resolve + await keeps the call future-safe: if curlFetch is
       // ever refactored to async, this line silently keeps working instead
       // of returning an unhandled Promise to JSON.parse.
-      const text = await Promise.resolve(_proxyCurlFetcher(url, curlProxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' }));
+      const text = await Promise.resolve(_proxyCurlFetcher(
+        url,
+        curlProxyAuth,
+        { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        { timeoutMs: routeTimeoutMs(Math.min(timeoutMs, CURL_PROXY_TIMEOUT_MS)) },
+      ));
+      ensureBeforeDeadline();
       const data = normalizeArchiveBatchResponse(JSON.parse(text));
       if (data.length !== zones.length) {
         throw new Error(`Open-Meteo proxy (curl) batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
@@ -197,6 +248,7 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       console.log(`  [OPEN_METEO] proxy (curl) succeeded for ${label}`);
       return data;
     } catch (curlErr) {
+      if (curlErr?.code === OPEN_METEO_DEADLINE_CODE) throw curlErr;
       lastProxyError = curlErr;
       console.warn(`  [OPEN_METEO] proxy (curl) failed for ${label}: ${curlErr?.message ?? curlErr}`);
     }

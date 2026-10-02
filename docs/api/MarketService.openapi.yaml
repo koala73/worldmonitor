@@ -13,7 +13,7 @@ paths:
             tags:
                 - MarketService
             summary: ListMarketQuotes
-            description: ListMarketQuotes retrieves stock and index quotes.
+            description: Retrieve stock and index quotes for requested symbols, with prices, price changes, display names, sparklines and snapshot metadata for market monitoring.
             operationId: ListMarketQuotes
             parameters:
                 - name: symbols
@@ -1253,6 +1253,159 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-price-history:
+        get:
+            tags:
+                - MarketService
+            summary: GetPriceHistory
+            description: GetPriceHistory retrieves dated daily closes for up to four tracked symbols from Yahoo Finance.
+            operationId: GetPriceHistory
+            parameters:
+                - name: symbols
+                  in: query
+                  description: |-
+                    Comma-separated Yahoo symbols, at most 4 (e.g. "GC=F,SI=F"). Only symbols
+                     carried by the commodity, market and Gulf quote sets are served; others
+                     are reported in `unavailable`. A single string because the widget relay
+                     sets each query parameter once.
+                  required: true
+                  example: "GC=F,SI=F"
+                  schema:
+                    type: string
+                    pattern: '^ *[A-Za-z0-9^=.&-]{1,20} *(, *[A-Za-z0-9^=.&-]{1,20} *){0,3}$'
+                - name: range
+                  in: query
+                  description: 'Lookback window: 1mo, 3mo, 6mo or 1y. Empty means 3mo.'
+                  required: false
+                  example: "3mo"
+                  schema:
+                    type: string
+                    pattern: '^(1mo|3mo|6mo|1y)?$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "range": "3mo"
+                                "series":
+                                    - "closes":
+                                        - 4176.4
+                                        - 4183.1
+                                        - 4192
+                                      "currency": "USD"
+                                      "name": "Gold"
+                                      "symbol": "GC=F"
+                                      "timestamps":
+                                          - 1785542400000
+                                          - 1785628800000
+                                          - 1785715200000
+                                    - "closes":
+                                        - 60.84
+                                        - 61.02
+                                        - 61.25
+                                      "currency": "USD"
+                                      "name": "Silver"
+                                      "symbol": "SI=F"
+                                      "timestamps":
+                                          - 1785542400000
+                                          - 1785628800000
+                                          - 1785715200000
+                                "unavailable":
+                                    []
+                            schema:
+                                $ref: '#/components/schemas/GetPriceHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-gulf-quotes:
         get:
             tags:
@@ -2396,7 +2549,7 @@ paths:
             tags:
                 - MarketService
             summary: GetFearGreedIndex
-            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            description: Review the composite Fear & Greed sentiment index with available survey, market breadth and component inputs, including degraded-data flags for market context.
             operationId: GetFearGreedIndex
             parameters:
                 - name: jmespath
@@ -2759,8 +2912,12 @@ paths:
             tags:
                 - MarketService
             summary: GetInsiderTransactions
-            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetInsiderTransactions
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbol
                   in: query
@@ -2805,7 +2962,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -2878,7 +3035,7 @@ paths:
             tags:
                 - MarketService
             summary: GetMarketBreadthHistory
-            description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+            description: Review historical S&P 500 market breadth, including the percentage of stocks above 20, 50 and 200-day moving averages, with current readings and dated history.
             operationId: GetMarketBreadthHistory
             parameters:
                 - name: jmespath
@@ -4191,6 +4348,68 @@ components:
                     type: string
                     description: When the data was fetched (ISO 8601).
             description: GetCountryStockIndexResponse contains the country's primary stock index data.
+        GetPriceHistoryRequest:
+            type: object
+            properties:
+                symbols:
+                    type: string
+                    maxLength: 100
+                    pattern: ^ *[A-Za-z0-9^=.&-]{1,20} *(, *[A-Za-z0-9^=.&-]{1,20} *){0,3}$
+                    description: |-
+                        Comma-separated Yahoo symbols, at most 4 (e.g. "GC=F,SI=F"). Only symbols
+                         carried by the commodity, market and Gulf quote sets are served; others
+                         are reported in `unavailable`. A single string because the widget relay
+                         sets each query parameter once.
+                range:
+                    type: string
+                    pattern: ^(1mo|3mo|6mo|1y)?$
+                    description: 'Lookback window: 1mo, 3mo, 6mo or 1y. Empty means 3mo.'
+            required:
+                - symbols
+            description: GetPriceHistoryRequest names up to four tracked Yahoo symbols and a lookback window.
+        GetPriceHistoryResponse:
+            type: object
+            properties:
+                range:
+                    type: string
+                    description: The lookback window that was served.
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriceSeries'
+                unavailable:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Requested symbols reported unavailable because they are outside the
+                             tracked set or Yahoo could not serve them.
+            description: GetPriceHistoryResponse contains one series per served symbol.
+        PriceSeries:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    description: Yahoo symbol (e.g. "GC=F").
+                name:
+                    type: string
+                    description: Display name (e.g. "Gold").
+                currency:
+                    type: string
+                    description: Quote currency reported by Yahoo (e.g. "USD").
+                timestamps:
+                    type: array
+                    items:
+                        type: integer
+                        format: int64
+                        description: 'One timestamp per trading day, Unix epoch milliseconds, ascending.. Warning: Values > 2^53 may lose precision in JavaScript'
+                closes:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Daily close for the timestamp at the same index.
+            description: PriceSeries holds one symbol's daily closes as aligned parallel arrays.
         ListGulfQuotesRequest:
             type: object
         ListGulfQuotesResponse:

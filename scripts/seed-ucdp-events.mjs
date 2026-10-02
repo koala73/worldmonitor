@@ -29,10 +29,9 @@ const BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
 const BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
-const MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
-// Retained Redis input window. CII v8's classifier accepts a 2-year window, but
-// this writer fetches the newest pages only and keeps at most MAX_EVENTS from a
-// 365-day trailing slice until retention is deliberately widened.
+const MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
+// CII accepts two years, but these newest annual pages and the candidate release
+// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
 const TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 const VIOLENCE_TYPE_MAP = {
@@ -289,10 +288,7 @@ async function main() {
   }));
 
   mapped.sort((a, b) => b.dateStart - a.dateStart);
-  // Cap newest-first, but reserve slots for the annual base. Every candidate
-  // event is newer than every annual one, so a plain slice hands the whole
-  // payload to the candidate as soon as it outgrows the cap — evicting the
-  // history get-risk-scores.ts needs for per-country conflict floors.
+  // Keep monthly candidate aggregates and the annual conflict-floor history.
   const capped = capWithAnnualFloor(mapped, (event) => candidateIds.has(event.id), MAX_EVENTS);
   if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${capped.length}`);
 

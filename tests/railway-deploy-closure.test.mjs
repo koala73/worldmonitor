@@ -181,9 +181,9 @@ describe('build context containment', () => {
 
 describe('closure resolution', () => {
   it('unions the registry closure with the live filter', () => {
-    // Between a merged registry edit and the audit's --apply, each side knows a
-    // path the other does not; three of the fleet's apparent refusals sat in
-    // exactly that window. Building too much is the only safe direction.
+    // Between a merged registry edit and verified registry sync, each side
+    // knows a path the other does not; three of the fleet's apparent refusals
+    // sat in exactly that window. Building too much is the only safe direction.
     const closure = resolveServiceClosure({
       registryEntry: { watchPatterns: ['scripts/_seed-history.mjs'] },
       liveService: {

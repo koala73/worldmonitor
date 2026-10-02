@@ -98,3 +98,23 @@ test('Route Impact rejects stale, untagged, and out-of-range resilience scores',
     assert.equal(await routeImpact.readResilienceScore('DE'), 0, label);
   }
 });
+
+test('legacy partner identity is consistent in lane and top-product fields', async () => {
+  sidecarCacheSet('comtrade:bilateral-hs4:JP:v1', {
+    iso2: 'JP',
+    products: [{
+      hs4: '2804', description: 'Hydrogen, rare gases and other non-metals',
+      totalValue: 1000, year: 2024,
+      topExporters: [{ partnerCode: 842, partnerIso2: '', value: 392, share: 0.392 }],
+    }],
+    fetchedAt: '2026-09-01T00:00:00.000Z',
+  }, 86_400);
+  const request = new Request('https://worldmonitor.app/api/supply-chain/v1/get-route-impact', {
+    headers: { 'X-WorldMonitor-Key': 'route-impact-test-key' },
+  });
+  const result = await routeImpact.getRouteImpact({ request } as never, { fromIso2: 'US', toIso2: 'JP', hs2: '28' });
+  assert.equal(result.laneValueUsd, 392);
+  assert.equal(result.primaryExporterIso2, 'US');
+  assert.equal(result.topStrategicProducts[0]?.topExporterIso2, 'US');
+  assert.equal(result.topStrategicProducts[0]?.topExporterShare, 0.392);
+});

@@ -16,7 +16,7 @@
           "title": "World Monitor docs MCP server (documentation search & retrieval)"
         },
         {
-          "href": "https://worldmonitor.app/",
+          "href": "https://www.worldmonitor.app/",
           "title": "World Monitor agent skills"
         }
       ]
@@ -41,7 +41,7 @@
       ],
       "service-meta": [
         {
-          "href": "https://worldmonitor.app/pricing.md",
+          "href": "https://www.worldmonitor.app/pricing.md",
           "type": "text/markdown",
           "title": "Pricing, plans & limits (machine-readable)"
         },
@@ -56,47 +56,47 @@
           "title": "Commerce/pricing endpoints OpenAPI (separate from the root bundle)"
         },
         {
-          "href": "https://worldmonitor.app/support.md",
+          "href": "https://www.worldmonitor.app/support.md",
           "type": "text/markdown",
           "title": "Support channels & contact (machine-readable)"
         },
         {
-          "href": "https://worldmonitor.app/agents.md",
+          "href": "https://www.worldmonitor.app/agents.md",
           "type": "text/markdown",
           "title": "Agent operations guide (surfaces, auth, crawl policy)"
         },
         {
-          "href": "https://worldmonitor.app/developers.md",
+          "href": "https://www.worldmonitor.app/developers.md",
           "type": "text/markdown",
           "title": "World Monitor Developer Portal — links every developer resource by name"
         },
         {
-          "href": "https://worldmonitor.app/mcp-server.md",
+          "href": "https://www.worldmonitor.app/mcp-server.md",
           "type": "text/markdown",
           "title": "World Monitor MCP Server — endpoint, tools, auth (machine-readable)"
         },
         {
-          "href": "https://worldmonitor.app/openapi.md",
+          "href": "https://www.worldmonitor.app/openapi.md",
           "type": "text/markdown",
           "title": "World Monitor OpenAPI Specification — REST API contract (machine-readable)"
         },
         {
-          "href": "https://worldmonitor.app/sdks.md",
+          "href": "https://www.worldmonitor.app/sdks.md",
           "type": "text/markdown",
           "title": "World Monitor SDKs — Python, Ruby, Go, JavaScript (machine-readable)"
         },
         {
-          "href": "https://worldmonitor.app/world-monitor.md",
+          "href": "https://www.worldmonitor.app/world-monitor.md",
           "type": "text/markdown",
           "title": "World Monitor brand identity — official name, NAP, canonical domain"
         },
         {
-          "href": "https://worldmonitor.app/api-versioning.md",
+          "href": "https://www.worldmonitor.app/api-versioning.md",
           "type": "text/markdown",
           "title": "World Monitor REST versioning and deprecation policy (machine-readable)"
         },
         {
-          "href": "https://worldmonitor.app/plugin.json",
+          "href": "https://www.worldmonitor.app/plugin.json",
           "type": "application/json",
           "title": "World Monitor Agent Plugins manifest (plugin.json)"
         }
@@ -133,7 +133,7 @@
       ]
     },
     {
-      "anchor": "https://worldmonitor.app/",
+      "anchor": "https://www.worldmonitor.app/",
       "agent-skills-index": [
         {
           "href": "https://worldmonitor.app/.well-known/agent-skills/index.json",

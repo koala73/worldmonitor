@@ -100,7 +100,11 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
             referralCode: attempt.referralCode,
             discountCode: attempt.discountCode,
           },
-          { fallbackToPricingPage: false },
+          {
+            fallbackToPricingPage: false,
+            analyticsSurface: attempt.context.eventSurface,
+            checkoutContext: attempt.context,
+          },
         );
       } catch {
         succeeded = false;

@@ -99,7 +99,7 @@ export async function validateApiKey(req, options = {}) {
   const forceKey = options.forceKey === true;
   const headerKey = getHeaderApiKey(req);
   const sessionCookie = getCookie(req, 'wm-session');
-  const testerCookie = getCookie(req, 'wm-pro-key') || getCookie(req, 'wm-widget-key');
+  const testerCookies = [getCookie(req, '__Host-wm-pro-key'), getCookie(req, '__Host-wm-widget-key')].filter(Boolean);
   const origin = req.headers.get('Origin') || '';
 
   // Desktop app — always require an enterprise key.
@@ -119,8 +119,10 @@ export async function validateApiKey(req, options = {}) {
   // while their real tester credential is HttpOnly. Prefer that cookie only
   // after it validates. A rotated cookie must not permanently shadow the fresh
   // anonymous header/cookie on non-forceKey routes.
-  if (testerCookie && await isValidEnterpriseKey(testerCookie)) {
-    return { valid: true, required: true, kind: 'enterprise', credential: testerCookie };
+  for (const testerCookie of testerCookies) {
+    if (await isValidEnterpriseKey(testerCookie)) {
+      return { valid: true, required: true, kind: 'enterprise', credential: testerCookie };
+    }
   }
 
   if (headerKey) return validateCredential(headerKey, forceKey);
@@ -129,7 +131,7 @@ export async function validateApiKey(req, options = {}) {
   // Preserve the useful invalid-key error when the only credential is a stale
   // tester cookie. The fallback above applies only when valid anonymous
   // authority is also present.
-  if (testerCookie) return { valid: false, required: true, error: 'Invalid API key' };
+  if (testerCookies.length) return { valid: false, required: true, error: 'Invalid API key' };
 
   return { valid: false, required: true, error: 'API key required' };
 }

@@ -10,7 +10,7 @@
 //   Attribute names below are from DescribeFeatureType + GetFeature, not guessed.
 //   Geometry is EPSG:3978; WGS84 lat/lon live in properties.latitude/longitude.
 
-import { CHROME_UA } from '../_seed-utils.mjs';
+import { CHROME_UA, httpRetryError, isRetryableHttpStatus, withRetry } from '../_seed-utils.mjs';
 
 export const CWFIS_WFS_HOST = 'geoserver.cwfif.nrcan.gc.ca';
 export const CWFIS_WFS_BASE = 'https://geoserver.cwfif.nrcan.gc.ca/geoserver/ows';
@@ -39,6 +39,10 @@ export const MAX_CWFIS_RESPONSE_BYTES = 12 * 1024 * 1024;
 export const CWFIS_PAGE_SIZE = 1000;
 export const CWFIS_MAX_PAGES = 8;
 export const CWFIS_FETCH_TIMEOUT_MS = 30_000;
+export const CWFIS_SNAPSHOT_KEY = 'wildfire:cwfis-source:v1';
+export const CWFIS_RETAIN_MS = 3 * 60 * 60_000;
+export const CWFIS_SNAPSHOT_TTL_SECONDS = 4 * 60 * 60;
+export const CWFIS_WARN_AFTER_CONSECUTIVE_FAILURES = 3;
 // Live no-CQL GetFeature is 187,566 historical rows (2010+). Current-valid
 // record_end >= now is hundreds. Anything at this scale is the archive.
 export const CWFIS_ARCHIVE_MATCHED_REFUSAL = 20_000;
@@ -61,10 +65,11 @@ const AGENCY_REGION = Object.freeze({
 });
 
 export class CwfisWfsError extends Error {
-  constructor(message, { code = 'SEED_ERROR', status } = {}) {
-    super(message);
+  constructor(message, { code = 'SEED_ERROR', status, cause } = {}) {
+    super(message, { cause });
     this.name = 'CwfisWfsError';
     this.code = code;
+    this.nonRetryable = true;
     if (status != null) this.status = status;
   }
 }
@@ -404,26 +409,40 @@ export async function fetchApprovedWfs(url, {
   const cacheKey = cwfisWfsCacheKey({ typeName, bbox, startIndex });
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
 
-  const response = await fetchFn(parsed.toString(), {
-    headers: {
-      Accept: accept,
-      'User-Agent': CHROME_UA,
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(CWFIS_FETCH_TIMEOUT_MS),
-  });
-  const text = await readBoundedText(response, maxBytes);
-  if (!response.ok) {
-    const err = new CwfisWfsError(
-      looksLikeExceptionReport(text) ? exceptionMessage(text) : `HTTP_${response.status}`,
-      { status: response.status },
-    );
-    throw err;
-  }
-  if (looksLikeExceptionReport(text)) {
-    throw new CwfisWfsError(exceptionMessage(text), { status: response.status });
-  }
-  const result = { text, contentType: response.headers?.get?.('content-type') || '', cacheKey };
+  let attempts = 0;
+  const result = await withRetry(async () => {
+    attempts++;
+    const startedAt = Date.now();
+    let stage = 'fetch';
+    try {
+      const response = await fetchFn(parsed.toString(), {
+        headers: { Accept: accept, 'User-Agent': CHROME_UA },
+        redirect: 'error',
+        signal: AbortSignal.timeout(CWFIS_FETCH_TIMEOUT_MS),
+      });
+      stage = 'body';
+      if (!response.ok) {
+        await response.body?.cancel?.();
+        const error = httpRetryError(response, { remainingBudgetMs: 2_000 });
+        throw error;
+      }
+      const text = await readBoundedText(response, maxBytes);
+      if (looksLikeExceptionReport(text)) {
+        throw new CwfisWfsError(exceptionMessage(text), { status: response.status });
+      }
+      return { text, contentType: response.headers?.get?.('content-type') || '', cacheKey };
+    } catch (error) {
+      error.attempts = attempts;
+      const causeCode = error.cause?.code;
+      console.warn(JSON.stringify({
+        event: 'cwfis_request_failure', layer: typeName, startIndex: Number(startIndex),
+        stage, attempt: attempts, durationMs: Date.now() - startedAt,
+        status: error.status ?? null,
+        causeCode: typeof causeCode === 'string' && /^[A-Z0-9_]{1,64}$/.test(causeCode) ? causeCode : null,
+      }));
+      throw error;
+    }
+  }, 1, 500);
   cache?.set(cacheKey, result);
   return result;
 }
@@ -516,6 +535,9 @@ export async function fetchCwfisLayer(typeName, {
     if (nextHref) parseWfsUrl(nextHref);
     const parsed = await fetchWfsPage(url, { kind: resolvedKind, fetchFn, cache, preferJson: true });
     assertNotCwfisArchive(parsed.numberMatched);
+    if (parsed.numberReturned > 0 && parsed.fireDetections.length === 0) {
+      throw new CwfisWfsError('CWFIS returned a nonempty page with no usable fire records');
+    }
     let newPageRows = 0;
     for (const rowKey of parsed.pageRowKeys || []) {
       if (seenPageRows.has(rowKey)) continue;
@@ -586,7 +608,47 @@ function mergeById(primary = [], secondary = []) {
   return out;
 }
 
-export async function fetchCwfisFires(options = {}) {
+function usableCwfisSnapshot(snapshot, nowMs) {
+  return snapshot?.version === 1 && Number.isSafeInteger(snapshot.fetchedAt)
+    && snapshot.fetchedAt > 0 && snapshot.fetchedAt <= nowMs
+    && nowMs - snapshot.fetchedAt < CWFIS_RETAIN_MS
+    && Array.isArray(snapshot.fireDetections)
+    && snapshot.fireDetections.every(row => row?.source === 'cwfis'
+      && typeof row.id === 'string' && row.id.startsWith('cwfis:')
+      && ['active', 'prescribed'].includes(row.kind)
+      && Number.isFinite(row.detectedAt) && row.detectedAt >= 0
+      && Number.isFinite(row.location?.latitude) && Math.abs(row.location.latitude) <= 90
+      && Number.isFinite(row.location?.longitude) && Math.abs(row.location.longitude) <= 180);
+}
+
+function failedCwfisSnapshot(previous, nowMs, errorCode, transient) {
+  const usable = usableCwfisSnapshot(previous, nowMs);
+  const count = previous?.consecutiveFailures;
+  const known = Number.isInteger(count) && count >= 0 && count <= 100
+    && Number.isSafeInteger(previous.lastAttemptAt) && previous.lastAttemptAt >= previous.fetchedAt
+    && previous.lastAttemptAt <= nowMs
+    && (count === 0
+      ? previous.firstFailureAt === null && previous.errorCode === null
+      : ['CWFIS_SOURCE_FAILED', 'CWFIS_PRESCRIBED_FAILED'].includes(previous.errorCode)
+        && Number.isSafeInteger(previous.firstFailureAt)
+        && previous.firstFailureAt >= previous.fetchedAt && previous.firstFailureAt <= previous.lastAttemptAt);
+  const sameFailure = previous?.errorCode === errorCode;
+  const nextCount = known ? (sameFailure ? Math.min(count + 1, 100) : 1) : 2;
+  return {
+    version: 1,
+    fetchedAt: usable ? previous.fetchedAt : null,
+    retainedUntil: usable ? previous.fetchedAt + CWFIS_RETAIN_MS : null,
+    fireDetections: usable ? previous.fireDetections : [],
+    consecutiveFailures: usable && transient && known
+      ? nextCount
+      : Math.max(CWFIS_WARN_AFTER_CONSECUTIVE_FAILURES, nextCount),
+    firstFailureAt: known && sameFailure && count > 0 ? previous.firstFailureAt : nowMs,
+    lastAttemptAt: nowMs,
+    errorCode,
+  };
+}
+
+export async function fetchCwfisFires({ previousSnapshot, nowMs = Date.now(), ...options } = {}) {
   const [activeResult, prescribedResult] = await Promise.allSettled([
     fetchCwfisLayer(CWFIS_ACTIVE_LAYER, { kind: 'active', ...options }),
     fetchCwfisLayer(CWFIS_PRESCRIBED_LAYER, { kind: 'prescribed', ...options }),
@@ -594,19 +656,37 @@ export async function fetchCwfisFires(options = {}) {
   const activeOk = activeResult.status === 'fulfilled';
   const prescribedOk = prescribedResult.status === 'fulfilled';
   if (!activeOk) {
-    const activeErr = activeResult.reason?.message || activeResult.reason;
-    throw new CwfisWfsError(`CWFIS active layer failed: ${activeErr}`);
+    const cause = activeResult.reason;
+    const transient = cause?.status != null ? isRetryableHttpStatus(cause.status) : !cause?.nonRetryable;
+    const snapshot = failedCwfisSnapshot(previousSnapshot, nowMs, 'CWFIS_SOURCE_FAILED', transient);
+    if (snapshot.fetchedAt !== null) {
+      console.warn(`[cwfis] active layer failed; retained source fetched at ${snapshot.fetchedAt}`);
+      return {
+        fireDetections: snapshot.fireDetections,
+        _cwfisActiveCount: snapshot.fireDetections.filter(row => row.kind === 'active').length,
+        _cwfisPrescribedCount: snapshot.fireDetections.filter(row => row.kind === 'prescribed').length,
+        _cwfisState: 'failed', _cwfisErrorCode: 'CWFIS_SOURCE_FAILED', _cwfisSnapshot: snapshot,
+      };
+    }
+    const error = new CwfisWfsError(`CWFIS active layer failed: ${cause?.message || cause}`, { cause });
+    error._cwfisSnapshot = snapshot;
+    throw error;
   }
   if (!prescribedOk) console.warn(`[cwfis] prescribed layer failed: ${prescribedResult.reason?.message || prescribedResult.reason}`);
 
   const active = activeResult.value.fireDetections || [];
   const prescribed = prescribedOk ? (prescribedResult.value.fireDetections || []) : [];
+  const fireDetections = mergeById(active, prescribed);
   return {
-    fireDetections: mergeById(active, prescribed),
+    fireDetections,
     _cwfisActiveCount: active.length,
     _cwfisPrescribedCount: prescribed.length,
     _cwfisState: prescribedOk ? 'ok' : 'degraded',
     _cwfisErrorCode: prescribedOk ? null : 'CWFIS_PRESCRIBED_FAILED',
+    _cwfisSnapshot: prescribedOk
+      ? { version: 1, fetchedAt: nowMs, retainedUntil: nowMs + CWFIS_RETAIN_MS, fireDetections,
+          consecutiveFailures: 0, firstFailureAt: null, lastAttemptAt: nowMs, errorCode: null }
+      : failedCwfisSnapshot(previousSnapshot, nowMs, 'CWFIS_PRESCRIBED_FAILED', false),
   };
 }
 

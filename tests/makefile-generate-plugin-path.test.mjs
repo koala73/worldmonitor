@@ -39,6 +39,19 @@ function extractGenerateRecipe() {
 describe('Makefile generate target — plugin path resolution', () => {
   const recipe = extractGenerateRecipe();
 
+  test('uses the public Go module proxy while keeping sebuf private', () => {
+    assert.match(
+      MAKEFILE,
+      /^GO_PROXY := GOPROXY=https:\/\/proxy\.golang\.org,direct$/m,
+      'Go installs must use proxy.golang.org for public modules with a direct fallback',
+    );
+    assert.match(
+      MAKEFILE,
+      /^GO_PRIVATE := GOPRIVATE=github\.com\/SebastienMelki$/m,
+      'private sebuf modules must bypass the public Go module proxy',
+    );
+  });
+
   test('resolves buf via command -v before invoking it', () => {
     // `command -v buf` must appear before the PATH override so the
     // caller's buf is captured first. Any version pinned by PATH

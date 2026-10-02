@@ -1,0 +1,53 @@
+name: Pulse Freshness Monitor
+
+# Watches the weekly crawlable-pulse refresh. Between 2026-09-02 and 2026-09-14
+# that workflow ran four times, failed four times, and nobody was told (#8339);
+# the snapshot reached the build ceiling and the next visible symptom would have
+# been a blocked deploy.
+#
+# A dedicated monitor rather than a check folded into seed-freshness-monitor.yml:
+# that workflow declares its own scope ("This workflow owns only
+# ingestion/data acceptance"), reads live /api/health, and therefore cannot see
+# either the age of a committed file under docs/snapshots/ or another workflow's
+# conclusion. Wrong signal source, not merely a crowded host.
+#
+# It reports by opening or updating ONE issue, the pattern in
+# mcp-preset-liveness.yml and orphaned-stacked-merge-monitor.yml — deliberately
+# not this repo's more common job-failure-only convention, which is exactly the
+# mechanism that stayed silent through four failures. GitHub emails a scheduled
+# failure to one account (whoever last edited the `cron:` line), subject to that
+# account's own notification settings.
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: pulse-freshness-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      # Staleness becomes an issue; only broken monitor infrastructure fails the
+      # job. This is never a build requirement.
+      - name: Check pulse freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-pulse-freshness.mjs

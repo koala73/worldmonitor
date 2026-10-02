@@ -68,3 +68,81 @@ test('enabling a panel in Settings shows it on the dashboard without a reload', 
   // No reload between the Save click and this assertion.
   await expect(page.locator(PANEL_SELECTOR)).toBeVisible({ timeout: 30_000 });
 });
+
+// Closing with an unsaved panel toggle asks to discard. The confirm is appended
+// to <body> beside the Settings overlay, so it must also stack above it: a
+// confirm hidden behind Settings leaves the close button dead (close() returns
+// while the confirm is pending) and the tab wedged with Settings open, which
+// holds off every stale-bundle reload (Sentry WORLDMONITOR-15Z).
+test('closing Settings with unsaved panel changes shows a clickable discard confirm', async ({ page }) => {
+  await seedDashboard(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  const settingsBtn = page.locator('#unifiedSettingsBtn');
+  await expect(settingsBtn).toBeVisible({ timeout: 60_000 });
+  await settingsBtn.click();
+  const settings = page.locator('#unifiedSettingsModal');
+  await expect(settings).toHaveClass(/\bactive\b/);
+  await page.locator('#us-tab-panels').click();
+
+  const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
+  await expect(toggle).toBeVisible({ timeout: 15_000 });
+  await toggle.click();
+  await expect(toggle).toHaveClass(/\bactive\b/);
+  await page.locator('.unified-settings-close').click();
+
+  const discard = page.locator('.confirm-dialog-overlay.active .confirm-dialog-confirm');
+  await expect(discard).toBeVisible();
+  // toBeVisible ignores stacking, so hit-test the button's centre directly.
+  const onTop = await discard.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit !== null && button.contains(hit);
+  });
+  expect(onTop).toBe(true);
+
+  await discard.click();
+  await expect(settings).not.toHaveClass(/\bactive\b/);
+  await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(0);
+});
+
+// The native bridge response is synthetic; HTML delimiters are not a demonstrated
+// valid input to Node's HTTP method parser. This tests the rendering boundary.
+test('diagnostic traffic methods render as text', async ({ page }, testInfo) => {
+  const entries = [
+    { timestamp: '2026-09-15T12:00:00.000Z', method: 'GET', path: '/api/health', status: 200, durationMs: 8 },
+    { timestamp: '2026-09-15T12:00:01.000Z', method: 'CUSTOM&QUERY', path: '/api/example?x=1&y=2', status: 204, durationMs: 12 },
+    { timestamp: '2026-09-15T12:00:02.000Z', method: '<b>METHOD</b>', path: '/api/synthetic', status: 503, durationMs: 42 },
+  ];
+  await page.addInitScript((rows) => {
+    Object.assign(window, { __TAURI__: { core: { invoke: async (command: string, payload?: { request?: { path?: string } }) => {
+      if (command === 'get_local_api_port') return 46123;
+      if (command === 'list_configured_secret_keys') return [];
+      if (command === 'proxy_local_api_request') {
+        const data = payload?.request?.path === '/api/local-traffic-log' ? { entries: rows } : { enabled: false };
+        return { status: 200, headers: { 'content-type': 'application/json' }, body: Array.from(new TextEncoder().encode(JSON.stringify(data))) };
+      }
+      return null;
+    } } } });
+  }, entries);
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    return url.origin === 'http://127.0.0.1:4173' ? route.continue() : route.fulfill({ json: {} });
+  });
+  await page.goto('/settings.html');
+  await page.getByRole('tab', { name: 'Debug & Logs' }).click();
+  await page.locator('#autoRefreshLog').uncheck();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  const rows = page.locator('#trafficLog tbody tr');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0).locator('td')).toHaveText(['12:00:02.000', '<b>METHOD</b>', '/api/synthetic', '503', '42ms']);
+  await expect(rows.nth(0)).toHaveClass('diag-err');
+  await expect(rows.nth(1).locator('td').nth(1)).toHaveText('CUSTOM&QUERY');
+  await expect(rows.nth(2).locator('td').nth(1)).toHaveText('GET');
+  await expect(page.locator('#trafficLog b')).toHaveCount(0);
+  await expect(page.locator('#trafficCount')).toHaveText('(3)');
+  await page.locator('#diagnosticsSection').scrollIntoViewIfNeeded();
+  const path = testInfo.outputPath('diagnostic-method-text.png');
+  await page.screenshot({ path });
+  await testInfo.attach('synthetic native response - literal method cells', { path, contentType: 'image/png' });
+});

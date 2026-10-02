@@ -24,13 +24,12 @@ export const GDELT_BULK_WORST_NETWORK_MS = REQUEST_TIMEOUT_MS
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 const MATERIAL_VIOLENCE_ROOT_CODES = new Set(['18', '19', '20']);
 
-// GDELT ActionGeo_CountryCode uses FIPS 10-4 rather than ISO-2.
-// Palestine can appear as either Gaza (GZ) or West Bank (WE).
-export const GDELT_FIPS_TO_ISO2 = Object.freeze({
-  AF: 'AF', SY: 'SY', UP: 'UA', SU: 'SD', OD: 'SS', SO: 'SO', CG: 'CD',
-  BM: 'MM', YM: 'YE', ET: 'ET', IZ: 'IQ', GZ: 'PS', WE: 'PS', LY: 'LY',
-  ML: 'ML', UV: 'BF', NG: 'NE', NI: 'NG', CM: 'CM', MZ: 'MZ', HA: 'HT',
-});
+// GDELT ActionGeo_CountryCode uses FIPS 10-4 rather than ISO-2. The full
+// table lives in the dependency-free scripts/_gdelt-country-codes.mjs (the
+// per-country article index needs it without this module's seed-runtime
+// imports, #7748); re-exported here for this module's existing consumers.
+export { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
+import { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
 
 function boundedPositiveInteger(value, label, max) {
   const parsed = Number(value);

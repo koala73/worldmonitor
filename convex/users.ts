@@ -20,6 +20,7 @@
 import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { TERMS_VERSION } from "../shared/legal";
+import { isAccountDeleting } from "./accountDeletion/guard";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -110,6 +111,9 @@ export const ensureRecord = mutation({
       return { ok: false as const, reason: "unauthenticated" as const };
     }
     const userId = identity.subject;
+    if (await isAccountDeleting(ctx, userId)) {
+      return { ok: false as const, reason: "account-deletion" as const };
+    }
     // Email may be empty for phone-only signups; treated as "no email
     // observed yet" — we'll fill it on a later call when one is added.
     const incomingEmail = (identity.email ?? "").trim();
@@ -225,6 +229,9 @@ export const recordTermsAcceptance = internalMutation({
     if (!userId) {
       console.warn("[users:recordTermsAcceptance] empty userId rejected");
       return { ok: false as const, reason: "invalid-input" as const };
+    }
+    if (await isAccountDeleting(ctx, userId)) {
+      return { ok: false as const, reason: "account-deletion" as const };
     }
 
     const now = Date.now();

@@ -64,6 +64,7 @@ describe("grantComplimentaryEntitlement", () => {
         },
         validUntil: longUntil,
         compUntil: longUntil,
+        compPlanKey: "pro_monthly",
         updatedAt: Date.now(),
       });
     });
@@ -829,10 +830,11 @@ describe("multi-active-sub guard", () => {
     expect(modern!.features.dataExport).toBe(true);
   });
 
-  test("the entitlement cache action accepts features with AND without dataExport", async () => {
+  test("the entitlement cache action accepts features with AND without optional entitlement fields", async () => {
     // Same strictness hazard one layer out: syncEntitlementCache's arg
     // validator is scheduled with the catalog features object, so a missing
-    // dataExport branch would reject every Pro Business cache sync.
+    // dataExport or embedAccess branch would reject every cache sync that
+    // carries the catalog's complete features object.
     const t = convexTest(schema, modules);
     const baseFeatures = {
       tier: 1,
@@ -852,9 +854,9 @@ describe("multi-active-sub guard", () => {
       validUntil: Date.now() + DAY_MS,
     });
     await t.action(internal.payments.cacheActions.syncEntitlementCache, {
-      userId: "user_cache_data_export_shape",
-      planKey: "pro_business_monthly",
-      features: { ...baseFeatures, dataExport: true },
+      userId: "user_cache_optional_features_shape",
+      planKey: "pro_monthly",
+      features: { ...baseFeatures, dataExport: true, embedAccess: true },
       validUntil: Date.now() + DAY_MS,
     });
   });

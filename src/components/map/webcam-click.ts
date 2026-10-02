@@ -3,7 +3,7 @@
  *
  * The layer mixes individual cameras (`WebcamEntry`) with server-side clusters
  * (`WebcamCluster`). Leaf clicks must open the public stream in a new tab and
- * consume the deck.gl pick so the MapboxOverlay `onClick` does not double-fire.
+ * consume the deck.gl pick so the MapLibreOverlay `onClick` does not double-fire.
  * Cluster clicks must never spawn N tabs — callers zoom/expand instead.
  *
  * Discriminate on the `_kind` tag stamped at `setWebcams` ingestion, with a

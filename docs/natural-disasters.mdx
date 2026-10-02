@@ -6,7 +6,89 @@ The Natural layer combines two authoritative sources for comprehensive disaster 
 
 ## IMD RSMC New Delhi cyclones
 
-North Indian Ocean cyclone tracks, forecast wind radii, and cones of uncertainty come from the official IMD API (`weather:imd-cyclone-marine:v1`). Observed positions stay distinct from forecast positions. Wind radii and the cone of uncertainty are forecast/uncertainty geometry, never an observed storm footprint. The seeder does not flatten these products into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`; a disabled or empty snapshot is not an all-clear.
+North Indian Ocean cyclone tracks, forecast wind radii, and cones of uncertainty come from the official IMD API (`weather:imd-cyclone-marine:v1`). Observed positions stay distinct from forecast positions. Wind radii and the cone of uncertainty are forecast/uncertainty geometry, never an observed storm footprint. The seeder does not flatten these products into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. A disabled or empty snapshot is not an all-clear.
+
+## Configure the IMD Railway seeder
+
+IMD authenticates each API request with both an API key and a JWT. The API key
+identifies the approved server and static public IP. Railway calls this address
+a static outbound IP. The JWT authenticates the IMD account and expires after
+3,600 seconds. WorldMonitor mints a new JWT at the start of each seed run. Do
+not store the JWT in Railway.
+
+1. Create an account in the [IMD API portal](https://api.imd.gov.in/public/index.php).
+   Use the same account to create the API key and mint JWTs. Follow the
+   [IMD API Portal User Guide](https://api.imd.gov.in/public/IMD_API_Portal_User_Guide.pdf).
+2. Enable [Railway Static Outbound IPs](https://docs.railway.com/networking/static-outbound-ips)
+   for the service. Run the following command to list the addresses Railway can
+   use:
+
+   ```bash
+   railway outbound-network static-ip status \
+     --service seed-imd-cyclone-marine \
+     --environment production \
+     --json
+   ```
+
+   Railway assigns three static outbound IPv4 addresses to a high-availability
+   service and balances traffic across them. Application code cannot select the
+   Railway NAT address for an IMD request or reliably probe it in advance: an
+   IP-check request is a separate connection and can use a different address
+   from the later IMD request.
+
+   The IMD portal documents a maximum of 2 Development keys and 2 Production keys,
+   and each key is associated with one server public IP. Railway's native
+   three-IP HA egress cannot satisfy the documented IMD contract. Do not
+   register only one Railway address and assume that the service will keep using
+   it.
+
+   Activation requires deterministic single-IP external egress. Set
+   `PROXY_URL` to a fixed-egress HTTPS CONNECT proxy, using either
+   `https://user:password@host:port` or Decodo's
+   `host:port:user:password` format. The seeder routes the JWT request and every
+   IMD product request through this proxy. It does not proxy Redis traffic and
+   does not fall back to direct Railway egress.
+
+   Verify the proxy's public egress IP from the service environment and register
+   that one address with IMD when you create the production API key. Do not
+   cycle keys on HTTP 403: that cannot create a deterministic key/IP pair. Treat
+   an IMD-origin HTTP 403 from every product as an API key status or public-IP
+   authorization failure. A proxy CONNECT HTTP 403 is a proxy-provider policy
+   failure instead.
+
+   Confirm that the proxy provider permits `api.imd.gov.in` before activation.
+   Decodo's [ISP Pay/IP restricted-target policy](https://help.decodo.com/docs/isp-pay-per-ip-proxy-restricted-targets)
+   lists government sites as restricted and states that this restriction cannot
+   be removed from that proxy product. It returns a proxy CONNECT HTTP 403 before
+   a request reaches IMD, so it cannot provide the IMD route even when its fixed
+   egress IP is correct. Use a fixed-egress proxy that explicitly permits the IMD
+   host.
+3. Add these service variables in Railway. Store each value as a secret.
+
+   | Variable | Value |
+   |---|---|
+   | `IMD_API_KEY` | The active production key for the fixed proxy egress IP |
+   | `IMD_API_EMAIL` | The registered IMD account email that owns the key |
+   | `IMD_API_PASSWORD` | The password for the same IMD account |
+   | `PROXY_URL` | A secret proxy route with one fixed public egress IP registered with IMD |
+
+   Do not set `IMD_API_TOKEN`. The seeder sends the account credentials to
+   `POST https://api.imd.gov.in/api/oauth/token.php` and keeps the returned JWT
+   only for the current run.
+4. Deploy from `main` and record the deployment time. Confirm that the active
+   deployment manifest uses the registry schedule, `*/15 * * * *`, then wait
+   for its next natural cron run.
+5. Call the WorldMonitor MCP tool `get_imd_cyclone_marine`. Accept the setup
+   only when the response has `stale: false`, its IMD snapshot has
+   `coverageState: ok`, and `generatedAt` is later than the deployment time.
+   Each enabled product must have `status: ok`; its record count can be zero
+   during a quiet period. Also confirm that
+   `https://api.worldmonitor.app/api/health?compact=1` does not list
+   `imdCycloneMarine` in `problems`.
+
+   A successful Railway deployment, an older green cache value, or an
+   `OK_ZERO` process result does not prove that IMD accepted the current
+   credentials and egress path.
 
 ## GDACS (Global Disaster Alert and Coordination System)
 

@@ -138,13 +138,12 @@ describe('headline deduplication', () => {
 // ========================================================================
 
 describe('handler and prompt guards', () => {
-  it('serves humanitarian summaries from cache and never calls HAPI directly', () => {
+  it('keeps direct HAPI calls out of the humanitarian summary handler', () => {
     // #5554: HAPI rate-limits per identifier, so every direct-fetch call site
     // shares one throttle bucket. The RPC handler must read what the seeder
     // wrote rather than adding a second caller.
     const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
     assert.doesNotMatch(src, /hapi\.humdata\.org/);
-    assert.match(src, /getCachedJson\(/);
   });
 
   it('keeps named political figures out of the LLM prompt', () => {

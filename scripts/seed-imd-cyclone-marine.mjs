@@ -2,8 +2,7 @@
 /**
  * IMD cyclone, port, coastal, and marine seeder (#7005).
  *
- * Planned Railway service for cyclone/port/coastal/marine products only.
- * Does not write the NWS/ECCC/SWIC weather-alerts key. Live fetch requires IMD_API_KEY.
+ * Does not write the NWS/ECCC/SWIC weather-alerts key.
  */
 
 import { loadEnvFile, CHROME_UA, readCanonicalValue, runSeed } from './_seed-utils.mjs';
@@ -12,22 +11,24 @@ import {
   IMD_CANONICAL_KEY,
   IMD_MAX_CONTENT_AGE_MIN,
   IMD_SOURCE_VERSION,
+  createImdProxyFetch,
   declareImdRecords,
   fetchImdCycloneMarine,
   imdAfterPublish,
   imdContentMeta,
+  shouldActivateImdSnapshot,
   validateImdEnvelope,
 } from './lib/imd-cyclone-marine.mjs';
 
 loadEnvFile(import.meta.url);
 
-export const IMD_ACTIVATION_KEY = 'seed-activated:weather:imd-cyclone-marine';
+export const IMD_ACTIVATION_KEY = 'seed-activated:weather:imd-cyclone-marine:v2';
 
 const CACHE_TTL = 5400;
 
 async function markImdActivated(data) {
   const result = imdAfterPublish(data);
-  if (data?.coverageState === 'disabled') return result;
+  if (!shouldActivateImdSnapshot(data)) return result;
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return result;
@@ -46,7 +47,8 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous });
+  const fetchFn = createImdProxyFetch(process.env.PROXY_URL);
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, fetchFn });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

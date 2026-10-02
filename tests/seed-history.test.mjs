@@ -305,7 +305,17 @@ describe('appendSeedHistory env guard', () => {
       },
     );
 
-    assert.deepEqual(result, { inserted: 1, skipped: 0, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, {
+      inserted: 1,
+      skipped: 0,
+      retracted: 0,
+      chunks: 1,
+      abandoned: 0,
+      failedChunks: 0,
+      inputRecords: 1,
+      normalizedRecords: 1,
+      droppedRecords: 0,
+    });
     assert.equal(calls[0].url, 'https://fearless-otter-42.convex.site/relay/intel-history');
   });
 });
@@ -327,7 +337,17 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 0, skipped: 0, retracted: 0, chunks: 0, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, {
+      inserted: 0,
+      skipped: 0,
+      retracted: 0,
+      chunks: 0,
+      abandoned: 0,
+      failedChunks: 0,
+      inputRecords: 2,
+      normalizedRecords: 0,
+      droppedRecords: 2,
+    });
     assert.equal(calls.length, 0);
     assert.equal(batches.length, 0);
   });
@@ -351,7 +371,17 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 103, skipped: 17, retracted: 0, chunks: 3, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, {
+      inserted: 103,
+      skipped: 17,
+      retracted: 0,
+      chunks: 3,
+      abandoned: 0,
+      failedChunks: 0,
+      inputRecords: 120,
+      normalizedRecords: 120,
+      droppedRecords: 0,
+    });
     assert.equal(calls.length, 3);
     assert.deepEqual(
       calls.map((c) => c.body.records.length),
@@ -376,6 +406,65 @@ describe('appendSeedHistory', () => {
     // is the one embedded for that record's own text.
     const firstRecord = calls[0].body.records[0];
     assert.equal(firstRecord.embedding[1], 0, 'first record gets the first vector');
+  });
+
+  it('reports records removed by validation or the per-run cap', async () => {
+    const { fetchImpl } = stubFetch({ body: { inserted: 50, skipped: 0 } });
+    const { embed } = stubEmbed();
+    const records = Array.from(
+      { length: HISTORY_MAX_RECORDS_PER_RUN + 1 },
+      (_, index) => record(index),
+    );
+
+    const result = await appendSeedHistory(
+      { domain: 'conflict', resource: 'acled', runId: 'run-capped', records },
+      { fetchImpl, embed, env: ENV },
+    );
+
+    assert.equal(result.inputRecords, HISTORY_MAX_RECORDS_PER_RUN + 1);
+    assert.equal(result.normalizedRecords, HISTORY_MAX_RECORDS_PER_RUN);
+    assert.equal(result.droppedRecords, 1);
+  });
+
+  it('rejects malformed or incomplete relay counters', async () => {
+    for (const body of [
+      { inserted: -1, skipped: 2, retracted: 0 },
+      { inserted: 0.5, skipped: 0.5, retracted: 0 },
+      { inserted: '1', skipped: 0, retracted: 0 },
+      { inserted: 2, skipped: 0, retracted: 0 },
+      { inserted: 0, skipped: 0, retracted: 0 },
+    ]) {
+      const { fetchImpl } = stubFetch({ body });
+      const { embed } = stubEmbed();
+      await withCapturedWarn(async () => {
+        await assert.rejects(
+          appendSeedHistory(
+            { domain: 'conflict', resource: 'acled', runId: 'run-bad-counts', records: [record(1)] },
+            { fetchImpl, embed, env: ENV },
+          ),
+          /relay (?:returned an invalid|counters did not account)/,
+        );
+      });
+    }
+  });
+
+  it('continues after one successful response has malformed counters', async () => {
+    const { fetchImpl, calls } = stubFetch(
+      { body: { inserted: 10, skipped: 0 } },
+      { 0: { body: { inserted: 49, skipped: 0 } } },
+    );
+    const { embed } = stubEmbed();
+    const records = Array.from({ length: 60 }, (_, index) => record(index));
+
+    const { result } = await withCapturedWarn(() => appendSeedHistory(
+      { domain: 'conflict', resource: 'acled', runId: 'run-partial-counts', records },
+      { fetchImpl, embed, env: ENV },
+    ));
+
+    assert.equal(calls.length, 2);
+    assert.equal(result.chunks, 1);
+    assert.equal(result.failedChunks, 1);
+    assert.equal(result.inserted, 10);
   });
 
   it('embeds "title — summary" normalized and capped at 300 chars', async () => {
@@ -491,6 +580,9 @@ describe('appendSeedHistory', () => {
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
+      inputRecords: 1,
+      normalizedRecords: 1,
+      droppedRecords: 0,
     });
     assert.ok(warns.some((w) => w.includes('budget exhausted during embedding')));
   });
@@ -533,6 +625,9 @@ describe('appendSeedHistory', () => {
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
+      inputRecords: 1,
+      normalizedRecords: 1,
+      droppedRecords: 0,
     });
     assert.ok(warns.some((w) => w.includes('budget exhausted during relay')));
   });
@@ -543,7 +638,10 @@ describe('appendSeedHistory', () => {
   it('keeps going when a middle chunk fails permanently', async () => {
     const { fetchImpl, calls } = stubFetch(
       { body: { inserted: 50, skipped: 0 } },
-      { 1: { status: 400, body: { error: 'INVALID_RECORD' }, text: 'INVALID_RECORD' } },
+      {
+        1: { status: 400, body: { error: 'INVALID_RECORD' }, text: 'INVALID_RECORD' },
+        2: { body: { inserted: 20, skipped: 0 } },
+      },
     );
     const { embed } = stubEmbed();
 
@@ -560,7 +658,7 @@ describe('appendSeedHistory', () => {
     assert.equal(calls.length, 3, 'the third chunk is still attempted');
     assert.equal(result.chunks, 2, 'two chunks committed');
     assert.equal(result.failedChunks, 1);
-    assert.equal(result.inserted, 100);
+    assert.equal(result.inserted, 70);
     assert.ok(warns.some((w) => w.includes('chunk 2 failed')));
   });
 
@@ -603,7 +701,17 @@ describe('appendSeedHistory', () => {
       ),
     );
 
-    assert.deepEqual(result, { inserted: 3, skipped: 1, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, {
+      inserted: 3,
+      skipped: 1,
+      retracted: 0,
+      chunks: 1,
+      abandoned: 0,
+      failedChunks: 0,
+      inputRecords: 4,
+      normalizedRecords: 4,
+      droppedRecords: 0,
+    });
     assert.equal(calls.length, 2, 'one failed attempt + one successful retry');
   });
 

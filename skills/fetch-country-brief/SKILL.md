@@ -1,12 +1,16 @@
 ---
 name: fetch-country-brief
-version: 1
-description: Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country.
+version: 2
+description: Open the WorldMonitor country interface in a UI-capable MCP host. Use the text assessment endpoint for explicit text-only requests or clients without embedded UI.
 ---
 
 # fetch-country-brief
 
-Use this skill when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country. The endpoint returns a fresh AI-generated brief composed from the latest news, market, conflict, and infrastructure signals World Monitor tracks for that country.
+For a country-brief request in ChatGPT or another MCP Apps host, call `open_country_brief` with `country_code`. This opens the shared country interface with topic navigation, evidence, resilience, energy and trade sections. It loads dated observations through the authorized host connection. Do not replace the interface with an AI paragraph.
+
+For a follow-up, use the view's `select_country_view` action when available, or call `open_country_brief` with the same country and requested `topic`. Valid topics are `overview`, `all`, `resilience`, `security`, `economy`, `resources`, `society` and `sources`.
+
+Only use `get_country_brief` or the HTTP endpoint below when the user explicitly asks for a text assessment or the client cannot render MCP Apps. The assessment is one part of the country view. An unavailable or locked section does not mean zero activity. Preserve source dates and distinguish an observation from its retrieval date.
 
 ## Authentication
 
@@ -21,7 +25,7 @@ Browser requests from `worldmonitor.app` get a free pass via CORS Origin trust, 
 ## Endpoint
 
 ```
-GET https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief
+GET https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief
 ```
 
 ## Parameters
@@ -49,7 +53,7 @@ GET https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief
 
 ```bash
 curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
+  'https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
   | jq -r '.brief'
 ```
 
@@ -57,7 +61,7 @@ With an analytical framework:
 
 ```bash
 curl -s --get -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
+  'https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
   --data-urlencode 'country_code=TR' \
   --data-urlencode 'framework=focus on energy corridors and Black Sea shipping'
 ```

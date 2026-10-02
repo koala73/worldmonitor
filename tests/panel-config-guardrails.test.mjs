@@ -678,7 +678,7 @@ describe('panel-config guardrails', () => {
     );
 
     const afterPanelMounted = panelLayoutSrc.match(
-      /private afterPanelMounted\([\s\S]*?\n\s*\}/
+      /  private afterPanelMounted\([\s\S]*?\n  \}/
     );
     assert.ok(afterPanelMounted, 'expected afterPanelMounted helper in panel-layout.ts');
     assert.match(

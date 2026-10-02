@@ -4,14 +4,41 @@ import { describe, test } from 'node:test';
 
 import {
   COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  MAX_COMPANY_MONITORING_X_RETURNED_POSTS,
   assertSafeOfficialUrl,
   compileXRecentSearchPacks,
-  createXRecentSearchExecutor,
+  createXRecentSearchExecutor as createXRecentSearchExecutorImpl,
   evaluateOfficialIdentityState,
   fetchSsrfSafeOfficialPage,
   normalizeXRecentSearchPage,
   verifyOfficialXIdentity,
 } from '../scripts/lib/company-monitoring-x-provider.mjs';
+import {
+  createXPostBudget,
+  RESERVE_LUA,
+  SETTLE_LUA,
+} from '../scripts/lib/x-post-budget.cjs';
+
+async function withTestReturnedPostBudget(request) {
+  const budget = createXPostBudget({
+    evalCommand: async (script, _keys, args) => {
+      if (script === RESERVE_LUA) return [1, request.requestedPosts, request.requestedPosts, 0, 0, ''];
+      if (script === SETTLE_LUA) {
+        const actual = Number(args[0]);
+        return [1, actual, actual, request.requestedPosts, actual, 0];
+      }
+      throw new Error('unexpected test budget script');
+    },
+    now: () => CHECKED_AT,
+    idFactory: () => 'company-monitoring-test',
+  });
+  return budget.withReturnedPosts(request);
+}
+
+function createXRecentSearchExecutor(options = {}) {
+  const withReturnedPosts = options.withReturnedPosts ?? withTestReturnedPostBudget;
+  return createXRecentSearchExecutorImpl({ ...options, withReturnedPosts });
+}
 
 const fixture = JSON.parse(await readFile(
   new URL('./fixtures/company-monitoring-x/provider-compliance.json', import.meta.url),
@@ -671,7 +698,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     }]);
   });
 
-  test('records retention and pagination-cap gaps instead of advancing reassuring coverage', async () => {
+  test('records retention and a sub-minimum Post allowance instead of advancing reassuring coverage', async () => {
     const tracer = fixture.liveTracers[0];
     const execute = createXRecentSearchExecutor({
       bearerToken: 'x-test-token',
@@ -727,7 +754,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
       {
         startAt: CHECKED_AT - 7 * DAY,
         endAt: CHECKED_AT,
-        reason: 'pagination_cap',
+        reason: 'provider_partial',
       },
     ]);
   });
@@ -966,7 +993,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     }]);
   });
 
-  test('caps full-cohort tracked reconciliation and still calls recent search', async () => {
+  test('caps full-cohort tracked reconciliation and skips search below the X minimum page size', async () => {
     const tracers = Array.from({ length: 25 }, (_, index) => cohortTracer(index));
     const subjects = tracers.map((tracer, index) => subjectFor(tracer, {
       currentIdentity: {
@@ -1021,12 +1048,12 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     });
 
     const result = await execute(workFor(subjects));
-    assert.equal(reconciledIds, 99);
-    assert.ok(searched > 0);
+    assert.equal(reconciledIds, 94);
+    assert.equal(searched, 0);
     assert.ok(result.xIngestion.requestCount <= 100);
-    assert.equal(result.xIngestion.posts.length, 99);
+    assert.equal(result.xIngestion.posts.length, 94);
     assert.equal(result.coverage, 'partial');
-    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'compliance_unavailable'));
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
   });
 
   test('keeps a deletion tombstone ahead of recent results at resultCap one', async () => {
@@ -1279,5 +1306,275 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
       storageState: 'metadata_only',
       editHistoryPostIds: [postId],
     }]);
+  });
+});
+
+describe('Company Monitoring shared X Post budget', () => {
+  test('reserves exact endpoint capacity and settles from raw returned Posts', async () => {
+    const tracer = fixture.liveTracers[0];
+    const trackedPosts = [
+      '6000000000000000001',
+      '6000000000000000002',
+    ].map((postId) => ({
+      postId,
+      authorAccountId: tracer.accountId,
+      contentState: 'active',
+      observedAt: CHECKED_AT - DAY,
+    }));
+    const budgetCalls = [];
+    const xCalls = [];
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => {
+        const outcome = await withTestReturnedPostBudget(request);
+        budgetCalls.push({
+          consumer: request.consumer,
+          operation: request.operation,
+          requestedPosts: request.requestedPosts,
+          returnedPosts: outcome.returnedPosts,
+        });
+        return outcome;
+      },
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        xCalls.push(url);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        if (url.pathname === '/2/tweets') {
+          return Response.json({
+            data: trackedPosts.map((tracked) => ({
+              id: tracked.postId,
+              author_id: tracked.authorAccountId,
+              created_at: new Date(tracked.observedAt).toISOString(),
+              edit_history_tweet_ids: [tracked.postId],
+            })),
+            includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          });
+        }
+        const duplicate = {
+          id: '6000000000000000003',
+          author_id: tracer.accountId,
+          created_at: new Date(CHECKED_AT - 1_000).toISOString(),
+          edit_history_tweet_ids: ['6000000000000000003'],
+        };
+        return Response.json({
+          data: [duplicate, duplicate],
+          includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          meta: { result_count: 2 },
+        });
+      },
+    });
+
+    const result = await execute(workFor([subjectFor(tracer, { trackedPosts })]));
+    assert.equal(result.type, 'result');
+    assert.deepEqual(budgetCalls.map((call) => call.consumer), ['company-monitoring', 'company-monitoring']);
+    assert.deepEqual(budgetCalls.map((call) => call.operation), ['tracked-post-lookup', 'recent-search']);
+    assert.equal(budgetCalls[0].requestedPosts, trackedPosts.length);
+    assert.equal(budgetCalls[0].returnedPosts, trackedPosts.length);
+    const searchUrl = xCalls.find((url) => url.pathname === '/2/tweets/search/recent');
+    assert.equal(budgetCalls[1].requestedPosts, Number(searchUrl.searchParams.get('max_results')));
+    assert.equal(budgetCalls[1].requestedPosts, 93);
+    assert.equal(budgetCalls[1].returnedPosts, 2, 'raw duplicate Posts are charged before normalization');
+    assert.equal(budgetCalls.reduce((sum, call) => sum + call.requestedPosts, 0), MAX_COMPANY_MONITORING_X_RETURNED_POSTS);
+    assert.equal(xCalls.filter((url) => url.pathname.includes('/users/')).length, 1);
+    assert.equal(budgetCalls.length, 2, 'profile lookups do not consume returned-Post budget');
+  });
+
+  test('reclaims an over-reservation so a later request can spend the refunded headroom', async () => {
+    // The refund line only ever computed zero in the existing suite, because every
+    // case returned exactly what it reserved. Its whole purpose is cross-call:
+    // a lookup that reserves 5 and is answered with 3 must hand 2 Posts back to
+    // the shared lease budget, so the recent search that follows sizes itself
+    // against Posts actually returned rather than Posts optimistically reserved.
+    const tracer = fixture.liveTracers[0];
+    const trackedPosts = [
+      '6100000000000000001',
+      '6100000000000000002',
+      '6100000000000000003',
+      '6100000000000000004',
+      '6100000000000000005',
+    ].map((postId) => ({
+      postId,
+      authorAccountId: tracer.accountId,
+      contentState: 'active',
+      observedAt: CHECKED_AT - DAY,
+    }));
+    const answered = trackedPosts.slice(0, 3);
+    const budgetCalls = [];
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => {
+        const outcome = await withTestReturnedPostBudget(request);
+        budgetCalls.push({
+          operation: request.operation,
+          requestedPosts: request.requestedPosts,
+          returnedPosts: outcome.returnedPosts,
+        });
+        return outcome;
+      },
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        if (url.pathname === '/2/tweets') {
+          // Reserved for 5 ids, X answers with 3 -- the other 2 are unaccounted.
+          return Response.json({
+            data: answered.map((tracked) => ({
+              id: tracked.postId,
+              author_id: tracked.authorAccountId,
+              created_at: new Date(tracked.observedAt).toISOString(),
+              edit_history_tweet_ids: [tracked.postId],
+            })),
+            includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          });
+        }
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    await execute(workFor([subjectFor(tracer, { trackedPosts })]));
+
+    assert.equal(budgetCalls.length, 2);
+    assert.equal(budgetCalls[0].operation, 'tracked-post-lookup');
+    assert.equal(budgetCalls[0].requestedPosts, trackedPosts.length);
+    assert.equal(budgetCalls[0].returnedPosts, answered.length, 'fewer Posts came back than were reserved');
+    assert.equal(budgetCalls[1].operation, 'recent-search');
+    assert.equal(
+      budgetCalls[1].requestedPosts,
+      MAX_COMPANY_MONITORING_X_RETURNED_POSTS - answered.length,
+      'the search must be sized against Posts actually returned, not Posts reserved',
+    );
+    assert.ok(
+      budgetCalls[1].requestedPosts
+        > MAX_COMPANY_MONITORING_X_RETURNED_POSTS - trackedPosts.length,
+      'without the refund the lease would stay short by the unaccounted Posts',
+    );
+  });
+
+  test('clamps persisted 100-Post work and skips recent search below the X minimum page size', async () => {
+    const tracer = fixture.liveTracers[0];
+    const trackedPosts = Array.from({ length: 94 }, (_, index) => ({
+      postId: (6_100_000_000_000_000_000n + BigInt(index)).toString(),
+      authorAccountId: tracer.accountId,
+      contentState: 'active',
+      observedAt: CHECKED_AT - DAY,
+    }));
+    const budgetCalls = [];
+    let recentSearchCalls = 0;
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => {
+        budgetCalls.push(request.requestedPosts);
+        return withTestReturnedPostBudget(request);
+      },
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        if (url.pathname === '/2/tweets') {
+          return Response.json({
+            data: trackedPosts.map((tracked) => ({
+              id: tracked.postId,
+              author_id: tracked.authorAccountId,
+              created_at: new Date(tracked.observedAt).toISOString(),
+              edit_history_tweet_ids: [tracked.postId],
+            })),
+            includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          });
+        }
+        recentSearchCalls += 1;
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    const result = await execute(workFor([subjectFor(tracer, { trackedPosts })]));
+    assert.deepEqual(budgetCalls, [94]);
+    assert.equal(recentSearchCalls, 0);
+    assert.equal(result.itemCount, 94);
+    assert.equal(result.hasMore, true);
+    assert.equal(result.coverage, 'partial');
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
+  });
+
+  test('does not call a Post endpoint after the shared budget denies it', async () => {
+    const tracer = fixture.liveTracers[0];
+    let postEndpointCalls = 0;
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async () => ({ allowed: false, reason: 'daily_limit' }),
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        postEndpointCalls += 1;
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    const result = await execute(workFor([subjectFor(tracer)]));
+    assert.equal(postEndpointCalls, 0);
+    assert.equal(result.type, 'result');
+    assert.equal(result.coverage, 'partial');
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
+  });
+
+  test('returns partial when shared Post usage cannot be settled', async () => {
+    const tracer = fixture.liveTracers[0];
+    let postEndpointCalls = 0;
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => ({
+        ...await withTestReturnedPostBudget(request),
+        completed: false,
+      }),
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        postEndpointCalls += 1;
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    const result = await execute(workFor([subjectFor(tracer)]));
+    assert.equal(postEndpointCalls, 1);
+    assert.equal(result.type, 'result');
+    assert.equal(result.coverage, 'partial');
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
   });
 });

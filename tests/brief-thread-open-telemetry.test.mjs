@@ -229,6 +229,17 @@ describe('brief-render — U11 source-link stamping', () => {
       'umami loader script tag is emitted in the head',
     );
   });
+
+  it('tells the umami loader to drop the query string', () => {
+    const html = renderBriefMagazine(envelope(), { followedCountries: [] });
+    const loader = html.match(/<script[^>]*abacus\.worldmonitor\.app\/script\.js[^>]*>/)?.[0];
+    assert.ok(loader, 'umami loader tag present');
+    assert.match(
+      loader,
+      /\sdata-exclude-search="true"(\s|>)/,
+      'the magazine URL carries its credential in ?t=, so the tracker must not report the query',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

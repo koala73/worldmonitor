@@ -136,7 +136,7 @@ See [Demographics capability methodology](/methodology/demographics-capability).
 
 `GET /api/resilience/v1/get-food-stocks?countryCode=WORLD` · MCP `get_food_stocks`
 
-USDA PSD cereal ending stocks, production, use, and the stocks-to-use ratio, per country and commodity. `countryCode=WORLD` returns the global balance. `commodity` accepts `wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`. FAOSTAT production-only rows use placeholder stock fields, so read `hasEndingStocks` and `hasStocksToUse` before treating stock numbers as measurements.
+USDA PSD cereal ending stocks, production, use, and the stocks-to-use ratio, per country and commodity. `countryCode=WORLD` returns the global balance. `commodity` accepts `wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`. When PSD has no complete balance, FAOSTAT Food Balances supplies a same-year production and domestic-supply pair. FAOSTAT rows have no stock measurement, so read `hasEndingStocks` and `hasStocksToUse` before you use the stock numbers.
 
 Marketing years are not calendar years, and they differ by country and commodity. Two countries' figures for "2025/26" can cover different months — never compare them as if the label meant one period. Each row states its own marketing year for exactly this reason.
 

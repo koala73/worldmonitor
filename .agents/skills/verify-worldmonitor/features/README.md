@@ -1,6 +1,8 @@
 # WorldMonitor verification map
 
-This directory is the maintained source for verifying the user-facing behavior of the WorldMonitor browser dashboard. Read this index before driving the app, then use the matching feature file as the recipe.
+This directory indexes browser verification recipes. Start with the matching
+feature and use its strict test when available. Read the
+[skill entry](../SKILL.md#choose-the-proof) for preparation and manual server ownership.
 
 ## Baseline preconditions
 
@@ -8,7 +10,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Run `wm-verify.sh doctor` before the first drive and again after any drive that failed. It refuses an instance whose port is held by someone else's process.
 - Never drive an instance this run did not start. Other worktrees and the user's own `npm run dev` are also vite processes on nearby ports.
 - Every drive gets a fresh browser context and a seeded localStorage profile (`steps/_profile.mjs`), so drives do not inherit each other's state.
-- The dev server serves the app only. `/api/*` is NOT the Vercel Edge runtime here — see "Local API reality" below.
+- For an existing Playwright test, let its configuration manage the server. The launch and doctor steps apply only to manual drives.
 
 ## Driving conventions
 
@@ -21,14 +23,10 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 ## Local API reality
 
-`npm run dev` is a Vite server, not `vercel dev`. Only a few `/api/*` routes have dev middleware (`/api/polymarket`, `/api/rss-proxy`, `/api/youtube/live`, `/api/gpsjam`, and the sebuf version alias). Every other `/api/*` path returns its own **JavaScript source** with `content-type: text/javascript`, so the client's `JSON.parse` throws.
-
-Consequences for verification:
-
-- A local run always shows a baseline of console errors and 4xx/5xx responses (`/api/wm-session` 404, `/api/gpsjam` 503, `SyntaxError: Unexpected token 'i', "import __v"…`). These are the dev server, not product regressions. Compare against a previous run's `console-errors.json`, do not expect zero.
-- UI behavior, routing, persistence, panel/layer/settings state, and bundled-data panels are fully verifiable locally.
-- Anything whose proof is the *content* of an Edge endpoint (bootstrap hydration payloads, premium gating, entitlements, auth sessions) is NOT verifiable here. Verify it against a deployed preview instead, and say so rather than reporting a local pass.
-- Setting `VITE_WS_API_URL` to redirect `/api/*` at production was tried and did **not** take effect through the shell environment — do not document it as a working lever without re-proving it.
+The [contributor verification guide](../../../../CONTRIBUTING.md#verify-the-changed-path)
+owns the local API contract and proof limits. Vite executes registered versioned
+RPC handlers. Inspect whether a test stubs the response before claiming backend
+coverage. Classify errors from the actual response and handler path.
 
 ## Proof and skip reporting
 

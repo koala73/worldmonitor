@@ -42,6 +42,21 @@ export type ProjectJsonResult =
   | { ok: true; body: string }
   | { ok: false; envelope: JmespathErrorEnvelope };
 
+export function enforceRestProjectionOutputLimit(
+  body: string,
+  originalValue: unknown,
+): ProjectJsonResult {
+  const outputBytes = utf8ByteLength(body);
+  if (outputBytes <= REST_JMESPATH_MAX_OUTPUT_BYTES) return { ok: true, body };
+  return {
+    ok: false,
+    envelope: {
+      _jmespath_error: `projection_too_large: ${outputBytes} > ${REST_JMESPATH_MAX_OUTPUT_BYTES}`,
+      original_keys: originalKeys(originalValue),
+    },
+  };
+}
+
 // Apply a JMESPath expression to an already-serialized JSON response body.
 // Returns the projected JSON string on success, or an error envelope (same
 // shape as the MCP `_jmespath_error` contract) the caller serves as a 400.
@@ -92,15 +107,5 @@ export function projectJsonResponse(bodyStr: string, expr: string): ProjectJsonR
   // that is the JS value `undefined`, not a document — coerce to `null` so the
   // wire payload is always valid JSON.
   const body = text === undefined ? 'null' : text;
-  const outputBytes = utf8ByteLength(body);
-  if (outputBytes > REST_JMESPATH_MAX_OUTPUT_BYTES) {
-    return {
-      ok: false,
-      envelope: {
-        _jmespath_error: `projection_too_large: ${outputBytes} > ${REST_JMESPATH_MAX_OUTPUT_BYTES}`,
-        original_keys: originalKeys(value),
-      },
-    };
-  }
-  return { ok: true, body };
+  return enforceRestProjectionOutputLimit(body, value);
 }

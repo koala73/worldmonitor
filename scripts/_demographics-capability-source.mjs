@@ -304,7 +304,7 @@ async function fetchResponse(fetchImpl, url, {
         },
         signal: requestSignal,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
       return response;
     } catch (error) {
       lastError = error;
@@ -326,8 +326,8 @@ export async function fetchWppStage({
   for (let offset = 0; offset < locationIds.length; offset += 50) {
     const locations = locationIds.slice(offset, offset + 50).join(',');
     const [demographics, workingAge] = await Promise.all([
-      fetchResponse(fetchImpl, `${WPP_BASE}/indicators/67,84,86/locations/${locations}/years/${currentYear}/vars/4/ages/188,1005,1015/sexes/3/cats/0`, { accept: 'application/json', signal }).then((response) => response.json()),
-      fetchResponse(fetchImpl, `${WPP_BASE}/indicators/70/locations/${locations}/years/${currentYear},${currentYear + 10}/vars/4/ages/40/sexes/3/cats/0`, { accept: 'application/json', signal }).then((response) => response.json()),
+      fetchResponse(fetchImpl, `${WPP_BASE}/indicators/67,84,86/locations/${locations}/years/${currentYear}/vars/4/ages/188,1005,1015/sexes/3/cats/0`, { accept: 'application/json', signal, attempts: 4 }).then((response) => response.json()),
+      fetchResponse(fetchImpl, `${WPP_BASE}/indicators/70/locations/${locations}/years/${currentYear},${currentYear + 10}/vars/4/ages/40/sexes/3/cats/0`, { accept: 'application/json', signal, attempts: 4 }).then((response) => response.json()),
     ]);
     demographicsRows.push(...(Array.isArray(demographics) ? demographics : []));
     workingAgeRows.push(...(Array.isArray(workingAge) ? workingAge : []));

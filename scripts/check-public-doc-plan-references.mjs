@@ -110,16 +110,71 @@ export function findPublicDocumentationViolations(docsDir = DOCS_DIR) {
   return violations;
 }
 
+export function inspectDocumentationPublication(docsDir = DOCS_DIR) {
+  const { entries, violations } = readIgnoreEntries(docsDir);
+  for (const entry of entries) {
+    if (/[!*?\[\]\\]/.test(entry) || entry.startsWith('/')) {
+      violations.push(`docs/.mintignore: coverage check requires literal relative files or directories: ${entry}`);
+    }
+  }
+  const config = JSON.parse(readFileSync(join(docsDir, 'docs.json'), 'utf8'));
+  if (config.seo?.indexing === 'all') {
+    violations.push('docs/docs.json: classify public pages in navigation instead of enabling seo.indexing: all');
+  }
+  const navigation = new Map();
+  function collectPages(node, indexed = true) {
+    if (Array.isArray(node)) {
+      for (const child of node) collectPages(child, indexed);
+    } else if (node && typeof node === 'object') {
+      const visible = indexed && (node.hidden !== true || node.searchable === true);
+      for (const page of node.pages ?? []) {
+        if (typeof page === 'string') navigation.set(page, visible);
+      }
+      for (const child of Object.values(node)) collectPages(child, visible);
+    }
+  }
+  collectPages(config.navigation);
+  const documents = collectPublicDocFiles(docsDir, docsDir, []).map(({ path, docsPath }) => {
+    const content = readFileSync(path, 'utf8');
+    const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] ?? '';
+    const noindex = /^(?:noindex|hidden):\s*true\s*(?:#.*)?$/m.test(frontmatter);
+    const slug = docsPath.replace(/\.mdx?$/, '');
+    const status = isIgnored(docsPath, entries) ? 'excluded'
+      : noindex ? 'noindex'
+        : navigation.get(slug) ? 'public' : 'unclassified';
+    if (status === 'unclassified') {
+      violations.push(`docs/${docsPath}: add to navigation, set noindex: true, or exclude in .mintignore`);
+    }
+    if (status === 'excluded' && navigation.has(slug)) {
+      violations.push(`docs/${docsPath}: excluded page is still in navigation`);
+    }
+    return { path: docsPath, status };
+  }).sort((a, b) => a.path.localeCompare(b.path));
+  const sourceSlugs = new Set(documents.map(doc => doc.path.replace(/\.mdx?$/, '')));
+  for (const slug of navigation.keys()) {
+    if (!sourceSlugs.has(slug) && !/^https?:\/\//.test(slug)) {
+      violations.push(`docs/docs.json: navigation page has no Markdown source: ${slug}`);
+    }
+  }
+  return { documents, violations };
+}
+
 function main() {
-  const violations = findPublicDocumentationViolations();
+  const publication = inspectDocumentationPublication();
+  if (process.argv.includes('--inventory')) {
+    console.log(JSON.stringify(publication, null, 2));
+    process.exitCode = publication.violations.length ? 1 : 0;
+    return;
+  }
+  const violations = [...findPublicDocumentationViolations(), ...publication.violations];
   if (violations.length > 0) {
-    console.error('Public documentation plan-reference check FAILED:');
+    console.error('Public documentation publication check FAILED:');
     for (const violation of violations) console.error(`  - ${violation}`);
     process.exitCode = 1;
     return;
   }
 
-  console.log('Public documentation plan-reference check passed.');
+  console.log(`Public documentation publication check passed (${publication.documents.length} documents classified).`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

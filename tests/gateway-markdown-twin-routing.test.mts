@@ -1,7 +1,15 @@
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { createDomainGateway } from '../server/gateway.ts';
+
+const TWIN_TEST_KEY = 'markdown-twin-test-operator-key';
+const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+
+afterEach(() => {
+  if (originalValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+  else process.env.WORLDMONITOR_VALID_KEYS = originalValidKeys;
+});
 
 function makeGateway(onRpcDispatch: () => void) {
   return createDomainGateway([
@@ -63,8 +71,10 @@ describe('dynamic API gateway markdown twins', () => {
       rpcDispatches += 1;
     });
 
+    process.env.WORLDMONITOR_VALID_KEYS = TWIN_TEST_KEY;
     const res = await gateway(new Request(
       'https://worldmonitor.app/api/seismology/v1/list-earthquakes',
+      { headers: { 'X-WorldMonitor-Key': TWIN_TEST_KEY } },
     ));
 
     assert.equal(res.status, 200);

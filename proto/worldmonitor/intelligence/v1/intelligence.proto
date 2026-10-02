@@ -124,7 +124,7 @@ message PizzintStatus {
   repeated PizzintLocation locations = 9;
 }
 
-// PizzintLocation represents a single monitored pizza location near the Pentagon.
+// PizzintLocation is a monitored Pentagon-area venue.
 message PizzintLocation {
   // Google Places ID.
   string place_id = 1;
@@ -132,26 +132,30 @@ message PizzintLocation {
   string name = 2;
   // Street address.
   string address = 3;
-  // Current popularity score (0-200+).
+  // Live busyness (0-200+).
   int32 current_popularity = 4;
-  // Percentage of usual activity. Zero if unavailable.
+  // Percent of usual; see has_baseline (JSON: hasBaseline).
   int32 percentage_of_usual = 5;
-  // Whether activity constitutes a spike.
+  // Sustained anomaly.
   bool is_spike = 6;
-  // Spike magnitude above baseline. Zero if no spike.
+  // Confirmed excess busyness; otherwise zero.
   double spike_magnitude = 7;
-  // Data source identifier.
+  // Data provider.
   string data_source = 8;
-  // Recording timestamp as ISO 8601 string.
+  // ISO 8601 observation time.
   string recorded_at = 9;
   // Data freshness.
   DataFreshness data_freshness = 10;
-  // Whether the location is currently closed.
+  // Venue is closed.
   bool is_closed_now = 11;
-  // Latitude of the location.
+  // Latitude.
   double lat = 12;
-  // Longitude of the location.
+  // Longitude.
   double lng = 13;
+  // Live signal is missing.
+  bool no_live_signal = 14;
+  // Hourly baseline is known.
+  bool has_baseline = 15;
 }
 
 // GdeltTensionPair represents a bilateral tension score between two countries from GDELT.

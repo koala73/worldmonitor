@@ -4,26 +4,26 @@
 
 World Monitor's data is available to agents and applications through interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
 
-This is the API-section companion to the site-wide briefing at https://worldmonitor.app/llms.txt and the human documentation at https://worldmonitor.app/docs/llms.txt.
+This is the API-section companion to the site-wide briefing at https://www.worldmonitor.app/llms.txt and the human documentation at https://www.worldmonitor.app/docs/llms.txt.
 
 ## Endpoints
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, JSON-RPC 2.0. Issue `tools/list` for the live tool inventory, `prompts/list` for pre-built workflow templates, `resources/list` for read-only resources. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the developer documentation. Route "how do I…" questions here; route live-data calls to the product MCP above.
-- **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. OpenAPI 3.1 spec: https://worldmonitor.app/openapi.yaml. JSON: https://worldmonitor.app/openapi.json. Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
-- **REST versioning and deprecation policy:** https://worldmonitor.app/api-versioning.md — compatibility guarantees, minimum notice periods, and `Deprecation` / `Sunset` / `Link rel="deprecation"` semantics (HTML: https://www.worldmonitor.app/docs/api-versioning)
+- **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. OpenAPI 3.1 spec: https://www.worldmonitor.app/openapi.yaml. JSON: https://www.worldmonitor.app/openapi.json. Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- **REST versioning and deprecation policy:** https://www.worldmonitor.app/api-versioning.md — compatibility guarantees, minimum notice periods, and `Deprecation` / `Sunset` / `Link rel="deprecation"` semantics (HTML: https://www.worldmonitor.app/docs/api-versioning)
 - **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
 - **SDKs:** official zero-dependency client libraries mirroring the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`). Guide: https://www.worldmonitor.app/docs/sdks
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
-- **Agent Plugin metadata.** https://worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
+- **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
 - **Sandbox:** https://www.worldmonitor.app/sandbox/index.json — deterministic sample responses for representative REST operations; no auth, no quota. Guide: https://www.worldmonitor.app/docs/sandbox
 
 ## Authentication
 
-- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on subscription-gated MCP and REST data calls. Issue a key at https://worldmonitor.app/pro
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on subscription-gated MCP and REST data calls. Issue a key at https://www.worldmonitor.app/pro
 - **Free MCP data exception:** `get_sources` is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10/minute/IP. All other data tools are subscription-gated.
 - **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
-- **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://worldmonitor.app/pricing.md · human auth guide: https://worldmonitor.app/auth.md
+- **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://www.worldmonitor.app/pricing.md · human auth guide: https://www.worldmonitor.app/auth.md
 
 ## Common Tasks → Tools
 
@@ -46,18 +46,18 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 ## Rate Limits & Quota
 
 - Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
-- `get_sources` is the sole data call that consumes no daily quota. All other data calls are subscription-gated and use the applicable plan limits. Details: https://worldmonitor.app/pricing.md
+- `get_sources` is the sole data call that consumes no daily quota. All other data calls are subscription-gated and use the applicable plan limits. Details: https://www.worldmonitor.app/pricing.md
 
 ## Developer Resource Pages
 
-- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Hub linking every developer resource by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, tools, and auth
-- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
-- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+- [World Monitor Developer Portal](https://www.worldmonitor.app/developers.md): Hub linking every developer resource by name
+- [World Monitor MCP Server](https://www.worldmonitor.app/mcp-server.md): MCP server endpoint, tools, and auth
+- [World Monitor OpenAPI Specification](https://www.worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
+- [World Monitor SDKs](https://www.worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
 
 ## Optional
 
-- [Site-wide llms.txt](https://worldmonitor.app/llms.txt): Full platform briefing and agent guidance
-- [Extended llms-full.txt](https://worldmonitor.app/llms-full.txt): All data layers, components, and data sources
-- [Human API docs](https://worldmonitor.app/docs/documentation): Mintlify documentation site
+- [Site-wide llms.txt](https://www.worldmonitor.app/llms.txt): Full platform briefing and agent guidance
+- [Extended llms-full.txt](https://www.worldmonitor.app/llms-full.txt): All data layers, components, and data sources
+- [Human API docs](https://www.worldmonitor.app/docs/documentation): Mintlify documentation site
 - [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)

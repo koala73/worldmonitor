@@ -100,6 +100,10 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  liveVideoResolved: {
+    browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
+    cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
+  },
 };
 function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) {
   const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null);

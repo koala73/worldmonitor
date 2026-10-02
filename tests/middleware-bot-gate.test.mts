@@ -15,9 +15,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import middleware from '../middleware';
 import { WEB_DASHBOARD_VARIANTS } from '../src/config/variant-dashboard-html';
 import { VARIANT_META } from '../src/config/variant-meta';
+
+const vercelConfig = JSON.parse(
+  readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../vercel.json'), 'utf-8'),
+) as { headers?: Array<{ source: string; headers?: Array<{ key: string; value: string }> }> };
 
 const TELEGRAM_BOT_UA = 'TelegramBot (like TwitterBot)';
 const SLACKBOT_UA = 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)';
@@ -61,14 +69,44 @@ describe('middleware variant root user agents', () => {
     }
   });
 
-  it('keeps social preview metadata variant-specific', async () => {
-    const res = call('https://tech.worldmonitor.app/', SLACKBOT_UA);
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 200);
-    const html = await res.text();
-    assert.match(html, /<meta property="og:title" content="Tech Monitor/);
-    assert.match(html, /<link rel="canonical" href="https:\/\/tech\.worldmonitor\.app\/dashboard"/);
-    assert.doesNotMatch(html, /application\/ld\+json/);
+  it('lets social crawlers use the production redirect and dashboard metadata (#7749)', () => {
+    for (const variant of WEB_DASHBOARD_VARIANTS) {
+      const root = new URL(VARIANT_META[variant].url).origin;
+      for (const ua of [SLACKBOT_UA, 'Twitterbot/1.0', 'facebookexternalhit/1.1']) {
+        assert.equal(call(root, ua), undefined, `${root} must use the shared /dashboard redirect`);
+      }
+    }
+  });
+});
+
+describe('middleware MCP host policy', () => {
+  it('passes all alias MCP methods to the handler before generic routing', () => {
+    for (const host of [
+      'www.worldmonitor.app',
+      'api.worldmonitor.app',
+      'tech.worldmonitor.app',
+      'finance.worldmonitor.app',
+      'commodity.worldmonitor.app',
+      'happy.worldmonitor.app',
+      'energy.worldmonitor.app',
+    ]) {
+      for (const [method, headers] of [
+        ['GET', { Accept: 'text/html' }],
+        ['GET', { Accept: 'text/event-stream' }],
+        ['POST', { 'Content-Type': 'application/json' }],
+        ['OPTIONS', {}],
+      ] as const) {
+        const res = middleware(new Request(`https://${host}/api/mcp?source=client`, {
+          method,
+          headers: { 'user-agent': GENERIC_CURL_UA, ...headers },
+        }));
+        assert.equal(res, undefined, `${host} ${method} must reach the MCP handler`);
+      }
+    }
+  });
+
+  it('does not apply the alias bypass to the canonical endpoint', () => {
+    assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
   });
 });
 
@@ -366,51 +404,77 @@ describe('middleware /api/product-catalog — agents reach the public pricing ca
   });
 });
 
-// ── /mcp variant-subdomain canonicalization ──────────────────────────────────
+// ── /mcp product-host canonicalization ───────────────────────────────────────
 // The MCP endpoint's canonical URL is apex (`https://worldmonitor.app/mcp`).
-// GET/HEAD requests from variant subdomains are redirected there so discovery
-// signals don't fragment across tech/finance/etc. POST/OPTIONS continue to the
-// /api/mcp rewrite unchanged so MCP clients configured against a variant host
-// still handshake correctly.
+// Middleware sends every product-alias MCP request to the handler. It owns the
+// protocol-shaped 308/410 response and emits one migration telemetry event.
 
-describe('middleware /mcp — variant subdomains redirect to apex, POST stays', () => {
-  it('redirects GET /mcp from tech.worldmonitor.app to apex', () => {
+describe('middleware /mcp — product aliases reach the host-policy handler', () => {
+  it('passes GET /mcp from tech.worldmonitor.app to the handler', () => {
     const res = call('https://tech.worldmonitor.app/mcp', CHROME_UA);
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(res, undefined);
   });
 
-  it('redirects HEAD /mcp from finance.worldmonitor.app to apex', () => {
+  it('passes HEAD /mcp from finance.worldmonitor.app to the handler', () => {
     const req = new Request('https://finance.worldmonitor.app/mcp', { method: 'HEAD' });
     const res = middleware(req) as Response | void;
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(res, undefined);
   });
 
-  it('redirects /mcp from every variant subdomain', () => {
-    for (const host of ['tech', 'finance', 'commodity', 'happy', 'energy']) {
+  it('passes /mcp from every listed production alias', () => {
+    for (const host of ['www', 'api', 'tech', 'finance', 'commodity', 'happy', 'energy']) {
       const res = call(`https://${host}.worldmonitor.app/mcp`, CHROME_UA);
-      assert.ok(res instanceof Response, `${host} must redirect`);
-      assert.equal(res.status, 308, `${host} redirect status`);
-      assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp', `${host} redirect location`);
+      assert.equal(res, undefined, `${host} must reach the handler`);
     }
   });
 
-  it('does NOT redirect GET /mcp from apex or www', () => {
+  it('passes GET /mcp from apex and www', () => {
     assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
     assert.equal(call('https://www.worldmonitor.app/mcp', CHROME_UA), undefined);
   });
 
-  it('does NOT redirect POST /mcp from a variant subdomain (MCP handshake)', () => {
+  it('lets POST /api/mcp on www fall through the bot gate (curl UA)', () => {
+    const req = new Request('https://www.worldmonitor.app/api/mcp', {
+      method: 'POST',
+      headers: { 'user-agent': GENERIC_CURL_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    const res = middleware(req) as Response | void;
+    assert.equal(res, undefined, 'alias POST /api/mcp must not 403 before the handler 410');
+  });
+
+  it('lets SSE GET /api/mcp on www fall through the bot gate (curl UA)', () => {
+    const req = new Request('https://www.worldmonitor.app/api/mcp', {
+      headers: { 'user-agent': GENERIC_CURL_UA, Accept: 'text/event-stream' },
+    });
+    const res = middleware(req) as Response | void;
+    assert.equal(res, undefined, 'alias SSE GET /api/mcp must not 403 before the handler 410');
+  });
+
+  it('still 403s curl on canonical apex /api/mcp (not PUBLIC_API_PATHS)', () => {
+    const res = middleware(new Request('https://worldmonitor.app/api/mcp', {
+      method: 'POST',
+      headers: { 'user-agent': GENERIC_CURL_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    })) as Response | void;
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
+
+  it('does NOT redirect GET /mcp from apex, localhost, or preview hosts', () => {
+    assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
+    assert.equal(call('http://localhost:4173/mcp', CHROME_UA), undefined);
+    assert.equal(call('https://worldmonitor-feature.vercel.app/mcp', CHROME_UA), undefined);
+  });
+
+  it('does NOT redirect POST /mcp from a variant subdomain (handler retires it)', () => {
     const req = new Request('https://tech.worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'user-agent': CHROME_UA, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
     });
     const res = middleware(req) as Response | void;
-    assert.equal(res, undefined, 'POST /mcp must fall through to the /api/mcp rewrite');
+    assert.equal(res, undefined, 'POST /mcp must fall through to the handler 410');
   });
 
   it('does NOT redirect OPTIONS /mcp from a variant subdomain', () => {
@@ -434,13 +498,223 @@ describe('middleware /mcp — variant subdomains redirect to apex, POST stays', 
     assert.equal(middleware(replay), undefined, 'Last-Event-ID replay must stay on the session host');
   });
 
-  it('redirects when SSE is explicitly unacceptable', () => {
+  it('passes when SSE is explicitly unacceptable', () => {
     const req = new Request('https://tech.worldmonitor.app/mcp', {
       headers: { Accept: 'text/event-stream;q=0, text/html' },
     });
     const res = middleware(req) as Response | void;
-    assert.ok(res instanceof Response);
+    assert.equal(res, undefined);
+  });
+});
+
+// #7660: `/?<map state>` 308'd to `/dashboard?<the same map state>`, forwarding
+// the query into its own redirect. Because any lat/lon/zoom/layer combination
+// is a distinct URL, every shared or bookmarked map link became a permanent
+// entry in Search Console's "Page with redirect" bucket — 301 of the 1,000
+// exported URLs, from only 111 distinct param strings, and the bucket grew
+// 199 -> 1,271 in three months.
+//
+// The canonical is already the param-free `/dashboard`, so a crawler loses
+// nothing by being sent straight there. Humans keep the state: those params
+// are what makes a shared legacy root link still open the right view. The
+// collapse is therefore User-Agent-conditioned (the #7380 pattern), which is
+// why the response must carry Vary + no-store — without them a shared cache
+// could replay the crawler's stripped Location to a human.
+describe('legacy root map-state links (#7660)', () => {
+  const MAP_STATE =
+    'lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts%2Cbases';
+  const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+  for (const state of ['c=IR&t=ciianalysis&ts=123', 'country=BF&expanded=1', 'chokepoint=suez']) {
+    it(`forwards bounded entity state ${state} for people and crawlers in one hop`, () => {
+      for (const ua of [CHROME_UA, GOOGLEBOT_UA, 'ChatGPT-User/1.0']) {
+        const res = call(`/?${state}&utm_source=shared#map`, ua);
+        assert.ok(res instanceof Response);
+        assert.equal(res.status, 308);
+        const expectedQuery = ua === GOOGLEBOT_UA ? state : `${state}&utm_source=shared`;
+        assert.equal(res.headers.get('location'), `https://www.worldmonitor.app/dashboard?${expectedQuery}#map`);
+        assert.match(res.headers.get('vary') ?? '', /User-Agent/i);
+        for (const header of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) {
+          assert.match(res.headers.get(header) ?? '', /no-store/);
+        }
+        assert.equal(call(`/dashboard?${state}`, ua), undefined);
+      }
+    });
+  }
+
+  it('collapses coordinate links including entity modifiers for crawlers only', () => {
+    const state = 'country=IR&expanded=1&c=IR&t=brief&ts=123&chokepoint=suez&zoom=4';
+    assert.equal(call(`/?${state}`, GOOGLEBOT_UA)?.headers.get('location'), 'https://www.worldmonitor.app/dashboard');
+    assert.equal(call(`/?${state}`, CHROME_UA)?.headers.get('location'), `https://www.worldmonitor.app/dashboard?${state}`);
+  });
+
+  it('does not reinterpret homepage preferences or standalone modifiers as dashboard state', () => {
+    for (const query of ['lang=ar', '_f=uuaa', 'expanded=1', 't=brief&ts=123']) {
+      for (const ua of [CHROME_UA, GOOGLEBOT_UA]) assert.equal(call(`/?${query}`, ua), undefined);
+    }
+  });
+
+  it('sends a crawler to the param-free /dashboard document', () => {
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'crawler must be redirected');
     assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(
+      res.headers.get('location'),
+      'https://www.worldmonitor.app/dashboard',
+      'the map state must not be forwarded into the redirect'
+    );
+    assert.match(res.headers.get('vary') ?? '', /User-Agent/i);
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  });
+
+  it('keeps bounded dashboard state for crawlers', () => {
+    const boundedState = 'view=mena&layers=conflicts&timeRange=24h';
+    const res = call(`/?${boundedState}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'legacy root state must still reach the dashboard');
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${boundedState}`,
+      'only unbounded coordinate state should be collapsed'
+    );
+  });
+
+  it('collapses attribution params and map state in a single hop', () => {
+    const res = call(`/?ref=affiliate&${MAP_STATE}&utm_source=newsletter`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(res.headers.get('location'), 'https://www.worldmonitor.app/dashboard');
+  });
+
+  it('keeps the map state for humans', () => {
+    const res = call(`/?${MAP_STATE}`, CHROME_UA);
+    assert.ok(res instanceof Response, 'legacy root deep links must still reach the dashboard');
+    assert.equal(res.status, 308);
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+      'a shared legacy link must still open the view it encodes'
+    );
+  });
+
+  it('closes every caching layer on BOTH branches', () => {
+    // One request URL, two Locations, chosen by User-Agent. A 308 is cacheable
+    // by default (RFC 9110 §15.4.9), so a cache that stored either branch
+    // without the key would replay it to the other's client — serving the
+    // crawler the parameterised URL this change exists to keep it off, or
+    // stripping a human's map state.
+    //
+    // `Cache-Control` alone is insufficient here: vercel.json gives `/` a
+    // CDN-Cache-Control of `public, s-maxage=600`, and the CDN directives take
+    // priority over Cache-Control for the shared cache. And per RFC 9111, Vary
+    // on one response cannot protect a sibling that omitted it — so every
+    // layer, on both branches.
+    for (const [label, ua] of [
+      ['crawler', GOOGLEBOT_UA],
+      ['human', CHROME_UA],
+    ] as const) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${label} must be redirected`);
+      assert.match(res.headers.get('vary') ?? '', /User-Agent/i, `${label} branch must declare Vary`);
+      for (const [header, expected] of [
+        ['cache-control', 'private, no-store'],
+        ['cdn-cache-control', 'no-store'],
+        ['vercel-cdn-cache-control', 'no-store'],
+      ] as const) {
+        assert.equal(
+          res.headers.get(header),
+          expected,
+          `${label} branch must set ${header}: a layer left open can store one UA's Location and replay it to the other`
+        );
+      }
+    }
+  });
+
+  it('overrides the s-maxage the / route would otherwise apply', () => {
+    // The concrete number this defends against. If vercel.json ever drops the
+    // CDN cache on `/`, this assertion becomes trivially true rather than
+    // wrong — but while the cache exists, the middleware must out-rank it.
+    const rootRule = (vercelConfig.headers ?? []).find((entry: { source: string }) => entry.source === '/');
+    const cdn = (rootRule?.headers ?? []).find((h: { key: string }) => h.key === 'CDN-Cache-Control');
+    if (!cdn) return;
+    assert.match(cdn.value, /s-maxage=\d+/, 'expected the / route to carry a shared-cache lifetime');
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(
+      res.headers.get('cdn-cache-control'),
+      'no-store',
+      `the / route caches for ${cdn.value} at the CDN; the UA-conditioned redirect must opt out`
+    );
+  });
+
+  it('leaves /dashboard?<map state> alone for everyone', () => {
+    // The canonical tag already consolidates these and robots.txt keeps
+    // crawlers off them. Redirecting would manufacture the very redirects
+    // this change removes.
+    assert.equal(call(`/dashboard?${MAP_STATE}`, GOOGLEBOT_UA), undefined);
+    assert.equal(call(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
+  });
+
+  it('keeps the map state for user-triggered assistant fetches', () => {
+    // ChatGPT-User / Claude-User / Perplexity-User fetch a link a HUMAN pasted,
+    // so they should see the view that link encodes — unlike their crawler
+    // siblings GPTBot / ClaudeBot / PerplexityBot. They fall on the right side
+    // of BOT_UA today; this pins that, because widening the regex to catch a
+    // new scraper could silently drag them across.
+    for (const ua of ['ChatGPT-User/1.0', 'Claude-User/1.0', 'Perplexity-User/1.0']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${ua} must still reach the dashboard`);
+      assert.equal(
+        res.headers.get('location'),
+        `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+        `${ua} follows a human's link and must keep the view it encodes`
+      );
+    }
+    for (const ua of ['Mozilla/5.0 GPTBot/1.1', 'Mozilla/5.0 (compatible; ClaudeBot/1.0)']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response);
+      assert.equal(
+        res.headers.get('location'),
+        'https://www.worldmonitor.app/dashboard',
+        `${ua} crawls on its own account and must get the canonical document`
+      );
+    }
+  });
+
+  it('does not touch a param-free root request', () => {
+    assert.equal(call('/', GOOGLEBOT_UA), undefined);
+    assert.equal(call('/', CHROME_UA), undefined);
+  });
+
+  // #7660 raised this as a "serious problem if it ever fires": agents.md warns
+  // that default HTTP-library UAs may be challenged with 403, and Search
+  // Console reported 26 URLs "blocked due to access forbidden". The gate is
+  // scoped to /api/* by an early return, so no content path can 403 a search
+  // crawler — but nothing asserted it, and the early return is one edit away
+  // from being reordered.
+  it('never 403s a search crawler on a content path', () => {
+    const CRAWLERS = [
+      GOOGLEBOT_UA,
+      'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+      'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot',
+      'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
+      'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
+    ];
+    const CONTENT_PATHS = [
+      '/',
+      '/dashboard',
+      '/pro',
+      '/countries/iran/',
+      '/chokepoints/strait-of-hormuz/',
+      '/compare/iran-vs-israel/',
+      '/llms.txt',
+      '/sitemap.xml',
+    ];
+    for (const ua of CRAWLERS) {
+      for (const path of CONTENT_PATHS) {
+        const res = call(path, ua);
+        if (res instanceof Response) {
+          assert.notEqual(res.status, 403, `${path} must not 403 a crawler (${ua.slice(0, 40)}…)`);
+        }
+      }
+    }
   });
 });

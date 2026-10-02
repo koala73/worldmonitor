@@ -22,6 +22,8 @@ import {
 } from './agent-pr-snapshot.mjs';
 
 const SCHEMA = 'worldmonitor-agent-preflight/v1';
+const ACTION_SCHEMA = 'worldmonitor-agent-preflight/v2';
+const MODES = ['review', 'tests', 'repair'];
 const DEFAULT_NPM_CACHE = '/tmp/worldmonitor-npm-cache';
 const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND_TIMEOUT_MS = 30_000;
@@ -43,6 +45,7 @@ export function parseArgs(argv = []) {
     cacheDir: process.env.WM_AGENT_CACHE_DIR || DEFAULT_SNAPSHOT_CACHE,
     help: false,
     issue: '',
+    mode: null,
     npmCacheDir: process.env.WM_AGENT_NPM_CACHE || DEFAULT_NPM_CACHE,
     pr: '',
     requireEnv: [],
@@ -64,6 +67,8 @@ export function parseArgs(argv = []) {
     else if (arg === '--allow-dirty') options.allowDirty = true;
     else if (arg === '--allow-stale-main') options.allowStaleMain = true;
     else if (arg === '--skip-bootstrap') options.skipBootstrap = true;
+    else if (arg === '--mode') options.mode = next();
+    else if (arg.startsWith('--mode=')) options.mode = arg.slice('--mode='.length);
     else if (arg === '--bootstrap-timeout-ms') options.bootstrapTimeoutMs = Number.parseInt(next(), 10);
     else if (arg.startsWith('--bootstrap-timeout-ms=')) {
       options.bootstrapTimeoutMs = Number.parseInt(arg.slice('--bootstrap-timeout-ms='.length), 10);
@@ -83,6 +88,9 @@ export function parseArgs(argv = []) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
+  if (options.mode !== null && !MODES.includes(options.mode)) {
+    throw new Error('--mode must be review, tests, or repair');
+  }
   if (options.issue && !/^\d+$/.test(options.issue)) {
     throw new Error('--issue must be a GitHub issue number');
   }
@@ -106,6 +114,10 @@ The command emits one JSON document, bootstraps dependencies at most once,
 and prepares ignored inventory facts in trusted worktrees.
 
 Options:
+  --mode <mode>        review: inspect committed source without preparation.
+                       tests: prepare a trusted checkout for local tests.
+                       repair: require safe branch writes and verification.
+                       Omit to retain the original v1 all-gates contract.
   --issue <number>      Check open PRs and worktrees for duplicate issue work.
   --pr <number-or-url>  Check alignment with this pull request.
   --require-env <name>  Require an environment variable without printing its value.
@@ -285,20 +297,21 @@ function dependencyReport(probe) {
   };
 }
 
-function parseStatusPaths(raw) {
-  if (!raw) return [];
+function parseStatus(raw) {
   const fields = raw.split('\0').filter(Boolean);
   const paths = [];
+  let unmerged = false;
   for (let index = 0; index < fields.length; index += 1) {
     const entry = fields[index];
     const status = entry.slice(0, 2);
+    if (['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(status)) unmerged = true;
     paths.push(entry.slice(3));
     if (/[RC]/.test(status) && fields[index + 1]) {
       paths.push(fields[index + 1]);
       index += 1;
     }
   }
-  return paths;
+  return { paths, unmerged };
 }
 
 function worktreeState(rootDir, runner, options) {
@@ -312,7 +325,7 @@ function worktreeState(rootDir, runner, options) {
     return { error: String(statusResult.stderr || '').trim() || 'git status failed', ok: false };
   }
   const branch = git(runner, rootDir, ['branch', '--show-current']).value || null;
-  const paths = parseStatusPaths(String(statusResult.stdout || ''));
+  const { paths, unmerged } = parseStatus(String(statusResult.stdout || ''));
   const dirty = paths.length > 0;
   const detached = branch === null;
   return {
@@ -323,6 +336,7 @@ function worktreeState(rootDir, runner, options) {
     dirtyPaths: paths,
     intentionalDetached: detached && options.allowDetached,
     intentionalDirty: dirty && options.allowDirty,
+    ...(options.mode ? { unmerged } : {}),
     ok: (!dirty || options.allowDirty) && (!detached || options.allowDetached),
   };
 }
@@ -649,9 +663,80 @@ export function prepareInventoryFacts(
   return { attempted: true, error: null, ok: true, timeoutMs };
 }
 
+function safeTestWorktree(worktree) {
+  return !worktree.error && (!worktree.dirty || worktree.intentionalDirty) && !worktree.unmerged;
+}
+
+export function actionReadiness(checks) {
+  const { source, worktree, prAlignment: alignment, originMain, credentials, storage } = checks;
+  const issue = (check, reason, nextAction) => ({ check, reason, nextAction });
+  const sourceBlockers = [];
+  if (!source.ok) sourceBlockers.push(issue('source', 'local_revision_unavailable', 'resolve_local_commit'));
+  if (source.prHeadOid && source.headOid !== source.prHeadOid) {
+    sourceBlockers.push(issue('source', 'pr_head_mismatch', 'inspect_exact_pr_head'));
+  }
+
+  const testBlockers = sourceBlockers.filter(blocker => !(
+    blocker.reason === 'pr_head_mismatch' && alignment.headRelation === 'ahead' && alignment.remoteAligned
+  ));
+  if (!checks.execution.trustedTarget) {
+    testBlockers.push(issue('execution', 'alternate_target', 'use_trusted_test_checkout'));
+  }
+  if (!safeTestWorktree(worktree)) {
+    testBlockers.push(issue('worktree', 'unsafe_test_checkout', 'use_isolated_test_checkout'));
+  }
+  if (!checks.node.ok) testBlockers.push(issue('node', 'unsupported_node', 'use_supported_node'));
+  if (!storage.temp.ok) testBlockers.push(issue('storage.temp', 'temp_unavailable', 'restore_temp_access'));
+  if (!checks.dependencies.ok) {
+    testBlockers.push(issue('dependencies', 'dependencies_missing', 'prepare_test_dependencies'));
+  }
+  if (!checks.inventoryFacts.ok || (checks.inventoryFacts.required && !checks.inventoryFacts.attempted)) {
+    testBlockers.push(issue('inventoryFacts', 'inventory_not_prepared', 'run_tests_mode'));
+  }
+  if (!Object.values(credentials.requiredEnv).every(Boolean)) {
+    testBlockers.push(issue('credentials.requiredEnv', 'required_env_missing', 'provide_required_environment'));
+  }
+
+  const repairBlockers = [...testBlockers];
+  if (!worktree.ok || worktree.detached) {
+    repairBlockers.push(issue('worktree', 'unsafe_repair_checkout', 'prepare_existing_pr_branch'));
+  }
+  if (!originMain.fetched || originMain.error) {
+    repairBlockers.push(issue('originMain', 'base_unavailable', 'refresh_base'));
+  } else if (!originMain.headContainsOriginMain) {
+    repairBlockers.push(issue('originMain', 'base_behind', 'reconcile_current_base'));
+  }
+  if (!credentials.github.available) {
+    repairBlockers.push(issue('credentials.github', 'github_unavailable', 'restore_github_access'));
+  }
+  if (!alignment.ok) {
+    repairBlockers.push(issue('prAlignment', alignment.stateOpen === false ? 'pr_closed' : 'pr_alignment_failed',
+      alignment.stateOpen === false ? 'stop_closed_pr_delivery' : 'refresh_and_align_pr_branch'));
+  }
+  if (!checks.duplicatePullRequests.ok) {
+    repairBlockers.push(issue('duplicatePullRequests', 'duplicate_check_failed', 'inspect_existing_prs'));
+  }
+  if (!checks.worktrees.ok) {
+    repairBlockers.push(issue('worktrees', checks.worktrees.collisions.length ? 'writer_activity_unknown' : 'worktree_inventory_unavailable',
+      checks.worktrees.collisions.length ? 'inspect_existing_worktree' : 'restore_worktree_inventory'));
+  }
+  for (const name of ['npmCache', 'snapshotCache']) {
+    if (!storage[name].ok) repairBlockers.push(issue(`storage.${name}`, 'cache_unavailable', 'restore_cache_access'));
+  }
+  if (!checks.bootstrap.ok) {
+    repairBlockers.push(issue('bootstrap', 'bootstrap_incomplete', 'prepare_test_dependencies'));
+  }
+
+  return Object.fromEntries(Object.entries({ sourceReview: sourceBlockers, tests: testBlockers, repair: repairBlockers })
+    .map(([action, blockers]) => [action, { ready: blockers.length === 0, blockers }]));
+}
+
 export function runAgentPreflight(options = {}, runner = spawnSync) {
+  const mode = options.mode ?? null;
+  if (mode !== null && !MODES.includes(mode)) throw new Error('--mode must be review, tests, or repair');
   const rootDir = resolve(options.rootDir || process.cwd());
-  const skipBootstrap = Boolean(options.skipBootstrap);
+  const trustedTarget = rootDir === resolve(process.cwd());
+  const skipBootstrap = Boolean(options.skipBootstrap) || mode === 'review' || (mode !== null && !trustedTarget);
   const node = supportedNode(rootDir);
   const temp = probeWritableDirectory(tmpdir());
   const npmCache = probeWritableDirectory(options.npmCacheDir || DEFAULT_NPM_CACHE);
@@ -660,15 +745,22 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
   );
   let worktree = worktreeState(rootDir, runner, options);
   const credentials = credentialState(rootDir, runner, options.requireEnv || []);
-  const repo = repoIdentity(rootDir, runner);
+  let repo = null;
+  let repoError = null;
+  try {
+    repo = repoIdentity(rootDir, runner);
+  } catch (error) {
+    if (mode !== 'review') throw error;
+    repoError = error.message;
+  }
   let dependencies = probeDependencies(rootDir, runner);
-  const localGatesOk = [
+  const canPrepare = () => [
     node.ok,
     temp.ok,
     npmCache.ok,
-    snapshotCache.ok,
-    worktree.ok,
-    credentials.ok,
+    mode === 'tests' || snapshotCache.ok,
+    mode === 'tests' ? safeTestWorktree(worktree) : worktree.ok && !(mode && worktree.unmerged),
+    mode === 'tests' ? Object.values(credentials.requiredEnv).every(Boolean) : credentials.ok,
   ].every(Boolean);
   let bootstrap = {
     attempted: false,
@@ -676,7 +768,7 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     reason: dependencies.ok ? 'dependencies already complete' : 'blocked before bootstrap',
   };
 
-  if (!dependencies.ok && localGatesOk && !skipBootstrap) {
+  if (!dependencies.ok && canPrepare() && !skipBootstrap) {
     bootstrap = bootstrapOnce(
       rootDir,
       options.npmCacheDir || DEFAULT_NPM_CACHE,
@@ -691,20 +783,13 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     bootstrap.reason = 'bootstrap disabled by --skip-bootstrap';
   }
 
-  const inventorySkipReason = inventoryGenerationSkipReason(rootDir, { skipBootstrap });
+  const inventorySkipReason = mode === 'review'
+    ? 'inventory generation disabled in review mode'
+    : inventoryGenerationSkipReason(rootDir, { skipBootstrap });
   let inventoryFacts = inventorySkipReason
     ? { attempted: false, ok: true, reason: inventorySkipReason }
     : { attempted: false, ok: false, reason: 'blocked before inventory generation' };
-  const inventoryPrerequisitesOk = [
-    node.ok,
-    temp.ok,
-    npmCache.ok,
-    snapshotCache.ok,
-    worktree.ok,
-    credentials.ok,
-    dependencies.ok,
-    bootstrap.ok,
-  ].every(Boolean);
+  const inventoryPrerequisitesOk = canPrepare() && dependencies.ok && bootstrap.ok;
   if (!inventorySkipReason && inventoryPrerequisitesOk) {
     inventoryFacts = prepareInventoryFacts(rootDir, runner);
     if (inventoryFacts.ok) worktree = worktreeState(rootDir, runner, options);
@@ -712,11 +797,13 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
 
   // Capture mutable Git and GitHub state only after a possible bootstrap. A
   // long install must not make the task-start snapshot stale before we use it.
-  const originMain = currentOriginMain(rootDir, runner, options.allowStaleMain);
+  const originMain = repo
+    ? currentOriginMain(rootDir, runner, options.allowStaleMain)
+    : { error: repoError, fetched: false, ok: false };
 
   let prSnapshot = null;
-  let prSnapshotError = null;
-  if (credentials.github.available) {
+  let prSnapshotError = repoError;
+  if (repo && credentials.github.available) {
     try {
       prSnapshot = createPrSnapshot({
         cacheDir: options.cacheDir,
@@ -731,17 +818,17 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     }
   }
 
-  const alignment = prSnapshotError
+  const alignment = prSnapshotError || (mode && options.pr && !prSnapshot)
     ? { applicable: Boolean(options.pr), error: prSnapshotError, ok: false }
     : prAlignment(prSnapshot, rootDir, runner, { allowDetached: options.allowDetached });
-  const duplicates = duplicatePrState({
+  const duplicates = repo ? duplicatePrState({
     currentPr: prSnapshot?.pullRequest.number || null,
     ghBin: credentials.github.binary,
     issue: options.issue,
     repo,
     rootDir,
     runner,
-  });
+  }) : { checked: false, duplicates: [], error: repoError, ok: false };
   const listedWorktrees = git(runner, rootDir, ['worktree', 'list', '--porcelain']);
   const worktrees = listedWorktrees.ok ? parseWorktrees(listedWorktrees.value) : [];
   const watchedBranches = [
@@ -754,7 +841,7 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     watchedBranches,
   });
   const worktreeInventory = {
-    activeCount: worktrees.filter(item => !item.prunable).length,
+    [mode ? 'registeredCount' : 'activeCount']: worktrees.filter(item => !item.prunable).length,
     collisions,
     ok: listedWorktrees.ok && collisions.length === 0,
   };
@@ -794,15 +881,44 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     worktree,
     worktrees: worktreeInventory,
   };
-  const ok = allGatesOk && dependencies.ok && bootstrap.ok && inventoryFacts.ok;
+  let readiness;
+  let coverage;
+  if (mode) {
+    checks.inventoryFacts.required = existsSync(resolve(rootDir, 'scripts/generate-inventory-facts.mjs'));
+    const head = git(runner, rootDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
+    checks.source = {
+      ok: head.ok && /^[0-9a-f]{40}$/.test(head.value),
+      headOid: head.ok ? head.value : null,
+      prHeadOid: prSnapshot?.head.oid ?? null,
+      scope: prSnapshot?.head.oid === head.value ? 'pull_request_head' : 'local_commit',
+      readFrom: 'git_objects',
+    };
+    checks.execution = { trustedTarget, includesUncommittedChanges: worktree.dirty === true };
+    checks.worktrees.collisions = collisions.map(collision => ({ ...collision, writerActivity: 'unknown' }));
+    coverage = {
+      requestedPr: options.pr || null,
+      livePrState: prSnapshot !== null,
+      gaps: [
+        ...(repoError ? [`Repository identity could not be verified: ${repoError}`] : []),
+        ...(!prSnapshot ? ['Live PR state and feedback are not verified. Inspect only the recorded local commit.'] : []),
+        ...(!originMain.fetched || originMain.error ? ['Current base could not be verified.'] : []),
+        ...(worktree.dirty ? ['Committed source excludes uncommitted worktree changes.'] : []),
+      ],
+    };
+    readiness = actionReadiness(checks);
+  }
+  const ok = mode
+    ? readiness[mode === 'review' ? 'sourceReview' : mode].ready
+    : allGatesOk && dependencies.ok && bootstrap.ok && inventoryFacts.ok;
   return {
     checks,
     completedAt: new Date().toISOString(),
-    expensiveTestsAllowed: ok,
+    expensiveTestsAllowed: mode ? readiness.tests.ready : ok,
     ok,
-    repository: repo.nameWithOwner,
-    schema: SCHEMA,
+    repository: repo?.nameWithOwner ?? null,
+    schema: mode ? ACTION_SCHEMA : SCHEMA,
     status: ok ? 'ready' : 'blocked',
+    ...(mode ? { mode, readiness, coverage } : {}),
   };
 }
 
@@ -811,8 +927,9 @@ const isDirectRun = process.argv[1]
   : false;
 
 if (isDirectRun) {
+  let options;
   try {
-    const options = parseArgs(process.argv.slice(2));
+    options = parseArgs(process.argv.slice(2));
     if (options.help) printHelp();
     else {
       const result = runAgentPreflight(options);
@@ -820,7 +937,13 @@ if (isDirectRun) {
       if (!result.ok) process.exitCode = 1;
     }
   } catch (error) {
-    console.log(JSON.stringify({ error: error.message, schema: SCHEMA, status: 'error' }, null, 2));
+    const mode = options?.mode;
+    console.log(JSON.stringify({
+      error: error.message,
+      schema: mode ? ACTION_SCHEMA : SCHEMA,
+      status: 'error',
+      ...(mode ? { mode } : {}),
+    }, null, 2));
     process.exitCode = 1;
   }
 }

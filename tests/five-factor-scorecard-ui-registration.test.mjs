@@ -174,6 +174,78 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
       panel.show('Germany', 'DE', null, {});
       await waitFor(() => harness.getSentryExceptions().length === 1);
       assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.unavailable/);
+      // A real deadline rejects with a zero-frame `signal timed out` reason,
+      // which the dashboard's beforeSend drops as extension noise unless a
+      // first-party report claims it with a `kind` tag. Without the tag this
+      // capture was discarded on every engine.
+      assert.deepEqual(harness.getSentryExceptions()[0].context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+      });
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('records which premium-access arm granted a denied scorecard fetch', async () => {
+    // WORLDMONITOR-147: the widget fetches only when hasPremiumAccess() is
+    // true, so a 401 means the client's belief and the credential the premium
+    // injector attached disagreed. `api_key` (not the harness default) is the
+    // arm that proves the point — it unlocks the panel from browser-local
+    // state while asserting nothing about the signed-in account — and using a
+    // non-default value here is what stops a hardcoded tag from passing.
+    const harness = await createCountryDeepDivePanelHarness({
+      premiumAccess: true,
+      premiumGrant: 'api_key',
+      entitlementBelief: { entitlementTier: null, authRole: null },
+      scorecardMode: 'denied',
+    });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      const captured = harness.getSentryExceptions()[0];
+      assert.deepEqual(captured.context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+        status: '401',
+        premium_grant: 'api_key',
+      });
+      assert.deepEqual(captured.context.extra, {
+        countryCode: 'DE',
+        entitlementBelief: { entitlementTier: null, authRole: null },
+      });
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('leaves a non-denial scorecard failure carrying no account state', async () => {
+    // Preservation control for the rule above. A synthetic failure with no
+    // `statusCode` says nothing about the plan, so the diagnostic must not
+    // attach — otherwise every deadline and network blip ships the account's
+    // entitlement belief to Sentry. Mutating the denial test alone cannot
+    // catch that; this is the arm that goes red if the gate is widened.
+    const harness = await createCountryDeepDivePanelHarness({
+      premiumAccess: true,
+      premiumGrant: 'api_key',
+      scorecardMode: 'reject',
+    });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      const captured = harness.getSentryExceptions()[0];
+      assert.deepEqual(captured.context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+      });
+      assert.deepEqual(captured.context.extra, { countryCode: 'DE' });
       panel.close();
     } finally {
       harness.cleanup();

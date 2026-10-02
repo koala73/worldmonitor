@@ -17,7 +17,7 @@ The interesting question — what do things actually cost, right now, on the she
 
 The pilot market is the **United Arab Emirates**, where WorldMonitor tracks a defined essentials basket across **four major grocery retailers: Carrefour, Spinneys, Lulu, and Noon**. Real product pages, real listed prices — collected continuously and normalized into a comparable basket.
 
-From that raw feed, the Consumer Prices panel serves:
+From that raw feed, the [Consumer Prices](https://www.worldmonitor.app/docs/panels/consumer-prices) panel serves:
 
 - a **30-day overview** of basket-level price movement,
 - **category inflation** — which aisles are moving, not just whether "food" is up,
@@ -33,7 +33,7 @@ Shelf-price truth is most useful next to its slower official cousins, so the pla
 
 - **IMF WEO official CPI** with broad country coverage — the world-inflation reference layer.
 - The **Big Mac Index** — the classic purchasing-power shorthand.
-- The **FAO Food Price Index** — global food-commodity pressure upstream of your grocery store.
+- The **[FAO Food Price Index](https://www.worldmonitor.app/docs/api-reference/economicservice/getfaofoodpriceindex)** — global food-commodity pressure upstream of your grocery store.
 - **Retail fuel prices** — the other price everyone feels weekly.
 
 Read them as a chain: FAO tells you global food inputs are rising; tariff and freight data tells you the [transmission path](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) is stressed; shelf prices tell you the exact week it reached the checkout. That last link is the one official statistics can't give you.
@@ -62,7 +62,7 @@ Official CPI is broad, methodologically rigorous, and weeks delayed. Shelf-price
 
 **Can I query the price data programmatically?**
 
-Yes — the `get_consumer_prices` MCP tool and the consumer-prices REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference) return the overview, categories, movers, and retailer spread as structured series.
+Yes — the `get_consumer_prices` MCP tool and the consumer-prices REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference) return the overview, categories, movers, and [retailer spread](https://www.worldmonitor.app/docs/api-reference/consumerpricesservice/listretailerpricespreads) as structured series.
 
 ---
 

@@ -36,7 +36,7 @@ let cachedResponse: OrefAlertsResponse | null = null;
 let lastFetchAt = 0;
 const CACHE_TTL = 8_000;
 let pollingLoop: SmartPollLoopHandle | null = null;
-let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
+const updateCallbacks = new Set<(data: OrefAlertsResponse) => void>();
 
 let locationTranslator: ((s: string) => string) | null = null;
 let locationMapPromise: Promise<void> | null = null;
@@ -236,6 +236,7 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
 
   try {
     const res = await fetch(getOrefApiUrl(), {
+      credentials: 'omit',
       headers: { Accept: 'application/json' },
       signal: options.signal,
     });
@@ -267,6 +268,7 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   await ensureLocationMapLoaded();
   try {
     const res = await fetch(getOrefApiUrl('history'), {
+      credentials: 'omit',
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) {
@@ -291,8 +293,9 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   }
 }
 
-export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): void {
-  updateCallbacks.push(cb);
+export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): () => void {
+  updateCallbacks.add(cb);
+  return () => { updateCallbacks.delete(cb); };
 }
 
 export function startOrefPolling(): void {
@@ -311,5 +314,5 @@ export function startOrefPolling(): void {
 export function stopOrefPolling(): void {
   pollingLoop?.stop();
   pollingLoop = null;
-  updateCallbacks = [];
+  updateCallbacks.clear();
 }

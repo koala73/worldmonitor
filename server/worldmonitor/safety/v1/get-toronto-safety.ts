@@ -98,7 +98,10 @@ export async function queryTorontoSafety(
 
   const sourceId = semantic === TORONTO_SAFETY_SEMANTICS.reportedOccurrence ? 'tps-mci' : 'tps-calls-attended';
   const descriptor = torontoSafetySourceById(sourceId);
-  if (!descriptor || descriptor.productionWriter !== 'on-demand') throw new Error(`missing Toronto safety source: ${sourceId}`);
+  // Gate on the writer being enabled, not on which writer it is: the TPS pair
+  // moved from manual invocation to seed-bundle-canada members in #7036, and
+  // only 'disabled' (GTA Update, pending its rights gate) must refuse to serve.
+  if (!descriptor || descriptor.productionWriter === 'disabled') throw new Error(`missing Toronto safety source: ${sourceId}`);
 
   const [snapshotRead, metaRead] = await Promise.all([
     readCache(descriptor.canonicalKey, true),

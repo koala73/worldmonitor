@@ -49,6 +49,39 @@ describe('get-defense-industrial-base response mapping', () => {
     assert.equal(response.supplierRetained, true);
   });
 
+  it('does not report a zero-transfer importer row as available', () => {
+    // The sweep now records importers whose window held no major-weapon
+    // transfers, so a row can exist carrying no suppliers. Row presence must not
+    // read as availability -- that renders an all-"Not available" panel where a
+    // clean empty response belongs.
+    const response = buildDefenseIndustrialResponse('ZZ', { countries: {} }, {
+      importers: { ZZ: {
+        suppliers: [],
+        supplierHhi: 0,
+        window: { startYear: 2021, endYear: 2025 },
+        fetchedAt: '2026-07-01T00:00:00.000Z',
+        retained: false,
+      } },
+      fetchedAt: '2026-08-12T00:00:00.000Z',
+    });
+
+    assert.equal(response.available, false);
+    assert.equal(response.countryCode, 'ZZ');
+  });
+
+  it('still reports a zero-transfer importer that has World Bank data', () => {
+    const response = buildDefenseIndustrialResponse('UA', {
+      fetchedAt: '2026-08-12T00:00:00.000Z',
+      countries: { UA: { expenditurePctGdp: { value: 34.5, year: 2024, source: 'World Bank' } } },
+    }, {
+      importers: { UA: { suppliers: [], window: { startYear: 2021, endYear: 2025 } } },
+      fetchedAt: '2026-08-12T00:00:00.000Z',
+    });
+
+    assert.equal(response.available, true);
+    assert.deepEqual(response.suppliers, []);
+  });
+
   it('returns an explicit unavailable response for a missing country', () => {
     const response = buildDefenseIndustrialResponse('ZZ', { countries: {} }, { importers: {} });
     assert.equal(response.available, false);

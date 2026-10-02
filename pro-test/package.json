@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "allowScripts": {
     "@clerk/shared": false,
+    "@sentry/cli": true,
     "browser-tabs-lock": false,
     "bufferutil": false,
     "core-js": false,
@@ -34,14 +35,17 @@
     "vite": "^7.3.2"
   },
   "devDependencies": {
+    "@sentry/vite-plugin": "^5.4.0",
     "@types/node": "^22.14.0",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2"
   },
   "overrides": {
     "esbuild": "0.28.1",
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "ws": "8.21.0",
-    "shell-quote": "1.8.4"
+    "shell-quote": "1.10.0",
+    "metro": "0.84.6",
+    "brace-expansion@5": "^5.0.12"
   }
 }

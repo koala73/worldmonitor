@@ -101,6 +101,14 @@ describe('isPanelNativeToVariant', () => {
 });
 
 describe('evaluateSetPanelEnabled', () => {
+  it('accepts mixed-case catalog IDs without changing case-sensitive lookup', () => {
+    for (const [panelId, variant] of [['gccNews', 'finance'], ['regionalStartups', 'tech']]) {
+      const value = evaluate({ panelId, variant, enabled: false });
+      assert.equal(value.ok, true);
+      assert.equal(value.panelId, panelId);
+    }
+  });
+
   it('enables a native disabled panel', () => {
     const panelSettings = settingsWithFreeSlots('full');
     assert.equal(panelSettings['windy-webcams']?.enabled, false);
@@ -278,12 +286,12 @@ describe('evaluateSetPanelEnabled', () => {
     assert.equal(evaluate({ panelId: 'not-a-real-panel' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'cw-custom-1' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'mcp-remote-1' }).reason, 'unknown_panel');
-    assert.equal(evaluate({ panelId: 'Markets' }).reason, 'malformed_arguments');
+    assert.equal(evaluate({ panelId: 'Markets' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: '.markets' }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 'a'.repeat(97) }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 12 }).reason, 'malformed_arguments');
     assert.equal(evaluate({ enabled: 'true' }).reason, 'malformed_arguments');
-    assert.equal(evaluate({ panelId: 'Markets' }).status, 'invalid');
+    assert.equal(evaluate({ panelId: 'Markets' }).status, 'denied');
   });
 
   it('treats a catalog panel missing from settings as currently disabled', () => {
@@ -340,6 +348,61 @@ describe('evaluateSetPanelEnabled', () => {
 });
 
 describe('applySetPanelEnabled', () => {
+  it('runs beforeApply only after a changed enable persists', () => {
+    const events: string[] = [];
+    const panelSettings = settingsWithFreeSlots('full');
+    const result = applySetPanelEnabled(
+      { panelSettings },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => { events.push('persist'); },
+        trackToggle: () => { events.push('track'); },
+        beforeApply: () => { events.push('beforeApply'); },
+        applyPanelSettings: () => { events.push('apply'); },
+      },
+    );
+    assert.equal(result.changed, true);
+    assert.deepEqual(events, ['persist', 'track', 'beforeApply', 'apply']);
+
+    events.length = 0;
+    applySetPanelEnabled(
+      { panelSettings },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => { events.push('persist'); },
+        trackToggle: () => { events.push('track'); },
+        beforeApply: () => { events.push('beforeApply'); },
+        applyPanelSettings: () => { events.push('apply'); },
+      },
+    );
+    assert.deepEqual(events, [], 'an unchanged enable must not arm suppression');
+  });
+
+  it('does not run beforeApply when persistence fails', () => {
+    let beforeApplyCount = 0;
+    const result = applySetPanelEnabled(
+      { panelSettings: settingsWithFreeSlots('full') },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => false,
+        trackToggle: () => {},
+        beforeApply: () => { beforeApplyCount += 1; },
+        applyPanelSettings: () => {},
+      },
+    );
+    assert.equal(result.reason, 'persist_failed');
+    assert.equal(beforeApplyCount, 0);
+  });
+
   it('persists an enable through the same user-set path and skips persist on no-op', () => {
     const panelSettings = settingsWithFreeSlots('full');
     const persistCalls: Record<string, PanelConfig>[] = [];
@@ -651,6 +714,9 @@ describe('set_panel_enabled WebMCP adapter', () => {
     }, () => {});
     const tool = tools.find((candidate) => candidate.name === 'set_panel_enabled');
     assert.ok(tool);
+    const schema = tool.inputSchema as { properties: { panelId: { pattern: string } } };
+    assert.ok(new RegExp(schema.properties.panelId.pattern).test('gccNews'));
+    assert.ok(new RegExp(schema.properties.panelId.pattern).test('regionalStartups'));
 
     const extraKeys = await tool.execute(
       { panelId: 'giving', enabled: true, selector: '#giving' },

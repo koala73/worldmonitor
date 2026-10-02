@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 import { __testing__ } from '../api/health.js';
 import seedHealthHandler from '../api/seed-health.js';
 import { atomicPublish, runSeed } from '../scripts/_seed-utils.mjs';
-import { CROSS_STRAIT_ACTIVITY_KEY } from '../scripts/cross-strait-activity/adapters.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import { extractRunBundleSectionSource } from './helpers/bundle-section-parser.mjs';
+import {
+  CROSS_STRAIT_ACTIVITY_KEY,
+  buildCrossStraitActivitySnapshot,
+  fetchCrossStraitActivitySnapshot,
+  parseTaiwanMndDetail,
+} from '../scripts/cross-strait-activity/adapters.mjs';
 import {
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_KEY,
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_MAX_BYTES,
@@ -14,11 +22,14 @@ import {
   CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
   CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
   CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS,
+  CROSS_STRAIT_ACTIVITY_ONE_OFF_LOCK_TTL_MS,
   CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS,
+  CROSS_STRAIT_HISTORY_MAX_RECORDS,
   CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS,
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityAfterPublish,
   crossStraitActivityBeforePublish,
+  crossStraitActivityContentMeta,
   projectCrossStraitActivityBootstrap,
   writePublicationCompletion,
   writeSourceHealth,
@@ -45,7 +56,10 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
     generatedAt: '2026-07-25T12:00:00.000Z',
     status: 'degraded',
     sources: [
-      { id: 'taiwan-mnd', transportStatus: 'error' },
+      { id: 'taiwan-mnd', transportStatus: 'error', requestDiagnostics: [{
+        path: '/en/News/PLAAct/87682', purpose: 'detail', attempt: 2,
+        stage: 'response_body', httpStatus: 200, errorCode: 'TIMEOUT', elapsedMs: 20_000,
+      }] },
       {
         id: 'japan-mod',
         transportStatus: 'error',
@@ -99,10 +113,12 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
       proxyControlProbe: _proxyControlProbe,
       shadowIndexProbe: _shadowIndexProbe,
       candidates: _candidates,
+      requestDiagnostics: _requestDiagnostics,
       ...publicSource
     } = source;
     return publicSource;
   }));
+  assert.equal(projection.sources.some(source => 'requestDiagnostics' in source), false);
   assert.equal(
     projection.sources.some((source) => 'proxyFailureDetail' in source),
     false,
@@ -143,7 +159,7 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
   );
 });
 
-test('cross-Strait source transport health degrades immediately without discarding last-good records', () => {
+test('legacy cross-Strait source errors stay actionable without discarding last-good records', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
   const now = Date.parse('2026-07-25T12:00:00.000Z');
   for (const name of ['crossStraitActivityTaiwanMnd', 'crossStraitActivityJapanMod']) {
@@ -165,6 +181,221 @@ test('cross-Strait source transport health degrades immediately without discardi
     assert.equal(entry.status, 'SEED_ERROR', name);
     assert.equal(entry.records, 91, name);
   }
+});
+
+for (const listState of ['unchanged', 'changed-date', 'empty'] as const) {
+  test(`MND ${listState} list coverage reaches published source health without changing document clocks`, async () => {
+    const retrievedAt = '2026-07-25T08:30:00.000Z';
+    const nextRun = Date.parse('2026-07-25T11:30:00.000Z');
+    const original = parseTaiwanMndDetail(read('tests/fixtures/cross-strait-activity/mnd-detail.html'), {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/90000',
+      retrievedAt, expectedPublicationDay: '2026-07-25',
+    });
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: [original] },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: nextRun, previousSnapshot, mndProxyUrl: '', proxyUrl: '', sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(read('tests/fixtures/cross-strait-activity/jmod-homepage.html'));
+        if (url.includes('plaactlist')) return new Response(listState === 'empty' ? '<html></html>' : `
+          <div class="wrap-page3"><a class="news_list" href="${original.sourceUrl}">
+          <h5 class="date">${listState === 'changed-date' ? '2026.07.26' : '2026.07.25'}</h5></a></div>`);
+        throw new Error('request timeout');
+      },
+    });
+    const stored = new Map<string, unknown>();
+    const writer = async (key: string, value: unknown) => { stored.set(key, value); };
+    const reader = async (key: string) => stored.get(key) ?? null;
+    await writeSourceHealth(previousSnapshot, writer, reader);
+    await writeSourceHealth(snapshot, writer, reader);
+    const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
+    const name = 'crossStraitActivityTaiwanMnd';
+    const key = STANDALONE_KEYS[name];
+    const metaKey = SEED_META[name].key;
+    const entry = classifyKey(name, key, { allowOnDemand: true }, {
+      keyStrens: new Map([[key, JSON.stringify(stored.get(key)).length]]),
+      keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify(stored.get(metaKey))]]), now: nextRun,
+    });
+    assert.equal(entry.status, listState === 'unchanged' ? 'OK' : 'SEED_ERROR');
+    assert.equal(snapshot.sources[0].lastSuccessAt, listState === 'unchanged' ? new Date(nextRun).toISOString() : retrievedAt);
+    assert.deepEqual(snapshot.observations, previousSnapshot.observations);
+    assert.deepEqual(crossStraitActivityContentMeta(snapshot), crossStraitActivityContentMeta(previousSnapshot));
+    assert.equal(projectCrossStraitActivityBootstrap(snapshot).sources[0].transportStatus,
+      listState === 'unchanged' ? 'fresh' : 'error');
+    if (listState === 'unchanged') {
+      assert.deepEqual(snapshot.sources[0].errorCodes, []);
+      assert.deepEqual(snapshot.sources[0].refreshErrorCodes, ['TIMEOUT']);
+    }
+  });
+}
+
+test('MND metadata counts completed source attempts independently of canonical publication', async () => {
+  const { classifyKey, healthStatusBucket, SEED_META, STANDALONE_KEYS } = __testing__;
+  const name = 'crossStraitActivityTaiwanMnd';
+  const metaKey = SEED_META[name].key;
+  const dataKey = STANDALONE_KEYS[name];
+  const start = Date.parse('2026-09-05T12:00:00.000Z');
+  const minute = 60_000;
+  const stored = new Map<string, Record<string, unknown>>();
+  const sectionSource = extractRunBundleSectionSource(read('scripts/seed-bundle-derived-signals.mjs'), 'derived-signals');
+  assert.ok(sectionSource);
+  const section = runInNewContext(`(${sectionSource})`, {
+    MIN: minute, HOUR: 60 * minute, CHINA_DECISION_SIGNALS_KEY: 'unused-in-this-test',
+  }).find(section => section.label === 'Cross-Strait-Activity');
+  assert.equal(section?.sourceRetryMetaKey, metaKey);
+  assert.equal(section?.sourceRetryDelayMs, 30 * minute);
+  const freshness = async () => {
+    const { retryClaim, ...clocks } = await readSectionFreshness(section, async key => stored.get(key) ?? null);
+    if (retryClaim) assert.equal(JSON.parse(retryClaim.nextValue).fetchedAt, clocks.fetchedAt);
+    return clocks;
+  };
+  const reads: string[] = [];
+  const write = async (key: string, value: Record<string, unknown>) => { stored.set(key, value); };
+  const reader = async (key: string, options: { strict: boolean }) => {
+    reads.push(key);
+    assert.equal(options.strict, true);
+    return stored.get(key) ?? null;
+  };
+  const publish = async (attemptAt: number, errorCode: string | null, lastSuccessAt = start) => {
+    await writeSourceHealth({
+      generatedAt: new Date(attemptAt).toISOString(),
+      observations: [{ sourceId: 'taiwan-mnd' }],
+      sources: [{
+        id: 'taiwan-mnd',
+        transportStatus: errorCode ? 'error' : 'fresh',
+        errorCodes: errorCode ? [errorCode] : [],
+        lastSuccessAt: new Date(lastSuccessAt).toISOString(),
+      }],
+    }, write, reader);
+    await writePublicationCompletion({ observations: [{ sourceId: 'taiwan-mnd' }] }, write, attemptAt + 1000);
+    const meta = stored.get(metaKey);
+    assert.ok(meta);
+    return meta;
+  };
+  const classify = (meta: Record<string, unknown>, now: number) => classifyKey(name, dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 1024]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(meta)]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+  const success = await publish(start, null);
+  assert.equal(success.sourceState, 'ok');
+  assert.equal(success.consecutiveSourceFailures, 0);
+  assert.equal(success.firstSourceFailureAt, null);
+  assert.deepEqual(await freshness(), { fetchedAt: start + 1000 });
+
+  const first = await publish(start + minute, 'MND_HTTP_503');
+  assert.deepEqual(first, {
+    fetchedAt: start,
+    recordCount: 1,
+    sourceState: 'degraded',
+    stale: true,
+    errorCode: 'MND_HTTP_503',
+    lastSourceFailureCode: 'MND_HTTP_503',
+    consecutiveSourceFailures: 1,
+    lastSourceAttemptAt: start + minute,
+    firstSourceFailureAt: start + minute,
+  });
+  assert.deepEqual(await publish(start + minute, 'MND_HTTP_503'), first, 'duplicate source write is not another attempt');
+  assert.deepEqual(await freshness(), { fetchedAt: start + minute + 1000, retryAt: start + 31 * minute });
+  const firstEntry = classify(first, start + minute);
+  assert.equal(firstEntry.status, 'SEED_ERROR', 'raw source failure remains visible');
+  assert.equal(healthStatusBucket(firstEntry, start + minute), 'ok');
+  assert.equal(Date.parse(firstEntry.sourceFailurePendingUntil), start + 211 * minute);
+  assert.equal(healthStatusBucket(classify(first, start + 211 * minute), start + 211 * minute), 'warn');
+
+  const second = await publish(start + 181 * minute, 'MND_HTTP_503');
+  assert.equal(second.consecutiveSourceFailures, 2);
+  assert.equal(second.firstSourceFailureAt, first.firstSourceFailureAt);
+  assert.deepEqual(await freshness(), { fetchedAt: start + 181 * minute + 1000 });
+  assert.equal(healthStatusBucket(classify(second, start + 181 * minute), start + 181 * minute), 'warn');
+  const changed = await publish(start + 182 * minute, 'MND_PUBLICATION_METADATA_MISSING');
+  assert.equal(changed.consecutiveSourceFailures, 1);
+  assert.equal(changed.firstSourceFailureAt, first.firstSourceFailureAt, 'cause churn keeps the episode deadline');
+  assert.deepEqual(await freshness(), { fetchedAt: start + 182 * minute + 1000 });
+
+  const recovered = await publish(start + 183 * minute, null, start + 183 * minute);
+  assert.equal(recovered.consecutiveSourceFailures, 0);
+  assert.equal(recovered.firstSourceFailureAt, null);
+  assert.equal(recovered.lastSourceFailureCode, null);
+  assert.equal(classify(recovered, start + 183 * minute).status, 'OK');
+  assert.deepEqual(await freshness(), { fetchedAt: start + 183 * minute + 1000 });
+  const afterCanonicalFailure = await publish(start + 184 * minute, 'MND_HTTP_503', start);
+  assert.equal(afterCanonicalFailure.fetchedAt, start, 'retained record freshness follows the served archive, not an unpublished successful fetch');
+  assert.equal(afterCanonicalFailure.firstSourceFailureAt, start + 184 * minute);
+  assert.deepEqual(await freshness(), { fetchedAt: start + 184 * minute + 1000, retryAt: start + 214 * minute });
+  assert.ok(reads.every(key => key === metaKey), 'history reads use source metadata, not the canonical archive');
+});
+
+test('MND attempt metadata fails closed for unproved history and failed source writes', async () => {
+  const now = Date.parse('2026-09-05T12:00:00.000Z');
+  const metaKey = 'seed-meta:military:cross-strait-activity:taiwan-mnd';
+  const dataKey = 'military:cross-strait-activity:v1:source:taiwan-mnd';
+  const success = { fetchedAt: now - 60_000, recordCount: 1, sourceState: 'ok', stale: false };
+  const first = {
+    ...success, sourceState: 'degraded', stale: true, errorCode: 'MND_HTTP_503',
+    lastSourceFailureCode: 'MND_HTTP_503', consecutiveSourceFailures: 1,
+    firstSourceFailureAt: now, lastSourceAttemptAt: now,
+  };
+  const snapshot = {
+    generatedAt: new Date(now).toISOString(),
+    observations: [{ sourceId: 'taiwan-mnd' }],
+    sources: [{ id: 'taiwan-mnd', transportStatus: 'error', errorCodes: ['MND_HTTP_502'], lastSuccessAt: new Date(now - 60_000).toISOString() }],
+  };
+  for (const previous of [
+    null, [], 'bad-json', { ...success, sourceState: 'error' },
+    { ...success, lastSourceFailureCode: 'MND_HTTP_503' },
+    { ...success, lastSourceAttemptAt: now - 60_000, consecutiveSourceFailures: 0 },
+    { ...first, firstSourceFailureAt: null },
+    { ...first, lastSourceAttemptAt: now + 60_000 },
+    first,
+  ]) {
+    const writes = new Map<string, Record<string, unknown>>();
+    await writeSourceHealth(snapshot, async (key: string, value: Record<string, unknown>) => { writes.set(key, value); }, async () => previous);
+    const meta = writes.get(metaKey);
+    assert.ok(meta);
+    assert.equal(meta.sourceState, 'degraded');
+    assert.equal(meta.consecutiveSourceFailures, 2, 'unproved or contradictory attempts cannot get pending');
+    assert.equal(meta.firstSourceFailureAt, null);
+    assert.deepEqual([...writes.keys()], [metaKey, dataKey]);
+  }
+  const writes = new Map<string, Record<string, unknown>>();
+  await writeSourceHealth(snapshot, async (key: string, value: Record<string, unknown>) => { writes.set(key, value); }, async () => { throw new Error('read failed'); });
+  assert.equal(writes.get(metaKey)?.consecutiveSourceFailures, 2, 'read failure still publishes actionable diagnostics');
+  await assert.rejects(writeSourceHealth(snapshot, async (key: string, value: Record<string, unknown>) => {
+    writes.set(key, value);
+    if (key === dataKey) throw new Error('detail write failed');
+  }, async () => success), /detail write failed/);
+  const persisted = writes.get(metaKey);
+  assert.ok(persisted);
+  assert.equal(persisted.consecutiveSourceFailures, 1);
+  await writeSourceHealth(snapshot, async (key: string, value: Record<string, unknown>) => { writes.set(key, value); }, async () => persisted);
+  assert.deepEqual(writes.get(metaKey), persisted, 'retry after failed detail write keeps the same attempt');
+
+  for (const code of ['HTTP_503', 'MND_bad', 'MND_' + 'A'.repeat(61), '<secret>', ['MND_HTTP_503']]) {
+    await writeSourceHealth({ ...snapshot, sources: [{ ...snapshot.sources[0], errorCodes: [code] }] },
+      async (key: string, value: Record<string, unknown>) => { writes.set(key, value); }, async () => success);
+    assert.equal(writes.get(metaKey)?.errorCode, 'MND_SOURCE_ERROR');
+  }
+  for (const attemptedAt of [now - 1, now]) {
+    await writeSourceHealth({
+      ...snapshot,
+      generatedAt: new Date(attemptedAt).toISOString(),
+      sources: [{ ...snapshot.sources[0], transportStatus: 'fresh', errorCodes: [], lastSuccessAt: new Date(attemptedAt).toISOString() }],
+    }, async (key: string, value: Record<string, unknown>) => { writes.set(key, value); }, async () => first);
+    assert.equal(writes.get(metaKey)?.sourceState, 'degraded', 'an older or contradictory success cannot reset an episode');
+    assert.equal(writes.get(metaKey)?.firstSourceFailureAt, null);
+  }
+  await writeSourceHealth({ ...snapshot, generatedAt: new Date(now + 1).toISOString() },
+    async (key: string, value: Record<string, unknown>) => { writes.set(key, value); },
+    async () => ({ ...first, errorCode: 'MND_HTTP_502', lastSourceFailureCode: 'MND_HTTP_502', consecutiveSourceFailures: 100 }));
+  assert.equal(writes.get(metaKey)?.consecutiveSourceFailures, 100, 'attempt counter is bounded');
 });
 
 test('a freshly classified blocked source is explicit and does not pin fleet health', async () => {
@@ -586,6 +817,13 @@ test('cross-Strait shipping budgets preserve Railway cleanup headroom', () => {
     new RegExp(`seedMetaKey:\\s*'${CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY.replace('seed-meta:', '')}'`),
   );
   assert.ok(CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS > 310_000);
+  assert.ok(
+    CROSS_STRAIT_ACTIVITY_ONE_OFF_LOCK_TTL_MS > (
+      CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS
+      + CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS
+      + Math.ceil(CROSS_STRAIT_HISTORY_MAX_RECORDS / 150) * 30_000
+    ),
+  );
 });
 
 test('degraded cross-Strait source health publishes the error metadata before its detail record', async () => {
@@ -598,7 +836,7 @@ test('degraded cross-Strait source health publishes the error metadata before it
     }],
   };
   const writes: string[] = [];
-  await writeSourceHealth(snapshot, async (key: string) => { writes.push(key); });
+  await writeSourceHealth(snapshot, async (key: string) => { writes.push(key); }, async () => null);
 
   assert.deepEqual(writes, [
     'seed-meta:military:cross-strait-activity:taiwan-mnd',
@@ -646,6 +884,7 @@ test('degraded cross-Strait source health bounds the error marker TTL', async ()
 
 test('healthy cross-Strait source health retains the archive TTL', async () => {
   const snapshot = {
+    generatedAt: '2026-07-25T08:00:00.000Z',
     observations: [{ sourceId: 'taiwan-mnd' }],
     sources: [{
       id: 'taiwan-mnd',
@@ -656,7 +895,7 @@ test('healthy cross-Strait source health retains the archive TTL', async () => {
   const writes: Array<{ key: string; ttl: number }> = [];
   await writeSourceHealth(snapshot, async (key: string, _value: object, ttl: number) => {
     writes.push({ key, ttl });
-  });
+  }, async () => null);
 
   assert.deepEqual(writes, [
     {
@@ -676,6 +915,7 @@ test('cross-Strait publish hooks ignore runSeed metadata instead of treating it 
   const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
   const writes: string[] = [];
   const snapshot = {
+    generatedAt: '2026-07-25T08:00:00.000Z',
     observations: [{ sourceId: 'taiwan-mnd' }, { sourceId: 'japan-mod' }],
     sources: [
       { id: 'taiwan-mnd', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
@@ -724,6 +964,7 @@ test('cross-Strait source-health failure settles every write before canonical pu
   let canonicalFetches = 0;
   const writes: string[] = [];
   const snapshot = {
+    generatedAt: '2026-07-25T08:00:00.000Z',
     observations: [{ sourceId: 'taiwan-mnd' }, { sourceId: 'japan-mod' }],
     sources: [
       { id: 'taiwan-mnd', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
@@ -752,7 +993,7 @@ test('cross-Strait source-health failure settles every write before canonical pu
           if (key === 'seed-meta:military:cross-strait-activity:japan-mod') {
             throw new Error('injected source-health failure');
           }
-        }),
+        }, async () => null),
       },
     ).then(
       () => ({ error: null }),
@@ -784,6 +1025,7 @@ test('runSeed forwards cross-Strait source health through the pre-publication bo
   const originalSigtermListeners = new Set(process.rawListeners('SIGTERM'));
   const redisCommands: unknown[][] = [];
   const snapshot = {
+    generatedAt: '2026-07-25T08:00:00.000Z',
     observations: [{ sourceId: 'taiwan-mnd' }],
     sources: [{
       id: 'taiwan-mnd',
@@ -815,7 +1057,7 @@ test('runSeed forwards cross-Strait source health through the pre-publication bo
           maxStaleMin: 120,
           beforePublish: data => writeSourceHealth(data, async () => {
             throw new Error('injected source-health failure');
-          }),
+          }, async () => null),
         },
       ),
       /injected source-health failure/,

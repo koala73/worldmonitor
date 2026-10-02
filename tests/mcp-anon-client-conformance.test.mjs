@@ -24,7 +24,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
+import { ANON_DISCOVERY_URL } from './helpers/mcp-pro-deps.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -51,12 +51,19 @@ describe('api/mcp.ts — anonymous strict-client conformance (#4937)', () => {
     process.env.MCP_TELEMETRY = 'false';
 
     // Public-resource reads fetch upstream via globalThis.fetch (never via
-    // deps); answer any GET with a minimal cache envelope so the walk stays
-    // hermetic.
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    );
+    // deps); fixture the compiled HTML resource and cache responses so the
+    // walk stays hermetic.
+    globalThis.fetch = async (input) => {
+      if (['https://www.worldmonitor.app/plugin/plugin.html', 'https://www.worldmonitor.app/plugin/country.html'].includes(String(input))) {
+        return new Response(`<!DOCTYPE html><html><head></head><body><main id="${String(input).endsWith('/country.html') ? 'countryRoot' : 'pluginRoot'}"></main></body></html>`, {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      return new Response(
+        JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
 
     const unreachable = (name) => async () => {
       throw new Error(`anonymous path must not touch deps.${name}`);
@@ -80,7 +87,12 @@ describe('api/mcp.ts — anonymous strict-client conformance (#4937)', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  const anonReq = (body) => new Request(BASE_URL, {
+  // A strict client opens with `initialize`, and the transport at BASE_URL
+  // challenges that handshake when it carries no credential
+  // (tests/mcp-transport-challenge.test.mjs). The anonymous handshake — and so
+  // the whole strict anonymous walk this file pins — lives on the
+  // machine-discovery alias.
+  const anonReq = (body) => new Request(ANON_DISCOVERY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

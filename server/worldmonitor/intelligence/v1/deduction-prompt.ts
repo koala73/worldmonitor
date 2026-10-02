@@ -48,10 +48,23 @@ export function splitDeductionContext(geoContext: string): PromptContextParts {
   const primaryContext = normalized.slice(0, headerMatch.index).trim();
   const afterHeader = normalized.slice(headerMatch.index + headerMatch[0].length);
   const newsBlock = afterHeader.split('\n').filter(Boolean);
+  const jsonRecords = headerMatch[1] === 'Recent News: (JSON records)';
   const recentNews = trimList(
     newsBlock
       .map((line) => line.replace(/^\s*[-*]\s*/, '').trim())
-      .filter(Boolean),
+      .filter((line) => {
+        if (!jsonRecords) return Boolean(line);
+        // The request length cap can cut the last record. Never pass a partial
+        // title/source object through as legacy prose or decode its newlines.
+        try {
+          const record = JSON.parse(line);
+          return record !== null && typeof record === 'object' && !Array.isArray(record)
+            && Object.keys(record).length === 2
+            && typeof record.title === 'string' && typeof record.source === 'string';
+        } catch {
+          return false;
+        }
+      }),
     10,
     1400,
   );

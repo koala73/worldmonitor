@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import middleware from '../middleware';
-import { WORLD_MONITOR_ORG } from '../scripts/build-crawlable-corpus.mjs';
+import { rewriteDocsLocaleHtml } from '../src/config/docs-locale-seo';
+import { DOCS_PAGE_DATES } from '../src/config/docs-page-dates.generated';
+import {
+  buildCorpus,
+  PAGE_TYPES_WITH_ATTRIBUTION,
+  WORLD_MONITOR_ORG,
+} from '../scripts/build-crawlable-corpus.mjs';
+import {
+  SOFTWARE_SHARED_PROPERTIES,
+  WEBSITE_SHARED_PROPERTIES,
+} from '../src/config/schema-graph-ids';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -38,9 +50,64 @@ const PERSON_ENTITY_SAME_AS = [
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+/**
+ * The generated corpus, built once and shared by every test below. CI does not
+ * prebuild it, so the real generator runs in a temporary directory; the build
+ * costs seconds, so memoize rather than paying it per test.
+ */
+let generatedCorpusPromise: Promise<Map<string, string>> | null = null;
+function generatedCorpusDocuments(): Promise<Map<string, string>> {
+  generatedCorpusPromise ??= (async () => {
+    const documents = new Map<string, string>();
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-schema-corpus-'));
+    try {
+      await buildCorpus({ outDir: corpusDir });
+      for (const path of readdirSync(corpusDir, { recursive: true }) as string[]) {
+        if (path.endsWith('.html')) documents.set(`public/${path}`, readFileSync(join(corpusDir, path), 'utf8'));
+      }
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true });
+    }
+    return documents;
+  })();
+  return generatedCorpusPromise;
+}
+
+/**
+ * Nodes that stand for the page itself, as opposed to the Dataset/Place/
+ * Question nodes hanging off them. Driven from the generator's own set so the
+ * guard cannot drift from what it guards, plus the Article-family types the
+ * docs surface states its page body with (those never reach the corpus).
+ *
+ * A hand-listed set was the first version of this guard and it was already
+ * wrong: it omitted FAQPage, so 227 pages carried an unattributed
+ * rich-result node the guard could not see. Importing the set is what keeps a
+ * newly-attributed type in step; ORPHAN_PAGE_BODY_RE below is what catches a
+ * type nobody attributed at all.
+ */
+const PAGE_BODY_TYPES = [
+  ...PAGE_TYPES_WITH_ATTRIBUTION,
+  'TechArticle',
+  'NewsArticle',
+];
+
+/**
+ * A top-level node whose type NAMES it a page — the escape the imported set
+ * cannot close. If a future family emits `ProfilePage` or `QAPage` and nobody
+ * adds it to PAGE_TYPES_WITH_ATTRIBUTION, importing that set would happily
+ * agree the page is fine. Matching on the name instead fails loudly and asks
+ * for a deliberate decision.
+ */
+const ORPHAN_PAGE_BODY_RE = /Page$/;
+
+// Single quotes, mixed case, and whitespace around `=` are all valid on the
+// type attribute. A double-quote-only matcher lets a conflicting block hide
+// from the producer discovery below simply by being written differently, so
+// match the same shape the rest of the repo's JSON-LD readers accept.
 function jsonLdBlocks(html: string): Record<string, any>[] {
-  return [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
-    .map((match) => JSON.parse(match[1]));
+  return [...html.matchAll(
+    /<script\b(?=[^>]*\btype\s*=\s*["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+  )].map((match) => JSON.parse(match[1]));
 }
 
 function blocksOfType(blocks: Record<string, any>[], type: string): Record<string, any>[] {
@@ -71,6 +138,123 @@ function collectNodesOfType(html: string, type: string): Record<string, any>[] {
   return found;
 }
 
+/**
+ * Every node that DECLARES `id` -- carries the identity plus a body -- as
+ * opposed to the bare `{ '@id': ... }` fillers that merely reference it. Walks
+ * nested values so a declaration wrapped in `@graph` is not missed, which a
+ * top-level scan would sail straight past (#7611).
+ */
+function declarationsOf(html: string, id: string): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(walk);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, any>;
+    if (node['@id'] === id && Object.keys(node).some((key) => key !== '@id' && key !== '@context')) {
+      found.push(node);
+    }
+    Object.values(node).forEach(walk);
+  };
+  jsonLdBlocks(html).forEach(walk);
+  return found;
+}
+
+function assertSelfDescribingAuthor(path: string, author: Record<string, unknown> | undefined): void {
+  assert.ok(author, `${path}: must carry an author`);
+  assert.ok(
+    author['@id'] === ORGANIZATION_ID || author['@id'] === PERSON_ID,
+    `${path}: author must reference the canonical Organization or Person, got ${JSON.stringify(author['@id'])}`,
+  );
+  // A bare `@id` is an unresolvable stub for the naive extractors this
+  // signal is for: no generated page declares the canonical node, and
+  // parsers resolve `@id` within one document (#7459b, #8073).
+  assert.ok(
+    typeof author['@type'] === 'string' && typeof author.name === 'string',
+    `${path}: author reference must carry @type and name so it resolves in-document`,
+  );
+  if (author['@id'] === ORGANIZATION_ID) {
+    assert.deepEqual(
+      author,
+      WORLD_MONITOR_ORG,
+      `${path}: Organization author must be the typed WORLD_MONITOR_ORG stub`,
+    );
+  }
+}
+
+/**
+ * Docs middleware output for every dated slug, both upstream shapes.
+ * Shared by the body-consistency test and the author guard so a new docs
+ * page cannot join one population and skip the other (#8073).
+ */
+let docsMiddlewareDocumentsMemo: Map<string, string> | null = null;
+function docsMiddlewareDocuments(): Map<string, string> {
+  docsMiddlewareDocumentsMemo ??= (() => {
+    const documents = new Map<string, string>();
+    for (const slug of Object.keys(DOCS_PAGE_DATES)) {
+      for (const type of ['WebPage', ['Article', 'TechArticle']]) {
+        const html = `<html><head><script type="application/ld+json">${JSON.stringify({
+          '@context': 'https://schema.org', '@type': type, name: slug, headline: slug,
+          url: `https://www.worldmonitor.app/docs/${slug}`,
+        })}</script></head><body></body></html>`;
+        const rewritten = rewriteDocsLocaleHtml(
+          rewriteDocsLocaleHtml(html, `/docs/${slug}`),
+          `/docs/${slug}`,
+        );
+        assert.equal(collectNodesOfType(rewritten, 'Article').length, 1, `${slug} must emit an Article`);
+        documents.set(`docs/${slug} (${JSON.stringify(type)} middleware output)`, rewritten);
+      }
+    }
+    return documents;
+  })();
+  return docsMiddlewareDocumentsMemo;
+}
+
+/**
+ * Every HTML document that could carry JSON-LD: the committed entry points
+ * plus anything generated under public/ (both the crawlable corpus and the
+ * /pro build write there). DISCOVERING this population is the point -- a
+ * hand-listed one cannot notice a NEW surface claiming a canonical `@id`,
+ * which is precisely the bug #7611 fixed. Not covered: blog-site/ Astro
+ * templates and dist/, neither of which declares a canonical product node
+ * today.
+ */
+function jsonLdDocumentPaths(): string[] {
+  const root = new URL('../', import.meta.url);
+  const found: string[] = [];
+  const collect = (relativeDir: string, recurse: boolean): void => {
+    for (const entry of readdirSync(new URL(relativeDir, root), { withFileTypes: true })) {
+      const relativePath = `${relativeDir}${entry.name}`;
+      if (entry.isDirectory()) {
+        if (recurse && entry.name !== 'node_modules') collect(`${relativePath}/`, true);
+      } else if (entry.name.endsWith('.html')) {
+        found.push(relativePath);
+      }
+    }
+  };
+  collect('', false);
+  collect('pro-test/', false);
+  collect('public/', true);
+  return found.sort();
+}
+
+// Properties a consumer merges by UNION rather than reading as one value, so
+// they may legitimately hold DIFFERENT values per surface: the dashboard lists
+// its own alternateName/keywords, /pro advertises the Business and API tiers on
+// top of the shared offers, and featureList is rewritten per variant by
+// variant-dashboard-html.ts.
+//
+// Every other property must agree wherever two surfaces both state it. Note
+// that this is about conflicting VALUES, not presence: a surface may still omit
+// a property entirely (welcome.html carries no `isPartOf`, index.html no
+// `datePublished`), and the check below only compares surfaces that both carry
+// it. Two stated values for one `@id` is the contradiction #7611 is about, so
+// `isPartOf`, `datePublished` and `dateModified` deliberately stay OUT of this
+// set even though they are absent on one surface each.
+const MAY_DIVERGE_ACROSS_SURFACES = new Set(['alternateName', 'featureList', 'keywords', 'offers']);
+
 describe('canonical schema graph', () => {
   guardProBuiltOutput();
 
@@ -90,7 +274,7 @@ describe('canonical schema graph', () => {
     assert.equal(blocksOfType(proBlocks, 'Organization').length, 0, '/pro must reference the canonical Organization');
     assert.equal(blocksOfType(dashboardBlocks, 'Organization').length, 0, '/dashboard must reference the canonical Organization');
 
-    const dashboardApp = blocksOfType(dashboardBlocks, 'WebApplication')[0];
+    const dashboardApp = blocksOfType(dashboardBlocks, 'SoftwareApplication')[0];
     const dashboardSite = blocksOfType(dashboardBlocks, 'WebSite')[0];
     const proApp = blocksOfType(proBlocks, 'SoftwareApplication')[0];
     const welcomeApp = blocksOfType(welcomeBlocks, 'SoftwareApplication')[0];
@@ -128,12 +312,39 @@ describe('canonical schema graph', () => {
     assert.deepEqual(sourceCode.targetProduct, { '@id': SOFTWARE_ID });
   });
 
+  it('connects the canonical dashboard page to its product graph and visible SEO content', () => {
+    const blocks = jsonLdBlocks(read('index.html'));
+    const application = blocksOfType(blocks, 'SoftwareApplication')[0];
+    const webSite = blocksOfType(blocks, 'WebSite')[0];
+    const webPage = blocksOfType(blocks, 'WebPage')[0];
+    const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
+    const dashboardUrl = 'https://www.worldmonitor.app/dashboard';
+
+    assert.equal(application['@id'], SOFTWARE_ID);
+    assert.equal(webSite['@id'], WEBSITE_ID);
+    assert.equal(webPage['@id'], `${dashboardUrl}#webpage`);
+    assert.equal(webPage.url, dashboardUrl);
+    assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
+    assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
+    assert.deepEqual(webPage.publisher, { '@id': ORGANIZATION_ID });
+    assert.deepEqual(webPage.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.app-seo-summary'],
+    });
+    assert.deepEqual(webPage.breadcrumb, { '@id': `${dashboardUrl}#breadcrumb` });
+    assert.equal(crumbs['@id'], `${dashboardUrl}#breadcrumb`);
+    assert.deepEqual(crumbs.itemListElement, [
+      { '@type': 'ListItem', position: 1, name: 'World Monitor', item: CANONICAL_ORIGIN },
+      { '@type': 'ListItem', position: 2, name: 'Dashboard', item: dashboardUrl },
+    ]);
+  });
+
   it('binds every canonical product surface to the World Monitor Wikidata item (#7373)', () => {
     const dashboardBlocks = jsonLdBlocks(read('index.html'));
     const proBlocks = jsonLdBlocks(read('pro-test/index.html'));
     const welcomeBlocks = jsonLdBlocks(read('pro-test/welcome.html'));
     const productNodes = [
-      ['dashboard', blocksOfType(dashboardBlocks, 'WebApplication')[0]],
+      ['dashboard', blocksOfType(dashboardBlocks, 'SoftwareApplication')[0]],
       ['Pro', blocksOfType(proBlocks, 'SoftwareApplication')[0]],
       ['welcome', blocksOfType(welcomeBlocks, 'SoftwareApplication')[0]],
     ] as const;
@@ -154,13 +365,184 @@ describe('canonical schema graph', () => {
     );
   });
 
+  // Double entry (#7611). The surfaces are asserted against
+  // schema-graph-ids.ts below, so the module itself needs a second, independent
+  // statement of the values that carry the product decision -- otherwise a wrong
+  // edit to the module, faithfully copied into every surface, passes. The rest
+  // of the shared node is prose and links, where a silently-mirrored typo is not
+  // a realistic failure; these four are the ones #7611 found actually wrong.
+  it('states the decision-bearing product values independently of the module (#7611)', () => {
+    assert.equal(SOFTWARE_SHARED_PROPERTIES['@type'], 'SoftwareApplication');
+    assert.equal(SOFTWARE_SHARED_PROPERTIES.applicationCategory, 'BusinessApplication');
+    assert.equal(SOFTWARE_SHARED_PROPERTIES.url, CANONICAL_ORIGIN);
+    assert.equal(WEBSITE_SHARED_PROPERTIES.url, CANONICAL_ORIGIN);
+  });
+
+  // #7611: pinning the `@id` strings and the cross-node references still left
+  // every surface free to build its own body under a shared identity, so a
+  // consumer merging by `@id` received two `applicationCategory` values for one
+  // entity. Enumerating the properties that were wrong in Sept 2026 would only
+  // freeze those; the invariant is "one `@id`, one body", so this asserts the
+  // pinned values AND that no unpinned property diverges either.
+  it('serves consistent product, Organization and Dataset bodies across every surface (#7611, #7861)', async () => {
+    const documents = new Map(jsonLdDocumentPaths().map((path) => [path, read(path)]));
+    // CI does not prebuild the corpus. Exercise its real generator in isolation.
+    for (const [path, html] of await generatedCorpusDocuments()) documents.set(path, html);
+    const docsOrganization = JSON.parse(read('docs/docs.json')).seo.organization;
+    const { id, logo, ...properties } = docsOrganization;
+    const docsHtml = `<html><head><script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [{ '@type': 'Organization', '@id': id, ...properties, logo: { '@type': 'ImageObject', url: logo } }],
+    })}</script></head><body></body></html>`;
+    documents.set('docs/about (middleware output)', rewriteDocsLocaleHtml(docsHtml, '/docs/about'));
+    for (const [path, html] of docsMiddlewareDocuments()) documents.set(path, html);
+    for (const [path, html] of documents) {
+      const articles = ['Article', 'TechArticle', 'BlogPosting', 'NewsArticle']
+        .flatMap((type) => collectNodesOfType(html, type));
+      for (const article of articles) {
+        for (const field of ['datePublished', 'dateModified']) {
+          assert.equal(typeof article[field], 'string', `${path}: Article must carry ${field}`);
+          assert.ok(Number.isFinite(Date.parse(article[field])), `${path}: invalid ${field}`);
+        }
+      }
+    }
+    const datasetIds = new Set([...documents.values()].flatMap((html) =>
+      collectNodesOfType(html, 'Dataset').map((node) => node['@id']).filter((id): id is string => typeof id === 'string')));
+    assert.ok(datasetIds.size > 0, 'build the corpus before checking Dataset identities');
+    const pinned: Array<[string, Record<string, unknown>, string[]]> = [
+      [SOFTWARE_ID, SOFTWARE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
+        'index.html',
+        'pro-test/index.html',
+        'pro-test/welcome.html',
+        'public/pro/index.html',
+        'public/pro/welcome.html',
+      ])],
+      [WEBSITE_ID, WEBSITE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
+        'index.html',
+        'pro-test/welcome.html',
+        'public/pro/welcome.html',
+      ])],
+      [ORGANIZATION_ID, {}, ['pro-test/welcome.html']],
+      // #7980 put a Person body on the docs middleware output too, so the
+      // "one `@id`, one body" invariant has to cover it: if the canonical
+      // node at /blog/authors/elie-habib/ is ever renamed or retyped, the
+      // docs and product stubs must not silently keep the old name.
+      [PERSON_ID, {}, []],
+      ...[...datasetIds].map((id): [string, Record<string, unknown>, string[]] => [id, {}, []]),
+    ];
+
+    for (const [id, expected, required] of pinned) {
+      // Discovered, not hand-listed: a surface that starts declaring the shared
+      // identity is caught here rather than quietly exempted. The hand-listed
+      // paths are the FLOOR -- they also catch a surface dropping the node.
+      const emitters = new Map<string, Record<string, any>>();
+      for (const [path, html] of documents) {
+        if (!html.includes(id)) continue;
+        const declarations = declarationsOf(html, id);
+        if (declarations.length === 0) continue;
+        if (id === SOFTWARE_ID || id === WEBSITE_ID) {
+          assert.equal(declarations.length, 1, `${path} must declare ${id} exactly once`);
+        }
+        declarations.forEach((node, index) => emitters.set(index === 0 ? path : `${path} (node ${index + 1})`, node));
+      }
+      for (const path of required) {
+        assert.ok(emitters.has(path), `${path} must still declare ${id}`);
+      }
+
+      for (const [path, node] of emitters) {
+        for (const [property, value] of Object.entries(expected)) {
+          assert.deepEqual(
+            node[property],
+            value,
+            `${path} ${id} "${property}" must match schema-graph-ids.ts`,
+          );
+        }
+      }
+
+      // Every property two emitters both carry must agree, pinned or not.
+      const carriers = new Map<string, Array<[string, unknown]>>();
+      for (const [path, node] of emitters) {
+        for (const [property, value] of Object.entries(node)) {
+          if (property === '@context') continue;
+          if ((id === SOFTWARE_ID || id === WEBSITE_ID) && MAY_DIVERGE_ACROSS_SURFACES.has(property)) continue;
+          const seen = carriers.get(property) ?? [];
+          seen.push([path, value]);
+          carriers.set(property, seen);
+        }
+      }
+      for (const [property, entries] of carriers) {
+        const [firstPath, firstValue] = entries[0];
+        for (const [path, value] of entries.slice(1)) {
+          assert.deepEqual(
+            value,
+            firstValue,
+            `${id} "${property}" differs between ${firstPath} and ${path}`,
+          );
+        }
+      }
+    }
+  });
+
+  // #7980: every generated page publishes a risk score, a ranking, or a
+  // reference claim, and none of them named anyone who stands behind it --
+  // `author` was absent at any depth on all 240. `publisher` alone does not
+  // encode that signal, and the docs family already proves the shape. The
+  // population is DISCOVERED from the generator's own output, so a new page
+  // family cannot ship unattributed.
+  it('attributes every generated page body to a canonical author (#7980)', async () => {
+    const corpus = await generatedCorpusDocuments();
+    assert.ok(corpus.size > 200, 'the generated corpus must be built before checking attribution');
+
+    let checked = 0;
+    for (const [path, html] of corpus) {
+      const bodies = PAGE_BODY_TYPES.flatMap((type) => collectNodesOfType(html, type));
+      assert.ok(bodies.length > 0, `${path}: no page-shaped JSON-LD body to attribute`);
+      // The escape hatch check: a top-level node NAMED a page that no one
+      // taught the generator to attribute. Runs over the raw blocks, not the
+      // type list, so it sees what the list does not.
+      for (const block of jsonLdBlocks(html)) {
+        const declared = block['@type'];
+        const types = Array.isArray(declared) ? declared : declared ? [declared] : [];
+        if (!types.some((type: string) => ORPHAN_PAGE_BODY_RE.test(type))) continue;
+        assert.ok(
+          block.author,
+          `${path}: ${JSON.stringify(declared)} names itself a page but carries no author — `
+            + 'add it to PAGE_TYPES_WITH_ATTRIBUTION or exempt it deliberately',
+        );
+      }
+      for (const body of bodies) {
+        checked += 1;
+        assertSelfDescribingAuthor(`${path}: ${JSON.stringify(body['@type'])}`, body.author);
+      }
+    }
+    assert.ok(checked > 200, `expected the whole generated corpus to be checked, saw ${checked} bodies`);
+  });
+
+  // #8073: the #7980 author guard discovered its population from the corpus
+  // generator, so 465 docs Articles shipped a bare `#organization` reference
+  // the guard could not see. The docs family is synthesized through the real
+  // rewrite, the same way the date and body-consistency tests already do.
+  it('attributes every docs Article to a self-describing canonical author (#8073)', () => {
+    const documents = docsMiddlewareDocuments();
+    assert.equal(documents.size, Object.keys(DOCS_PAGE_DATES).length * 2);
+
+    let checked = 0;
+    for (const [path, html] of documents) {
+      const articles = collectNodesOfType(html, 'Article');
+      assert.equal(articles.length, 1, `${path}: expected one Article`);
+      checked += 1;
+      assertSelfDescribingAuthor(path, articles[0].author);
+    }
+    assert.equal(checked, documents.size, 'every synthesized docs document must contribute an Article author');
+  });
+
   it('serves every variant dashboard identically to browsers and AI crawlers', () => {
     const dashboardHtml = read('index.html');
 
     for (const variant of WEB_DASHBOARD_VARIANTS) {
       const renderedBlocks = jsonLdBlocks(renderVariantDashboardHtml(dashboardHtml, variant));
-      const application = blocksOfType(renderedBlocks, 'WebApplication')[0];
-      assert.ok(application, `${variant} must retain its WebApplication schema`);
+      const application = blocksOfType(renderedBlocks, 'SoftwareApplication')[0];
+      assert.ok(application, `${variant} must retain its SoftwareApplication schema`);
       assert.equal(blocksOfType(renderedBlocks, 'Organization').length, 0, `${variant} must not redeclare Organization`);
       assert.equal(blocksOfType(renderedBlocks, 'WebSite').length, 0, `${variant} must not claim the canonical WebSite`);
       assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
@@ -170,6 +552,8 @@ describe('canonical schema graph', () => {
 
       const webPage = blocksOfType(renderedBlocks, 'WebPage')[0];
       const crumbs = blocksOfType(renderedBlocks, 'BreadcrumbList')[0];
+      assert.equal(blocksOfType(renderedBlocks, 'WebPage').length, 1, `${variant} must replace the canonical WebPage`);
+      assert.equal(blocksOfType(renderedBlocks, 'BreadcrumbList').length, 1, `${variant} must replace the canonical BreadcrumbList`);
       assert.ok(webPage, `${variant} must declare a WebPage that joins the canonical graph`);
       assert.equal(webPage['@id'], `${VARIANT_META[variant].url}#webpage`);
       assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
@@ -205,8 +589,15 @@ describe('canonical schema graph', () => {
     assert.equal(webPage['@id'], 'https://www.worldmonitor.app/pro#webpage');
     assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
-    assert.equal(webPage.speakable?.['@type'], 'SpeakableSpecification');
-    assert.ok(webPage.speakable.cssSelector.includes('h1'));
+    assert.deepEqual(webPage.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', 'main > p:first-of-type'],
+    });
+    assert.match(
+      read('pro-test/index.html'),
+      /<main[^>]*>\s*<p>/,
+      'the Pro speakable paragraph selector must match the static main content',
+    );
     assert.deepEqual(webPage.breadcrumb, { '@id': 'https://www.worldmonitor.app/pro#breadcrumb' });
     const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
     assert.equal(crumbs['@id'], 'https://www.worldmonitor.app/pro#breadcrumb');
@@ -222,7 +613,13 @@ describe('canonical schema graph', () => {
       assert.doesNotMatch(source, /['"]@type['"]:\s*['"]Organization['"]/, `${path} must not redeclare Organization`);
       assert.match(source, new RegExp(`['"]@id['"]:\\s*['"]${ORGANIZATION_ID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`));
     }
-    assert.match(read('blog-site/src/pages/authors/elie-habib.astro'), /['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    const authorPage = read('blog-site/src/pages/authors/elie-habib.astro');
+    assert.match(authorPage, /['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    assert.match(
+      authorPage,
+      /'@type': 'ProfilePage',[\s\S]*?speakable: \{\s*'@type': 'SpeakableSpecification',\s*cssSelector: \['h1', '\.author-page-bio'\]/,
+      'the author ProfilePage must target its static h1 and biography content',
+    );
   });
 
   it('overrides Mintlify publisher metadata with the canonical Organization', () => {
@@ -237,7 +634,6 @@ describe('canonical schema graph', () => {
         'https://www.npmjs.com/package/worldmonitor',
         'https://x.com/worldmonitorai',
         'https://x.com/eliehabib',
-        'https://discord.gg/re63kWKxaz',
         'https://www.wired.com/story/world-monitor-elie-habib/',
       ],
     });
@@ -321,7 +717,8 @@ describe('canonical schema graph', () => {
         `${path} disambiguatingDescription must distinguish, not restate description`,
       );
       assert.ok(
-        /worldmonitor\.io/.test(disambiguation) && /world-monitor\.app/.test(disambiguation),
+        /worldmonitor\.io/.test(disambiguation) && /world-monitor\.app/.test(disambiguation)
+          && /world-monitor\.com/.test(disambiguation),
         `${path} disambiguation must name the colliding domains it is disclaiming`,
       );
       assert.match(
@@ -335,6 +732,7 @@ describe('canonical schema graph', () => {
         `${path} disambiguation must disclaim the similarly named mobile applications`,
       );
       assert.equal(organization.alternateName, 'WorldMonitor');
+      assert.equal(organization.interactionStatistic, undefined);
     }
   });
 

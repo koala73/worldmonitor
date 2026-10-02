@@ -119,7 +119,8 @@
       "activeSirens": "ไซเรนทำงาน",
       "sirens24h": "ไซเรน / 24 ชม.",
       "aviationDisruptions": "การหยุดชะงักด้านการบิน",
-      "gpsJammingZones": "เขตรบกวน GPS"
+      "gpsJammingZones": "เขตรบกวน GPS",
+      "temporalUnavailable": "ข้อมูลการสังเกตการณ์ตามเวลาไม่พร้อมใช้งาน"
     },
     "fallback": {
       "instabilityIndex": "**ดัชนีความไม่มั่นคง: {{score}}/100** ({{level}}, {{trend}})",
@@ -190,7 +191,7 @@
       "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -852,7 +853,6 @@
   "components": {
     "webcams": {
       "paused": "กล้องหยุดชั่วคราว",
-      "pausedIdle": "กล้องหยุดชั่วคราว — เลื่อนเมาส์เพื่อดำเนินต่อ",
       "regions": {
         "all": "ทั้งหมด",
         "mideast": "ตะวันออกกลาง",
@@ -862,7 +862,11 @@
         "space": "อวกาศ"
       },
       "play": "เล่น",
-      "previewStatus": "ตัวอย่างสด"
+      "previewStatus": "พร้อมที่จะเล่น",
+      "connecting": "กำลังเชื่อมต่อ…",
+      "unverified": "ไม่สามารถยืนยันว่าสตรีมนี้ออนไลน์ได้",
+      "offline": "{{city}} ออฟไลน์ในขณะนี้",
+      "noFeeds": "ไม่มีเว็บแคมสดในภูมิภาคนี้ในขณะนี้"
     },
     "positiveNewsFeed": {
       "noStories": "ยังไม่มีเรื่องราวในหมวดนี้"
@@ -1074,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "statusNormal": "ปกติ",
+      "statusNoData": "ไม่มีข้อมูล",
+      "statusNoBaseline": "ไม่มีค่าฐาน",
+      "vsUsual": "เทียบกับปกติ",
       "title": "ดัชนีพิซซ่าเพนตากอน",
       "defcon": "DEFCON {{level}}",
       "updated": "อัปเดต {{timeAgo}}",
       "tensionsTitle": "ความตึงเครียดภูมิรัฐศาสตร์",
+      "tensionsSource": "ความตึงเครียด: World Monitor คำนวณจากเหตุการณ์ของ GDELT",
+      "insufficientData": "ข้อมูลไม่เพียงพอ",
+      "pizzaUnavailable": "ไม่มีข้อมูลกิจกรรมของร้านพิซซ่า",
       "source": "แหล่งที่มา:",
       "statusClosed": "ปิด",
       "statusSpike": "พุ่งสูง",
@@ -1089,11 +1101,11 @@
       "minutesAgo": "{{m}}น. ที่แล้ว",
       "hoursAgo": "{{h}}ชม. ที่แล้ว",
       "defconLabels": {
-        "1": "COCKED PISTOL - ความพร้อมสูงสุด",
-        "2": "FAST PACE - กองกำลังพร้อมรบ",
-        "3": "ROUND HOUSE - เพิ่มความพร้อมรบ",
-        "4": "DOUBLE TAKE - เพิ่มการเฝ้าระวังข่าวกรอง",
-        "5": "FADE OUT - ความพร้อมต่ำสุด"
+        "1": "กิจกรรมสูงสุด",
+        "2": "กิจกรรมสูง",
+        "3": "กิจกรรมเพิ่มขึ้น",
+        "4": "สูงกว่าปกติ",
+        "5": "กิจกรรมปกติ"
       }
     },
     "strategicPosture": {
@@ -1174,9 +1186,6 @@
       "datacenter": "ศูนย์ข้อมูล",
       "base": "ฐานทัพ",
       "nuclear": "นิวเคลียร์"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "วิกฤต",
@@ -1486,7 +1495,10 @@
       "provenanceTitle": "ความมาของการครอบคลุม: จำนวนเรื่องข่าวที่นำเข้าและแหล่งข่าวที่แตกต่างกันที่ใช้สำหรับสรุปนี้",
       "compiledFrom": "รวบรวมจาก {{stories}} เรื่องราวจาก {{sources}} แหล่งที่มา",
       "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "รายละเอียดข่าว ({{count}})",
+      "streamIdleStopLabel": "หยุดวิดีโอสดเมื่อไม่มีกิจกรรม",
+      "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง",
+      "streamIdleStopNever": "ไม่เลย"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -1898,6 +1910,7 @@
       "etfs": "ETF",
       "netInflow": "กระแสเข้าสุทธิ",
       "netOutflow": "กระแสออกสุทธิ",
+      "netNeutral": "กระแสสุทธิเป็นกลาง",
       "table": {
         "ticker": "สัญลักษณ์",
         "issuer": "ผู้ออก",
@@ -1980,15 +1993,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} ไม่ได้ถ่ายทอดสดอยู่ในขณะนี้",
-      "cannotEmbed": "ไม่สามารถเล่น {{name}} ที่นี่ได้ — อาจถูกจำกัดในภูมิภาคของคุณ (ข้อผิดพลาด {{code}})",
-      "botCheck": "YouTube กำลังขอให้ลงชื่อเข้าใช้เพื่อเล่น {{name}}",
       "signInToYouTube": "ลงชื่อเข้าใช้ YouTube",
       "openOnYouTube": "เปิดบน YouTube",
       "manage": "จัดการช่อง",
       "addChannel": "เพิ่มช่อง",
       "remove": "ลบ",
-      "youtubeHandle": "YouTube handle (เช่น @Channel)",
-      "youtubeHandleOrUrl": "แฮนเดิล YouTube หรือ URL",
       "displayName": "ชื่อที่แสดง (ไม่บังคับ)",
       "channelSettings": "การตั้งค่าช่อง",
       "save": "บันทึก",
@@ -2004,12 +2013,24 @@
       "regionMiddleEast": "ตะวันออกกลาง",
       "regionAfrica": "แอฟริกา",
       "regionOceania": "โอเชียเนีย",
-      "invalidHandle": "ป้อนแฮนเดิล YouTube ที่ถูกต้อง (เช่น @ชื่อช่อง)",
       "verifying": "กำลังตรวจสอบ…",
       "hlsUrl": "URL สตรีม HLS (ไม่บังคับ)",
       "invalidHlsUrl": "กรุณากรอก URL สตรีม HLS (.m3u8) ที่ถูกต้อง",
       "playLiveFeed": "เล่นฟีดสด",
-      "readyStatus": "พร้อมเมื่อคุณพร้อม"
+      "readyStatus": "พร้อมเมื่อคุณพร้อม",
+      "embedBlocked": "YouTube จะไม่เล่น {{name}} ภายในเว็บไซต์อื่นในตอนนี้",
+      "unavailable": "{{name}} ไม่สามารถเล่นได้ในตอนนี้",
+      "noStream": "ยังไม่มีการตั้งค่าการถ่ายทำสดสำหรับ {{name}}",
+      "needsChannelUrl": "เพิ่ม {{name}} อีกครั้งพร้อมกับ URL ช่องของมัน (youtube.com/channel/UC…) หรือ URL วิดีโอสดสำหรับ",
+      "insecureStream": "{{name}} ใช้สตรีมที่ไม่ปลอดภัย (http) ซึ่งเบราว์เซอร์จะบล็อก เพิ่มอีกครั้งพร้อมกับ URL สตรีมที่ปลอดภัย (https)",
+      "connecting": "กำลังเชื่อมต่อกับ {{name}}…",
+      "recording": "กำลังบันทึก",
+      "unverified": "ไม่สามารถยืนยันว่าสตรีมนี้ออนไลน์",
+      "playNextChannel": "เล่นช่องถัดไป",
+      "channelOrVideoUrl": "URL ช่อง YouTube หรือ URL วิดีโอ",
+      "channelUrlHint": "วางลิงก์ URL ช่อง (youtube.com/channel/UC…) หรือ URL วิดีโอสด",
+      "youtubeChannel": "ช่อง YouTube",
+      "httpsStreamHint": "เบราว์เซอร์จะบล็อกสตรีมที่ไม่ปลอดภัย (http) วาง URL สตรีมที่ปลอดภัย (https)"
     },
     "map": {
       "showMap": "แสดงแผนที่",
@@ -2163,7 +2184,7 @@
       "infoTooltip": "<strong>ปฏิทินเศรษฐกิจ</strong> การเผยแพร่ข้อมูลเศรษฐกิจมหภาคตามกำหนด: CPI, NFP, GDP, PMI และการตัดสินใจของธนาคารกลาง แสดงคาดการณ์ เทียบกับจริง เทียบกับก่อนหน้า เหตุการณ์ที่มีผลกระทบสูงถูกเน้น แหล่งข้อมูล: ผู้ให้บริการข้อมูลเศรษฐกิจ"
     },
     "fsi": {
-      "infoTooltip": "<strong>ตัวบ่งชี้ความเครียดทางการเงิน</strong> ดัชนีความเครียดทางการเงินของ Fed แคนซัสซิตี (KCFSI): วัดความเครียดในตลาดการเงินสหรัฐฯ โดยใช้ตัวบ่งชี้ 11 ตัว รวมถึงสเปรดผลตอบแทน ความผันผวน และสหสัมพันธ์ข้าม ค่าบวกบ่งชี้ความเครียดเหนือค่าเฉลี่ย แหล่งข้อมูล: Federal Reserve Bank of Kansas City",
+      "infoTooltip": "<strong>ตัวบ่งชี้ความเครียดทางการเงิน</strong> อัตราส่วนของ WorldMonitor ระหว่างเครดิตผลตอบแทนสูงกับพันธบัตรรัฐบาลสหรัฐฯ ระยะยาว ซึ่งปรับด้วยความผันผวนของหุ้นและส่วนต่างผลตอบแทนสูง: (HYG / TLT) / (VIX × HY spread / 100) นี่ไม่ใช่ดัชนีความเครียดทางการเงินของธนาคารกลางสหรัฐฯ สาขาแคนซัสซิตี ค่า 1.5 หรือสูงกว่าหมายถึงความเครียดต่ำ; ต่ำกว่า 0.3 หมายถึงความเครียดสูง",
       "title": "ตัวชี้วัดความเครียดทางการเงิน",
       "usFsiValue": "ค่า FSI ของสหรัฐฯ",
       "cissTitle": "EU CISS (ความเครียดระบบในพื้นที่ยูโร)",
@@ -2613,7 +2634,14 @@
       "empty": "ไม่พบการบรรจบกันที่ใช้งานอยู่",
       "signals_other": "{{count}} สัญญาณ",
       "analyzing": "กำลังวิเคราะห์...",
-      "viewOnMap": "ดูบนแผนที่"
+      "viewOnMap": "ดูบนแผนที่",
+      "waiting": "กำลังรอการอัปเดตข้อมูลครั้งถัดไป แผงนี้จะอัปเดตโดยอัตโนมัติ",
+      "offline": "กำลังรอการเชื่อมต่อ แผงนี้จะอัปเดตโดยอัตโนมัติเมื่อคุณกลับมาออนไลน์",
+      "updated": "อัปเดต {{time}}",
+      "saved": "การอัปเดตล่าสุดที่ทราบ {{time}} · กำลังตรวจสอบการอัปเดต",
+      "savedOffline": "การอัปเดตล่าสุดที่ทราบ {{time}} · ออฟไลน์",
+      "localSignals": "อ้างอิงจากสัญญาณที่โหลดในแดชบอร์ด",
+      "emptySaved": "ไม่พบการบรรจบกันในการอัปเดตล่าสุดที่ทราบ"
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2770,6 +2798,55 @@
       "succeeded": "บันทึกพาสคีย์แล้ว คุณสามารถใช้ได้ในครั้งต่อไปที่คุณลงชื่อเข้า",
       "retryable": "ไม่เสร็จสิ้น คุณสามารถลองใหม่ได้",
       "failed": "เราไม่สามารถบันทึกพาสคีย์บนอุปกรณ์นี้ได้"
+    },
+    "decisionBrief": {
+      "commodityTitle": "สรุปการตัดสินใจด้านสินค้าโภคภัณฑ์",
+      "commodity": "สินค้าโภคภัณฑ์ / ผลิตภัณฑ์",
+      "blockedChokepoint": "จุดคอขวดที่สมมติว่าถูกปิดกั้น",
+      "commodityCapture": "บันทึกการเปรียบเทียบสินค้าโภคภัณฑ์",
+      "title": "สรุปเพื่อการตัดสินใจ",
+      "fuel": "เชื้อเพลิง",
+      "chokepoint": "จุดคอขวด",
+      "baseline": "การหยุดชะงักพื้นฐาน",
+      "comparison": "การหยุดชะงักที่เปรียบเทียบ",
+      "capture": "ดึง / รีเฟรชทั้งสอง",
+      "downloadHtml": "ดาวน์โหลดสรุป HTML",
+      "downloadJson": "ดาวน์โหลดสรุป JSON",
+      "back": "← กลับไปยังสรุปประเทศ",
+      "select": "เลือกการหยุดชะงักของพลังงาน แล้วดึงข้อมูลทั้งสองสถานการณ์",
+      "changed": "เปลี่ยนตัวเลือกแล้ว โปรดดึงทั้งสองสถานการณ์ก่อนส่งออก",
+      "loading": "กำลังดึงทั้งสองสถานการณ์…",
+      "captured": "ดึงข้อมูลแล้ว ตรวจสอบวันที่สังเกตและข้อจำกัดก่อนดาวน์โหลด",
+      "failed": "ไม่สามารถดึงสถานการณ์ได้ ตรวจสอบสิทธิ์การเข้าถึงแล้วลองอีกครั้ง ไม่มีผลลัพธ์ให้ส่งออก",
+      "locked": "สรุปเพื่อการตัดสินใจพร้อมใช้งานใน Pro"
+    },
+    "liveMedia": {
+      "idleStatus": "หยุดชั่วคราวเนื่องจากไม่มีกิจกรรม",
+      "idleBody": "วิดีโอสดหยุดหลังจาก {{duration}} โดยไม่มีกิจกรรมเมาส์ แป้นพิมพ์ หรือสัมผัส",
+      "idleResume": "เล่นต่อ",
+      "idleKeepPlaying": "เล่นต่อเมื่อไม่มีกิจกรรม",
+      "idleSettingsHint": "เปลี่ยนได้ตลอดเวลาในการตั้งค่า › Media",
+      "idleKeepPlayingToast": "วิดีโอสดจะเล่นต่อเมื่อไม่มีกิจกรรม เปลี่ยนในการตั้งค่า › Media"
+    },
+    "corroboration": {
+      "singlePublisher": "สำนักพิมพ์เดียว",
+      "singlePublisherHint": "มีเพียงสำนักพิมพ์เดียวที่รายงานข้อมูลนี้ในขณะนี้ สิ่งนี้อธิบายถึงความครอบคลุมของข่าว ไม่ใช่ความแม่นยำ",
+      "tier4Only": "แหล่งข้อมูลระดับต่ำเท่านั้น",
+      "tier4OnlyHint": "ทุกหน่วยข่าวที่รายงานเรื่องนี้เป็นแหล่งข้อมูลระดับ 4 (เว็บไซต์รวมข้อมูลและบล็อก) สิ่งนี้อธิบายถึงความครอบคลุมของข่าว ไม่ใช่ความแม่นยำ",
+      "rosterListed": "({{listed}} ในรายการ)",
+      "rosterFeeds": "ฟีดที่พบ: {{labels}}",
+      "rosterLegend": "ระดับแสดงอันดับแหล่งข่าว ไม่ใช่การตัดสินข้อมูลข่าวสารนี้",
+      "tierDocsLink": "วิธีการกำหนดระดับ",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "ระดับ 1: สำนักข่าวและหน่วยงานทางการ",
+      "tierTitle2": "ระดับ 2: สื่อหลัก",
+      "tierTitle3": "ระดับ 3: แหล่งข่าวเฉพาะด้าน ระดับภูมิภาค และสถาบันคลังสมอง",
+      "tierTitle4": "ระดับ 4: เว็บรวบรวมข่าวและบล็อก",
+      "tierTitleUndeclared": "ระดับไม่ได้รับการระบุ: ยังไม่ได้ตรวจสอบ",
+      "rosterSummary": "รายงานโดย {{publishers}}",
+      "rosterSummaryTier1": "รายงานโดย {{publishers}} รวมถึงระดับ 1 จำนวน {{tier1}} แห่ง",
+      "rosterPublishers_other": "{{count}} สำนักข่าว"
     }
   },
   "popups": {
@@ -2808,14 +2885,18 @@
     "protest": {
       "acledVerified": "ACLED (ยืนยันแล้ว)",
       "gdelt": "GDELT",
+      "records": "รายการ",
+      "mediaSignal": "สัญญาณจากสื่อที่ยังไม่ยืนยัน",
+      "relatedArticle": "บทความที่เกี่ยวข้อง",
+      "mediaSignalDetail": "สถานที่นี้ถูกกล่าวถึงในบทความเกี่ยวกับความไม่สงบ ยังไม่มีการยืนยันเหตุการณ์ในพื้นที่",
       "riots": "จลาจล",
       "highSeverity": "ความรุนแรงสูง"
     },
     "gpsJamming": {
-      "title": "การรบกวน GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "title": "การรบกวนสัญญาณ GPS/GNSS",
+      "navPerformance": "อากาศยานที่ได้รับผลกระทบ",
+      "samples": "จำนวนอากาศยานที่ได้รับผลกระทบ",
+      "aircraft": "จำนวนอากาศยานที่ตรวจพบทั้งหมด",
       "h3Hex": "H3 Hex"
     },
     "flight": {

@@ -84,6 +84,24 @@ Errors: 401 (missing/invalid JWT), 403 `pro_required` — and, like every Pro-ga
 
 - **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key with an identical body replays the original enqueue response instead of publishing the notification again.
 
+#### Caller-submitted field policy
+
+`payload.title`, `payload.source`, `payload.link`, `payload.url` and `payload.description` reach the email subject and body, the Telegram/Slack/Discord text, and the web-push click target, so they are shaped at this boundary before the event is queued (issue #8397). Fields are neutralised individually — an event is never rejected for its content:
+
+- **`title`** — control characters, newlines and invisible formatting are stripped, the value is truncated to 200 characters, clickable URL tokens are replaced with `[link removed]`, and the result is prefixed `Community alert: ` so caller copy is never rendered as WorldMonitor's own.
+- **`source`** — preserved as submitted, unless it impersonates a first-party identity (matched after Unicode normalisation, confusable folding and punctuation stripping), in which case it becomes the neutral label `Community alert`. Real publisher attribution such as `Reuters` is kept.
+- **`link` / `url`** — must be `https` with no embedded credentials; anything else becomes the dashboard URL. An off-origin article link is delivered to text channels with its destination host disclosed inline (`<url> (source: <host>)`), and is never used as the web-push click target, which stays first-party.
+- **`description`** — same shaping as `title`, truncated to 400 characters.
+- `importanceScore` and `corroborationCount` are stripped; they are computed server-side.
+
+A `200` response carries `warnings` when any field was rewritten, so a caller can detect the change instead of discovering it from a malformed notification:
+
+```json
+{ "ok": true, "warnings": ["source_rewritten", "link_rewritten"] }
+```
+
+The field is omitted entirely when nothing was rewritten, so callers that ignore unknown keys are unaffected.
+
 ## Telegram
 
 ### `GET /api/telegram-feed`
@@ -96,13 +114,15 @@ For programmatic and partner access use the authenticated RPC [`GET /api/intelli
 
 ### `GET /api/youtube/embed?videoId=...`
 
-SSR'd YouTube embed iframe with CSP-compatible wrapping. Used to bypass WKWebView autoplay restrictions on the desktop app.
+Hosted YouTube iframe wrapper retained for compatibility. The current web app embeds YouTube directly; the desktop app uses the local sidecar's `/api/youtube-embed` route to handle WKWebView autoplay restrictions. Neither uses this hosted route.
+
+`origin` (the YouTube player origin) accepts enumerated app origins, team-pinned Vercel previews, localhost / `127.0.0.1`, and `tauri://localhost`. `parentOrigin` (the iframe `postMessage` target) accepts that same list plus `http(s)://tauri.localhost` and matching single-label `*.tauri.localhost` hosts. Vendor subdomains such as `clerk.worldmonitor.app` and `abacus.worldmonitor.app` remain excluded. A parent-only Tauri URL supplied as `origin` is rejected and falls back to the apex origin (`worldmonitor.app`).
 
 ### `GET /api/youtube/live?channel=<handle>` or `?videoId=<11-char-id>`
 
-Returns live-stream metadata for a YouTube channel (`channel` — handle with or without `@` prefix) or a specific video (`videoId` — 11-char YouTube id). At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise. Response cached 10 min for channel lookups, 1 hour for videoId lookups.
+Names a YouTube video for channel management. `videoId` (11-char YouTube id) returns the video's `title` and author (`channelName`) from YouTube oEmbed, fetched directly; the response is cached 1 hour. If oEmbed fails, the response is `200` with null `title` and `channelName` and is not cached. When both params are sent, the `videoId` lookup answers.
 
-Proxies to the Railway relay first (residential proxy for YouTube scraping). On relay failure, falls back to YouTube oEmbed (for `videoId`) or direct channel scraping — both are unreliable from datacenter IPs.
+Channel live detection is retired. A valid `channel` (handle with or without `@`, or a `UC…` channel id) without `videoId` returns `410 {"error":"channel_live_detection_retired"}`, cached 1 day, with no request to YouTube or the Railway relay. At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise, and `400` for a malformed handle, channel id or video id.
 
 ## Slack integration
 

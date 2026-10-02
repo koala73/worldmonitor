@@ -89,7 +89,7 @@ Good use cases:
 
 - earthquake alerts by magnitude and geography
 - natural-disaster overlays on infrastructure maps
-- supply-chain disruption triggers
+- [supply-chain disruption](https://www.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/) triggers
 - cable, nuclear, port, and airport exposure checks
 
 USGS tells you what happened geophysically. It does not tell you whether a government response is adequate, a port is closed, or a conflict party will exploit the disruption.

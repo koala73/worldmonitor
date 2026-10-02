@@ -43,6 +43,8 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   listMissionPresets: 'list_mission_presets',
   applyMissionPreset: 'apply_mission_preset',
   openMissionPicker: 'open_mission_picker',
+  listFollowedCountries: 'list_followed_countries',
+  setCountryFollowed: 'set_country_followed',
   getAccessContext: 'get_access_context',
   openSignIn: 'open_sign_in',
 } as const);
@@ -77,6 +79,8 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.listMissionPresets,
   WEBMCP_SPA_TOOL.applyMissionPreset,
   WEBMCP_SPA_TOOL.openMissionPicker,
+  WEBMCP_SPA_TOOL.listFollowedCountries,
+  WEBMCP_SPA_TOOL.setCountryFollowed,
   WEBMCP_SPA_TOOL.getAccessContext,
   WEBMCP_SPA_TOOL.openSignIn,
 ] as const;

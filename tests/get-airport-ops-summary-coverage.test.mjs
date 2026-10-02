@@ -15,6 +15,7 @@
 
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 
 let getAirportOpsSummary;
 let defaultWatchedAirports;
@@ -188,11 +189,35 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
   });
 
   it('total delay-cache miss reports degraded UNKNOWN', async () => {
-    const response = await getAirportOpsSummary({}, { airports: 'LHR' });
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+    const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
     const lhr = summaryFor(response, 'LHR');
     assert.equal(lhr.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
     assert.equal(lhr.source, 'degraded');
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1',
+      'an unavailable required delay seed must not become a cacheable UNKNOWN response');
   });
+
+  it('marks malformed required delay seeds as non-cacheable while preserving UNKNOWN coverage', async () => {
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+    cacheStore.set(DELAYS_KEY, { alerts: 'not-an-array' });
+
+    const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
+    const lhr = summaryFor(response, 'LHR');
+    assert.equal(lhr.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+  });
+
+  for (const payload of [{ alerts: [null] }, { alerts: [], coverage: [null] }]) {
+    it('marks malformed nested delay rows as non-cacheable', async () => {
+      const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+      cacheStore.set(DELAYS_KEY, payload);
+
+      const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
+      assert.equal(summaryFor(response, 'LHR').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+    });
+  }
 
   it('an ordinary UI-reachable unmonitored IATA reports UNKNOWN', async () => {
     cacheStore.set(DELAYS_KEY, { alerts: [], coverage: [] });
@@ -230,5 +255,36 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
     assert.deepEqual(saw.notamFlags, ['RESTRICTED', 'NOTAM']);
     assert.deepEqual(saw.topDelayReasons, ['Runway access restricted by active NOTAM']);
     assert.equal(saw.source, 'unknown');
+  });
+});
+
+describe('airport ops input admission', () => {
+  for (const airports of [
+    Array(21).fill('LHR'), Array(21).fill('LHR').join(','),
+    'LHR,INVALID', '12A', 'LHR'.repeat(1000),
+    ['LHR', 123], ['LHR', {}], { airport: 'LHR' },
+  ]) it(`rejects invalid airport input before I/O: ${JSON.stringify(airports).slice(0, 70)}`, async () => {
+    const fetchImpl = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async (...args) => { calls++; return fetchImpl(...args); };
+    try {
+      await assert.rejects(getAirportOpsSummary({}, { airports }), error => error.statusCode === 400);
+      assert.equal(calls, 0);
+    } finally { globalThis.fetch = fetchImpl; }
+  });
+
+  it('accepts twenty valid codes and bounds unknown rows', async () => {
+    const airports = Array.from({ length: 20 }, (_, i) => `AA${String.fromCharCode(65 + i)}`);
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary');
+    const response = await getAirportOpsSummary({ request }, { airports });
+    assert.equal(response.summaries.length, 20);
+    assert.deepEqual(new Set(response.summaries.map(row => row.iata)), new Set(airports));
+  });
+
+  it('normalizes and deduplicates while preserving valid unknown-airport rows', async () => {
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary');
+    const response = await getAirportOpsSummary({ request }, { airports: ' lhr ,LHR,ncl,NCL' });
+    assert.deepEqual(response.summaries.map(row => row.iata), ['LHR', 'NCL']);
+    assert.equal(summaryFor(response, 'NCL').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
   });
 });

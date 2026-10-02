@@ -10,8 +10,10 @@
  * Contract under test (pure module, no Clerk/Dodo imports so it runs
  * under the tsx --test harness):
  *   1. Every attempt carries the SAME Idempotency-Key (server dedupe).
- *   2. Retryable statuses (502/503/504) get exactly ONE retry after a
- *      delay; the second response is returned as-is.
+ *   2. Retryable statuses (the gateway trio plus the Cloudflare 520-525
+ *      origin-reachability family) get exactly ONE retry after a delay; the
+ *      second response is returned as-is. The Cloudflare statuses that no
+ *      retry can clear (526/530) are excluded.
  *   3. Non-retryable statuses (including application/provider 500s) return immediately.
  *   4. Fast network failures (fetch rejects with TypeError) retry once.
  *   5. Timeout/abort failures do NOT retry — the user already waited a
@@ -145,11 +147,31 @@ describe('postCreateCheckout transport', () => {
     assert.deepEqual(delays, []);
   });
 
-  it('retryable set is exactly {502, 503, 504} — pinned, not read back from the code', () => {
+  it('retryable set is exactly the gateway trio + Cloudflare 520-525 — pinned, not read back from the code', () => {
     // #5380: iterating RETRYABLE_CHECKOUT_STATUSES in the test below is
     // tautological on its own — shrinking or widening the set would silently
     // reshape the loop. Pin the literal contents here.
-    assert.deepEqual([...RETRYABLE_CHECKOUT_STATUSES].sort(), [502, 503, 504]);
+    assert.deepEqual(
+      [...RETRYABLE_CHECKOUT_STATUSES].sort((a, b) => a - b),
+      [502, 503, 504, 520, 521, 522, 523, 525],
+    );
+  });
+
+  it('does NOT retry the Cloudflare statuses a retry cannot help (524/526/530)', async () => {
+    // 526 is an invalid origin certificate and 530 wraps an origin DNS/Worker
+    // error: both are standing misconfigurations, so a retry only adds
+    // CHECKOUT_RETRY_DELAY_MS of dead wait before the same failure copy. 524
+    // is excluded for the opposite reason — Cloudflare emits it at its 100s
+    // origin deadline, so CHECKOUT_ATTEMPT_TIMEOUT_MS has aborted this client
+    // ~85s before it could arrive. Pinned so nobody "completes the family".
+    for (const status of [524, 526, 530]) {
+      const cfConfig = new Response('<!DOCTYPE html>', { status });
+      const { deps, calls, delays } = makeDeps([{ response: cfConfig }]);
+      const resp = await postCreateCheckout(deps, ARGS);
+      assert.equal(resp.status, status);
+      assert.equal(calls.length, 1, `status ${status} must not retry`);
+      assert.deepEqual(delays, [], `status ${status} must not pay the retry delay`);
+    }
   });
 
   it('treats every status in RETRYABLE_CHECKOUT_STATUSES as retryable', async () => {

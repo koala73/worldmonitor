@@ -140,6 +140,25 @@ export function hasCloudflareTransitProof(request) {
   return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
 }
 
+/**
+ * True when the caller presented `cf-connecting-ip` without a valid
+ * `x-wm-edge-proof` while `CF_EDGE_PROOF_SECRET` is configured.
+ *
+ * That state is either (a) a direct-to-Vercel spoof of the Cloudflare client
+ * IP header, or (b) Cloudflare-proxied traffic whose Transform Rule did not
+ * cover this route. IP-scoped rate limits must reject it rather than fall
+ * through to a shared PoP bucket (#8402). When the secret is unset, returns
+ * false so local/dev without the secret keep working.
+ * Keep in sync with server/_shared/client-ip.ts.
+ */
+export function hasUnprovenCloudflareClientIp(request) {
+  const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
+  if (!secret) return false;
+  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
+  if (!cf) return false;
+  return !hasCloudflareTransitProof(request);
+}
+
 // One-per-isolate warning that the edge-proof is not matching, so a missing
 // CF_EDGE_PROOF_SECRET or a Cloudflare rule that stopped covering this route
 // cannot regress silently. The dangerous state is cf-connecting-ip PRESENT

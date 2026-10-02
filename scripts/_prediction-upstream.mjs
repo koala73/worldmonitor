@@ -2,6 +2,8 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_POLYMARKET_LIMIT = 100;
 const DEFAULT_KALSHI_PAGE_SIZE = 200;
 const DEFAULT_KALSHI_MAX_PAGES = 5;
+const DEFAULT_KALSHI_MARKETS_PAGE_SIZE = 1000;
+const DEFAULT_KALSHI_SERIES_MARKET_MAX_PAGES = 5;
 
 function requestHeaders(userAgent) {
   return { Accept: 'application/json', 'User-Agent': userAgent };
@@ -81,4 +83,94 @@ export async function fetchKalshiEvents({
   }
 
   return events;
+}
+
+export async function fetchKalshiSeries({
+  fetchFn = globalThis.fetch,
+  baseUrl,
+  userAgent,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+} = {}) {
+  const params = new URLSearchParams({ include_volume: 'true' });
+  const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/series?${params}`, {
+    headers: requestHeaders(userAgent),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`Kalshi HTTP ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data?.series)) {
+    throw new Error('Kalshi invalid payload: expected series array');
+  }
+  return data.series;
+}
+
+export async function fetchKalshiMarketsBySeries(seriesTickers, {
+  fetchFn = globalThis.fetch,
+  baseUrl,
+  userAgent,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  pageSize = DEFAULT_KALSHI_MARKETS_PAGE_SIZE,
+  maxPagesPerSeries = DEFAULT_KALSHI_SERIES_MARKET_MAX_PAGES,
+  maxRequests = Number.POSITIVE_INFINITY,
+  onRequest,
+} = {}) {
+  const markets = [];
+  const uniqueTickers = [...new Set((seriesTickers ?? [])
+    .map((ticker) => String(ticker).trim())
+    .filter(Boolean))];
+  const parsedMaxRequests = Number(maxRequests);
+  const requestLimit = Number.isFinite(parsedMaxRequests)
+    ? Math.max(0, Math.floor(parsedMaxRequests))
+    : Number.POSITIVE_INFINITY;
+  let requestCount = 0;
+
+  for (const seriesTicker of uniqueTickers) {
+    const seenCursors = new Set();
+    let cursor = '';
+
+    for (let page = 0; page < maxPagesPerSeries; page += 1) {
+      if (requestCount >= requestLimit) {
+        throw new Error(`Kalshi markets request budget exceeded ${requestLimit} requests`);
+      }
+      const params = new URLSearchParams({
+        status: 'open',
+        series_ticker: seriesTicker,
+        limit: String(pageSize),
+        mve_filter: 'exclude',
+      });
+      if (cursor) params.set('cursor', cursor);
+
+      requestCount += 1;
+      onRequest?.({ requestCount, seriesTicker, page: page + 1 });
+      const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/markets?${params}`, {
+        headers: requestHeaders(userAgent),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw new Error(`Kalshi HTTP ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data?.markets)) {
+        throw new Error('Kalshi invalid payload: expected markets array');
+      }
+      markets.push(...data.markets);
+
+      const nextCursor = typeof data.cursor === 'string' ? data.cursor.trim() : '';
+      if (!nextCursor) {
+        cursor = '';
+        break;
+      }
+      if (seenCursors.has(nextCursor)) {
+        throw new Error(`Kalshi markets repeated cursor for ${seriesTicker}`);
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+
+    if (cursor) {
+      throw new Error(
+        `Kalshi markets pagination exceeded ${maxPagesPerSeries} pages for ${seriesTicker}`,
+      );
+    }
+  }
+
+  return markets;
 }

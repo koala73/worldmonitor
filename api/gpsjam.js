@@ -44,9 +44,11 @@ async function fetchGpsJamData() {
   if (now < negUntil) return null;
 
   let raw;
-  try { raw = await readJsonFromUpstash(REDIS_KEY); } catch { raw = null; }
+  // Seeder-owned keys (#7674): scripts/fetch-gpsjam.mjs publishes these bare —
+  // read them raw in every environment so preview sees the fleet rows.
+  try { raw = await readJsonFromUpstash(REDIS_KEY, 3_000, true); } catch { raw = null; }
   if (!raw) {
-    try { raw = await readJsonFromUpstash(REDIS_KEY_V1); } catch { raw = null; }
+    try { raw = await readJsonFromUpstash(REDIS_KEY_V1, 3_000, true); } catch { raw = null; }
   }
 
   if (!raw?.hexes) {

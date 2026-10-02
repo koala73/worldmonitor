@@ -55,6 +55,20 @@ beforeEach(() => {
   delete process.env.BOOTSTRAP_R2_SHADOW_MEASURE;
 });
 
+test('bootstrap removes expired EONET records without removing a companion with the same ID', async () => {
+  const payload = {
+    events: [{ id: 'shared', sourceName: 'GDACS' }, { id: 'shared', sourceName: 'NASA' }],
+    fetchedAt: 1,
+    eonetRetention: { retainedUntil: 2, eventIndexes: [1] },
+  };
+  installRedis(new Map([[NATURAL_EVENTS_KEY, payload]]));
+  const response = await handler(makePublicSlowRequest());
+  const body = await response.json();
+  assert.deepEqual(body.data.naturalEvents.events, [{ id: 'shared', sourceName: 'GDACS' }]);
+  assert.equal(body.data.naturalEvents.fetchedAt, 1);
+  assert.equal('eonetRetention' in body.data.naturalEvents, false);
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   restoreEnv();

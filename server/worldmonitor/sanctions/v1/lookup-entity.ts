@@ -7,6 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 
 const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
 const DEFAULT_MAX = 10;
@@ -84,14 +85,9 @@ function normalizeOpenSanctionsHit(hit: OpenSanctionsHit): SanctionEntityMatch |
  * `maxResults` stays in the key because a narrower response must never be
  * replayed to a caller that asked for a wider one.
  */
-function lookupCacheKey(q: string, maxResults: number): string {
+async function lookupCacheKey(q: string, maxResults: number): Promise<string> {
   const canonical = q.toLowerCase().replace(/\s+/g, ' ').trim();
-  let hash = 2166136261;
-  for (let i = 0; i < canonical.length; i += 1) {
-    hash ^= canonical.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `sanctions:lookup:v1:${(hash >>> 0).toString(36)}:${maxResults}`;
+  return `sanctions:lookup:v2:${await sha256Hex(canonical)}:${maxResults}`;
 }
 
 async function searchOpenSanctions(q: string, limit: number): Promise<{ results: SanctionEntityMatch[]; total: number } | null> {
@@ -182,7 +178,7 @@ export const lookupSanctionEntity: SanctionsServiceHandler['lookupSanctionEntity
   // persisted as one, hence cacheFetcherErrors: false.
   try {
     const upstream = await cachedFetchJson<{ results: SanctionEntityMatch[]; total: number }>(
-      lookupCacheKey(q, maxResults),
+      await lookupCacheKey(q, maxResults),
       OPENSANCTIONS_CACHE_TTL_SECONDS,
       () => searchOpenSanctions(q, maxResults),
       undefined,

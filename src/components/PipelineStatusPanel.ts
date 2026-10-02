@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { t } from '@/services/i18n';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
 import type {
@@ -22,6 +23,7 @@ import {
   setCachedPipelineRegistries,
   type RawPipelineRegistry,
 } from '@/shared/pipeline-registry-store';
+import { shouldErrorOnPipelineLiveResponse } from '@/shared/pipeline-live-paint';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
 
@@ -276,7 +278,10 @@ export class PipelineStatusPanel extends Panel {
         this.usedHydrationPaint = true;
       }
       const applyLive = (): void => {
-        if (live.upstreamUnavailable || !live.pipelines?.length) {
+        // upstreamUnavailable with rows means partial coverage (one of gas/oil
+        // missing). Match ChokepointStripPanel: keep useful data and warn in
+        // render(). Still refuse to cache a one-sided response above.
+        if (shouldErrorOnPipelineLiveResponse(live)) {
           this.showError('Pipeline registry unavailable', () => void this.fetchData());
           return;
         }
@@ -391,9 +396,13 @@ export class PipelineStatusPanel extends Panel {
     });
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
+    const coverageWarning = this.data.upstreamUnavailable
+      ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
+      : '';
 
     this.setSafeContent(unsafeRawHtml(`
       <div class="pp-wrap">
+        ${coverageWarning}
         <table class="pp-table">
           <thead>
             <tr>

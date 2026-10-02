@@ -184,7 +184,7 @@ function mountWidgetHtml(html) {
 //   - Upstash REST sliding-window ratelimit (pipeline / EVALSHA against the
 //     same host) → return null shape so the @upstash/ratelimit limiter
 //     degrades gracefully and doesn't add latency to every test.
-function installMockFetch({ riskPayload = null } = {}) {
+function installMockFetch({ riskPayload = null, keyOverrides = {} } = {}) {
   const NOW = Date.now();
   const META = { fetchedAt: NOW, recordCount: 1 };
 
@@ -223,10 +223,13 @@ function installMockFetch({ riskPayload = null } = {}) {
     // get_country_risk freshness wrap (resource-layer read, distinct from
     // the RPC's own fetch path)
     'seed-meta:intelligence:risk-scores': META,
+    ...keyOverrides,
   };
 
   globalThis.fetch = async (url, init) => {
     const u = url.toString();
+    if (u === 'https://www.worldmonitor.app/plugin/country.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="countryRoot"></main><script type="module" src="/plugin/assets/country-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+    if (u === 'https://www.worldmonitor.app/plugin/plugin.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main><script type="module" src="/plugin/assets/plugin-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
 
     // get_country_risk RPC — the sibling fetch dispatch._execute does.
     if (u.includes('/api/intelligence/v1/get-country-risk')) {
@@ -392,6 +395,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets.html',
       'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/news-dashboard.html',
+      'ui://worldmonitor/country-view-v1.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
@@ -543,9 +548,9 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
-    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://'));
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard.html', 'ui://worldmonitor/country-view-v1.html'].includes(u));
     const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri);
-    assert.deepEqual(uiUris, registryUiUris, 'fleet audit must cover every registered ui:// resource');
+    assert.deepEqual(uiUris, registryUiUris, 'inline-shell audit covers the inline registry; the compiled dashboard is checked in mcp-news-dashboard and browser tests');
 
     for (const uri of uiUris) {
       const res = await handler(envKeyReq(readBody(uri)));
@@ -646,7 +651,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           sourceProvenance: {
             risk: 'high', type: 'gov', riskDeclared: true, typeDeclared: true,
             riskReviewed: true, typeReviewed: true,
-            stateAffiliated: 'China',
+            stateAffiliated: 'China', knownBiases: [],
+            summary: 'Official government source. State-affiliated: China. Perspective: none recorded.',
           },
           category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
         }] } } },
@@ -654,12 +660,13 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
           sourceProvenance: {
             risk: 'unknown', type: 'unknown', riskDeclared: false, typeDeclared: false,
-            riskReviewed: false, typeReviewed: false,
+            riskReviewed: false, typeReviewed: false, knownBiases: [],
+            summary: 'Provenance not yet reviewed. Perspective: none recorded.',
           },
           category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source: China/, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /\? Unreviewed/],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source\. State-affiliated: China\. Perspective: none recorded\./, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
       },
       {
         uri: 'ui://worldmonitor/conflict-events.html',
@@ -1133,6 +1140,57 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(payload.sanctionsActive, false);
     assert.equal(payload.upstreamUnavailable, false);
   });
+
+  it('country-risk freshness uses the preview namespace that owns the risk data', async () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+
+    const productionFetchedAt = Date.now();
+    const previewFetchedAt = productionFetchedAt - 31 * 60_000;
+    installMockFetch({
+      keyOverrides: {
+        'seed-meta:intelligence:risk-scores': { fetchedAt: productionFetchedAt, recordCount: 1 },
+        'preview:deadbeef:seed-meta:intelligence:risk-scores': { fetchedAt: previewFetchedAt, recordCount: 1 },
+      },
+    });
+
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(payload.cached_at, new Date(previewFetchedAt).toISOString());
+    assert.equal(payload.stale, true, 'preview risk data must use the preview freshness verdict');
+  });
+
+  for (const method of ['tools/call', 'resources/read']) {
+    it(`withholds cached corridor prose with a null baseline row through ${method}`, async () => {
+      const capture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/chokepoints-routing-advice-2026-09-10.json'), 'utf8'));
+      const captured = capture.body.chokepoints.find(cp => cp.id === 'hormuz_strait').transitSummary;
+      const baseline = { id: 'hormuz_strait', name: 'Strait of Hormuz' };
+      for (const advice of [captured.riskReportAction, undefined, null, { route: 'Suez', cost: '$50-80K' }]) {
+        const summary = { ...captured, todayTotal: null, riskSummary: advice, riskReportAction: advice };
+        installMockFetch({ keyOverrides: {
+          'supply_chain:transit-summaries:v1': { summaries: { hormuz_strait: summary }, fetchedAt: capture.retrievedAt },
+          'energy:chokepoint-baselines:v1': { chokepoints: [null, baseline, { id: 'suez' }] },
+        } });
+        const request = method === 'tools/call'
+          ? callBody('get_chokepoint_status', { chokepoint: 'hormuz' })
+          : readBody('worldmonitor://chokepoints/strait-of-hormuz/status');
+        const response = await handler(envKeyReq(request));
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.error, undefined);
+        const text = body.result.contents?.[0]?.text ?? body.result.content?.[0]?.text;
+        const payload = JSON.parse(text);
+        const served = payload.data['transit-summaries'].summaries.hormuz_strait;
+        assert.deepEqual(served, { ...summary, riskSummary: '', riskReportAction: '' });
+        assert.equal(payload.data['transit-summaries'].fetchedAt, capture.retrievedAt);
+        assert.deepEqual(payload.data['chokepoint-baselines'].chokepoints, [baseline]);
+        assert.doesNotMatch(text, /REROUTE|50-80K|Salalah/);
+      }
+    });
+  }
 
   it('resources/read worldmonitor://chokepoints/suez/status returns the transit-summary envelope with cached_at + stale', async () => {
     const res = await handler(envKeyReq(readBody('worldmonitor://chokepoints/suez/status')));

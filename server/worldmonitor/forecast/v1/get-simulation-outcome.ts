@@ -4,6 +4,7 @@ import type {
   GetSimulationOutcomeRequest,
   GetSimulationOutcomeResponse,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { getRawJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 // Both keys come from the shim — single source of truth. Importing
@@ -19,7 +20,7 @@ import {
   SIMULATION_OUTCOME_LATEST_KEY,
   SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX,
 } from '../../../../scripts/_simulation-queue-constants.mjs';
-import { listProcessingRunIds } from '../../../_shared/simulation-queue';
+import { listProcessingRunIds, validateRunId } from '../../../_shared/simulation-queue';
 
 type OutcomePointer = {
   runId: string;
@@ -90,6 +91,12 @@ export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'
   ctx: ServerContext,
   req: GetSimulationOutcomeRequest,
 ): Promise<GetSimulationOutcomeResponse> => {
+  if (req.runId !== undefined && req.runId !== '' && (
+    typeof req.runId !== 'string' || req.runId.length > 128
+    || req.runId !== req.runId.trim() || !validateRunId(req.runId)
+  )) {
+    throw new ApiError(400, 'Invalid simulation run ID', '');
+  }
   // Read path when caller supplied a specific runId:
   //   1. By-run hit (real outcome) → return it.
   //   2. By-run hit (tombstone payload) → fall through with the tombstone note text.

@@ -7,6 +7,11 @@ import {
   normalizeSearchExport,
   runCli,
 } from '../scripts/seo-ai-visibility-collector.mjs';
+import {
+  buildScorecard,
+  formatScorecardMarkdown,
+  runCli as runScorecardCli,
+} from '../scripts/seo-ai-visibility-scorecard.mjs';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -562,6 +567,111 @@ describe('SEO/AI visibility collector', () => {
     assert.deepEqual(
       Object.keys(baseline.opportunities[0]).sort(),
       ['evidence', 'experiment', 'priority', 'queryIds', 'successCriteria', 'title'],
+    );
+  });
+
+  it('imports independent Google Overview and Mode observations under contract v2', async () => {
+    const googleObservation = template.aiObservations.find(
+      ({ platform }) => platform === 'google_ai',
+    );
+    const sources = {
+      schemaVersion: 2,
+      googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
+      bingWebmaster: { status: 'unavailable', reason: 'No export.' },
+      referrals: { status: 'unavailable', reason: 'No export.' },
+      aiSurfaces: [
+        { platform: 'chatgpt_search', status: 'unavailable', reason: 'Not collected.' },
+        { platform: 'perplexity', status: 'unavailable', reason: 'Not collected.' },
+        { platform: 'google_ai_overview', status: 'available' },
+        { platform: 'google_ai_mode', status: 'available' },
+        { platform: 'copilot_search', status: 'unavailable', reason: 'Not collected.' },
+      ],
+      aiObservations: [
+        {
+          ...structuredClone(googleObservation),
+          platform: 'google_ai_overview',
+          prompt: 'must never be copied',
+        },
+        {
+          ...structuredClone(googleObservation),
+          platform: 'google_ai_mode',
+          directCitation: false,
+          citedUrls: [],
+          summary: 'Google AI Mode mentioned World Monitor without a direct citation.',
+          accountId: 'must never be copied',
+        },
+      ],
+    };
+
+    const current = collectBaseline({
+      template,
+      querySet,
+      sources,
+      observedAt,
+      repositoryRevision: 'test-revision',
+    });
+
+    assert.equal(current.schemaVersion, 2);
+    assert.deepEqual(
+      current.aiObservations.map(({ queryId, platform }) => ({ queryId, platform })),
+      [
+        { queryId: 'q01', platform: 'google_ai_overview' },
+        { queryId: 'q01', platform: 'google_ai_mode' },
+      ],
+    );
+    assert.equal(JSON.stringify(current).includes('must never be copied'), false);
+
+    const markdown = formatScorecardMarkdown(buildScorecard(querySet, current));
+    assert.match(markdown, /\| q01 \| Google AI Overview \|/);
+    assert.match(markdown, /\| q01 \| Google AI Mode \|/);
+
+    const directory = mkdtempSync(join(tmpdir(), 'seo-visibility-five-surface-'));
+    const sourcesPath = join(directory, 'sources.json');
+    const baselinePath = join(directory, 'baseline.json');
+    const scorecardPath = join(directory, 'scorecard.md');
+    writeFileSync(sourcesPath, JSON.stringify(sources));
+    try {
+      await runCli([
+        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
+        '--sources', sourcesPath,
+        '--observed-at', observedAt,
+        '--repository-revision', 'test-revision',
+        '--output', baselinePath,
+      ]);
+      await runScorecardCli([
+        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--baseline', baselinePath,
+        '--output', scorecardPath,
+      ]);
+      await runScorecardCli([
+        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--baseline', baselinePath,
+        '--output', scorecardPath,
+        '--check',
+      ]);
+      assert.equal(JSON.parse(readFileSync(baselinePath, 'utf8')).schemaVersion, 2);
+      assert.match(readFileSync(scorecardPath, 'utf8'), /Full target matrix: 125/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('requires an explicit five-surface availability manifest for contract v2', () => {
+    assert.throws(
+      () => collectBaseline({
+        template,
+        querySet,
+        sources: {
+          schemaVersion: 2,
+          googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
+          bingWebmaster: { status: 'unavailable', reason: 'No export.' },
+          referrals: { status: 'unavailable', reason: 'No export.' },
+        },
+        observedAt,
+        repositoryRevision: 'test-revision',
+      }),
+      /aiSurfaces is required for baseline schemaVersion 2/,
     );
   });
 

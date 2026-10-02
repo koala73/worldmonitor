@@ -1,4 +1,8 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import {
+  CHECKOUT_RETURN_SOURCE_PARAM,
+  DESKTOP_CHECKOUT_HANDOFF,
+} from '../../shared/checkout-attribution';
 
 const DASHBOARD_PATH = '/dashboard';
 
@@ -11,8 +15,8 @@ const DASHBOARD_PATH = '/dashboard';
 export const CHECKOUT_RETURN_PARAM = 'wm_checkout';
 export const CHECKOUT_RETURN_MARKER = 'return';
 /** Optional provenance for returns that cross the desktop WebView boundary. */
-export const CHECKOUT_SOURCE_PARAM = 'wm_src';
-export const DESKTOP_CHECKOUT_SOURCE = 'desktop';
+export const CHECKOUT_SOURCE_PARAM = CHECKOUT_RETURN_SOURCE_PARAM;
+export const DESKTOP_CHECKOUT_SOURCE = DESKTOP_CHECKOUT_HANDOFF;
 
 export type CheckoutReturnSource = typeof DESKTOP_CHECKOUT_SOURCE;
 

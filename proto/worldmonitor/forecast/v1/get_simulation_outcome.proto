@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.forecast.v1;
 
 import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 
 message GetSimulationOutcomeRequest {
   // Filter is active for outcomes within the 24h retention window (#3734).
@@ -14,7 +15,14 @@ message GetSimulationOutcomeRequest {
   //   - No match anywhere → falls back to :latest with a 'note' describing
   //     expiry-or-mismatch.
   // If runId is empty: returns :latest (existing behavior).
-  string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
+  // Nonempty IDs contain an epoch in milliseconds, a hyphen and a 1-64 character
+  // alphanumeric or hyphen suffix. Maximum total length is 128 characters.
+  string run_id = 1 [
+    (sebuf.http.query) = { name: "runId" },
+    (buf.validate.field).string.max_len = 128,
+    (buf.validate.field).string.pattern = "^([0-9]{13,}-[A-Za-z0-9-]{1,64})?$",
+    (sebuf.http.field_examples) = { values: ["1789387200000-abc123"] }
+  ];
 }
 
 message GetSimulationOutcomeResponse {

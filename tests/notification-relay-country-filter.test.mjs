@@ -27,7 +27,7 @@ const require = createRequire(import.meta.url);
 process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
 process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
 process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
-process.env.RELAY_SHARED_SECRET ??= 'stub-secret';
+process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
 process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
 
 // The relay's runtime deps live in scripts/package.json and are only installed
@@ -49,6 +49,23 @@ const {
 const { eventMatchesCountryScope } = require(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
 );
+const { publishSaudiCivilDefenseAlerts } = require('../scripts/lib/saudi-civil-defense-alerts.cjs');
+
+it('routes a Saudi Civil Defense producer event through the real country filter', async () => {
+  const now = Date.now();
+  const events = [];
+  await publishSaudiCivilDefenseAlerts([
+    { id: 'SaudiDCD:123', channel: 'SaudiDCD', ts: new Date(now).toISOString(), text: 'تحذير عاجل من السيول' },
+  ], {
+    now: () => now, readCache: async () => null, writeCache: async () => {},
+    classify: async () => [{ i: 0, l: 'high', c: 'disaster' }],
+    publish: async (event) => events.push(event),
+  });
+  assert.equal(events.length, 1);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: ['SA'] }), true);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: ['AE'] }), false);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: [] }), true);
+});
 
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),

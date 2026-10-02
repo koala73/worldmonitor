@@ -7,9 +7,10 @@
 // day 35 (EMPTY, crit) before health was willing to warn (STALE_SEED).
 //
 // The co-pin:
-//   cadence        35d  (bundle intervalMs)
-//   maxStaleMin    40d  (35d cadence + 5d late-publisher grace)
-//   data/meta TTL  70d  (2× cadence: last-good survives one missed monthly publish)
+//   gas interval   15d  (two runner eligibility windows fit in content headroom)
+//   oil interval   35d
+//   maxStaleMin    40d
+//   data/meta TTL  70d  (last-good survives one missed monthly publish)
 //
 // Escalation with data still served:
 //   day 0–40   OK (or STALE_CONTENT if the upstream file is frozen)
@@ -39,8 +40,10 @@ const { classifyKey, STANDALONE_KEYS, SEED_META } = __testing__;
 const DAY_SECONDS = 24 * 3600;
 const DAY_MIN = 24 * 60;
 const ONE_MIN_MS = 60_000;
-const CADENCE_DAYS = 35;
-const CADENCE_SECONDS = CADENCE_DAYS * DAY_SECONDS;
+const GAS_INTERVAL_DAYS = 15;
+const OIL_INTERVAL_DAYS = 35;
+const GAS_OBSERVED_LAG_DAYS = 197;
+const DAILY_CRON_MAX_DELAY_DAYS = 1;
 const NOW = Date.parse('2026-08-28T00:00:00.000Z');
 
 const CHINA_ROW = {
@@ -103,6 +106,16 @@ function jodiBundleIntervals() {
   return found;
 }
 
+function bundleFreshnessRatio() {
+  const runnerSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', '_bundle-runner.mjs'),
+    'utf8',
+  );
+  const match = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(runnerSrc);
+  assert.ok(match, 'expected the bundle runner freshness threshold');
+  return Number(match[1]);
+}
+
 test('JODI oil, gas, and LNG data TTLs outlive the 40-day STALE_SEED gate', () => {
   for (const { name, ttl } of JODI_CHECKS) {
     const maxStaleSeconds = SEED_META[name].maxStaleMin * 60;
@@ -115,30 +128,37 @@ test('JODI oil, gas, and LNG data TTLs outlive the 40-day STALE_SEED gate', () =
   }
 });
 
-test('JODI TTLs cover one missed 35-day publisher cycle', () => {
-  // Bundle cadence is 35d. A missed monthly publish means the next successful
-  // write is ~70d after the last one. Last-good must still be on the key when
-  // health starts warning at 40d, and through that missed cycle.
+test('JODI TTLs cover multiple bundle intervals', () => {
   assert.ok(
-    JODI_TTL >= 2 * CADENCE_SECONDS,
-    `JODI_TTL (${JODI_TTL}s) must cover at least two 35-day cadences (${2 * CADENCE_SECONDS}s)`,
+    JODI_TTL >= 2 * OIL_INTERVAL_DAYS * DAY_SECONDS,
+    `JODI_TTL must cover at least two ${OIL_INTERVAL_DAYS}-day oil intervals`,
   );
   assert.ok(
-    GAS_TTL >= 2 * CADENCE_SECONDS,
-    `GAS_TTL (${GAS_TTL}s) must cover at least two 35-day cadences (${2 * CADENCE_SECONDS}s)`,
+    GAS_TTL >= 2 * GAS_INTERVAL_DAYS * DAY_SECONDS,
+    `GAS_TTL must cover at least two ${GAS_INTERVAL_DAYS}-day gas intervals`,
   );
 });
 
-test('the energy-sources bundle still throttles both JODI members at 35 days', () => {
+test('JODI gas and LNG content budget covers an unchanged fetch plus the next eligible fetch', () => {
+  const eligibilityGapDays = GAS_INTERVAL_DAYS * bundleFreshnessRatio()
+    + DAILY_CRON_MAX_DELAY_DAYS;
+  assert.ok(
+    MAX_JODI_GAS_CONTENT_AGE_MIN
+      >= (GAS_OBSERVED_LAG_DAYS + 2 * eligibilityGapDays) * DAY_MIN,
+    `the ${MAX_JODI_GAS_CONTENT_AGE_MIN / DAY_MIN}-day gas/LNG budget must cover two ${eligibilityGapDays}-day eligibility gaps after the observed ${GAS_OBSERVED_LAG_DAYS}-day lag`,
+  );
+});
+
+test('the energy-sources bundle uses the budget-safe JODI intervals', () => {
   const intervals = jodiBundleIntervals();
   assert.equal(intervals.length, 2, 'expected JODI-Gas and JODI-Oil bundle sections');
-  for (const { label, intervalMs } of intervals) {
-    assert.equal(
-      intervalMs,
-      CADENCE_SECONDS * 1000,
-      `${label} cadence drifted from the 35-day monthly throttle`,
-    );
-  }
+  assert.deepEqual(
+    Object.fromEntries(intervals.map(({ label, intervalMs }) => [label, intervalMs])),
+    {
+      'JODI-Gas': GAS_INTERVAL_DAYS * DAY_SECONDS * 1000,
+      'JODI-Oil': OIL_INTERVAL_DAYS * DAY_SECONDS * 1000,
+    },
+  );
 });
 
 test('oil and gas write seed-meta with the same TTL as the data keys', () => {
@@ -168,9 +188,9 @@ test('oil and gas write seed-meta with the same TTL as the data keys', () => {
   );
 });
 
-test('the 35–40 day boundary keeps last-good and does not report EMPTY', () => {
-  // Day 37: past the 35d cadence, still inside the 40d grace. Data is present
-  // because TTL is 70d. Health must not jump to EMPTY.
+test('the interval-to-40-day boundary keeps last-good and does not report EMPTY', () => {
+  // Day 37: past both the 15d gas and 35d oil intervals, but still inside the
+  // 40d health grace. The 70d TTL must keep data present instead of EMPTY.
   const ageMin = 37 * DAY_MIN;
   for (const { name } of JODI_CHECKS) {
     const entry = classify(name, { ageMin });

@@ -1,30 +1,96 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { createTempDir } from './helpers/temp-dir.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/deploy-railway-reconcile-control.yml');
 const source = readFileSync(workflowPath, 'utf8');
 const workflow = YAML.parse(source);
+const expectedDeployPaths = [
+  'workers/railway-reconcile-control/**',
+  'scripts/railway-reconcile-control-client.mjs',
+  '.github/workflows/deploy-railway-reconcile-control.yml',
+  'tests/deploy-railway-reconcile-control-workflow.test.mjs',
+];
+const fence = workflow.jobs.deploy.steps.find((step) => step.name === 'Fence stale main deployment');
+
+const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+const localGitVariables = spawnSync('git', ['rev-parse', '--local-env-vars'], {
+  encoding: 'utf8',
+}).stdout.trim().split('\n').filter(Boolean);
+for (const name of localGitVariables) delete gitEnv[name];
 
 function assertBashSyntax(script) {
   const result = spawnSync('bash', ['-n'], { input: script, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
 }
 
+function runGit(cwd, args) {
+  const result = spawnSync('git', args, { cwd, env: gitEnv, encoding: 'utf8' });
+  assert.equal(result.status, 0, `${args.join(' ')}\n${result.stderr || result.stdout}`);
+  return result.stdout.trim();
+}
+
+function writeFixtureFile(root, path, contents) {
+  const absolutePath = join(root, path);
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, contents);
+}
+
+function commitFixture(root, message) {
+  runGit(root, ['add', '-A']);
+  runGit(root, ['commit', '--quiet', '-m', message]);
+  return runGit(root, ['rev-parse', 'HEAD']);
+}
+
+function createFenceFixture(t) {
+  const root = createTempDir('wm-reconcile-deploy-fence-', t);
+  runGit(root, ['init', '--quiet', '--initial-branch=main', '.']);
+  runGit(root, ['config', 'user.name', 'Reconcile Deploy Fence Fixture']);
+  runGit(root, ['config', 'user.email', 'reconcile-fence@wm-fixture.localhost']);
+  for (const path of expectedDeployPaths) {
+    writeFixtureFile(root, concreteDeployPath(path), 'base\n');
+  }
+  writeFixtureFile(root, 'README.md', 'base\n');
+  const eventSha = commitFixture(root, 'event revision');
+  runGit(root, ['remote', 'add', 'origin', root]);
+  return { eventSha, root };
+}
+
+function runFence(root, eventSha) {
+  assert.ok(fence?.run, 'workflow must define the deployment fence');
+  return spawnSync('bash', ['-c', fence.run], {
+    cwd: join(root, 'workers/railway-reconcile-control'),
+    env: { ...gitEnv, GITHUB_SHA: eventSha },
+    encoding: 'utf8',
+  });
+}
+
+function withFenceFixture(t, run) {
+  return run(createFenceFixture(t));
+}
+
+function concreteDeployPath(path) {
+  return path.endsWith('/**') ? `${path.slice(0, -3)}/index.js` : path;
+}
+
+function fenceDeployPaths(script) {
+  const match = script.match(/deploy_paths=\(\n([\s\S]*?)\n\s*\)/);
+  assert.ok(match, 'deployment fence must declare its compared path closure');
+  return [...match[1].matchAll(/^\s*'([^']+)'\s*$/gm)].map((entry) => entry[1]);
+}
+
 describe('Railway reconcile control deployment workflow', () => {
   it('deploys only from main changes to the isolated Worker or its deployment contract', () => {
     assert.deepEqual(workflow.on.push.branches, ['main']);
-    assert.deepEqual(new Set(workflow.on.push.paths), new Set([
-      'workers/railway-reconcile-control/**',
-      '.github/workflows/deploy-railway-reconcile-control.yml',
-      'tests/deploy-railway-reconcile-control-workflow.test.mjs',
-    ]));
+    assert.deepEqual(workflow.on.push.paths, expectedDeployPaths);
     assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
   });
 
@@ -44,6 +110,9 @@ describe('Railway reconcile control deployment workflow', () => {
       const install = workflow.jobs[jobName].steps.find((step) => step.name === 'Install');
       assert.match(install.run, /npm ci --ignore-scripts/);
     }
+    const deployCheckout = workflow.jobs.deploy.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(deployCheckout.with['fetch-depth'], 0);
+    assert.equal(deployCheckout.with.filter, 'blob:none');
   });
 
   it('requires all four route credentials plus one server-owned scope', () => {
@@ -83,9 +152,12 @@ describe('Railway reconcile control deployment workflow', () => {
     assert.ok(workflow.jobs.deploy.steps.some((step) => step.name === 'Deploy' && /wrangler deploy/.test(step.run)));
     const deploy = workflow.jobs.deploy.steps.find((step) => step.name === 'Deploy');
     assert.match(deploy.run, /DEPLOYMENT_SHA:\$GITHUB_SHA/);
-    const fence = workflow.jobs.deploy.steps.find((step) => step.name === 'Fence stale main deployment');
-    assert.match(fence.run, /git fetch --no-tags origin main/);
-    assert.match(fence.run, /git rev-parse origin\/main/);
+    assert.match(fence.run, /git .*fetch --no-tags origin/);
+    assert.match(fence.run, /refs\/remotes\/origin\/main/);
+    assert.match(fence.run, /merge-base --is-ancestor/);
+    assert.match(fence.run, /diff --quiet --no-renames/);
+    assert.deepEqual(fenceDeployPaths(fence.run), workflow.on.push.paths);
+    assertBashSyntax(fence.run);
     const objectSmoke = workflow.jobs.deploy.steps.find((step) => step.name === 'Smoke canonical Durable Object');
     assert.equal(
       objectSmoke.env.RAILWAY_RECONCILE_WATCHDOG_HMAC,
@@ -121,5 +193,61 @@ describe('Railway reconcile control deployment workflow', () => {
         assert.match(step.uses, /^[^@]+@[0-9a-f]{40}$/i, step.uses);
       }
     }
+  });
+
+  it('admits the exact event revision and an unrelated descendant of it', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
+      const exact = runFence(root, eventSha);
+      assert.equal(exact.status, 0, exact.stderr || exact.stdout);
+
+      writeFixtureFile(root, 'README.md', 'unrelated change\n');
+      commitFixture(root, 'unrelated main advance');
+      const advanced = runFence(root, eventSha);
+      assert.equal(advanced.status, 0, advanced.stderr || advanced.stdout);
+    });
+  });
+
+  it('rejects a descendant change under every deployment trigger path', (t) => {
+    for (const path of expectedDeployPaths) {
+      withFenceFixture(t, ({ eventSha, root }) => {
+        writeFixtureFile(root, concreteDeployPath(path), `changed ${path}\n`);
+        commitFixture(root, `change ${path}`);
+        const result = runFence(root, eventSha);
+        assert.notEqual(result.status, 0, `${path} must reject\n${result.stdout}`);
+      });
+    }
+  });
+
+  it('admits a descendant whose deployment paths return to the event tree', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
+      const path = concreteDeployPath(expectedDeployPaths[0]);
+      writeFixtureFile(root, path, 'temporary change\n');
+      commitFixture(root, 'temporary deployment change');
+      writeFixtureFile(root, path, 'base\n');
+      commitFixture(root, 'restore deployment tree');
+      const result = runFence(root, eventSha);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+    });
+  });
+
+  it('rejects divergent history and missing comparison evidence', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
+      const tree = runGit(root, ['rev-parse', 'HEAD^{tree}']);
+      const divergentSha = runGit(root, ['commit-tree', tree, '-m', 'divergent main']);
+      runGit(root, ['update-ref', 'refs/heads/main', divergentSha]);
+      const divergent = runFence(root, eventSha);
+      assert.notEqual(divergent.status, 0, divergent.stdout);
+    });
+
+    withFenceFixture(t, ({ root }) => {
+      const missing = runFence(root, 'f'.repeat(40));
+      assert.notEqual(missing.status, 0, missing.stdout);
+    });
+
+    withFenceFixture(t, ({ eventSha, root }) => {
+      runGit(root, ['remote', 'remove', 'origin']);
+      const unreadable = runFence(root, eventSha);
+      assert.notEqual(unreadable.status, 0, unreadable.stdout);
+    });
   });
 });

@@ -7,7 +7,7 @@
  * naming rule, the underscore is documentation that this isn't a public
  * action/query/mutation).
  *
- * Two API quirks are encoded here so both callers behave identically:
+ * Three API quirks are encoded here so both callers behave identically:
  *
  *   1. Resend's `POST /contacts` accepts a `segments: [{ id }]` body but
  *      DOES NOT apply that field on the duplicate-shaped 422 path. So a
@@ -21,6 +21,10 @@
  *   2. The 422 duplicate-error shape is heuristically matched on `name`
  *      and `message` because Resend doesn't pin the field — see
  *      `isDuplicateContactError` below.
+ *
+ *   3. A duplicate contact can be globally unsubscribed. Read its contact
+ *      state before attaching it to a segment, and fail closed if that
+ *      state is absent or malformed.
  */
 
 export const RESEND_API_BASE = "https://api.resend.com";
@@ -49,16 +53,23 @@ export function isDuplicateContactError(body: unknown): boolean {
   return false;
 }
 
+function parseContactUnsubscribed(body: unknown): boolean | null {
+  if (!body || typeof body !== "object") return null;
+  const { unsubscribed } = body as { unsubscribed?: unknown };
+  return typeof unsubscribed === "boolean" ? unsubscribed : null;
+}
+
 export type UpsertOutcome =
   | { kind: "created" }
   | { kind: "linkedExisting" }
   | { kind: "alreadyInSegment" }
+  | { kind: "unsubscribed" }
   | { kind: "failed"; reason: string };
 
 /**
- * Two-step contact-to-segment upsert that guarantees the contact ends up
- * in `segmentId` regardless of pre-existing global state. See file
- * docstring for the API quirk this works around.
+ * Two-step contact-to-segment upsert. A globally unsubscribed existing
+ * contact returns `unsubscribed` without being attached to `segmentId`.
+ * See the file docstring for the API quirks this handles.
  */
 export async function upsertContactToSegment(
   apiKey: string,
@@ -75,7 +86,6 @@ export async function upsertContactToSegment(
     body: JSON.stringify({
       email,
       segments: [{ id: segmentId }],
-      unsubscribed: false,
     }),
   });
 
@@ -86,11 +96,40 @@ export async function upsertContactToSegment(
     if (!isDuplicateContactError(createBody)) {
       return {
         kind: "failed",
-        reason: `POST /contacts 422 (non-duplicate): ${JSON.stringify(createBody)}`,
+        reason: "POST /contacts 422 (non-duplicate)",
       };
     }
 
-    // Contact exists globally — attach to our segment explicitly.
+    // Contact exists globally. Read its consent state before attaching it
+    // to our segment. Resend documents the contact lookup by email.
+    const contactRes = await fetch(
+      `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": USER_AGENT,
+        },
+      },
+    );
+    if (!contactRes.ok) {
+      return {
+        kind: "failed",
+        reason: `GET /contacts/{email} ${contactRes.status}`,
+      };
+    }
+    const contactBody = await contactRes.json().catch(() => null);
+    const unsubscribed = parseContactUnsubscribed(contactBody);
+    if (unsubscribed === null) {
+      return {
+        kind: "failed",
+        reason: "GET /contacts/{email} response missing boolean unsubscribed",
+      };
+    }
+    if (unsubscribed) return { kind: "unsubscribed" };
+
+    // The globally subscribed contact can be attached to our segment. Resend
+    // does not document a conditional attach, so this cannot be atomic with
+    // a later provider-side consent change.
     const addRes = await fetch(
       `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(segmentId)}`,
       {
@@ -110,21 +149,19 @@ export async function upsertContactToSegment(
       if (isDuplicateContactError(addBody)) return { kind: "alreadyInSegment" };
       return {
         kind: "failed",
-        reason: `POST /contacts/{email}/segments/{id} 422 (non-duplicate): ${JSON.stringify(addBody)}`,
+        reason: "POST /contacts/{email}/segments/{id} 422 (non-duplicate)",
       };
     }
 
-    const addText = await addRes.text().catch(() => "<no body>");
     return {
       kind: "failed",
-      reason: `POST /contacts/{email}/segments/{id} ${addRes.status}: ${addText}`,
+      reason: `POST /contacts/{email}/segments/{id} ${addRes.status}`,
     };
   }
 
-  const createText = await createRes.text().catch(() => "<no body>");
   return {
     kind: "failed",
-    reason: `POST /contacts ${createRes.status}: ${createText}`,
+    reason: `POST /contacts ${createRes.status}`,
   };
 }
 

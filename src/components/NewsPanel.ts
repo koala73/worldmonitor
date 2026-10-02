@@ -5,16 +5,17 @@ import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { computeNewSinceVisit } from '@/utils/new-since-visit';
+import { assessCorroboration, badgePublisherCount, corroborationFlagHtml, evidenceFromCluster, evidenceFromItem, publisherRoster } from '@/utils/corroboration-flag';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage, getCurrentLanguageTag } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
-  renderCorroboratingSourceRisk,
   renderCredibilityBadge,
   renderPrimarySourceProvenance,
 } from './news/source-provenance';
+import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 import {
   coverageBadgeString,
   type CoverageStringKey,
@@ -38,7 +39,14 @@ interface PreparedCluster {
   showNewTag: boolean;
 }
 
+export interface NewsPanelServices {
+  clusterNews: (items: NewsItem[]) => Promise<ClusteredEvent[]>;
+  generateSummary: typeof generateSummary;
+  translateText: typeof translateText;
+}
+
 export class NewsPanel extends Panel {
+  private readonly newsServices: NewsPanelServices;
   private clusteredMode = true;
   private deviationEl: HTMLElement | null = null;
   private relatedAssetContext = new Map<string, RelatedAssetContext>();
@@ -95,8 +103,16 @@ export class NewsPanel extends Panel {
     this.riskScoreGetter = fn;
   }
 
-  constructor(id: string, title: string, infoTooltip?: string) {
+  constructor(id: string, title: string, infoTooltip?: string,
+    services: Partial<NewsPanelServices> = {},
+  ) {
     super({ id, title, showCount: true, trackActivity: true, infoTooltip });
+    this.newsServices = {
+      clusterNews: items => analysisWorker.clusterNews(items),
+      generateSummary,
+      translateText,
+      ...services,
+    };
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();
@@ -282,7 +298,7 @@ export class NewsPanel extends Panel {
     const sigAtStart = this.lastHeadlineSignature;
 
     try {
-      const result = await generateSummary(
+      const result = await this.newsServices.generateSummary(
         this.currentHeadlines.slice(0, 8),
         undefined,
         this.panelId,
@@ -331,7 +347,7 @@ export class NewsPanel extends Panel {
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await translateText(text, currentLang);
+      const translated = await this.newsServices.translateText(text, currentLang);
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
@@ -509,7 +525,7 @@ export class NewsPanel extends Panel {
     const requestId = ++this.renderRequestId;
 
     try {
-      const clusters = await analysisWorker.clusterNews(items);
+      const clusters = await this.newsServices.clusterNews(items);
       if (requestId !== this.renderRequestId) return;
       const enriched = await enrichWithVelocityML(clusters);
       this.renderClusters(enriched);
@@ -548,12 +564,16 @@ export class NewsPanel extends Panel {
     this.updateHeadlineSignature();
 
     const html = sorted
-      .map(
-        (item) => `
+      .map((item) => {
+        const provenance = renderPrimarySourceProvenance(item.source);
+        return `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${renderCredibilityBadge(item.source, item)}
+          ${provenance.riskBadge}
+          ${provenance.facts}
+          ${corroborationFlagHtml(assessCorroboration(evidenceFromItem(item)))}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
           ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
@@ -567,8 +587,8 @@ export class NewsPanel extends Panel {
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
         </div>
       </div>
-    `
-      )
+    `;
+      })
       .join('');
 
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
@@ -709,7 +729,9 @@ export class NewsPanel extends Panel {
     // cluster.sourceCount is the article count, which read nine reprints of
     // one wire across one newsroom's feeds as nine sources. The velocity
     // badge below keeps sourceCount — velocity IS about article volume.
-    const publisherCount = cluster.uniquePublisherCount ?? 0;
+    const evidence = evidenceFromCluster(cluster);
+    const corroboration = assessCorroboration(evidence);
+    const publisherCount = badgePublisherCount(corroboration, cluster.uniquePublisherCount ?? 0);
     const sourceBadge = publisherCount > 1
       ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(publisherCount) })}</span>`
       : '';
@@ -733,18 +755,10 @@ export class NewsPanel extends Panel {
     const {
       riskBadge: primaryPropBadge,
       tierBadge,
+      facts: primaryProvenanceFacts,
     } = renderPrimarySourceProvenance(cluster.primarySource);
 
-    // Build "Also reported by" section for multi-source confirmation
-    const otherSources = cluster.topSources.filter(s => s.name !== cluster.primarySource);
-    const topSourcesHtml = otherSources.length > 0
-      ? `<span class="also-reported">Also:</span>` + otherSources
-        .map(s => {
-          const propBadge = renderCorroboratingSourceRisk(s.name);
-          return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
-        })
-        .join('')
-      : '';
+    const rosterView = describePublisherRoster(corroboration, publisherRoster(evidence));
 
     const assetContext = getClusterAssetContext(cluster);
     if (assetContext && assetContext.assets.length > 0) {
@@ -809,9 +823,11 @@ export class NewsPanel extends Panel {
           ${escapeHtml(cluster.primarySource)}
           ${renderCredibilityBadge(cluster.primarySource, cluster.allItems.find(item => item.source === cluster.primarySource) ?? cluster.allItems[0])}
           ${primaryPropBadge}
+          ${primaryProvenanceFacts}
           ${langBadge}
           ${newTag}
           ${sourceBadge}
+          ${corroborationFlagHtml(corroboration)}
           ${velocityBadge}
           ${sentimentBadge}
           ${cluster.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
@@ -820,7 +836,7 @@ export class NewsPanel extends Panel {
         </div>
         <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
         <div class="cluster-meta">
-          <span class="top-sources">${topSourcesHtml}</span>
+          <div class="cluster-roster">${rosterView ? renderPublisherRosterHtml(rosterView) : ''}</div>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
         </div>

@@ -105,6 +105,14 @@ test('missing lat/lon falls back to a geoPolyline centroid', () => {
   assert.ok(record.centroid[0] < -79 && record.centroid[0] > -80);
 });
 
+test('truncated or invalid encoded polylines do not create a zero centroid', () => {
+  for (const encoded of ['?', '_', '_?', '"?']) {
+    assert.deepEqual(parseGeoPolyline(encoded), []);
+    assert.equal(normalizeTorontoRoadRecord({ geoPolyline: encoded }).centroid, null);
+  }
+  assert.deepEqual(parseGeoPolyline('??'), [[0, 0]]);
+});
+
 test('empty Closure list is valid zero-record success', () => {
   const records = normalizeTorontoRoadList({ Closure: [] });
   assert.deepEqual(records, []);

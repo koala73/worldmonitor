@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const USE_CASES_CONTENT_VERSION = '2026-08-31';
+export const USE_CASES_CONTENT_VERSION = '2026-09-10';
 
 export const USE_CASE_PAGES = [
   {
@@ -131,31 +131,6 @@ function stepUrl(pageUrl, name) {
   return `${pageUrl}#${stepSlug(name)}`;
 }
 
-function itemListLd(name, pageUrl, steps) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name,
-    numberOfItems: steps.length,
-    itemListElement: steps.map((step, index) => {
-      const url = stepUrl(pageUrl, step.name);
-      return {
-        '@type': 'ListItem',
-        position: index + 1,
-        name: step.name,
-        url,
-        description: step.text,
-        item: {
-          '@type': 'HowToStep',
-          name: step.name,
-          url,
-          text: step.text,
-        },
-      };
-    }),
-  };
-}
-
 function howToLd({ name, description, url, steps }) {
   return {
     '@context': 'https://schema.org',
@@ -240,7 +215,7 @@ ${cards}
 }
 
 function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-country-risk/';
   const description =
     'A repeatable World Monitor country-risk workflow: establish a baseline, review live instability, check corroborating signals, record uncertainty, then act.';
@@ -268,22 +243,10 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard),
-    'seo-use-case',
-  );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const dashboardHref = withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard);
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor country risk</h1>
@@ -349,7 +312,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/blog/posts/country-instability-index-methodology-explained/">CII methodology</a></li>
         <li><a href="/docs/methodology/country-resilience-index">CRI methodology</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6849): this page owns the evergreen task framing. <a href="/countries/">/countries/</a> remains the live evidence surface. The blog workflow article remains distinct supporting editorial — not a duplicate indexable procedure.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen task framing. <a href="/countries/">/countries/</a> remains the live evidence surface. The blog workflow article remains distinct supporting editorial — not a duplicate indexable procedure.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [
@@ -409,7 +372,6 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Country-risk end-to-end workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -423,7 +385,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/verify-breaking-news/';
   const description =
     'Verify a breaking claim with World Monitor: capture it, assess sources, check independent signals, record contradictions, then take a qualified next action.';
@@ -451,25 +413,13 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Verify breaking news</h1>
@@ -537,7 +487,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/countries/">Country risk and resilience corpus</a></li>
         <li><a href="/docs/natural-disasters">Natural disaster tracking</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6850): this page owns the evergreen verification procedure. The <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT blog article</a> remains dated supporting editorial with minute-by-minute narrative — not a duplicate indexable task page. No redirect.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen verification procedure. The <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT blog article</a> remains dated supporting editorial with minute-by-minute narrative — not a duplicate indexable task page. No redirect.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [
@@ -601,7 +551,6 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Breaking-news verification workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -615,7 +564,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-supply-chain-disruptions/';
   const description =
     'Monitor supply-chain disruption with World Monitor: define exposure, baseline routes, detect signals, test transmission paths, record uncertainty, then act.';
@@ -643,25 +592,13 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor supply-chain disruptions</h1>
@@ -738,7 +675,7 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/">Trade routes and chokepoints article</a></li>
         <li><a href="/docs/methodology/chokepoints">Chokepoint methodology</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6851): this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [
@@ -814,7 +751,6 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Supply-chain disruption monitoring steps', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },

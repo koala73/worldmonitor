@@ -79,7 +79,7 @@ describe('WebMCP dashboard panel catalog', () => {
       .filter((panelId) => getEffectivePanelConfig(panelId, 'full').enabled !== true);
 
     assert.equal(uniqueIds.length, Object.keys(ALL_PANELS).length);
-    assert.equal(worldIds.length, 109);
+    assert.equal(worldIds.length, 110);
     assert.ok(uniqueIds.includes('regionalStartups'));
     assert.ok(uniqueIds.includes('gccNews'));
     assert.ok(disabledWorld.length > 0, 'World registry must include disabled panels');
@@ -92,7 +92,7 @@ describe('WebMCP dashboard panel catalog', () => {
     const pages = collectPages(live, { variant: 'full', limit: 4 });
     const ids = pages.flatMap((page) => page.panels.map((panel) => panel.id));
 
-    assert.equal(pages[0]?.total, 109);
+    assert.equal(pages[0]?.total, 110);
     assert.ok(pages.length > 1);
     assert.equal(new Set(ids).size, ids.length);
     assert.deepEqual(ids, [...getCanonicalDashboardPanelIds('full')]);

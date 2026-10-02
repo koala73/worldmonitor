@@ -125,5 +125,5 @@ Only fetch or render returned media when the user explicitly asked for visual co
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

@@ -38,7 +38,23 @@ export function hasLiveSessionJwt(cookieHeader: string): boolean {
   return exp !== null && exp * 1000 > Date.now();
 }
 
+/**
+ * Read `document.cookie` without throwing. Chrome (and other engines) throw
+ * `SecurityError: Failed to read the 'cookie' property from 'Document': The
+ * document is sandboxed and lacks the 'allow-same-origin' flag.` when the
+ * welcome bundle runs inside an iframe sandboxed without `allow-same-origin`
+ * (Sentry WORLDMONITOR-14B). Treat that as "no cookies" — the redirect probe
+ * simply keeps the visitor on the landing page.
+ */
+export function readDocumentCookie(): string {
+  if (typeof document === 'undefined') return '';
+  try {
+    return document.cookie;
+  } catch {
+    return '';
+  }
+}
+
 export function hasLiveClientSession(): boolean {
-  if (typeof document === 'undefined') return false;
-  return hasLiveSessionJwt(document.cookie);
+  return hasLiveSessionJwt(readDocumentCookie());
 }

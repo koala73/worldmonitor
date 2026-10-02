@@ -103,7 +103,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
     if (raw.includes('openrouter.ai')) {
       const body = JSON.parse(String(init.body || '{}'));
       attempted.push(body);
-      const content = body.model === 'minimax/minimax-m3:free' ? 'backup free answer' : '';
+      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup free answer' : '';
       return { ok: true, json: async () => llmJson(content) };
     }
     throw new Error(`unexpected fetch: ${raw}`);
@@ -115,7 +115,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
   assert.deepEqual(attempted.map(body => body.model), [
     'google/gemini-2.5-flash',
     'google/gemma-4-26b-a4b-it:free',
-    'minimax/minimax-m3:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
   ]);
   for (const body of attempted.slice(1)) {
     assert.deepEqual(body.reasoning, { enabled: false });
@@ -143,6 +143,43 @@ test('llm-chain: an exact allowlist prevents fallback models from changing a pin
 
   assert.equal(text, null);
   assert.deepEqual(attempted, ['google/gemini-2.5-flash']);
+});
+
+test('llm-chain: a per-call model override moves both the request and its telemetry off the chain default', async () => {
+  baseEnv();
+  const attempted = [];
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (!raw.includes('openrouter.ai')) throw new Error(`unexpected provider: ${raw}`);
+    attempted.push(JSON.parse(String(init.body || '{}')).model);
+    return { ok: true, json: async () => llmJson('overridden brief prose') };
+  };
+
+  const overridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    modelOverrides: { openrouter: 'google/gemini-3.5-flash-lite' },
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(overridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite']);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].model, 'google/gemini-3.5-flash-lite');
+
+  const unoverridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(unoverridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite', 'google/gemini-2.5-flash']);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[1].model, 'google/gemini-2.5-flash');
 });
 
 test('llm-chain: rejects length-limited prose and falls through to the next provider', async () => {

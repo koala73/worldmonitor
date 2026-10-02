@@ -1,5 +1,6 @@
-import { isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
+import { acceptQuality, isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
 import {
+  DOCS_PUBLIC_ORIGIN,
   DOCS_UPSTREAM_ORIGIN,
   DOCS_UPSTREAM_TIMEOUT_MS,
   isDocsFullDocumentRequest,
@@ -8,6 +9,10 @@ import {
   shouldTransformDocsUpstreamHtml,
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
+import agentRequestPolicy from './shared/agent-request-policy.json';
+import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+
+const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
 const BOT_UA =
   /bot|crawl|spider|slurp|archiver|wget|curl\/|python-requests|scrapy|httpclient|go-http|java\/|libwww|perl|ruby|php\/|ahrefsbot|semrushbot|mj12bot|dotbot|baiduspider|yandexbot|sogou|bytespider|petalbot|gptbot|claudebot|ccbot/i;
@@ -16,7 +21,8 @@ const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
-const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers', 'c', 'country', 'chokepoint'] as const;
+const UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
 // auth (API key, shared secret, or intentionally-public semantics) because
@@ -84,85 +90,12 @@ const VARIANT_HOST_MAP: Record<string, string> = {
   'energy.worldmonitor.app': 'energy',
 };
 
-// Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
-// `name` is the short brand for JSON-LD `WebApplication.name`; `title` is the full
-// page <title>. They are split fields (not derived via title.split(' - ')) so a
-// future title format change cannot silently corrupt the JSON-LD name.
-const VARIANT_OG: Record<string, { name: string; title: string; description: string; image: string; url: string }> = {
-  tech: {
-    name: 'Tech Monitor',
-    title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
-    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and technology events worldwide with live context.',
-    image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
-    url: 'https://tech.worldmonitor.app/dashboard',
-  },
-  finance: {
-    name: 'Finance Monitor',
-    title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
-    description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
-    image: 'https://finance.worldmonitor.app/favico/finance/og-image.png',
-    url: 'https://finance.worldmonitor.app/dashboard',
-  },
-  commodity: {
-    name: 'Commodity Monitor',
-    title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
-    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global trade flows with live context.',
-    image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
-    url: 'https://commodity.worldmonitor.app/dashboard',
-  },
-  happy: {
-    name: 'Happy Monitor',
-    title: 'Happy Monitor - Good News & Global Progress',
-    description: 'Curated positive news, global progress data, science breakthroughs, conservation wins, and uplifting stories from around the world with daily highlights.',
-    image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
-    url: 'https://happy.worldmonitor.app/dashboard',
-  },
-  energy: {
-    name: 'Energy Atlas',
-    title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
-    description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
-    image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
-    url: 'https://energy.worldmonitor.app/dashboard',
-  },
-};
-
-const ALLOWED_HOSTS = new Set([
-  'worldmonitor.app',
-  ...Object.keys(VARIANT_HOST_MAP),
-]);
-const VERCEL_PREVIEW_RE = /^[a-z0-9-]+-[a-z0-9]{8,}\.vercel\.app$/;
-
-function normalizeHost(raw: string): string {
-  return raw.toLowerCase().replace(/:\d+$/, '');
-}
-
-function isAllowedHost(host: string): boolean {
-  return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
-}
-
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
-function clientAcceptsSse(request: Request): boolean {
-  const accept = request.headers.get('accept') ?? '';
-  return accept.split(',').some((entry) => {
-    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== 'text/event-stream') return false;
-    const qParam = params.find((part) => part.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number(qParam.slice(2));
-    return Number.isFinite(q) && q > 0;
-  });
-}
-
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function hasUnboundedDashboardRootState(searchParams: URLSearchParams): boolean {
+  return UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
 /** Query keys that create duplicate index entries without changing document identity. */
@@ -176,7 +109,41 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
   'utm_term',
 ]);
 
-function stripIndexNoiseQuery(url: URL): URL | null {
+/**
+ * The one URL a crawler should be spending its budget on for this request, or
+ * null when it already asked for it.
+ *
+ * Two collapses, applied together so a URL carrying both costs one hop:
+ *
+ *  - Index-noise query keys (`ref`, `wm_referral`, `utm_*`) are dropped. They
+ *    change nothing about document identity (#7380).
+ *  - A legacy root deep link (`/?lat=…&zoom=…&layers=…`) becomes the
+ *    param-free `/dashboard`. That query is map state, and any lat/lon/zoom/
+ *    layer combination is a distinct URL, so forwarding it into the redirect
+ *    published an unbounded redirect space: Search Console's "Page with
+ *    redirect" bucket grew 199 -> 1,271 in three months, 301 of the exported
+ *    URLs being map states (#7660). `/dashboard` is already the rel=canonical
+ *    for every one of them, so a crawler loses nothing by going straight there.
+ *    Note this collapse reaches www only: Vercel applies vercel.json
+ *    `redirects` before middleware, and the variant hosts have their own
+ *    `/` -> `/dashboard` host redirect, so on those hosts robots.variant.txt
+ *    is what keeps a crawler off the space (probed against production).
+ * Bounded root entity links also move to `/dashboard`, retaining their state
+ * in the same hop as attribution cleanup.
+ *
+ * Humans are deliberately excluded from the second collapse — the params are
+ * what makes a shared or bookmarked legacy link open the view it encodes, and
+ * they still reach `/dashboard` with the state intact below. That split is why
+ * the redirect built from this must carry `Vary: User-Agent` and no-store.
+ *
+ * The caller gates this on BOT_UA, which is broader than "search crawler" — it
+ * also matches generic HTTP clients (curl, python-requests, wget). Accepted:
+ * map state only renders in a JS-executing browser, so a script fetching
+ * `/?lat=…` receives the same SPA shell either way, and the user-triggered
+ * assistant agents (ChatGPT-User, Claude-User, Perplexity-User) do not match
+ * BOT_UA at all — they take the human branch and keep the state.
+ */
+function crawlerCanonicalUrl(url: URL): URL | null {
   let changed = false;
   const next = new URL(url);
   for (const key of [...next.searchParams.keys()]) {
@@ -185,44 +152,116 @@ function stripIndexNoiseQuery(url: URL): URL | null {
       changed = true;
     }
   }
+  if (next.pathname === '/' && hasUnboundedDashboardRootState(next.searchParams)) {
+    next.pathname = '/dashboard';
+    for (const key of [...LEGACY_DASHBOARD_ROOT_QUERY_KEYS, 'expanded', 't', 'ts']) {
+      next.searchParams.delete(key);
+    }
+    changed = true;
+  } else if (next.pathname === '/' && hasLegacyDashboardRootState(next.searchParams)) {
+    next.pathname = '/dashboard';
+    changed = true;
+  }
   return changed ? next : null;
 }
+/**
+ * Headers for a 308 whose Location was chosen by User-Agent.
+ *
+ * `Cache-Control` alone is not enough at this edge: vercel.json gives `/` a
+ * `CDN-Cache-Control` / `Vercel-CDN-Cache-Control` of `public, s-maxage=600`,
+ * and those take priority over `Cache-Control` for the shared cache — so the
+ * CDN could store one User-Agent's Location and replay it to the other for ten
+ * minutes, silently undoing the split. Every layer that could store this
+ * response has to be told not to, and `Vary` alone cannot protect a sibling
+ * response that omitted it (RFC 9111).
+ */
+function uaConditionedRedirectHeaders(location: URL): Record<string, string> {
+  return {
+    Location: location.toString(),
+    Vary: 'User-Agent',
+    'Cache-Control': 'private, no-store',
+    'CDN-Cache-Control': 'no-store',
+    'Vercel-CDN-Cache-Control': 'no-store',
+  };
+}
+
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
-  const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+  const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
+  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
+    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
 
-  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380).
-  // Humans still receive the param so referral-capture / analytics can run;
-  // crawlers are 308'd to the clean canonical document URL.
+  // Product MCP aliases are migration-only surfaces. Let every policy request
+  // reach the handler so it returns the protocol-shaped response and emits one
+  // bounded migration event. This bypass must precede generic crawler/API bot
+  // gates, which otherwise turn direct alias transport calls into a 403.
+  // The handler repeats the policy because dotted well-known paths bypass this
+  // middleware matcher.
+  if (aliasMcpRequest) return;
+
+  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380), and
+  // map-state deep links as an unbounded redirect space (#7660). Humans still
+  // receive both so referral-capture, analytics, and shared map views keep
+  // working; crawlers are 308'd to the clean canonical document URL.
   if (
     (request.method === 'GET' || request.method === 'HEAD') &&
     !path.startsWith('/api/') &&
     BOT_UA.test(ua)
   ) {
-    const cleaned = stripIndexNoiseQuery(url);
+    const cleaned = crawlerCanonicalUrl(url);
     if (cleaned) {
       // Built by hand rather than via Response.redirect() so the response can
       // carry Vary + no-store. This redirect is decided by User-Agent; a 308
       // is cacheable by default (RFC 9110 §15.4.9). Without those headers a
       // crawler can warm the tagged URL and a shared edge cache can replay
-      // the clean Location to a human, stripping `ref` before referral capture.
-      return new Response(null, {
-        status: 308,
-        headers: {
-          Location: cleaned.toString(),
-          Vary: 'User-Agent',
-          'Cache-Control': 'private, no-store',
-        },
-      });
+      // the clean Location to a human, stripping `ref` before referral capture
+      // or dropping the map state out of a shared link (#7660).
+      return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(cleaned) });
     }
   }
 
+  // Preserve the complete state and attribution in a person's legacy link.
+  // Crawlers have already reached /dashboard through crawlerCanonicalUrl(),
+  // retaining bounded entity state but collapsing coordinate combinations.
+  //
+  // Built by hand rather than via Response.redirect() so it can carry Vary. The
+  // same request URL now yields two different Locations depending on the
+  // User-Agent, and a 308 is cacheable by default (RFC 9110 §15.4.9): a shared
+  // cache that stored this one without Vary would replay `/dashboard?<map
+  // state>` to the crawler the branch above exists to keep off that URL. This
+  // is the rule docs/solutions/integration-issues/mcp-crawler-get-and-method-
+  // aware-canonical-redirects.md states: cacheable(response) implies Vary
+  // covers every header the branch read.
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
     dashboardUrl.pathname = '/dashboard';
-    return Response.redirect(dashboardUrl.toString(), 308);
+    return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(dashboardUrl) });
+  }
+
+  const accept = request.headers.get('accept');
+  const markdownQuality = acceptQuality(accept, 'text/markdown') ?? 0;
+  const wantsHomepageMarkdown = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i.test(accept ?? '') &&
+    markdownQuality > 0 && markdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
+
+  if (
+    path === '/' &&
+    (host === 'www.worldmonitor.app' || host === 'worldmonitor.app') &&
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    url.searchParams.get('mode') !== 'agent' &&
+    (AGENT_UA.test(ua) || wantsHomepageMarkdown)
+  ) {
+    return new Response(null, {
+      headers: {
+        'x-middleware-rewrite': new URL('/pro/home.md', url).toString(),
+        'Content-Type': 'text/markdown; charset=utf-8',
+        Vary: 'User-Agent, Accept',
+        'Cache-Control': 'private, no-store',
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
+      },
+    });
   }
 
   if (request.method === 'GET' || request.method === 'HEAD') {
@@ -237,7 +276,7 @@ export default function middleware(request: Request) {
     // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
     // flights and static assets on the direct Mintlify rewrite.
     if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
-      return proxyDocsLocaleHtml(request, url);
+      return proxyDocsLocaleHtml(request, url, host);
     }
 
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
@@ -247,72 +286,6 @@ export default function middleware(request: Request) {
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
-  }
-
-  if (path === '/' && SOCIAL_PREVIEW_UA.test(ua)) {
-    const variant = VARIANT_HOST_MAP[host];
-    if (variant && isAllowedHost(host)) {
-      const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
-      if (og) {
-        const eTitle = escHtml(og.title);
-        const eDesc = escHtml(og.description);
-        const eImage = escHtml(og.image);
-        const eUrl = escHtml(og.url);
-        const html = `<!DOCTYPE html><html lang="en"><head>
-<meta property="og:type" content="website"/>
-<meta property="og:title" content="${eTitle}"/>
-<meta property="og:description" content="${eDesc}"/>
-<meta property="og:image" content="${eImage}"/>
-<meta property="og:url" content="${eUrl}"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="${eTitle}"/>
-<meta name="twitter:description" content="${eDesc}"/>
-<meta name="twitter:image" content="${eImage}"/>
-<link rel="canonical" href="${eUrl}"/>
-<title>${eTitle}</title>
-</head><body></body></html>`;
-        return new Response(html, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store',
-            'Vary': 'User-Agent, Host',
-          },
-        });
-      }
-    }
-  }
-
-  // Variant subdomain MCP discovery canonicalization. The MCP endpoint's
-  // canonical URL is apex (`https://worldmonitor.app/mcp`), and the Cloudflare
-  // apex→www redirect explicitly exempts `/mcp` so POST JSON-RPC calls aren't
-  // converted to GET. Variant subdomains would otherwise serve the same `/mcp`
-  // content as the apex, fragmenting discovery signals; redirect plain GET/HEAD
-  // requests to the apex canonical. GETs that carry MCP transport headers
-  // (`Last-Event-ID` or `Accept: text/event-stream`) are NOT redirected — they
-  // are protocol operations (SSE stream open or replay) and must reach the same
-  // host/instance that handled the POST handshake. POST/OPTIONS/etc. are also
-  // NOT redirected; they continue to the `/api/mcp` rewrite unchanged.
-  if (
-    path === '/mcp' &&
-    (request.method === 'GET' || request.method === 'HEAD') &&
-    VARIANT_HOST_MAP[host] &&
-    !request.headers.get('last-event-id') &&
-    !clientAcceptsSse(request)
-  ) {
-    // Built by hand rather than via Response.redirect() so the response can
-    // carry Vary. This redirect is decided by Accept and Last-Event-ID, and a
-    // 308 is cacheable by default (RFC 9110 §15.4.9) — without Vary a shared
-    // cache could store it and replay it to the SSE stream-open GET that must
-    // reach this host's transport instead.
-    return new Response(null, {
-      status: 308,
-      headers: {
-        Location: 'https://worldmonitor.app/mcp',
-        Vary: 'Accept, Last-Event-ID',
-        'Cache-Control': 'public, max-age=3600',
-      },
-    });
   }
 
   // Only apply bot filtering to /api/* paths.
@@ -379,24 +352,35 @@ export default function middleware(request: Request) {
     return;
   }
 
-  // Block bots from all API routes
-  if (BOT_UA.test(ua)) {
-    return new Response('{"error":"Forbidden"}', {
+  if (BOT_UA.test(ua) || !ua || ua.length < 10) {
+    return Response.json(agentRequestPolicy.blockedResponse, {
       status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  // No user-agent or suspiciously short — likely a script
-  if (!ua || ua.length < 10) {
-    return new Response('{"error":"Forbidden"}', {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
     });
   }
 }
 
-async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response> {
+function docsResponseHeaders(upstream: Response, host: string): Headers {
+  const headers = new Headers(upstream.headers);
+  if (host !== new URL(DOCS_PUBLIC_ORIGIN).hostname) {
+    const robots = headers.get('x-robots-tag');
+    headers.set('x-robots-tag', robots ? `noindex, ${robots}` : 'noindex');
+  }
+  const varyParts = new Set(
+    (headers.get('vary') ?? '').split(',').map((part) => part.trim().toLowerCase()).filter(Boolean),
+  );
+  for (const name of ['host', 'accept', 'rsc', 'next-router-state-tree', 'next-router-prefetch']) {
+    varyParts.add(name);
+  }
+  headers.set('vary', [...varyParts].join(', '));
+  return headers;
+}
+
+async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Promise<Response> {
   const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
   const forwardHeaders = new Headers();
   for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
@@ -417,17 +401,18 @@ async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response
       signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
     });
 
-    // Pass through redirects / not-modified without rewriting.
-    if (upstream.status >= 300 && upstream.status < 400) {
+    const contentType = upstream.headers.get('content-type');
+    if (upstream.status !== 304 && (
+      upstream.status !== 200 || !shouldTransformDocsUpstreamHtml(url.pathname, contentType)
+    )) {
       return upstream;
     }
     if (upstream.status === 304 || request.method === 'HEAD') {
-      return upstream;
-    }
-
-    const contentType = upstream.headers.get('content-type');
-    if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
-      return upstream;
+      return new Response(null, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: docsResponseHeaders(upstream, host),
+      });
     }
 
     html = await upstream.text();
@@ -436,25 +421,13 @@ async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response
   }
 
   const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
-  const headers = new Headers(upstream.headers);
+  const headers = docsResponseHeaders(upstream, host);
   // Fetch already decoded the body; hop-by-hop / recomputed framing must not
   // be forwarded onto the rewritten string response (Mintlify serves br).
   for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
     headers.delete(name);
   }
   headers.set('x-wm-docs-locale-seo', '1');
-  // Ensure shared caches vary on the headers that select this proxy path.
-  const vary = headers.get('vary');
-  const varyParts = new Set(
-    (vary ? vary.split(',') : [])
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => part.toLowerCase()),
-  );
-  varyParts.add('accept');
-  varyParts.add('rsc');
-  headers.set('vary', [...varyParts].join(', '));
-
   return new Response(rewritten, {
     status: upstream.status,
     statusText: upstream.statusText,

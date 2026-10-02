@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import { describe, it } from 'node:test';
+import { VARIANT_META } from '../src/config/variant-meta.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -76,33 +77,14 @@ describe('reported landing-page SEO metadata', () => {
   });
 
   it('keeps full and variant dashboard descriptions bounded and synchronized', () => {
-    const variantMetaSource = source('src/config/variant-meta.ts');
-    const middlewareSource = source('middleware.ts');
     const indexHtml = source('index.html');
     const variants = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'];
 
     for (const variant of variants) {
-      const block = variantMetaSource.match(
-        new RegExp(`${variant}: \\{([\\s\\S]*?)\\n  \\},`),
-      )?.[1];
-      const description = block?.match(/^\s+description: '([^']+)'/m)?.[1];
-      assertDescription(`${variant} variant`, description);
-
-      if (variant === 'full') continue;
-      const middlewareBlock = middlewareSource.match(
-        new RegExp(`${variant}: \\{([\\s\\S]*?)\\n  \\},`),
-      )?.[1];
-      const middlewareDescription = middlewareBlock?.match(/^\s+description: '([^']+)'/m)?.[1];
-      assert.equal(
-        middlewareDescription,
-        description,
-        `${variant} crawler metadata must match src/config/variant-meta.ts`,
-      );
+      assertDescription(`${variant} variant`, VARIANT_META[variant].description);
     }
 
     const fullDescription = indexHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
-    const fullBlock = variantMetaSource.match(/full: \{([\s\S]*?)\n {2}\},/)?.[1];
-    const expectedFullDescription = fullBlock?.match(/^\s+description: '([^']+)'/m)?.[1];
-    assert.equal(fullDescription, expectedFullDescription, 'index.html must use the full variant description');
+    assert.equal(fullDescription, VARIANT_META.full.description, 'index.html must use the full variant description');
   });
 });

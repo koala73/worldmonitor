@@ -56,6 +56,32 @@ export interface ParsedMapUrlState {
   chokepoint?: string;
 }
 
+/**
+ * True when applying this initial URL state starts an async camera move, so
+ * the immediate URL sync after boot must be skipped: getCenter() would report
+ * stale intermediate coordinates until the flight settles. Three cases:
+ *
+ *   - a lat+lon pair: applyInitialUrlState calls setCenter() only when both
+ *     are present, and setCenter flies.
+ *   - a bare zoom with no view preset: setZoom() animates.
+ *   - a chokepoint deep link: it opens after renderer readiness.
+ *
+ * `view` alone never qualifies. Every renderer writes state.view
+ * synchronously at the top of setView(), so the debounced read is correct,
+ * and the initial Globe/SVG view is applied before the sync listener exists,
+ * so those renderers need the immediate write to publish the URL at all.
+ */
+export function urlHasAsyncFlyTo(
+  state: Pick<ParsedMapUrlState, 'view' | 'lat' | 'lon' | 'zoom' | 'chokepoint'> | null | undefined,
+): boolean {
+  const { view, lat, lon, zoom, chokepoint } = state ?? {};
+  return (
+    (lat !== undefined && lon !== undefined)
+    || (!view && zoom !== undefined)
+    || chokepoint !== undefined
+  );
+}
+
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
@@ -180,7 +206,7 @@ export function buildMapUrl(
   }
   const params = new URLSearchParams();
 
-  if (state.center) {
+  if (state.center && Number.isFinite(state.center.lat) && Number.isFinite(state.center.lon)) {
     params.set('lat', state.center.lat.toFixed(4));
     params.set('lon', state.center.lon.toFixed(4));
   }
@@ -206,4 +232,14 @@ export function buildMapUrl(
 
   url.search = params.toString();
   return url.toString();
+}
+
+/**
+ * The map URL sync owns the query string, not the fragment. Another surface
+ * (Clerk's hash-routed sign-up resume) can be routing on `location.hash`.
+ */
+export function withUrlFragment(url: string, hash: string): string {
+  const next = new URL(url);
+  next.hash = hash;
+  return next.toString();
 }

@@ -45,7 +45,7 @@ const PREMIUM_FETCH_BYPASS_ALLOWLIST: Record<string, string> = {
     'fetch() with their own auth surface (X-Widget-Key / X-Pro-Key / Bearer) ' +
     'rather than premiumFetch.',
   '/api/me/entitlement':
-    'entitlement-watchdog.ts and checkout.ts attach the Clerk Bearer ' +
+    'checkout.ts attaches the Clerk Bearer ' +
     'manually. premiumFetch would short-circuit on tester keys and break the ' +
     'free→pro promotion polling flow.',
 };

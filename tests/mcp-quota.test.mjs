@@ -293,16 +293,45 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     assert.equal(body.used, 0);
   });
 
-  it('displays 50 for an API-tier plan, not its catalog MCP allowance (display == enforcement)', async () => {
-    // Enforcement caps API-tier entitlements at the 50/day default on BOTH
-    // credential paths (resolvePlanDrivenMcpAllowance); showing api_starter's
-    // 1000 here would advertise a limit the meter never applies.
+  it('displays the shared REST budget for an API-tier plan (display == enforcement)', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    // An API-tier plan has no MCP allowance of its own: its calls charge
+    // `apiRequestsPerDay`, so that is the number the meter applies and the only
+    // honest one to display. Showing a separate MCP figure here is what told a
+    // customer they had 1,000 MCP calls that were never provisioned.
     const deps = makeDeps({
-      getEntitlements: async () => entitlement('api_starter', limits(1000)),
+      getEntitlements: async () => entitlement('api_starter', {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      }),
       redisGet: async () => '48',
     });
     const body = await (await quotaHandler(makeReq(), deps)).json();
-    assert.equal(body.limit, 50, 'API-tier catalog allowance must not leak into the display');
+    assert.equal(body.limit, 1000, 'the displayed limit is the budget enforcement charges');
+    assert.equal(body.used, 48);
+  });
+
+  it('displays the same 1,000 in SHADOW mode, because that is still what rejects', async () => {
+    // The flag moves the COUNTER, not the number. While it is off the widget
+    // read the dedicated counter at PRO_DAILY_QUOTA_LIMIT and told an API
+    // Starter subscriber they had 50 calls a day — the published number is
+    // 1,000, and 1,000 is what the reservation now enforces.
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    const deps = makeDeps({
+      getEntitlements: async () => entitlement('api_starter', {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      }),
+      redisGet: async () => '48',
+    });
+    const body = await (await quotaHandler(makeReq(), deps)).json();
+    assert.equal(body.limit, 1000);
     assert.equal(body.used, 48);
   });
 
@@ -418,3 +447,61 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     }
   });
 });
+
+describe('mcp-quota handler — sharedWithRestApi mirrors the counter it read', () => {
+  // Settings shows this number next to "MCP". Once an API plan's MCP calls are
+  // metered on the REST key, that number also counts REST requests, and the
+  // display has to be able to say so — otherwise the endpoint and the
+  // agent-facing allowance resource describe one counter two different ways.
+  const apiStarterEnt = () => ({
+    planKey: 'api_starter',
+    features: {
+      tier: 2,
+      mcpAccess: true,
+      planLimits: {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      },
+    },
+    validUntil: Date.now() + 86_400_000,
+  });
+
+  it('is false for a Pro caller on the dedicated counter', async () => {
+    const body = await (await quotaHandler(makeReq(), makeDeps({ redisGet: async () => '7' }))).json();
+    assert.equal(body.sharedWithRestApi, false);
+  });
+
+  it('is false for an API plan while REST enforcement is off', async () => {
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    let observedKey = '';
+    const deps = makeDeps({
+      getEntitlements: async () => apiStarterEnt(),
+      redisGet: async (k) => { observedKey = k; return '12'; },
+    });
+    const body = await (await quotaHandler(makeReq(), deps)).json();
+    assert.equal(body.limit, 1000, 'the sold number is the same in both flag states');
+    assert.equal(body.sharedWithRestApi, false);
+    assert.match(observedKey, /^mcp:pro-usage:/, 'shadow mode reads MCP\'s own counter');
+  });
+
+  it('is true for an API plan once REST enforcement is on', async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    try {
+      let observedKey = '';
+      const deps = makeDeps({
+        getEntitlements: async () => apiStarterEnt(),
+        redisGet: async (k) => { observedKey = k; return '640'; },
+      });
+      const body = await (await quotaHandler(makeReq(), deps)).json();
+      assert.equal(body.used, 640);
+      assert.equal(body.limit, 1000);
+      assert.equal(body.sharedWithRestApi, true);
+      assert.match(observedKey, /rl:apikey:day:/, 'the flag must describe the key actually read');
+    } finally {
+      delete process.env.API_RATE_LIMIT_ENFORCE;
+    }
+  });
+});
+

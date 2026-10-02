@@ -1,0 +1,594 @@
+#!/usr/bin/env bash
+set -e
+set -o pipefail
+SHA=${SHA:-}
+# A commit-status description is capped at 140 characters and GitHub
+# answers 422 past it. Splicing the whole required-name list in made
+# this job CRASH instead of posting its status once enough names were
+# in the list — about seven (#6389, run 31357392032, all 20 pending).
+# The failure arm is the dangerous one: no `gate` status posted at all
+# reads as "missing", not "failure", to branch protection, to
+# check-railway-deploy-drift.mjs and to the Seed Freshness Monitor.
+# Keep the state and the COUNT, which survive truncation; the full
+# list is already in this log. Reserve space for the contract stamp:
+# the sweep uses it to distinguish current evidence from a stale
+# success that covered an older required list (#5851).
+gate_description() {
+  text="$1"
+  suffix=" $gate_stamp"
+  text_limit=$((140 - ${#suffix}))
+  if [ "${#text}" -le "$text_limit" ]; then
+    printf '%s%s' "$text" "$suffix"
+  else
+    preview_length=$((text_limit - 3))
+    printf '%s...%s' "${text:0:$preview_length}" "$suffix"
+  fi
+}
+name_count() {
+  printf '%s\n' "$1" | tr ',' '\n' | wc -l | tr -d ' '
+}
+report_blocked_head() {
+  echo "::notice::$1"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf -- '- %s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+# Retry a primary-rate-limit response once at GitHub's published
+# reset time. The rate_limit endpoint does not spend primary budget;
+# keeping this bounded avoids turning an outage into an infinite job.
+gh_api_with_rate_limit_retry() {
+  local resource="$1"
+  shift
+  local error_file output result reset now wait_seconds
+  error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-error.XXXXXX")
+  if output=$(gh api "$@" 2>"$error_file"); then
+    rm -f "$error_file"
+    printf '%s\n' "$output"
+    return 0
+  else
+    result=$?
+  fi
+
+  cat "$error_file" >&2
+  if ! grep -qi 'rate limit exceeded' "$error_file"; then
+    rm -f "$error_file"
+    return "$result"
+  fi
+
+  reset=$(gh api rate_limit --jq ".resources.$resource.reset" 2>/dev/null || true)
+  if ! [ "$reset" -eq "$reset" ] 2>/dev/null; then
+    echo "::error::GitHub API rate limit was exhausted and its reset time was unavailable."
+    rm -f "$error_file"
+    return "$result"
+  fi
+
+  now=$(date +%s)
+  wait_seconds=$((reset - now + 5))
+  if [ "$wait_seconds" -lt 1 ]; then wait_seconds=1; fi
+  echo "GitHub $resource API budget exhausted; retrying once in ${wait_seconds}s." >&2
+  rm -f "$error_file"
+  sleep "$wait_seconds"
+  gh api "$@"
+}
+post_gate_status() {
+  local state="$1"
+  local description previous error_file result read_failed=0
+  description=$(gate_description "$2")
+  gate_status_exhausted=0
+  if previous=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/commits/$SHA/status?per_page=100" --paginate --slurp |
+    jq -ce 'if type == "array" and length > 0 and all(.[]; (.statuses | type) == "array")
+      then [.[].statuses[] | select(.context == "gate")] | sort_by(.id) | last // {}
+      else error("Incomplete commit-status response") end'); then
+    if printf '%s\n' "$previous" | jq -e --arg state "$state" --arg description "$description" \
+      '.state == $state and .description == $description' >/dev/null; then
+      echo "gate unchanged for $SHA ($state)"
+      return 0
+    fi
+  else
+    echo "::error::Could not read the current gate status for $SHA"
+    state="pending"
+    description=$(gate_description "Deploy Gate could not read status; retry scheduled")
+    read_failed=1
+  fi
+  error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-status.XXXXXX")
+  if gh_api_with_rate_limit_retry core "repos/$REPO/statuses/$SHA" --method POST \
+    --field state="$state" \
+    --field context="gate" \
+    --field description="$description" 2>"$error_file"; then
+    rm -f "$error_file"
+    if [ "$read_failed" -eq 1 ]; then
+      gate_fallback_handled=1
+    fi
+    return "$read_failed"
+  else
+    result=$?
+  fi
+  if grep -qi 'This SHA and context has reached the maximum number of statuses' "$error_file"; then
+    gate_status_exhausted=1
+    # An immutable pending/failure/error still blocks this commit. A stale
+    # success or an unreadable status cannot be treated as safely blocked.
+    if [ "$read_failed" -eq 0 ] && printf '%s\n' "$previous" |
+      jq -e '.state == "pending" or .state == "failure" or .state == "error"' >/dev/null; then
+      report_blocked_head "$SHA remains blocked: gate status capacity exhausted. Update the branch with a new commit before retrying."
+      rm -f "$error_file"
+      return 0
+    fi
+    echo "::error::Gate status capacity exhausted for $SHA; this head needs a new commit before its status can change."
+  fi
+  cat "$error_file" >&2
+  rm -f "$error_file"
+  return "$result"
+}
+# The runner invokes this block with `bash -e`. If anything escapes
+# the bounded API retry after evaluation starts, make one last status
+# attempt. BASHPID keeps command-substitution subshells from posting
+# duplicate statuses; only the SHA's evaluation shell owns the fallback.
+gate_shell_pid=$BASHPID
+active_sha=""
+post_pending_on_exit() {
+  exit_code=${1:-$?}
+  if [ "$exit_code" -eq 0 ] || [ "$BASHPID" != "$gate_shell_pid" ] || [ -z "$active_sha" ] ||
+    [ "${gate_status_exhausted:-0}" -eq 1 ] || [ "${gate_fallback_handled:-0}" -eq 1 ]; then
+    return
+  fi
+  SHA="$active_sha"
+  post_gate_status "pending" "Deploy Gate could not evaluate; retry scheduled" || true
+}
+trap post_pending_on_exit EXIT
+# Every job of every workflow named in the workflow_run trigger above.
+# A job missing here is never inspected, so it reports red on the PR
+# while this gate still posts success — CI theatre, not a gate (#5402).
+# tests/ci-workflow-coverage.test.mts fails when this list and those
+# workflows drift apart in either direction. `audit-lockfile` is
+# deliberately absent: the always()-running `security-audit`
+# aggregate evaluates its per-lockfile verdicts and covers it instead.
+#
+# Entries are check-run NAMES, and the lookup below keeps only the
+# last-completed run per name. Test, Typecheck and Lint Code each
+# define a job with the id `changes`; the latter two publish under
+# `typecheck-changes` / `lint-changes` so all three are evaluated
+# instead of two being masked by the third (#5822).
+required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
+# The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
+# names it inspects. A rules change that left the stamp alone would inherit
+# every success earned under the old rules, because the sweep only re-evaluates
+# a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
+# passing gate changes.
+gate_rules='base-drift-v2'
+gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
+gate_stamp="[gate-contract:$gate_contract]"
+BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
+repo_owner=${REPO%%/*}
+repo_name=${REPO#*/}
+# A green check set proves the BRANCH, not the merge. GitHub computes
+# refs/pull/N/merge once per push and never recomputes it when the base moves,
+# and `main` here is `strict: false`, so a branch can merge on checks that
+# never saw the commits it lands on. When two such branches touch the same file
+# from different bases the 3-way merge has nothing to conflict on and `main`
+# goes red with both PRs green — #8269 deleted a declaration that #8376 had
+# added a use of, reddening biome, typecheck and two unit shards at once.
+#
+# The predicate: has `main` changed a file this head also changes, since this
+# head's merge base? Updating the branch always clears it, because the merge
+# base then IS `main` and the comparison below reports `ahead`.
+#
+# GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
+# absence of an overlap, so it blocks too — the same branch update clears it.
+# Refs this function fetches into. Namespaced so nothing else in the checkout
+# can be disturbed by an evaluation.
+BASE_DRIFT_MAIN_REF=refs/deploy-gate/main
+BASE_DRIFT_HEAD_REF=refs/deploy-gate/head
+drift_files=""
+# Echoes the overlapping paths, or nothing when the head is safe to merge.
+# Returns non-zero only when the comparison could not be made, so the caller can
+# leave the gate pending instead of publishing a success it never established.
+#
+# This reads the two file sets with git, NOT the compare API. That endpoint caps
+# `files` at 300 and does not paginate past it, and `main` here moves ~577 files
+# in 90 commits — so the cap fired on 72 of 142 open PRs and published a verdict
+# about truncation rather than about drift. git has no such cap.
+base_drift() {
+  local head="$1"
+  local merge_base main_tip head_tip head_list main_list
+  drift_files=""
+  # Trees are needed, file contents never are, so filter the blobs out. The
+  # fetch is unauthenticated (the checkout runs with persist-credentials:false)
+  # which this public repo allows; a private fork would need a token here.
+  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+    "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
+    echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
+    return 1
+  fi
+  main_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_MAIN_REF") || return 1
+  head_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_HEAD_REF") || return 1
+  if ! merge_base=$(git merge-base "$BASE_DRIFT_MAIN_REF" "$BASE_DRIFT_HEAD_REF"); then
+    echo "::error::Could not resolve the merge base for $head" >&2
+    return 1
+  fi
+  # A head contained in main — push-to-main evaluates here too — and a head
+  # whose merge base already is main's tip both have nothing above them.
+  if [ "$merge_base" = "$head_tip" ] || [ "$merge_base" = "$main_tip" ]; then
+    return 0
+  fi
+  head_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-head.XXXXXX")
+  main_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-main.XXXXXX")
+  # --no-renames, because rename detection is on by default and --name-only
+  # prints the POST-image path. If main renames a.ts to b.ts while the head
+  # edits a.ts, main's side lists only b.ts, the intersection comes out empty,
+  # and the gate publishes a success for a head that in fact collides — that
+  # pair conflicts on merge. Without detection the rename is a delete plus an
+  # add, so a.ts appears on both sides and the overlap is seen.
+  if ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_HEAD_REF" | sort -u > "$head_list" ||
+    ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_MAIN_REF" | sort -u > "$main_list"; then
+    rm -f "$head_list" "$main_list"
+    echo "::error::Could not list the changed files for $head" >&2
+    return 1
+  fi
+  # `grep -Fxf` exits 1 on no match, which under pipefail would read as an
+  # error; an empty intersection is the passing case, not a failure.
+  drift_files=$(grep -Fxf "$main_list" "$head_list" | paste -sd, - || true)
+  rm -f "$head_list" "$main_list"
+  return 0
+}
+# GraphQL is the cheap rollup, but GitHub outages often 503 the
+# query endpoint while REST check-runs still answers. Falling back
+# lets a SHA-specific dispatch post `gate` instead of stranding the
+# PR on the EXIT-trap pending status.
+fetch_required_check_runs() {
+  local eval_sha="$1"
+  local gql_error gql_pages rest_pages
+  gql_error=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-graphql.XXXXXX")
+  if gql_pages=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
+    -f owner="$repo_owner" \
+    -f name="$repo_name" \
+    -F sha="$eval_sha" \
+    -f query='query($owner: String!, $name: String!, $sha: GitObjectID!, $endCursor: String) {
+      repository(owner: $owner, name: $name) {
+        object(oid: $sha) {
+          ... on Commit {
+            statusCheckRollup {
+              contexts(first: 100, after: $endCursor) {
+                nodes {
+                  ... on CheckRun { name conclusion databaseId startedAt completedAt }
+                }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          }
+        }
+      }
+    }' 2>"$gql_error"); then
+    rm -f "$gql_error"
+    printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
+    return 0
+  fi
+  cat "$gql_error" >&2
+  rm -f "$gql_error"
+  echo "GraphQL check-runs unavailable; falling back to REST" >&2
+  rest_pages=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
+    --paginate --slurp) || return $?
+  printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
+}
+
+
+emit_output() {
+  printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+}
+
+validate_sha() {
+  [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "::error::Deploy Gate requires an exact lowercase commit SHA" >&2
+    return 1
+  }
+}
+
+# Enforce the platform bound without silently losing a candidate.
+emit_matrix() {
+  local matrix="$1"
+  local count
+  count=$(printf '%s\n' "$matrix" | jq '.include | length')
+  if [ "$count" -gt 256 ]; then
+    echo "::error::Deploy Gate matrix exceeds 256 SHAs" >&2
+    return 1
+  fi
+  emit_output matrix "$matrix"
+  emit_output count "$count"
+}
+
+discover() {
+  local discovery matrix retry_states recovery_cutoff
+  if [ -n "$SHA" ]; then
+    SHA=$(printf '%s' "$SHA" | tr 'A-F' 'a-f')
+    validate_sha
+    discovery=$(jq -nc --arg sha "$SHA" '{kind:"direct",sha:$sha,stale:[],retry:[],missing:[]}')
+  else
+    pr_gate_states=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
+      -f owner="$repo_owner" \
+      -f name="$repo_name" \
+      -f query='query($owner: String!, $name: String!, $endCursor: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequests(first: 100, states: [OPEN], after: $endCursor) {
+            nodes {
+              headRefOid
+              commits(last: 1) {
+                nodes {
+                  commit {
+                    status { context(name: "gate") { state description createdAt } }
+                  }
+                }
+              }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }')
+    stale_terminal_shas=$(printf '%s\n' "$pr_gate_states" |
+      jq -r --arg gate_stamp "$gate_stamp" '
+        .[].data.repository.pullRequests.nodes[] |
+        .commits.nodes[0].commit.status.context as $gate |
+        select(
+          $gate != null and
+          $gate.state == "SUCCESS" and
+          (($gate.description // "") | endswith($gate_stamp) | not)
+        ) |
+        .headRefOid
+      ' |
+      awk '!seen[$0]++')
+    # A stale check read can leave a failed gate after a successful rerun.
+    # Recover every recent blocked status, but keep the 24-hour bound for
+    # unchanged heads. workflow_run and exact-SHA dispatch bypass this bound.
+    recovery_cutoff=$(($(date +%s) - 86400))
+    retry_states=$(printf '%s\n' "$pr_gate_states" |
+      jq -c --argjson cutoff "$recovery_cutoff" '[
+        .[].data.repository.pullRequests.nodes[] |
+        .commits.nodes[0].commit.status.context as $gate |
+        select($gate.state == "PENDING" or $gate.state == "FAILURE" or $gate.state == "ERROR") |
+        {sha: .headRefOid, expired: ((.commits.nodes[0].commit.status.context.createdAt | fromdateiso8601) <= $cutoff)}
+      ]')
+    retry_shas=$(printf '%s\n' "$retry_states" | jq -r '.[] | select(.expired | not) | .sha')
+    deferred_shas=$(printf '%s\n' "$retry_states" | jq -r '.[] | select(.expired) | .sha')
+    missing_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
+      .[].data.repository.pullRequests.nodes[] |
+      select(.commits.nodes[0].commit.status.context == null) |
+      .headRefOid
+    ')
+
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
+      def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
+      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas), deferred:($deferred|shas)}')
+  fi
+  printf '%s\n' "$discovery" | jq -e '
+    [.stale[], .retry[], .missing[], .deferred[]?] as $shas |
+    all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
+  ' >/dev/null
+  matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
+  emit_matrix "$matrix"
+  emit_output discovery "$discovery"
+  printf '%s\n' "$discovery" | jq -r '.deferred[]?' | while read -r deferred_sha; do
+    report_blocked_head "$deferred_sha remains blocked: gate status unchanged for at least 24 hours; scheduled recovery stopped. Update the branch or dispatch Deploy Gate with this exact SHA after resolving its checks."
+  done
+}
+
+finish_invalidation() {
+  local result=$?
+  post_pending_on_exit "$result"
+  if [ "${gate_status_exhausted:-0}" -eq 1 ]; then
+    if [ "$result" -eq 0 ]; then
+      invalidation_outcome=blocked
+    else
+      invalidation_outcome=exhausted
+    fi
+  fi
+  jq -nc --arg sha "$SHA" --arg outcome "${invalidation_outcome:-failed}" \
+    '{version:1,sha:$sha,outcome:$outcome}' > "$RESULT_PATH"
+  return "$result"
+}
+
+invalidate() {
+  validate_sha
+  invalidation_outcome=failed
+  trap finish_invalidation EXIT
+  for _ in 1 2; do
+    active_sha="$SHA"
+    if post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
+      invalidation_outcome=invalidated
+      active_sha=""
+      return 0
+    fi
+    active_sha=""
+    if [ "$gate_status_exhausted" -eq 1 ]; then
+      invalidation_outcome=exhausted
+      return 1
+    fi
+  done
+  echo "::error::Could not invalidate stale gate status for $SHA"
+  return 1
+}
+
+recover() {
+  local plan failed_missing_shas missing_shas failed_gate_shas
+  # Strictly collect one immutable result per expected SHA. An unknown outcome
+  # must not be evaluated: its worker could have exhausted status capacity.
+  plan=$(python3 -c '
+import json, os, pathlib, sys
+discovery = json.loads(os.environ["DISCOVERY"])
+expected = set(discovery["stale"])
+results = {}
+protocol_failed = False
+root = pathlib.Path(os.environ["RESULTS_DIR"])
+prefix = "deploy-gate-invalidate-" + os.environ["RUN_ATTEMPT"] + "-"
+for directory in sorted(root.iterdir()) if root.exists() else []:
+    sha = directory.name.removeprefix(prefix)
+    try:
+        if directory.name != prefix + sha or sha not in expected or sha in results:
+            raise ValueError("Unexpected or duplicate invalidation artifact")
+        results[sha] = "unknown"
+        path = directory / "result.json"
+        if not directory.is_dir() or list(directory.iterdir()) != [path]:
+            raise ValueError("Invalid invalidation artifact contents")
+        row = json.loads(path.read_text())
+        if not isinstance(row, dict) or set(row) != {"version", "sha", "outcome"} or row["version"] != 1 or row["sha"] != sha or row["outcome"] not in ("invalidated", "failed", "exhausted", "blocked"):
+            raise ValueError("Invalid invalidation result")
+        results[sha] = row["outcome"]
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        print("::error::" + str(error) + ": " + str(directory), file=sys.stderr)
+        protocol_failed = True
+        if sha in expected:
+            results[sha] = "unknown"
+unknown = expected - results.keys()
+if unknown:
+    print("::error::Missing invalidation results: " + ", ".join(sorted(unknown)), file=sys.stderr)
+    protocol_failed = True
+print(json.dumps({
+    "stale": [sha for sha in discovery["stale"] if results.get(sha) in {"invalidated", "failed"}],
+    "invalidation_failed": any(value not in {"invalidated", "blocked"} for value in results.values()),
+    "protocol_failed": protocol_failed
+}, separators=(",", ":")))
+')
+  missing_shas=$(printf '%s\n' "$DISCOVERY" | jq -r '.missing[]')
+  failed_missing_shas=""
+  if [ -n "$missing_shas" ]; then
+    recent_run_cutoff=$(($(date +%s) - 86400))
+    recent_run_cutoff_iso=$(date -u -d "@$recent_run_cutoff" +%Y-%m-%dT%H:%M:%SZ)
+    failed_gate_shas=$(gh_api_with_rate_limit_retry core \
+      "repos/$REPO/actions/workflows/deploy-gate.yml/runs?event=workflow_run&status=failure&created=>=$recent_run_cutoff_iso&per_page=100" \
+      --paginate --slurp |
+      jq -r --argjson cutoff "$recent_run_cutoff" '
+        .[].workflow_runs[] |
+        select(
+          (.created_at | fromdateiso8601) >= $cutoff and
+          (.display_title | test("^Deploy Gate [0-9a-f]{40}$"))
+        ) |
+        .display_title |
+        sub("^Deploy Gate "; "")
+      ')
+    failed_missing_shas=$(printf '%s\n' "$missing_shas" | while read -r missing_sha; do
+      if printf '%s\n' "$failed_gate_shas" | grep -qx "$missing_sha"; then
+        echo "$missing_sha"
+      fi
+    done)
+  fi
+
+  local matrix
+  matrix=$(jq -nc --argjson discovery "$DISCOVERY" --argjson plan "$plan" --arg recovered "$failed_missing_shas" '
+    {include: (if $discovery.kind == "direct"
+      then [{sha:$discovery.sha,check_attempts:2}]
+      else ([$plan.stale[]|{sha:.,check_attempts:1}] +
+        [$discovery.retry[]|{sha:.,check_attempts:2}] +
+        [$recovered|split("\n")[]|select(length>0)|{sha:.,check_attempts:2}])
+      end | reduce .[] as $row ([]; if any(.[]; .sha == $row.sha) then . else . + [$row] end))}')
+  emit_matrix "$matrix"
+  emit_output invalidation_failed "$(printf '%s\n' "$plan" | jq -r .invalidation_failed)"
+  emit_output protocol_failed "$(printf '%s\n' "$plan" | jq -r .protocol_failed)"
+}
+
+evaluate_sha() {
+echo "── evaluating $SHA"
+active_sha="$SHA"
+
+# #5479: the check-runs API can lag ~1 minute behind a job's completion,
+# and workflow_run fires a bounded number of times per SHA — when the
+# LAST event's single poll got a stale read, the posted "pending"
+# status was never refreshed and the PR stayed stuck until a manual
+# re-run (PRs #5476/#5475/#5481). A successful rerun can also still read
+# as failed. Re-poll any non-passing result once before publishing it.
+# Only the all-passing case breaks on the first pass. GraphQL has a separate
+# installation budget from REST core and returns the current rollup in
+# two pages (115 contexts measured on 2026-08-12). Publication reads
+# the combined status once and writes only when the result changes.
+max_attempts=${CHECK_ATTEMPTS:-2}
+for attempt in 1 2; do
+  runs=$(fetch_required_check_runs "$SHA")
+
+  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+import json
+import os
+
+runs = json.loads(os.environ['RUNS_JSON'])
+required = json.loads(os.environ['REQUIRED_JOBS'])
+latest = {}
+
+for name in required:
+  matches = [r for r in runs if r.get('name') == name]
+  if matches:
+    latest_run = sorted(
+        matches,
+        key=lambda r: (
+            r.get('databaseId') or 0,
+            r.get('completedAt') or r.get('startedAt') or '',
+        ),
+    )[-1]
+    conclusion = latest_run.get('conclusion')
+    latest[name] = conclusion.lower() if conclusion else 'pending'
+  else:
+    latest[name] = 'pending'
+
+print(' '.join(f'{name}={latest[name]}' for name in required))
+print('pending=' + ','.join(name for name in required if latest[name] == 'pending'))
+print('failed=' + ','.join(name for name in required if latest[name] not in ('success', 'skipped')))
+")
+
+  echo "attempt $attempt: $status"
+  pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
+  failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
+
+  if [ -z "$failed" ]; then
+    break
+  fi
+  if [ "$attempt" -ge "$max_attempts" ]; then
+    break
+  fi
+  if [ "$attempt" -lt 2 ]; then
+    sleep 60
+  fi
+done
+
+if [ -n "$pending" ]; then
+  post_gate_status "pending" "Waiting for required PR gates ($(name_count "$pending")): $pending"
+  active_sha=""
+  return 0
+fi
+
+if [ -n "$failed" ]; then
+  post_gate_status "failure" "Required PR gates did not pass ($(name_count "$failed")): $failed"
+  active_sha=""
+  return 0
+fi
+
+if ! base_drift "$SHA"; then
+  post_gate_status "pending" "Deploy Gate could not compare this head against main; retry scheduled"
+  active_sha=""
+  return 0
+fi
+
+if [ -n "$drift_files" ]; then
+  post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
+  active_sha=""
+  return 0
+fi
+
+post_gate_status "success" "All required PR gates passed"
+active_sha=""
+}
+
+case "${1:-}" in
+  discover) discover ;;
+  invalidate) invalidate ;;
+  recover) recover ;;
+  evaluate)
+    validate_sha
+    [[ "${CHECK_ATTEMPTS:-2}" =~ ^[12]$ ]]
+    evaluate_sha
+    ;;
+  # Answer the drift question for one head and nothing else. Useful on its own
+  # when a blocked PR needs explaining, and it lets the semantics behind
+  # `base_drift` be tested against a real repository with real SHAs.
+  drift)
+    validate_sha
+    base_drift "$SHA" || exit 1
+    printf '%s\n' "$drift_files"
+    ;;
+  *) echo "::error::Unknown Deploy Gate phase" >&2; exit 2 ;;
+esac

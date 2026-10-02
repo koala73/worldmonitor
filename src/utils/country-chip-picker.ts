@@ -114,12 +114,12 @@ export function mountCountryChipPicker(
 
     setTrustedHtml(root, trustedHtml(`
       <div class="us-notif-country-chips" data-country-chip-row>${chipRow}${extraChips}</div>
-      <div class="us-notif-country-add-row" style="margin-top:6px;display:flex;gap:6px;align-items:center">
-        <input type="text" class="unified-settings-input" data-country-add-input placeholder="Add code (e.g. PL)" aria-label="Add country code" maxlength="2" style="width:90px;text-transform:uppercase">
+      <div class="us-notif-country-add-row">
+        <input type="text" class="us-notif-country-add-input" data-country-add-input placeholder="e.g. PL" aria-label="Add country code" maxlength="2" autocomplete="off" spellcheck="false">
         <button type="button" class="us-notif-ch-btn" data-country-add-btn>Add</button>
-        <span class="us-notif-country-error" data-country-error style="color:#c00;font-size:12px;display:none">Enter a 2-letter ISO country code (e.g. US, GB).</span>
+        <span class="us-notif-country-error" data-country-error hidden>Enter a 2-letter ISO country code (e.g. US, GB).</span>
       </div>
-      ${showAllHint ? '<div class="ai-flow-toggle-desc" style="margin-top:4px">Leave empty to receive alerts from all countries.</div>' : ''}
+      ${showAllHint ? '<div class="ai-flow-toggle-desc us-notif-country-hint">Leave empty to receive alerts from all countries.</div>' : ''}
     `, "legacy direct innerHTML migration"));
   }
 
@@ -144,17 +144,17 @@ export function mountCountryChipPicker(
       if (!input) return;
       const norm = normalizeIso2(input.value);
       if (!norm) {
-        if (errEl) errEl.style.display = '';
+        if (errEl) errEl.hidden = false;
         return;
       }
       if (!value.includes(norm) && value.length >= COUNTRY_CHIP_PICKER_MAX) {
         if (errEl) {
           errEl.textContent = `COUNTRIES_LIMIT_EXCEEDED: maximum ${COUNTRY_CHIP_PICKER_MAX} countries.`;
-          errEl.style.display = '';
+          errEl.hidden = false;
         }
         return;
       }
-      if (errEl) errEl.style.display = 'none';
+      if (errEl) errEl.hidden = true;
       if (!value.includes(norm)) {
         value = dedupe([...value, norm]);
         render();

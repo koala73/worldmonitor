@@ -1,52 +1,235 @@
 ---
 title: "嵌入 World Monitor 面板"
-description: "通过一段 script 或 iframe，将白名单内的 World Monitor 面板嵌入合作方产品。实时地图公开；需密钥的面板按嵌入账户的 API 密钥校验，而不是按页面访客校验。"
+description: "在你的网站中加入免费实时地图或付费 World Monitor 面板。先复制嵌入代码，再查看图层、密钥和集成方式的开发者参考。"
 ---
 
-World Monitor 在 `/embed` 提供合作方嵌入。[WebMCP](/zh/webmcp) 不是嵌入机制——它注册工具，让浏览器智能体驱动顶层 World Monitor 站点；嵌入路由则明确不暴露任何 WebMCP 工具。要把允许列表中的面板拉进其他产品，请使用 `/embed` 或下方加载器。
+你可以在自己的网站中放置 World Monitor 地图、咽喉要道监测面板或恐惧与贪婪仪表。将嵌入代码复制到网页 HTML 中即可。访客无需 World Monitor 账户。
+
+免费地图无需账户或密钥。付费套餐通过嵌入密钥提供更多地图图层，并开放其他受支持的面板。每个嵌入都带有可见的 World Monitor 归属链接。
+
+## 允许嵌入的面板
+
+下表列出了支持的嵌入内容。`/embed` 不提供完整仪表盘或其他仪表盘面板。
+
+| 面板 | 访客看到的内容 | 访问条件 |
+| --- | --- | --- |
+| 实时地图 | 使用你所选图层和初始视图的交互式地图。 | 免费，或使用付费版本获得更多图层和更快刷新。 |
+| 咽喉要道监测 | 海上咽喉要道状态和流量信息的紧凑条带。 | 来自具备嵌入权限账户的嵌入密钥。 |
+| 恐惧与贪婪 | 市场情绪综合分数、标签和仪表。 | 来自具备嵌入权限账户的嵌入密钥。 |
+
+### 实时地图层级
+
+| | 免费地图 | 付费地图 |
+| --- | --- | --- |
+| 密钥 | 无需密钥。 | `wme_…` 嵌入密钥。 |
+| 可用图层 | 冲突、地震和天气。 | 全部 14 个[支持的地图图层](#支持的地图图层)。 |
+| 地图刷新 | 每小时。 | 每 10 分钟。 |
+| 归属链接 | 必需。 | 必需。 |
+
+付费地图显示你选择的图层。添加密钥不会自动打开所有可用图层。两个层级在省略图层设置时，都默认显示冲突、地震和天气。
+
+页面隐藏时，地图暂停刷新；页面恢复可见时，刷新恢复。数据源各有更新周期。付费版本中的静态基础设施图层不会变成实时数据流。
+
+咽喉要道监测和恐惧与贪婪面板在 iframe 打开时加载数据，不按地图的周期刷新。重新加载 iframe 才会再次获取数据。
+
+## 无人值守屏幕与自助显示模式
+
+你可以在管理层仪表盘或数字标牌页面中，将地图与其他信息流并排显示。在安装不带键盘或鼠标的屏幕前，先在嵌入代码中设置初始视图。
+
+### 可以在其他域名上使用 iframe 吗？
+
+可以。请使用专用的 `/embed` 路由，它允许其他网站通过 iframe 嵌入。完整的 `/dashboard` 限制嵌入，不适用于此场景。安全策略详情见[嵌入响应头](#嵌入响应头)。
+
+### 屏幕需要保持登录吗？
+
+不需要。免费地图无需登录或密钥。付费地图需在[加载器代码](#可复制加载器)中配置 `wme_…` 嵌入密钥。屏幕不使用访客的登录会话或 Cookie。
+
+付费地图会获取有效期为 30 分钟的授权令牌，并在密钥及所属账户的嵌入权限仍然有效时自动续期。操作人员无需在每次续期时登录。重新加载宿主页面会再次运行代码，并使用已配置的密钥请求新的授权令牌。
+
+此场景不支持带令牌的 URL。将密钥保留在代码的 `data-key` 属性中，不要放入 URL。密钥吊销、账户权限变更或服务故障可能影响显示；请参阅[故障行为](#故障行为)。
+
+### 如何隐藏菜单并充分利用显示区域？
+
+`/embed` 地图已省略仪表盘导航、图层选择器和地图控件。无需添加 `?view=kiosk` 或 `?menu=hidden`；这些不是受支持的设置。World Monitor 归属链接仍然可见。
+
+调整 iframe 或其容器的尺寸以适应分屏布局。使用显示浏览器或数字标牌播放器的自助显示（kiosk）或全屏设置来隐藏浏览器控件。嵌入内容不会将浏览器切换为自助显示模式。
+
+配置播放器，使其在开机时打开宿主页面、防止休眠，并在重启或浏览器故障后重新打开或加载页面。在目标硬件上测试开机流程以及断网、断电后的恢复。嵌入内容不管理设备，服务故障期间可见的地图可能包含较旧的数据。
+
+## 从仪表盘复制地图
+
+1. 打开 [World Monitor 仪表盘](https://www.worldmonitor.app/dashboard)。
+2. 设置地图位置、缩放、主题和图层。
+3. 点击地图上的 **Embed**。
+4. 在 **Free — no key needed** 或 **With your embed key** 下点击 **Copy snippet**。
+5. 将代码粘贴到网站的 HTML 中。
+
+付费选项仅向具备嵌入权限的账户显示。发布前，将 `YOUR_WME_EMBED_KEY` 替换为从 **Settings → Embeds** 创建的密钥。
+
+<Note>
+对话框预览始终使用免费地图，即使当前账户已付费。代码保留初始视图和支持的图层选择。嵌入列表之外的仪表盘图层会被省略，免费代码只显示免费图层。
+</Note>
+
+## 创建和管理嵌入密钥
+
+免费地图可以跳过本节。每个[付费套餐](/zh/pricing)都提供嵌入权限，包括不提供 REST API 访问的套餐。
+
+1. 登录用于提供嵌入内容的账户。
+2. 打开 **Settings → Embeds**。也可以点击地图嵌入对话框中的 **Manage embed keys**。
+3. 输入密钥名称，例如 `marketing-site`。
+4. 点击 **Create Embed Key**。
+5. 立即复制密钥。密钥只显示一次。
+6. 将密钥粘贴到代码的 `data-key` 属性中。
+
+每个账户最多保留五个有效嵌入密钥。Embeds 标签页列出名称、前缀和使用信息。如果丢失密钥，请创建替代密钥。轮换密钥时，先在网站中使用新密钥并检查嵌入，再到同一标签页吊销旧密钥。
+
+<Warning>
+嵌入密钥在网页 HTML 中可见。请使用权限仅限嵌入的 `wme_…` 密钥。不要发布以 `wm_` 开头的用户 API 密钥或企业密钥。这些凭据可以授权嵌入之外的请求。
+</Warning>
+
+吊销会在约一分钟内阻止新的密钥校验，但不会清除访客已经加载的内容。付费面板可以继续显示，直到重新加载。付费地图的授权令牌最多仍可有效 30 分钟；续期被拒绝后，地图返回免费层级。临时故障可能让最后一帧保留更久。请参阅[故障行为](#故障行为)。
 
 ## 可复制加载器
 
-合作方应只放一个 script 标签。加载器创建 iframe，并在加载后把嵌入账户的 API 密钥通过 `postMessage` 传入。**不要把 API 密钥放进 iframe URL。**
+选择下方的一段代码，粘贴到自定义 HTML 块或页面模板中。每个脚本在所在位置创建一个 iframe，宽度占满容器。
 
-```html
-<script
-  src="https://www.worldmonitor.app/embed.js"
-  data-panel="chokepoint-strip"
-  data-key="YOUR_WM_API_KEY"
-  data-theme="dark"
-  data-height="360"
-  async
-></script>
-```
+对于付费嵌入，将 `YOUR_WME_EMBED_KEY` 替换为你的嵌入密钥。通过 `data-layers`、`data-center` 和 `data-zoom` 设置地图初始视图。
 
-将 `YOUR_WM_API_KEY` 替换为嵌入账户的 World Monitor 用户 API 密钥（`wm_…`）或企业密钥。该密钥应可独立于仪表盘登录轮换。查询字符串中的密钥会被拒绝。
+<CodeGroup>
 
-公开实时地图（无需密钥）：
-
-```html
+```html 免费地图
 <script
   src="https://www.worldmonitor.app/embed.js"
   data-panel="map"
+  data-layers="conflicts,earthquakes,weather"
   data-theme="dark"
   data-height="420"
   async
 ></script>
 ```
 
-## 允许嵌入的面板
+```html 付费地图
+<script
+  src="https://www.worldmonitor.app/embed.js"
+  data-panel="map"
+  data-key="YOUR_WME_EMBED_KEY"
+  data-layers="conflicts,earthquakes,weather,protests,cables"
+  data-center="25.2,55.3"
+  data-zoom="4"
+  data-theme="dark"
+  data-height="420"
+  async
+></script>
+```
 
-| `panel` | 名称 | 授权 |
+```html 咽喉要道监测
+<script
+  src="https://www.worldmonitor.app/embed.js"
+  data-panel="chokepoint-strip"
+  data-key="YOUR_WME_EMBED_KEY"
+  data-theme="dark"
+  data-height="360"
+  async
+></script>
+```
+
+```html 恐惧与贪婪
+<script
+  src="https://www.worldmonitor.app/embed.js"
+  data-panel="fear-greed"
+  data-key="YOUR_WME_EMBED_KEY"
+  data-theme="light"
+  data-height="360"
+  async
+></script>
+```
+
+</CodeGroup>
+
+如果编辑器移除了 script 标签，请使用[免费 iframe](#iframe（实时地图）)。付费嵌入需要宿主页面的 JavaScript 发送密钥。仅有 iframe URL 无法提供密钥。
+
+## 排查嵌入问题
+
+| 现象 | 检查方法 |
+| --- | --- |
+| 没有显示嵌入内容。 | 确认编辑器保留了 script 或 iframe。如果网站配置了内容安全策略，请在 `frame-src` 中允许 `https://www.worldmonitor.app`；使用加载器时，还需在 `script-src` 中允许该来源。 |
+| 付费地图只显示免费图层。 | 检查 `wme_` 密钥、账户嵌入权限和 `data-layers`。占位符不会启用付费访问。仪表盘中的预览始终免费。 |
+| 付费面板提示需要嵌入 API 密钥。 | 通过 `data-key` 提供 `wme_` 嵌入密钥。错误信息沿用了旧称“API key”。访客登录不会为嵌入提供授权。 |
+| 提示账户无权访问。 | 检查创建密钥的账户套餐。恢复权限后重新加载 iframe。 |
+| 缺少图层。 | 使用支持图层表中的 ID。也可能是数据源不可用。付费密钥不会开放列表之外的仪表盘图层。 |
+| 数据看起来没有变化。 | 检查上方的刷新行为。两个付费面板需要重新加载，地图数据源的更新频率也可能低于地图帧刷新频率。 |
+| 嵌入无法加载。 | 查看 iframe 的浏览器控制台和网络请求。数据源或服务恢复后重新加载。 |
+
+## 开发者参考
+
+### 嵌入响应头
+
+托管应用为嵌入内容和仪表盘设置不同的响应头：
+
+| 路由 | 嵌入策略 |
+| --- | --- |
+| `/embed` 和 `/embed.html` | CSP 包含 `frame-ancestors *`，不设置 `X-Frame-Options` 响应头。第三方网站可以嵌入这些路由。 |
+| `/dashboard` | `X-Frame-Options: SAMEORIGIN` 和 CSP 的 `frame-ancestors` 允许列表限制嵌入。不要将其用作第三方嵌入。 |
+
+嵌入内容的 CSP 还包含 `frame-src 'none'`。它阻止嵌入内容加载嵌套框架，不会阻止网站嵌入该内容。`frame-ancestors` 决定哪些父页面可以嵌入它。
+
+如果宿主页面设置了 CSP，请在 `frame-src` 中允许 `https://www.worldmonitor.app`；使用加载器时，也需在 `script-src` 中允许该来源。自托管时，请检查经过反向代理后的最终响应头；额外的嵌入限制可能阻止显示。
+
+### 查询参数
+
+以下参数配置 `/embed`。加载器将对应的 `data-*` 属性转发到该 URL。
+
+| 参数 | 默认值 | 值和行为 |
 | --- | --- | --- |
-| `map`（别名：`live-map`、`live_map`、`livemap`） | 实时地图 | 公开，无需 API 密钥。省略 `panel` 时的默认值。 |
-| `chokepoint-strip`（别名：`chokepoints`、`chokepoint`、`chokepoint-monitor`） | 咽喉要道监测 | 具备 API 访问权限的嵌入 API 密钥。 |
-| `fear-greed`（别名：`feargreed`、`fear_greed`、`markets-fear-greed`） | 恐惧与贪婪 | 具备 API 访问权限的嵌入 API 密钥。 |
+| `panel` | `map` | `map`、`chokepoint-strip` 或 `fear-greed`。未知值会显示错误。 |
+| `layers` | `conflicts,earthquakes,weather` | 仅地图使用。以逗号分隔的图层 ID。未知 ID 被忽略。显式空值或 `none` 表示不显示叠加图层。 |
+| `center` | `20,0` | 仅地图使用。纬度,经度。纬度限制在 -90 到 90，经度限制在 -180 到 180。无效数字使用默认值。 |
+| `zoom` | `1` | 仅地图使用。数值限制在 1 到 10。无效值使用默认值。 |
+| `theme` | `dark` | `dark` 或 `light`。无效值使用 `dark`。 |
+| `variant` | `full` | `full`、`tech`、`finance`、`commodity`、`happy` 或 `energy`。无效值使用 `full`。此参数不改变嵌入权限或图层列表。 |
+| `key` | 不支持。 | 通过加载器或下方的凭据消息发送密钥。不要在 URL 中放置凭据。 |
 
-未知 `panel` 不会渲染。X / 推文正文面板不可嵌入：合作方只获得派生事实和永久链接，不会获得帖子正文。
+加载器接受 `data-panel`、`data-layers`、`data-center`、`data-zoom`、`data-theme` 和 `data-variant`，以及下列属性：
 
-## iframe（实时地图）
+| 属性 | 默认值 | 行为 |
+| --- | --- | --- |
+| `data-key` | 无密钥。 | 嵌入账户的 `wme_` 密钥。字面值 `YOUR_WME_EMBED_KEY` 和 `YOUR_WM_API_KEY` 均视为无密钥。 |
+| `data-height` | `420` | iframe 高度，单位为像素，限制在 120 到 1200。宽度为容器的 100%。 |
 
-地图仍可作为直接 iframe 使用。省略 `panel` 时保持历史的仅地图契约。
+为兼容现有集成，面板别名仍然有效。新代码请使用规范 ID。
+
+| 规范面板 ID | 别名 |
+| --- | --- |
+| `map` | `live-map`、`live_map`、`livemap` |
+| `chokepoint-strip` | `chokepoints`、`chokepoint`、`chokepoint-monitor` |
+| `fear-greed` | `feargreed`、`fear_greed`、`markets-fear-greed` |
+
+### 支持的地图图层
+
+在 `layers` 或 `data-layers` 中使用这些 ID。`waterways` 图层在地图上标记咽喉要道；独立的 `chokepoint-strip` 面板显示状态和流量信息。
+
+| 图层 ID | 内容 | 免费地图 | 付费地图 |
+| --- | --- | --- | --- |
+| `conflicts` | 冲突事件。 | 是 | 是 |
+| `earthquakes` | 地震和自然事件。 | 是 | 是 |
+| `weather` | 天气警报。 | 是 | 是 |
+| `protests` | 抗议事件。 | 否 | 是 |
+| `cables` | 海底电缆。 | 否 | 是 |
+| `pipelines` | 管道。 | 否 | 是 |
+| `waterways` | 海上咽喉要道。 | 否 | 是 |
+| `tradeRoutes` | 贸易路线。 | 否 | 是 |
+| `economic` | 经济中心。 | 否 | 是 |
+| `stockExchanges` | 证券交易所。 | 否 | 是 |
+| `financialCenters` | 金融中心。 | 否 | 是 |
+| `centralBanks` | 中央银行。 | 否 | 是 |
+| `commodityHubs` | 大宗商品枢纽。 | 否 | 是 |
+| `gulfInvestments` | 海湾合作委员会投资。 | 否 | 是 |
+
+从 `cables` 到 `gulfInvestments` 的基础设施和市场图层使用静态地图数据。不支持飞机、实时船舶、卫星跟踪及列表之外的其他仪表盘图层。X 帖子正文不可嵌入。
+
+### Iframe（实时地图）
+
+免费地图只需直接使用 iframe。省略 `panel` 时选择地图。
 
 ```html
 <iframe
@@ -59,36 +242,85 @@ World Monitor 在 `/embed` 提供合作方嵌入。[WebMCP](/zh/webmcp) 不是�
 ></iframe>
 ```
 
-需密钥的面板也可以使用 `/embed?panel=fear-greed` iframe，但宿主页必须在 iframe 加载后 `postMessage` `{ source: "worldmonitor-embed", type: "credential", key }`。优先使用 script 加载器。
+<Accordion title="直接在 iframe 中使用嵌入密钥">
 
-## 查询参数
+优先使用 `embed.js`，由它完成凭据交换。自定义集成必须先安装消息监听器，再设置 iframe URL。iframe 在最初的三秒等待期内接受来自父页面的凭据。
 
-| 参数 | 示例 | 说明 |
-| --- | --- | --- |
-| `panel` | `chokepoint-strip` | 白名单面板 id。默认 `map`。 |
-| `layers` | `conflicts,earthquakes,weather` | 仅地图。白名单内的公开图层：`conflicts`、`earthquakes`、`protests`、`weather`，以及文档中的静态地图图层。未知、高级、需认证或高频图层将被忽略。 |
-| `center` | `25.2,55.3` | 仅地图。纬度和经度，会被限制在有效范围内。 |
-| `zoom` | `4` | 仅地图。限制在 `1` 与 `10` 之间。 |
-| `theme` | `dark` | `dark` 或 `light`。 |
-| `variant` | `full` | `full`、`tech`、`finance`、`commodity`、`happy` 或 `energy` 之一。 |
-| `key` | — | **不接受。** 密钥只能通过加载器以 `X-WorldMonitor-Key` 传递，不得出现在查询字符串中。 |
+iframe 发送 `{ source: "worldmonitor-embed", type: "ready" }`。检查消息来源和发送窗口。向准确的 World Monitor 来源回复 `{ source: "worldmonitor-embed", type: "credential", key }`。
 
-加载器 `data-*` 属性：
+```html
+<div id="wm-embed"></div>
+<script>
+  const origin = 'https://www.worldmonitor.app';
+  const key = 'YOUR_WME_EMBED_KEY';
+  const frame = document.createElement('iframe');
+  frame.title = 'World Monitor Fear & Greed';
+  frame.referrerPolicy = 'strict-origin-when-cross-origin';
+  frame.style.cssText = 'width:100%;height:360px;border:0;display:block';
 
-| 属性 | 示例 | 说明 |
-| --- | --- | --- |
-| `data-panel` | `fear-greed` | 与 `?panel=` 相同的允许列表。 |
-| `data-key` | `YOUR_WM_API_KEY` | 嵌入账户密钥。公开地图可省略。 |
-| `data-theme` | `dark` | 传到 iframe。 |
-| `data-height` | `360` | iframe 高度（像素），限制在 120–1200。 |
+  function sendKey() {
+    frame.contentWindow?.postMessage(
+      { source: 'worldmonitor-embed', type: 'credential', key },
+      origin,
+    );
+  }
 
-## 授权
+  window.addEventListener('message', (event) => {
+    if (event.origin !== origin || event.source !== frame.contentWindow) return;
+    if (event.data?.source === 'worldmonitor-embed' && event.data?.type === 'ready') {
+      sendKey();
+    }
+  });
+  frame.addEventListener('load', sendKey);
+  frame.src = origin + '/embed?panel=fear-greed&theme=dark';
+  document.getElementById('wm-embed').appendChild(frame);
+</script>
+```
 
-需密钥的面板校验的是**嵌入账户**，而不是宿主页的访客：
+将面板设为 `map` 并添加地图查询参数，即可通过同样的交换方式显示付费地图。不要将密钥放进 `frame.src`。在组件式应用中，组件卸载时要移除 iframe 和消息监听器。
 
-- iframe 以 `credentials: 'omit'` 和 `X-WorldMonitor-Key` 请求 `/api/embed/entitlement?panel=`。
-- 访客 cookie 和匿名 `wms_` 会话令牌会被忽略。
-- `WORLDMONITOR_VALID_KEYS` 中的企业密钥，以及所有者具有 `features.apiAccess` 的用户密钥（`wm_`）可通过。
-- 使用仪表盘的 **Embed（嵌入）** 按钮，即可为当前的公开地图视图生成代码片段。
+</Accordion>
 
-每个嵌入都包含一个指向 World Monitor 的永久归属链接，并带有来源活动参数。
+### 授权
+
+付费嵌入校验密钥所属账户。访客 Cookie 和匿名 `wms_` 会话令牌不提供嵌入权限。嵌入请求不发送 Cookie。
+
+| 嵌入 | 请求流程 |
+| --- | --- |
+| 免费地图 | 无需密钥或授权令牌，读取 `GET /api/embed/map-frame`。 |
+| 付费地图 | 在 `X-WorldMonitor-Key` 中将 `wme_` 密钥发送到 `POST /api/embed/session?panel=map`。随后在 `X-WorldMonitor-Grant` 中使用返回的 `wmg_` 授权令牌读取地图帧，并在令牌接近过期时续期。 |
+| 咽喉要道监测 | 检查 `GET /api/embed/entitlement?panel=chokepoint-strip`，再使用相同的 `X-WorldMonitor-Key` 读取 `/api/supply-chain/v1/get-chokepoint-status`。 |
+| 恐惧与贪婪 | 检查 `GET /api/embed/entitlement?panel=fear-greed`，再使用相同的 `X-WorldMonitor-Key` 读取 `/api/market/v1/get-fear-greed-index`。 |
+
+地图授权令牌有效期为 30 分钟，权限限定到账户和面板。地图的 entitlement 端点为免费层级返回 `public`，该结果不代表付费访问有效。付费地图会话接受 `wme_` 密钥，不接受用户 API 密钥或企业密钥。
+
+嵌入密钥授权嵌入会话、权限检查和上表中的两个面板数据路由，不开放通用 REST API。免费地图使用聚合后的 map-frame 端点，不提供对底层冲突、地震、自然事件或社会动荡 REST 路由的匿名访问。直接获取数据请参阅 [API 身份验证](/zh/usage-auth)。
+
+嵌入密钥不限制网站域名。密钥模型可以保存 `allowedOrigins`，但请求不会强制执行该字段，设置表单也不提供该选项。
+
+### 故障行为
+
+地图先以免费层级启动，密钥交换成功后升级。只有已选择、可用且获得授权的图层才会显示。
+
+| 条件 | 地图行为 |
+| --- | --- |
+| 无密钥、使用占位符，或初次交换被拒绝。 | 保持免费层级，不显示付费图层。 |
+| 续期时密钥或套餐被拒绝。 | 丢弃授权令牌并请求免费地图帧。 |
+| 初次交换暂时不可用或触发限流。 | 保留免费地图并重试。 |
+| 续期暂时不可用。 | 保留最后一帧。令牌过期后，暂停读取地图数据，直到校验成功或明确拒绝。 |
+| 地图帧请求失败。 | 保留前一帧。临时服务器故障和限流会触发重试。 |
+| 某图层的数据源失败。 | 其他图层仍可显示，受影响的图层可能部分可用或不可用。 |
+
+map-frame 响应包含 `tier`、`refreshMs`、`generatedAt`、`layers` 和 `data`。图层状态为 `ok`、`partial`、`unavailable` 或 `not-entitled`。免费请求可能在发出前省略付费图层，因此缺失图层不一定有显式的 `not-entitled` 结果。故障后仍可见的地图帧可能包含旧数据。
+
+两个付费面板没有免费回退或自动刷新循环。初次密钥检查或数据加载失败时，它们显示错误。修正密钥、恢复权限或等待服务恢复后，请重新加载。
+
+### 迁移旧嵌入
+
+现有的无密钥地图 URL 仍默认选择 `map`。免费图层为冲突、地震和天气。抗议和静态基础设施图层需要付费嵌入权限。
+
+为保持兼容，两个付费面板仍接受符合条件的 `wm_` 用户密钥和已配置的企业密钥，并在浏览器控制台输出警告。这些凭据已不推荐用于嵌入，目前没有移除日期。请替换为 **Settings → Embeds** 中创建的 `wme_` 密钥。`wm_` 密钥不能升级地图。
+
+### 其他集成
+
+[WebMCP](/zh/webmcp) 让浏览器智能体在 World Monitor 主站上使用工具，嵌入路由不暴露 WebMCP 工具。[MCP Apps](/zh/mcp-apps) 在兼容的 AI 客户端中提供组件。要在网站上放置面板，请使用 `/embed`。

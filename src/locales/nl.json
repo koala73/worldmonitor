@@ -492,9 +492,12 @@
         "space": "RUIMTE"
       },
       "paused": "Webcams gepauzeerd",
-      "pausedIdle": "Webcams gepauzeerd — beweeg de muis om te hervatten",
       "play": "Afspelen",
-      "previewStatus": "Livevoorbeeld"
+      "previewStatus": "Klaar om af te spelen",
+      "connecting": "Verbinding wordt tot stand gebracht…",
+      "unverified": "Kan niet bevestigen dat deze stream live is",
+      "offline": "{{city}} is momenteel offline",
+      "noFeeds": "Geen live webcams in deze regio op dit moment"
     },
     "playback": {
       "live": "Live",
@@ -759,9 +762,6 @@
       "base": "Basis",
       "nuclear": "Nucleair"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "HOOG",
@@ -770,8 +770,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "statusNormal": "NORMAAL",
+      "statusNoData": "GEEN GEGEVENS",
+      "statusNoBaseline": "GEEN REFERENTIE",
+      "vsUsual": "ten opzichte van normaal",
       "title": "Pentagon Pizza-index",
       "tensionsTitle": "Geopolitieke spanningen",
+      "tensionsSource": "Spanningen: World Monitor op basis van GDELT-gebeurtenissen",
+      "insufficientData": "Onvoldoende gegevens",
+      "pizzaUnavailable": "Activiteit van pizzeria's niet beschikbaar",
       "source": "Bron:",
       "defcon": "DEFCON {{level}}",
       "updated": "Bijgewerkt {{timeAgo}}",
@@ -785,11 +793,11 @@
       "minutesAgo": "{{m}}m geleden",
       "hoursAgo": "{{h}}u geleden",
       "defconLabels": {
-        "1": "GEREGISTREERD PISTOOL - MAXIMALE KLAARHEID",
-        "2": "SNEL TEMPO - STRIJDKRACHTEN KLAAR",
-        "3": "ROND HUIS - VERHOOG DE KRACHTBEREIDING",
-        "4": "DUBBEL NEMEN - VERHOOGDE INTELLIGENTIE HORLOGE",
-        "5": "FADE OUT - LAAGSTE KLAARHEID"
+        "1": "Maximale activiteit",
+        "2": "Hoge activiteit",
+        "3": "Verhoogde activiteit",
+        "4": "Boven normaal",
+        "5": "Normale activiteit"
       }
     },
     "stablecoins": {
@@ -1316,7 +1324,10 @@
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
       "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Details van het bericht ({{count}})",
+      "streamIdleStopLabel": "Livevideostream stoppen bij inactiviteit",
+      "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel.",
+      "streamIdleStopNever": "Nooit"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -1377,6 +1388,7 @@
       "etfs": "ETF's",
       "netInflow": "NETTO INSTROOM",
       "netOutflow": "NETTO UITSTROOM",
+      "netNeutral": "NETTO NEUTRAAL",
       "table": {
         "ticker": "Ticker",
         "issuer": "Uitgever",
@@ -1460,13 +1472,10 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} kan hier niet worden afgespeeld — mogelijk beperkt in uw regio (fout {{code}})",
       "openOnYouTube": "Open on YouTube",
       "manage": "Kanalen beheren",
       "addChannel": "Kanaal toevoegen",
       "remove": "Verwijderen",
-      "youtubeHandle": "YouTube-handle (bijv. @Channel)",
-      "youtubeHandleOrUrl": "YouTube-handle of URL",
       "displayName": "Weergavenaam (optioneel)",
       "channelSettings": "Kanaalinstellingen",
       "save": "Opslaan",
@@ -1481,15 +1490,26 @@
       "regionMiddleEast": "Midden-Oosten",
       "regionAfrica": "Afrika",
       "regionOceania": "Oceanië",
-      "botCheck": "YouTube vraagt om in te loggen om {{name}} af te spelen",
-      "invalidHandle": "Voer een geldig YouTube-handle in (bijv. @Kanaalnaam)",
       "signInToYouTube": "Inloggen bij YouTube",
       "verifying": "Verifiëren…",
       "noResults": "Geen kanalen gevonden voor \"{{term}}\"",
       "hlsUrl": "HLS-stream-URL (optioneel)",
       "invalidHlsUrl": "Voer een geldige HLS-stream-URL in (.m3u8)",
       "playLiveFeed": "Livefeed afspelen",
-      "readyStatus": "Klaar wanneer jij dat bent"
+      "readyStatus": "Klaar wanneer jij dat bent",
+      "embedBlocked": "YouTube speelt {{name}} momenteel niet af in andere sites",
+      "unavailable": "{{name}} kan momenteel niet worden afgespeeld",
+      "noStream": "Er is nog geen livestream ingesteld voor {{name}}",
+      "needsChannelUrl": "Voeg {{name}} opnieuw toe met het kanaal-URL (youtube.com/channel/UC…) of een live-video-URL",
+      "insecureStream": "{{name}} gebruikt een onveilige (http) stream, die browsers blokkeren. Voeg het opnieuw toe met een veilige (https) stream-URL",
+      "connecting": "Verbinding maken met {{name}}…",
+      "recording": "Opnemen",
+      "unverified": "Kan niet bevestigen dat deze stream live is",
+      "playNextChannel": "Volgende kanaal afspelen",
+      "channelOrVideoUrl": "YouTube-kanaal of video-URL",
+      "channelUrlHint": "Plak een kanaal-URL (youtube.com/channel/UC…) of een live-video-URL",
+      "youtubeChannel": "YouTube-kanaal",
+      "httpsStreamHint": "Browsers blokkeren onveilige (http) streams. Plak een veilige (https) stream-URL"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",
@@ -1792,7 +1812,7 @@
       "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financiële-stressindicator</strong> WorldMonitor-verhouding van hoogrentend krediet tot langlopende Amerikaanse staatsobligaties, gecorrigeerd voor aandelenvolatiliteit en de hoogrentende spread: (HYG / TLT) / (VIX × HY spread / 100). Dit is niet de Financial Stress Index van de Federal Reserve Bank of Kansas City. Een waarde van 1.5 of hoger betekent lage stress; onder 0.3 betekent hoge stress.",
       "title": "Financiële stressindicator",
       "usFsiValue": "US FSI-WAARDE",
       "cissTitle": "EU CISS (systeemstress eurozone)",
@@ -2247,7 +2267,14 @@
       "signals_one": "{{count}} signaal",
       "signals_other": "{{count}} signalen",
       "analyzing": "Analyseren...",
-      "viewOnMap": "Bekijken op kaart"
+      "viewOnMap": "Bekijken op kaart",
+      "waiting": "Wachten op de volgende gegevensupdate. Dit paneel wordt automatisch bijgewerkt.",
+      "offline": "Wachten op een verbinding. Dit paneel wordt automatisch bijgewerkt zodra je weer online bent.",
+      "updated": "Bijgewerkt {{time}}",
+      "saved": "Laatst bekende update {{time}} · Controleren op updates",
+      "savedOffline": "Laatst bekende update {{time}} · Offline",
+      "localSignals": "Gebaseerd op geladen dashboardsignalen",
+      "emptySaved": "Geen convergentie in de laatst bekende update."
     },
     "thermalEscalation": {
       "title": "Thermische escalatie",
@@ -2409,6 +2436,56 @@
       "succeeded": "Wachtsleutel opgeslagen. Je kunt deze gebruiken wanneer je volgende keer inlogt.",
       "retryable": "Dit is niet afgerond. Je kunt het opnieuw proberen.",
       "failed": "We konden geen wachtsleutel op dit apparaat opslaan."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Beslisnotitie voor grondstoffen",
+      "commodity": "Grondstof / product",
+      "blockedChokepoint": "Verondersteld geblokkeerde doorgang",
+      "commodityCapture": "Grondstoffenvergelijking vastleggen",
+      "title": "Beslisnotitie",
+      "fuel": "Brandstof",
+      "chokepoint": "Knelpunt",
+      "baseline": "Verstoring in basisscenario",
+      "comparison": "Verstoring in vergelijkingsscenario",
+      "capture": "Beide vastleggen / vernieuwen",
+      "downloadHtml": "Beslisnotitie downloaden als HTML",
+      "downloadJson": "Beslisnotitie downloaden als JSON",
+      "back": "← Terug naar landenoverzicht",
+      "select": "Selecteer een energieverstoring en leg beide scenario’s vast.",
+      "changed": "Selectie gewijzigd. Leg beide scenario’s vast voordat u exporteert.",
+      "loading": "Beide scenario’s worden vastgelegd…",
+      "captured": "Vastgelegd. Controleer de observatiedatums en beperkingen voordat u downloadt.",
+      "failed": "De scenario’s konden niet worden vastgelegd. Controleer uw toegang en probeer opnieuw. Er is geen resultaat om te exporteren.",
+      "locked": "De beslisnotitie is beschikbaar met Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Gepauzeerd wegens inactiviteit",
+      "idleBody": "Livevideostream gestopt na {{duration}} zonder muis-, toetsenbord- of aanraakactiviteit.",
+      "idleResume": "Hervatten",
+      "idleKeepPlaying": "Videostream afspelen bij inactiviteit",
+      "idleSettingsHint": "Wijzig dit op elk moment in Instellingen › Media.",
+      "idleKeepPlayingToast": "Livevideostream blijft afspelen bij inactiviteit. Wijzigen in Instellingen › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Enkele uitgever",
+      "singlePublisherHint": "Tot nu toe meldt slechts één uitgever dit. Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "tier4Only": "Alleen laag-tier bronnen",
+      "tier4OnlyHint": "Elk medium dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "rosterListed": "({{listed}} vermeld)",
+      "rosterFeeds": "Feeds gezien: {{labels}}",
+      "rosterLegend": "Tiers rangschikken bronnen; ze beoordelen deze bewering niet.",
+      "tierDocsLink": "Hoe tiers worden toegekend",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Tier 1: Persbureaus en officiële instanties",
+      "tierTitle2": "Tier 2: Grote media",
+      "tierTitle3": "Tier 3: Gespecialiseerde, regionale en denktankbronnen",
+      "tierTitle4": "Tier 4: Aggregators en blogs",
+      "tierTitleUndeclared": "Tier niet opgegeven: nog niet beoordeeld",
+      "rosterSummary": "Gemeld door {{publishers}}",
+      "rosterSummaryTier1": "Gemeld door {{publishers}}, waaronder {{tier1}} tier-1",
+      "rosterPublishers_one": "{{count}} uitgever",
+      "rosterPublishers_other": "{{count}} uitgevers"
     }
   },
   "popups": {
@@ -2446,14 +2523,18 @@
     "protest": {
       "acledVerified": "ACLED (geverifieerd)",
       "gdelt": "GDELT",
+      "records": "vermeldingen",
+      "mediaSignal": "Onbevestigd mediasignaal",
+      "relatedArticle": "Gerelateerd artikel",
+      "mediaSignalDetail": "Deze locatie wordt genoemd in artikelen over onrust. Een lokale gebeurtenis is niet bevestigd.",
       "riots": "Rellen",
       "highSeverity": "Hoge ernst"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS-storing",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "title": "GPS/GNSS-interferentie",
+      "navPerformance": "Getroffen luchtvaartuigen",
+      "samples": "Aantal getroffen luchtvaartuigen",
+      "aircraft": "Totaal aantal waargenomen luchtvaartuigen",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -3276,7 +3357,8 @@
       "activeSirens": "Actieve sirenes",
       "sirens24h": "Sirenes / 24u",
       "aviationDisruptions": "Luchtvaartverstoringen",
-      "gpsJammingZones": "GPS-storingszones"
+      "gpsJammingZones": "GPS-storingszones",
+      "temporalUnavailable": "Temporele waarnemingen niet beschikbaar"
     },
     "countryFacts": "Landenfeiten",
     "loadingFacts": "Landenfeiten laden...",
@@ -3342,7 +3424,7 @@
       "decisionSignalsUnavailable": "De momentopname van beslissingssignalen van China is momenteel niet beschikbaar."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",

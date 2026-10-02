@@ -10,13 +10,13 @@ Use this skill when the user asks about protests, riots, strikes, demonstrations
 
 ## Authentication
 
-No API key is required for this public RPC. If your agent already sends a World Monitor key for quota attribution or a shared integration wrapper, use the `X-WorldMonitor-Key` header. `Authorization: Bearer ...` is for MCP/OAuth or Clerk JWTs - **not** raw API keys.
+Server-to-server callers (agents, scripts, SDKs) must present an API key in the `X-WorldMonitor-Key` header. `Authorization: Bearer ...` is for MCP/OAuth or Clerk JWTs - **not** raw API keys.
 
 ```
 X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 ```
 
-Issue a key at https://www.worldmonitor.app/pro for authenticated and Pro-gated endpoints.
+Issue a key at https://www.worldmonitor.app/pro and set `WM_API_KEY` to that key before running the example below.
 
 ## Endpoint
 
@@ -64,7 +64,7 @@ GET https://api.worldmonitor.app/api/unrest/v1/list-unrest-events
 }
 ```
 
-An empty `events` array can mean no seeded records matched the filters, or that the seed cache is unavailable. Cross-check `/api/health` or retry if the answer depends on completeness.
+An empty `events` array can mean no seeded records matched the filters, or that the seed cache is unavailable. Cross-check `/api/health?compact=1` or retry if the answer depends on completeness. Read `problems` and `summary.warn` there, not the top-level `status`: a source warning that is still serving usable last-good data leaves `status` at `HEALTHY`.
 
 ## Worked example
 
@@ -73,6 +73,7 @@ Recent unrest in France over the last seven days:
 ```bash
 START_MS=$(node -e 'console.log(Date.now() - 7 * 24 * 60 * 60 * 1000)')
 curl -s --get \
+  -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
   'https://api.worldmonitor.app/api/unrest/v1/list-unrest-events' \
   --data-urlencode 'country=FR' \
@@ -88,8 +89,10 @@ Use this skill for aggregate situational awareness and source-attributed reporti
 
 ## Errors
 
+- `401` - missing credential; send `X-WorldMonitor-Key`.
+- `403` - invalid or rejected credential; verify your API key.
 - `429` - rate limited; retry with backoff.
-- Empty `events` with suspected stale data is reported in the `200` response; check `/api/health` or retry before treating it as no unrest.
+- Empty `events` with suspected stale data is reported in the `200` response; check `/api/health?compact=1` or retry before treating it as no unrest. Read `problems` and `summary.warn` there, not the top-level `status`: a source warning that is still serving usable last-good data leaves `status` at `HEALTHY`.
 
 ## When NOT to use
 
@@ -100,5 +103,5 @@ Use this skill for aggregate situational awareness and source-attributed reporti
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

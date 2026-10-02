@@ -14,20 +14,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { headingToCompass } from '../src/utils/heading-to-compass.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 // ========================================================================
-// 1. Compass heading calculation (pure math, mirrors GlobeMap logic)
+// 1. Compass heading calculation used by GlobeMap
 // ========================================================================
-
-/** Replicates the compass formula from GlobeMap.showMarkerTooltip */
-function headingToCompass(heading) {
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  return dirs[Math.round(((heading ?? 0) % 360 + 360) % 360 / 22.5) % 16];
-}
 
 describe('headingToCompass', () => {
   it('returns N for heading 0', () => {

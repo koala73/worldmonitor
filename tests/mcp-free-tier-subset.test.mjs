@@ -85,7 +85,7 @@ describe('free-tier roster', () => {
       const internal = TOOL_REGISTRY.find((candidate) => candidate.name === tool.name);
       assert.ok(internal, `${tool.name} must exist in the registry`);
       const marker = tool._meta?.['worldmonitor/access'];
-      const expected = internal._freeTier === true
+      const expected = internal._subscriptionOnly ? 'subscription' : internal._freeTier === true
         ? 'free'
         : internal._execute === undefined || internal.name === 'describe_tool'
           ? 'free-account'

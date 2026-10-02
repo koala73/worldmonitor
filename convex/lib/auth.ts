@@ -41,10 +41,11 @@ export async function resolveUserId(
  */
 export async function resolveUserIdentity(
   ctx: QueryCtx | MutationCtx | ActionCtx,
-): Promise<{ subject: string; name?: string; givenName?: string; familyName?: string; email?: string } | null> {
+): Promise<{ subject: string; name?: string; givenName?: string; familyName?: string; email?: string; plan?: 'free' | 'pro' } | null> {
   const identity = await ctx.auth.getUserIdentity();
-  if (identity?.subject) return identity;
-  return null;
+  if (!identity?.subject) return null;
+  const plan = identity.plan === 'free' || identity.plan === 'pro' ? identity.plan : undefined;
+  return { ...identity, plan };
 }
 
 /**
@@ -56,10 +57,11 @@ export async function requireUserId(
 ): Promise<string> {
   const userId = await resolveUserId(ctx);
   if (!userId) {
-    // Throw as ConvexError so Convex's server-side Sentry integration treats it
-    // as an expected business error (WebSocket/auth races on query fire) rather
-    // than reporting every unauthed query fire as an unhandled exception
-    // (WORLDMONITOR-N3).
+    // ConvexError so clients can narrow AUTH_REQUIRED via the ConvexError
+    // contract (error.data). It is NOT exempt from Convex→Sentry reporting —
+    // expected denials still appear as Uncaught ConvexError (e.g. WORLDMONITOR-XM).
+    // High-frequency expected denials need a return value, not a throw, to stay
+    // out of exception ingest; do not suppress these codes by message at Sentry.
     throw new ConvexError("AUTH_REQUIRED");
   }
   return userId;

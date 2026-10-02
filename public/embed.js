@@ -8,7 +8,11 @@
   var heightRaw = parseInt(script.getAttribute('data-height') || '420', 10);
   var height = isFinite(heightRaw) ? Math.max(120, Math.min(1200, heightRaw)) : 420;
   var key = (script.getAttribute('data-key') || '').trim();
-  var hasKey = key && key !== 'YOUR_WM_API_KEY';
+  // Two placeholders because the docs shipped YOUR_WM_API_KEY first and
+  // partners have that snippet pasted into their pages already. Both must read
+  // as "no key", or a copied-but-unedited snippet starts a credential
+  // handshake with a literal placeholder string.
+  var hasKey = key && key !== 'YOUR_WM_API_KEY' && key !== 'YOUR_WME_EMBED_KEY';
 
   var origin;
   try {
@@ -19,6 +23,17 @@
 
   var iframe = document.createElement('iframe');
   var url = origin + '/embed?panel=' + encodeURIComponent(panel) + '&theme=' + encodeURIComponent(theme);
+  // Map view state, passed through rather than defaulted. Without it the keyed
+  // loader snippet the dashboard hands a partner would render the three
+  // default layers while the free iframe snippet beside it rendered their real
+  // selection — the paid form would look worse than the free one. /embed
+  // validates and clamps each of these, so a malformed value falls back to the
+  // same default it would have without the attribute.
+  ['layers', 'center', 'zoom', 'variant'].forEach(function (name) {
+    var raw = script.getAttribute('data-' + name);
+    var value = (raw || '').trim();
+    if (value || (name === 'layers' && raw !== null)) url += '&' + name + '=' + encodeURIComponent(value);
+  });
   iframe.title = 'World Monitor embed';
   if (!hasKey) iframe.loading = 'lazy';
   iframe.referrerPolicy = 'strict-origin-when-cross-origin';

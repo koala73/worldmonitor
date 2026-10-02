@@ -33,8 +33,13 @@
  *   - byte-identical nested Schema Objects  -> reused local $refs
  *   - repeated response headers, generated int64 warnings, and China
  *     date-precision unions                  -> components $refs
+ *     (described int64 fields keep their own comment and numeric bounds
+ *     as OpenAPI 3.1 $ref siblings; the warning lives in the component)
  *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
  *     back to the source document in tests, proving they are lossless)
+ *   - repeated subtrees too deep for an inline-target ref to pay for
+ *     (the pointer into the document is longer than the subtree itself)
+ *                                            -> shared WMShared<N> components
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -56,6 +61,7 @@ import {
   dedupeSharedChinaProvenanceSchemas,
   dedupeSharedResponseHeaders,
   dedupeSharedSchemaSubtrees,
+  dedupeSharedSubtreeComponents,
 } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
@@ -66,6 +72,15 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const yamlPath = process.env.OPENAPI_YAML_PATH
   ?? resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
 export const jsonPath = resolve(scriptDir, '../public/openapi.json');
+const llmsPath = resolve(scriptDir, '../public/llms.txt');
+
+export function withOpenApiByteSize(text, yamlBytes) {
+  const annotation = /(\[OpenAPI specification\]\(https:\/\/www\.worldmonitor\.app\/openapi\.yaml\), which is )[\d,]+ bytes/g;
+  if ([...text.matchAll(annotation)].length !== 1) {
+    throw new Error('llms.txt must contain exactly one OpenAPI YAML byte-size annotation');
+  }
+  return text.replace(annotation, (_, prefix) => `${prefix}${yamlBytes.toLocaleString('en-US')} bytes`);
+}
 
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
@@ -132,6 +147,11 @@ export function buildBundle({ spec: provided } = {}) {
   const chinaDateStats = dedupeRepeatedChinaDateSchemas(spec);
   const int64Stats = dedupeRepeatedInt64Schemas(spec);
   const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
+  // After the named passes and the inline-target pass: anything still repeated
+  // here sat deep in a long-named component, where a $ref INTO the document is
+  // longer than the repeated subtree itself and only a compact shared
+  // component ref wins (see openapi-dedup-schemas.mjs).
+  const sharedSubtreeStats = dedupeSharedSubtreeComponents(spec);
   const paramStats = dedupeSharedParameters(spec);
   const inlineTypedStats = ensureInlineTypedInput(spec);
   injectDeprecationPolicyMetadata(spec);
@@ -154,6 +174,7 @@ export function buildBundle({ spec: provided } = {}) {
     headerStats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     paramStats,
@@ -163,6 +184,8 @@ export function buildBundle({ spec: provided } = {}) {
 }
 
 function main() {
+  const yaml = readFileSync(yamlPath);
+  const llms = withOpenApiByteSize(readFileSync(llmsPath, 'utf8'), yaml.byteLength);
   const {
     spec,
     json,
@@ -170,14 +193,16 @@ function main() {
     stats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     headerStats,
     paramStats,
     inlineTypedStats,
     unreachableStats,
-  } = buildBundle();
+  } = buildBundle({ spec: parseYaml(yaml.toString('utf8')) });
   writeFileSync(jsonPath, json);
+  writeFileSync(llmsPath, llms);
 
   const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
   console.log(
@@ -185,10 +210,11 @@ function main() {
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
       `hoisted ${headerStats.hoisted} shared response headers into ${headerStats.replacedRefs} $refs; ` +
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
-      `reused ${int64Stats.replacedRefs} generated int64 schemas; ` +
+      `reused ${int64Stats.replacedRefs} generated int64 schemas (+${int64Stats.describedRefs} described int64 fields); ` +
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
+      `hoisted ${sharedSubtreeStats.replacedRefs} deep repeated subtrees into ${sharedSubtreeStats.groups} shared components (${sharedSubtreeStats.bytesFreed} bytes); ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );

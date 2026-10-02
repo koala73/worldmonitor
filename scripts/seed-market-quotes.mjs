@@ -22,9 +22,10 @@ const CACHE_TTL = 1800;
 const YAHOO_DELAY_MS = 200;
 const FRESH_QUOTE_COUNT = Symbol('freshQuoteCount');
 
-// #6235: the RPC answers a bounded 45-country enum, so every country is
-// seedable. Previously only CN was seeded and the other 44 lazy-fetched Yahoo
-// at the edge, leaving a cold Vercel isolate with no fallback at all.
+// #6235: the RPC answers a bounded country enum, so the whole enum is seeded.
+// Previously only CN was seeded and the rest lazy-fetched Yahoo at the edge,
+// leaving a cold Vercel isolate with no fallback at all. #6240: entries flagged
+// `unavailable` (a symbol Yahoo cannot serve) are left out of this work-list.
 const COUNTRY_STOCK_INDEXES = loadCountryStockIndexes();
 const COUNTRY_STOCK_INDEX_KEYS = COUNTRY_STOCK_INDEXES.map(index => countryStockIndexKey(index.code));
 
@@ -123,10 +124,9 @@ if (!isMultiMarketEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
     // Gate the fast path on the canonical keys ONLY. Country-index keys are
-    // best-effort by design — several countries in the enum have no
-    // Yahoo-serviceable symbol, so their keys legitimately never exist, and
-    // requiring all 45 to extend would make this branch never confirm and
-    // force a full fetch on every closed day.
+    // best-effort by design — any seeded country can miss a run, so its key
+    // may legitimately be absent, and requiring every one to extend would make
+    // this branch rarely confirm and force a full fetch on closed days.
     const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
     if (extended) {
       const countryTtl = await extendExistingTtlDetailed(COUNTRY_STOCK_INDEX_KEYS, CACHE_TTL);
@@ -159,9 +159,9 @@ async function writeRequiredCompanionKeys(data) {
 }
 
 /**
- * Seed every country in the public enum, best-effort and independently.
+ * Seed every serviceable country in the public enum, best-effort and independently.
  *
- * One country's provider failure must not cost the other 44 their refresh, and
+ * One country's provider failure must not cost the others their refresh, and
  * must not turn an otherwise successful global market seed into a false
  * outage — so each leg preserves its own last-good TTL and the pass reports a
  * summary instead of throwing. Countries that fail here still answer via the

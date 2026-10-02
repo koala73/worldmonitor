@@ -177,7 +177,18 @@ export function simplifyNaturalEventConeRing(ring) {
   return wrapRing(ring, capped);
 }
 
+export function projectNaturalEventsRetention(value, now = Date.now()) {
+  if (!value || !Array.isArray(value.events) || !value.eonetRetention) return value;
+  const { eonetRetention, ...publicData } = value;
+  const expiresAt = eonetRetention.retainedUntil;
+  if (Number.isSafeInteger(expiresAt) && now < expiresAt) return publicData;
+  const indexes = new Set(eonetRetention.eventIndexes ?? []);
+  const events = value.events.filter((_event, index) => !indexes.has(index));
+  return { ...publicData, events, dataAvailable: events.length > 0 };
+}
+
 export function compactNaturalEventsDashboardPayload(value) {
+  value = projectNaturalEventsRetention(value);
   if (!value || typeof value !== 'object' || Array.isArray(value) || !Array.isArray(value.events)) {
     return value;
   }

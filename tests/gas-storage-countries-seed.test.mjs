@@ -8,7 +8,87 @@ import {
   GAS_STORAGE_KEY_PREFIX,
   GAS_STORAGE_COUNTRIES_KEY,
   GAS_STORAGE_TTL_SECONDS,
+  GAS_STORAGE_ALL_KEY,
+  main,
 } from '../scripts/seed-gas-storage-countries.mjs';
+
+it('publishes the country observations and coverage index in the same atomic seed transaction', async (t) => {
+  const previousEnv = { ...process.env };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://gas-publish.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.GIE_API_KEY = 'fixture';
+  t.after(() => {
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  });
+  let published;
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(String(input));
+    if (url.origin === 'https://agsi.gie.eu') {
+      return Response.json({ data: [{ full: '57.92', gasInStorage: '143.4', gasDayStart: '2026-09-29' }] });
+    }
+    assert.equal(url.origin, 'https://gas-publish.test');
+    const commands = JSON.parse(options.body);
+    if (url.pathname === '/multi-exec') {
+      published = commands;
+      return Response.json(commands.map((_, index) => ({ result: index === 0 ? 'OK' : 1 })));
+    }
+    return Response.json({ result: commands[0] === 'SET' ? 'OK' : 1 });
+  });
+  await main();
+  assert.equal(published[0][0], 'MSET');
+  const values = Object.fromEntries(Array.from({ length: (published[0].length - 1) / 2 }, (_, i) =>
+    [published[0][1 + i * 2], JSON.parse(published[0][2 + i * 2])],
+  ));
+  const observations = values[GAS_STORAGE_ALL_KEY];
+  assert.ok(observations, 'the producer must publish the observations MCP reads');
+  assert.deepEqual(Object.keys(observations), values[GAS_STORAGE_COUNTRIES_KEY]);
+  assert.equal(observations.DE.gasTwh, 143.4);
+  assert.equal(observations.DE.date, '2026-09-29');
+  assert.deepEqual(observations.DE, values[`${GAS_STORAGE_KEY_PREFIX}DE`]);
+  for (const key of Object.keys(values)) {
+    assert.ok(published.some(command => command[0] === 'EXPIRE' && command[1] === key && command[2] === GAS_STORAGE_TTL_SECONDS));
+  }
+});
+
+it('preserves the previous coverage and observations when the transaction fails', async (t) => {
+  const previousEnv = { ...process.env };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://gas-publish.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.GIE_API_KEY = 'fixture';
+  t.after(() => {
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  });
+  const metaKey = 'seed-meta:energy:gas-storage-countries';
+  const previous = { DE: { fillPct: 42, gasTwh: 100, date: '2026-09-28' } };
+  const cache = new Map([
+    [GAS_STORAGE_ALL_KEY, previous], [GAS_STORAGE_COUNTRIES_KEY, ['DE']],
+    [metaKey, { fetchedAt: 123, recordCount: 1 }],
+  ]);
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(String(input));
+    if (url.origin === 'https://agsi.gie.eu') {
+      return Response.json({ data: [{ full: '57.92', gasInStorage: '143.4', gasDayStart: '2026-09-29' }] });
+    }
+    if (url.pathname.startsWith('/get/')) {
+      const value = cache.get(decodeURIComponent(url.pathname.slice(5)));
+      return Response.json({ result: value ? JSON.stringify(value) : null });
+    }
+    const commands = JSON.parse(options.body);
+    if (url.pathname === '/multi-exec') return Response.json({ error: 'transaction rejected' }, { status: 503 });
+    if (url.pathname === '/pipeline') {
+      for (const command of commands) if (command[0] === 'SET') cache.set(command[1], JSON.parse(command[2]));
+      return Response.json(commands.map(command => ({ result: command[0] === 'SET' ? 'OK' : 1 })));
+    }
+    return Response.json({ result: commands[0] === 'SET' ? 'OK' : 1 });
+  });
+  await assert.rejects(main(), /HTTP 503/);
+  assert.deepEqual(cache.get(GAS_STORAGE_COUNTRIES_KEY), ['DE']);
+  assert.deepEqual(cache.get(GAS_STORAGE_ALL_KEY), previous);
+  assert.equal(cache.get(metaKey).fetchedAt, 123);
+  assert.equal(cache.get(metaKey).status, 'error');
+});
 
 // ---------------------------------------------------------------------------
 // parseFillEntry — envelope variant handling
@@ -113,6 +193,22 @@ describe('buildCountriesPayload', () => {
     return { iso2, entries };
   }
 
+  it('rejects missing, blank, invalid, or negative stored measurements', () => {
+    for (const field of ['full', 'gasInStorage']) {
+      for (const value of [undefined, null, '', '   ', 'N/A', '-1']) {
+        const entry = { full: '50', gasInStorage: '500', gasDayStart: '2026-04-04', [field]: value };
+        assert.deepEqual(buildCountriesPayload([{ iso2: 'DE', entries: [entry] }]), [], `${field}=${value}`);
+      }
+    }
+  });
+
+  it('preserves measured numeric zero instead of choosing a fallback', () => {
+    const entry = { full: 0, fillLevel: '50', gasInStorage: 0, gasTwh: '500', gasDayStart: '2026-04-04' };
+    const [result] = buildCountriesPayload([{ iso2: 'DE', entries: [entry] }]);
+    assert.equal(result.fillPct, 0);
+    assert.equal(result.gasTwh, 0);
+  });
+
   it('returns a payload entry for a valid country', () => {
     const result = buildCountriesPayload([makeRaw('DE', 65.4)]);
     assert.equal(result.length, 1);
@@ -190,7 +286,7 @@ describe('validation gate', () => {
     // buildCountriesPayload returns < 24 entries → main() would throw
     const invalidEntries = Array.from({ length: 10 }, (_, i) => ({
       iso2: `C${i}`,
-      entries: [{ gasDayStart: '2026-04-04', full: String(50 + i) }],
+      entries: [{ gasDayStart: '2026-04-04', full: String(50 + i), gasInStorage: '500' }],
     }));
     const result = buildCountriesPayload(invalidEntries);
     assert.equal(result.length, 10);
@@ -211,7 +307,7 @@ describe('validation gate', () => {
   it('does not throw when 24 or more countries are valid', () => {
     const validEntries = Array.from({ length: 24 }, (_, i) => ({
       iso2: `C${i}`,
-      entries: [{ gasDayStart: '2026-04-04', full: String(50 + i) }],
+      entries: [{ gasDayStart: '2026-04-04', full: String(50 + i), gasInStorage: '500' }],
     }));
     const result = buildCountriesPayload(validEntries);
     assert.equal(result.length, 24);

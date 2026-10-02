@@ -67,7 +67,7 @@ jobs:
         run: |
           echo "::error::The lease-aware target workflow cutover is not active."
           exit 1
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -122,7 +122,7 @@ jobs:
       recovery_attempt_id: ${{ steps.resolve.outputs.recovery_attempt_id }}
       superseding_generation: ${{ steps.resolve.outputs.superseding_generation }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -170,7 +170,7 @@ jobs:
     steps:
       # This write-capable job has no control credential or Railway secret.
       - name: Check out the exact authorized dispatch helper
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -211,7 +211,7 @@ jobs:
       contents: read
     steps:
       - name: Check out the exact authorized rejection helper
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -246,7 +246,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false

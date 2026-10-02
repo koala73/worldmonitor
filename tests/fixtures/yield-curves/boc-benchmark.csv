@@ -1,0 +1,28 @@
+"TERMS AND CONDITIONS"
+"https://www.bankofcanada.ca/terms/"
+
+"NAME"
+"Selected benchmark bond yields"
+
+"DESCRIPTION"
+"The daily yields for a set of benchmark government bonds. These yields serve as reference rates for Canadian dollar-denominated fixed income securities and are used to assess market conditions and inform monetary policy decisions."
+
+"LINK"
+"https://www.bankofcanada.ca/?p=39890"
+
+"SERIES"
+"id","label","description"
+"BD.CDN.2YR.DQ.YLD","Benchmark bond yield, 2-year","The yield on the Government of Canada 2-year benchmark bond. This series reflects the prevailing interest rate for the 2-year term and is used to monitor short-term government borrowing costs."
+"BD.CDN.3YR.DQ.YLD","Benchmark bond yield, 3-year","The yield on the Government of Canada 3-year benchmark bond. This series measures the market interest rate for the Government of Canada’s 3-year bond, which serves as a reference rate for Canadian dollar-denominated debt securities."
+"BD.CDN.5YR.DQ.YLD","Benchmark bond yield, 5-year","The yield on the Government of Canada 5-year benchmark bond. This series reports the prevailing yield for the 5-year maturity point on the Canadian government bond yield curve."
+"BD.CDN.7YR.DQ.YLD","Benchmark bond yield, 7-year","The yield on the Government of Canada 7-year benchmark bond. This series represents the prevailing market yield for the 7-year maturity point on the Government of Canada yield curve."
+"BD.CDN.10YR.DQ.YLD","Benchmark bond yield, 10-year","The yield on the Government of Canada 10-year benchmark bond. This series represents the prevailing market interest rate for the 10-year Government of Canada bond and is used as a reference for financial market analysis and reporting."
+"BD.CDN.LONG.DQ.YLD","Benchmark bond yield, long-term","The yield on the Government of Canada long-term benchmark bond. This series represents the prevailing interest rate for the designated long-term benchmark bond and is used in the Bank of Canada’s reporting of financial market conditions."
+"BD.CDN.RRB.DQ.YLD","Real Return Bonds yield, long-term","The yield on Government of Canada Real Return Bonds. These bonds are part of the government securities held by the Bank of Canada and are reported in millions of Canadian dollars."
+
+"OBSERVATIONS"
+"date","BD.CDN.2YR.DQ.YLD","BD.CDN.3YR.DQ.YLD","BD.CDN.5YR.DQ.YLD","BD.CDN.7YR.DQ.YLD","BD.CDN.10YR.DQ.YLD","BD.CDN.LONG.DQ.YLD","BD.CDN.RRB.DQ.YLD"
+"2001-01-02","5.11","5.14","5.19","5.23","5.28","5.52","3.39"
+"2001-01-03","5.11","5.17","5.28","5.33","5.43","5.63","3.39"
+"2026-09-18","3.32","3.41","3.59","3.68","3.87","4.19","1.88"
+"2026-09-21","3.29","3.37","3.57","3.64","3.84","4.16","1.84"

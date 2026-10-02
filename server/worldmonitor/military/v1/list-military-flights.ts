@@ -109,7 +109,9 @@ function buildCacheKey(req: ListMilitaryFlightsRequest): string {
     quantize(req.neLat, BBOX_GRID_STEP),
     quantize(req.neLon, BBOX_GRID_STEP),
   ].join(':');
-  return `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}`;
+  // These accepted public fields are currently no-ops, so they cannot split
+  // the shared recovery snapshot until response filtering is implemented.
+  return `${REDIS_CACHE_KEY}:${quantizedBB}`;
 }
 
 // Filter the cached quantized-cell snapshot to the exact request bbox, THEN

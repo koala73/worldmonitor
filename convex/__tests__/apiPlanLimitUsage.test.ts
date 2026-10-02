@@ -514,11 +514,14 @@ describe("api plan-limit usage scanner", () => {
 
   test("a non-array error-free Axiom body reads as empty and still recovers the notice", async () => {
     const t = convexTest(schema, modules);
-    await seedEntitlement(t, "user-pro", "pro_monthly");
-    // Trip a live mcp burst notice (injected).
+    await seedEntitlement(t, "user-starter", "api_starter");
+    // Rides on api_minute_burst, the burst dimension Axiom still sources.
+    // mcp_minute_burst is now recorded blocked unconditionally — its telemetry
+    // never reaches Axiom — and a blocked dimension is deliberately frozen
+    // rather than swept, so it can no longer express "reads as empty".
     await t.action(usageFns.scanApiPlanLimitUsageInternal, {
       now: NOW,
-      rows: [{ userId: "user-pro", dimension: "mcp_minute_burst", usage: 90, minuteBuckets: [61, 62, 63, 65, 66], source: "axiom:mcp_rate_limit_hit" }],
+      rows: [{ userId: "user-starter", dimension: "api_minute_burst", usage: 90, minuteBuckets: [61, 62, 63, 65, 66], source: "axiom:wm_api_usage" }],
     });
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
 

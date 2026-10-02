@@ -185,15 +185,19 @@ export interface PositionSample {
 }
 
 export interface GetYoutubeLiveStreamInfoRequest {
+  /** @deprecated */
   channel: string;
   videoId: string;
 }
 
 export interface GetYoutubeLiveStreamInfoResponse {
   videoId: string;
+  /** @deprecated */
   isLive: boolean;
+  /** @deprecated */
   channelExists: boolean;
   channelName: string;
+  /** @deprecated */
   hlsUrl: string;
   title: string;
   error: string;

@@ -74,12 +74,56 @@ describe('MCP upgrade attribution constants', () => {
 
   it('structured denials expose reason + nextStep + upgradeUrl', () => {
     for (const reason of ['no-account', 'allowance-exhausted', 'lapsed-subscription']) {
-      const { message, data } = buildMcpStructuredDenial(reason);
+      const { message, data } = buildMcpStructuredDenial({ reason });
       assert.ok(message.length > 0);
       assert.equal(data.reason, reason);
       assert.ok(data.nextStep.length > 0);
       assert.equal(data.upgradeUrl, MCP_UPGRADE_URL);
     }
+  });
+
+  it('the four constant-copy reasons emit exactly the three original fields', () => {
+    // The quota variant below adds two fields. It must not add them here: an
+    // agent reading `data` on an auth denial sees the same shape it always has.
+    for (const reason of ['no-account', 'allowance-exhausted', 'upgrade-required', 'lapsed-subscription']) {
+      const { data } = buildMcpStructuredDenial({ reason });
+      assert.deepEqual(Object.keys(data).sort(), ['nextStep', 'reason', 'upgradeUrl']);
+    }
+  });
+
+  it('quota-exceeded carries the enforced limit and whether REST spends it too', () => {
+    const shared = buildMcpStructuredDenial({
+      reason: 'quota-exceeded',
+      limit: 1000,
+      sharedWithRestApi: true,
+    });
+    assert.equal(
+      shared.message,
+      'Daily MCP quota exceeded (1000/day). Resets at next UTC midnight.',
+      'the published message must stay byte-identical — clients string-match it',
+    );
+    assert.equal(shared.data.reason, 'quota-exceeded');
+    assert.equal(shared.data.limit, 1000);
+    assert.equal(shared.data.sharedWithRestApi, true);
+    assert.equal(shared.data.upgradeUrl, MCP_UPGRADE_URL);
+    assert.match(
+      shared.data.nextStep,
+      /shared with your REST API requests/i,
+      'a shared budget must say so — the exhaustion may not be the agent\'s own calls',
+    );
+
+    const dedicated = buildMcpStructuredDenial({
+      reason: 'quota-exceeded',
+      limit: 50,
+      sharedWithRestApi: false,
+    });
+    assert.equal(dedicated.message, 'Daily MCP quota exceeded (50/day). Resets at next UTC midnight.');
+    assert.equal(dedicated.data.sharedWithRestApi, false);
+    assert.doesNotMatch(
+      dedicated.data.nextStep,
+      /REST/i,
+      'a dedicated MCP counter must not blame REST traffic that cannot reach it',
+    );
   });
 });
 
@@ -130,7 +174,8 @@ describe('MCP call-site free-account reinterpretation', () => {
     );
     assert.equal(result.ok, true);
     assert.equal(result.freeAccountAllowance, true);
-    assert.equal(result.mcpDailyLimit, FREE_ACCOUNT_CALLS_PER_DAY);
+    assert.equal(result.budget?.allowance, 'mcp');
+    assert.equal(result.budget?.limit, FREE_ACCOUNT_CALLS_PER_DAY);
   });
 
   it('a CONFIRMED lapse is admitted onto the metered free allowance (#6716)', async () => {

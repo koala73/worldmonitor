@@ -1,6 +1,6 @@
 ---
 title: "数据源"
-description: "World Monitor 背后的每一个数据源，按情报领域分区呈现——每个领域覆盖什么、由哪些提供商支撑，以及方法论、刷新频率与回退顺序的深入链接。"
+description: "浏览 World Monitor 数据源目录，按地缘政治、军事、新闻、金融、能源、基础设施、灾害、航空、中国覆盖与科技领域查找提供商。了解各领域的数据内容、来源可信度、刷新频率、回退顺序和新鲜度提示，并沿方法论与架构链接核查数据如何抓取、归一化、缓存及呈现在仪表盘中，帮助读者识别实际覆盖缺口与来源限制。"
 ---
 
 World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、运行状态端点——融合成横跨六个产品变体的单一实时态势图。本页是数据目录：先浏览下方的领域地图，打开你关心的领域，再沿深入链接查看方法论与新鲜度保障。
@@ -90,7 +90,7 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 
 ### 人口暴露估计
 
-人口暴露估计计算事件特定半径内受影响的人口。完整方法论见 [算法 - 人口暴露](/zh/algorithms#population-exposure-estimation)。
+人口暴露估计计算事件特定半径内受影响的人口。完整方法论见 [算法 - 人口暴露](/zh/algorithms#人口暴露估计)。
 
 ### 安全公告聚合
 
@@ -107,7 +107,7 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 - **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5。服务端评分器在存在时使用实时 `byCountry` 等级；若部分 Tier-1 国家缺失实时数据，则回退到已发布的 CII 公告表，而非额外添加多源一致加成。
 - **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。这防止事件数据稀少但有活跃或经策展的公告风险的国家显示虚假的平静评分。
 
-**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#advisory-fallback-table)。
+**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示兜底表)。
 
 安全公告面板显示公告及其彩色级别徽章和来源国国旗，可按严重性（严重、全部）和发布来源组（US、AU、UK、卫生）筛选。
 
@@ -347,10 +347,12 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 
 | 分级       | 描述                                | 示例                                    |
 | ---------- | ----------------------------------- | --------------------------------------- |
-| **Tier 1** | 通讯社、官方政府来源                | Reuters、AP、BBC、DOD                       |
-| **Tier 2** | 主要老牌媒体                        | CNN、NYT、The Guardian、Al Jazeera          |
-| **Tier 3** | 专业/垂直媒体                       | Defense One、Breaking Defense、The War Zone |
-| **Tier 4** | 聚合器和博客                        | Google News、个人分析师博客       |
+| **Tier 1** | 通讯社和官方机构                    | Reuters、AP News、AFP、Pentagon             |
+| **Tier 2** | 主要媒体                            | BBC、CNN World、New York Times、The Guardian、Al Jazeera |
+| **Tier 3** | 专业、地区和智库来源                | Defense One、Breaking Defense、The War Zone |
+| **Tier 4** | 聚合器和博客                        | Hacker News、The Verge、Yahoo Finance       |
+
+聚类报道会列出其发布方，每个发布方显示该报道中所见源里声明的最高分级。未声明分级的源显示为"未声明分级"，在计算佐证标记时绝不按 Tier 4 计。分级只对来源排序，不判断某条说法是否属实。
 
 源还带有**宣传风险评级**和**国家关联标志**。国家关联来源（RT、新华社、IRNA）为完整性而被纳入，但会以视觉标记标出，以便分析师考虑编辑偏见。这些同一输入还会进入每条头条的 [`credibilityScore`](/zh/methodology/news-credibility)（0-100 来源可靠性，与 `importanceScore` 新闻重要性不同）。威胁分类置信度按来源分级加权 — 在焦点检测算法中，Tier 1 的突发警报比 Tier 4 的博客帖子权重更高。
 

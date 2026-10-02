@@ -132,6 +132,8 @@ message ChokepointInfo {
   // Not an operational closure taxonomy.
   string status = 6;
   int32 active_warnings = 7;
+  // AIS-derived congestion level. "normal" is an observed AIS level, not a
+  // default. Empty when ais_snapshot_available is false.
   string congestion_level = 8;
   repeated string affected_routes = 9;
   string description = 10;
@@ -141,6 +143,12 @@ message ChokepointInfo {
   TransitSummary transit_summary = 14;
   FlowEstimate flow_estimate = 15;
   WarRiskTier war_risk_tier = 16;
+  // True when the NGA navigational-warning source returned a valid response,
+  // including a valid empty list. Missing legacy values fail closed.
+  bool navigational_warnings_available = 17;
+  // True when the AIS snapshot source returned a valid response. This owns
+  // both ais_disruptions and congestion_level. Missing legacy values fail closed.
+  bool ais_snapshot_available = 18;
 }
 
 message DirectionalDwt {

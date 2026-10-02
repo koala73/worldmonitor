@@ -5,13 +5,13 @@ import type {
 
 import { getCachedJson } from '../../../_shared/redis';
 
-const DEFAULT_MARKET = 'ae';
+import { resolveConsumerPriceSelection } from './_selection';
 
 export async function getConsumerPriceFreshness(
   _ctx: unknown,
   req: GetConsumerPriceFreshnessRequest,
 ): Promise<GetConsumerPriceFreshnessResponse> {
-  const market = req.marketCode || DEFAULT_MARKET;
+  const { market } = resolveConsumerPriceSelection(req.marketCode);
   const key = `consumer-prices:freshness:${market}`;
 
   const EMPTY: GetConsumerPriceFreshnessResponse = {

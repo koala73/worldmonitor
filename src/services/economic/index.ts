@@ -1025,3 +1025,8 @@ export async function fetchLngVulnerability(): Promise<LngVulnerabilityData | nu
 
   return null;
 }
+
+export const __testing__ = {
+  getWbBreaker,
+  wbBreakerPoolSize: () => wbBreakers.size,
+};

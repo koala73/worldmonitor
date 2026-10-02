@@ -239,7 +239,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetTheaterPosture
-            description: GetTheaterPosture retrieves military posture assessments for geographic theaters.
+            description: Retrieve military posture assessments for all cached theaters, including posture levels, active flights, operations and assessment times in regional monitoring.
             operationId: GetTheaterPosture
             parameters:
                 - name: theater
@@ -362,7 +362,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetails
-            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex. PRO-gated. Requires an active Pro subscription.
+            description: Retrieve Wingbits aircraft enrichment by ICAO24 hex, including available aircraft type and build details. PRO-gated. Requires an active Pro subscription.
             operationId: GetAircraftDetails
             security:
                 - WorldMonitorKey: []
@@ -499,7 +499,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetailsBatch
-            description: GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
+            description: Retrieve Wingbits enrichment for multiple ICAO24 aircraft identifiers in one request, with aircraft details and requested versus fetched result counts.
             operationId: GetAircraftDetailsBatch
             requestBody:
                 content:
@@ -676,7 +676,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetWingbitsStatus
-            description: GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
+            description: Check whether Wingbits aircraft enrichment is configured for World Monitor, using the configuration flag before requesting aircraft details or batch enrichment.
             operationId: GetWingbitsStatus
             parameters:
                 - name: jmespath
@@ -784,7 +784,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetUSNIFleetReport
-            description: GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+            description: Retrieve the latest parsed USNI Fleet Tracker report, with article date, source link, fleet summary and cache status for understanding published naval activity.
             operationId: GetUSNIFleetReport
             parameters:
                 - name: force_refresh
@@ -911,7 +911,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryBases
-            description: ListMilitaryBases retrieves military bases within a bounding box, with server-side clustering.
+            description: Explore military bases by country, type, map bounds and zoom level, with base details and server-side clusters for geographic military infrastructure analysis.
             operationId: ListMilitaryBases
             parameters:
                 - name: ne_lat

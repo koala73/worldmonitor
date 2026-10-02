@@ -34,11 +34,18 @@ export interface GlossaryTerm {
   category: GlossaryCategory;
   /**
    * Standalone definition (≤25 words). Used verbatim as the DefinedTerm
-   * `description`, the list-page blurb, the meta description, and the
-   * FAQPage answer — so it must read as a complete answer ("X is …")
+   * `description`, the list-page blurb, and the FAQPage answer — so it
+   * must read as a complete answer ("X is …")
    * before the body elaborates.
    */
   short: string;
+  /** Optional search summary when the short definition needs more context. */
+  metaDescription?: string;
+  /**
+   * Optional <title> when the term's searchers want more than a definition,
+   * such as a live reading. At most 60 characters, ending "| World Monitor".
+   */
+  metaTitle?: string;
   /** Body paragraphs. First paragraph should restate the crisp definition. */
   body: string[];
   /** Slugs of related terms (must resolve to another entry). */
@@ -119,13 +126,22 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     slug: 'pentagon-pizza-index',
     term: 'Pentagon Pizza Index',
     category: 'Scoring & Indices',
+    metaTitle: 'Pentagon Pizza Index: Live Tracker & Method | World Monitor',
+    metaDescription:
+      'The Pentagon Pizza Index reads pizza-shop busyness near the Pentagon as a crisis tell. See the live level, how it is scored, and why it is not a forecast.',
     short:
-      'The Pentagon Pizza Index is an open-source-intelligence activity proxy that watches late-night demand near key government sites as a rough tell for unusual operational tempo.',
+      'The Pentagon Pizza Index is an OSINT folk indicator: unusual busyness at pizza places near the Pentagon, read as a hint of late-night crisis work.',
     body: [
-      'The Pentagon Pizza Index is an open-source-intelligence activity proxy — a light-hearted but long-observed heuristic that unusual late-night food-delivery demand near defense and government facilities can correlate with elevated operational tempo before any official signal appears.',
-      'In WorldMonitor it is one of several ambient indicators fused into the Strategic Risk context rather than a standalone forecast. It illustrates the platform’s broader thesis: correlating many weak, independent signals surfaces convergence earlier than any single authoritative source.',
+      'The Pentagon Pizza Index is an open-source-intelligence folk indicator. The idea is simple: when defense staff work late on a developing crisis, pizza places near the Pentagon get busier than usual for that hour, and the surge is visible to the public before any official statement. The notion comes from Washington lore of the Cold War and the 1990s, and it resurfaced on social media in recent years as people began posting Pentagon-area pizza traffic during international crises.',
+      'World Monitor computes its own version of the index from live busyness at pizza venues around the Pentagon. PizzINT supplies the venue data, with BestTime as the fallback, and the same rule applies to both. A venue counts only when it is open, at least 150% as busy as its usual level for that hour, and at least 25 busyness points above its forecast, and only after three consecutive 15-minute readings. A normal lunch rush or a single blip does not register.',
+      'Each sustained spike adds up to 25 points. The total maps to a DEFCON-style level: 5 (Normal Activity), 4 (Above Normal), 3 (Elevated Activity), 2 (High Activity) or 1 (Maximum Activity). The level appears next to a pizza icon in the header of the World Monitor dashboard, with each venue’s reading against its usual level. A venue that is closed or not reporting shows NO DATA rather than a guessed value.',
+      'The level describes restaurant activity, not military readiness, and its thresholds are heuristic rather than a validated predictor of geopolitical events. The same panel shows GDELT-based tension scores for country pairs such as USA–Iran and USA–China, so a busy night can be read against other signals instead of on its own.',
     ],
     related: ['strategic-risk', 'osint'],
+    learnMore: [
+      { label: 'Live Pentagon Pizza Index in the dashboard header', href: 'https://www.worldmonitor.app/dashboard' },
+      { label: 'How the index is scored', href: 'https://www.worldmonitor.app/docs/algorithms' },
+    ],
   },
 
   // ── Signals & Detection ───────────────────────────────────────────
@@ -218,6 +234,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     slug: 'strait-of-hormuz',
+    metaDescription: 'Learn what the Strait of Hormuz is, how it connects the Persian Gulf to world shipping, and why oil, gas flows and maritime disruption matter to energy markets.',
     term: 'Strait of Hormuz',
     category: 'Maritime & Chokepoints',
     short:
@@ -228,6 +245,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
     related: ['maritime-chokepoint', 'ais', 'chokepoint-congestion'],
     learnMore: [
+      { label: 'Strait of Hormuz tracker', href: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' },
       { label: 'Energy shock monitoring (blog)', href: 'https://www.worldmonitor.app/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/' },
     ],
   },
@@ -242,6 +260,9 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       'Its width and traffic density make it a textbook chokepoint: alternative routes exist but are longer and lower-capacity, so congestion or disruption in Malacca reverberates through Asian supply chains and freight costs.',
     ],
     related: ['maritime-chokepoint', 'suez-canal', 'ais'],
+    learnMore: [
+      { label: 'Strait of Malacca tracker', href: 'https://www.worldmonitor.app/chokepoints/strait-of-malacca/' },
+    ],
   },
   {
     slug: 'suez-canal',
@@ -255,6 +276,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
     related: ['maritime-chokepoint', 'strait-of-malacca', 'chokepoint-congestion'],
     learnMore: [
+      { label: 'Suez Canal tracker', href: 'https://www.worldmonitor.app/chokepoints/suez-canal/' },
       { label: 'Tracking global trade routes (blog)', href: 'https://www.worldmonitor.app/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/' },
     ],
   },

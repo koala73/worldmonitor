@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, beforeEach, describe, it } from 'node:test';
 
 const metaTags = await import('../src/services/meta-tags.ts');
+const { VARIANT_META } = await import('../src/config/variant-meta.ts');
+const { SITE_VARIANT } = await import('../src/config/variant.ts');
 
 class FakeElement {
   readonly attributes = new Map<string, string>();
@@ -90,6 +92,7 @@ function installDom(): FakeDocument {
 after(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+  delete (globalThis as { window?: unknown }).window;
 });
 
 describe('story meta tags', () => {
@@ -97,6 +100,20 @@ describe('story meta tags', () => {
 
   beforeEach(() => {
     fakeDocument = installDom();
+  });
+
+  it('keeps initial dashboard identity for both country aliases and chokepoint state', () => {
+    const canonical = VARIANT_META[SITE_VARIANT].url;
+    for (const query of ['c=IR', 'country=IR&expanded=1', 'chokepoint=suez']) {
+      const link = fakeDocument.querySelector('link[rel="canonical"]') ?? fakeDocument.createElement('link');
+      link.setAttribute('rel', 'canonical');
+      link.setAttribute('href', canonical);
+      if (!fakeDocument.elements.includes(link)) fakeDocument.head.appendChild(link);
+      Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { href: `${canonical}?${query}` } } });
+      metaTags.initMetaTags();
+      assert.equal(fakeDocument.querySelector('link[rel="canonical"]')?.getAttribute('href'), canonical, query);
+      assert.equal(fakeDocument.elements.filter(el => el.getAttribute('rel') === 'canonical').length, 1);
+    }
   });
 
   it('emits OpenGraph tags with property and Twitter tags with name', () => {

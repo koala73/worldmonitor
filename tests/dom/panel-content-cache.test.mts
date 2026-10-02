@@ -140,3 +140,119 @@ describe('Panel content dirty-check', () => {
     expect(content().querySelector('.probe-a')).not.toBeNull();
   });
 });
+
+interface ImmediateWriter {
+  setSafeContentImmediate: (html: ReturnType<typeof unsafeRawHtml>, afterUpdate?: () => void) => void;
+  contentDebounceTimer: ReturnType<typeof setTimeout> | null;
+  pendingContentCallback: (() => void) | null;
+  _locked: boolean;
+}
+
+function immediate(): ImmediateWriter {
+  return panel as unknown as ImmediateWriter;
+}
+
+function setBodyImmediate(html: string, afterUpdate?: () => void): void {
+  immediate().setSafeContentImmediate(unsafeRawHtml(html, 'test fixture'), afterUpdate);
+}
+
+describe('Panel immediate safe content commit (#7775)', () => {
+  it('commits through the safe HTML path without the 150 ms timer', () => {
+    setBodyImmediate(BODY_A);
+
+    expect(immediate().contentDebounceTimer).toBeNull();
+    expect(content().querySelector('.probe-a')).not.toBeNull();
+  });
+
+  it('commits a still-queued same body immediately instead of waiting', () => {
+    setBody(BODY_A);
+    panel.setSafeContent(unsafeRawHtml(BODY_B, 'test fixture'));
+    expect(immediate().contentDebounceTimer).not.toBeNull();
+    expect(content().querySelector('.probe-b')).toBeNull();
+
+    setBodyImmediate(BODY_B);
+
+    expect(immediate().contentDebounceTimer).toBeNull();
+    expect(content().querySelector('.probe-b')).not.toBeNull();
+    expect(content().querySelector('.probe-a')).toBeNull();
+
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS * 3);
+    expect(content().querySelector('.probe-b')).not.toBeNull();
+  });
+
+  it('cancels a queued write and its callback; the surviving callback runs once', () => {
+    setBody(BODY_A);
+    const superseded = vi.fn();
+    const surviving = vi.fn();
+    panel.setSafeContent(unsafeRawHtml(BODY_B, 'test fixture'), superseded);
+    expect(immediate().contentDebounceTimer).not.toBeNull();
+
+    setBodyImmediate(BODY_A.replace('alpha', 'gamma').replace('probe-a', 'probe-c'), surviving);
+
+    expect(superseded).not.toHaveBeenCalled();
+    expect(surviving).toHaveBeenCalledTimes(1);
+    expect(content().querySelector('.probe-c')).not.toBeNull();
+    expect(content().querySelector('.probe-b')).toBeNull();
+
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS * 3);
+    expect(superseded).not.toHaveBeenCalled();
+    expect(surviving).toHaveBeenCalledTimes(1);
+    expect(content().querySelector('.probe-b')).toBeNull();
+  });
+
+  it('preserves same-content dirty checking and still runs afterUpdate', () => {
+    setBodyImmediate(BODY_A);
+    const first = content().querySelector('.probe-a');
+    const afterUpdate = vi.fn();
+
+    setBodyImmediate(BODY_A, afterUpdate);
+
+    expect(afterUpdate).toHaveBeenCalledTimes(1);
+    expect(content().querySelector('.probe-a')).toBe(first);
+    expect(immediate().contentDebounceTimer).toBeNull();
+  });
+
+  it('does not lower the background coalescing timer', () => {
+    setBodyImmediate(BODY_A);
+    panel.setSafeContent(unsafeRawHtml(BODY_B, 'test fixture'));
+
+    expect(content().querySelector('.probe-b')).toBeNull();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS - 1);
+    expect(content().querySelector('.probe-b')).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(content().querySelector('.probe-b')).not.toBeNull();
+  });
+
+  it('bails on a locked panel at schedule time', () => {
+    panel.showLocked(['probe feature']);
+    setBodyImmediate('<div class="premium-payload">paid</div>');
+
+    expect(content().querySelector('.premium-payload')).toBeNull();
+    expect(content().querySelector('.panel-locked-state')).not.toBeNull();
+  });
+
+  it('clears error/retry state on an immediate commit', () => {
+    const retry = vi.fn();
+    panel.showError('boom', retry, 15);
+    expect(content().querySelector('.panel-error-state')).not.toBeNull();
+
+    setBodyImmediate(BODY_A);
+
+    expect(content().querySelector('.probe-a')).not.toBeNull();
+    expect(content().querySelector('.panel-error-state')).toBeNull();
+    expect((panel as unknown as { header: HTMLElement }).header.classList.contains('panel-header-error')).toBe(false);
+    expect((panel as unknown as { retryCountdownTimer: ReturnType<typeof setInterval> | null }).retryCountdownTimer).toBeNull();
+    expect((panel as unknown as { retryAttempt: number }).retryAttempt).toBe(0);
+
+    vi.advanceTimersByTime(60_000);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('destroy drops a queued callback so it cannot run later', () => {
+    const callback = vi.fn();
+    panel.setSafeContent(unsafeRawHtml(BODY_A, 'test fixture'), callback);
+    panel.destroy();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS * 3);
+    expect(callback).not.toHaveBeenCalled();
+  });
+});

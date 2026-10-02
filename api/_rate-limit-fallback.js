@@ -29,7 +29,7 @@ async function fixedWindowLimit(key, limit, windowSeconds) {
     ['INCR', key],
     ['EXPIRE', key, String(windowSeconds), 'NX'],
     ['TTL', key],
-  ], FALLBACK_REDIS_TIMEOUT_MS);
+  ], FALLBACK_REDIS_TIMEOUT_MS, true);
   if (!result) throw new Error('rate-limit fallback: Redis pipeline unavailable');
 
   const incrError = commandError(result[0], 'INCR');

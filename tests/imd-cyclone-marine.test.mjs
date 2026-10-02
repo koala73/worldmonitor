@@ -10,16 +10,19 @@ import {
   IMD_CANONICAL_KEY,
   IMD_HOST,
   IMD_MAX_CONTENT_AGE_MIN,
+  IMD_OAUTH_TOKEN_URL,
   IMD_PRODUCTS,
   assembleImdSnapshot,
   buildDisabledSnapshot,
   cycloneEventsFromSnapshot,
+  createImdProxyFetch,
   declareImdRecords,
   dropExpiredRecords,
   fetchImdCycloneMarine,
   imdAfterPublish,
   imdLiveFetchEnabled,
   imdProductUrl,
+  shouldActivateImdSnapshot,
   isAllowedImdHost,
   isNilText,
   marineBulletinsFromSnapshot,
@@ -38,12 +41,28 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = (name) => JSON.parse(readFileSync(join(root, 'tests/fixtures', name), 'utf8'));
 const NOW = Date.parse('2023-11-05T12:00:00.000Z');
 const CYCLONE_NOW = Date.parse('2019-11-06T00:00:00.000Z');
+const LIVE_ENV = Object.freeze({
+  IMD_API_KEY: 'test-key',
+  IMD_API_EMAIL: 'operator@example.com',
+  IMD_API_PASSWORD: 'railway-secret',
+});
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function proxyJsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    buffer: Buffer.from(JSON.stringify(body)),
+    contentType: 'application/json',
+    headers: { 'content-type': 'application/json' },
+    location: '',
+  };
 }
 
 test('allows only https://api.imd.gov.in product URLs', () => {
@@ -281,9 +300,10 @@ test('omits unstamped previous wind or cone geometry when the product fetch fail
   assert.equal(snapshot.products.cycloneCou.carried, false);
 });
 
-test('requires only IMD_API_KEY and reports a missing key as explicitly disabled', async () => {
+test('requires valid IMD API key and account credentials', async () => {
   assert.equal(imdLiveFetchEnabled({}), false);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), true);
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), false);
+  assert.equal(imdLiveFetchEnabled(LIVE_ENV), true);
   assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\r\nkey' }), false);
   assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\u2028key' }), false);
   const requested = [];
@@ -318,8 +338,59 @@ test('requires only IMD_API_KEY and reports a missing key as explicitly disabled
   assert.equal(invalidKey.skipReason, 'IMD_API_KEY_INVALID');
   assert.deepEqual(requested, []);
 
+  const missingEmail = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('a missing email must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(missingEmail.coverageState, 'disabled');
+  assert.equal(missingEmail.skipReason, 'IMD_API_EMAIL_MISSING');
+  assert.deepEqual(requested, []);
+
+  const invalidEmail = await fetchImdCycloneMarine({
+    env: { ...LIVE_ENV, IMD_API_EMAIL: 'bad\r\nemail' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('an invalid email must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(invalidEmail.coverageState, 'disabled');
+  assert.equal(invalidEmail.skipReason, 'IMD_API_EMAIL_INVALID');
+  assert.deepEqual(requested, []);
+
+  const missingPassword = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key', IMD_API_EMAIL: 'operator@example.com' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('a missing password must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(missingPassword.coverageState, 'disabled');
+  assert.equal(missingPassword.skipReason, 'IMD_API_PASSWORD_MISSING');
+  assert.deepEqual(requested, []);
+
+  const invalidPassword = await fetchImdCycloneMarine({
+    env: { ...LIVE_ENV, IMD_API_PASSWORD: 'bad\r\npassword' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('an invalid password must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(invalidPassword.coverageState, 'disabled');
+  assert.equal(invalidPassword.skipReason, 'IMD_API_PASSWORD_INVALID');
+  assert.deepEqual(requested, []);
+
   const invalidHeader = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key', IMD_API_KEY_HEADER: 'bad header' },
+    env: {
+      ...LIVE_ENV,
+      IMD_API_KEY_HEADER: 'bad header',
+    },
     fetchFn: async (url) => {
       requested.push(url);
       throw new Error('an invalid API key header must not make an IMD request');
@@ -331,10 +402,275 @@ test('requires only IMD_API_KEY and reports a missing key as explicitly disabled
   assert.deepEqual(requested, []);
 });
 
+test('documents the complete IMD Railway credential setup', () => {
+  const docs = readFileSync(join(root, 'docs/natural-disasters.mdx'), 'utf8');
+  const railwayServices = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
+  const railwayService = railwayServices.find((entry) => entry.service === 'seed-imd-cyclone-marine');
+  assert.ok(railwayService, 'missing IMD Railway service registry entry');
+  const heading = '## Configure the IMD Railway seeder';
+  const start = docs.indexOf(heading);
+  assert.notEqual(start, -1, `missing ${heading}`);
+  const nextHeading = docs.indexOf('\n## ', start + heading.length);
+  const setup = docs.slice(start, nextHeading === -1 ? docs.length : nextHeading);
+  const setupText = setup.replace(/\s+/g, ' ');
+
+  assert.ok(setup.includes(railwayService.service));
+  for (const name of railwayService.requiredEnv.filter((entry) => entry.startsWith('IMD_'))) {
+    assert.ok(setup.includes(name), `missing documented Railway variable ${name}`);
+  }
+  assert.ok(railwayService.requiredEnv.includes('PROXY_URL'));
+  assert.ok(setup.includes('PROXY_URL'), 'missing documented Railway proxy variable');
+  assert.ok(setup.includes(railwayService.cronSchedule));
+  assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
+  assert.match(setup, /static public IP/i);
+  assert.match(setup, /three static outbound IPv4 addresses/i);
+  assert.match(setupText, /maximum of 2 Development keys and 2 Production keys/i);
+  assert.match(setupText, /balances traffic across them/i);
+  assert.match(setupText, /Application code cannot select the Railway NAT address.*or reliably probe it in advance/i);
+  assert.match(setupText, /native three-IP HA egress cannot satisfy the documented IMD contract/i);
+  assert.match(setupText, /requires deterministic single-IP external egress/i);
+  assert.match(setupText, /routes the JWT request and every IMD product request through this proxy/i);
+  assert.match(setupText, /does not fall back to direct Railway egress/i);
+  assert.match(setupText, /government sites as restricted/i);
+  assert.match(setupText, /returns a proxy CONNECT HTTP 403 before a request reaches IMD/i);
+  assert.match(setupText, /Do not cycle keys on HTTP 403/i);
+  assert.doesNotMatch(setupText, /written confirmation from IMD.*all three Railway addresses are authorized/i);
+  assert.match(setup, /HTTP 403/i);
+  assert.ok(setup.includes(IMD_OAUTH_TOKEN_URL));
+  assert.match(setup, /Do\s+not store the JWT/i);
+  assert.match(setup, /stale: false/);
+  assert.match(setup, /generatedAt.*later than the deployment time/is);
+  assert.match(setup, /imdCycloneMarine.*problems/is);
+  assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
+});
+
+test('mints a fresh IMD JWT before each product batch', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  let minted = 0;
+  const productTokens = [];
+  const fetchFn = async (url, init = {}) => {
+    if (String(url) === IMD_OAUTH_TOKEN_URL) {
+      minted += 1;
+      assert.equal(init.method, 'POST');
+      assert.equal(init.headers.Accept, 'application/json');
+      assert.equal(init.headers['Content-Type'], 'application/json');
+      assert.equal(init.headers['User-Agent'], 'worldmonitor-imd-test');
+      assert.equal(init.redirect, 'error');
+      assert.deepEqual(JSON.parse(init.body), {
+        email: 'operator@example.com',
+        password: 'railway-secret',
+      });
+      return jsonResponse({
+        access_token: `fresh-token-${minted}`,
+        token_type: minted === 1 ? 'Bearer' : 'bEaReR',
+        expires_in: 3600,
+      });
+    }
+    productTokens.push(init.headers.Authorization);
+    return jsonResponse([]);
+  };
+  await fetchImdCycloneMarine({ env: LIVE_ENV, fetchFn, now: NOW, userAgent: 'worldmonitor-imd-test' });
+  await fetchImdCycloneMarine({ env: LIVE_ENV, fetchFn, now: NOW + 1, userAgent: 'worldmonitor-imd-test' });
+
+  assert.equal(minted, 2);
+  assert.equal(warn.mock.callCount(), 0);
+  assert.deepEqual(new Set(productTokens), new Set([
+    'Bearer fresh-token-1',
+    'Bearer fresh-token-2',
+  ]));
+});
+
+test('routes IMD authentication and every product through PROXY_URL', async () => {
+  const proxyUrl = 'isp.decodo.test:10001:proxy-user:proxy-secret';
+  const proxyRequests = [];
+  const fetchFn = createImdProxyFetch(proxyUrl, {
+    proxyFetchFn: async (url, proxyConfig, options) => {
+      proxyRequests.push({ url: String(url), proxyConfig, options });
+      if (String(url) === IMD_OAUTH_TOKEN_URL) {
+        return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
+      }
+      if (String(url).endsWith('/cyclone_cou')) {
+        return proxyJsonResponse(fixture('imd-cyclone-cou.json'));
+      }
+      return proxyJsonResponse([]);
+    },
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn,
+    now: NOW,
+  });
+
+  assert.equal(proxyRequests.length, 7);
+  assert.ok(proxyRequests.every(({ proxyConfig }) => (
+    proxyConfig.host === 'isp.decodo.test'
+    && proxyConfig.port === 10001
+    && proxyConfig.auth === 'proxy-user:proxy-secret'
+    && proxyConfig.tls === true
+  )));
+  assert.equal(proxyRequests[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(proxyRequests[0].options.body), {
+    email: 'operator@example.com',
+    password: 'railway-secret',
+  });
+  assert.ok(proxyRequests.slice(1).every(({ options }) => options.headers.Authorization === 'Bearer proxy-token'));
+  assert.equal(snapshot.coverageState, 'ok');
+});
+
+test('fails closed without a required or valid IMD proxy', async () => {
+  assert.throws(() => createImdProxyFetch(''), /IMD_PROXY_URL_MISSING/);
+  assert.throws(() => createImdProxyFetch('not-a-proxy'), /IMD_PROXY_URL_INVALID/);
+  assert.throws(
+    () => createImdProxyFetch('http://proxy-user:proxy-secret@isp.decodo.test:10001'),
+    /IMD_PROXY_URL_INVALID/,
+  );
+});
+
+test('redacts proxy credentials from IMD transport failures', async () => {
+  const proxySecret = 'proxy-user:proxy-secret';
+  const fetchFn = createImdProxyFetch(`isp.decodo.test:10001:${proxySecret}`, {
+    proxyFetchFn: async () => {
+      throw new Error(`proxy authentication failed for ${proxySecret}`);
+    },
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn,
+    now: NOW,
+  });
+
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+  assert.doesNotMatch(JSON.stringify(snapshot), /proxy-secret/);
+});
+
+test('logs sanitized IMD auth transport context without changing the failure snapshot', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+  const failure = Object.assign(new Error('https://user:secret@proxy.test private response'), {
+    cause: Object.assign(new Error('Bearer secret-token'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' }),
+    proxyFailure: { stage: 'target_tls', proxyConnectStatus: 200, httpStatus: null },
+  });
+  let requests = 0;
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async (url, config, options) => {
+        requests++;
+        assert.equal(url, IMD_OAUTH_TOKEN_URL);
+        assert.equal(options.timeoutMs, 15_000);
+        assert.ok(options.signal instanceof AbortSignal);
+        throw failure;
+      },
+    }),
+    now: NOW,
+  });
+  assert.deepEqual(logs, [{
+    event: 'imd_auth_failure', code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+    stage: 'target_tls', proxyConnectStatus: 200,
+  }]);
+  const baseline = await fetchImdCycloneMarine({
+    env: LIVE_ENV, now: NOW, fetchFn: async () => { throw new Error('fetch failed'); },
+  });
+  assert.deepEqual(snapshot, baseline);
+  assert.equal(requests, 1);
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+  assert.equal(snapshot.products.cycloneTrack.requestCount, 0);
+  assert.equal(snapshot.generatedAt, NOW);
+  assert.equal(shouldActivateImdSnapshot(snapshot), false);
+  assert.equal(imdAfterPublish(snapshot).freshnessMetaPatch.errorCode, 'IMD_PRODUCTS_UNAVAILABLE');
+});
+
+test('IMD auth diagnostics reject hostile fields and cannot change failure handling', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => {
+    logs.push(JSON.parse(line));
+    throw new Error('logger failed');
+  });
+  const secret = 'https://operator:password@proxy.test/?token=private';
+  const failures = [
+    Object.assign(new Error(secret), {
+      code: secret, stack: secret, body: secret, url: secret,
+      proxyFailure: { stage: secret, httpStatus: secret, proxyConnectStatus: 999, token: secret },
+    }),
+    Object.assign(new Error(secret), {
+      code: 'ECONNRESET', proxyFailure: { stage: 'response_body', httpStatus: 200, proxyConnectStatus: 407 },
+    }),
+    Object.assign(new Error(secret), {
+      code: 'ENOTFOUND', proxyFailure: { stage: 'proxy_connect', httpStatus: 403, proxyConnectStatus: 407 },
+    }),
+    Object.assign(new Error(secret), {
+      proxyFailure: { stage: 'response_body', httpStatus: 600, proxyConnectStatus: '200' },
+    }),
+  ];
+  failures[0].cause = failures[0];
+  for (const failure of failures) {
+    const snapshot = await fetchImdCycloneMarine({
+      env: LIVE_ENV, now: NOW, fetchFn: async () => { throw failure; },
+    });
+    assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+    assert.equal(shouldActivateImdSnapshot(snapshot), false);
+    assert.doesNotMatch(JSON.stringify(snapshot), /operator|password|private/);
+  }
+  assert.deepEqual(logs, [
+    { event: 'imd_auth_failure', code: 'UNKNOWN' },
+    { event: 'imd_auth_failure', code: 'ECONNRESET', stage: 'response_body', httpStatus: 200 },
+    { event: 'imd_auth_failure', code: 'ENOTFOUND', stage: 'proxy_connect', proxyConnectStatus: 407 },
+    { event: 'imd_auth_failure', code: 'UNKNOWN', stage: 'response_body' },
+  ]);
+});
+
+test('classifies bounded proxy responses without exposing transport details', async () => {
+  const tooLarge = Object.assign(new Error('proxy response too large'), {
+    code: 'RESPONSE_TOO_LARGE',
+  });
+  const authSnapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async () => { throw tooLarge; },
+    }),
+    now: NOW,
+  });
+  assert.equal(authSnapshot.products.cycloneTrack.reason, 'IMD_AUTH_RESPONSE_TOO_LARGE');
+
+  const productSnapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async (url) => {
+        if (String(url) === IMD_OAUTH_TOKEN_URL) {
+          return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
+        }
+        throw tooLarge;
+      },
+    }),
+    now: NOW,
+  });
+  assert.equal(productSnapshot.products.cycloneTrack.reason, 'IMD_RESPONSE_TOO_LARGE');
+});
+
+test('distinguishes a proxy tunnel rejection from an IMD origin rejection', async () => {
+  const proxyRejected = Object.assign(new Error('proxy refused target'), {
+    status: 403,
+    proxyConnect: true,
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async () => { throw proxyRejected; },
+    }),
+    now: NOW,
+  });
+
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_PROXY_CONNECT_HTTP_403');
+});
+
 test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
-    fetchFn: async () => {
+    env: LIVE_ENV,
+    fetchFn: async (url) => {
+      if (String(url) === IMD_OAUTH_TOKEN_URL) {
+        return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
+      }
       throw new Error('upstream rejected key secret-imd-key');
     },
     now: NOW,
@@ -345,8 +681,11 @@ test('redacts IMD transport errors before they reach the cached public snapshot'
   assert.doesNotMatch(JSON.stringify(snapshot), /secret-imd-key/);
 
   const timeout = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
-    fetchFn: async () => {
+    env: LIVE_ENV,
+    fetchFn: async (url) => {
+      if (String(url) === IMD_OAUTH_TOKEN_URL) {
+        return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
+      }
       const error = new Error('timeout details must not be public');
       error.name = 'TimeoutError';
       throw error;
@@ -357,7 +696,69 @@ test('redacts IMD transport errors before they reach the cached public snapshot'
   assert.doesNotMatch(JSON.stringify(timeout), /timeout details/);
 });
 
-test('marks a missing IMD key as an error after the source has activated', () => {
+test('fails a batch closed when IMD authentication fails and preserves bounded last-good data', async () => {
+  const previous = assembleImdSnapshot({
+    now: CYCLONE_NOW,
+    productResults: {
+      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
+      cycloneWind: { status: 'ok', records: [] },
+      cycloneCou: { status: 'ok', records: [] },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  let requestCount = 0;
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    previous,
+    now: CYCLONE_NOW + 1,
+    fetchFn: async () => {
+      requestCount += 1;
+      throw new Error('login rejected operator@example.com with railway-secret');
+    },
+  });
+
+  assert.equal(requestCount, 1);
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.ok(snapshot.cyclones.length > 0);
+  for (const id of Object.keys(IMD_PRODUCTS).filter((id) => IMD_PRODUCTS[id].schema === 'documented')) {
+    assert.equal(snapshot.products[id].status, 'failed');
+    assert.equal(snapshot.products[id].reason, 'IMD_AUTH_FAILED');
+    assert.equal(snapshot.products[id].requestCount, 0);
+  }
+  assert.equal(snapshot.products.cycloneTrack.carried, true);
+  assert.equal(shouldActivateImdSnapshot(snapshot), false, 'carried last-good data does not prove a new IMD success');
+  assert.doesNotMatch(JSON.stringify(snapshot), /operator@example\.com|railway-secret/);
+});
+
+test('rejects malformed IMD authentication responses before product requests', async () => {
+  const invalidPayloads = [
+    { access_token: '', token_type: 'Bearer', expires_in: 3600 },
+    { access_token: ' fresh-token ', token_type: 'Bearer', expires_in: 3600 },
+    { access_token: 'bad\ntoken', token_type: 'Bearer', expires_in: 3600 },
+    { access_token: 'fresh-token', token_type: 'Basic', expires_in: 3600 },
+    { access_token: 'fresh-token', token_type: 'bearer', expires_in: 0 },
+  ];
+  for (const payload of invalidPayloads) {
+    let requestCount = 0;
+    const snapshot = await fetchImdCycloneMarine({
+      env: LIVE_ENV,
+      now: NOW,
+      fetchFn: async (url) => {
+        requestCount += 1;
+        assert.equal(String(url), IMD_OAUTH_TOKEN_URL);
+        return jsonResponse(payload);
+      },
+    });
+    assert.equal(requestCount, 1);
+    assert.equal(snapshot.coverageState, 'unavailable');
+    assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_RESPONSE_INVALID');
+    assert.equal(snapshot.products.cycloneTrack.requestCount, 0);
+  }
+});
+
+test('keeps an intentionally disabled IMD source not configured after activation', () => {
   const { ACTIVATION_MARKERS, SEED_META, STANDALONE_KEYS, STATUS_COUNTS, classifyKey } = healthTesting;
   const name = 'imdCycloneMarine';
   const dataKey = STANDALONE_KEYS[name];
@@ -378,17 +779,86 @@ test('marks a missing IMD key as an error after the source has activated', () =>
     now,
   });
 
-  assert.equal(ACTIVATION_MARKERS[name], 'seed-activated:weather:imd-cyclone-marine');
+  assert.equal(ACTIVATION_MARKERS[name], 'seed-activated:weather:imd-cyclone-marine:v2');
   assert.equal(classifyKey(name, dataKey, { allowOnDemand: true }, ctx(false)).status, 'NOT_CONFIGURED');
   const afterActivation = classifyKey(name, dataKey, { allowOnDemand: true }, ctx(true));
-  assert.equal(afterActivation.status, 'SEED_ERROR');
-  assert.equal(STATUS_COUNTS[afterActivation.status], 'warn');
+  assert.equal(afterActivation.status, 'NOT_CONFIGURED');
+  assert.equal(STATUS_COUNTS[afterActivation.status], 'ok');
+
+  const invalidCredentials = classifyKey(name, dataKey, { allowOnDemand: true }, {
+    ...ctx(true),
+    keyMetaValues: new Map([[metaKey, JSON.stringify({
+      fetchedAt: now,
+      recordCount: 0,
+      sourceState: 'degraded',
+      errorCode: 'IMD_PRODUCTS_UNAVAILABLE',
+      coverageState: 'unavailable',
+    })]]),
+  });
+  assert.equal(invalidCredentials.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[invalidCredentials.status], 'warn');
+});
+
+test('activates IMD only after a real documented product succeeds', () => {
+  const snapshot = (productResults) => assembleImdSnapshot({ productResults, now: NOW });
+  const quietSuccess = snapshot({
+    cycloneTrack: { status: 'ok', records: [] },
+    cycloneWind: { status: 'ok', records: [] },
+    cycloneCou: { status: 'ok', records: [] },
+    portWarning: { status: 'ok', records: [] },
+    seaBulletin: { status: 'ok', records: [] },
+    coastalBulletin: { status: 'ok', records: [] },
+  });
+  assert.equal(quietSuccess.coverageState, 'ok');
+  assert.equal(shouldActivateImdSnapshot(quietSuccess), true, 'valid NIL/empty products prove IMD replied');
+
+  const partialSuccess = snapshot({
+    cycloneTrack: { status: 'ok', records: [] },
+    cycloneWind: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
+    cycloneCou: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
+    portWarning: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
+    seaBulletin: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
+    coastalBulletin: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
+  });
+  assert.equal(partialSuccess.coverageState, 'degraded');
+  assert.equal(shouldActivateImdSnapshot(partialSuccess), true, 'one direct product success is enough');
+
+  const totalFailure = snapshot({
+    cycloneTrack: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    cycloneWind: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    cycloneCou: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    portWarning: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    seaBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    coastalBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+  });
+  assert.equal(totalFailure.coverageState, 'unavailable');
+  assert.equal(shouldActivateImdSnapshot(totalFailure), false);
+
+  const carriedOnly = assembleImdSnapshot({
+    previous: quietSuccess,
+    now: NOW,
+    productResults: {
+      cycloneTrack: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+      cycloneWind: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+      cycloneCou: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+      portWarning: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+      seaBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+      coastalBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
+    },
+  });
+  assert.equal(carriedOnly.coverageState, 'unavailable');
+  assert.equal(shouldActivateImdSnapshot(carriedOnly), false, 'carried records do not prove this attempt reached IMD');
 });
 
 test('never fetches fishermen warning even when live fetch is enabled', async () => {
   const requested = [];
-  const fetchFn = async (url) => {
+  const fetchFn = async (url, init) => {
     requested.push(url);
+    if (String(url) === IMD_OAUTH_TOKEN_URL) {
+      return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
+    }
+    assert.equal(init.headers['X-API-Key'], 'test-key');
+    assert.equal(init.headers.Authorization, 'Bearer fresh-token');
     if (String(url).includes('fishermen')) {
       throw new Error('fishermen must not be requested');
     }
@@ -401,20 +871,23 @@ test('never fetches fishermen warning even when live fetch is enabled', async ()
     return jsonResponse({ error: 'API key missing' }, 401);
   };
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
+    env: LIVE_ENV,
     fetchFn,
     now: CYCLONE_NOW,
   });
   assert.equal(requested.some((url) => String(url).includes('fishermen')), false);
   assert.equal(snapshot.products.fishermenWarning.status, 'disabled');
   assert.equal(snapshot.coverageState, 'ok');
+  assert.equal(shouldActivateImdSnapshot(snapshot), true);
   assert.ok(snapshot.cyclones.length > 0);
 });
 
 test('rejects untrusted hosts and does not treat 401 as all-clear', async () => {
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
-    fetchFn: async () => jsonResponse({ error: 'API key missing' }, 401),
+    env: LIVE_ENV,
+    fetchFn: async (url) => String(url) === IMD_OAUTH_TOKEN_URL
+      ? jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 })
+      : jsonResponse({ error: 'API key missing' }, 401),
     now: NOW,
   });
   assert.equal(snapshot.coverageState, 'unavailable');
@@ -430,7 +903,9 @@ test('seeder stays off weather:alerts:v1 and uses the dedicated canonical key', 
   assert.doesNotMatch(seeder, /runSeed\('weather', 'alerts'/);
   assert.equal(IMD_CANONICAL_KEY, 'weather:imd-cyclone-marine:v1');
   assert.match(seeder, /#7005/);
-  assert.match(seeder, /seed-activated:weather:imd-cyclone-marine/);
+  assert.match(seeder, /seed-activated:weather:imd-cyclone-marine:v2/);
+  assert.match(seeder, /shouldActivateImdSnapshot\(data\)/);
+  assert.match(seeder, /createImdProxyFetch\(process\.env\.PROXY_URL\)/);
   const lib = readFileSync(join(root, 'scripts/lib/imd-cyclone-marine.mjs'), 'utf8');
   assert.doesNotMatch(lib, /\/api\/v1\/districtnowcast/);
   assert.doesNotMatch(lib, /\/api\/v1\/districtwarning/);

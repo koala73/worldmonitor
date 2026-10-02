@@ -119,7 +119,8 @@
       "activeSirens": "Активные сирены",
       "sirens24h": "Сирены / 24ч",
       "aviationDisruptions": "Авиационные сбои",
-      "gpsJammingZones": "Зоны глушения GPS"
+      "gpsJammingZones": "Зоны глушения GPS",
+      "temporalUnavailable": "Временные наблюдения недоступны"
     },
     "fallback": {
       "instabilityIndex": "**Индекс нестабильности: {{score}}/100** ({{level}}, {{trend}})",
@@ -196,7 +197,7 @@
       "decisionSignalsUnavailable": "Снимок сигналов принятия решений Китая в настоящее время недоступен."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -861,7 +862,6 @@
   "components": {
     "webcams": {
       "paused": "Веб-камеры приостановлены",
-      "pausedIdle": "Веб-камеры приостановлены — переместите мышь для возобновления",
       "regions": {
         "all": "ВСЕ",
         "mideast": "БЛИЖНИЙ ВОСТОК",
@@ -871,7 +871,11 @@
         "space": "КОСМОС"
       },
       "play": "Воспроизвести",
-      "previewStatus": "Предпросмотр в реальном времени"
+      "previewStatus": "Готово к воспроизведению",
+      "connecting": "Подключение…",
+      "unverified": "Не удалось подтвердить, что трансляция в прямом эфире",
+      "offline": "{{city}} сейчас не в сети",
+      "noFeeds": "В этом регионе нет активных веб-камер"
     },
     "positiveNewsFeed": {
       "noStories": "Пока нет историй в этой категории"
@@ -1083,10 +1087,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Индекс: World Monitor · данные заведений:",
+      "statusNormal": "НОРМА",
+      "statusNoData": "НЕТ ДАННЫХ",
+      "statusNoBaseline": "НЕТ БАЗОВОГО УРОВНЯ",
+      "vsUsual": "относительно нормы",
       "title": "Индекс пиццерий Пентагона",
       "defcon": "DEFCON {{level}}",
       "updated": "Обновлено {{timeAgo}}",
       "tensionsTitle": "Геополитическая напряжённость",
+      "tensionsSource": "Напряжённость: World Monitor на основе событий GDELT",
+      "insufficientData": "Недостаточно данных",
+      "pizzaUnavailable": "Данные об активности пиццерий недоступны",
       "source": "Источник:",
       "statusClosed": "ЗАКРЫТО",
       "statusSpike": "ВСПЛЕСК",
@@ -1098,11 +1110,11 @@
       "minutesAgo": "{{m}}м назад",
       "hoursAgo": "{{h}}ч назад",
       "defconLabels": {
-        "1": "БОЕВОЙ ВЗВОД — МАКСИМАЛЬНАЯ ГОТОВНОСТЬ",
-        "2": "УСКОРЕННЫЙ ТЕМП — ВООРУЖЁННЫЕ СИЛЫ ГОТОВЫ",
-        "3": "КРУГОВАЯ ОБОРОНА — ПОВЫШЕНИЕ БОЕГОТОВНОСТИ",
-        "4": "ДВОЙНОЙ КОНТРОЛЬ — УСИЛЕННОЕ РАЗВЕДНАБЛЮДЕНИЕ",
-        "5": "ОТБОЙ — МИНИМАЛЬНАЯ ГОТОВНОСТЬ"
+        "1": "Максимальная активность",
+        "2": "Высокая активность",
+        "3": "Повышенная активность",
+        "4": "Выше нормы",
+        "5": "Нормальная активность"
       }
     },
     "strategicPosture": {
@@ -1183,9 +1195,6 @@
       "datacenter": "Дата-центр",
       "base": "База",
       "nuclear": "Ядерный"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "КРИТ",
@@ -1498,7 +1507,10 @@
       "provenanceTitle": "Происхождение охвата: количество полученных историй и отдельных источников, из которых была выбрана эта сводка",
       "compiledFrom": "Собрано из {{stories}} историй из {{sources}} источников",
       "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Подробности новости ({{count}})",
+      "streamIdleStopLabel": "Остановить прямую трансляцию при неактивности",
+      "streamIdleStopDesc": "Останавливает Live News и Live Webcams после указанного времени без активности и показывает уведомление на панели.",
+      "streamIdleStopNever": "Никогда"
     },
     "settings": {
       "exportSettings": "Экспорт настроек",
@@ -1910,6 +1922,7 @@
       "etfs": "ETF",
       "netInflow": "ЧИСТЫЙ ПРИТОК",
       "netOutflow": "ЧИСТЫЙ ОТТОК",
+      "netNeutral": "ЧИСТЫЙ НЕЙТРАЛ",
       "table": {
         "ticker": "Тикер",
         "issuer": "Эмитент",
@@ -1992,15 +2005,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} не может быть воспроизведён здесь — возможно, ограничено в вашем регионе (ошибка {{code}})",
-      "botCheck": "YouTube запрашивает вход для воспроизведения {{name}}",
       "signInToYouTube": "Войти в YouTube",
       "openOnYouTube": "Open on YouTube",
       "manage": "Управление каналами",
       "addChannel": "Добавить канал",
       "remove": "Удалить",
-      "youtubeHandle": "YouTube- handle (напр. @Channel)",
-      "youtubeHandleOrUrl": "Имя канала или URL YouTube",
       "displayName": "Отображаемое имя (необяз.)",
       "channelSettings": "Настройки канала",
       "save": "Сохранить",
@@ -2016,12 +2025,24 @@
       "regionMiddleEast": "Ближний Восток",
       "regionAfrica": "Африка",
       "regionOceania": "Океания",
-      "invalidHandle": "Введите корректный YouTube-дескриптор (например, @ChannelName)",
       "verifying": "Проверка…",
       "hlsUrl": "URL HLS-потока (необязательно)",
       "invalidHlsUrl": "Введите корректный URL HLS-потока (.m3u8)",
       "playLiveFeed": "Воспроизвести прямую трансляцию",
-      "readyStatus": "Готово, когда вы готовы"
+      "readyStatus": "Готово, когда вы готовы",
+      "embedBlocked": "YouTube не воспроизводит {{name}} на других сайтах в данный момент",
+      "unavailable": "{{name}} не может быть воспроизведён в данный момент",
+      "noStream": "Для {{name}} ещё не настроен прямой эфир",
+      "needsChannelUrl": "Добавьте {{name}} снова с URL его канала (youtube.com/channel/UC…) или URL прямого видео",
+      "connecting": "Подключение к {{name}}…",
+      "recording": "Запись",
+      "unverified": "Не удаётся подтвердить, что этот поток ведётся в реальном времени",
+      "playNextChannel": "Воспроизвести следующий канал",
+      "channelOrVideoUrl": "Канал YouTube или URL видео",
+      "channelUrlHint": "Вставьте URL канала (youtube.com/channel/UC…) или URL прямого видео",
+      "youtubeChannel": "Канал YouTube",
+      "insecureStream": "{{name}} использует небезопасный (http) поток, который блокируют браузеры. Добавьте его снова с безопасным (https) URL потока",
+      "httpsStreamHint": "Браузеры блокируют небезопасные (http) потоки. Вставьте безопасный (https) URL потока"
     },
     "map": {
       "showMap": "Показать карту",
@@ -2190,7 +2211,7 @@
       "infoTooltip": "<strong>Экономический календарь</strong> Запланированные макроэкономические публикации: CPI, NFP, GDP, PMI и решения центральных банков. Показывает прогноз vs. факт vs. предыдущее. События с высоким влиянием выделены. Источник: поставщики экономических данных."
     },
     "fsi": {
-      "infoTooltip": "<strong>Индикатор финансового стресса</strong> Индекс финансового стресса ФРБ Канзас-Сити (KCFSI): измеряет стресс на финансовых рынках США с помощью 11 индикаторов, включая спреды доходности, волатильность и перекрёстные корреляции. Положительные значения указывают на стресс выше среднего. Источник: Федеральный резервный банк Канзас-Сити.",
+      "infoTooltip": "<strong>Индикатор финансового стресса</strong> Соотношение WorldMonitor между высокодоходным кредитом и долгосрочными казначейскими облигациями США с поправкой на волатильность акций и спред высокодоходных облигаций: (HYG / TLT) / (VIX × HY spread / 100). Это не индекс финансового стресса Федерального резервного банка Канзас-Сити. Значение 1.5 или выше означает низкий стресс; ниже 0.3 — высокий стресс.",
       "title": "Индикатор финансового стресса",
       "usFsiValue": "ЗНАЧЕНИЕ US FSI",
       "cissTitle": "EU CISS (системный стресс еврозоны)",
@@ -2655,7 +2676,14 @@
       "analyzing": "Анализ...",
       "viewOnMap": "Просмотреть на карте",
       "signals_few": "{{count}} сигнала",
-      "signals_many": "{{count}} сигналов"
+      "signals_many": "{{count}} сигналов",
+      "waiting": "Ожидание следующего обновления данных. Эта панель обновляется автоматически.",
+      "offline": "Ожидание подключения. Эта панель обновится автоматически после восстановления соединения.",
+      "updated": "Обновлено {{time}}",
+      "saved": "Последнее известное обновление {{time}} · Проверка обновлений",
+      "savedOffline": "Последнее известное обновление {{time}} · Нет подключения",
+      "localSignals": "На основе загруженных сигналов панели мониторинга",
+      "emptySaved": "В последнем известном обновлении конвергенция не обнаружена."
     },
     "thermalEscalation": {
       "title": "Тепловая эскалация",
@@ -2827,6 +2855,58 @@
       "succeeded": "Пароль сохранён. Вы можете использовать его при следующем входе.",
       "retryable": "Операция не завершена. Можете попробовать снова.",
       "failed": "Не удалось сохранить пароль на этом устройстве."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Справка для решений по сырью",
+      "commodity": "Сырьё / продукт",
+      "blockedChokepoint": "Предполагаемый заблокированный проход",
+      "commodityCapture": "Зафиксировать сравнение сырья",
+      "title": "Сводка для принятия решения",
+      "fuel": "Топливо",
+      "chokepoint": "Узкое место",
+      "baseline": "Базовое нарушение поставок",
+      "comparison": "Сравниваемое нарушение поставок",
+      "capture": "Загрузить / обновить оба",
+      "downloadHtml": "Скачать сводку в HTML",
+      "downloadJson": "Скачать сводку в JSON",
+      "back": "← Назад к сводке по стране",
+      "select": "Выберите нарушение энергоснабжения, затем загрузите оба сценария.",
+      "changed": "Выбор изменён. Загрузите оба сценария перед экспортом.",
+      "loading": "Загрузка обоих сценариев…",
+      "captured": "Загружено. Перед скачиванием проверьте даты наблюдений и ограничения.",
+      "failed": "Не удалось загрузить сценарии. Проверьте доступ и повторите попытку. Нет результата для экспорта.",
+      "locked": "Сводка для принятия решения доступна в Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Приостановлено из-за неактивности",
+      "idleBody": "Прямая трансляция остановлена после {{duration}} без активности мыши, клавиатуры или сенсорного ввода.",
+      "idleResume": "Возобновить",
+      "idleKeepPlaying": "Продолжить воспроизведение при неактивности",
+      "idleSettingsHint": "Измените это в любой момент в Параметры › Медиа.",
+      "idleKeepPlayingToast": "Прямая трансляция будет продолжаться при неактивности. Измените в Параметры › Медиа."
+    },
+    "corroboration": {
+      "singlePublisher": "Один издатель",
+      "singlePublisherHint": "Об этом пока сообщает только один издатель. Это описывает охват, а не точность.",
+      "tier4Only": "Только источники низкого уровня",
+      "tier4OnlyHint": "Все издания, сообщающие об этом, являются источниками уровня 4 (агрегаторы и блоги). Это описывает охват, а не точность.",
+      "rosterListed": "({{listed}} в списке)",
+      "rosterFeeds": "Ленты: {{labels}}",
+      "rosterLegend": "Уровни классифицируют источники; они не оценивают это утверждение.",
+      "tierDocsLink": "Как присваиваются уровни",
+      "tierChip": "У{{tier}}",
+      "tierChipUndeclared": "У?",
+      "tierTitle1": "Уровень 1: Информационные агентства и официальные органы",
+      "tierTitle2": "Уровень 2: Крупные издания",
+      "tierTitle3": "Уровень 3: Специализированные, региональные источники и аналитические центры",
+      "tierTitle4": "Уровень 4: Агрегаторы и блоги",
+      "tierTitleUndeclared": "Уровень не определён: ещё не проверен",
+      "rosterSummary": "Сообщают {{publishers}}",
+      "rosterSummaryTier1": "Сообщают {{publishers}}, в том числе уровня 1: {{tier1}}",
+      "rosterPublishers_one": "{{count}} издатель",
+      "rosterPublishers_few": "{{count}} издателя",
+      "rosterPublishers_many": "{{count}} издателей",
+      "rosterPublishers_other": "{{count}} издателей"
     }
   },
   "popups": {
@@ -2865,14 +2945,18 @@
     "protest": {
       "acledVerified": "ACLED (подтверждено)",
       "gdelt": "GDELT",
+      "records": "записей",
+      "mediaSignal": "Непроверенный медиасигнал",
+      "relatedArticle": "Связанная статья",
+      "mediaSignalDetail": "Это место упоминается в статьях о беспорядках. Местное событие не подтверждено.",
       "riots": "Беспорядки",
       "highSeverity": "Высокая степень тяжести"
     },
     "gpsJamming": {
       "title": "Помехи GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Воздушные суда, затронутые помехами",
+      "samples": "Количество воздушных судов, затронутых помехами",
+      "aircraft": "Общее количество наблюдаемых воздушных судов",
       "h3Hex": "H3 Hex"
     },
     "flight": {

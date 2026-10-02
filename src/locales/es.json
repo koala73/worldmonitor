@@ -129,7 +129,8 @@
       "activeSirens": "Sirenas activas",
       "sirens24h": "Sirenas / 24h",
       "aviationDisruptions": "Interrupciones aéreas",
-      "gpsJammingZones": "Zonas de interferencia GPS"
+      "gpsJammingZones": "Zonas de interferencia GPS",
+      "temporalUnavailable": "Observaciones temporales no disponibles"
     },
     "countryFacts": "Datos del país",
     "loadingFacts": "Cargando datos del país...",
@@ -194,7 +195,7 @@
       "decisionSignalsUnavailable": "El resumen de señales de decisión de China no está disponible actualmente."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -875,9 +876,12 @@
         "space": "ESPACIO"
       },
       "paused": "Cámaras en pausa",
-      "pausedIdle": "Cámaras en pausa — mueva el ratón para reanudar",
       "play": "Reproducir",
-      "previewStatus": "Vista previa en vivo"
+      "previewStatus": "Listo para reproducir",
+      "connecting": "Conectando…",
+      "unverified": "No se puede confirmar que esta transmisión esté en directo",
+      "offline": "{{city}} está sin conexión en este momento",
+      "noFeeds": "No hay webcámaras en directo en esta región en este momento"
     },
     "regulation": {
       "timeline": "Línea de tiempo",
@@ -1298,9 +1302,6 @@
       "base": "Base",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRÍT",
       "high": "ALTO",
@@ -1309,8 +1310,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Índice: World Monitor · datos de locales:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "SIN DATOS",
+      "statusNoBaseline": "SIN REFERENCIA",
+      "vsUsual": "frente a lo habitual",
       "title": "Índice de pizza del Pentágono",
       "tensionsTitle": "Tensiones geopolíticas",
+      "tensionsSource": "Tensiones: World Monitor a partir de eventos de GDELT",
+      "insufficientData": "Datos insuficientes",
+      "pizzaUnavailable": "Actividad de las pizzerías no disponible",
       "source": "Fuente:",
       "defcon": "DEFCON {{level}}",
       "updated": "Actualizado {{timeAgo}}",
@@ -1324,11 +1333,11 @@
       "minutesAgo": "Hace {{m}}m",
       "hoursAgo": "Hace {{h}}h",
       "defconLabels": {
-        "1": "PISTOLA ARMADA - MÁXIMA PREPARACIÓN",
-        "2": "RITMO RÁPIDO - FUERZAS ARMADAS PREPARADAS",
-        "3": "CASA REDONDA - AUMENTAR LA PREPARACIÓN DE LA FUERZA",
-        "4": "DOBLE TOMA: VIGILANCIA DE INTELIGENCIA AUMENTADA",
-        "5": "DESVANECIMIENTO - PREPARACIÓN MÍNIMA"
+        "1": "Actividad Máxima",
+        "2": "Actividad Alta",
+        "3": "Actividad Elevada",
+        "4": "Por Encima de lo Normal",
+        "5": "Actividad Normal"
       }
     },
     "playback": {
@@ -1842,7 +1851,10 @@
       "provenanceTitle": "Procedencia de cobertura: cuántas historias ingeridas y fuentes distintas se seleccionaron para este resumen",
       "compiledFrom": "Compilado de {{stories}} historias en {{sources}} fuentes",
       "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Detalles de la noticia ({{count}})",
+      "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
+      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
+      "streamIdleStopNever": "Nunca"
     },
     "etfFlows": {
       "unavailable": "Datos ETF temporalmente no disponibles",
@@ -1853,6 +1865,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA NETA",
       "netOutflow": "SALIDA NETA",
+      "netNeutral": "NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emisor",
@@ -1935,15 +1948,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} no se puede reproducir aquí — puede estar restringido en tu región (error {{code}})",
-      "botCheck": "YouTube solicita iniciar sesión para reproducir {{name}}",
       "signInToYouTube": "Iniciar sesión en YouTube",
       "openOnYouTube": "Abrir en YouTube",
       "manage": "Gestionar canales",
       "addChannel": "Añadir canal",
       "remove": "Eliminar",
-      "youtubeHandle": "Handle de YouTube (ej. @Channel)",
-      "youtubeHandleOrUrl": "Identificador o URL de YouTube",
       "displayName": "Nombre para mostrar (opcional)",
       "channelSettings": "Configuración del canal",
       "save": "Guardar",
@@ -1958,13 +1967,25 @@
       "regionMiddleEast": "Oriente Medio",
       "regionAfrica": "África",
       "regionOceania": "Oceanía",
-      "invalidHandle": "Ingrese un identificador de YouTube válido (ej. @NombreDeCanal)",
       "verifying": "Verificando…",
       "noResults": "No se encontraron canales que coincidan con \"{{term}}\"",
       "hlsUrl": "URL de transmisión HLS (opcional)",
       "invalidHlsUrl": "Introduzca una URL de transmisión HLS válida (.m3u8)",
       "playLiveFeed": "Reproducir transmisión en vivo",
-      "readyStatus": "Listo cuando quieras"
+      "readyStatus": "Listo cuando quieras",
+      "embedBlocked": "YouTube no reproducirá {{name}} dentro de otros sitios en este momento",
+      "unavailable": "{{name}} no se puede reproducir en este momento",
+      "noStream": "Aún no hay transmisión en vivo configurada para {{name}}",
+      "needsChannelUrl": "Agrega {{name}} de nuevo con su URL de canal (youtube.com/channel/UC…) o una URL de video en vivo",
+      "connecting": "Conectando a {{name}}…",
+      "recording": "Grabación",
+      "unverified": "No se puede confirmar que esta transmisión esté en vivo",
+      "playNextChannel": "Reproducir siguiente canal",
+      "channelOrVideoUrl": "Canal de YouTube o URL de video",
+      "channelUrlHint": "Pega una URL de canal (youtube.com/channel/UC…) o una URL de video en vivo",
+      "youtubeChannel": "Canal de YouTube",
+      "insecureStream": "{{name}} usa una transmisión insegura (http), que los navegadores bloquean. Agrégalo de nuevo con una URL de transmisión segura (https)",
+      "httpsStreamHint": "Los navegadores bloquean las transmisiones inseguras (http). Pega una URL de transmisión segura (https)"
     },
     "securityAdvisories": {
       "loading": "Cargando alertas de viaje...",
@@ -2181,7 +2202,7 @@
       "infoTooltip": "<strong>Calendario económico</strong> Publicaciones macroeconómicas programadas: CPI, NFP, GDP, PMI y decisiones de bancos centrales. Muestra pronóstico vs. real vs. anterior. Eventos de alto impacto resaltados. Fuente: proveedores de datos económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Índice de estrés financiero del Fed de Kansas City (KCFSI): mide el estrés en los mercados financieros de EE.UU. usando 11 indicadores que incluyen diferenciales de rendimiento, volatilidad y correlaciones cruzadas. Valores positivos indican estrés superior al promedio. Fuente: Banco de la Reserva Federal de Kansas City.",
+      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Relación de WorldMonitor entre crédito de alto rendimiento y bonos del Tesoro estadounidense a largo plazo, ajustada por la volatilidad de la renta variable y el diferencial de alto rendimiento: (HYG / TLT) / (VIX × HY spread / 100). No es el Índice de Estrés Financiero de la Reserva Federal de Kansas City. Una lectura de 1.5 o superior indica estrés bajo; por debajo de 0.3 indica estrés alto.",
       "title": "Indicador de Estrés Financiero",
       "usFsiValue": "VALOR FSI DE EE.UU.",
       "cissTitle": "EU CISS (Estrés Sistémico del Área Euro)",
@@ -2641,7 +2662,14 @@
       "signals_other": "{{count}} señales",
       "analyzing": "Analizando...",
       "viewOnMap": "Ver en mapa",
-      "signals_many": "{{count}} señales"
+      "signals_many": "{{count}} señales",
+      "waiting": "Esperando la próxima actualización de datos. Este panel se actualiza automáticamente.",
+      "offline": "Esperando una conexión. Este panel se actualiza automáticamente cuando vuelvas a estar en línea.",
+      "updated": "Actualizado {{time}}",
+      "saved": "Última actualización conocida {{time}} · Buscando actualizaciones",
+      "savedOffline": "Última actualización conocida {{time}} · Sin conexión",
+      "localSignals": "Basado en las señales cargadas en el panel",
+      "emptySaved": "No hubo convergencia en la última actualización conocida."
     },
     "thermalEscalation": {
       "title": "Escalada Térmica",
@@ -2808,6 +2836,57 @@
       "succeeded": "Llave de acceso guardada. Puedes usarla la próxima vez que inicies sesión.",
       "retryable": "No se completó. Puedes intentar de nuevo.",
       "failed": "No pudimos guardar una llave de acceso en este dispositivo."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Informe de decisión sobre materias primas",
+      "commodity": "Materia prima / producto",
+      "blockedChokepoint": "Paso supuesto bloqueado",
+      "commodityCapture": "Capturar comparación de materias primas",
+      "title": "Informe de decisión",
+      "fuel": "Combustible",
+      "chokepoint": "Punto de paso crítico",
+      "baseline": "Interrupción de referencia",
+      "comparison": "Interrupción comparada",
+      "capture": "Capturar / actualizar ambos",
+      "downloadHtml": "Descargar informe en HTML",
+      "downloadJson": "Descargar informe en JSON",
+      "back": "← Volver al informe del país",
+      "select": "Seleccione una interrupción energética y capture ambos escenarios.",
+      "changed": "Selección modificada. Capture ambos escenarios antes de exportar.",
+      "loading": "Capturando ambos escenarios…",
+      "captured": "Captura completa. Revise las fechas de observación y las restricciones antes de descargar.",
+      "failed": "No se pudieron capturar los escenarios. Compruebe su acceso e inténtelo de nuevo. No hay resultados para exportar.",
+      "locked": "El informe de decisión está disponible con Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "En pausa por inactividad",
+      "idleBody": "Vídeo en directo detenido después de {{duration}} sin actividad de ratón, teclado o pantalla táctil.",
+      "idleResume": "Reanudar",
+      "idleKeepPlaying": "Seguir reproduciendo cuando está inactivo",
+      "idleSettingsHint": "Cambia esto en cualquier momento en Configuración › Multimedia.",
+      "idleKeepPlayingToast": "El vídeo en directo seguirá reproduciéndose cuando esté inactivo. Cambia en Configuración › Multimedia."
+    },
+    "corroboration": {
+      "singlePublisher": "Un único medio",
+      "singlePublisherHint": "Solo un medio está reportando esto hasta ahora. Esto describe la cobertura, no la precisión.",
+      "tier4Only": "Solo fuentes de nivel bajo",
+      "tier4OnlyHint": "Todo medio que reporta esto es una fuente de nivel 4 (agregadores y blogs). Esto describe la cobertura, no la precisión.",
+      "rosterListed": "({{listed}} listados)",
+      "rosterFeeds": "Feeds observados: {{labels}}",
+      "rosterLegend": "Los niveles clasifican las fuentes; no juzgan esta afirmación.",
+      "tierDocsLink": "Cómo se asignan los niveles",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Nivel 1: Agencias de noticias y organismos oficiales",
+      "tierTitle2": "Nivel 2: Grandes medios",
+      "tierTitle3": "Nivel 3: Fuentes especializadas, regionales y de centros de pensamiento",
+      "tierTitle4": "Nivel 4: Agregadores y blogs",
+      "tierTitleUndeclared": "Nivel no declarado: aún no revisado",
+      "rosterSummary": "Publicado por {{publishers}}",
+      "rosterSummaryTier1": "Publicado por {{publishers}} ({{tier1}} de nivel 1)",
+      "rosterPublishers_one": "{{count}} medio",
+      "rosterPublishers_many": "{{count}} medios",
+      "rosterPublishers_other": "{{count}} medios"
     }
   },
   "popups": {
@@ -2845,14 +2924,18 @@
     "protest": {
       "acledVerified": "ACLED (verificado)",
       "gdelt": "GDELT",
+      "records": "registros",
+      "mediaSignal": "Señal mediática no verificada",
+      "relatedArticle": "Artículo relacionado",
+      "mediaSignalDetail": "Este lugar se menciona en artículos sobre disturbios. No se ha verificado un evento local.",
       "riots": "Disturbios",
       "highSeverity": "Alta Gravedad"
     },
     "gpsJamming": {
       "title": "Interferencia GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Aeronaves afectadas",
+      "samples": "Número de aeronaves afectadas",
+      "aircraft": "Aeronaves observadas",
       "h3Hex": "H3 Hex"
     },
     "flight": {

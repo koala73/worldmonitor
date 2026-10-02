@@ -9,7 +9,7 @@ export interface TorontoSafetySourceDescriptor {
   disclaimer: string;
   attribution: string;
   sourceUrl: string;
-  productionWriter: 'disabled' | 'on-demand';
+  productionWriter: 'disabled' | 'bundle';
   bootstrap: 'none';
   geocode: false;
 }

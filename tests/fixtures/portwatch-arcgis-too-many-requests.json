@@ -1,0 +1,6 @@
+{
+  "_comment": "Sanitized from Railway deployment e6458492-5b13-4cad-938b-6fc768bf6bc6 on 2026-09-01. The HTTP 200 ArcGIS error envelope and message were confirmed. Other provider fields are unconfirmed, not observed absent.",
+  "error": {
+    "message": "Unable to perform query. Too many requests."
+  }
+}

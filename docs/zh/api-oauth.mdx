@@ -9,13 +9,20 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 - [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE(必需,仅 S256)
 - [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) — 授权服务器元数据
 - [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) — 受保护资源元数据
+- [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) — 授权服务器颁发者标识
 
 ## 发现端点
 
 | URL | 用途 |
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS 元数据(端点、支持的 grant、PKCE 方法) |
-| `/.well-known/oauth-protected-resource` | 资源元数据(授权服务器、scope) |
+| `/.well-known/oauth-authorization-server/mcp` | 同一份 AS 元数据,供探测路径限定位置的客户端使用 |
+| `/.well-known/oauth-authorization-server/api/mcp` | 同上,供在已部署的 `/api/mcp` 路由下探测的客户端使用 |
+| `/.well-known/oauth-protected-resource` | 源站范围的资源元数据(授权服务器、scope) |
+| `/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源元数据,其 `resource` 为 `https://<host>/mcp`([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
+| `/.well-known/oauth-protected-resource/api/mcp` | 同上,对应已部署的 `/api/mcp` 路由,其 `resource` 为 `https://<host>/api/mcp` |
+
+每个传输路径都有各自的文档:客户端只有在其调用的 URL 位于所公布 `resource` 路径之下时才会接受该 `resource`。`401` 质询指向客户端实际调用路径所对应的文档。自行拼接该 URL(而非跟随质询)的客户端可以在此找到它;两份文档同时提供,已发现源站范围文档的客户端不受影响。
 
 `/.well-known/oauth-protected-resource` 目前公布公共资源作用域 `mcp`。Pro 授权码授权返回内部作用域值 `mcp_pro`。遗留 API-key 授权与 `client_credentials` 返回 `mcp`。
 
@@ -46,11 +53,9 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 }
 ```
 
-**Redirect URI 允许列表**:仅接受以下前缀:
+**Redirect URI 允许列表**:`http://localhost:<port>` / `http://127.0.0.1:<port>`(任意端口),或与 [MCP 服务器 → Redirect URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表) 中托管 MCP 客户端回调地址完全一致。任何其他条目都会使整个注册返回 `400 invalid_redirect_uri`。
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>` — 任意端口
+每次注册最多 **8** 个 `redirect_uris`;超出返回 `400 invalid_request`。
 
 **速率限制**:5 次注册 / 60 秒 / IP。
 
@@ -69,6 +74,8 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 - `code_challenge_method=S256`
 - `state` — 不透明值
 - `scope`(可选)
+
+**授权响应**:重定向到 `redirect_uri`,携带 `code`、`state`(请求中提供时)与 `iss`。`iss` 为发起流程的主机 AS 元数据中的 `issuer`([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207));元数据公布 `authorization_response_iss_parameter_supported: true`。
 
 **Code TTL**:10 分钟。一次性使用(交换时原子 `GETDEL`)。
 

@@ -5,7 +5,12 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  assertUnrankedInventoryIntegrity,
   compareUnpublishedRankedPeers,
+  describeInventoryScope,
+  describeSupportThreshold,
+  describeMicrostateEvidence,
+  describeMicrostateEvidenceSummary,
   countryMetaDescription,
   describeAvailableEvidence,
   describeCoverageGaps,
@@ -25,8 +30,8 @@ const sharedSource = readFileSync(
   'utf8',
 );
 
-function dimension(id, coverage, imputationClass = '') {
-  return { id, coverage, imputationClass };
+function dimension(id, coverage, imputationClass = '', score = null) {
+  return { id, coverage, imputationClass, score };
 }
 
 function countryFixture(overrides, dimensions) {
@@ -37,6 +42,7 @@ function countryFixture(overrides, dimensions) {
     imputationShare: 0.2,
     lowConfidence: true,
     headlineEligible: false,
+    microstateTerritory: false,
     domains: [
       {
         id: 'economic',
@@ -135,6 +141,115 @@ describe('unranked country copy', () => {
     );
     assert.match(describeAvailableEvidence(country), /Input coverage is 12%/);
     assert.match(describeAvailableEvidence(country), /imputation share is 61%/);
+  });
+
+  it('explains what available dimensions show for microstate pages', () => {
+    const country = countryFixture({
+      name: 'Tuvalu',
+      code: 'TV',
+      microstateTerritory: true,
+      dimensionCoverage: 0.62,
+      imputationShare: 0.176,
+    }, [
+      dimension('borderSecurity', 1, '', 100),
+      dimension('cyberDigital', 1, '', 100),
+      dimension('education', 0.8, '', 34),
+      dimension('healthPublicService', 1, '', 65),
+      dimension('externalDebtCoverage', 0.3, 'unmonitored', 50),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /Border security[^.]*100/);
+    assert.match(evidence, /Education capacity[^.]*34/);
+    assert.match(evidence, /UCDP/);
+    assert.match(evidence, /World Bank/);
+    assert.match(evidence, /Possible dimension inputs for Tuvalu/);
+    assert.doesNotMatch(evidence, /Observed feeds/);
+    assert.match(evidence, /not a published overall score|not a country rank/i);
+  });
+
+  it('keeps overlapping sources scoped to dimensions instead of declaring them absent', () => {
+    const country = countryFixture({
+      name: 'Overlap Isles',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 1, '', 72),
+      dimension('stateContinuity', 0, 'unmonitored'),
+      dimension('healthPublicService', 0, 'unmonitored'),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /For Overlap Isles, some feed families span supported and missing dimensions: UCDP/);
+    assert.match(evidence, /Inputs tied only to missing or unmonitored dimensions in Overlap Isles: WHO/);
+    assert.doesNotMatch(evidence, /Observed feeds/);
+    assert.doesNotMatch(evidence, /UCDP does not cover Overlap Isles|UCDP is absent/);
+  });
+
+  it('withholds scores when a microstate has no observed dimensions', () => {
+    const country = countryFixture({
+      name: 'Sparse Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 0, 'unmonitored', 88),
+      dimension('education', 0, 'source-failure', 41),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.match(evidence, /No overall resilience score or country rank is published/);
+    assert.doesNotMatch(evidence, /88|41/);
+  });
+
+  it('does not publish a missing dimension score as an observed zero', () => {
+    const country = countryFixture({
+      name: 'Scoreless Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 1),
+      dimension('education', 0.8, '', 'not-a-score'),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Border security|Education capacity/);
+  });
+
+  it('does not present stable-absence imputation as an observed reading', () => {
+    const country = countryFixture({
+      name: 'Stable Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('foodWater', 0.7, 'stable-absence', 88),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Food and water security|88/);
+  });
+
+  it('requires usable coverage and observed imputation for a dimension reading', () => {
+    const country = countryFixture({
+      name: 'Partial Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 0.49, '', 12),
+      dimension('education', 0.7, 'not-applicable', 44),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Border security|Education capacity|12|44/);
+  });
+
+  it('keeps the compact FAQ fallback score-free when no dimensions are observed', () => {
+    const country = countryFixture({
+      name: 'Empty Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [dimension('borderSecurity', 0, 'unmonitored', 88)]);
+    const evidence = describeMicrostateEvidenceSummary(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.match(evidence, /No overall resilience score or country rank is published/);
+    assert.doesNotMatch(evidence, /88/);
   });
 
   it('labels low-confidence unpublished meta descriptions distinctly', () => {
@@ -367,5 +482,236 @@ describe('unranked country copy', () => {
     assert.match(reason, /coverage is 69%/);
     assert.doesNotMatch(reason, /below the 65%/);
     assert.doesNotMatch(reason, /fewer than 200,000|microstate/);
+  });
+});
+
+// The weakest-first inventory splits the active dimensions into three buckets --
+// shown, never pooled because already at full coverage, and dropped by the cap --
+// and #7530 reported only two of them, so the sentence a reader can add up did
+// not close (#7609).
+describe('unranked evidence inventory scope', () => {
+  const partial = (count, offset = 0) => Array.from(
+    { length: count },
+    (_unused, index) => dimension(`partial${offset + index}`, 0.05 + (index * 0.01), '', 50),
+  );
+  const full = (count) => Array.from(
+    { length: count },
+    (_unused, index) => dimension(`full${index}`, 1, '', 80),
+  );
+
+  it('accounts for every active dimension across all three buckets', () => {
+    const scope = describeInventoryScope(countryFixture({}, [...partial(13), ...full(3)]));
+    assert.equal(
+      scope,
+      'Showing 12 of 16 active dimensions, weakest evidence first; 3 more at full coverage; 1 omitted for brevity.',
+    );
+    const [shown, total, ...omitted] = [...scope.matchAll(/\d+/g)].map(([value]) => Number(value));
+    assert.equal(shown + omitted.reduce((sum, count) => sum + count, 0), total);
+  });
+
+  it('reports the cap bucket even when nothing sits at full coverage', () => {
+    assert.equal(
+      describeInventoryScope(countryFixture({}, partial(13))),
+      'Showing 12 of 13 active dimensions, weakest evidence first; 1 omitted for brevity.',
+    );
+  });
+
+  it('reports the full-coverage bucket alone when the cap drops nothing', () => {
+    assert.equal(
+      describeInventoryScope(countryFixture({}, [...partial(2), ...full(2)])),
+      'Showing 2 of 4 active dimensions, weakest evidence first; 2 more at full coverage.',
+    );
+  });
+
+  it('stays silent when the inventory shows every active dimension', () => {
+    assert.equal(describeInventoryScope(countryFixture({}, partial(3))), null);
+  });
+});
+
+// "Observed" in the inventory only means the snapshot holds a usable series; a
+// supported reading also has to clear the coverage threshold. Without that said
+// on the page, a dimension shows up as observed and absent from the supported
+// list at the same time (#7609).
+describe('unranked observed support threshold', () => {
+  it('names the sub-threshold dimension and states the threshold it misses', () => {
+    const note = describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]));
+    assert.equal(
+      note,
+      'Social cohesion is observed but below the 50% coverage a supported reading needs,'
+      + ' so it is recorded here without counting as supported readings.',
+    );
+  });
+
+  // The note has to name every affected row, not just the worst one: a reader
+  // checking the inventory against the readings list is checking all of them.
+  it('names every sub-threshold dimension, weakest first', () => {
+    const note = describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('energy', 0.15, '', 30),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]));
+    assert.equal(
+      note,
+      'Energy system resilience and Social cohesion are observed but below the 50% coverage'
+      + ' a supported reading needs, so they are recorded here without counting as supported readings.',
+    );
+  });
+
+  it('stays silent when every observed dimension clears the threshold', () => {
+    assert.equal(
+      describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+        dimension('macroFiscal', 0.8, '', 60),
+        dimension('externalDebtCoverage', 0, 'unmonitored'),
+        dimension('sovereignFiscalBuffer', 0, 'not-applicable'),
+      ])),
+      null,
+    );
+  });
+
+  it('does not treat a positive-coverage stable absence as observed', () => {
+    const country = countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, 'stable-absence', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.equal(describeSupportThreshold(country), null);
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(country));
+  });
+});
+
+// The durable deliverable of #7609: a page whose inventory contradicts itself
+// must fail the build rather than reach a reader or a quality rater.
+describe('unranked evidence inventory build assertion', () => {
+  it('accepts an inventory whose buckets and observed labels are self-explaining', () => {
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(countryFixture({
+      microstateTerritory: true,
+    }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+      dimension('externalDebtCoverage', 0, 'unmonitored'),
+    ])));
+  });
+
+  it('rejects an observed dimension above the threshold that no supported reading names', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({
+        name: 'Tuvalu',
+        code: 'TV',
+        microstateTerritory: true,
+      }, [
+        // Clears the coverage threshold, but carries no usable score, so the
+        // exhaustive microstate reading list cannot name it.
+        dimension('socialCohesion', 0.6, '', null),
+        dimension('macroFiscal', 0.8, '', 60),
+      ])),
+      /TV.*socialCohesion/s,
+    );
+  });
+
+  // The two branches define "supported" differently on purpose: the microstate
+  // page counts its readings out loud, so a dimension it cannot score breaks the
+  // count, while a generic page only claims evidence is present and needs
+  // nothing but coverage. That asymmetry is what makes the throw above reachable
+  // on one branch and unreachable on the other -- pin it, or a later attempt to
+  // "unify" the two definitions silently changes which pages can fail the build.
+  // These three shapes all close the arithmetic, so the closure check alone
+  // stays green while the page publishes something false. Each guard names its
+  // own cause rather than reporting generic drift.
+  it('rejects a dimension that would publish as "at full coverage" without reaching it', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({ code: 'ZZ' }, [
+        dimension('macroFiscal', 0.4, '', 50),
+        // Not a gap, not not-applicable, and `coverage < 1` is false for NaN, so
+        // it escapes the weakest-first pool the same way a complete dimension does.
+        dimension('energy', undefined, '', 60),
+      ])),
+      /ZZ would publish energy \(coverage undefined\) as "at full coverage" without reaching full coverage/,
+    );
+  });
+
+  it('rejects a duplicate dimension id rather than inflating the published total', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({ code: 'ZZ' }, [
+        dimension('macroFiscal', 0.4, '', 50),
+        dimension('macroFiscal', 0.6, '', 60),
+      ])),
+      /ZZ repeats a dimension id across its domains, so the inventory would publish 2 rows as 1 distinct dimensions/,
+    );
+  });
+
+  // #7530 broke the page by dropping a bucket from the SENTENCE while the data
+  // behind it stayed correct. A gate that only re-reads the partition is blind
+  // to exactly that edit, so it has to read the published string too. These two
+  // pin that the string check is live -- delete it and they go green.
+  it('rejects a scope note that drops a bucket a reader needs to add up', () => {
+    const country = countryFixture({ code: 'PW' }, [
+      ...Array.from({ length: 13 }, (_unused, index) => dimension(`partial${index}`, 0.05 + (index * 0.01), '', 50)),
+      ...Array.from({ length: 3 }, (_unused, index) => dimension(`full${index}`, 1, '', 80)),
+    ]);
+    // What describeInventoryScope would emit if `${omittedTail}` were deleted.
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, {
+        inventoryScope: 'Showing 12 of 16 active dimensions, weakest evidence first.',
+      }),
+      /PW publishes an inventory scope note a reader cannot add up to its 16 active dimensions/,
+    );
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(country, {
+      inventoryScope: describeInventoryScope(country),
+    }));
+  });
+
+  it('rejects a threshold note that stops naming the coverage floor', () => {
+    const country = countryFixture({ code: 'TV', microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, {
+        supportThreshold: 'Social cohesion is observed but not a supported reading.',
+      }),
+      /TV lists socialCohesion as observed outside the supported readings without publishing the 50% support threshold/,
+    );
+  });
+
+  it('rejects threshold notes that do not identify the exact affected rows and rule', () => {
+    const country = countryFixture({ code: 'TV', microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    const invalidNotes = [
+      '50%',
+      'Social cohesion is observed but below the 150% coverage a supported reading needs.',
+      'Energy system resilience is observed but below the 50% coverage a supported reading needs.',
+    ];
+    for (const supportThreshold of invalidNotes) {
+      assert.throws(
+        () => assertUnrankedInventoryIntegrity(country, { supportThreshold }),
+        /TV lists socialCohesion as observed outside the supported readings without publishing the 50% support threshold/,
+      );
+    }
+  });
+
+  it('rejects a threshold note when no shown observed dimension is below the floor', () => {
+    const country = countryFixture({ code: 'IQ' }, [
+      dimension('socialCohesion', 0.6, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, { supportThreshold: '50%' }),
+      /IQ publishes a support threshold note although no shown observed dimension falls below the 50% floor/,
+    );
+  });
+
+  it('does not reject a scoreless above-threshold dimension on a generic unranked page', () => {
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(countryFixture({
+      name: 'Iraq',
+      code: 'IQ',
+      microstateTerritory: false,
+    }, [
+      dimension('socialCohesion', 0.6, '', null),
+      dimension('macroFiscal', 0.8, '', 60),
+    ])));
   });
 });

@@ -12,7 +12,17 @@ World Monitor ships official client libraries in four language ecosystems. All o
 | Go | [`github.com/koala73/worldmonitor/sdk/go` on pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
 | JavaScript / CLI | [`worldmonitor` on npm](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
 
-Every package sets its homepage to a `worldmonitor.app` URL (the npm CLI package uses `worldmonitor.app/docs/cli`) — that is how you (or your agent) verify it is the official SDK and not a look-alike.
+## Find and verify the official packages
+
+Use the exact package names in the table. npm, PyPI, and RubyGems link to `worldmonitor.app` in their project metadata; compare those links with the source repositories listed here. The Python package is `worldmonitor-sdk`. The PyPI package named `worldmonitor` is an unrelated project.
+
+The Go SDK is the module `github.com/koala73/worldmonitor/sdk/go`, with package name `worldmonitor`. Go modules have no registry homepage field. Verify its module path against the official repository linked above and its product links on pkg.go.dev.
+
+- [Search pkg.go.dev for worldmonitor](https://pkg.go.dev/search?q=worldmonitor).
+- [Read the Go module proxy's latest release metadata](https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest).
+- Install with `go get github.com/koala73/worldmonitor/sdk/go` from your Go project.
+
+Go publishes versions through repository tags (`sdk/go/vX.Y.Z`) and the module proxy. A successful proxy lookup confirms release availability; pkg.go.dev search confirms search visibility. See [how pkg.go.dev adds packages](https://pkg.go.dev/about#adding-a-package).
 
 ## Shared design
 
@@ -75,10 +85,10 @@ import run from 'worldmonitor/run';
 
 ## Releasing (maintainers)
 
-Each SDK versions and publishes independently via OIDC trusted publishing — no long-lived registry tokens (see the [CLI release runbook](/releasing-cli) for the npm flow):
+Each SDK versions independently. npm, Python, and Ruby use OIDC trusted publishing; Go uses repository tags and the public module proxy. No long-lived registry tokens are needed (see the [CLI release runbook](/releasing-cli) for the npm flow):
 
 - **Python:** bump `version` in `sdk/python/pyproject.toml` **and** `__version__` in `sdk/python/src/worldmonitor_sdk/__init__.py`, then tag `py-vX.Y.Z` (workflow `publish-python.yml`).
 - **Ruby:** bump `WorldMonitor::VERSION` in `sdk/ruby/lib/worldmonitor/version.rb`, then tag `gem-vX.Y.Z` (workflow `publish-ruby.yml`).
 - **Go:** bump `Version` in `sdk/go/worldmonitor.go`, then tag `sdk/go/vX.Y.Z` (workflow `publish-go.yml` validates and warms the module proxy).
 
-`tests/sdk-packages.test.mjs` guards the version sync and the `worldmonitor.app` homepage metadata on every package.
+`tests/sdk-packages.test.mjs` checks package identity, version declarations, registry metadata, and release workflow wiring.

@@ -241,7 +241,8 @@
       "activeSirens": "Active Sirens",
       "sirens24h": "Sirens / 24h",
       "aviationDisruptions": "Aviation Disruptions",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "temporalUnavailable": "Дані часових спостережень недоступні"
     },
     "fallback": {
       "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
@@ -265,7 +266,7 @@
       "area": "Area"
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -930,9 +931,8 @@
   "components": {
     "webcams": {
       "paused": "Webcams paused",
-      "pausedIdle": "Webcams paused — move mouse to resume",
       "play": "Play",
-      "previewStatus": "Live preview",
+      "previewStatus": "Готово до відтворення",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -940,7 +940,11 @@
         "americas": "AMERICAS",
         "asia": "ASIA",
         "space": "SPACE"
-      }
+      },
+      "connecting": "Підключення…",
+      "unverified": "Не вдається підтвердити, що потік в прямому ефірі",
+      "offline": "{{city}} зараз у режимі офлайн",
+      "noFeeds": "Немає живих веб-камер у цьому регіоні"
     },
     "pinnedWebcams": {
       "pinFromMap": "Pin a webcam from the map"
@@ -1226,10 +1230,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Індекс: World Monitor · дані закладів:",
+      "statusNormal": "НОРМА",
+      "statusNoData": "НЕМАЄ ДАНИХ",
+      "statusNoBaseline": "НЕМАЄ БАЗОВОГО РІВНЯ",
+      "vsUsual": "відносно норми",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Напруженість: World Monitor на основі подій GDELT",
+      "insufficientData": "Недостатньо даних",
+      "pizzaUnavailable": "Дані про активність піцерій недоступні",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",
@@ -1241,11 +1253,11 @@
       "minutesAgo": "{{m}}m ago",
       "hoursAgo": "{{h}}h ago",
       "defconLabels": {
-        "1": "COCKED PISTOL - MAXIMUM READINESS",
-        "2": "FAST PACE - ARMED FORCES READY",
-        "3": "ROUND HOUSE - INCREASE FORCE READINESS",
-        "4": "DOUBLE TAKE - INCREASED INTELLIGENCE WATCH",
-        "5": "FADE OUT - LOWEST READINESS"
+        "1": "Максимальна активність",
+        "2": "Висока активність",
+        "3": "Підвищена активність",
+        "4": "Вище норми",
+        "5": "Нормальна активність"
       }
     },
     "strategicPosture": {
@@ -1326,9 +1338,6 @@
       "datacenter": "Datacenter",
       "base": "Base",
       "nuclear": "Nuclear"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "CRIT",
@@ -1639,9 +1648,12 @@
       "compiledFrom": "Compiled from {{stories}} stories across {{sources}} sources",
       "provenanceTitle": "Coverage provenance: how many ingested stories and distinct sources this brief was selected from",
       "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old",
-      "briefStoryDetails": "Story details ({{count}})",
+      "briefStoryDetails": "Подробиці новини ({{count}})",
       "sources_few": "{{count}} джерела",
-      "sources_many": "{{count}} джерел"
+      "sources_many": "{{count}} джерел",
+      "streamIdleStopLabel": "Зупинити пряму трансляцію відео при бездіяльності",
+      "streamIdleStopDesc": "Зупиняє Live News і Live Webcams після цього часу без активності та показує повідомлення на панелі.",
+      "streamIdleStopNever": "Ніколи"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -2056,6 +2068,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "ЧИСТИЙ НЕЙТРАЛ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",
@@ -2263,8 +2276,6 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} can't be played here — it may be restricted in your region (error {{code}})",
-      "botCheck": "YouTube is requesting sign-in to play {{name}}",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",
       "playLiveFeed": "Play live feed",
@@ -2272,8 +2283,6 @@
       "manage": "Manage channels",
       "addChannel": "Add channel",
       "remove": "Remove",
-      "youtubeHandle": "YouTube handle (e.g. @Channel)",
-      "youtubeHandleOrUrl": "YouTube handle or URL",
       "displayName": "Display name (optional)",
       "channelSettings": "Channel Settings",
       "save": "Save",
@@ -2289,10 +2298,22 @@
       "regionMiddleEast": "Middle East",
       "regionAfrica": "Africa",
       "regionOceania": "Oceania",
-      "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
       "verifying": "Verifying…",
       "hlsUrl": "HLS Stream URL (optional)",
-      "invalidHlsUrl": "Enter a valid HLS stream URL (.m3u8)"
+      "invalidHlsUrl": "Enter a valid HLS stream URL (.m3u8)",
+      "embedBlocked": "YouTube зараз не відтворює {{name}} всередині інших сайтів",
+      "unavailable": "{{name}} зараз неможливо відтворити",
+      "noStream": "Для {{name}} ще не налаштовано трансляцію в прямому ефірі",
+      "needsChannelUrl": "Додайте {{name}} знову з його адресою каналу (youtube.com/channel/UC…) або адресою відео в прямому ефірі",
+      "connecting": "Підключення до {{name}}…",
+      "recording": "Запис",
+      "unverified": "Не вдається підтвердити, що цей потік є прямим ефіром",
+      "playNextChannel": "Відтворити наступний канал",
+      "channelOrVideoUrl": "Канал YouTube або адреса відео",
+      "channelUrlHint": "Вставте адресу каналу (youtube.com/channel/UC…) або адресу відео в прямому ефірі",
+      "youtubeChannel": "Канал YouTube",
+      "insecureStream": "{{name}} використовує небезпечний потік (http), який браузери блокують. Додайте його знову з безпечною адресою потоку (https)",
+      "httpsStreamHint": "Браузери блокують небезпечні потоки (http). Вставте безпечну адресу потоку (https)"
     },
     "map": {
       "showMap": "Show Map",
@@ -2402,7 +2423,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Індикатор фінансового стресу</strong> Співвідношення WorldMonitor високодохідного кредиту до довгострокових казначейських облігацій США, скориговане на волатильність акцій і спред високодохідних облігацій: (HYG / TLT) / (VIX × HY spread / 100). Це не Індекс фінансового стресу Федерального резервного банку Канзас-Сіті. Значення 1.5 або вище означає низький стрес; нижче 0.3 — високий стрес.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
@@ -2743,7 +2764,14 @@
       "analyzing": "Analyzing...",
       "viewOnMap": "View on map",
       "signals_few": "{{count}} сигнали",
-      "signals_many": "{{count}} сигналів"
+      "signals_many": "{{count}} сигналів",
+      "waiting": "Очікування наступного оновлення даних. Ця панель оновлюється автоматично.",
+      "offline": "Очікування з’єднання. Ця панель оновиться автоматично після відновлення з’єднання.",
+      "updated": "Оновлено {{time}}",
+      "saved": "Останнє відоме оновлення {{time}} · Перевірка оновлень",
+      "savedOffline": "Останнє відоме оновлення {{time}} · Немає з’єднання",
+      "localSignals": "На основі завантажених сигналів панелі моніторингу",
+      "emptySaved": "В останньому відомому оновленні конвергенції не виявлено."
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2896,6 +2924,58 @@
       "succeeded": "Пропуск збережено. Ви можете використовувати його при наступному вході.",
       "retryable": "Це не завершилось. Ви можете спробувати ще раз.",
       "failed": "Нам не вдалося зберегти пропуск на цьому пристрої."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Довідка для рішень щодо сировини",
+      "commodity": "Сировина / продукт",
+      "blockedChokepoint": "Імовірно заблокований прохід",
+      "commodityCapture": "Зафіксувати порівняння сировини",
+      "title": "Зведення для ухвалення рішення",
+      "fuel": "Паливо",
+      "chokepoint": "Вузьке місце",
+      "baseline": "Базове порушення постачання",
+      "comparison": "Порівнюване порушення постачання",
+      "capture": "Завантажити / оновити обидва",
+      "downloadHtml": "Завантажити зведення в HTML",
+      "downloadJson": "Завантажити зведення в JSON",
+      "back": "← Назад до зведення про країну",
+      "select": "Виберіть порушення енергопостачання, потім завантажте обидва сценарії.",
+      "changed": "Вибір змінено. Завантажте обидва сценарії перед експортом.",
+      "loading": "Завантаження обох сценаріїв…",
+      "captured": "Завантажено. Перед збереженням перевірте дати спостережень та обмеження.",
+      "failed": "Не вдалося завантажити сценарії. Перевірте доступ і повторіть спробу. Немає результату для експорту.",
+      "locked": "Зведення для ухвалення рішення доступне в Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Призупинено через бездіяльність",
+      "idleBody": "Пряму трансляцію відео зупинено після {{duration}} без активності миші, клавіатури чи сенсора.",
+      "idleResume": "Відновити",
+      "idleKeepPlaying": "Продовжити відтворення при бездіяльності",
+      "idleSettingsHint": "Змінити це можна будь-коли в Параметри › Медіа.",
+      "idleKeepPlayingToast": "Пряма трансляція відео продовжиться при бездіяльності. Змініть у Параметри › Медіа."
+    },
+    "corroboration": {
+      "singlePublisher": "Один видавець",
+      "singlePublisherHint": "Поки що про це повідомляє лише один видавець. Це описує охоплення, а не точність.",
+      "tier4Only": "Тільки низькорівневі джерела",
+      "tier4OnlyHint": "Усі видавці, які повідомляють про це, є джерелами рівня 4 (агрегатори та блоги). Це описує охоплення, а не точність.",
+      "rosterListed": "({{listed}} у списку)",
+      "rosterFeeds": "Переглянуті стрічки: {{labels}}",
+      "rosterLegend": "Рівні ранжують джерела; вони не оцінюють це твердження.",
+      "tierDocsLink": "Як призначаються рівні",
+      "tierChip": "Р{{tier}}",
+      "tierChipUndeclared": "Р?",
+      "tierTitle1": "Рівень 1: Інформаційні агентства та офіційні органи",
+      "tierTitle2": "Рівень 2: Великі медіа-видання",
+      "tierTitle3": "Рівень 3: Спеціалізовані, регіональні джерела та аналітичні центри",
+      "tierTitle4": "Рівень 4: Агрегатори та блоги",
+      "tierTitleUndeclared": "Рівень не визначений: ще не переглянуто",
+      "rosterSummary": "Повідомили: {{publishers}}",
+      "rosterSummaryTier1": "Повідомили: {{publishers}}, з них рівня 1: {{tier1}}",
+      "rosterPublishers_one": "{{count}} видавець",
+      "rosterPublishers_few": "{{count}} видавці",
+      "rosterPublishers_many": "{{count}} видавців",
+      "rosterPublishers_other": "{{count}} видавців"
     }
   },
   "popups": {
@@ -2934,6 +3014,10 @@
     "protest": {
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
+      "records": "записів",
+      "mediaSignal": "Неперевірений медіасигнал",
+      "relatedArticle": "Пов’язана стаття",
+      "mediaSignalDetail": "Це місце згадується у статтях про заворушення. Місцеву подію не підтверджено.",
       "riots": "Riots",
       "highSeverity": "High Severity"
     },

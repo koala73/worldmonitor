@@ -44,7 +44,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import { invalidateProMcpTokenCache } from '../../server/_shared/pro-mcp-token';
 
 /** Convex internal HTTP-action call timeout. Mirrors U2's pro-mcp-token.ts. */
@@ -53,7 +53,7 @@ const CONVEX_TIMEOUT_MS = 3_000;
 /** Inner handler — exported for unit tests with injected deps. */
 export interface RevokeDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
-  resolveUserId: (req: Request) => Promise<string | null>;
+  resolveUserId: (req: Request) => Promise<string | Response | null>;
   /**
    * Calls Convex `/api/internal-revoke-pro-mcp-token` server-to-server.
    * Returns the discriminated outcome:
@@ -107,6 +107,7 @@ async function callConvexRevoke(
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-revoke', step: 'convex-fetch' },
+      fingerprint: ['api/user/mcp-revoke', 'convex-fetch', err instanceof Error ? err.name : 'Error'],
     });
     return { ok: false, reason: 'network' };
   }
@@ -136,6 +137,10 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
   }
 
   const userId = await deps.resolveUserId(req);
+  if (userId instanceof Response) {
+    new Headers(jsonHeaders).forEach((value, key) => userId.headers.set(key, value));
+    return userId;
+  }
   if (!userId) {
     return new Response(JSON.stringify({ error: 'unauthenticated' }), {
       status: 401,
@@ -182,6 +187,7 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
       );
       captureSilentError(err, {
         tags: { route: 'api/user/mcp-revoke', step: 'invalidate-cache' },
+        fingerprint: ['api/user/mcp-revoke', 'invalidate-cache', err instanceof Error ? err.name : 'Error'],
       });
     }
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: jsonHeaders });
@@ -208,7 +214,7 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
 
 export default async function handler(req: Request): Promise<Response> {
   return revokeHandler(req, {
-    resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     convexRevoke: callConvexRevoke,
     invalidateCache: invalidateProMcpTokenCache,
   });

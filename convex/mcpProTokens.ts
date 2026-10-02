@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
@@ -47,6 +48,7 @@ export const issueProMcpToken = internalMutation({
     if (!args.userId) {
       throw new ConvexError("INVALID_USER_ID");
     }
+    await assertAccountWritable(ctx, args.userId);
 
     const entitlement = await ctx.db
       .query("entitlements")

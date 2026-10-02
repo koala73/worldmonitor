@@ -3,6 +3,20 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/mcp/registry/public-domain-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for gold enrichment and internet observations. Fixed existing sebuf RPCs retain source schemas and gateway access; this module exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/country-view.ts",
+      "category": "external-protocol",
+      "reason": "MCP country-view tool definitions and fixed section readers. The external MCP protocol defines the tool/resource envelopes; this module exports no HTTP route and reads existing sebuf RPCs plus fixed bootstrap datasets.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/ask.ts",
       "category": "external-protocol",
       "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
@@ -73,6 +87,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-json.ts",
+      "category": "internal-helper",
+      "reason": "MCP proxy JSON nesting guard for untrusted request bodies, streamable responses, and legacy SSE messages (#7556). Pure helper module for the external-protocol MCP proxy — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/body-limits.ts",
       "category": "internal-helper",
       "reason": "Leaf MCP JSON-RPC POST body-size constant (#7406). Kept outside api/mcp/constants.ts so Edge facades (docs-mcp, mcp-proxy) can import the number without the MCP upgrade/attribution module graph. Pure constant module — exports no route.",
@@ -122,6 +143,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/news-dashboard.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for the WorldMonitor news dashboard and analysis adapter. Uses existing sebuf news RPCs; tool metadata and execution envelopes follow the external MCP protocol. No HTTP handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/analysis-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
@@ -153,6 +181,27 @@
       "path": "api/mcp/registry/source-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/macro-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY macro-history tool entry (get_macro_history) over the existing sebuf economic RPCs (US CPI, US interest rates, US Treasury and government yield curves, world CPI). Tool metadata and execution envelopes follow the external MCP protocol; exports no JSON data route. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/stock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP stock-research tool definition and fixed MarketService dispatch. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/cost-shock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP cost-shock tool definition and fixed SupplyChainService dispatch. Exports no standalone JSON data route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -241,6 +290,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/structured-content.ts",
+      "category": "external-protocol",
+      "reason": "MCP tools/call structuredContent builder + the anyOf outputSchema it is advertised under (#8328). Pure helper imported by the MCP dispatcher and registry, not a route; same external-protocol constraint as the parent shim.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/types.ts",
       "category": "external-protocol",
       "reason": "MCP shared type declarations (McpAuthContext, McpHandlerDeps, ToolDef union, etc.). Pure types — no runtime behaviour — but lives under api/mcp/ so the contract script requires a listing.",
@@ -321,6 +377,13 @@
       "path": "api/mcp/ui/news-intelligence-app.ts",
       "category": "external-protocol",
       "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/news-intelligence.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/news-dashboard-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps HTML resource loader for the compiled WorldMonitor dashboard. The ui:// resource envelope and CSP metadata follow the external MCP Apps protocol. No standalone HTTP data endpoint.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -450,7 +513,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/download.js",
       "category": "non-json",
@@ -481,8 +543,8 @@
     },
     {
       "path": "api/youtube/live.js",
-      "category": "non-json",
-      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "category": "upstream-proxy",
+      "reason": "Names a YouTube video through YouTube's public oEmbed endpoint for channel management; channel live detection is retired and answers 410.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -493,7 +555,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
@@ -550,7 +611,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/health.js",
       "category": "ops-admin",
@@ -642,7 +702,13 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
+    {
+      "path": "api/notification-suppressions.js",
+      "category": "internal-helper",
+      "reason": "Anonymous operator incident-control read for the service worker: serves the Redis notification link-suppression set (blocked URLs/hosts) so already-delivered push payloads stop navigating on click. Kept outside sebuf because the SW consults it via a plain GET with no auth context at click time, and the shape is an unversioned incident snapshot rather than a typed domain RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
@@ -707,6 +773,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/embed/map-frame.ts",
+      "category": "internal-helper",
+      "reason": "The single composed read the partner /embed map frame polls, replacing four separate anonymous RPC calls. Not a product data API: it accepts one parameter (`layers`) and returns the verbatim payloads of handlers already published as sebuf RPCs — no bbox, page size, or time window, because every knob is a knob a stolen embed credential could turn. Deliberately NOT a sebuf RPC of its own: the free and keyed tiers need different Cache-Control on one path, and CACHE_TIER_BY_PATH in the domain gateway is per-path, so routing it there would let a keyless response be cached and served to a keyed caller. Shareability is decided from the URL alone, before any credential is read (a CDN hit answers before the origin sees a header — #5386): only the exact raw query `layers=<canonical free subset>&public=1` is shared-cacheable, bounding the CDN key space to the free tier's seven non-empty subsets. Every other shape, credentialed or not, is served `private, no-store`, so a near-miss degrades to correct-but-uncached rather than to a shared entry that could answer the wrong caller. Builder and validator are one module (shared/embed-map-frame.ts) so an emitted URL and a cacheable URL cannot drift.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/embed/session.ts",
+      "category": "internal-helper",
+      "reason": "Credential exchange for the partner /embed iframe: trades the account's wme_ embed key for a short-lived, panel-scoped wmg_ grant that the frame then polls with. Not a product data API — it returns only a bearer token and its expiry. Deliberately NOT a sebuf RPC: a domain gateway route accepts only wms_ sessions, wm_ keys, or PUBLIC_NO_AUTH_RPC_PATHS membership, and teaching the shared auth cascade a third credential family would widen the very blast radius this exchange exists to narrow. Response is private, no-store because the body IS a credential.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/user/mcp-quota.ts",
       "category": "internal-helper",
       "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit, resetsAt}` where `limit` is the caller's plan allowance resolved through api/mcp/quota.ts's `resolveDailyLimit` (`null` = unlimited, plan 2026-07-25-001 U3b) — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / <plan limit> used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
@@ -727,7 +807,6 @@
       "owner": "@koala73",
       "removal_issue": null
     },
-
     {
       "path": "api/latest-brief.ts",
       "category": "deferred",
@@ -798,7 +877,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },
-
     {
       "path": "api/scenario/v1/run.ts",
       "category": "deferred",
@@ -834,7 +912,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "#3282"
     },
-
     {
       "path": "api/v2/shipping/webhooks/[subscriberId].ts",
       "category": "migration-pending",

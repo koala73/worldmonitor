@@ -90,6 +90,16 @@ export class MLWorkerManager {
   private desiredModels = new Set<string>();
   private pendingModelUnloads = new Map<string, Promise<boolean>>();
   private modelProgressCallbacks: Map<string, (progress: number) => void> = new Map();
+  /**
+   * Detached readiness continuations, keyed by caller label for debuggability.
+   * Each continuation was registered via {@link whenReady} while the worker was
+   * still initializing; it is resolved in-place when readiness settles rather
+   * than forcing a news reload or re-grouping already-committed results (#7779).
+   */
+  private readyWaiters = new Map<string, {
+    resolve: (ready: boolean) => void;
+    lifecycleGeneration: number;
+  }>();
 
   private readonly readyTimeoutMs: number;
   private readonly recoveryBaseDelayMs: number;
@@ -128,18 +138,81 @@ export class MLWorkerManager {
 
   private async ensureReadyNow(): Promise<boolean> {
     while (this.enabled && !this.recoveryBlocked) {
-      if (this.isReady && this.hasRestoredDesiredModels()) return true;
+      if (this.isReady && this.hasRestoredDesiredModels()) {
+        this.settleReadyWaiters(true);
+        return true;
+      }
 
       const initialization = this.initPromise
         ?? this.initializeAndRestore(this.lifecycleGeneration);
       this.initPromise = initialization;
       try {
-        if (!await initialization) return false;
+        if (!await initialization) {
+          this.settleReadyWaiters(false);
+          return false;
+        }
       } finally {
         if (this.initPromise === initialization) this.initPromise = null;
       }
     }
+    this.settleReadyWaiters(false);
     return false;
+  }
+
+  /**
+   * Wait for the worker to finish its current initialization without forcing
+   * it or queueing inference. Resolves true when the worker becomes available
+   * and false when initialization fails, is disabled, or is superseded by a
+   * later lifecycle (terminate / destroy). Detached continuations MUST recheck
+   * current settings and app lifetime themselves before requesting a model —
+   * a late true does not imply the request is still wanted (#7779 review).
+   *
+   * Multiple waiters share one in-flight initialization; they never duplicate
+   * the startup work.
+   */
+  whenReady(caller = 'anonymous'): Promise<boolean> {
+    if (this.isAvailable) return Promise.resolve(true);
+    if (!this.enabled || this.recoveryBlocked) return Promise.resolve(false);
+    void this.ensureReady();
+    return this.waiterPromise(caller);
+  }
+
+  private waiterPromise(caller: string): Promise<boolean> {
+    // A caller that re-registers while a waiter under its label is still
+    // pending replaces that entry — at most one pending continuation per
+    // label, so repeated toggles cannot accumulate stale waiters. Each entry
+    // pins the lifecycle generation seen at registration; a terminate in the
+    // meantime resolves it false instead of reviving the new lifecycle.
+    return new Promise<boolean>((resolve) => {
+      this.readyWaiters.set(caller, {
+        resolve,
+        lifecycleGeneration: this.lifecycleGeneration,
+      });
+    });
+  }
+
+  private settleReadyWaiters(ready: boolean): void {
+    if (this.readyWaiters.size === 0) return;
+    const waiters = Array.from(this.readyWaiters.entries());
+    this.readyWaiters.clear();
+    for (const [, waiter] of waiters) {
+      if (waiter.lifecycleGeneration !== this.lifecycleGeneration) {
+        waiter.resolve(false);
+      } else {
+        waiter.resolve(ready);
+      }
+    }
+  }
+
+  /**
+   * Snapshot local-ML availability for one news generation's clustering-path
+   * decision. Available takes the hybrid (ML) path; unavailable takes the
+   * analysis (Jaccard) path. The snapshot is taken at the moment the news
+   * generation chooses — worker readiness alone must never trigger a news
+   * reload or retroactively regroup already-committed first-load results.
+   */
+  snapshotAvailableForClustering(): boolean {
+    return this.isAvailable;
   }
 
   private async initializeAndRestore(lifecycleGeneration: number): Promise<boolean> {
@@ -649,6 +722,7 @@ export class MLWorkerManager {
     this.clearRecoveryTimer();
     this.cleanup(true, new Error('ML Worker terminated'));
     this.initPromise = null;
+    this.settleReadyWaiters(false);
     this.recoveryAttempts = 0;
     this.recoveryBlocked = false;
   }

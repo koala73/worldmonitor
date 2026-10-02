@@ -17,6 +17,9 @@ export interface ServerInsightStory {
    * fall back to sourceCount, which counts articles.
    */
   uniqueSourceCount?: number;
+  /** Feed labels in the cluster, deduped. Absent on a payload cached before the seeder wrote it. */
+  sources?: string[];
+  corroborationCount?: number;
   importanceScore: number;
   /** 0-100 source reliability, distinct from importanceScore. Absent on pre-rollout cache. */
   credibilityScore?: number;
@@ -83,10 +86,6 @@ let rejectedHydration = false;
 // inlining a copy that drifts silently when this constant changes.
 export const MAX_AGE_MS = INSIGHTS_MAX_AGE_MS;
 
-function isFresh(data: ServerInsights): boolean {
-  return isAcceptedInsightsSnapshot(data);
-}
-
 function validateInsights(raw: unknown): ServerInsights | null {
   return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
 }
@@ -107,7 +106,7 @@ function consumeHydration(): ServerInsights | null {
 }
 
 export function getServerInsights(): ServerInsights | null {
-  if (cached && isFresh(cached)) {
+  if (cached && isAcceptedInsightsSnapshot(cached)) {
     return cached;
   }
   cached = null;
@@ -121,11 +120,26 @@ function abortInFlightRequest(): void {
   }
   if (!inFlightAbort || inFlightAbort.signal.aborted) return;
   try {
-    inFlightAbort.abort(
-      typeof DOMException === 'function'
-        ? new DOMException('signal timed out', 'TimeoutError')
-        : undefined,
-    );
+    let reason: DOMException | undefined;
+    if (typeof DOMException === 'function') {
+      reason = new DOMException('signal timed out', 'TimeoutError');
+      // Match AbortSignal.timeout's native reason, whose stack is the header
+      // only. Chromium leaves a JS-built DOMException stackless, and Sentry's
+      // fetch instrumentation backfills a stackless rejection with the fetch
+      // call site — so a browser extension's fetch hook that leaks this reason
+      // reported as a first-party insights-loader rejection
+      // (WORLDMONITOR-125/12Z/11N) instead of the zero-frame timeout it is.
+      try {
+        Object.defineProperty(reason, 'stack', {
+          value: 'TimeoutError: signal timed out',
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        /* engine pins `stack`; an unstamped reason must still abort below */
+      }
+    }
+    inFlightAbort.abort(reason);
   } catch {
     /* already aborted or exotic AbortController */
   }

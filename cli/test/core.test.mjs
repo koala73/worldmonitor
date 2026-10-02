@@ -352,3 +352,10 @@ describe('run', () => {
     assert.match(io.err, /--api-key/);
   });
 });
+
+ it('preserves internal slash runs and removes only trailing slashes', () => {
+  for (const base of ['https://example.com/é', 'https://example.com/' + '/'.repeat(20000) + 'x']) {
+    const plan = planRequest(parseArgs(['get', '/api/health']), { baseUrl: base + '///' });
+    assert.equal(plan.url, new URL(base + '/api/health').href);
+  }
+});

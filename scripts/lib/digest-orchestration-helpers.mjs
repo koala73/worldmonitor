@@ -9,6 +9,31 @@ import { compareRules, MAX_STORIES_PER_USER } from './brief-compose.mjs';
 import { generateDigestProse } from './brief-llm.mjs';
 
 /**
+ * Derive the three Telegram carousel image URLs from a signed magazine URL.
+ * The HMAC token binds the user and issue slot, so the carousel routes reuse
+ * the same token. Invalid magazine URLs return null so delivery can fall back
+ * to text.
+ *
+ * @param {unknown} magazineUrl
+ * @returns {string[] | null}
+ */
+export function carouselUrlsFrom(magazineUrl) {
+  try {
+    const url = new URL(magazineUrl);
+    const match = url.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
+    if (!match) return null;
+    const [, userId, issueSlot] = match;
+    const token = url.searchParams.get('t');
+    if (!token) return null;
+    return [0, 1, 2].map(
+      (page) => `${url.origin}/api/brief/carousel/${userId}/${issueSlot}/${page}?t=${token}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the email subject string. Extracted so the synthesis-level
  * → subject ternary can be unit-tested without standing up the whole
  * cron loop. (Plan acceptance criterion A6.i.)
@@ -246,6 +271,44 @@ export function shouldDropTrackByAge(track, ageCutoffMs) {
 export function readTimeAgeCutoffMs(windowStartMs) {
   const STALE_BUFFER_MS = 24 * 60 * 60 * 1000;
   return windowStartMs - STALE_BUFFER_MS;
+}
+
+/**
+ * Absolute importance-score floor applied to the digest AFTER dedup.
+ * Mirrors the realtime notification-relay gate (IMPORTANCE_SCORE_MIN)
+ * but lives on the brief/digest side so operators can tune them
+ * independently — e.g. let realtime page at score>=63 while the brief
+ * digest drops anything <50. Default 0 = no filtering. Setting the var
+ * to any positive integer drops every cluster whose representative
+ * currentScore is below it.
+ *
+ * Read on every call, not at module load, so a Railway env flip takes
+ * effect on the next cron tick without a redeploy. A NaN or negative
+ * value degrades to 0 ("no floor") rather than failing the cron.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {number}
+ */
+export function getDigestScoreMin(env = process.env) {
+  const raw = Number.parseInt(env.DIGEST_SCORE_MIN ?? '0', 10);
+  return Number.isInteger(raw) && raw >= 0 ? raw : 0;
+}
+
+/**
+ * Drop deduped cluster representatives whose currentScore is below
+ * `scoreFloor`. The rep is the highest-scoring member of its cluster,
+ * so only clusters whose best member is below the floor are dropped.
+ * A floor of 0 returns the input array unchanged.
+ *
+ * @template {{ currentScore?: unknown }} T
+ * @param {T[]} reps
+ * @param {number} scoreFloor
+ * @returns {T[]}
+ */
+export function applyDigestScoreFloor(reps, scoreFloor) {
+  return scoreFloor > 0
+    ? reps.filter((s) => Number(s.currentScore ?? 0) >= scoreFloor)
+    : reps;
 }
 
 /**

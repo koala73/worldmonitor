@@ -1,29 +1,28 @@
 # WorldMonitor — Agent Authentication (auth.md)
 
-How agents authenticate with the WorldMonitor API and MCP server, per the
-WorkOS **auth.md** spec: <https://workos.com/auth-md>.
+Use API keys or OAuth 2.1 to authenticate with the WorldMonitor API and MCP server.
+This walkthrough follows the WorkOS **auth.md** spec: <https://workos.com/auth-md>.
 
-Discovery is open. `get_sources` alone is credential- and daily-quota-free
-(10 anonymous calls/minute/IP, fail closed). Other MCP data tools need
-subscription credentials.
+Catalog reads are open; unauthenticated `initialize` on `/mcp` gets `401`.
+`get_sources` alone is credential- and daily-quota-free
+(10 anonymous calls/minute/IP, fail closed). Other MCP data tools need a
+signed-in account; `subscription`-marked tools also need a paid plan.
 
-Send a descriptive `User-Agent` (for example, `mytool/1.0`). Default library
-values can receive a firewall HTML 403 before the request reaches the API.
+Send a descriptive `User-Agent`, such as `mytool/1.0`. Default library values can receive a firewall 403.
 
 ## Discover
 
-Learn the auth requirements from one unauthenticated request, then follow the
-chain:
+Discover the authentication requirements:
 
-1. Call any subscription-gated data method without credentials; read the
-   `WWW-Authenticate` header. (`get_sources` succeeds anonymously instead.)
+1. Send `initialize` to `/mcp`, or a gated data method, without credentials; read
+   the `WWW-Authenticate` header. (`get_sources` succeeds anonymously.)
 
    ```
    401 Unauthorized
-   WWW-Authenticate: Bearer resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"
+   WWW-Authenticate: Bearer resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource/mcp"
    ```
 
-2. `GET /.well-known/oauth-protected-resource` (RFC 9728) → the `resource` id and
+2. `GET` the document that header names (RFC 9728) → the `resource` id and
    its `authorization_servers`.
 3. `GET /.well-known/oauth-authorization-server` (RFC 8414) → the OAuth endpoints
    plus the `agent_auth` block that points back here:
@@ -31,7 +30,7 @@ chain:
    ```json
    { "issuer": "https://worldmonitor.app",
      "agent_auth": {
-       "skill": "https://worldmonitor.app/auth.md",
+       "skill": "https://www.worldmonitor.app/auth.md",
        "register_uri": "https://worldmonitor.app/oauth/register",
        "claim_uri": "https://worldmonitor.app/oauth/authorize",
        "identity_types_supported": ["anonymous"],
@@ -68,9 +67,9 @@ POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude
 → 201 {"client_id":"…","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"]}
 ```
 
-`redirect_uris` are allowlisted (Claude callbacks + `http://localhost` /
+`redirect_uris` are allowlisted (hosted client callbacks + `http://localhost` /
 `http://127.0.0.1` on any port). Clients are public — no secret; use PKCE
-(`S256`). **API-key path:** start at <https://worldmonitor.app/pro>, then use
+(`S256`). **API-key path:** start at <https://www.worldmonitor.app/pro>, then use
 the signed-in dashboard's API Keys settings to self-issue or revoke keys — no
 registration call.
 
@@ -117,7 +116,7 @@ The same credentials authorize the REST API. Catalog:
 - **Expiry** — access tokens last 1 hour, refresh tokens 7 days; let them lapse
   to de-authorize an agent.
 - **User revoke** — a signed-in user revokes an agent from the dashboard's API
-  Keys or Connected MCP Clients settings; start at <https://worldmonitor.app/pro>.
+  Keys or Connected MCP Clients settings; start at <https://www.worldmonitor.app/pro>.
   The token is then rejected with `401`
   / `invalid_grant`.
 - **Refresh rotation** — refresh tokens rotate on every use with token-family

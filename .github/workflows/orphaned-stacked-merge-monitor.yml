@@ -1,9 +1,9 @@
 name: Orphaned Stacked Merge Monitor
 
-# Safety net for #7006. A required pre-merge check can miss a same-second
-# parent/child merge; after merge, GitHub still shows MERGED even when the
-# merge commit never became an ancestor of main. Fail loudly and open an
-# issue plus a PR comment — nobody re-reads checks on a closed purple PR.
+# Runs trusted default-branch code (the checkout below pins the default
+# branch, never the PR head). On a fork PR closure the pull_request token is
+# read-only, and the retarget step exits before any write because a fork head
+# cannot be an upstream base.
 
 on:
   pull_request:
@@ -13,19 +13,18 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  # Re-run stacked-merge-guard on retargeted children: a base change made
+  # with GITHUB_TOKEN fires no workflow of its own.
+  actions: write
 
 jobs:
   monitor:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          # The merge commit carries this workflow's script. origin/main is
-          # fetched in the next step for the ancestry proof; a tombstone merge
-          # is on the merge commit but not on main.
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           filter: blob:none
 
@@ -33,7 +32,15 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Verify merge commit reached main
+      # First, and before anything slow: a child merged in the window between
+      # the parent merging and this step lands on the orphaned branch (#8519).
+      - name: Retarget open children of the closed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-stacked-merge.mjs --mode retarget
+
+      - name: Reconcile closed PR and merged descendants
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

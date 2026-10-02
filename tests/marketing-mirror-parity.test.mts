@@ -7,10 +7,6 @@
  * MUST be byte-identical: a silent drift leaves one bundle running an older
  * implementation with nothing failing loudly.
  *
- * `entitlement-watchdog.ts` left this set with #7222 — the marketing copy's
- * only consumer was the dormant `initOverlay`, so the watchdog is now
- * dashboard-only and covered directly by entitlement-watchdog.test.mts.
- *
  * Prior-art: the scripts/shared/ mirror convention
  * (feedback_shared_dir_mirror_requirement).
  */

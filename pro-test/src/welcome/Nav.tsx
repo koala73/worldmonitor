@@ -9,11 +9,11 @@ const NAV_ITEMS = [
   { href: '#first-five', labelKey: 'welcome.nav.firstFive', accent: false },
   { href: '#depth', labelKey: 'welcome.nav.depth', accent: false },
   { href: '#agents', labelKey: 'welcome.nav.agents', accent: false },
-  { href: '/sources/?utm_source=welcome-nav', labelKey: 'welcome.depth.s3l', accent: false },
+  { href: '/sources/', labelKey: 'welcome.depth.s3l', accent: false },
   { href: '/pro#pricing', labelKey: 'welcome.nav.pricing', accent: true },
   { href: '#faq', labelKey: 'welcome.nav.faq', accent: false },
   { href: '/blog/', labelKey: 'welcome.nav.blog', accent: false },
-  { href: 'https://www.worldmonitor.app/docs', labelKey: 'welcome.nav.docs', accent: false },
+  { href: 'https://www.worldmonitor.app/docs/documentation', labelKey: 'welcome.nav.docs', accent: false },
 ] as const;
 
 const NavItems = ({ compact = false }: { compact?: boolean }) => (
@@ -53,7 +53,7 @@ export const Nav = () => (
         </div>
       </details>
       <a
-        href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=nav`}
+        href={DASHBOARD_PATH}
         aria-label={t('welcome.nav.launch')}
         data-umami-event="welcome-cta"
         data-umami-event-target="welcome-nav"

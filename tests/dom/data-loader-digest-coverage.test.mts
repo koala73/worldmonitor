@@ -2,14 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { ClusteredEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   checkBatchForBreakingAlerts: vi.fn(),
+  clusterNews: vi.fn(),
+  analyzeCorrelations: vi.fn(),
 }));
 
 vi.mock('@/services/breaking-news-alerts', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/breaking-news-alerts')>(),
   checkBatchForBreakingAlerts: mocks.checkBatchForBreakingAlerts,
+}));
+
+vi.mock('@/services/analysis-worker', () => ({
+  analysisWorker: {
+    clusterNews: mocks.clusterNews,
+    analyzeCorrelations: mocks.analyzeCorrelations,
+  },
 }));
 
 await import('@/app/data-loader');
@@ -33,6 +43,10 @@ interface DigestLoaderInternals {
   beginNewsLoad(): number;
   commitNewsFreshness(generation: number, servedStale: boolean): boolean;
   canNotifyForCommittedNews(generation: number, servedStale: boolean): boolean;
+  runCorrelationAnalysis(): Promise<void>;
+  resolveEnabledNewsCategories(): Array<{ key: string; feeds: Array<{ name: string; url: string }>; isCustom: boolean }>;
+  loadIntelNews(): Promise<unknown[]>;
+  clusterNewsForGeneration(): Promise<{ clusters: ClusteredEvent[] }>;
   loadNewsCategory(
     category: string,
     feeds: Array<{ name: string }>,
@@ -93,6 +107,11 @@ async function makeLoader() {
     newsByCategory: {},
     currentTimeRange: 'all',
     initialLoadComplete: false,
+    allNews: [],
+    latestClusters: [],
+    latestPredictions: [],
+    latestMarkets: [],
+    clustersSettled: false,
   } as unknown as AppContext;
   const { DataLoaderManager } = await import('@/app/data-loader');
   const loader = new DataLoaderManager(ctx, {
@@ -108,6 +127,8 @@ async function makeLoader() {
 describe('digest coverage follows the selected browser response', () => {
   beforeEach(() => {
     mocks.checkBatchForBreakingAlerts.mockReset();
+    mocks.clusterNews.mockReset();
+    mocks.analyzeCorrelations.mockReset();
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -133,6 +154,41 @@ describe('digest coverage follows the selected browser response', () => {
       feedsCompleted: 2,
     }));
     expect(retained.coverage?.state).toBe('complete');
+  });
+
+  it('clears news locations on a successful refresh without located clusters', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    ctx.monitors = [];
+    internal.resolveEnabledNewsCategories = () => [];
+    internal.tryFetchDigest = async () => null;
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+    setNewsLocations([{ lat: 52.5, lon: 13.4, title: 'Previous headline', threatLevel: 'info' }]);
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).toHaveBeenLastCalledWith([]);
+  });
+
+  it('preserves news locations when the news load has no authoritative result', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    internal.resolveEnabledNewsCategories = () => [{ key: 'politics', feeds: [{ name: 'Reuters', url: 'https://fixture.test/rss' }], isCustom: false }];
+    internal.tryFetchDigest = async () => null;
+    internal.loadNewsCategory = async () => [];
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).not.toHaveBeenCalled();
   });
 
   it('derives retained item counts when a pre-coverage digest is marked stale', async () => {
@@ -268,6 +324,75 @@ describe('digest coverage follows the selected browser response', () => {
     expect(selected?.servedStale).toBe(true);
     expect(internal.commitNewsFreshness(obsoleteGeneration, selected?.servedStale ?? false)).toBe(false);
     expect(internal.canNotifyForCommittedNews(freshGeneration, false)).toBe(true);
+  });
+
+  it('a superseded correlation clustering pass cannot replace current clusters (#7782)', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    ctx.allNews = [{
+      source: 'Reuters',
+      title: 'Fixture event',
+      link: 'https://fixture.test/event',
+      pubDate: new Date('2026-09-06T12:00:00.000Z'),
+      isAlert: false,
+    }];
+
+    const committedGeneration = internal.beginNewsLoad();
+    expect(internal.commitNewsFreshness(committedGeneration, false)).toBe(true);
+    const staleCluster: ClusteredEvent = {
+      id: 'stale-cluster',
+      primaryTitle: 'Fixture event',
+      primarySource: 'Reuters',
+      primaryLink: 'https://fixture.test/event',
+      sourceCount: 1,
+      uniquePublisherCount: 1,
+      topSources: [{ name: 'Reuters', tier: 1, url: 'https://fixture.test/event' }],
+      allItems: ctx.allNews,
+      firstSeen: ctx.allNews[0]!.pubDate,
+      lastUpdated: ctx.allNews[0]!.pubDate,
+      isAlert: false,
+    };
+    let resolveClusters!: (clusters: ClusteredEvent[]) => void;
+    mocks.clusterNews.mockImplementationOnce(() => new Promise<ClusteredEvent[]>((resolve) => {
+      resolveClusters = resolve;
+    }));
+
+    const pending = internal.runCorrelationAnalysis();
+    internal.beginNewsLoad();
+    resolveClusters([staleCluster]);
+    await pending;
+
+    expect(ctx.latestClusters).toEqual([]);
+    expect(ctx.clustersSettled).toBe(false);
+    expect(mocks.analyzeCorrelations).not.toHaveBeenCalled();
+  });
+
+  it('keeps local clusters when the ML-off analysis worker is unavailable (#7782)', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    ctx.allNews = [{
+      source: 'Reuters',
+      title: 'Fixture event',
+      link: 'https://fixture.test/event',
+      pubDate: new Date('2026-09-06T12:00:00.000Z'),
+      isAlert: false,
+    }];
+
+    const generation = internal.beginNewsLoad();
+    expect(internal.commitNewsFreshness(generation, false)).toBe(true);
+    mocks.clusterNews.mockResolvedValueOnce([]);
+    mocks.analyzeCorrelations.mockResolvedValueOnce([]);
+
+    await internal.runCorrelationAnalysis();
+
+    expect(ctx.latestClusters).toHaveLength(1);
+    expect(ctx.latestClusters[0]?.primaryTitle).toBe('Fixture event');
+    expect(ctx.clustersSettled).toBe(true);
+    expect(mocks.analyzeCorrelations).toHaveBeenCalledWith(
+      ctx.latestClusters,
+      ctx.latestPredictions,
+      ctx.latestMarkets,
+    );
   });
 
   it.each(['retained', 'persisted'] as const)(

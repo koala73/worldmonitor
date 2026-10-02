@@ -164,6 +164,13 @@ describe('weather alert selection', () => {
     assert.equal(alert.centroid.length, 2);
   });
 
+  it('does not send a fabricated zero centroid from an invalid closed ring', () => {
+    const invalidRing = [[null, null], [null, null], [null, null], [null, null]];
+    const [alert] = selectAlerts([feature('Severe', 1, {}, { type: 'Polygon', coordinates: [invalidRing] })]);
+    assert.equal(alert.centroid, undefined);
+    assert.deepEqual(weatherAlertNotifyLocation(alert), {});
+  });
+
   it('caps description length at 500 characters', () => {
     const [alert] = selectAlerts([feature('Severe', 1, { description: 'y'.repeat(900) })]);
     assert.equal(alert.description.length, 500);
@@ -632,6 +639,30 @@ describe('WMO SWIC adapter on weather:alerts:v1', () => {
     assert.equal(location.geometry, undefined);
   });
 
+  it('falls back to the country when SWIC point coordinates are missing values', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    for (const bad of ['', '  ', false, true, [], [12], {}, null]) {
+      const [alert] = selectSwicAlerts([swicItem({ extras: { lat: bad, lon: bad } })], members);
+      assert.equal(alert.geometryPrecision, 'country');
+      assert.deepEqual(alert.centroid, [78.96, 20.59]);
+    }
+  });
+
+  it('drops a SWIC alert whose member coordinates are missing rather than placing it at 0,0', () => {
+    for (const bad of ['', '  ', false, true, [], {}, null]) {
+      const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: bad, lng: bad })] }]);
+      assert.deepEqual(selectSwicAlerts([swicItem()], members), []);
+    }
+  });
+
+  it('keeps genuine zero coordinates and quoted numeric strings in SWIC locations', () => {
+    for (const coordinate of [0, '0', ' 12.5 ']) {
+      const [point] = selectSwicAlerts([swicItem({ extras: { lat: coordinate, lon: coordinate } })]);
+      assert.equal(point.geometryPrecision, 'point');
+      assert.deepEqual(point.centroid, [Number(coordinate), Number(coordinate)]);
+    }
+  });
+
   it('normalizes offset-free SWIC timestamps to explicit UTC instants', () => {
     const originalTimezone = process.env.TZ;
     process.env.TZ = 'America/New_York';
@@ -796,4 +827,124 @@ describe('WMO SWIC adapter on weather:alerts:v1', () => {
       /RESPONSE_TOO_LARGE/,
     );
   });
+});
+
+describe('bounded ECCC pagination', () => {
+  const collection = (features, numberMatched = features.length) => ({
+    type: 'FeatureCollection', numberMatched, numberReturned: features.length, features,
+  });
+  const pagedFetch = (issued, continued = [], requests = []) => async (url) => {
+    const params = new URL(url).searchParams;
+    const status = params.get('status_en');
+    const offset = Number(params.get('offset') || 0);
+    const limit = Number(params.get('limit'));
+    requests.push({ status, offset, limit, sortby: params.get('sortby') });
+    const rows = status === 'issued' ? issued : continued;
+    return Response.json(collection(rows.slice(offset, offset + limit), rows.length));
+  };
+
+  it('recovers a national collection over 4 MiB with complete pages below 4 MiB', async () => {
+    const issued = Array.from({ length: 300 }, (_, i) => ecccFeature({
+      id: `issued-${String(i).padStart(4, '0')}`, overrides: { description_en: 'x'.repeat(15_000) },
+    }));
+    const continued = [ecccFeature({ id: 'continued-1', status_en: 'continued' })];
+    assert.ok(Buffer.byteLength(JSON.stringify(collection(issued))) > ECCC_MAX_BYTES);
+    assert.ok(Buffer.byteLength(JSON.stringify(collection(issued.slice(0, 250), 300))) < ECCC_MAX_BYTES);
+    const requests = [];
+    const result = await fetchEcccAlertFeatures({ fetchFn: pagedFetch(issued, continued, requests) });
+    assert.equal(result.partial, false);
+    assert.deepEqual(result.features.map((f) => f.id), [...issued, ...continued].map((f) => f.id));
+    assert.deepEqual(requests, [
+      { status: 'issued', offset: 0, limit: 250, sortby: 'feature_id' },
+      { status: 'issued', offset: 250, limit: 250, sortby: 'feature_id' },
+      { status: 'continued', offset: 0, limit: 250, sortby: 'feature_id' },
+    ]);
+  });
+  it('accepts complete zero collections and pages both live statuses', async () => {
+    const zero = await fetchEcccAlertFeatures({ fetchFn: pagedFetch([]) });
+    assert.deepEqual(zero.features, []);
+    assert.equal(zero.partial, false);
+    const rows = (status) => Array.from({ length: 251 }, (_, i) => ecccFeature({ id: `${status}-${i}`, status_en: status }));
+    const result = await fetchEcccAlertFeatures({ fetchFn: pagedFetch(rows('issued'), rows('continued')) });
+    assert.equal(result.partial, false);
+    assert.equal(result.features.length, 502);
+  });
+
+  for (const [name, secondPage, reason] of [
+    ['count drift', collection([{ id: 'b' }], 3), 'ECCC_COUNT_DRIFT'],
+    ['repeated page', collection([{ id: 'a' }], 2), 'ECCC_DUPLICATE_ID'],
+    ['no progress', collection([], 2), 'ECCC_PAGE_PROGRESS'],
+    ['count underrun', collection([{ id: 'b' }, { id: 'c' }], 2), 'ECCC_PAGE_PROGRESS'],
+    ['returned mismatch', { ...collection([{ id: 'b' }], 2), numberReturned: 0 }, 'ECCC_MALFORMED_PAGE'],
+    ['missing features', { numberMatched: 2, numberReturned: 1 }, 'features array'],
+    ['missing counts', { type: 'FeatureCollection', features: [{ id: 'b' }] }, 'ECCC_MALFORMED_PAGE'],
+    ['invalid count', collection([{ id: 'b' }], '2'), 'ECCC_MALFORMED_PAGE'],
+    ['invalid collection', { ...collection([{ id: 'b' }], 2), type: 'Feature' }, 'ECCC_MALFORMED_PAGE'],
+    ['missing ID', collection([{}], 2), 'ECCC_INVALID_ID'],
+    ['duplicate IDs within page', collection([{ id: 'b' }, { id: 'b' }], 3), 'ECCC_DUPLICATE_ID'],
+    ['oversized page count', collection(Array.from({ length: 251 }, (_, i) => ({ id: `b${i}` })), 300), 'ECCC_MALFORMED_PAGE'],
+    ['request failure', null, 'HTTP 503'],
+  ]) {
+    it(`rejects ${name} without returning an incomplete status as success`, async () => {
+      const matched = name === 'duplicate IDs within page' ? 3 : name === 'oversized page count' ? 300 : 2;
+      const result = await fetchEcccAlertFeatures({ fetchFn: async (url) => {
+        const p = new URL(url).searchParams;
+        if (p.get('status_en') === 'continued') return Response.json(collection([{ id: 'continued' }]));
+        if (p.get('offset') === '0') return Response.json(collection([{ id: 'a' }], matched));
+        return secondPage ? Response.json(secondPage) : new Response('', { status: 503 });
+      } });
+      assert.equal(result.partial, true);
+      assert.deepEqual(result.failedStatuses, ['issued']);
+      assert.deepEqual(result.features, [{ id: 'continued' }]);
+      assert.ok(result.failureDetail.includes(reason), result.failureDetail);
+    });
+  }
+
+  it('rejects duplicate IDs across statuses', async () => {
+    const result = await fetchEcccAlertFeatures({ fetchFn: pagedFetch([{ id: 'same' }], [{ id: 'same' }]) });
+    assert.equal(result.partial, true);
+    assert.deepEqual(result.failedStatuses, ['continued']);
+    assert.match(result.failureDetail, /ECCC_DUPLICATE_ID/);
+  });
+
+  it('keeps the per-response ceiling with and without content-length', async () => {
+    for (const advertised of [false, true]) {
+      await assert.rejects(fetchEcccAlertFeatures({ fetchFn: async () => new Response('x'.repeat(ECCC_MAX_BYTES + 1), {
+        headers: advertised ? { 'content-length': String(ECCC_MAX_BYTES + 1) } : {},
+      }) }), /RESPONSE_TOO_LARGE/);
+    }
+  });
+
+  it('caps actual aggregate bytes across statuses at 8 MiB, including UTF-8', async () => {
+    let requests = 0;
+    const pad = 'é'.repeat(1_500_000);
+    const result = await fetchEcccAlertFeatures({ fetchFn: async (url) => {
+      requests += 1;
+      const p = new URL(url).searchParams;
+      const issued = p.get('status_en') === 'issued';
+      const body = JSON.stringify(collection([{ id: `${issued}-${p.get('offset')}`, pad }], issued ? 1 : 2));
+      assert.ok(Buffer.byteLength(body) < ECCC_MAX_BYTES);
+      return new Response(body, { headers: { 'content-length': '1' } });
+    } });
+    assert.equal(result.partial, true);
+    assert.deepEqual(result.failedStatuses, ['continued']);
+    assert.match(result.failureDetail, /ECCC_AGGREGATE_TOO_LARGE/);
+    assert.equal(requests, 3);
+  });
+
+  it('permits eight total pages but never requests a ninth', async () => {
+    for (const issuedCount of [7, 8, 9]) {
+      let requests = 0;
+      const result = await fetchEcccAlertFeatures({ fetchFn: async (url) => {
+        requests += 1;
+        const p = new URL(url).searchParams;
+        const issued = p.get('status_en') === 'issued';
+        return Response.json(collection([{ id: `${issued}-${p.get('offset')}` }], issued ? issuedCount : 1));
+      } }).catch((error) => error);
+      assert.equal(requests, 8);
+      if (issuedCount === 7) assert.equal(result.partial, false);
+      else assert.match(result.failureDetail || result.message, /ECCC_PAGE_LIMIT/);
+    }
+  });
+
 });

@@ -492,9 +492,12 @@
         "space": "RYMDEN"
       },
       "paused": "Webbkameror pausade",
-      "pausedIdle": "Webbkameror pausade — flytta musen för att återuppta",
       "play": "Spela",
-      "previewStatus": "Liveförhandsvisning"
+      "previewStatus": "Redo att spela",
+      "connecting": "Ansluter…",
+      "unverified": "Kan inte bekräfta att denna ström är live",
+      "offline": "{{city}} är offline just nu",
+      "noFeeds": "Inga aktiva webbkameror i denna region just nu"
     },
     "playback": {
       "live": "LIVE",
@@ -759,9 +762,6 @@
       "base": "Bas",
       "nuclear": "Kärnteknisk"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "HÖG",
@@ -770,8 +770,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · platsdata:",
+      "statusNormal": "NORMALT",
+      "statusNoData": "INGA DATA",
+      "statusNoBaseline": "INGEN REFERENS",
+      "vsUsual": "jämfört med normalt",
       "title": "Pentagon Pizza Index",
       "tensionsTitle": "Geopolitiska spänningar",
+      "tensionsSource": "Spänningar: World Monitor utifrån GDELT-händelser",
+      "insufficientData": "Otillräckliga data",
+      "pizzaUnavailable": "Pizzeriornas aktivitet är inte tillgänglig",
       "source": "Källa:",
       "defcon": "DEFCON {{level}}",
       "updated": "Uppdaterad {{timeAgo}}",
@@ -785,11 +793,11 @@
       "minutesAgo": "{{m}}m sedan",
       "hoursAgo": "{{h}}h sedan",
       "defconLabels": {
-        "1": "SPÄND PISTOL - MAXIMAL BEREDSKAP",
-        "2": "SNABBT FAST - FÖRVARARNA KLART",
-        "3": "RUNDT HUS - ÖKA KRAFTBEREDDIGHETEN",
-        "4": "DUBBEL TAKE - ÖKAD INTELLIGENSKLOCK",
-        "5": "FADE OUT - LÄGSTA BEREDSKAP"
+        "1": "Maximal aktivitet",
+        "2": "Hög aktivitet",
+        "3": "Förhöjd aktivitet",
+        "4": "Över normalt",
+        "5": "Normal aktivitet"
       }
     },
     "stablecoins": {
@@ -1316,7 +1324,10 @@
       "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
       "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
       "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Detaljer om nyheten ({{count}})",
+      "streamIdleStopLabel": "Stoppa livevideo när inaktiv",
+      "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen.",
+      "streamIdleStopNever": "Aldrig"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -1377,6 +1388,7 @@
       "etfs": "ETF:er",
       "netInflow": "NETTOINFLÖDE",
       "netOutflow": "NETTOUTFLÖDE",
+      "netNeutral": "NETTONEUTRALT",
       "table": {
         "ticker": "Ticker",
         "issuer": "Utgivare",
@@ -1460,13 +1472,10 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} kan inte spelas här — kan vara begränsat i din region (fel {{code}})",
       "openOnYouTube": "Open on YouTube",
       "manage": "Hantera kanaler",
       "addChannel": "Lägg till kanal",
       "remove": "Ta bort",
-      "youtubeHandle": "YouTube-handtag (t.ex. @Channel)",
-      "youtubeHandleOrUrl": "YouTube-handtag eller URL",
       "displayName": "Visningsnamn (valfritt)",
       "channelSettings": "Kanalinställningar",
       "save": "Spara",
@@ -1481,15 +1490,26 @@
       "regionMiddleEast": "Mellanöstern",
       "regionAfrica": "Afrika",
       "regionOceania": "Oceanien",
-      "botCheck": "YouTube kräver inloggning för att spela {{name}}",
-      "invalidHandle": "Ange ett giltigt YouTube-handtag (t.ex. @Kanalnamn)",
       "signInToYouTube": "Logga in på YouTube",
       "verifying": "Verifierar…",
       "noResults": "Inga kanaler hittades för \"{{term}}\"",
       "hlsUrl": "HLS-ström-URL (valfritt)",
       "invalidHlsUrl": "Ange en giltig HLS-ström-URL (.m3u8)",
       "playLiveFeed": "Spela liveflöde",
-      "readyStatus": "Redo när du är det"
+      "readyStatus": "Redo när du är det",
+      "embedBlocked": "YouTube spelar inte {{name}} inbäddad på andra webbplatser just nu",
+      "unavailable": "{{name}} kan inte spelas upp just nu",
+      "noStream": "Ingen live-ström är konfigurerad för {{name}} än",
+      "needsChannelUrl": "Lägg till {{name}} igen med dess kanal-URL (youtube.com/channel/UC…) eller en live-video-URL",
+      "connecting": "Ansluter till {{name}}…",
+      "recording": "Inspelning",
+      "unverified": "Kan inte bekräfta att denna ström är live",
+      "playNextChannel": "Spela nästa kanal",
+      "channelOrVideoUrl": "YouTube-kanal eller video-URL",
+      "channelUrlHint": "Klistra in en kanal-URL (youtube.com/channel/UC…) eller en live-video-URL",
+      "youtubeChannel": "YouTube-kanal",
+      "insecureStream": "{{name}} använder en osäker (http) ström som webbläsare blockerar. Lägg till den igen med en säker (https) ström-URL",
+      "httpsStreamHint": "Webbläsare blockerar osäkra (http) strömmar. Klistra in en säker (https) ström-URL"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",
@@ -1792,7 +1812,7 @@
       "infoTooltip": "<strong>Ekonomisk kalender</strong> Schemalagda makroekonomiska publiceringar: CPI, NFP, GDP, PMI och centralbanksbeslut. Visar prognos vs. faktisk vs. föregående. Händelser med hög påverkan markerade. Källa: ekonomiska dataleverantörer."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finansiell stressindikator</strong> Kansas City Feds Financial Stress Index (KCFSI): mäter stress på amerikanska finansmarknader med 11 indikatorer inklusive avkastningsspreadar, volatilitet och korskorrelationer. Positiva värden indikerar stress över genomsnittet. Källa: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Finansiell stressindikator</strong> WorldMonitors kvot mellan högavkastande krediter och långfristiga amerikanska statsobligationer, justerad för aktievolatilitet och högavkastningsspreaden: (HYG / TLT) / (VIX × HY spread / 100). Detta är inte Federal Reserve Bank of Kansas Citys Financial Stress Index. Ett värde på 1.5 eller högre betyder låg stress; under 0.3 betyder hög stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI-VÄRDE",
       "cissTitle": "EU CISS (euroområdets systemriskövervakning)",
@@ -2247,7 +2267,14 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signaler",
       "analyzing": "Analyserar...",
-      "viewOnMap": "Visa på karta"
+      "viewOnMap": "Visa på karta",
+      "waiting": "Väntar på nästa datauppdatering. Den här panelen uppdateras automatiskt.",
+      "offline": "Väntar på en anslutning. Den här panelen uppdateras automatiskt när du är online igen.",
+      "updated": "Uppdaterad {{time}}",
+      "saved": "Senast kända uppdatering {{time}} · Söker efter uppdateringar",
+      "savedOffline": "Senast kända uppdatering {{time}} · Frånkopplad",
+      "localSignals": "Baserat på inlästa signaler i instrumentpanelen",
+      "emptySaved": "Ingen konvergens i den senast kända uppdateringen."
     },
     "thermalEscalation": {
       "title": "Värmeskalering",
@@ -2409,6 +2436,56 @@
       "succeeded": "Passkey sparad. Du kan använda den nästa gång du loggar in.",
       "retryable": "Det blev inte klart. Du kan försöka igen.",
       "failed": "Vi kunde inte spara en passkey på den här enheten."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Beslutsunderlag för råvaror",
+      "commodity": "Råvara / produkt",
+      "blockedChokepoint": "Antagen blockerad passage",
+      "commodityCapture": "Spara råvarujämförelse",
+      "title": "Beslutsunderlag",
+      "fuel": "Bränsle",
+      "chokepoint": "Flaskhals",
+      "baseline": "Störning i grundscenario",
+      "comparison": "Störning i jämförelsescenario",
+      "capture": "Hämta / uppdatera båda",
+      "downloadHtml": "Ladda ned beslutsunderlag som HTML",
+      "downloadJson": "Ladda ned beslutsunderlag som JSON",
+      "back": "← Tillbaka till landsöversikten",
+      "select": "Välj en energistörning och hämta sedan båda scenarierna.",
+      "changed": "Urvalet har ändrats. Hämta båda scenarierna före export.",
+      "loading": "Hämtar båda scenarierna…",
+      "captured": "Hämtat. Kontrollera observationsdatum och begränsningar före nedladdning.",
+      "failed": "Det gick inte att hämta scenarierna. Kontrollera din åtkomst och försök igen. Inget resultat kan exporteras.",
+      "locked": "Beslutsunderlaget är tillgängligt med Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Pausad på grund av inaktivitet",
+      "idleBody": "Livevideo stoppades efter {{duration}} utan mus-, tangent- eller pekaktivitet.",
+      "idleResume": "Återuppta",
+      "idleKeepPlaying": "Fortsätt spela när inaktiv",
+      "idleSettingsHint": "Ändra detta när som helst i Inställningar › Media.",
+      "idleKeepPlayingToast": "Livevideo fortsätter spela när inaktiv. Ändra i Inställningar › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "En enda utgivare",
+      "singlePublisherHint": "Endast en utgivare rapporterar om detta hittills. Detta beskriver bevakningen, inte korrektheten.",
+      "tier4Only": "Endast låg-nivå-källor",
+      "tier4OnlyHint": "Alla medier som rapporterar om detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver bevakningen, inte korrektheten.",
+      "rosterListed": "({{listed}} listade)",
+      "rosterFeeds": "Sedda flöden: {{labels}}",
+      "rosterLegend": "Nivåerna rangordnar källor; de bedömer inte detta påstående.",
+      "tierDocsLink": "Hur nivåerna tilldelas",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Nivå 1: Nyhetsbyråer och officiella organ",
+      "tierTitle2": "Nivå 2: Större medieorgan",
+      "tierTitle3": "Nivå 3: Specialiserade och regionala källor samt tankesmedjor",
+      "tierTitle4": "Nivå 4: Aggregatorer och bloggar",
+      "tierTitleUndeclared": "Nivå inte angiven: ännu inte granskad",
+      "rosterSummary": "Rapporterat av {{publishers}}",
+      "rosterSummaryTier1": "Rapporterat av {{publishers}}, varav {{tier1}} på nivå 1",
+      "rosterPublishers_one": "{{count}} utgivare",
+      "rosterPublishers_other": "{{count}} utgivare"
     }
   },
   "popups": {
@@ -2446,14 +2523,18 @@
     "protest": {
       "acledVerified": "ACLED (verifierad)",
       "gdelt": "GDELT",
+      "records": "poster",
+      "mediaSignal": "Obekräftad mediesignal",
+      "relatedArticle": "Relaterad artikel",
+      "mediaSignalDetail": "Denna plats nämns i artiklar om oroligheter. En lokal händelse har inte verifierats.",
       "riots": "Upplopp",
       "highSeverity": "Hög allvarlighet"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS-störning",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "title": "GPS/GNSS-störningar",
+      "navPerformance": "Påverkade luftfartyg",
+      "samples": "Antal påverkade luftfartyg",
+      "aircraft": "Totalt antal observerade luftfartyg",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -3276,7 +3357,8 @@
       "activeSirens": "Aktiva sirener",
       "sirens24h": "Sirener / 24h",
       "aviationDisruptions": "Flygstörningar",
-      "gpsJammingZones": "GPS-störningszoner"
+      "gpsJammingZones": "GPS-störningszoner",
+      "temporalUnavailable": "Temporala observationer ej tillgängliga"
     },
     "countryFacts": "Fakta om landet",
     "loadingFacts": "Laddar fakta om landet...",
@@ -3342,7 +3424,7 @@
       "decisionSignalsUnavailable": "Ögonblicksbilden av Kinas beslutssignaler är för närvarande inte tillgänglig."
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",

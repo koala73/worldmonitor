@@ -7,14 +7,13 @@ import type {
 import { ApiError } from '../../../../src/generated/server/worldmonitor/shipping/v2/service_server';
 
 // @ts-expect-error — JS module, no declaration file
-import { validateApiKey } from '../../../../api/_api-key.js';
+import { getHeaderApiKey, USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../../../../api/_api-key.js';
+import { validateUserApiKey } from '../../../_shared/user-api-key';
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { readOwnerWebhooks } from './webhook-owner-index';
 import {
-  webhookKey,
-  ownerIndexKey,
   callerFingerprint,
   type WebhookRecord,
 } from './webhook-shared';
@@ -31,6 +30,19 @@ export async function listWebhooks(
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
     valid: boolean; required: boolean; error?: string; credential?: string;
   };
+  if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR) {
+    const credential = getHeaderApiKey(ctx.request) as string;
+    let userKey;
+    try {
+      userKey = credential ? await validateUserApiKey(credential) : null;
+    } catch {
+      throw new ApiError(503, 'Service temporarily unavailable', '');
+    }
+    if (!userKey) throw new ApiError(401, 'Invalid API key', '');
+    // Revalidate the credential rather than trusting a caller-supplied user ID.
+    apiKeyResult.valid = true;
+    apiKeyResult.credential = credential;
+  }
   if (apiKeyResult.required && !apiKeyResult.valid) {
     throw new ApiError(401, apiKeyResult.error ?? 'API key required', '');
   }
@@ -38,19 +50,11 @@ export async function listWebhooks(
   await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
 
   const ownerHash = await callerFingerprint(ctx.request, apiKeyResult.credential);
-  const smembersResult = await runRedisPipeline([['SMEMBERS', ownerIndexKey(ownerHash)]]);
-  const memberIds = (smembersResult[0]?.result as string[] | null) ?? [];
-
-  if (memberIds.length === 0) {
-    return { webhooks: [] };
-  }
-
-  const getResults = await runRedisPipeline(memberIds.map(id => ['GET', webhookKey(id)]));
+  const records = await readOwnerWebhooks(ownerHash);
   const webhooks: WebhookSummary[] = [];
-  for (const r of getResults) {
-    if (!r.result || typeof r.result !== 'string') continue;
+  for (const value of records) {
     try {
-      const record = JSON.parse(r.result) as WebhookRecord;
+      const record = JSON.parse(value) as WebhookRecord;
       if (record.ownerTag !== ownerHash) continue;
       webhooks.push({
         subscriberId: record.subscriberId,

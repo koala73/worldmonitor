@@ -1,4 +1,10 @@
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import type { BeforeSendEvent } from '@vercel/analytics';
+import {
+  STRIPPABLE_AT_BOOT_RE,
+  redactSensitiveUrl,
+  scrubUrl,
+} from '../../shared/sensitive-url-params';
 
 let vercelAnalyticsScheduled = false;
 let dashboardFontsScheduled = false;
@@ -84,11 +90,48 @@ export function initVercelAnalytics(): void {
     void import('@vercel/analytics')
       .then(({ inject }) => {
         inject({
-          beforeSend: (event) => (Math.random() > 0.1 ? null : event),
+          beforeSend: (event) => {
+            const redacted = redactAnalyticsUrl(event);
+            // Sampling is a cost control, not a privacy control: redaction
+            // must hold for every event that is kept.
+            return Math.random() > 0.1 ? null : redacted;
+          },
         });
       })
       .catch(() => {
         // Analytics is best-effort. Ad blockers/offline users should not affect boot.
       });
   }, 3000);
+}
+
+/** Vercel's beforeSend exists to redact event.url before ingest. */
+export function redactAnalyticsUrl(event: BeforeSendEvent): BeforeSendEvent {
+  const raw = event.url;
+  if (typeof raw !== 'string') return event;
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const url = redactSensitiveUrl(raw, origin);
+  return url === raw ? event : { ...event, url };
+}
+
+/**
+ * Strip params nobody reads (STRIPPABLE_AT_BOOT_RE) from the live URL before
+ * analytics/RUM init. Params with a deferred reader stay; their consumers
+ * delete them after reading, and DebugBear holds its collector until then.
+ */
+export function stripSensitiveParamsFromUrl(): void {
+  if (typeof window === 'undefined') return;
+  let url: URL;
+  try {
+    url = new URL(window.location.href);
+  } catch {
+    return;
+  }
+  if (!scrubUrl(url, STRIPPABLE_AT_BOOT_RE)) return;
+  const query = url.searchParams.toString();
+  try {
+    window.history.replaceState({}, '', url.pathname + (query ? `?${query}` : '') + url.hash);
+  } catch {
+    // History API unavailable (extreme embed cases). Vercel and Umami still
+    // redact per event.
+  }
 }

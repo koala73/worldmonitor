@@ -21,8 +21,8 @@ Issue a key at https://www.worldmonitor.app/pro.
 ## Endpoints
 
 ```
-GET https://worldmonitor.app/api/webcam/v1/list-webcams
-GET https://worldmonitor.app/api/webcam/v1/get-webcam-image
+GET https://www.worldmonitor.app/api/webcam/v1/list-webcams
+GET https://www.worldmonitor.app/api/webcam/v1/get-webcam-image
 ```
 
 ## Parameters
@@ -85,7 +85,7 @@ Find cameras around the Strait of Hormuz, then resolve the first camera's media 
 WEBCAM_ID=$(curl -s --get \
   -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://worldmonitor.app/api/webcam/v1/list-webcams' \
+  'https://www.worldmonitor.app/api/webcam/v1/list-webcams' \
   --data-urlencode 'zoom=8' \
   --data-urlencode 'bound_w=55.5' --data-urlencode 'bound_s=25.5' \
   --data-urlencode 'bound_e=57.5' --data-urlencode 'bound_n=27.2' \
@@ -99,7 +99,7 @@ fi
 curl -s --get \
   -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://worldmonitor.app/api/webcam/v1/get-webcam-image' \
+  'https://www.worldmonitor.app/api/webcam/v1/get-webcam-image' \
   --data-urlencode "webcam_id=$WEBCAM_ID" \
   | jq '{title, thumbnailUrl, playerUrl, lastUpdated}'
 ```
@@ -125,5 +125,5 @@ Only fetch or render returned media when the user explicitly asked for visual co
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

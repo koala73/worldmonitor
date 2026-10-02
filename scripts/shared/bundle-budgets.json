@@ -1,5 +1,5 @@
 {
-  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
   "surface": "dashboard",
   "variant": "full",
   "tolerancePct": 2,
@@ -7,96 +7,187 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1709382
+    "raw": 450109
   },
   "chunks": {
     "analytics": {
-      "raw": 122576,
-      "files": 1
-    },
-    "cached-risk-scores": {
-      "raw": 24574,
+      "raw": 47062,
       "files": 1
     },
     "clerk": {
-      "raw": 18223,
+      "raw": 18338,
       "files": 1
     },
-    "continuous": {
-      "raw": 4933,
+    "convex-client": {
+      "raw": 3469,
       "files": 1
     },
-    "cross-domain-storage": {
-      "raw": 392,
-      "files": 1
-    },
-    "data-freshness": {
-      "raw": 85698,
+    "debugbear-rum": {
+      "raw": 28906,
       "files": 1
     },
     "dom-utils": {
-      "raw": 3856,
+      "raw": 2852,
       "files": 1
     },
-    "embed-url": {
-      "raw": 62783,
+    "entitlements": {
+      "raw": 2585,
       "files": 1
     },
     "font-settings": {
-      "raw": 1440,
+      "raw": 574,
       "files": 1
     },
-    "gdelt-intel": {
-      "raw": 133774,
+    "geo-convergence": {
+      "raw": 10200,
+      "files": 1
+    },
+    "geo-distance": {
+      "raw": 28576,
+      "files": 1
+    },
+    "globe-marker-probe": {
+      "raw": 541,
       "files": 1
     },
     "i18n": {
-      "raw": 52460,
-      "files": 1
-    },
-    "layout-batch": {
-      "raw": 17352,
+      "raw": 52560,
       "files": 1
     },
     "main": {
-      "raw": 953361,
-      "files": 1
-    },
-    "panel-gating": {
-      "raw": 3142,
+      "raw": 130368,
       "files": 1
     },
     "panels": {
-      "raw": 146255,
+      "raw": 37549,
       "files": 1
     },
-    "persistent-cache": {
-      "raw": 3768,
+    "runtime-config": {
+      "raw": 10346,
       "files": 1
     },
-    "storage-facility-registry-store": {
-      "raw": 14203,
+    "tauri-bridge": {
+      "raw": 1572,
       "files": 1
     },
-    "string": {
-      "raw": 20823,
+    "theme-colors": {
+      "raw": 72995,
       "files": 1
     },
     "theme-manager": {
-      "raw": 1474,
+      "raw": 1616,
       "files": 1
+    }
+  },
+  "deferred": {
+    "total": {
+      "raw": 1395243
     },
-    "timeout-signal": {
-      "raw": 776,
-      "files": 1
-    },
-    "user-location": {
-      "raw": 11105,
-      "files": 1
-    },
-    "widget-store": {
-      "raw": 26414,
-      "files": 1
+    "chunks": {
+      "App": {
+        "raw": 897143,
+        "files": 1
+      },
+      "ai-flow-settings": {
+        "raw": 2087,
+        "files": 1
+      },
+      "analysis-framework-store": {
+        "raw": 9563,
+        "files": 1
+      },
+      "base": {
+        "raw": 2460,
+        "files": 1
+      },
+      "cached-risk-scores": {
+        "raw": 15029,
+        "files": 1
+      },
+      "checkout": {
+        "raw": 13469,
+        "files": 1
+      },
+      "cloud-prefs-sync": {
+        "raw": 6914,
+        "files": 1
+      },
+      "continuous": {
+        "raw": 4613,
+        "files": 1
+      },
+      "cross-domain-storage": {
+        "raw": 528,
+        "files": 1
+      },
+      "feeds": {
+        "raw": 102673,
+        "files": 1
+      },
+      "gdelt-intel": {
+        "raw": 120181,
+        "files": 1
+      },
+      "index": {
+        "raw": 38634,
+        "files": 2
+      },
+      "layout-batch": {
+        "raw": 17465,
+        "files": 1
+      },
+      "markets": {
+        "raw": 9518,
+        "files": 1
+      },
+      "panel-gating": {
+        "raw": 3440,
+        "files": 1
+      },
+      "panel-storage": {
+        "raw": 1857,
+        "files": 1
+      },
+      "persistent-cache": {
+        "raw": 3863,
+        "files": 1
+      },
+      "pinned-webcams": {
+        "raw": 2183,
+        "files": 1
+      },
+      "sanitize": {
+        "raw": 1280,
+        "files": 1
+      },
+      "source-provenance": {
+        "raw": 78804,
+        "files": 1
+      },
+      "storage-facility-registry-store": {
+        "raw": 14331,
+        "files": 1
+      },
+      "storage-quota": {
+        "raw": 356,
+        "files": 1
+      },
+      "string": {
+        "raw": 20925,
+        "files": 1
+      },
+      "sync-keys": {
+        "raw": 1178,
+        "files": 1
+      },
+      "user-location": {
+        "raw": 4701,
+        "files": 1
+      },
+      "widget-store": {
+        "raw": 22048,
+        "files": 1
+      }
     }
   }
 }

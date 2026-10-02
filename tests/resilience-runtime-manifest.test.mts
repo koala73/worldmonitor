@@ -268,12 +268,8 @@ describe('resilience runtime manifest gateway auth', () => {
     assert.deepEqual(
       [...PUBLIC_NO_AUTH_RPC_PATHS],
       [
-        '/api/conflict/v1/list-acled-events',
-        '/api/natural/v1/list-natural-events',
         '/api/intelligence/v1/get-china-decision-signals',
         '/api/resilience/v1/get-runtime-manifest',
-        '/api/seismology/v1/list-earthquakes',
-        '/api/unrest/v1/list-unrest-events',
         '/api/leads/v1/submit-contact',
         '/api/leads/v1/register-interest',
       ],

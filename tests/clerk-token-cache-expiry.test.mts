@@ -546,7 +546,7 @@ describe('getClerkToken', () => {
 
   it('fails closed for a slow client when calibration refresh fails', async () => {
     const serverNow = Date.now();
-    let clientNow = serverNow - 50_000;
+    const clientNow = serverNow - 50_000;
     const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
     const session = {
       async getToken(options: { skipCache?: boolean } = {}) {

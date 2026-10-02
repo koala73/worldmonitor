@@ -8,8 +8,9 @@ import type {
   GulfInvestmentStatus,
 } from '@/types';
 import { toUniqueSorted } from '@/utils';
-import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
 interface InvestmentFilters {
@@ -110,7 +111,7 @@ export class InvestmentsPanel extends Panel {
       });
   }
 
-  private render(): void {
+  private render(resultsOnly = false): void {
     const filtered = this.getFiltered();
 
     const entities = toUniqueSorted(GULF_INVESTMENTS.map((i) => i.investingEntity));
@@ -147,6 +148,13 @@ export class InvestmentsPanel extends Panel {
           </div>
         </div>`;
     }).join('');
+
+    const list = this.content.querySelector<HTMLElement>('.fdi-list');
+    if (resultsOnly && list) {
+      setTrustedHtml(list, trustedHtml(rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`, 'Escaped investment rows'));
+      if (this.countEl) this.countEl.textContent = String(filtered.length);
+      return;
+    }
 
     const toggleCls = this.filtersExpanded || hasActiveFilter ? 'fdi-filter-toggle fdi-filters-active' : 'fdi-filter-toggle';
     const filtersCls = this.filtersExpanded ? 'fdi-filters fdi-filters-open' : 'fdi-filters';
@@ -192,7 +200,7 @@ export class InvestmentsPanel extends Panel {
         ${rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`}
       </div>`;
 
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    this.setTrustedContent(trustedHtml(html, 'Escaped investment rows and filters'));
     if (this.countEl) this.countEl.textContent = String(filtered.length);
   }
 
@@ -201,7 +209,7 @@ export class InvestmentsPanel extends Panel {
       const target = e.target as HTMLElement;
       if (target.classList.contains('fdi-search')) {
         this.filters.search = (target as HTMLInputElement).value;
-        this.render();
+        this.render(true);
       }
     });
 

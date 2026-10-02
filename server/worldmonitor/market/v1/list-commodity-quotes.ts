@@ -19,6 +19,7 @@ import type {
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { parseStringArray } from './_shared';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import commodityConfig from '../../../../shared/commodities.json';
 
 const BOOTSTRAP_KEY = 'market:commodities-bootstrap:v1';
@@ -102,7 +103,7 @@ export function filterCommoditySeed(
 }
 
 export async function listCommodityQuotes(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListCommodityQuotesRequest,
 ): Promise<ListCommodityQuotesResponse> {
   const parsed = parseStringArray(req.symbols);
@@ -115,9 +116,9 @@ export async function listCommodityQuotes(
 
   try {
     const bootstrap = await getCachedJson(BOOTSTRAP_KEY, true) as ListCommodityQuotesResponse | null;
-    if (!bootstrap?.quotes?.length) return { quotes: [] };
+    if (!bootstrap?.quotes?.length) return markNoStoreFallbackResponse(ctx.request, { quotes: [] });
     return { quotes: filterCommoditySeed(bootstrap.quotes, symbols) };
   } catch {
-    return { quotes: [] };
+    return markNoStoreFallbackResponse(ctx.request, { quotes: [] });
   }
 }

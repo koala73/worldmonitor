@@ -311,4 +311,53 @@ describe('MLWorkerManager recovery', () => {
     expect(workerHarness.instances).toHaveLength(4);
     expect(manager.isAvailable).toBe(false);
   });
+
+  it('lets detached whenReady waiters share one in-flight init (#7779)', async () => {
+    workerHarness.autoReady = false;
+    const manager = createManager();
+    const bootInit = manager.init();
+    await vi.waitFor(() => expect(workerHarness.instances).toHaveLength(1));
+
+    // Two detached continuations (e.g. boot prefetch + headline-memory gate)
+    // must piggyback the same worker — not spawn duplicate startups.
+    const waiterA = manager.whenReady('app-boot:local-ai');
+    const waiterB = manager.whenReady('app-boot:headline-memory');
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(workerHarness.instances).toHaveLength(1);
+
+    workerHarness.instances[0]!.emitReady();
+    await expect(bootInit).resolves.toBe(true);
+    await expect(waiterA).resolves.toBe(true);
+    await expect(waiterB).resolves.toBe(true);
+    // A late waiter after readiness resolves immediately without new work.
+    await expect(manager.whenReady('late-joiner')).resolves.toBe(true);
+    expect(workerHarness.instances).toHaveLength(1);
+  });
+
+  it('fails detached waiters closed when terminate lands mid-startup (#7779)', async () => {
+    workerHarness.autoReady = false;
+    const manager = createManager();
+    const bootInit = manager.init();
+    await vi.waitFor(() => expect(workerHarness.instances).toHaveLength(1));
+
+    const waiter = manager.whenReady('app-boot:headline-memory');
+    manager.terminate();
+
+    await expect(bootInit).resolves.toBe(false);
+    await expect(waiter).resolves.toBe(false);
+    expect(workerHarness.instances).toHaveLength(1);
+  });
+
+  it('snapshots availability per clustering choice without forcing a reload (#7779)', async () => {
+    const manager = createManager();
+    // Cold worker: snapshot is false, so a news generation takes the analysis
+    // (Jaccard) path — readiness alone must not regroup committed results.
+    expect(manager.snapshotAvailableForClustering()).toBe(false);
+
+    expect(await manager.init()).toBe(true);
+    expect(manager.snapshotAvailableForClustering()).toBe(true);
+
+    manager.terminate();
+    expect(manager.snapshotAvailableForClustering()).toBe(false);
+  });
 });

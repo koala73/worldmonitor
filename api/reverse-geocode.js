@@ -34,13 +34,6 @@ function normalizeCacheEntry(entry) {
   };
 }
 
-function getCacheKeyPrefix() {
-  const env = process.env.VERCEL_ENV;
-  if (!env || env === 'production') return '';
-  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';
-  return `${env}:${sha}:`;
-}
-
 export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -75,7 +68,13 @@ export default async function handler(req, ctx) {
     return jsonResponse({ error: 'valid lat (-90..90) and lon (-180..180) required' }, 400, cors);
   }
 
-  const cacheKey = `${getCacheKeyPrefix()}${geocodeCacheKey(latN, lonN)}`;
+  // App-owned cache key (#7674): the shared helpers apply the deployment
+  // prefix to both this read and the write below, matching the server RPC's
+  // prefix-once behavior (server/worldmonitor/infrastructure/v1/
+  // reverse-geocode.ts reads/writes the same grid namespace through the
+  // prefix-aware server helpers) so either deployment's handler may serve
+  // the other's entries.
+  const cacheKey = geocodeCacheKey(latN, lonN);
 
   const cached = normalizeCacheEntry(await readJsonFromUpstash(cacheKey, 1500));
   if (cached) {
@@ -113,7 +112,7 @@ export default async function handler(req, ctx) {
     );
 
     if (!resp.ok) {
-      return jsonResponse({ error: `Nominatim ${resp.status}` }, 502, cors);
+      return jsonResponse({ error: 'Nominatim request failed' }, 502, cors);
     }
 
     const data = await resp.json();

@@ -3,7 +3,7 @@ import { t } from '@/services/i18n';
 import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
-import { sanitizeUrl } from '@/utils/sanitize';
+import { validateUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
@@ -146,7 +146,7 @@ export class MonitorPanel extends Panel {
           h('div', { className: 'item-source' }, item.source),
           h('a', {
             className: 'item-title',
-            href: sanitizeUrl(item.link),
+            href: validateUrl(item.link),
             target: '_blank',
             rel: 'noopener',
           }, item.title),

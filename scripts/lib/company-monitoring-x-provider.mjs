@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { isBlockedResolvedAddress } = require('./notification-webhook-ssrf.cjs');
+const { assertXPostBudgetAdmission } = require('./x-post-budget.cjs');
 
 const X_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 const X_ACCOUNT_ID = /^[1-9]\d{1,18}$/;
@@ -27,6 +28,10 @@ const DEFAULT_MAX_REDIRECTS = 3;
 const DEFAULT_IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_X_REQUESTS_PER_LEASE = 100;
 export const COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS = 20_000;
+export const MAX_COMPANY_MONITORING_X_RETURNED_POSTS = 95;
+// X recent search rejects max_results below 10, so the discovery loop cannot run
+// at all under this many remaining Posts. Reconciliation sizing must leave it.
+export const MIN_X_RECENT_SEARCH_PAGE_POSTS = 10;
 
 export class CompanyMonitoringXSsrfError extends Error {
   constructor(message) {
@@ -748,6 +753,7 @@ export function createXRecentSearchExecutor(options = {}) {
   const fetchComplianceEvents = options.fetchComplianceEvents;
   const now = options.now ?? Date.now;
   const storageMode = options.storageMode === 'full_text' ? 'full_text' : 'metadata_only';
+  const withReturnedPosts = options.withReturnedPosts;
   const requestCostUsdMicros = checkedNonNegativeInteger(options.requestCostUsdMicros);
   const timeoutMs = checkedNonNegativeInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS);
 
@@ -774,6 +780,8 @@ export function createXRecentSearchExecutor(options = {}) {
 
     let requestCount = 0;
     let providerPartial = false;
+    const effectiveResultCap = Math.min(work.resultCap, MAX_COMPANY_MONITORING_X_RETURNED_POSTS);
+    let remainingReturnedPosts = effectiveResultCap;
     const remainingCallTimeoutMs = () => {
       if (!Number.isSafeInteger(work.leaseExpiresAt)) return Math.max(1, timeoutMs);
       const remaining = work.leaseExpiresAt - now() - COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS;
@@ -788,7 +796,8 @@ export function createXRecentSearchExecutor(options = {}) {
       requestCount += 1;
       return callTimeoutMs;
     };
-    const xJson = async (url, { reserve = 0 } = {}) => {
+    const xResponse = async (url, { reserve = 0, postBudgetAdmission } = {}) => {
+      assertXPostBudgetAdmission(url, postBudgetAdmission);
       const callTimeoutMs = reserveRequest(reserve);
       let response;
       try {
@@ -808,14 +817,62 @@ export function createXRecentSearchExecutor(options = {}) {
         }
         throw new XProviderError('provider_unavailable', `X request failed: ${error?.message ?? String(error)}`);
       }
-      if (!response?.ok) {
-        throw new XProviderError(xProviderReason(response?.status ?? 503), `X returned HTTP ${response?.status ?? 503}`);
-      }
+      let body;
       try {
-        return await response.json();
+        body = await response.json();
       } catch {
+        if (!response?.ok) return { response, body: null };
         throw new XProviderError('request_rejected', 'X returned malformed JSON');
       }
+      return { response, body };
+    };
+    const requireSuccessfulXResponse = (result) => {
+      if (!result?.response?.ok) {
+        throw new XProviderError(
+          xProviderReason(result?.response?.status ?? 503),
+          `X returned HTTP ${result?.response?.status ?? 503}`,
+        );
+      }
+      return result.body;
+    };
+    const xJson = async (url, options = {}) => {
+      const result = await xResponse(url, options);
+      return requireSuccessfulXResponse(result);
+    };
+    const xPostsJson = async (url, { operation, requestedPosts, reserve = 0 }) => {
+      if (typeof withReturnedPosts !== 'function') {
+        throw new XProviderPartialError('Shared X Post budget is unavailable');
+      }
+      if (!Number.isSafeInteger(requestedPosts) || requestedPosts < 1 || requestedPosts > remainingReturnedPosts) {
+        throw new XProviderPartialError('Company Monitoring X Post limit reached');
+      }
+      remainingReturnedPosts -= requestedPosts;
+      let outcome;
+      try {
+        outcome = await withReturnedPosts({
+          consumer: 'company-monitoring',
+          operation,
+          requestedPosts,
+          execute: (_admission, postBudgetAdmission) => xResponse(url, {
+            reserve,
+            postBudgetAdmission,
+          }),
+        });
+      } catch (error) {
+        if (error instanceof XProviderError) throw error;
+        throw new XProviderPartialError('Shared X Post budget is unavailable');
+      }
+      if (!outcome?.allowed) throw new XProviderPartialError('Shared X Post budget denied the request');
+      if (outcome.completed
+        && Number.isSafeInteger(outcome.returnedPosts)
+        && outcome.returnedPosts >= 0
+        && outcome.returnedPosts <= requestedPosts) {
+        remainingReturnedPosts += requestedPosts - outcome.returnedPosts;
+      }
+      const result = outcome.result;
+      const body = requireSuccessfulXResponse(result);
+      if (!outcome.completed) throw new XProviderPartialError('X Post usage could not be settled');
+      return body;
     };
 
     const profileCache = new Map();
@@ -996,7 +1053,24 @@ export function createXRecentSearchExecutor(options = {}) {
     ).filter((tracked) => complianceBindings.some((binding) =>
       binding.companyId === tracked.companyId && binding.accountId === String(tracked.authorAccountId)
     ));
-    const trackedReconciliationCap = Math.min(100, Math.max(1, work.resultCap - 1));
+    // KNOWN TRADE-OFF (unresolved, needs a product call -- see PR #7626 review).
+    // At effectiveResultCap - 1 this can take 94 of the 95 shared lease Posts,
+    // leaving remainingReturnedPosts under MIN_X_RECENT_SEARCH_PAGE_POSTS so the
+    // discovery loop below is skipped entirely for a heavily-tracked cohort, on
+    // every recurring lease (buildCheckpoint hashes only workId/windowEnd/packIds,
+    // so reconciliation repeats each window rather than resuming).
+    //
+    // Reserving a discovery floor here is NOT a safe unilateral fix: this slice
+    // always starts at index 0 with no rotating offset, so truncating it means
+    // the tail of allTrackedPosts never receives its deletion check on any lease.
+    // That trades discovery starvation for a compliance gap. The regression-free
+    // resolution is to bound tracked work below the lease instead -- lower
+    // X_TRACKED_POSTS_PER_COMPANY or COMPANY_MONITORING_SCAN_COHORT_LIMIT in
+    // convex/companyMonitoring/orchestration.ts so cohort x per-company stays at
+    // or under effectiveResultCap - MIN_X_RECENT_SEARCH_PAGE_POSTS (85 today;
+    // it is 4 x 25 = 100 now) -- or to add a reconciliation offset so the slice
+    // rotates. Both change scan throughput, so they are the owner's call.
+    const trackedReconciliationCap = Math.min(100, Math.max(1, effectiveResultCap - 1));
     const trackedPosts = allTrackedPosts.slice(0, trackedReconciliationCap);
     if (trackedPosts.length < allTrackedPosts.length) complianceUnavailable = true;
     if (trackedPosts.length > 0) {
@@ -1006,7 +1080,11 @@ export function createXRecentSearchExecutor(options = {}) {
         trackedUrl.searchParams.set('tweet.fields', 'author_id,created_at,edit_history_tweet_ids,withheld');
         trackedUrl.searchParams.set('expansions', 'author_id');
         trackedUrl.searchParams.set('user.fields', 'id,name,username,protected,verified');
-        const trackedBody = await xJson(trackedUrl, { reserve: Math.max(1, packs.length) });
+        const trackedBody = await xPostsJson(trackedUrl, {
+          operation: 'tracked-post-lookup',
+          requestedPosts: trackedPosts.length,
+          reserve: Math.max(1, packs.length),
+        });
         const normalizedTracked = normalizeXRecentSearchPage(trackedBody, {
           bindings: complianceBindings,
           permittedStorage: storageMode,
@@ -1083,7 +1161,7 @@ export function createXRecentSearchExecutor(options = {}) {
     );
     let retainedComplianceEventCount = 0;
     for (const post of compliancePosts) {
-      if (postMap.size >= work.resultCap) {
+      if (postMap.size >= effectiveResultCap) {
         hasMore = true;
         continue;
       }
@@ -1093,7 +1171,7 @@ export function createXRecentSearchExecutor(options = {}) {
     for (const post of reconciledPosts) {
       const key = `${post.companyId}:${post.postId}`;
       if (postMap.has(key)) continue;
-      if (postMap.size >= work.resultCap) {
+      if (postMap.size >= effectiveResultCap) {
         hasMore = true;
         continue;
       }
@@ -1102,10 +1180,16 @@ export function createXRecentSearchExecutor(options = {}) {
     try {
       packLoop: for (let packIndex = 0; packIndex < packs.length; packIndex += 1) {
         const pack = packs[packIndex];
+        const packBindings = bindings.filter((binding) => pack.accountIds.includes(binding.accountId));
         let nextToken;
         do {
-          const remaining = work.resultCap - postMap.size;
-          if (remaining <= 0) {
+          const outputRemaining = effectiveResultCap - postMap.size;
+          if (outputRemaining <= 0) {
+            hasMore = true;
+            break packLoop;
+          }
+          if (remainingReturnedPosts < MIN_X_RECENT_SEARCH_PAGE_POSTS) {
+            providerPartial = true;
             hasMore = true;
             break packLoop;
           }
@@ -1113,14 +1197,18 @@ export function createXRecentSearchExecutor(options = {}) {
           url.searchParams.set('query', pack.query);
           url.searchParams.set('start_time', new Date(availableStart).toISOString());
           url.searchParams.set('end_time', new Date(work.windowEnd).toISOString());
-          url.searchParams.set('max_results', String(Math.max(10, Math.min(100, remaining))));
+          const maxResults = Math.min(100, remainingReturnedPosts, Math.max(10, outputRemaining));
+          url.searchParams.set('max_results', String(maxResults));
           url.searchParams.set('tweet.fields', 'author_id,created_at,edit_history_tweet_ids,withheld');
           url.searchParams.set('expansions', 'author_id');
           url.searchParams.set('user.fields', 'id,name,username,protected,verified');
           if (nextToken) url.searchParams.set('next_token', nextToken);
-          const body = await xJson(url);
+          const body = await xPostsJson(url, {
+            operation: 'recent-search',
+            requestedPosts: maxResults,
+          });
           const normalized = normalizeXRecentSearchPage(body, {
-            bindings: bindings.filter((binding) => pack.accountIds.includes(binding.accountId)),
+            bindings: packBindings,
             permittedStorage: storageMode,
             observedAt: checkedAt,
           });
@@ -1128,19 +1216,19 @@ export function createXRecentSearchExecutor(options = {}) {
           for (const post of normalized.posts) {
             const key = `${post.companyId}:${post.postId}`;
             if (postMap.has(key)) continue;
-            if (postMap.size >= work.resultCap) {
+            if (postMap.size >= effectiveResultCap) {
               hasMore = true;
               break;
             }
             postMap.set(key, post);
           }
           nextToken = normalized.nextToken;
-          if (nextToken && postMap.size >= work.resultCap) {
+          if (nextToken && postMap.size >= effectiveResultCap) {
             hasMore = true;
             break packLoop;
           }
         } while (nextToken);
-        if (packIndex < packs.length - 1 && postMap.size >= work.resultCap) {
+        if (packIndex < packs.length - 1 && postMap.size >= effectiveResultCap) {
           hasMore = true;
           break;
         }
@@ -1153,7 +1241,7 @@ export function createXRecentSearchExecutor(options = {}) {
         return providerErrorResult(error, requestCount, requestCostUsdMicros);
       }
     }
-    if (postMap.size >= work.resultCap) hasMore = true;
+    if (postMap.size >= effectiveResultCap) hasMore = true;
 
     const gaps = [];
     if (availableStart > work.windowStart) {

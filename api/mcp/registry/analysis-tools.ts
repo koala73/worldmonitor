@@ -1,3 +1,5 @@
+import { RpcValidationError } from '../billing-denial';
+import { requireCountryCode } from '../_country-args';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
@@ -52,7 +54,8 @@ import {
   listCountryPopulations,
 } from '../../../shared/analysis-population-exposure';
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
-import { readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
+import { applyRedisKeyPrefix, readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
+import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
@@ -105,6 +108,12 @@ const ANALYSIS_PAYLOAD_VALIDATORS: Readonly<Record<string, PayloadValidator>> = 
 /**
  * Read data caches and freshness metadata in one parallel round while keeping
  * payload and metadata positions structurally separate.
+ *
+ * Per-key namespace decision (#7674): the batch mixes seeder-owned keys (read
+ * raw — the Railway fleet writes them bare) with route-owned keys like
+ * `temporal:anomalies:v1` (read with the deployment prefix — the producer
+ * stamps them there). Each key is finalized here and the batch is sent
+ * verbatim.
  */
 async function readCachesWithFreshness(
   keys: readonly string[],
@@ -118,10 +127,13 @@ async function readCachesWithFreshness(
     failed_inputs: string[];
   };
 }> {
-  const results = await readJsonBatchFromUpstashWithStatus([
-    ...keys,
-    ...checks.map((check) => check.key),
-  ]);
+  const results = await readJsonBatchFromUpstashWithStatus(
+    [...keys, ...checks.map((check) => check.key)].map(
+      (key) => (isAppOwnedRedisKey(key) ? applyRedisKeyPrefix(key) : key),
+    ),
+    3_000,
+    true,
+  );
   const payloadReads = results.slice(0, keys.length).map((result, index) => {
     const validator = ANALYSIS_PAYLOAD_VALIDATORS[keys[index] ?? ''];
     if (result.status === 'hit' && validator && !validator(result.value)) {
@@ -159,7 +171,7 @@ const ANALYSIS_CACHE_STATUS_PROPERTIES = {
   unavailable_inputs: {
     type: 'array',
     items: { type: 'string' },
-    description: 'Required cache keys that were missing or unreadable; their contribution is not treated as quiet.',
+    description: 'Required cache keys whose data was missing, unreadable, or withheld from redistribution; their contribution is not treated as quiet.',
   },
   failed_inputs: {
     type: 'array',
@@ -364,7 +376,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2) and entities the registry relates to it.' },
+        country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2, alpha-3, or English name) and entities the registry relates to it. Countries outside the entity registry return an explicit coverage error.' },
         limit: { type: 'number', description: 'Cap the focal point list (default 10, pass 0 for no cap).' },
       },
       required: [],
@@ -397,6 +409,16 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
+      const rawCountry = params.country_code;
+      const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
+        ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+      const index = getSharedEntityIndex();
+      if (countryCode && index.byId.get(countryCode)?.type !== 'country') {
+        throw new RpcValidationError('get-focal-points', [{
+          field: 'country_code',
+          description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
+        }]);
+      }
       const limit = resolveLimit(params.limit, 10);
       const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
@@ -411,14 +433,12 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         'No focal-point input feeds are available',
       );
 
-      const index = getSharedEntityIndex();
       const clusters = insightsToFocalClusters(insights);
       const mapping = crossSourceSignalsToSignalSummary(crossSource, index);
       const summary = new FocalPointCore(index).analyze(clusters, mapping.summary);
       const ciiLookup = riskScoresToCiiLookup(riskScores);
 
       let points = summary.focalPoints;
-      const countryCode = typeof params.country_code === 'string' ? params.country_code : '';
       if (countryCode) points = filterFocalPointsByCountry(points, countryCode, index);
       const selectedPoints = points.slice(0, limit);
       return {
@@ -866,15 +886,22 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
         freshness,
       } = await readCachesWithFreshness(keys, checks);
+      const redistributableSurges = hasRedistributableProviderAttribution(
+        (surges as { sourceVersion?: unknown } | null)?.sourceVersion,
+      ) ? surges : null;
+      if (surges !== null && redistributableSurges === null) {
+        freshness.stale = true;
+        freshness.unavailable_inputs.push('military:surges:v1');
+      }
       requireAnyInput(
-        [riskScores, surges, cableHealth, outages, temporal, thermal, stress],
+        [riskScores, redistributableSurges, cableHealth, outages, temporal, thermal, stress],
         freshness,
         'No digest input feeds are available',
       );
 
       const now = Date.now();
       const digest = buildAlertDigest(
-        buildDigestInputs({ riskScores, surges, cableHealth, outages, temporal, thermal, stress }),
+        buildDigestInputs({ riskScores, surges: redistributableSurges, cableHealth, outages, temporal, thermal, stress }),
         now,
       );
 

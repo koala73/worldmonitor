@@ -8,6 +8,38 @@
     "1.18.0": {
       "tools": 74,
       "manifestSha256": "bb153560ee54f85f9b00bccd5474f04b9abc256e31049a1040c176f505e8fcef"
+    },
+    "1.19.0": {
+      "tools": 74,
+      "manifestSha256": "cce31fc35eb392a49394ea38321d52ed0136122af0d9e95137da873c3717e71c"
+    },
+    "1.20.0": {
+      "tools": 75,
+      "manifestSha256": "ae38d1237ffd4b03fc37679f67304d03677dcd4ee8751096eaa5044336f8932f"
+    },
+    "1.21.0": {
+      "tools": 75,
+      "manifestSha256": "10721ab9326c8cbee651aa6da67034fbe67d8d38cee37628ec336f01345b46bb"
+    },
+    "1.22.0": {
+      "tools": 77,
+      "manifestSha256": "a8507b8a2c6664cb0b104fb35137af71796b65b2ca3d665ca8c0d5450b2a874e"
+    },
+    "1.23.0": {
+      "tools": 78,
+      "manifestSha256": "f8bdb5c1ba55aea079d021ec730d76a5ce69357f587a61336266eef044db6614"
+    },
+    "1.24.0": {
+      "tools": 82,
+      "manifestSha256": "b9a06f28e7d69febe5fd6c873436cf96693dcde70cadad5012404e049573caf2"
+    },
+    "1.25.0": {
+      "tools": 84,
+      "manifestSha256": "f854b68643af780122236fe4eb4ced596f3cd01c89f1b6bc2e4cd3f4db119514"
+    },
+    "1.26.0": {
+      "tools": 86,
+      "manifestSha256": "3320ade37e1db7803d15f4ee58a48b41c6bf292f694cd744ab14fe91a89c06d5"
     }
   }
 }

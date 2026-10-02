@@ -7,6 +7,7 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -68,7 +69,7 @@ describe('get_procurement_opportunities MCP tool', () => {
     assert.ok(tool, 'tool must be discoverable through tools/list');
     assert.equal(tool.inputSchema.properties.page_size.maximum, 25);
     assert.equal(tool.inputSchema.properties.min_automation_score.maximum, undefined, 'the canonical route owns the score upper-bound clamp');
-    assert.match(tool.outputSchema.properties.nextCursor.description, /empty string means no further pages/i);
+    assert.match(documentedOutputSchema(tool).properties.nextCursor.description, /empty string means no further pages/i);
 
     const { response, body } = await callTool({
       country: 'US', countries: ['CA', 'GB'], source: 'sam', query: 'cloud security', buyer: 'Example agency',

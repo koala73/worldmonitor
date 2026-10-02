@@ -20,9 +20,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DISEASE_RSS_FEEDS,
+  fetchDiseaseOutbreaks,
+  fetchRssItems,
+  fetchWhoDonApi,
+} from '../scripts/seed-disease-outbreaks.mjs';
+import {
   whoNormalizeItem,
   rssNormalizeItem,
   tghNormalizeItem,
+  mapItem,
   diseaseContentMeta,
   diseasePublishTransform,
   DISEASE_MAX_CONTENT_AGE_MIN,
@@ -32,7 +39,263 @@ import {
   DISEASE_ALERT_RE,
   DISEASE_WARNING_RE,
   ALERT_LEVEL_METHODOLOGY_VERSION,
+  isRoundupHeadline,
+  isReportableHeadline,
+  HEADLINE_LOOKBACK_DAYS,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
+
+const WHO_RESPONSE = {
+  value: [{
+    Title: 'Ebola disease - Country X',
+    ItemDefaultUrl: '/emergencies/disease-outbreak-news/item/2026-DON001',
+    PublicationDateAndTime: '2026-08-28T15:28:00Z',
+  }],
+};
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+test('WHO adapter retries one transient timeout and returns the recovered record', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+      return jsonResponse(WHO_RESPONSE);
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(outbreaks.length, 1);
+  assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
+});
+
+for (const status of [429, 503]) {
+  test(`WHO adapter retries transient HTTP ${status} and returns the recovered record`, async () => {
+    let calls = 0;
+    const outbreaks = await fetchWhoDonApi({
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return jsonResponse({}, status);
+        return jsonResponse(WHO_RESPONSE);
+      },
+      retryDelayMs: 0,
+    });
+
+    assert.equal(calls, 2);
+    assert.equal(outbreaks.length, 1);
+    assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
+  });
+}
+
+test('WHO adapter does not retry a permanent HTTP 403', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({}, 403);
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.deepEqual(outbreaks, []);
+});
+
+test('WHO adapter returns no records after both transient attempts fail', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(outbreaks, []);
+});
+
+// ── RSS sources ──────────────────────────────────────────────────────────
+//
+// Outbreak News Today stopped publishing (newest item 2026-07-30) and earlier
+// answered 403, so it was a silently empty source. ECDC epidemiological updates
+// and CIDRAP disease feeds replace it (live-probed 2026-09-23).
+
+test('RSS sources include ECDC and CIDRAP and no longer include Outbreak News Today', () => {
+  const hosts = DISEASE_RSS_FEEDS.map(({ url }) => new URL(url).host);
+  assert.deepEqual(hosts.filter((host) => host === 'outbreaknewstoday.com'), []);
+  assert.ok(DISEASE_RSS_FEEDS.some(({ url, sourceName }) =>
+    sourceName === 'ECDC' && url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed'));
+  const cidrap = DISEASE_RSS_FEEDS.filter(({ sourceName }) => sourceName === 'CIDRAP');
+  assert.ok(cidrap.length >= 5);
+  for (const { url } of cidrap) assert.match(url, /^https:\/\/www\.cidrap\.umn\.edu\/news\/\d+\/rss$/);
+});
+
+const CIDRAP_XML = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"><channel><title>CIDRAP - Ebola News</title>
+    <item>
+  <title>  Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak</title>
+  <link>https://www.cidrap.umn.edu/ebola/ebola-outbreak-dr-congo-grows</link>
+  <description>&lt;p&gt;Cases keep rising.&lt;/p&gt;</description>
+  <pubDate>Mon, 14 Sep 2026 15:25:00 -0500</pubDate>
+    </item>
+    <item>
+  <title>Sprouts &amp; mangos recalled in multistate Salmonella outbreak</title>
+  <link>https://www.cidrap.umn.edu/foodborne/sprouts-mangos</link>
+  <description>&lt;p&gt;Recall.&lt;/p&gt;</description>
+  <pubDate>Tue, 01 Sep 2026 14:16:00 -0500</pubDate>
+    </item>
+</channel></rss>`;
+
+test('RSS adapter trims and entity-decodes titles and tags the source', async () => {
+  const items = await fetchRssItems('https://www.cidrap.umn.edu/news/64/rss', 'CIDRAP', {
+    fetchImpl: async () => new Response(CIDRAP_XML, { status: 200 }),
+  });
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, 'Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak');
+  assert.equal(items[0].desc, 'Cases keep rising.');
+  assert.equal(items[0].sourceName, 'CIDRAP');
+  assert.equal(items[0]._originalPublishedMs, Date.parse('2026-09-14T20:25:00Z'));
+  assert.equal(items[1].title, 'Sprouts & mangos recalled in multistate Salmonella outbreak');
+});
+
+test('RSS adapter returns no records on an HTTP error', async () => {
+  const items = await fetchRssItems('https://www.cidrap.umn.edu/news/64/rss', 'CIDRAP', {
+    fetchImpl: async () => new Response('forbidden', { status: 403 }),
+  });
+  assert.deepEqual(items, []);
+});
+
+test('headline sources take the location from the detected country, not the headline tail', () => {
+  const item = mapItem(rssNormalizeItem({
+    title: 'Ebola outbreak in DR Congo grows to 7,200 cases as officials see a peak',
+    link: 'https://www.cidrap.umn.edu/ebola/x',
+    desc: '',
+    pubDate: 'Mon, 14 Sep 2026 15:25:00 -0500',
+    sourceName: 'CIDRAP',
+  }));
+  assert.equal(item.disease, 'Ebola');
+  assert.equal(item.countryCode, 'CD');
+  assert.equal(item.location, new Intl.DisplayNames(['en'], { type: 'region' }).of('CD'));
+
+  const ecdc = mapItem(rssNormalizeItem({
+    title: 'Ebola disease outbreak in the Democratic Republic of the Congo',
+    link: 'https://www.ecdc.europa.eu/en/ebola',
+    desc: 'An Ebola virus disease outbreak has been ongoing in the Democratic Republic of the Congo (DRC).',
+    pubDate: 'Wed, 23 Sep 2026 17:36:21 +0200',
+    sourceName: 'ECDC',
+  }));
+  assert.equal(ecdc.countryCode, 'CD');
+  assert.equal(ecdc.location, item.location);
+});
+
+test('headline source without a detectable country leaves location empty', () => {
+  const item = mapItem(rssNormalizeItem({
+    title: 'MERS-CoV worldwide overview', link: 'https://www.ecdc.europa.eu/en/mers', desc: '',
+    pubDate: 'Mon, 07 Sep 2026 14:20:22 +0200', sourceName: 'ECDC',
+  }));
+  assert.equal(item.location, '');
+  assert.equal(item.countryCode, '');
+});
+
+test('WHO titles keep the title-derived location', () => {
+  const item = mapItem(whoNormalizeItem({
+    Title: 'Ebola disease caused by Bundibugyo virus - Democratic Republic of the Congo',
+    ItemDefaultUrl: '/2026-DON617',
+    PublicationDateAndTime: '2026-09-10T08:16:08Z',
+  }));
+  assert.equal(item.location, 'Democratic Republic of the Congo');
+});
+
+// CIDRAP "Quick takes" roundups bundle unrelated stories under one headline,
+// so disease and country detection attach one story's disease to another's
+// country ("DR Congo Ebola emergency, malaria deaths in Germany" -> Ebola, DE).
+test('roundup headlines are recognised so the seeder can drop them', () => {
+  assert.equal(isRoundupHeadline('Quick takes: DR Congo Ebola emergency, malaria deaths in Germany, 7 new polio cases'), true);
+  assert.equal(isRoundupHeadline('quick takes: H5N1 in dairy cattle'), true);
+  assert.equal(isRoundupHeadline('Ebola outbreak in DR Congo tops 6,600 cases'), false);
+});
+
+// CIDRAP disease feeds also carry research, policy and opinion stories, and
+// every feed returns its last 20 items however old. A headline-source item is
+// kept only when it names a known disease and a country and is recent; WHO/CDC
+// items keep their existing path.
+const NOW = Date.parse('2026-09-23T12:00:00Z');
+const headline = (title, { sourceName = 'CIDRAP', pubDate = 'Mon, 14 Sep 2026 15:25:00 -0500' } = {}) => mapItem(rssNormalizeItem({
+  title, link: 'https://www.cidrap.umn.edu/x', desc: '', pubDate, sourceName,
+}));
+
+test('headline-source items need a known disease and a country to count as an outbreak', () => {
+  assert.equal(isReportableHeadline(headline('Ebola outbreak in DR Congo tops 6,600 cases'), NOW), true);
+  assert.equal(isReportableHeadline(headline('Tpoxx doesn\u2019t improve on placebo in achieving key mpox outcomes'), NOW), false);
+  assert.equal(isReportableHeadline(headline('Poll highlights Americans\u2019 uneven knowledge of STI prevention'), NOW), false);
+  assert.equal(isReportableHeadline(headline('Early estimates of seasonal influenza vaccine effectiveness', { sourceName: 'ECDC' }), NOW), false);
+
+  const who = mapItem(whoNormalizeItem({ Title: 'Unusual respiratory illness - Country X', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
+  assert.equal(isReportableHeadline(who, NOW), true);
+});
+
+test('headline-source items older than the lookback are dropped', () => {
+  const inside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS - 1) * 86_400_000).toUTCString();
+  const outside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS + 1) * 86_400_000).toUTCString();
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: inside }), NOW), true);
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: outside }), NOW), false);
+});
+
+// rssNormalizeItem falls back to "now" when pubDate is missing or unparseable;
+// that synthetic date must not make an undated headline look current.
+test('headline-source items without a real publication date are dropped', () => {
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: '' }), NOW), false);
+  assert.equal(isReportableHeadline(headline('Cholera outbreak in DR Congo intensifying', { pubDate: 'not a date' }), NOW), false);
+});
+
+// End-to-end through the seeder's fetch path with every upstream stubbed, so
+// removing any headline filter from fetchDiseaseOutbreaks turns this red.
+test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', async (t) => {
+  const recent = new Date(Date.now() - 2 * 86_400_000).toUTCString();
+  const stale = new Date(Date.now() - (HEADLINE_LOOKBACK_DAYS + 5) * 86_400_000).toUTCString();
+  const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map(([title, link, pubDate]) =>
+    `<item><title>${title}</title><link>${link}</link><description>d</description>${pubDate ? `<pubDate>${pubDate}</pubDate>` : ''}</item>`).join('')}</channel></rss>`;
+  const cidrapXml = rss([
+    ['Ebola outbreak in DR Congo tops 6,600 cases', 'https://www.cidrap.umn.edu/ebola/keep', recent],
+    // Its own disease/country pair, so disease+country dedup cannot hide it.
+    ['Quick takes: cholera outbreak in Haiti, polio vaccine trial', 'https://www.cidrap.umn.edu/cholera/roundup', recent],
+    ['Cholera outbreak in Sudan surges', 'https://www.cidrap.umn.edu/cholera/stale', stale],
+    ['Measles outbreak in Canada grows', 'https://www.cidrap.umn.edu/measles/undated', ''],
+    ['Tpoxx doesn’t improve on placebo in achieving key mpox outcomes', 'https://www.cidrap.umn.edu/mpox/trial', recent],
+  ]);
+  const ecdcXml = rss([['Mpox outbreak in Nigeria: epidemiological update', 'https://www.ecdc.europa.eu/en/mpox-nigeria', recent]]);
+
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.startsWith('https://www.cidrap.umn.edu/')) return new Response(cidrapXml, { status: 200 });
+    if (url.startsWith('https://www.ecdc.europa.eu/')) return new Response(ecdcXml, { status: 200 });
+    if (url.startsWith('https://tools.cdc.gov/')) return new Response(rss([]), { status: 200 });
+    return new Response('not found', { status: 404 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const links = outbreaks.map((o) => o.sourceUrl).sort();
+  assert.deepEqual(links, [
+    'https://www.cidrap.umn.edu/ebola/keep',
+    'https://www.ecdc.europa.eu/en/mpox-nigeria',
+  ]);
+});
+
+// Avian flu coverage names turkey farms constantly; the bird must not geocode
+// to Türkiye, while the country still does.
+test('turkey the bird does not geocode to Türkiye in headline sources', () => {
+  assert.notEqual(headline('Turkey farms in Dakotas, Minnesota hit by H5N1 avian flu').countryCode, 'TR');
+  assert.notEqual(headline('H5N1 avian flu strikes more turkeys in Minnesota').countryCode, 'TR');
+  assert.equal(headline('H5N1 avian flu hits turkey farm in Poland').countryCode, 'PL');
+  assert.equal(headline('Avian flu outbreak confirmed on poultry farm in Turkey').countryCode, 'TR');
+});
 
 // ── Pre-publish (in-memory) layer ────────────────────────────────────────
 
@@ -226,32 +489,29 @@ test('end-to-end: contentMeta runs on raw data WITH helpers, publishTransform st
   assert.equal((json.match(/_originalPublishedMs/g) || []).length, 0, 'no _originalPublishedMs in JSON');
 });
 
-// ── Pilot threshold sanity (anti-drift on the 9-day budget) ──────────────
-
-test('DISEASE_MAX_CONTENT_AGE_MIN constant is 9 days', () => {
-  assert.equal(DISEASE_MAX_CONTENT_AGE_MIN, 9 * 24 * 60, 'budget is 9 days — chosen so the 2026-05-04 11d incident trips STALE_CONTENT');
+test('DISEASE_MAX_CONTENT_AGE_MIN constant is 14 days', () => {
+  assert.equal(DISEASE_MAX_CONTENT_AGE_MIN, 14 * 24 * 60, 'budget matches the observed weekly release cadence and 3 to 5 day event lag');
 });
 
-test('pilot threshold: 9-day maxContentAgeMin would have tripped on 2026-05-04 incident pattern (11d-old items)', () => {
-  // Simulate the production incident: newest item 11 days old, content-age budget 9 days.
-  const ELEVEN_DAYS_AGO = FIXED_NOW - 11 * 24 * 60 * 60 * 1000;
+test('12-day-old disease content remains within the 14-day budget', () => {
+  const TWELVE_DAYS_AGO = FIXED_NOW - 12 * 24 * 60 * 60 * 1000;
   const data = {
     outbreaks: [
-      { _publishedAtIsSynthetic: false, _originalPublishedMs: ELEVEN_DAYS_AGO },
+      { _publishedAtIsSynthetic: false, _originalPublishedMs: TWELVE_DAYS_AGO },
     ],
   };
   const cm = diseaseContentMeta(data, FIXED_NOW);
   assert.ok(cm, 'contentMeta returns a result');
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
-  assert.ok(ageMin > DISEASE_MAX_CONTENT_AGE_MIN, `${Math.round(ageMin)}min > budget ${DISEASE_MAX_CONTENT_AGE_MIN}min — STALE_CONTENT would fire (ANTI-DRIFT for the pilot threshold)`);
+  assert.ok(ageMin < DISEASE_MAX_CONTENT_AGE_MIN, '12-day-old content remains healthy');
 });
 
-test('pilot threshold: 5-day-old items are within 9-day budget (no false positive)', () => {
-  const FIVE_DAYS_AGO = FIXED_NOW - 5 * 24 * 60 * 60 * 1000;
-  const data = { outbreaks: [{ _publishedAtIsSynthetic: false, _originalPublishedMs: FIVE_DAYS_AGO }] };
+test('15-day-old disease content exceeds the 14-day budget', () => {
+  const FIFTEEN_DAYS_AGO = FIXED_NOW - 15 * 24 * 60 * 60 * 1000;
+  const data = { outbreaks: [{ _publishedAtIsSynthetic: false, _originalPublishedMs: FIFTEEN_DAYS_AGO }] };
   const cm = diseaseContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
-  assert.ok(ageMin < DISEASE_MAX_CONTENT_AGE_MIN, '5d < 9d — STALE_CONTENT does NOT fire on normal upstream rhythm');
+  assert.ok(ageMin > DISEASE_MAX_CONTENT_AGE_MIN, '15-day-old content triggers STALE_CONTENT');
 });
 
 // ── detectAlertLevel — keyword classifier (#3791) ─────────────────────────
@@ -354,3 +614,18 @@ test('seed payload carries alertLevelMethodologyVersion post-publishTransform (v
     'wire payload must surface the methodology version so bumps propagate to clients',
   );
 });
+
+for (const [input, expected] of [
+  [0, 0], [1, 1], [42, 42], ['5', 5], [' 12 ', 12],
+  [undefined, 0], [null, 0], ['', 0], [true, 0], [[], 0], [{}, 0],
+  [-1, 0], [1.5, 0], [Infinity, 0], [NaN, 0], [Number.MAX_SAFE_INTEGER + 1, 0],
+  ['<img src=x onerror=alert(1)>', 0], ['12 cases', 0],
+]) {
+  test(`TGH cases ${JSON.stringify(input)} publishes numeric ${expected}`, () => {
+    const normalized = tghNormalizeItem({ disease: 'Cholera', date: '2026-09-01', cases: input });
+    const published = diseasePublishTransform({ outbreaks: [mapItem(normalized)] });
+    assert.equal(normalized._cases, expected);
+    assert.equal(published.outbreaks[0].cases, expected);
+    assert.equal(typeof published.outbreaks[0].cases, 'number');
+  });
+}

@@ -7,9 +7,10 @@
 //   - startCommand: node seed-earthquakes.mjs
 //   - Cron schedule: "*/5 * * * *" (every 5min UTC)
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, httpRetryError, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-utils.mjs';
 import {
   EARTHQUAKES_MAX_CONTENT_AGE_MIN,
+  EARTHQUAKE_PROVIDERS_KEY,
   NRCAN_ATOM_URL,
   earthquakesAfterPublish,
   earthquakesContentMeta,
@@ -23,7 +24,7 @@ loadEnvFile(import.meta.url);
 
 const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson';
 const CANONICAL_KEY = 'seismology:earthquakes:v1';
-const CACHE_TTL = 21600; // 6h — 6x the 1h cron interval (was 2x = survived only 1 missed run)
+const CACHE_TTL = 21600; // 6h storage; provider reuse and health remain bounded to 30 minutes.
 
 // Seismic scoring intentionally uses only high-signal nuclear-test centroids.
 // Broader registry entries such as missile ranges, exercises, or one-off low-signal
@@ -85,13 +86,18 @@ async function fetchUsgs(fetchFn) {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!resp.ok) throw new Error(`USGS API error: ${resp.status}`);
+  if (!resp.ok) {
+    await resp.body?.cancel?.();
+    throw httpRetryError(resp, { remainingBudgetMs: 2_000 });
+  }
   return parseUsgsGeojson(await resp.json());
 }
 
 async function fetchEarthquakes() {
   const cache = new Map();
+  const previousSources = await readSeedSnapshot(EARTHQUAKE_PROVIDERS_KEY);
   const merged = await fetchMergedEarthquakes({
+    previousSources,
     fetchUsgs: () => fetchUsgs(globalThis.fetch),
     fetchNrcan: () => fetchNrcanAtom({ fetchFn: globalThis.fetch, cache, url: NRCAN_ATOM_URL }),
   });
@@ -120,6 +126,11 @@ runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   contentMeta: earthquakesContentMeta,
   maxContentAgeMin: EARTHQUAKES_MAX_CONTENT_AGE_MIN,
   publishTransform: earthquakesPublishTransform,
+  // Persist recovery state before replacing the canonical payload. A failed
+  // state write must not leave a partial publication under old success metadata.
+  beforePublish: async (data) => {
+    await writeExtraKey(EARTHQUAKE_PROVIDERS_KEY, data._providerSnapshots, CACHE_TTL);
+  },
   afterPublish: earthquakesAfterPublish,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);

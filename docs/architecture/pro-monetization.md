@@ -2,14 +2,14 @@
 
 **Last verified**: 2026-07-27 (public lifecycle, plan, price, and capability facts now share one generation chain).
 
-Factual snapshot of how authentication, payments, entitlements, and billing management work today. This page intentionally describes only current deployed behavior.
+Factual snapshot of the repository architecture for authentication, payments, entitlements, and billing management. Checkout source references were reviewed on 2026-09-15; deployment must be verified separately.
 
 ## Stack at a glance
 
 | Concern | Provider | Primary entry points |
 |---|---|---|
 | Auth | **Clerk** (`@clerk/clerk-js` headless on main app, `@clerk/clerk-react` on `/pro`) | `src/services/clerk.ts`, `pro-test/src/services/checkout.ts` |
-| Payments | **Dodo Payments** (top-level redirect to hosted checkout + guarded full-page return) | `convex/lib/dodo.ts`; the `dodopayments-checkout` npm SDK is a root dependency only, reached by dormant dashboard code — `/pro` dropped it in #7222 |
+| Payments | **Dodo Payments** (top-level redirect to hosted checkout + guarded full-page return) | `convex/lib/dodo.ts`, `src/services/checkout.ts`, `pro-test/src/services/checkout.ts`; neither browser bundle requires the overlay SDK |
 | Entitlements | **Convex** (`subscriptions` + `entitlements` tables, reactive WebSocket) | `convex/payments/*`, `src/services/entitlements.ts`, `src/services/billing.ts` |
 | Referral attribution | **Dodo → Affonso** (via `metadata.affonso_referral` contract) | `convex/payments/checkout.ts:131`, `convex/payments/subscriptionHelpers.ts:299` |
 | Billing portal | **Dodo customer portal** | `api/customer-portal.ts`, `convex/payments/billing.ts`, `src/services/billing.ts:openBillingPortal` |
@@ -42,17 +42,14 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 
 ### Checkout creation
 
-Two Convex actions at `convex/payments/checkout.ts`:
+One Convex action at `convex/payments/checkout.ts`: `internalCreateCheckout` (internal action), called by `/relay/create-checkout` with the trusted userId from the edge gateway (`api/create-checkout.ts`). There is no public checkout action: a direct Convex call would skip the edge's per-user and per-IP budgets, and Dodo rate-limits our shared API key.
 
-- `createCheckout` (public action): Convex/Clerk auth.
-- `internalCreateCheckout` (internal action): called by `/relay/create-checkout` with trusted userId from the edge gateway.
-
-Both share `_createCheckoutSession()` which:
+It calls `_createCheckoutSession()`, which:
 
 1. Validates `returnUrl` against an allow-listed set of worldmonitor.app origins.
 2. Builds metadata: `wm_user_id` (HMAC-signed via `convex/lib/identitySigning.ts`), `wm_login_email` + `wm_login_email_sig` (the Clerk login email authenticated for this checkout, signed as a **separate** field so the `wm_user_id_sig` payload stays `userId` alone and pre-existing sessions keep verifying), + optional `affonso_referral`.
 3. Calls `checkout()` from `convex/lib/dodo.ts`.
-4. Returns `{ checkout_url }` for overlay open or full-page redirect.
+4. Returns `{ checkout_url }` for hosted checkout navigation.
 
 ### Duplicate guard
 
@@ -63,7 +60,7 @@ Before creating a session, `getCheckoutBlockingSubscription` checks for active/o
 Both surfaces take the same path since #4449: a top-level redirect to Dodo's hosted checkout. The overlay iframe could not host Dodo's nested 3DS/fraud stack.
 
 - **Live path**: `startCheckout()` (`src/services/checkout.ts`, `pro-test/src/services/checkout.ts`) creates the session at the edge endpoint, then navigates full-page. Dodo returns the buyer to the dashboard on the guarded `?wm_checkout=return` contract; `src/services/checkout-return.ts:handleCheckoutReturn()` reads the params, reconciles success only against authoritative Dodo evidence (`subscription_id`/`payment_id` plus a success status), and cleans the URL.
-- **Dormant overlay** (main app only): `src/services/checkout.ts:openCheckout()` / `ensureCheckoutOverlayInitialized()` still contain the `DodoPayments.Checkout.open()` machinery, but `openCheckout` has zero callers. `/pro`'s copy (`initOverlay`) and its `dodopayments-checkout` dependency were removed in #7222; the dashboard's is still pending removal.
+- **Overlay removed**: neither surface initializes the Dodo overlay SDK. The dashboard's unused overlay event handler, callback wiring, watchdog and SDK dependency have been removed. Hosted checkout uses `safeHostedCheckoutUrl()` before navigation; live entitlement subscriptions and the guarded return handler own activation.
 
 ### Webhook → subscription lifecycle
 
@@ -113,7 +110,7 @@ src/services/
 ├── auth-state.ts             # Central auth session
 ├── billing.ts                # Subscription watch + openBillingPortal
 ├── entitlements.ts           # Reactive entitlement state
-├── checkout.ts               # Dodo overlay orchestration
+├── checkout.ts               # Hosted checkout orchestration
 ├── checkout-return.ts        # Post-checkout URL param handling
 └── referral.ts               # Share-link fetch + Web Share API
 
@@ -124,7 +121,7 @@ src/components/
 └── payment-failure-banner.ts # on_hold red banner
 
 convex/payments/
-├── checkout.ts               # createCheckout + internalCreateCheckout
+├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
 └── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl

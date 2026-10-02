@@ -302,16 +302,47 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
 // (#2322).
 export const MAX_MOVE_RATIO = 4;
 
+// How many movers each direction publishes. Presentation only.
+export const MOVERS_PER_DIRECTION = 10;
+
+// How many candidates an all-gated window needs before it is loud enough to
+// fail the run. Deliberately NOT MOVERS_PER_DIRECTION: retuning how many
+// movers the UI shows must not move an alarm threshold. Sample size governs
+// only the severity of an all-gated window, never whether it is trustworthy —
+// too few candidates to tell a systemic parse break from a thin market means
+// stay quiet, not publish anyway.
+//
+// Sized against the real candidate universe, which is far smaller than the
+// query's LIMIT 200 suggests: scrape targets come from basket items
+// (adapters/search.ts discoverTargets), baskets hold 12 items, and enabled
+// retailers per market run 2 to 4. The ceiling is therefore 24 to 48 rows,
+// and a row also needs a current in-stock price AND an observation inside the
+// one-day slot rangeDays back, so live counts sit far below it — market `in`
+// produced 1. A floor of 10 would be 42% of the smallest ceiling and would
+// leave this alarm effectively unreachable. 5 stays above the thin-window
+// noise that caused the #5445 gate to fail the cron while remaining reachable
+// for a market with real coverage.
+//
+// This wants a distribution query against production candidate counts to
+// confirm; it is currently reasoned from the config ceilings, not measured.
+export const MIN_PARSE_BREAK_SAMPLE = 5;
+
 export function isPlausiblePriceMove(changePct: number): boolean {
   if (!Number.isFinite(changePct)) return false;
   const ratio = 1 + changePct / 100; // newPrice / pastPrice
   return ratio >= 1 / MAX_MOVE_RATIO && ratio <= MAX_MOVE_RATIO;
 }
 
+// Null means "candidates existed but none survived the plausibility gate", a
+// third outcome distinct from both a real snapshot and an empty window. The
+// caller must skip the write so the last good snapshot lives out its TTL:
+// publishing zero movers here would overwrite it and, because recordCount()
+// floors movers at 1, stamp the envelope OK — a market whose every candidate
+// failed validation would read as fresh, valid and quiet.
 export async function buildMoversSnapshot(
   marketCode: string,
   rangeDays: number,
-): Promise<WMMoversSnapshot> {
+): Promise<WMMoversSnapshot | null> {
   const now = Date.now();
   const range = `${rangeDays}d`;
 
@@ -375,21 +406,29 @@ export async function buildMoversSnapshot(
     );
   }
   if (all.length > 0 && plausible.length === 0) {
-    // Every candidate was gated as a parse artifact. Publishing an empty but
-    // "healthy" snapshot would overwrite the last good one and render as a
-    // false "no movers" — fail loudly instead; the publish job's per-snapshot
-    // catch keeps the previous snapshot alive under its TTL (#5445).
-    throw new Error(
-      `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+    // Nothing here is publishable either way — the caller skips the write and
+    // the last good snapshot stands (#5445). Only the alarm level depends on
+    // how much evidence there is: a full window of artifacts means the parser
+    // broke, so fail the run. Too thin to make that call and the run stays
+    // green, because one chronically sparse market must not exit the whole
+    // publish job 1 while every other market publishes fine.
+    if (all.length >= MIN_PARSE_BREAK_SAMPLE) {
+      throw new Error(
+        `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+      );
+    }
+    console.warn(
+      `[movers] ${marketCode} ${range}: all ${all.length} candidate(s) gated as implausible — too few to call a parse break; skipping the write and keeping the last good snapshot`,
     );
+    return null;
   }
 
   return {
     marketCode,
     asOf: String(now),
     range,
-    risers: plausible.filter((r) => r.changePct > 0).slice(0, 10),
-    fallers: plausible.filter((r) => r.changePct < 0).slice(0, 10),
+    risers: plausible.filter((r) => r.changePct > 0).slice(0, MOVERS_PER_DIRECTION),
+    fallers: plausible.filter((r) => r.changePct < 0).slice(0, MOVERS_PER_DIRECTION),
     upstreamUnavailable: false,
   };
 }

@@ -5,8 +5,12 @@
  * to 'GET, POST, OPTIONS' (sebuf routes support GET and POST).
  */
 
+// App-serving hosts only; sibling vendor hosts do not inherit browser trust.
+// Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
+const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+
 const PRODUCTION_PATTERNS: RegExp[] = [
-  /^https:\/\/(.*\.)?worldmonitor\.app$/,
+  APP_ORIGIN_PATTERN,
   // Vercel preview deployments under the "eliewm" team scope, e.g.
   //   worldmonitor-git-<branch>-eliewm.vercel.app  (git-branch alias)
   //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
@@ -100,21 +104,21 @@ function originForAllowlistMatch(origin: string): string {
 
 /**
  * Decode Google Translate's hostname rewrite and require the reconstructed
- * host to be worldmonitor.app / *.worldmonitor.app. Suffix-matching the
+ * host to be an enumerated app host. Suffix-matching the
  * encoded label would admit evil--worldmonitor-app.translate.goog (#6411).
  * Keep in sync with api/_cors.js and workers/api-cors-preflight.
  */
 function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
-    if (url.protocol !== 'https:') return false;
+    if (url.protocol !== 'https:' || url.port !== '') return false;
     const host = url.hostname.replace(/\.+$/, '');
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
     if (!encoded || encoded.includes('.')) return false;
     const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
-    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+    return APP_ORIGIN_PATTERN.test(`https://${decoded}`);
   } catch {
     return false;
   }

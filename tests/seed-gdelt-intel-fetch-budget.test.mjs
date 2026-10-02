@@ -65,10 +65,13 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    const elapsed = Date.now() - started;
-
-    assert.ok(elapsed < 3000, `should be bounded by the soft budget, took ${elapsed}ms`);
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS, 'all 6 topics represented, in canonical order');
+    // Tolerant but retained (#7534 review): if the spent-budget check stopped
+    // preventing topics from STARTING, each hanging fetch would be cut off by
+    // the per-topic bound instead and this returns late with byte-identical
+    // output. 5s is ~125x the injected 40ms budget, so only a real regression
+    // reaches it -- unlike the 3s bound, which flaked measuring runner load.
+    assert.ok(Date.now() - started < 5_000, 'the spent budget must stop topics starting at all');
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} carries cached articles`);
     }
@@ -85,10 +88,11 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    const elapsed = Date.now() - started;
-
     assert.ok(attempts >= 1, 'at least one topic fetch was attempted and bounded');
-    assert.ok(elapsed < 3000, `per-topic budget bounded the hang, took ${elapsed}ms`);
+    // Tolerant but retained (#7534 review): a per-topic cutoff that fired tens
+    // of seconds late instead of at the injected 150ms budget produces the same
+    // fallback output and the same `attempts`, so nothing else here sees it.
+    assert.ok(Date.now() - started < 5_000, 'the per-topic budget must bound the hang, not merely end it');
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS);
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} fell back to cache`);

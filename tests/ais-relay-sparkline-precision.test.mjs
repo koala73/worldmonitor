@@ -19,12 +19,40 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { SPARKLINE_SIGNIFICANT_DIGITS, roundSparkline } from '../scripts/_seed-utils.mjs';
+import { parseYahooChart, SPARKLINE_SIGNIFICANT_DIGITS, roundSparkline } from '../scripts/_seed-utils.mjs';
 
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
 // The rounding expression inside _parseYahooChartJson.
 const RELAY_PRECISION_RE = /toPrecision\((\d+)\)/g;
+
+function extractFunction(name) {
+  const start = RELAY_SOURCE.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `could not find ${name} in ais-relay.cjs`);
+  const bodyStart = RELAY_SOURCE.indexOf('{', start);
+  let depth = 0;
+  for (let i = bodyStart; i < RELAY_SOURCE.length; i += 1) {
+    if (RELAY_SOURCE[i] === '{') depth += 1;
+    if (RELAY_SOURCE[i] === '}') depth -= 1;
+    if (depth === 0) return RELAY_SOURCE.slice(start, i + 1);
+  }
+  throw new Error(`unterminated ${name} in ais-relay.cjs`);
+}
+
+const relayObservationGuard = RELAY_SOURCE.includes('function _finiteObservation(')
+  ? extractFunction('_finiteObservation')
+  : '';
+const parseRelayYahooChart = Function(
+  `${relayObservationGuard}\n${extractFunction('_parseYahooChartJson')}\nreturn _parseYahooChartJson;`,
+)();
+
+function chart(meta, close = []) {
+  return { chart: { result: [{ meta, indicators: { quote: [{ close }] } }] } };
+}
+
+function parseRelayChart(data) {
+  return parseRelayYahooChart(JSON.stringify(data));
+}
 
 describe('ais-relay sparkline precision stays in lockstep with _seed-utils', () => {
   it('the canonical constant is what the seeder actually uses', () => {
@@ -48,29 +76,9 @@ describe('ais-relay sparkline precision stays in lockstep with _seed-utils', () 
       );
     }
   });
-
-  it('the relay keeps the reference guard for non-numeric and zero entries', () => {
-    // toSignificantDigits returns `value` untouched when it is not a finite
-    // number, or is 0. Without that guard a string close becomes NaN and
-    // serialises to null, denting the curve on the relay path only.
-    assert.match(
-      RELAY_SOURCE,
-      /typeof v === 'number' && Number\.isFinite\(v\) && v !== 0/,
-      "ais-relay.cjs's sparkline rounding must mirror toSignificantDigits's guard "
-      + '(typeof / isFinite / !== 0) so a malformed upstream degrades identically on both writers.',
-    );
-  });
 });
 
 describe('the two implementations agree on the values they emit', () => {
-  // Behavioural parity: extract the relay's rounding expression and run it
-  // against the same inputs as the canonical helper.
-  const relayRound = (values) => values
-    .filter((v) => v != null)
-    .map((v) => (typeof v === 'number' && Number.isFinite(v) && v !== 0
-      ? Number(v.toPrecision(SPARKLINE_SIGNIFICANT_DIGITS))
-      : v));
-
   const cases = [
     ['float64 noise', [17.209999999999997, 16.829999923706055, 17.3]],
     ['fx-scale values', [0.6917063999999999, 0.6921236, 0.6908956]],
@@ -80,12 +88,45 @@ describe('the two implementations agree on the values they emit', () => {
   ];
 
   for (const [name, input] of cases) {
-    it(`matches roundSparkline for ${name}`, () => {
+    it(`matches parseYahooChart for ${name}`, () => {
+      const data = chart({ regularMarketPrice: 100, previousClose: 100 }, input);
       assert.deepEqual(
-        JSON.stringify(relayRound(input)),
-        JSON.stringify(roundSparkline(input.filter((v) => v != null))),
+        parseRelayChart(data).sparkline,
+        parseYahooChart(data, 'TEST').sparkline,
         `relay and seeder must serialise identically for ${name}`,
       );
     });
   }
+});
+
+describe('the relay rejects missing Yahoo observations', () => {
+  const missing = [null, undefined, '', '   ', false, true, [], [12], {}, 'bad', NaN, Infinity, -Infinity];
+
+  for (const price of missing) {
+    it(`drops a quote whose price is ${JSON.stringify(price)}`, () => {
+      assert.equal(parseRelayChart(chart({ regularMarketPrice: price })), null);
+    });
+  }
+
+  it('filters invalid closes and keeps numeric strings and real zeroes', () => {
+    const result = parseRelayChart(
+      chart({ regularMarketPrice: 100, previousClose: 100 }, [90, null, '95', false, 0, -2, 'bad']),
+    );
+    assert.deepEqual(result.sparkline, [90, 95, 0, -2]);
+    assert.ok(result.sparkline.every(Number.isFinite));
+  });
+
+  it('falls through an unusable previous close', () => {
+    const result = parseRelayChart(chart({
+      regularMarketPrice: 110,
+      chartPreviousClose: 'bad',
+      previousClose: 100,
+    }));
+    assert.equal(result.change, 10);
+  });
+
+  it('keeps genuine zero and negative prices', () => {
+    assert.equal(parseRelayChart(chart({ regularMarketPrice: 0, previousClose: 100 })).change, -100);
+    assert.equal(parseRelayChart(chart({ regularMarketPrice: -10, previousClose: 100 })).price, -10);
+  });
 });

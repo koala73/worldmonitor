@@ -60,7 +60,7 @@ jobs:
     outputs:
       convex: ${{ steps.diff.outputs.convex }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Need the deployed-baseline tag and the pushed head locally so
           # `git diff` can name the changed files authoritatively. `fetch-depth: 0`
@@ -119,20 +119,29 @@ jobs:
           #
           # `convex/` alone is NOT the deployed bundle. Convex modules import
           # runtime values from outside it — shared/mcp-attribution,
-          # shared/company-monitoring-*, scripts/lib/company-monitoring-
-          # classification.mjs, src/utils/country-codes — and `convex deploy`
-          # bundles whatever those imports reach. A change to one of them alters
-          # what production runs while touching nothing under convex/, so a
-          # convex/-only filter skips a deploy that was genuinely due. Same
-          # silent-staleness class as #7359, through a different door.
+          # shared/company-monitoring-*, shared/embed-access, scripts/lib/
+          # company-monitoring-classification.mjs, src/utils/country-codes —
+          # and `convex deploy` bundles whatever those imports reach. A change
+          # to one of them alters what production runs while touching nothing
+          # under convex/, so a convex/-only filter skips a deploy that was
+          # genuinely due. Same silent-staleness class as #7359, through a
+          # different door.
+          #
+          # shared/embed-access.ts is the sharpest case in the list: it holds
+          # `hasEmbedAccess`, the predicate convex/embedKeys.ts gates embed-key
+          # minting on. Off this pathspec, tightening or loosening who may mint
+          # a key merges green and production keeps enforcing the old rule.
           # tests/check-postmerge-deploys.test.mjs derives the real set from the
           # source and fails if this list stops covering it.
           if git diff --name-only "$BEFORE" "$AFTER" -- \
               'convex/' \
+              'shared/checkout-errors.ts' \
               'shared/cloud-preferences-contract.ts' \
+              'shared/pinned-webcams.ts' \
               'shared/mcp-attribution.ts' \
               'shared/company-monitoring-contract.ts' \
               'shared/company-monitoring-evidence.ts' \
+              'shared/embed-access.ts' \
               'shared/legal.ts' \
               'scripts/lib/company-monitoring-classification.mjs' \
               'src/utils/country-codes.ts' | grep -q .; then
@@ -152,7 +161,7 @@ jobs:
     outputs:
       deployed: ${{ steps.deploy.outcome }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Belt and braces with the read-only permission above: no ambient
           # credential in .git/config while third-party install code runs.
@@ -230,7 +239,7 @@ jobs:
   # Temporary, independently retryable production repair. Remove this job and
   # its contract assertions only after a production main-push run reports
   # `alreadyCompleted: true` for marker
-  # `payments.repairStaleOnHoldDerivedState.v1.completedAt`.
+  # `payments.repairStaleOnHoldDerivedState.v2.completedAt`.
   repair-stale-on-hold-derived-state:
     needs: [changes, deploy]
     if: >-
@@ -246,7 +255,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -282,7 +291,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Record the deployed commit
         # Force-moved deliberately — a pointer to the current deployment, not
         # release history. `--force` on the push too: a moved tag is not a

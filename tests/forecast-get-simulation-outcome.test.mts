@@ -14,6 +14,11 @@
 
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { createForecastServiceRoutes, type ForecastServiceHandler } from '../src/generated/server/worldmonitor/forecast/v1/service_server.ts';
+import { validateGeneratedRequest } from '../server/request-validator.ts';
+import { mapErrorToResponse } from '../server/error-mapper.ts';
+import { ApiError } from '../src/generated/server/worldmonitor/forecast/v1/service_server.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -85,6 +90,19 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
     Object.assign(process.env, originalEnv);
   });
 
+  it('rejects malformed and oversized run IDs before any Redis work', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return Response.json({ result: null });
+    }) as typeof fetch;
+    for (const runId of ['arbitrary', '../latest', '1734567890123-abc\n', '9'.repeat(1000) + '-abc', '1734567890123-' + 'a'.repeat(65), null, 123]) {
+      await assert.rejects(getSimulationOutcome(makeCtx(), { runId: runId as string }),
+        (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    }
+    assert.equal(calls, 0);
+  });
+
   /**
    * Install a fetch mock handling:
    *   - GET /get/<encoded-key> → URL-based reads (getRawJson)
@@ -113,6 +131,34 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
       return new Response(JSON.stringify(responseBody), { status: 200 });
     }) as typeof fetch;
   }
+
+  it('publishes a valid query example and enforces its constraints through the generated route', async () => {
+    const spec = JSON.parse(readFileSync(new URL('../docs/api/ForecastService.openapi.json', import.meta.url), 'utf8'));
+    const parameter = spec.paths['/api/forecast/v1/get-simulation-outcome'].get.parameters.find((p: { name: string }) => p.name === 'runId');
+    const field = spec.components.schemas.GetSimulationOutcomeRequest.properties.runId;
+    assert.equal(parameter.schema.pattern, '^([0-9]{13,}-[A-Za-z0-9-]{1,64})?$');
+    assert.equal(parameter.schema.maxLength, 128);
+    assert.equal(parameter.example, field.example);
+    assert.equal(parameter.example, '1789387200000-abc123');
+    assert.match(parameter.example, new RegExp(parameter.schema.pattern));
+    const route = createForecastServiceRoutes({ getSimulationOutcome } as ForecastServiceHandler, {
+      validateRequest: validateGeneratedRequest, onError: mapErrorToResponse,
+    }).find(r => r.path.endsWith('/get-simulation-outcome'))!;
+    let reads = 0;
+    installFetch(() => { reads++; return outcomePayload; });
+    for (const runId of ['example-id', '../secret', '1734567890123-abc\n', '1'.repeat(129) + '-abc', '1734567890123-' + 'a'.repeat(65)]) {
+      const response = await route.handler(new Request('https://wm.test/api/forecast/v1/get-simulation-outcome?' + new URLSearchParams({ runId })));
+      assert.equal(response.status, 400);
+      assert.ok(Array.isArray((await response.json()).violations));
+      assert.equal(reads, 0);
+    }
+    for (const runId of ['', parameter.example, '1734567890123-AbC-123', '1'.repeat(63) + '-' + 'a'.repeat(64)]) {
+      const response = await route.handler(new Request('https://wm.test/api/forecast/v1/get-simulation-outcome?' + new URLSearchParams({ runId })));
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).found, true);
+    }
+    assert.equal(reads, 4);
+  });
 
   it('Path 1 — by-run hit returns the outcome with processing=false, note=""', async () => {
     installFetch((key) => {

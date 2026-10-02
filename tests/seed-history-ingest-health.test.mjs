@@ -53,6 +53,7 @@ const {
   appendSeedHistory,
   makeSeedHistoryAfterPublish,
   HISTORY_INGEST_ALARM_AFTER_FAILURES,
+  HISTORY_INGEST_RUN_RECEIPT_TTL_SECONDS,
   HISTORY_INGEST_SOURCE_VERSION,
   HISTORY_INGEST_TTL_SECONDS,
   describeHistoryAppendOutcome,
@@ -60,6 +61,7 @@ const {
   historyIngestErrorCode,
   historyIngestHealthKey,
   historyIngestMetaKey,
+  historyIngestRunReceiptKey,
   projectHistoryIngestHealth,
   recordHistoryIngestHealth,
 } = await import('../scripts/_seed-history.mjs');
@@ -81,7 +83,17 @@ const AT = Date.UTC(2026, 6, 28, 12, 0, 0);
 const MINUTE = 60_000;
 
 /** One successful relay append. */
-const SUCCESS = { inserted: 7, skipped: 3, chunks: 1, abandoned: 0, failedChunks: 0 };
+const SUCCESS = {
+  inserted: 7,
+  skipped: 3,
+  retracted: 0,
+  chunks: 1,
+  abandoned: 0,
+  failedChunks: 0,
+  inputRecords: 10,
+  normalizedRecords: 10,
+  droppedRecords: 0,
+};
 
 function project(previous, { result = null, error = null, at = AT, runId = 'run-1' } = {}) {
   return projectHistoryIngestHealth(previous, {
@@ -112,6 +124,9 @@ describe('projectHistoryIngestHealth', () => {
     assert.equal(record.lastHealthyAt, AT);
     assert.equal(record.lastInserted, 7);
     assert.equal(record.lastDeduped, 3);
+    assert.equal(record.lastInputRecords, 10);
+    assert.equal(record.lastNormalizedRecords, 10);
+    assert.equal(record.lastDroppedRecords, 0);
     assert.equal(record.lastErrorCode, null);
 
     assert.equal(meta.fetchedAt, AT);
@@ -280,6 +295,24 @@ describe('projectHistoryIngestHealth', () => {
     assert.equal(projected.meta.sourceState, 'degraded', 'but the loss must surface');
   });
 
+  it('records pre-upload drops without changing the scheduled health policy', () => {
+    const droppedBeforeUpload = {
+      ...SUCCESS,
+      inputRecords: 11,
+      normalizedRecords: 10,
+      droppedRecords: 1,
+    };
+    const first = project(null, { result: droppedBeforeUpload });
+    const second = project(first.record, {
+      result: droppedBeforeUpload,
+      at: AT + MINUTE,
+    });
+
+    assert.equal(second.record.lastDroppedRecords, 1);
+    assert.equal(second.record.consecutiveFailures, 0);
+    assert.equal(second.meta.sourceState, 'ok');
+  });
+
   it('lets a clean run clear a lossy streak', () => {
     const lossy = { inserted: 4, skipped: 0, chunks: 1, abandoned: 0, failedChunks: 2 };
     const dropped = project(project(null, { result: SUCCESS }).record, {
@@ -363,15 +396,24 @@ describe('historyIngestErrorCode', () => {
  * Upstash stub. `getResult` is the raw string the record GET returns (null =
  * key absent). Captures every pipeline body so key names and TTLs are testable.
  */
-function stubUpstash({ getResult = null, getStatus = 200, pipelineStatus = 200, pipelineBody } = {}) {
+function stubUpstash({
+  getResult = null,
+  getStatus = 200,
+  pipelineStatus = 200,
+  pipelineBody,
+  pipelineBodies,
+} = {}) {
   const calls = { gets: [], pipelines: [] };
   const fetchImpl = async (url, init) => {
     if (String(url).includes('/pipeline')) {
-      calls.pipelines.push(JSON.parse(init.body));
+      const commands = JSON.parse(init.body);
+      calls.pipelines.push(commands);
       return {
         ok: pipelineStatus >= 200 && pipelineStatus < 300,
         status: pipelineStatus,
-        json: async () => pipelineBody ?? [{ result: 'OK' }, { result: 'OK' }, { result: 'OK' }],
+        json: async () => pipelineBodies?.[calls.pipelines.length - 1]
+          ?? pipelineBody
+          ?? commands.map(() => ({ result: 'OK' })),
       };
     }
     calls.gets.push(String(url));
@@ -414,6 +456,7 @@ describe('recordHistoryIngestHealth', () => {
     assert.match(calls.gets[0], /intel-history%3Aingest-health%3Aconflict%3Aacled-intel%3Av1$/);
 
     assert.equal(calls.pipelines.length, 1);
+    assert.equal(calls.pipelines[0].length, 3, 'scheduled runs do not create run receipts');
     const [recordCmd, metaCmd, activationCmd] = calls.pipelines[0];
 
     assert.deepEqual(recordCmd.slice(0, 2), ['SET', historyIngestHealthKey(DOMAIN, RESOURCE)]);
@@ -436,6 +479,81 @@ describe('recordHistoryIngestHealth', () => {
       ['SET', historyIngestActivationKey(DOMAIN, RESOURCE), '1'],
       'the activation marker carries NO TTL: it must outlive the 7-day record',
     );
+  });
+
+  it('writes bounded run-scoped receipts for one-off recovery only', async () => {
+    const receipts = [];
+    for (const runId of ['run-9', 'run-10']) {
+      const { fetchImpl, calls } = stubUpstash();
+      await recordHistoryIngestHealth(
+        { domain: DOMAIN, resource: RESOURCE, runId, result: SUCCESS },
+        { env: { ...ENV, WM_ONE_OFF_HISTORY_RECEIPT: '1' }, fetchImpl, now: () => AT },
+      );
+      assert.equal(calls.pipelines.length, 2);
+      assert.equal(calls.pipelines[0].length, 3, 'shared health must land before the receipt');
+      assert.equal(calls.pipelines[1].length, 1, 'the receipt uses a separate confirmed write');
+      receipts.push(calls.pipelines[1][0]);
+    }
+
+    assert.notEqual(receipts[0][1], receipts[1][1]);
+    assert.deepEqual(receipts[0].slice(0, 2), [
+      'SET',
+      historyIngestRunReceiptKey(DOMAIN, RESOURCE, 'run-9'),
+    ]);
+    assert.equal(JSON.parse(receipts[0][2]).lastRunId, 'run-9');
+    assert.deepEqual(receipts[0].slice(3), ['EX', HISTORY_INGEST_RUN_RECEIPT_TTL_SECONDS]);
+  });
+
+  it('does not write a one-off receipt when the shared pipeline partially fails', async () => {
+    const { fetchImpl, calls } = stubUpstash({
+      pipelineBodies: [[
+        { error: 'ERR record rejected' },
+        { result: 'OK' },
+        { result: 'OK' },
+      ]],
+    });
+
+    const { value, warns } = await withCapturedWarn(() => recordHistoryIngestHealth(
+      { domain: DOMAIN, resource: RESOURCE, runId: 'run-partial', result: SUCCESS },
+      { env: { ...ENV, WM_ONE_OFF_HISTORY_RECEIPT: '1' }, fetchImpl, now: () => AT },
+    ));
+
+    assert.equal(value, null);
+    assert.equal(warns.length, 1);
+    assert.match(warns[0], /pipeline command failed/);
+    assert.equal(calls.pipelines.length, 1, 'a failed shared write must stop before the receipt request');
+    assert.equal(
+      calls.pipelines.flat().some((command) => command[1] === historyIngestRunReceiptKey(
+        DOMAIN,
+        RESOURCE,
+        'run-partial',
+      )),
+      false,
+    );
+  });
+
+  it('does not write a one-off receipt for malformed or incomplete shared results', async () => {
+    for (const pipelineBody of [
+      [],
+      {},
+      [{ result: 'OK' }],
+      [null, { result: 'OK' }, { result: 'OK' }],
+      [{ result: 'OK' }, {}, { result: 'OK' }],
+      [{ result: 'OK' }, { result: 'OK' }, { result: null }],
+      [{ result: 'QUEUED' }, { result: 'OK' }, { result: 'OK' }],
+    ]) {
+      const { fetchImpl, calls } = stubUpstash({ pipelineBody });
+
+      const { value, warns } = await withCapturedWarn(() => recordHistoryIngestHealth(
+        { domain: DOMAIN, resource: RESOURCE, runId: 'run-malformed', result: SUCCESS },
+        { env: { ...ENV, WM_ONE_OFF_HISTORY_RECEIPT: '1' }, fetchImpl, now: () => AT },
+      ));
+
+      assert.equal(value, null);
+      assert.equal(warns.length, 1);
+      assert.equal(calls.pipelines.length, 1, 'unconfirmed shared writes must stop before the receipt');
+      assert.equal(calls.pipelines[0].length, 3);
+    }
   });
 
   it('continues the failure streak from the persisted record', async () => {
@@ -1003,6 +1121,7 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
 
 describe('a prolonged relay rejection is visible in /api/seed-health', () => {
   const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
+  const CHINA_DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 
   /**
    * Answer every seed-meta GET with a fresh, healthy record so the assertions
@@ -1090,6 +1209,31 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
               poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
             }),
           };
+        }
+        if (key === CHINA_DECISION_META_KEY) {
+          const now = Date.now();
+          return { result: JSON.stringify({
+            fetchedAt: now,
+            recordCount: 6,
+            groupStates: Object.fromEntries([
+              'macro',
+              'policy-enforcement',
+              'cross-strait-activity',
+              'corporate-disclosures',
+              'corridor-conditions',
+              'activity-nowcast',
+            ].map((id) => [id, 'available'])),
+            groupCounts: {
+              populated: 6,
+              partial: 0,
+              stale: 0,
+              unavailable: 0,
+              healthyQuiet: 0,
+              operationallyCovered: 6,
+            },
+            unavailableCauses: {},
+            lastDecisionCoverageSuccessAt: now,
+          }) };
         }
         return { result: JSON.stringify({
           fetchedAt: Date.now(),

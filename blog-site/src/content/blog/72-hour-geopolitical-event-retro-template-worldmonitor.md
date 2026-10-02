@@ -98,7 +98,7 @@ For a chokepoint or supply-chain event:
 For a humanitarian event:
 
 - conflict and humanitarian summaries
-- displacement flows
+- [displacement flows](/blog/posts/track-refugee-displacement-flows-unhcr-worldmonitor/)
 - disease outbreaks
 - natural disasters
 - advisories

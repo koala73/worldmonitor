@@ -251,19 +251,7 @@ describe('get_chokepoint_status narrows source end-to-end through tools/call (#6
     }
   });
 
-  // KNOWN LIMIT, pinned rather than claimed away. api/mcp/dispatch.ts wraps
-  // `_postFilter` in a try/catch that falls back to the RAW, un-narrowed `data`
-  // on any non-stored-contract throw, so the closed-enum guarantee holds only
-  // while the WHOLE filter body avoids throwing — not just the narrowing loop,
-  // which is total over any JSON shape. The reachable trigger today is
-  // pre-existing and downstream of the narrowing: narrowNested dereferences
-  // `c.id` on every chokepoint-baselines row, so a null row throws once a
-  // `chokepoint` argument is supplied.
-  //
-  // This asserts what the code ACTUALLY does, so the day someone makes the
-  // enum fail closed (or the fallback stops discarding the narrowed clone),
-  // this test goes red and the decision is deliberate instead of accidental.
-  it('fails OPEN: a throw later in the filter serves the raw un-narrowed source', async () => {
+  it('keeps the source enum narrowed when a baseline row is null', async () => {
     globalThis.fetch = async (url, init) => {
       const u = url.toString();
       if (u.endsWith('/pipeline')) {
@@ -273,8 +261,6 @@ describe('get_chokepoint_status narrows source end-to-end through tools/call (#6
       if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-flows:v1')}`)) {
         return Response.json({ result: JSON.stringify(FLOWS) });
       }
-      // A null row makes narrowNested's `c.id` deref throw — but only once the
-      // `chokepoint` argument below sends the filter down that branch.
       if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-baselines:v1')}`)) {
         return Response.json({ result: JSON.stringify({ chokepoints: [null] }) });
       }
@@ -291,18 +277,13 @@ describe('get_chokepoint_status narrows source end-to-end through tools/call (#6
       }),
     }));
 
-    assert.equal(res.status, 200, 'the fail-open path must still answer 200, not surface the filter bug');
+    assert.equal(res.status, 200);
     const body = await res.json();
-    assert.ok(body.result?.content, 'tools/call must return content on the fail-open path');
+    assert.ok(body.result?.content, 'tools/call must return content');
     const served = JSON.parse(body.result.content[0].text).data['chokepoint-flows'];
 
-    assert.equal(
-      served.suez.source, 'satellite-blend',
-      'CURRENT behaviour: the fallback discards the narrowed clone, so an undeclared basis reaches the client verbatim despite the outputSchema advertising a closed enum. Change this assertion only alongside a deliberate decision to make the enum fail closed.',
-    );
-    assert.ok(
-      !WIRE_TAXONOMY.includes(served.suez.source),
-      'and that served value is outside the declared enum — this is the gap, stated plainly',
-    );
+    assert.equal(served.suez.source, 'FLOW_SOURCE_UNSPECIFIED');
+    assert.deepEqual(Object.keys(served), ['suez']);
+    assert.deepEqual(JSON.parse(body.result.content[0].text).data['chokepoint-baselines'].chokepoints, []);
   });
 });

@@ -5,6 +5,8 @@
  * Do not import the vendor 511 limiter or that province adapter here.
  */
 
+import { finiteLat, finiteLon, lonLatPair } from './geo-coord.mjs';
+
 export const TORONTO_ROADS_HOST = 'secure.toronto.ca';
 export const TORONTO_ROADS_URL =
   'https://secure.toronto.ca/opendata/cart/road_restrictions/v3?format=json';
@@ -92,26 +94,24 @@ export function decodeEncodedPolyline(encoded) {
   let index = 0;
   let lat = 0;
   let lon = 0;
-  while (index < encoded.length) {
+  const readVarint = () => {
     let shift = 0;
     let result = 0;
-    let byte;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
+    while (index < encoded.length) {
+      const byte = encoded.charCodeAt(index++) - 63;
+      if (byte < 0 || byte > 0x3f) return null;
       result |= (byte & 0x1f) << shift;
+      if (byte < 0x20) return (result & 1) ? ~(result >> 1) : (result >> 1);
       shift += 5;
-    } while (byte >= 0x20 && index < encoded.length);
-    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    }
+    return null;
+  };
+  while (index < encoded.length) {
+    const dlat = readVarint();
+    if (dlat == null) return [];
     lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20 && index < encoded.length);
-    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    const dlng = readVarint();
+    if (dlng == null) return [];
     lon += dlng;
     coordinates.push([lon / 1e5, lat / 1e5]);
   }
@@ -122,10 +122,9 @@ export function parseGeoPolyline(value) {
   if (Array.isArray(value)) {
     const out = [];
     for (const point of value) {
-      if (Array.isArray(point) && point.length >= 2) {
-        const lon = Number(point[0]);
-        const lat = Number(point[1]);
-        if (Number.isFinite(lon) && Number.isFinite(lat)) out.push([lon, lat]);
+      if (Array.isArray(point)) {
+        const pair = lonLatPair(point);
+        if (pair) out.push(pair);
       } else if (typeof point === 'string') {
         out.push(...parseGeoPolyline(point));
       }
@@ -139,13 +138,14 @@ export function parseGeoPolyline(value) {
     const re = /\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
     let match;
     while ((match = re.exec(trimmed))) {
-      const lon = Number(match[1]);
-      const lat = Number(match[2]);
-      if (Number.isFinite(lon) && Number.isFinite(lat)) pairs.push([lon, lat]);
+      const pair = lonLatPair([match[1], match[2]]);
+      if (pair) pairs.push(pair);
     }
     return pairs;
   }
-  return decodeEncodedPolyline(trimmed);
+  // A corrupt encoded polyline decodes to arithmetically valid but
+  // off-planet deltas, so the decoder's output needs the same bounds.
+  return decodeEncodedPolyline(trimmed).filter(point => lonLatPair(point) != null);
 }
 
 export function downsamplePath(path) {
@@ -169,12 +169,6 @@ export function centroidOfPath(path) {
     lat += point[1];
   }
   return [lon / path.length, lat / path.length];
-}
-
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 function textOf(...values) {
@@ -205,8 +199,8 @@ function severityOf(item, { isFullClosure, type } = {}) {
 
 export function normalizeTorontoRoadRecord(item) {
   const type = restrictionType(item);
-  const lat = finiteCoord(item?.latitude ?? item?.Latitude ?? item?.lat);
-  const lon = finiteCoord(item?.longitude ?? item?.Longitude ?? item?.lon ?? item?.lng);
+  const lat = finiteLat(item?.latitude ?? item?.Latitude ?? item?.lat);
+  const lon = finiteLon(item?.longitude ?? item?.Longitude ?? item?.lon ?? item?.lng);
   const decoded = parseGeoPolyline(
     item?.geoPolyline ?? item?.GeoPolyline ?? item?.EncodedPolyline ?? item?.encodedPolyline,
   );

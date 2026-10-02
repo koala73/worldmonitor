@@ -140,7 +140,7 @@ export class LiquidityShiftsPanel extends Panel {
       const emptyCot = `<div class="market-symbol">${t('components.liquidityShifts.noCot')}</div>`;
       const emptyStocks = `<div class="market-symbol">${t('components.liquidityShifts.noStocks')}</div>`;
       const reportDateLine = cotResp.reportDate
-        ? `<div class="market-symbol liquidity-report-date">${t('components.liquidityShifts.reportDate', { date: cotResp.reportDate })}</div>`
+        ? `<div class="market-symbol liquidity-report-date">${escapeHtml(t('components.liquidityShifts.reportDate', { date: cotResp.reportDate }))}</div>`
         : '';
 
       this.setSafeContent(unsafeRawHtml(`

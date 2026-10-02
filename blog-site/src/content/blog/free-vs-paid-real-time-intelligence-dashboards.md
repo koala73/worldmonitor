@@ -6,7 +6,7 @@ keywords: "free vs paid intelligence dashboard, real-time intelligence dashboard
 audience: "Buyers evaluating intelligence tooling, analysts justifying budget, procurement teams, researchers deciding whether to upgrade"
 heroImage: "/blog/images/blog/free-vs-paid-real-time-intelligence-dashboards.jpg"
 pubDate: "2026-07-07"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-05"
 ---
 
 Most buyers evaluating real-time intelligence dashboards compare the wrong things. The honest answer to "free versus paid" is that free tiers now cover **awareness** — seeing what is happening in the world right now — remarkably well, while paid tiers sell the **decision layer**: analysis, alert routing, programmatic access, and deployment control. If your job ends at "know what's happening," a good free dashboard is enough. If your job is "decide, notify, and integrate," you are buying one of those three things, and you should price them separately.
@@ -61,8 +61,8 @@ Realistic anchors across the spectrum:
 | Free / open source | $0 | Aggregated multi-domain awareness, community support | World Monitor free tier, self-hosted OSINT stacks |
 | Prosumer / analyst | ~$30–80/month | AI analysis, digests, alerting, personal workflows | World Monitor Pro at $39.99/month |
 | API / developer | ~$100–250/month | Programmatic quotas, webhooks, structured data | World Monitor API at $99.99–299.99/month |
-| Enterprise SaaS | Six figures/year | Team seats, SLAs, integrations, support | Dataminr-class licenses |
-| Terminal / platform | $24,000/year per seat and up | Deep proprietary data, execution workflows | Bloomberg Terminal; Palantir deployments start in the millions |
+| Enterprise SaaS | Undisclosed (enterprise-negotiated) | Team seats, SLAs, integrations, support | Dataminr-class licenses |
+| Terminal / platform | $24,000/year per seat (reported by Quartz, 2022) | Deep proprietary data, execution workflows | Bloomberg Terminal |
 
 Two things follow from this table. First, the gap between $0 and $24,000 is not 24,000× the intelligence — it is depth in one domain (Bloomberg's tick-level market data) or organizational integration (Palantir), which you should buy only if you specifically need it. We've published a [detailed head-to-head comparison](https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/) if that's your decision. Second, the prosumer tier is new: the $40/month analyst desk simply did not exist a few years ago, and it is the right answer for most individual professionals.
 
@@ -116,7 +116,7 @@ Delivery. Free tiers require you to look at the dashboard; paid tiers push intel
 
 **How much should an individual analyst expect to pay in 2026?**
 
-Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($359.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat, Dataminr licenses in six figures — and price the specific capability gap, not the brand.
+Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($359.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat as reported by Quartz in 2022, and negotiated enterprise licensing for vendors such as Dataminr — and price the specific capability gap, not the brand.
 
 **Do paid intelligence platforms train AI on my queries?**
 

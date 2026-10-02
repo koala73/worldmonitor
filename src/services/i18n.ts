@@ -116,9 +116,9 @@ function notifyLanguageResourcesLoaded(language: SupportedLanguage): void {
 const ENGLISH_PRELOAD_MAX_ATTEMPTS = 3;
 const ENGLISH_PRELOAD_BASE_DELAY_MS = 2000;
 
-function preloadEnglishTranslation(attempt = 0): void {
+async function preloadEnglishTranslation(attempt = 0): Promise<void> {
   if (loadedLanguages.has('en')) return;
-  void ensureLanguageLoaded('en')
+  return ensureLanguageLoaded('en')
     .then((language) => notifyLanguageResourcesLoaded(language))
     .catch((error) => {
       // English now lives in its own lazy chunk. If that chunk fails, the eager
@@ -143,7 +143,7 @@ function preloadEnglishTranslation(attempt = 0): void {
 }
 
 // Initialize i18n
-export async function initI18n(): Promise<void> {
+export async function initI18n({ waitForFullTranslation = false }: { waitForFullTranslation?: boolean } = {}): Promise<void> {
   if (i18next.isInitialized) {
     const currentLanguage = normalizeLanguage(i18next.language || 'en');
     await ensureLanguageLoaded(currentLanguage);
@@ -203,7 +203,8 @@ export async function initI18n(): Promise<void> {
 
   const detectedLanguage = normalizeLanguage(i18next.language || 'en');
   if (detectedLanguage === 'en') {
-    preloadEnglishTranslation();
+    if (waitForFullTranslation) await preloadEnglishTranslation();
+    else void preloadEnglishTranslation();
   } else {
     await Promise.all([
       ensureLanguageLoaded(detectedLanguage),

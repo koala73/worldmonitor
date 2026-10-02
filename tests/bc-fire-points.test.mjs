@@ -22,6 +22,7 @@ import {
   enrichOrAppendBc,
   fetchApprovedBcUrl,
   fetchBcFirePoints,
+  hasCompleteWorldwideWildfireCoverage,
   latLonTimeKey,
   mergeWildfireSourcesWithBc,
   parseBcFireGeoJson,
@@ -36,6 +37,7 @@ const geojson = readFileSync(resolve(here, 'fixtures/wildfire/bc-current-fire-po
 const cwfisActiveJson = readFileSync(resolve(here, 'fixtures/wildfire/cwfis-national-activefires.json'), 'utf8');
 const parseModuleSrc = readFileSync(resolve(here, '../scripts/wildfire/bc-fire-points.mjs'), 'utf8');
 const cwfisModuleSrc = readFileSync(resolve(here, '../scripts/wildfire/cwfis-wfs.mjs'), 'utf8');
+const firmsModuleSrc = readFileSync(resolve(here, '../scripts/wildfire/firms-area.mjs'), 'utf8');
 const testSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
 const seederSrc = readFileSync(resolve(here, '../scripts/seed-fire-detections.mjs'), 'utf8');
 const aisRelaySrc = readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8');
@@ -61,6 +63,20 @@ function firmsDetection(overrides = {}) {
 }
 
 describe('bc live fixture coordinates and status', () => {
+  it('decodes one XML entity layer in incident names', () => {
+    const fixture = kml.replace('Brunswick Creek', 'Creek &amp;lt;north&amp;gt; &amp; south');
+    const parsed = parseBcFireKml(fixture);
+    assert.equal(parsed.fireDetections.find(fire => fire.fireNumber === 'V10742')?.incidentName,
+      'Creek &lt;north&gt; & south');
+  });
+
+  it('decodes numeric XML references once without corrupting invalid scalars', () => {
+    const fixture = kml.replace('Brunswick Creek', 'Creek &#233; &#x1F332; &#38;lt; &#x110000; &#xD800;');
+    const parsed = parseBcFireKml(fixture);
+    assert.equal(parsed.fireDetections.find(fire => fire.fireNumber === 'V10742')?.incidentName,
+      'Creek é 🌲 &lt; &#x110000; &#xD800;');
+  });
+
   it('parses live KML placemark coordinates and fire status/kind', () => {
     const parsed = parseBcFireKml(kml);
     assert.ok(parsed.fireDetections.length >= 4);
@@ -335,14 +351,135 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(mostlyDark._firmsState, 'ok', 'some coverage survived, so not a full outage');
     assert.equal(mostlyDark._firmsPartial, true);
     assert.equal(mostlyDark._firmsFailedCalls, 26);
+    assert.equal(
+      hasCompleteWorldwideWildfireCoverage(mostlyDark),
+      false,
+      'an incomplete worldwide snapshot must preserve the last-good keys',
+    );
     assert.deepEqual(
-      canadianWildfireAfterPublish(mostlyDark).freshnessMetaPatch,
+      canadianWildfireAfterPublish(mostlyDark, {
+        previousMeta: { sourceState: 'ok' },
+      }).freshnessMetaPatch,
       {
         sourceState: 'degraded',
         errorCode: 'FIRMS_PARTIAL_COVERAGE',
         canadaSourceFailureCount: 0,
+        consecutiveSourceFailures: 1,
+        lastSourceFailureCode: 'FIRMS_PARTIAL_COVERAGE',
       },
       'partial worldwide coverage must be visible, not silent',
+    );
+  });
+
+  it('debounces only the first identical partial FIRMS failure while usable data survives', () => {
+    const now = Date.parse('2026-09-04T20:40:00Z');
+    const dataKey = healthTesting.BOOTSTRAP_KEYS.wildfires;
+    const metaKey = healthTesting.SEED_META.wildfires.key;
+    const partial = {
+      _firmsState: 'ok',
+      _firmsPartial: true,
+      _cwfisState: 'ok',
+      _bcState: 'ok',
+    };
+    const firstPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: { sourceState: 'ok' },
+    }).freshnessMetaPatch;
+    const classify = (patch, { hasData = true, fetchedAt = now - 60_000 } = {}) => (
+      healthTesting.classifyKey('wildfires', dataKey, { allowOnDemand: false }, {
+        keyStrens: new Map(hasData ? [[dataKey, 256]] : []),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt,
+          recordCount: hasData ? 100 : 0,
+          ...patch,
+        })]]),
+        keyMetaErrors: new Map(),
+        now,
+      })
+    );
+
+    assert.equal(firstPatch.consecutiveSourceFailures, 1);
+    assert.equal(firstPatch.lastSourceFailureCode, 'FIRMS_PARTIAL_COVERAGE');
+    assert.deepEqual(classify(firstPatch), {
+      status: 'OK',
+      records: 100,
+      errorCode: 'FIRMS_PARTIAL_COVERAGE',
+      consecutiveSourceFailures: 1,
+      lastSourceFailureCode: 'FIRMS_PARTIAL_COVERAGE',
+      sourceFailurePending: true,
+      seedAgeMin: 1,
+      maxStaleMin: 360,
+    });
+
+    const secondPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: { fetchedAt: now - 60_000, recordCount: 100, ...firstPatch },
+    }).freshnessMetaPatch;
+    assert.equal(secondPatch.consecutiveSourceFailures, 2);
+    assert.equal(classify(secondPatch).status, 'SEED_ERROR');
+
+    const legacyProductionPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_PARTIAL_COVERAGE',
+      },
+    }).freshnessMetaPatch;
+    assert.equal(
+      legacyProductionPatch.consecutiveSourceFailures,
+      2,
+      'the first repaired run must preserve the existing production warning',
+    );
+    assert.equal(classify(legacyProductionPatch).status, 'SEED_ERROR');
+    assert.equal(classify({
+      sourceState: 'degraded',
+      errorCode: 'FIRMS_PARTIAL_COVERAGE',
+    }).status, 'SEED_ERROR', 'legacy production metadata fails closed during rollout');
+
+    const unknownHistoryPatch = canadianWildfireAfterPublish(partial).freshnessMetaPatch;
+    assert.equal(
+      unknownHistoryPatch.consecutiveSourceFailures,
+      2,
+      'an unreadable predecessor cannot restart the one-run grace window',
+    );
+    assert.equal(classify(unknownHistoryPatch).status, 'SEED_ERROR');
+
+    const changedIdentityPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_SOURCE_FAILED',
+        consecutiveSourceFailures: 7,
+        lastSourceFailureCode: 'FIRMS_SOURCE_FAILED',
+      },
+    }).freshnessMetaPatch;
+    assert.equal(
+      changedIdentityPatch.consecutiveSourceFailures,
+      1,
+      'a different source failure cannot advance this failure identity',
+    );
+
+    assert.equal(
+      classify(firstPatch, { fetchedAt: now - 5 * 60_000 }).status,
+      'OK',
+      'a usable last-good snapshot receives the same single-run grace',
+    );
+    assert.equal(
+      classify(firstPatch, { fetchedAt: now - 361 * 60_000 }).status,
+      'STALE_SEED',
+      'the first-failure grace cannot hide a last-good snapshot past its freshness budget',
+    );
+    assert.notEqual(
+      classify(firstPatch, { hasData: false }).status,
+      'OK',
+      'missing global data fails immediately even on the first partial failure',
+    );
+    assert.deepEqual(
+      canadianWildfireAfterPublish({
+        _firmsState: 'ok',
+        _firmsPartial: false,
+        _cwfisState: 'ok',
+        _bcState: 'ok',
+      }, { previousMeta: secondPatch }).freshnessMetaPatch,
+      { sourceState: 'ok' },
+      'a successful natural run clears the streak fields from the replacement metadata',
     );
   });
 
@@ -363,6 +500,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(emptyButLive._firmsState, 'ok');
     assert.equal(emptyButLive._firmsErrorCode, null);
     assert.equal(emptyButLive._firmsPartial, false, 'full coverage is not partial');
+    assert.equal(hasCompleteWorldwideWildfireCoverage(emptyButLive), true);
     assert.equal(
       canadianWildfireAfterPublish(emptyButLive).freshnessMetaPatch.sourceState,
       'ok',
@@ -380,6 +518,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(canadaOnly._firmsErrorCode, 'FIRMS_SOURCE_FAILED');
     assert.equal(canadaOnly._cwfisState, 'ok');
     assert.equal(canadaOnly._bcState, 'ok');
+    assert.equal(hasCompleteWorldwideWildfireCoverage(canadaOnly), false);
 
     // Both Canadian sources are healthy, so canadaSourceFailureCount stays 0 —
     // but the canonical key just lost its worldwide coverage. Never report 'ok'.
@@ -419,6 +558,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       sourceState: 'degraded',
       errorCode: 'BC_WILDFIRE_SOURCE_FAILED',
       canadaSourceFailureCount: 1,
+      failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
     });
 
     const now = Date.parse('2026-08-14T12:00:00Z');
@@ -448,6 +588,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       sourceState: 'degraded',
       errorCode: 'CWFIS_PRESCRIBED_FAILED',
       canadaSourceFailureCount: 1,
+      failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
     });
     assert.deepEqual(canadianWildfireAfterPublish({
       _cwfisState: 'failed',
@@ -458,6 +599,7 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       sourceState: 'degraded',
       errorCode: 'CANADA_WILDFIRE_SOURCES_FAILED',
       canadaSourceFailureCount: 2,
+      failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
     });
   });
 
@@ -474,6 +616,189 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
 });
 
 describe('host allowlist, cache key, transport', () => {
+  it('reports bounded WFS failure fields without response prose or request secrets', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    for (const code of ['InvalidParameterValue', 'SECRET_VALUE']) {
+      await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl({ startIndex: 1000 }), {
+        fetchFn: async () => new Response(`<ows:ExceptionReport><ows:Exception exceptionCode="${code}" locator="sortBy"><ows:ExceptionText>SECRET_BODY</ows:ExceptionText></ows:Exception></ows:ExceptionReport>`, { status: 400 }),
+      }), /HTTP_400/);
+    }
+    assert.deepEqual(JSON.parse(logs[0]), { event: 'bc_fire_request_failure', request: 'wfs',
+      startIndex: 1000, status: 400, exceptionCode: 'InvalidParameterValue', locator: 'sortBy' });
+    assert.equal(JSON.parse(logs[1]).exceptionCode, null);
+    assert.doesNotMatch(logs.join(''), /SECRET/);
+  });
+
+  it('omits malformed provider response text from retention warnings', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(value));
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000,
+      fireDetections: parseBcFireGeoJson(geojson).fireDetections };
+    const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, fetchFn: async url =>
+      new Response(new URL(url).pathname.includes('/kml/') ? '<kml/>' : 'SECRET_PROVIDER_BODY') });
+    assert.equal(result._bcState, 'failed');
+    assert.deepEqual(result.fireDetections, previousSnapshot.fireDetections);
+    assert.doesNotMatch(logs.join(''), /SECRET/);
+    assert.deepEqual(logs.map(value => JSON.parse(value)), [{ event: 'bc_fire_source_failure',
+      errorCode: 'BC_WILDFIRE_SOURCE_FAILED', retainedFetchedAt: previousSnapshot.fetchedAt }]);
+  });
+
+  it('retains BC coverage and source clocks after WFS HTTP 400 while FIRMS updates', async () => {
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    let wfsCalls = 0;
+    const data = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({ fireDetections: [firmsDetection({ id: 'fresh-firms', detectedAt: now })] }),
+      fetchCwfis: async () => ({ fireDetections: [] }),
+      fetchBcWildfire: () => fetchBcFirePoints({ previousSnapshot, nowMs: now, fetchFn: async url => {
+        if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+        wfsCalls++;
+        return new Response('<ows:ExceptionReport/>', { status: 400 });
+      } }),
+    });
+    assert.equal(data._bcCount, rows.length, 'HTTP 400 must not erase the last-good BC source');
+    assert.equal(data._bcState, 'failed');
+    assert.equal(data._bcSnapshot.fetchedAt, previousSnapshot.fetchedAt);
+    assert.equal(data._bcSnapshot.lastAttemptAt, now);
+    assert.deepEqual(data._bcSnapshot.fireDetections, rows);
+    assert.equal(data.fireDetections.find(row => row.id === 'fresh-firms').detectedAt, now);
+    assert.equal(wfsCalls, 1, 'permanent HTTP 400 must not retry');
+    assert.equal(canadianWildfireAfterPublish(data).freshnessMetaPatch.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  });
+
+  it('replaces retained BC rows only after complete valid coverage, including a valid empty response', async () => {
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    const page = JSON.parse(geojson);
+    for (const mode of ['invalid', 'partial', 'empty', 'recovered']) {
+      let calls = 0;
+      const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, pageSize: 2, fetchFn: async url => {
+        if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+        calls++;
+        if (mode === 'invalid') return Response.json({ type: 'FeatureCollection', features: [{}] });
+        if (mode === 'empty') return Response.json({ type: 'FeatureCollection', features: [], numberMatched: 0 });
+        if (mode === 'partial' && calls === 2) return new Response('', { status: 400 });
+        return Response.json({ type: 'FeatureCollection', features: page.features.slice(0, 2), numberMatched: mode === 'partial' ? 4 : 2 });
+      } });
+      const failed = mode === 'invalid' || mode === 'partial';
+      assert.equal(result._bcState, failed ? 'failed' : 'ok');
+      assert.equal(result._bcSnapshot.fetchedAt, failed ? previousSnapshot.fetchedAt : now);
+      assert.deepEqual(result.fireDetections, failed ? rows : mode === 'empty' ? [] : rows.slice(0, 2));
+      assert.equal(calls, mode === 'partial' || mode === 'empty' ? 2 : 1);
+    }
+    const zero = { ...previousSnapshot, fireDetections: [] };
+    const failedEmpty = await fetchBcFirePoints({ previousSnapshot: zero, nowMs: now,
+      fetchFn: async () => new Response('', { status: 400 }) });
+    assert.equal(failedEmpty._bcState, 'failed');
+    assert.equal(failedEmpty._bcSnapshot.fetchedAt, zero.fetchedAt);
+    assert.deepEqual(failedEmpty.fireDetections, []);
+  });
+
+  it('rejects absent, expired, future, and malformed BC retention evidence', async () => {
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const good = { version: 1, fetchedAt: now - 600_000, fireDetections: parseBcFireGeoJson(geojson).fireDetections };
+    for (const previousSnapshot of [null, {}, { ...good, version: 0 },
+      { ...good, fetchedAt: now - 120 * 60_000 }, { ...good, fetchedAt: now + 1 },
+      { ...good, fireDetections: [{}] }, { ...good, fetchedAt: String(good.fetchedAt) }]) {
+      await assert.rejects(fetchBcFirePoints({ previousSnapshot, nowMs: now,
+        fetchFn: async () => new Response('', { status: 400 }) }), error => {
+        assert.deepEqual(error._bcSnapshot.fireDetections, []);
+        assert.equal(error._bcSnapshot.fetchedAt, null);
+        return true;
+      });
+    }
+  });
+
+  it('confirms sudden empty WFS coverage without replaying cached empty pages', async t => {
+    const logs = [];
+    t.mock.method(console, 'warn', value => logs.push(JSON.parse(value)));
+    const now = Date.parse('2026-09-13T16:00:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    for (const mode of ['recovered', 'empty', 'http', 'malformed', 'invalid-count', 'partial', 'budget']) {
+      const offsets = [];
+      const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, cache: new Map(),
+        pageSize: 2, maxPages: mode === 'budget' ? 2 : 3, fetchFn: async (url, init) => {
+          if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+          assert.ok(init.signal instanceof AbortSignal);
+          const offset = Number(new URL(url).searchParams.get('startIndex'));
+          offsets.push(offset);
+          if (offsets.length === 1 || mode === 'empty') {
+            return Response.json({ type: 'FeatureCollection', features: [], numberMatched: 0, numberReturned: 0 });
+          }
+          if (mode === 'http') return new Response('', { status: 400 });
+          if (mode === 'malformed') return Response.json({ type: 'FeatureCollection', features: [{}] });
+          if (mode === 'invalid-count') return Response.json({ type: 'FeatureCollection', features: [], numberMatched: -1 });
+          if (mode === 'partial' && offset === 2) {
+            return Response.json({ type: 'FeatureCollection', features: [], numberMatched: 4 });
+          }
+          return Response.json({ type: 'FeatureCollection', numberMatched: 4,
+            features: JSON.parse(geojson).features.slice(offset, offset + 2) });
+        } });
+      const failed = !['recovered', 'empty'].includes(mode);
+      assert.equal(result._bcState, failed ? 'failed' : 'ok', mode);
+      assert.deepEqual(result.fireDetections, mode === 'empty' ? [] : rows, mode);
+      assert.equal(result._bcSnapshot.fetchedAt, failed ? previousSnapshot.fetchedAt : now, mode);
+      assert.equal(result._bcSnapshot.lastAttemptAt, now);
+      assert.deepEqual(offsets, ['recovered', 'partial'].includes(mode) ? [0, 0, 2] : [0, 0], mode);
+      if (mode === 'recovered') assert.deepEqual(logs, [
+        { event: 'bc_fire_empty_confirmation', confirmation: false, startIndex: 0, numberMatched: 0, numberReturned: 0 },
+        { event: 'bc_fire_empty_confirmation', confirmation: true, startIndex: 0, numberMatched: 4, numberReturned: 2 },
+        { event: 'bc_fire_empty_confirmation', confirmation: true, startIndex: 2, numberMatched: 4, numberReturned: 2 },
+      ]);
+      logs.length = 0;
+    }
+  });
+
+  it('rejects malformed declared counts instead of treating them as confirmed empty', async () => {
+    for (const [field, value] of [['numberMatched', -1], ['numberMatched', 0.5],
+      ['numberMatched', 'invalid'], ['numberReturned', 'invalid']]) {
+      await assert.rejects(fetchBcFirePoints({ fetchFn: async url =>
+        new URL(url).pathname.includes('/kml/') ? new Response('<kml/>')
+          : Response.json({ type: 'FeatureCollection', features: [], [field]: value }) }), /invalid.*count/i);
+    }
+    assert.equal(parseBcFireGeoJson({ type: 'FeatureCollection', features: [], numberMatched: 'unknown' }).numberMatched, null);
+  });
+
+  it('accepts complete empty coverage without confirmation when no usable populated source exists', async () => {
+    const now = Date.parse('2026-09-13T16:00:00Z');
+    const good = { version: 1, fetchedAt: now - 600_000, fireDetections: parseBcFireGeoJson(geojson).fireDetections };
+    for (const previousSnapshot of [null, { ...good, fetchedAt: now - 7200_000 },
+      { ...good, fetchedAt: now + 1 }, { ...good, fireDetections: [{}] }, { ...good, fireDetections: [] }]) {
+      let calls = 0;
+      const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, fetchFn: async url => {
+        if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+        calls++;
+        return Response.json({ type: 'FeatureCollection', features: [], numberMatched: 0 });
+      } });
+      assert.equal(calls, 1);
+      assert.equal(result._bcState, 'ok');
+      assert.deepEqual(result.fireDetections, []);
+      assert.equal(result._bcSnapshot.fetchedAt, now);
+    }
+  });
+
+  it('removes newly inactive BC-only fires without an empty confirmation', async () => {
+    const now = Date.parse('2026-09-13T16:00:00Z');
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: parseBcFireGeoJson(geojson).fireDetections };
+    const inactive = JSON.parse(geojson);
+    for (const feature of inactive.features) feature.properties.FIRE_STATUS = 'Out';
+    let calls = 0;
+    const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      calls++;
+      return Response.json(inactive);
+    } });
+    assert.equal(calls, 1);
+    assert.equal(result._bcState, 'ok');
+    assert.equal(result._bcSnapshot.fetchedAt, now);
+    assert.deepEqual(enrichOrAppendBc([], result.fireDetections).fireDetections, []);
+  });
+
   it('includes the layer name PROT_CURRENT_FIRE_PNTS_SP in the cache key', () => {
     const kmlKey = bcFireCacheKey({ kind: 'kml' });
     const wfsKey = bcFireCacheKey({ kind: 'wfs', startIndex: 0 });
@@ -676,11 +1001,16 @@ describe('module import contract', () => {
     assert.match(seederSrc, /mergeWildfireSourcesWithBc/);
     assert.match(seederSrc, /fetchBcFirePoints/);
     assert.match(seederSrc, /fetchCwfisFires/);
-    assert.match(seederSrc, /afterPublish:\s*canadianWildfireAfterPublish/);
+    assert.match(seederSrc, /afterPublish:[\s\S]{0,160}canadianWildfireAfterPublish/);
+    assert.match(seederSrc, /afterValidationSkip:[\s\S]{0,160}canadianWildfireAfterPublish/);
+    assert.match(seederSrc, /validateFn:\s*hasCompleteWorldwideWildfireCoverage/);
     assert.match(seederSrc, /wildfire:fires:v1/);
     assert.doesNotMatch(seederSrc, /wildfire:canada/);
     assert.doesNotMatch(seederSrc, /fetch\.bind/);
+    assert.match(firmsModuleSrc, /firms\.modaps\.eosdis\.nasa\.gov/);
+    assert.doesNotMatch(firmsModuleSrc, /firms2\.modaps\.eosdis\.nasa\.gov/);
     assert.match(railwaySrc, /scripts\/wildfire\/bc-fire-points\.mjs/);
     assert.match(railwaySrc, /scripts\/wildfire\/cwfis-wfs\.mjs/);
+    assert.match(railwaySrc, /scripts\/wildfire\/firms-area\.mjs/);
   });
 });

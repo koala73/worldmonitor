@@ -8,13 +8,20 @@
  *
  * IndexNow requires all URLs in one request to share the same host.
  * Submits separate batches per subdomain.
- * The committed root sitemap and blog source corpus are the submission
- * inventory, so adding a canonical page does not require a second URL list.
+ * The CLI reads the published sitemap tree, including blog and documentation.
+ * Use --dry-run to inspect the batches without notifying search engines.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import {
+  MACHINE_READABLE_URLS,
+  SITE_ORIGIN,
+  SITEMAP_INDEX_MEMBERS,
+  SITEMAP_MAIN_FILENAME,
+} from './build-sitemap.mjs';
 
 // Keys must be genuinely random (`openssl rand -hex 16`). The previous value
 // (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
@@ -26,6 +33,7 @@ const BLOG_DIR = new URL('../blog-site/src/content/blog/', import.meta.url);
 const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.url);
 const GLOSSARY_SOURCE = new URL('../blog-site/src/data/glossary.ts', import.meta.url);
 const ROOT_SITEMAP = new URL('../public/sitemap.xml', import.meta.url);
+const LOCAL_SITEMAP_URL = new URL(`../public/${SITEMAP_MAIN_FILENAME}`, import.meta.url);
 const USER_AGENT = 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)';
 // Every host is submitted sequentially inside one 10-minute job, and fetch has
 // no default deadline — one unresponsive search engine would otherwise stall
@@ -45,12 +53,27 @@ function uniqueSorted(urls) {
   return [...new Set(urls)].sort();
 }
 
-function getRootSitemapUrls() {
+export function getRootSitemapUrls() {
   const source = readFileSync(ROOT_SITEMAP, 'utf8');
-  const urls = [...source.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+  // /sitemap.xml is the root index: submissions follow the local URL set it
+  // lists, never the index-member URLs themselves.
+  const urlsetSource = /<sitemapindex[\s>]/i.test(source)
+    ? readLocalIndexMember(source)
+    : source;
+  const urls = [...urlsetSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
     .map((match) => decodeXml(match[1].trim()));
   if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no canonical URLs`);
   return urls;
+}
+
+export function readLocalIndexMember(indexSource) {
+  const member = [...indexSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+    .map((match) => decodeXml(match[1].trim()))
+    .find((loc) => loc.endsWith(`/${SITEMAP_MAIN_FILENAME}`));
+  if (!member) {
+    throw new Error(`${ROOT_SITEMAP.pathname} index lists no local ${SITEMAP_MAIN_FILENAME} member`);
+  }
+  return readFileSync(LOCAL_SITEMAP_URL, 'utf8');
 }
 
 const ROOT_SITEMAP_URLS = getRootSitemapUrls();
@@ -99,6 +122,8 @@ const APEX_URLS = uniqueSorted(getSitemapUrlsForHost(APEX_HOST));
 const WWW_URLS = uniqueSorted([
   ...getSitemapUrlsForHost(WWW_HOST),
   ...getBlogUrls(),
+  // Kept out of the sitemap (#8608) but still announced to IndexNow.
+  ...MACHINE_READABLE_URLS,
 ]);
 
 /**
@@ -138,6 +163,74 @@ export const INDEXNOW_BATCHES = Object.freeze([
   // AI-crawler stub surface middleware.ts serves, so submit both.
   ...INDEXNOW_VARIANT_HOSTS.map((host) => batch(host, urlsForHost(host, [`https://${host}/`]))),
 ]);
+
+export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {}) {
+  const origin = SITE_ORIGIN;
+  const pending = [`${origin}/sitemap.xml`];
+  const seen = new Set();
+  const pages = new Set();
+  const hosts = new Set(INDEXNOW_BATCHES.map(config => config.host));
+  while (pending.length > 0) {
+    const location = pending.shift();
+    const sitemapUrl = new URL(location);
+    if (sitemapUrl.origin !== origin || sitemapUrl.username || sitemapUrl.password || sitemapUrl.search || sitemapUrl.hash || !sitemapUrl.pathname.endsWith('.xml')) {
+      throw new Error(`invalid sitemap location: ${location}`);
+    }
+    if (seen.has(location)) continue;
+    seen.add(location);
+    if (seen.size > 50) throw new Error('published sitemap tree exceeds 50 documents');
+    const response = await fetchImpl(location, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { Accept: 'application/xml', 'User-Agent': USER_AGENT },
+    });
+    if (response.status !== 200) throw new Error(`${location} returned ${response.status}, expected direct 200`);
+    const source = (await response.text()).trim();
+    const root = /^(?:<\?xml[^?]*\?>\s*)?<(sitemapindex|urlset)\b[^>]*>([\s\S]*)<\/\1>\s*$/.exec(source);
+    if (!root) throw new Error(`invalid sitemap document: ${location}`);
+    const tag = root[1] === 'sitemapindex' ? 'sitemap' : 'url';
+    const entryPattern = new RegExp(`<!--[\\s\\S]*?-->|<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
+    const entries = [...root[2].matchAll(entryPattern)].filter(([entry]) => !entry.startsWith('<!--'));
+    if (root[2].replace(entryPattern, '').trim()) throw new Error(`invalid sitemap entries: ${location}`);
+    const urls = entries.map(([entry]) => {
+      const locations = [...entry.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)];
+      if (locations.length !== 1) throw new Error(`expected one location per sitemap entry: ${location}`);
+      return decodeXml(locations[0][1].trim());
+    });
+    if (urls.length === 0) throw new Error(`empty sitemap: ${location}`);
+    if (location === `${origin}/sitemap.xml`
+      && (root[1] !== 'sitemapindex' || urls.length !== SITEMAP_INDEX_MEMBERS.length
+        || new Set(urls).size !== urls.length || urls.some(url => !SITEMAP_INDEX_MEMBERS.includes(url)))) {
+      throw new Error('published root sitemap members do not match the declared inventory');
+    }
+    if (root[1] === 'sitemapindex') {
+      pending.push(...urls);
+    } else {
+      for (const url of urls) {
+        const page = new URL(url);
+        if (page.protocol !== 'https:' || !hosts.has(page.host) || page.username || page.password || page.hash || page.pathname.endsWith('.xml')) {
+          throw new Error(`invalid published page URL: ${url}`);
+        }
+        pages.add(url);
+      }
+    }
+  }
+  for (const family of ['docs', 'blog']) {
+    if (![...pages].some(url => url.startsWith(`${origin}/${family}/`))) {
+      throw new Error(`published sitemap has no ${family} pages`);
+    }
+  }
+  return INDEXNOW_BATCHES.map(config => {
+    const urls = [...pages].filter(url => new URL(url).hostname === config.host);
+    if (urls.length === 0) throw new Error(`published sitemap has no pages for ${config.host}`);
+    if (INDEXNOW_VARIANT_HOSTS.includes(config.host)) urls.push(`https://${config.host}/`);
+    if (config.host === WWW_HOST) urls.push(...MACHINE_READABLE_URLS);
+    const uniqueUrls = uniqueSorted(urls);
+    if (uniqueUrls.length > 10_000) throw new Error(`${config.host} exceeds the IndexNow 10000 URL batch limit`);
+    return { ...config, urls: uniqueUrls };
+  });
+}
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([
   'https://api.indexnow.org/IndexNow',
@@ -212,11 +305,12 @@ export async function submitIndexNowBatch(
  * Submit all requested host batches and fail after reporting every endpoint result.
  */
 export async function runIndexNowSubmission({
-  batches = INDEXNOW_BATCHES,
+  batches,
   endpoints = INDEXNOW_ENDPOINTS,
   fetchImpl = globalThis.fetch,
   logger = console,
 } = {}) {
+  batches ??= await getPublishedBatches({ fetchImpl });
   let failed = false;
   for (const batchConfig of batches) {
     logger.log(`\n[${batchConfig.host}] (${batchConfig.urls.length} URLs)`);
@@ -250,10 +344,15 @@ function parseHostFilter(argv) {
 
 async function main() {
   const host = parseHostFilter(process.argv.slice(2));
+  if (host && !INDEXNOW_BATCHES.some(config => config.host === host)) throw new Error(`unknown IndexNow host: ${host}`);
+  const published = await getPublishedBatches();
   const batches = host
-    ? INDEXNOW_BATCHES.filter((batchConfig) => batchConfig.host === host)
-    : INDEXNOW_BATCHES;
-  if (host && batches.length === 0) throw new Error(`unknown IndexNow host: ${host}`);
+    ? published.filter((batchConfig) => batchConfig.host === host)
+    : published;
+  if (process.argv.includes('--dry-run')) {
+    console.log(JSON.stringify(batches.map(({ host: batchHost, urls }) => ({ host: batchHost, urls })), null, 2));
+    return;
+  }
   await runIndexNowSubmission({ batches });
 }
 

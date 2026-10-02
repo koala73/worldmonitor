@@ -191,18 +191,18 @@ export class CollectorDeliveryError extends Error {
  *
  * The original error is retained on `cause` so failure classification stays
  * exact — `collectorFailureFromError` unwraps it rather than flattening every
- * wrapped timeout into `network`.
+ * wrapped timeout into `network`. A class-field write after `super()` throws
+ * `TypeError: Cannot add property cause, object is not extensible` when `Error`
+ * returned a non-extensible instance (WORLDMONITOR-12E). `name` stays on the
+ * prototype for the same reason.
  */
 export class CollectorTransportError extends Error {
-  readonly cause: unknown;
-
   constructor(cause: unknown) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    super(`Umami collector beacon transport rejected: ${detail}`);
-    this.name = 'CollectorTransportError';
-    this.cause = cause;
+    super(`Umami collector beacon transport rejected: ${detail}`, { cause });
   }
 }
+CollectorTransportError.prototype.name = 'CollectorTransportError';
 
 /**
  * Depth of the serialization queue in front of the single in-flight slot.

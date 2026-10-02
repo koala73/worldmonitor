@@ -22,12 +22,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   MAX_ADVISORY_FEED_BYTES,
+  MIN_ADVISORY_COUNTRY_COVERAGE,
   buildByCountryMap,
   capPerSource,
   fetchAll,
+  validateAdvisoryReport,
   fetchFeed,
   mapFeedItems,
   parseUsLevel,
@@ -44,6 +49,11 @@ const STATE_DEPT = {
   url: 'https://travel.state.gov/_res/rss/TAsTWs.xml',
   levelParser: 'us',
 };
+
+const COUNTRY_CODES = [...new Set(Object.values(JSON.parse(readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../scripts/shared/country-names.json'),
+  'utf8',
+))))];
 
 function rssFor(items) {
   const body = items.map(i =>
@@ -146,6 +156,27 @@ describe('seed-security-advisories — advisory level index coverage', () => {
     assert.equal(byCountry.TH, 'normal');
   });
 
+  it('accepts a one MiB-plus country register within the bounded response budget', async () => {
+    const xml = rssFor(registerItems()).replace('</channel>', `${' '.repeat(1_100_000)}</channel>`);
+    const bytes = Buffer.byteLength(xml, 'utf8');
+    const mapped = await fetchFeed(STATE_DEPT, async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (name) => name === 'content-length' ? String(bytes) : null },
+      text: async () => xml,
+    }));
+
+    assert.equal(
+      MAX_ADVISORY_FEED_BYTES,
+      2 * 1024 * 1024,
+      'feed limit must stay at the reviewed two MiB bound',
+    );
+    assert.ok(bytes > 1024 * 1024, 'fixture must exceed the former one MiB limit');
+    assert.ok(bytes <= MAX_ADVISORY_FEED_BYTES, 'fixture must remain inside the configured limit');
+    assert.equal(mapped.length, REGISTER.length);
+    assert.ok(Object.keys(buildByCountryMap(mapped)).length >= REGISTER.length - 1);
+  });
+
   it('uses the injected fetcher for every feed', async () => {
     let requestCount = 0;
     const report = await fetchAll({
@@ -226,6 +257,72 @@ describe('seed-security-advisories — advisory level index coverage', () => {
     assert.deepEqual(
       buildByCountryMap(mapped), {},
       'level-less bulletins carry no advisory level, so they must not enter the index',
+    );
+  });
+});
+
+// The previous fix addressed the CAUSE (truncation discarding levels) but left
+// the OUTCOME unguarded, so the same symptom returned: on 2026-09-03 production
+// again served `advisoryLevel: ""` for every country, with the CII falling back
+// to its hardcoded table. `validate` only required `advisories.length > 0`, and
+// the ~20 health/news feeds (WHO, CDC, ECDC) alone satisfy that while
+// contributing nothing to `byCountry` — every one of their items is `level:
+// 'info'`, which buildByCountryMap skips. So a travel-advisory feed outage
+// published a payload with an empty level index and passed validation.
+//
+// Guard the outcome: the index is the whole point of the key, so a report
+// without one must fail the seed and let the previous value live out its TTL.
+describe('advisory report validation fails closed on an empty level index', () => {
+  const newsItem = { title: 'WHO update', level: 'info', country: 'FR' };
+  const levelItem = { title: 'Syria advisory', level: 'do-not-travel', country: 'SY' };
+
+  it('rejects a report whose byCountry index is empty', () => {
+    assert.equal(
+      validateAdvisoryReport({ advisories: [newsItem], byCountry: {} }),
+      false,
+      'news-only feeds satisfy advisories.length but publish no travel levels',
+    );
+    assert.equal(validateAdvisoryReport({ advisories: [newsItem] }), false, 'missing byCountry');
+    assert.equal(validateAdvisoryReport({ advisories: [], byCountry: { SY: 'do-not-travel' } }), false);
+    assert.equal(validateAdvisoryReport(null), false);
+  });
+
+  it('rejects a degraded but nonempty level index', () => {
+    assert.equal(
+      validateAdvisoryReport({
+        advisories: [newsItem, levelItem],
+        byCountry: { SY: 'do-not-travel' },
+      }),
+      false,
+      'one surviving travel level must not replace a complete country index',
+    );
+  });
+
+  it('accepts a report that carries both a news list and a level index', () => {
+    const byCountry = Object.fromEntries(
+      COUNTRY_CODES.slice(0, MIN_ADVISORY_COUNTRY_COVERAGE).map((country) => [
+        country,
+        'caution',
+      ]),
+    );
+    assert.equal(
+      validateAdvisoryReport({
+        advisories: [newsItem, levelItem],
+        byCountry,
+      }),
+      true,
+    );
+  });
+
+  it('is the validator the seed actually runs', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../scripts/seed-security-advisories.mjs'),
+      'utf8',
+    );
+    assert.match(
+      source,
+      /validateFn:\s*validateAdvisoryReport/,
+      'runSeed must be wired to the exported validator, not a second private copy',
     );
   });
 });

@@ -18,10 +18,27 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import vm from 'node:vm';
+import {
+  makeSwSandbox,
+  loadHandlerInto,
+  pushEvent,
+  notifClickEvent,
+  addWindowClient,
+  clickNotification,
+  PRIMARY_ORIGIN,
+  VERTICAL_ORIGIN,
+  SERVING_ORIGINS,
+} from './helpers/sw-sandbox.mjs';
+import {
+  FIRST_PARTY_PATH_LAUNDERING,
+  ORIGIN_SPOOFING_SCHEMES,
+  LOOKALIKE_HOSTS,
+  UNPARSEABLE,
+  HOSTILE_SCHEMES,
+  rawsOf,
+} from './fixtures/hostile-push-urls.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const handlerSource = readFileSync(resolve(__dirname, '../public/push-handler.js'), 'utf-8');
 
 // ── Pure helpers ──────────────────────────────────────────────────────────
 
@@ -65,78 +82,8 @@ describe('push config helpers', () => {
 
 // ── Service worker handler ────────────────────────────────────────────────
 
-/**
- * Build a minimal SW-ish sandbox: fake `self` with an event bus, a fake
- * `clients` API, and a tracking registration. Events are dispatched
- * synchronously via emit() and we capture what the handler requested.
- */
-function makeSwSandbox() {
-  const listeners = new Map();
-  const shown = [];
-  const windowClients = [];
-  let opened = null;
-
-  const self = {
-    location: { origin: 'https://worldmonitor.app' },
-    addEventListener(name, fn) {
-      if (!listeners.has(name)) listeners.set(name, []);
-      listeners.get(name).push(fn);
-    },
-    registration: {
-      showNotification(title, opts) {
-        shown.push({ title, opts });
-        return Promise.resolve();
-      },
-    },
-  };
-  const clients = {
-    matchAll: async () => windowClients,
-    openWindow: async (url) => { opened = url; return { url }; },
-  };
-  return {
-    self, clients, shown, windowClients,
-    get opened() { return opened; },
-    emit(name, event) {
-      const fns = listeners.get(name) ?? [];
-      for (const fn of fns) fn(event);
-    },
-  };
-}
-
-function loadHandlerInto(sandbox) {
-  const ctx = vm.createContext({
-    self: sandbox.self,
-    clients: sandbox.clients,
-    URL,
-  });
-  vm.runInContext(handlerSource, ctx);
-}
-
-function pushEvent(payload) {
-  const waits = [];
-  return {
-    data: payload === null ? null : {
-      json() { return typeof payload === 'string' ? JSON.parse(payload) : payload; },
-      text() { return typeof payload === 'string' ? payload : JSON.stringify(payload); },
-    },
-    waitUntil(p) { waits.push(p); },
-    waits,
-  };
-}
-
-function notifClickEvent(data) {
-  let closed = false;
-  const waits = [];
-  return {
-    notification: {
-      data,
-      close() { closed = true; },
-    },
-    waitUntil(p) { waits.push(p); },
-    get closed() { return closed; },
-    waits,
-  };
-}
+// Sandbox, handler loader, and event factories live in ./helpers/sw-sandbox.mjs
+// so the relay suite can drive the same handler (see the cross-module test there).
 
 describe('push-handler.js — push event', () => {
   it('renders a notification with the payload fields', () => {
@@ -154,7 +101,9 @@ describe('push-handler.js — push event', () => {
     assert.equal(title, 'Your brief is ready');
     assert.equal(opts.body, 'Iran threatens Strait of Hormuz closure · 11 more threads');
     assert.equal(opts.tag, 'brief_ready:user_abc');
-    assert.equal(opts.data.url, 'https://worldmonitor.app/api/brief/user_abc/2026-04-18?t=xxx');
+    // classifyClickTarget also runs on the push event, so an apex-absolute
+    // payload is normalized onto the serving origin before it is stored.
+    assert.equal(opts.data.url, `${box.origin}/api/brief/user_abc/2026-04-18?t=xxx`);
     // brief_ready should requireInteraction — don't let a lock-screen
     // swipe dismiss the CTA before the user reads the brief.
     assert.equal(opts.requireInteraction, true);
@@ -214,7 +163,7 @@ describe('push-handler.js — notificationclick', () => {
     assert.equal(ev.closed, true);
     // Wait for the waitUntil chain
     for (const p of ev.waits) await p;
-    assert.equal(box.opened, 'https://worldmonitor.app/api/brief/user_a/2026-04-18?t=abc');
+    assert.equal(box.opened, `${box.origin}/api/brief/user_a/2026-04-18?t=abc`);
   });
 
   it('focuses + navigates an existing same-origin window instead of opening', async () => {
@@ -222,7 +171,7 @@ describe('push-handler.js — notificationclick', () => {
     let focused = false;
     let navigated = null;
     box.windowClients.push({
-      url: 'https://worldmonitor.app/',
+      url: `${box.origin}/`,
       focus() { focused = true; return this; },
       navigate(url) { navigated = url; return Promise.resolve(); },
     });
@@ -231,7 +180,7 @@ describe('push-handler.js — notificationclick', () => {
     box.emit('notificationclick', ev);
     for (const p of ev.waits) await p;
     assert.equal(focused, true);
-    assert.equal(navigated, 'https://worldmonitor.app/api/brief/u/d?t=t');
+    assert.equal(navigated, `${box.origin}/api/brief/u/d?t=t`);
     assert.equal(box.opened, null, 'openWindow must NOT fire when a window is focused');
   });
 
@@ -242,6 +191,164 @@ describe('push-handler.js — notificationclick', () => {
     box.emit('notificationclick', ev);
     for (const p of ev.waits) await p;
     assert.equal(box.opened, '/');
+  });
+});
+
+// REGRESSION: off-origin notification click targets.
+//
+// Push payload URLs come from event.payload.link — published verbatim by Pro
+// accounts through /api/notify or ingested verbatim from external RSS feeds.
+// The article must stay reachable, so an off-origin https link is kept and
+// opened in its OWN tab. What must never happen is navigating the
+// already-open dashboard tab there: that replaces a trusted surface with a
+// page WorldMonitor does not control (phishing pivot / tab-nabbing).
+// Relay-side scheme discipline: tests/notification-relay-push-click-origin.test.mjs.
+describe('push-handler.js — off-origin click targets', () => {
+  const OFF_ORIGIN = [
+    ['https://example.com/wm-verify-account', 'https://example.com/wm-verify-account'],
+    ['//example.com/wm-verify-account', 'https://example.com/wm-verify-account'],
+    ['https://worldmonitor.app.evil.com/', 'https://worldmonitor.app.evil.com/'],
+  ];
+  // Not same-origin, not plain https, or carrying credentials purely to make a
+  // hostile host read as ours — these can never become a navigation. Taken from
+  // the shared corpus, not copied: this suite introduced that fixture to stop
+  // the two suites drifting, so keeping a local list here would preserve
+  // exactly the drift the fixture exists to remove.
+  const REJECTED = rawsOf(HOSTILE_SCHEMES);
+
+  it('opens an off-origin article in a NEW tab instead of navigating the dashboard', async () => {
+    for (const [raw, expected] of OFF_ORIGIN) {
+      const box = makeSwSandbox();
+      let navigated = null;
+      let focused = false;
+      // The client must sit on the origin actually serving the worker,
+      // otherwise it is never same-origin, the reuse branch is unreachable,
+      // and "we did not navigate the dashboard" passes because there was no
+      // dashboard tab to navigate.
+      box.windowClients.push({
+        url: `${box.origin}/`,
+        focus() { focused = true; return this; },
+        navigate(url) { navigated = url; return Promise.resolve(); },
+      });
+      loadHandlerInto(box);
+      const ev = notifClickEvent({ url: raw });
+      box.emit('notificationclick', ev);
+      for (const p of ev.waits) await p;
+      assert.equal(navigated, null, `must NOT navigate the dashboard tab to ${raw}`);
+      assert.equal(focused, false, `must NOT steal focus for ${raw}`);
+      assert.equal(box.opened, expected, `must open ${raw} in a new tab`);
+    }
+  });
+
+  it('collapses non-https, non-same-origin targets to the dashboard', async () => {
+    for (const hostile of REJECTED) {
+      const box = makeSwSandbox();
+      loadHandlerInto(box);
+      box.emit('push', pushEvent({ title: 'Security notice', body: 'b', url: hostile }));
+      assert.equal(box.shown[0].opts.data.url, '/', `must not store ${hostile}`);
+
+      const ev = notifClickEvent({ url: hostile });
+      box.emit('notificationclick', ev);
+      for (const p of ev.waits) await p;
+      assert.equal(box.opened, '/', `must not open ${hostile}`);
+    }
+  });
+
+  it('never navigates an existing window off-origin, whatever the payload', async () => {
+    for (const [raw] of [...OFF_ORIGIN, ...REJECTED.map(r => [r])]) {
+      const box = makeSwSandbox();
+      let navigated = null;
+      box.windowClients.push({
+        url: `${box.origin}/`,
+        focus() { return this; },
+        navigate(url) { navigated = url; return Promise.resolve(); },
+      });
+      loadHandlerInto(box);
+      const ev = notifClickEvent({ url: raw });
+      box.emit('notificationclick', ev);
+      for (const p of ev.waits) await p;
+      assert.ok(
+        navigated === null || new URL(navigated, box.origin).origin === box.origin,
+        `navigate() must stay on-origin, got ${navigated} for ${raw}`,
+      );
+    }
+  });
+
+  it('still reuses the dashboard tab for same-origin targets', async () => {
+    const box = makeSwSandbox();
+    let navigated = null;
+    let focused = false;
+    box.windowClients.push({
+      url: `${box.origin}/`,
+      focus() { focused = true; return this; },
+      navigate(url) { navigated = url; return Promise.resolve(); },
+    });
+    loadHandlerInto(box);
+    box.emit('push', pushEvent({ title: 't', url: 'https://worldmonitor.app/dashboard?x=1' }));
+    assert.equal(box.shown[0].opts.data.url, `${box.origin}/dashboard?x=1`);
+    const ev = notifClickEvent({ url: '/settings' });
+    box.emit('notificationclick', ev);
+    for (const p of ev.waits) await p;
+    assert.equal(navigated, '/settings', 'the open dashboard tab is reused');
+    assert.equal(focused, true);
+    assert.equal(box.opened, null, 'openWindow must NOT fire when a window is reused');
+  });
+
+  // openWindow rejects with InvalidAccessError when no window in the origin
+  // has transient activation. `return clients.openWindow(...)` inside the
+  // try block hands that rejection straight to event.waitUntil() instead of
+  // the local catch, which surfaces an unhandled rejection in the SW.
+  it('swallows an openWindow rejection instead of rejecting waitUntil', async () => {
+    for (const url of ['https://example.com/article', '/settings']) {
+      const box = makeSwSandbox();
+      box.clients.openWindow = async () => { throw new Error('InvalidAccessError'); };
+      loadHandlerInto(box);
+      const ev = notifClickEvent({ url });
+      box.emit('notificationclick', ev);
+      await assert.doesNotReject(
+        Promise.all(ev.waits),
+        `waitUntil must not reject when openWindow fails for ${url}`,
+      );
+    }
+  });
+
+  // A focus rejection after a SUCCESSFUL navigate must not also open a tab.
+  //
+  // #8384 changed `return c.focus()` to `return await c.focus()`, which
+  // correctly stops the rejection escaping into waitUntil() — but it also
+  // routes that rejection into the inner catch, so the loop falls through and
+  // openWindow fires for a URL the dashboard tab was already navigated to. The
+  // user gets two tabs on the same page: exactly the duplicated app state this
+  // branch's own comment says it exists to avoid.
+  //
+  // Asserting only doesNotReject cannot see that. Mutating the catch to an
+  // early `return` — which disables the fallback entirely — left the old
+  // assertion green.
+  it('does not open a duplicate tab when focus rejects after a successful navigate', async () => {
+    const box = makeSwSandbox();
+    let navigated = null;
+    box.windowClients.push({
+      url: `${box.origin}/`,
+      focus() { return Promise.reject(new Error('focus denied')); },
+      navigate(url) { navigated = url; return Promise.resolve(); },
+    });
+    loadHandlerInto(box);
+    const ev = notifClickEvent({ url: '/settings' });
+    box.emit('notificationclick', ev);
+    await assert.doesNotReject(Promise.all(ev.waits));
+    assert.equal(navigated, '/settings', 'the open tab is still navigated');
+    assert.equal(box.opened, null, 'content was already delivered — no second tab');
+  });
+
+  // The fallback itself must stay intact: when NO same-origin client exists,
+  // openWindow is still the right outcome.
+  it('still opens a window when no same-origin client exists', async () => {
+    const box = makeSwSandbox();
+    loadHandlerInto(box);
+    const ev = notifClickEvent({ url: '/settings' });
+    box.emit('notificationclick', ev);
+    await Promise.all(ev.waits);
+    assert.equal(box.opened, '/settings');
   });
 });
 
@@ -308,5 +415,203 @@ describe('setWebPushChannelForUser endpoint dedupe', () => {
     // pattern. If either drifts, the review finding reappears.
     assert.match(src, /row\.endpoint === args\.endpoint/, 'setWebPushChannelForUser must compare rows by endpoint');
     assert.match(src, /await ctx\.db\.delete\(row\._id\)/, 'matching rows must be deleted before upsert');
+  });
+});
+
+// REGRESSION: the service worker must be origin-agnostic.
+//
+// The worker is served from www.worldmonitor.app and from five vertical
+// subdomains; the apex only ever 301s. But the relay stamps apex-absolute URLs
+// into payloads, so an origin comparison classifies them cross-origin and opens
+// a duplicate tab instead of reusing the dashboard — the row PR #8384's own
+// table calls "unchanged". Already-displayed notifications never expire and are
+// dispatched to whatever worker is active at click time, so the worker is the
+// only half that can fix payloads already sitting in notification centers.
+//
+// The rewrite that fixes that is also the riskiest line here: re-attaching a
+// preserved path to self.location.origin is a relativization, and a first-party
+// URL whose pathname begins `//` turns into an off-origin destination on the
+// dashboard tab. That is the exact attack the click guard exists to stop, so it
+// gets its own named case below.
+describe('push-handler.js — origin-agnostic click targets', () => {
+  const brief = '/api/brief/u/2026-09-19?t=signed-token';
+
+  for (const origin of SERVING_ORIGINS) {
+    it(`reuses the open dashboard tab for an apex-absolute target on ${origin}`, async () => {
+      const box = makeSwSandbox(origin);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: 'https://worldmonitor.app/dashboard' });
+      assert.equal(box.opened, null, 'must not open a second tab');
+      assert.ok(client.navigated, 'must navigate the open tab');
+      assert.equal(
+        new URL(client.navigated, origin).href,
+        `${origin}/dashboard`,
+        'must land on the serving origin',
+      );
+    });
+
+    it(`reuses the open dashboard tab for a www-absolute target on ${origin}`, async () => {
+      const box = makeSwSandbox(origin);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: `${PRIMARY_ORIGIN}/settings` });
+      assert.equal(box.opened, null);
+      assert.equal(new URL(client.navigated, origin).href, `${origin}/settings`);
+    });
+
+    it(`preserves query and fragment when rewriting on ${origin}`, async () => {
+      const box = makeSwSandbox(origin);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: `https://worldmonitor.app${brief}` });
+      assert.equal(
+        new URL(client.navigated, origin).href,
+        `${origin}${brief}`,
+        'a signed brief token must survive the rewrite',
+      );
+    });
+  }
+
+  it('never navigates the dashboard tab off-origin for a laundered first-party path', async () => {
+    for (const origin of SERVING_ORIGINS) {
+      for (const { raw, why } of FIRST_PARTY_PATH_LAUNDERING) {
+        const box = makeSwSandbox(origin);
+        const client = addWindowClient(box);
+        loadHandlerInto(box);
+        await clickNotification(box, { url: raw });
+        // The round-trip origin check fails for these, so they collapse to the
+        // dashboard rather than being rewritten. Asserting the destination's
+        // ORIGIN — not that the string lacks a `//` prefix — is the point: the
+        // backslash spelling passes a prefix check and still resolves to
+        // evil.com, so only re-resolution proves the guard held.
+        assert.equal(box.opened, null, `${raw} must not open a tab (${why})`);
+        assert.equal(client.navigated, '/', `${raw} must collapse to the dashboard (${why})`);
+        assert.equal(
+          new URL(client.navigated, origin).origin,
+          origin,
+          `navigate() must stay on-origin for ${raw}`,
+        );
+      }
+    }
+  });
+
+  it('does not rewrite a sibling vertical target onto the current origin', async () => {
+    const box = makeSwSandbox(PRIMARY_ORIGIN);
+    const client = addWindowClient(box);
+    loadHandlerInto(box);
+    await clickNotification(box, { url: `${VERTICAL_ORIGIN}/dashboard` });
+    assert.equal(client.navigated, null, 'a different surface is not ours to rewrite');
+    assert.equal(box.opened, `${VERTICAL_ORIGIN}/dashboard`, 'it gets its own tab');
+  });
+
+  it('does not rewrite apex-exempt paths that Cloudflare serves on the apex', async () => {
+    // Matched against the NORMALIZED pathname, so a dot-segment escaping an
+    // exempt prefix is classified by where it actually lands, not how it reads.
+    {
+      const box = makeSwSandbox(PRIMARY_ORIGIN);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: 'https://worldmonitor.app/oauth/../dashboard' });
+      assert.equal(box.opened, null, 'a dot-segment escaping /oauth/ is not apex-served');
+      assert.equal(client.navigated, `${PRIMARY_ORIGIN}/dashboard`);
+    }
+    for (const path of ['/oauth/register', '/mcp', '/.well-known/api-catalog']) {
+      const box = makeSwSandbox(PRIMARY_ORIGIN);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: `https://worldmonitor.app${path}` });
+      assert.equal(client.navigated, null, `${path} must not be navigated onto www`);
+      assert.equal(
+        box.opened,
+        `https://worldmonitor.app${path}`,
+        `${path} is served on the apex and must keep it`,
+      );
+    }
+  });
+
+  it('collapses origin-spoofing schemes before the origin comparison', async () => {
+    for (const { raw, why } of ORIGIN_SPOOFING_SCHEMES) {
+      const box = makeSwSandbox(PRIMARY_ORIGIN);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: raw });
+      assert.equal(client.navigated, '/', `${raw} must collapse to the dashboard (${why})`);
+    }
+  });
+
+  it('does not rewrite lookalike hosts', async () => {
+    for (const { raw } of LOOKALIKE_HOSTS) {
+      const box = makeSwSandbox(PRIMARY_ORIGIN);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: raw });
+      assert.equal(client.navigated, null, `${raw} is not first-party`);
+      assert.equal(box.opened, raw, `${raw} gets its own tab`);
+    }
+  });
+
+  it('collapses unparseable targets to the dashboard', async () => {
+    for (const { raw, why } of UNPARSEABLE) {
+      const box = makeSwSandbox(PRIMARY_ORIGIN);
+      const client = addWindowClient(box);
+      loadHandlerInto(box);
+      await clickNotification(box, { url: raw });
+      assert.equal(client.navigated, '/', `${raw} must collapse (${why})`);
+    }
+  });
+});
+
+// The worker hand-copies the Cloudflare apex-exemption list because a service
+// worker cannot import from a test module — making it a THIRD uncoordinated
+// copy (the zone rule, the published-corpus guard, and now this). If the zone
+// gains a sixth exempt path and only one copy learns about it, the worker
+// silently rewrites it and reproduces the #4938 POST-to-GET 405. This binds the
+// two in-repo copies so they cannot drift apart unnoticed.
+describe('push-handler.js — apex exemption list stays in sync', () => {
+  it('mirrors APEX_SERVED from the published-corpus guard', () => {
+    const read = (rel) => readFileSync(resolve(__dirname, rel), 'utf-8');
+    const patternsIn = (src, constName) => {
+      const block = src.match(new RegExp(`${constName}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
+      assert.ok(block, `${constName} must exist`);
+      return (block[1].match(/\/\^[^\n,]*\//g) ?? []).map((p) => p.trim()).sort();
+    };
+
+    const guard = patternsIn(read('./agent-corpus-canonical-host.test.mjs'), 'APEX_SERVED');
+    const worker = patternsIn(read('../public/push-handler.js'), 'APEX_SERVED_PATHS');
+    // THREE copies exist, not two: the corpus guard, the worker, and the relay.
+    // Binding only two left the relay's free to drift, reproducing the #4938
+    // POST-to-GET 405 on the half that talks to push services.
+    const relay = patternsIn(read('../scripts/notification-relay.cjs'), 'APEX_SERVED_PATHS');
+
+    assert.ok(guard.length >= 5, 'the corpus guard must still carry the exemption list');
+    assert.deepEqual(
+      worker,
+      guard,
+      'public/push-handler.js must exempt exactly the paths Cloudflare serves on the apex',
+    );
+    assert.deepEqual(
+      relay,
+      guard,
+      'scripts/notification-relay.cjs must exempt exactly the same paths',
+    );
+  });
+
+  it('keeps the generic first-party host list identical across both halves', () => {
+    // The other duplicated policy, and the one that decides what counts as
+    // "the dashboard". It had no guard at all: if one side gained a host the
+    // other did not, the relay would relativize a target the worker refuses to
+    // rewrite — the two halves silently disagreeing, which is the bug class
+    // this whole change exists to remove.
+    const read = (rel) => readFileSync(resolve(__dirname, rel), 'utf-8');
+    const hostsIn = (src) => {
+      const block = src.match(/GENERIC_FIRST_PARTY_HOSTS\s*=\s*\[([^\]]*)\]/);
+      assert.ok(block, 'GENERIC_FIRST_PARTY_HOSTS must exist');
+      return (block[1].match(/'[^']+'/g) ?? []).map((h) => h.replace(/'/g, '')).sort();
+    };
+    const worker = hostsIn(read('../public/push-handler.js'));
+    const relay = hostsIn(read('../scripts/notification-relay.cjs'));
+    assert.ok(worker.length >= 2, 'the worker must carry the generic host list');
+    assert.deepEqual(relay, worker, 'both halves must agree on what "the dashboard" means');
   });
 });

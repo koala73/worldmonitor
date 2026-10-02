@@ -3,8 +3,30 @@ import { Satellite, RadioTower, Anchor, Server, Cable, Megaphone } from 'lucide-
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import { SectionHeading } from './SectionHeading';
+import depthProofStats from '../generated/depth-stats.json';
 
-const STAT_CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+// Band proof numerals are measured at build time (see buildDepthProofStats in
+// scripts/generate-public-product-facts.mjs) from the same registries that
+// power the hero rail and ai-search.md — never hardcoded adjectives. The sub
+// promises "Every number below is live"; labels stay in locale files, numerals
+// bypass i18n because they are universal.
+const DEPTH_PROOF_STATS = [
+  { value: depthProofStats.mapLayers, labelKey: 'welcome.depth.s1l' },
+  { value: depthProofStats.feeds, labelKey: 'welcome.depth.s2l' },
+  { value: depthProofStats.providers, labelKey: 'welcome.depth.s3l' },
+  { value: depthProofStats.chokepoints, labelKey: 'welcome.depth.s4l' },
+  { value: depthProofStats.instabilityCountries, labelKey: 'welcome.depth.s5l' },
+  { value: depthProofStats.resilienceRanked, labelKey: 'welcome.depth.s6l' },
+  { value: depthProofStats.submarineCables, labelKey: 'welcome.depth.s7l' },
+  { value: depthProofStats.pipelinesLng, labelKey: 'welcome.depth.s8l' },
+  { value: depthProofStats.aiDatacenters, labelKey: 'welcome.depth.s9l' },
+  { value: depthProofStats.hotspots, labelKey: 'welcome.depth.s10l' },
+  { value: depthProofStats.stockExchanges, labelKey: 'welcome.depth.s11l' },
+  { value: depthProofStats.mcpTools, labelKey: 'welcome.depth.s12l' },
+  { value: depthProofStats.commands, labelKey: 'welcome.depth.s13l' },
+  { value: depthProofStats.languages, labelKey: 'welcome.depth.s14l' },
+  { value: depthProofStats.alertOrigins, labelKey: 'welcome.depth.s15l' },
+] as const;
 
 const NUGGETS = [
   { icon: Satellite, n: 1 },
@@ -24,25 +46,27 @@ export const Depth = () => (
         title={t('welcome.depth.title')}
         subtitle={t('welcome.depth.sub')}
       />
-      <motion.div
+      <motion.dl
         initial={false}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.6 }}
         className="data-grid !grid-cols-2 sm:!grid-cols-3 xl:!grid-cols-5"
       >
-        {STAT_CELLS.map(n => (
-          <div key={n} className="data-cell text-center">
-            <div className="text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{t(`welcome.depth.s${n}v`)}</div>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-wm-muted mt-2">{t(`welcome.depth.s${n}l`)}</div>
+        {DEPTH_PROOF_STATS.map(({ value, labelKey }) => (
+          <div key={labelKey} className="data-cell text-center flex flex-col">
+            <dt className="font-mono text-[10px] uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</dt>
+            <dd className="order-first text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{String(value)}</dd>
           </div>
         ))}
-      </motion.div>
+      </motion.dl>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
         {NUGGETS.map(({ icon: Icon, n }, i) => (
           <motion.a
             key={n}
-            href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=depth-n${n}`}
+            href={DASHBOARD_PATH}
+            data-umami-event="welcome-cta"
+            data-umami-event-target={`welcome-depth-n${n}`}
             initial={false}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
@@ -57,9 +81,14 @@ export const Depth = () => (
       </div>
       <p className="text-center font-mono text-xs text-wm-muted mt-8">
         {t('welcome.depth.faith')}{' '}
-        <a href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=depth`} className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
         <a
-          href="/sources/?utm_source=welcome-depth"
+          href={DASHBOARD_PATH}
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-depth"
+          className="text-wm-green hover:text-green-300 transition-colors"
+        >{t('welcome.depth.faithCta')}</a>{' '}
+        <a
+          href="/sources/"
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-sources-depth"
           className="underline decoration-wm-border underline-offset-4 hover:text-wm-text transition-colors"
