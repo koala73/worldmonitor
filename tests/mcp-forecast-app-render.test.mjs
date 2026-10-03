@@ -20,7 +20,7 @@ const forecast = {
     branches: [{ title: 'Controlled branch', projectedProbability: 0.4, summary: 'Branch summary', outcome: 'Branch outcome', rounds: [{ round: 1, focus: 'Round focus', developments: ['Round development'], actorMoves: ['Round action'] }] }],
   },
 };
-const payload = (predictions, fields = {}) => ({ cached_at: '2026-10-03T17:00:00Z', data: { predictions: { predictions, generatedAt: '2026-10-03T16:55:00Z', ...fields } } });
+const payload = (predictions, fields = {}) => ({ cached_at: '2026-10-03T17:00:00Z', data: { predictions: { predictions, generatedAt: Date.parse('2026-10-03T16:55:00Z'), ...fields } } });
 async function mount(data = payload([forecast])) {
   const win = new Window({ url: 'https://worldmonitor.app/' });
   windows.push(win);
@@ -91,7 +91,17 @@ describe('forecast MCP analysis parity', () => {
     const { doc } = await mount({ ...payload([forecast], { degraded: true, stale: true, error: 'upstream_unavailable' }), stale: true });
     assert.match(doc.getElementById('foot').textContent, /source degraded/);
     assert.match(doc.getElementById('foot').textContent, /stale/);
-    assert.match(doc.getElementById('foot').textContent, /2026-10-03T16:55:00Z/);
+    assert.match(doc.getElementById('foot').textContent, /2026-10-03T16:55:00\.000Z/);
+  });
+  it('handles numeric and ISO generation times without a blank or invented date', async () => {
+    const { doc, send } = await mount();
+    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z/);
+    send(payload([forecast], { generatedAt: '2026-10-03T16:55:00Z' }));
+    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z/);
+    for (const generatedAt of [0, 'invalid-date', 1e30, null]) {
+      send(payload([forecast], { generatedAt }));
+      assert.doesNotMatch(doc.getElementById('foot').textContent, /Generated:|1970/);
+    }
   });
   it('keeps hostile fields as text and ignores non-text optional fields', async () => {
     const { doc } = await mount(payload([{ ...forecast, title: '<img src=x onerror=alert(1)>', scenario: '<script>alert(1)</script>', caseFile: { ...forecast.caseFile, triggers: [{ bad: 'object' }, '<img src=x>'], baseCase: { bad: 'object' } } }]));
