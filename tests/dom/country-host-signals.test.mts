@@ -44,7 +44,7 @@ it('retains website recent evidence when a score refresh updates the count chips
   const body = document.createElement('div');
   Reflect.set(panel, 'signalsBody', body);
   panel.updateSignals(countrySignalsFromMilitary());
-  panel.updateSignalDetails({ critical: 1, high: 0, medium: 0, low: 0, recentHigh: [{ type: 'Strike', severity: 'critical', description: 'Observed evidence', timestamp: new Date() }] });
+  panel.updateSignalDetails({ critical: 1, high: 0, medium: 0, low: 0, recentHigh: [{ type: 'MILITARY', severity: 'critical', description: 'Observed evidence', timestamp: new Date() }] });
   const recent = body.querySelector('.cdp-signal-recent');
   const before = recent?.textContent;
   expect(before).toContain('Observed evidence');
