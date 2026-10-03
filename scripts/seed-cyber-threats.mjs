@@ -25,6 +25,7 @@ const FIRST_SEEN_TTL = 14 * 24 * 60 * 60; // 14d — refreshed every run; surviv
 
 const FEODO_URL = 'https://feodotracker.abuse.ch/downloads/ipblocklist.json';
 const URLHAUS_RECENT_URL = (limit) => `https://urlhaus-api.abuse.ch/v1/urls/recent/limit/${limit}/`;
+const THREATFOX_API_URL = 'https://threatfox.abuse.ch/api/v1/';
 const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv';
 const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=';
 const ABUSEIPDB_BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist';
@@ -48,6 +49,7 @@ export const THREAT_TYPE_MAP = {
 export const SOURCE_MAP = {
   feodo: 'CYBER_THREAT_SOURCE_FEODO',
   urlhaus: 'CYBER_THREAT_SOURCE_URLHAUS',
+  threatfox: 'CYBER_THREAT_SOURCE_THREATFOX',
   c2intel: 'CYBER_THREAT_SOURCE_C2INTEL',
   otx: 'CYBER_THREAT_SOURCE_OTX',
   abuseipdb: 'CYBER_THREAT_SOURCE_ABUSEIPDB',
@@ -372,6 +374,102 @@ async function fetchUrlhaus(cutoffMs) {
   }
 }
 
+// ThreatFox (abuse.ch) shares the abuse.ch Auth-Key with URLhaus
+// (URLHAUS_AUTH_KEY) — the same key covers both APIs.
+//
+// Pure record parser exported for unit tests (see tests/seed-cyber-threatfox-parse.test.mjs).
+// A ThreatFox IOC row looks like:
+//   { id, ioc, ioc_type, threat_type, threat_type_desc, malware, malware_printable,
+//     malware_alias, confidence_level, first_seen, last_seen, reporter, tags, ... }
+// ioc_type is "ip:port", "domain", or "url". For "ip:port" the port is stripped
+// so the indicator is a bare IP (matches the other sources and GeoIP hydration).
+export function parseThreatFoxRecord(record, cutoffMs) {
+  const rawIoc = clean(record?.ioc || '', 1024);
+  if (!rawIoc) return null;
+  const iocType = clean(record?.ioc_type || '', 20).toLowerCase();
+
+  let indicatorType = 'url';
+  let indicator = rawIoc;
+  if (iocType === 'ip:port' || isIp(rawIoc)) {
+    // Strip a trailing :port (IPv4 style "1.2.3.4:8080"). IPv6 literals without
+    // brackets pass through isIp above; a bracketed [v6]:port is rare — degrade to url.
+    const host = iocType === 'ip:port' ? rawIoc.slice(0, rawIoc.lastIndexOf(':')) : rawIoc;
+    if (isIp(host)) { indicator = host.toLowerCase(); indicatorType = 'ip'; }
+    else return null;
+  } else if (iocType === 'domain') {
+    indicatorType = 'domain';
+    try { if (new URL(`http://${rawIoc}`).hostname !== rawIoc.toLowerCase()) return null; } catch { return null; }
+  } else if (iocType === 'url') {
+    indicatorType = 'url';
+    try { new URL(rawIoc); } catch { return null; }
+  } else {
+    // Unknown/missing ioc_type: infer.
+    try {
+      const u = new URL(rawIoc);
+      const host = clean(u.hostname, 255).toLowerCase();
+      if (isIp(host)) { indicator = host; indicatorType = 'ip'; }
+      else if (host) { indicator = host; indicatorType = 'domain'; }
+      else return null;
+    } catch {
+      if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(rawIoc)) { indicator = rawIoc.toLowerCase(); indicatorType = 'domain'; }
+      else return null;
+    }
+  }
+
+  const threatType = clean(record?.threat_type || '', 60).toLowerCase();
+  let type = 'malicious_url';
+  if (/botnet_cc|^c2$|c2_server/.test(threatType)) type = 'c2_server';
+  else if (/phish/.test(threatType)) type = 'phishing';
+  else if (/payload|malware|download|ip_src|hacktool/.test(threatType)) type = 'malware_host';
+
+  const firstSeen = toEpochMs(record?.first_seen);
+  const lastSeen = toEpochMs(record?.last_seen || record?.first_seen);
+  if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) return null;
+
+  const confidence = toNum(record?.confidence_level);
+  const malwareFamily = clean(record?.malware_printable || record?.malware || '', 80);
+  const tags = normTags(record?.tags);
+  let severity = 'medium';
+  if (Number.isFinite(confidence)) {
+    severity = confidence >= 90 ? 'critical' : confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low';
+  }
+  if (/emotet|qakbot|trickbot|dridex|ransom/i.test(malwareFamily) && severity !== 'critical') severity = 'high';
+
+  return sanitize({
+    id: `threatfox:${indicatorType}:${indicator}`, type, source: 'threatfox', indicator, indicatorType,
+    lat: null, lon: null, country: '', severity, malwareFamily,
+    tags: normTags(['threatfox', ...tags]), firstSeen, lastSeen,
+  });
+}
+
+async function fetchThreatFox(cutoffMs, days = DEFAULT_DAYS) {
+  const authKey = clean(process.env.URLHAUS_AUTH_KEY || '', 200);
+  if (!authKey) { console.log('  ThreatFox: skipped (no URLHAUS_AUTH_KEY)'); return { ok: false, threats: [] }; }
+  try {
+    const resp = await fetch(THREATFOX_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Auth-Key': authKey, 'User-Agent': CHROME_UA },
+      body: JSON.stringify({ query: 'get_iocs', days }),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) return { ok: false, threats: [] };
+    const payload = await resp.json();
+    if (payload?.query_status && payload.query_status !== 'ok') return { ok: false, threats: [] };
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const threats = [];
+    for (const r of rows) {
+      const t = parseThreatFoxRecord(r, cutoffMs);
+      if (t) threats.push(t);
+      if (threats.length >= MAX_LIMIT) break;
+    }
+    console.log(`  ThreatFox: ${threats.length} threats`);
+    return { ok: true, threats };
+  } catch (e) {
+    console.warn(`  ThreatFox: failed — ${e.message}`);
+    return { ok: false, threats: [] };
+  }
+}
+
 async function fetchC2Intel() {
   try {
     const resp = await fetch(C2INTEL_URL, {
@@ -600,19 +698,20 @@ async function fetchAllThreats() {
   const now = Date.now();
   const cutoffMs = now - DEFAULT_DAYS * 86400000;
 
-  const [feodo, urlhaus, c2intel, otx, abuseipdb] = await Promise.all([
+  const [feodo, urlhaus, threatfox, c2intel, otx, abuseipdb] = await Promise.all([
     fetchFeodo(cutoffMs),
     fetchUrlhaus(cutoffMs),
+    fetchThreatFox(cutoffMs, DEFAULT_DAYS),
     fetchC2Intel(),
     fetchOtx(DEFAULT_DAYS),
     fetchAbuseIpDb(),
   ]);
 
-  const anyOk = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
-  if (!anyOk) throw new Error('All 5 IOC sources failed');
+  const anyOk = feodo.ok || urlhaus.ok || threatfox.ok || c2intel.ok || otx.ok || abuseipdb.ok;
+  if (!anyOk) throw new Error('All 6 IOC sources failed');
 
   const combined = dedupeThreats([
-    ...feodo.threats, ...urlhaus.threats, ...c2intel.threats, ...otx.threats, ...abuseipdb.threats,
+    ...feodo.threats, ...urlhaus.threats, ...threatfox.threats, ...c2intel.threats, ...otx.threats, ...abuseipdb.threats,
   ]);
 
   console.log(`  Combined (deduped): ${combined.length}`);

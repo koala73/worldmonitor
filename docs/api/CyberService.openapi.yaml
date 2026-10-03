@@ -76,6 +76,7 @@ paths:
                         - 'CYBER_THREAT_SOURCE_C2INTEL'
                         - 'CYBER_THREAT_SOURCE_OTX'
                         - 'CYBER_THREAT_SOURCE_ABUSEIPDB'
+                        - 'CYBER_THREAT_SOURCE_THREATFOX'
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
@@ -383,9 +384,10 @@ components:
                         - CYBER_THREAT_SOURCE_C2INTEL
                         - CYBER_THREAT_SOURCE_OTX
                         - CYBER_THREAT_SOURCE_ABUSEIPDB
+                        - CYBER_THREAT_SOURCE_THREATFOX
                     description: |-
                         CyberThreatSource represents the intelligence source of a cyber threat.
-                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb' | 'threatfox'.
                 minSeverity:
                     type: string
                     enum:
@@ -435,9 +437,10 @@ components:
                         - CYBER_THREAT_SOURCE_C2INTEL
                         - CYBER_THREAT_SOURCE_OTX
                         - CYBER_THREAT_SOURCE_ABUSEIPDB
+                        - CYBER_THREAT_SOURCE_THREATFOX
                     description: |-
                         CyberThreatSource represents the intelligence source of a cyber threat.
-                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb' | 'threatfox'.
                 indicator:
                     type: string
                     description: Threat indicator value (IP, domain, or URL).
@@ -487,7 +490,7 @@ components:
                 - id
             description: |-
                 CyberThreat represents a cyber threat indicator aggregated from multiple sources.
-                 Sources include Feodo Tracker, URLhaus, OTX, AbuseIPDB, and C2Intel.
+                 Sources include Feodo Tracker, URLhaus, ThreatFox, OTX, AbuseIPDB, and C2Intel.
         GeoCoordinates:
             type: object
             properties:
