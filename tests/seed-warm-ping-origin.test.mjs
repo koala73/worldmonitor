@@ -19,6 +19,15 @@ describe('warm-ping seed scripts', () => {
     assert.match(src, /\/api\/infrastructure\/v1\/list-temporal-anomalies/);
   });
 
+  it('does not warm-ping the Redis-read-only USNI fleet handler', () => {
+    // get-usni-fleet-report only reads usni-fleet:sebuf:v1, which the AIS relay
+    // seeds. A POST to it warms nothing and its "OK (N items)" log line was
+    // misreporting the relay's work as this seeder's.
+    const src = readScript('scripts/seed-military-maritime-news.mjs');
+    assert.doesNotMatch(src, /warmPing\([^)]*get-usni-fleet-report/);
+    assert.match(src, /\/api\/maritime\/v1\/list-navigational-warnings/);
+  });
+
   it('sends the app Origin header for military/maritime warm-pings', () => {
     const src = readScript('scripts/seed-military-maritime-news.mjs');
     assert.match(src, /Origin:\s*'https:\/\/worldmonitor\.app'/);
