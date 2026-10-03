@@ -53,6 +53,10 @@ describe('shared country signal details', () => {
     expect(projectCountrySignalDetails([first, second]).recentHigh.map(signal => signal.description)).toEqual([first.title, second.title]);
   });
 
+  it.each(['future_type', 'toString', 'constructor', '__proto__'])('keeps unknown type %s as OTHER', type => {
+    expect(projectCountrySignalDetails([{ ...observation('protest', 'high', 1), type }]).recentHigh[0]?.type).toBe('OTHER');
+  });
+
   it('uses only the website country cluster, preserving the aggregator cap and window owner', async () => {
     const signals = [observation('temporal_anomaly', 'high', 2), observation('active_strike', 'high', 1)];
     snapshot.read.mockReturnValue([cluster('XX', [observation('protest', 'high', 6)]), cluster('US', [observation('protest', 'high', 5)]), cluster('FR', signals)]);
