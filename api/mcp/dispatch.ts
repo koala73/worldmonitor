@@ -418,19 +418,20 @@ export async function dispatchToolsCall(
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
         Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
+    if (deferredBurst && panelRead) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, panelRead.rateLimitKey);
+      if (limited) return limited;
+    }
+    await panelRead?.reserveUncachedRead();
   } catch (error) {
     if (!(error instanceof PanelRequestError)) throw error;
-    if (deferredBurst) {
+    if (deferredBurst && !panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
     if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
-  }
-  if (deferredBurst && panelRead) {
-    const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, panelRead.rateLimitKey);
-    if (limited) return limited;
   }
 
   // user_key (#4859) consumes the same per-user daily budget as pro: cache

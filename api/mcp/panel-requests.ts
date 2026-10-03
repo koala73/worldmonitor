@@ -154,14 +154,15 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
     if (typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) cached = JSON.parse(raw);
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
-  if (cached === undefined) {
-    const [status] = await tuple(pipeline, ['EVAL', PANEL_REQUEST_READ_SCRIPT, 2, key, `${key}:reads`, PANEL_READ_LIMIT, ttl, scope.expires]);
-    if (status === 0) throw new PanelRequestError('This panel reached its read budget. Refresh to start another request.', 'reads', undefined, ttl);
-    if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
-  }
   return {
     rateLimitKey: key,
     cached,
+    reserveUncachedRead: async () => {
+      if (cached !== undefined) return;
+      const [status] = await tuple(pipeline, ['EVAL', PANEL_REQUEST_READ_SCRIPT, 2, key, `${key}:reads`, PANEL_READ_LIMIT, ttl, scope.expires]);
+      if (status === 0) throw new PanelRequestError('This panel reached its read budget. Refresh to start another request.', 'reads', undefined, ttl);
+      if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
+    },
     save: async (value: unknown) => {
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;
