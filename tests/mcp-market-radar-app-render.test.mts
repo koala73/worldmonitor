@@ -127,3 +127,32 @@ describe('api/mcp/ui/market-radar-app.ts — renders the captured get_market_dat
     assert.ok(doc.getElementById('fg-label').textContent.length > 0, 'fear-greed label must render');
   });
 });
+
+describe('loaded market chart parity', () => {
+  let window: any;
+  before(async () => {
+    window = new Window({ url: 'https://worldmonitor.app/' });
+    window.document.write(MARKET_RADAR_APP_HTML);
+    window.eval(window.document.querySelector('script').textContent);
+    window.dispatchEvent(new window.MessageEvent('message', {
+      source: window.eval('window.parent'),
+      data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: {
+        result: { content: [{ type: 'text', text: JSON.stringify({ data: {
+          'stocks-bootstrap': { quotes: Array.from({ length: 12 }, (_, i) => ({
+            symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: 100 + i, change: 1.25, sparkline: [90, 110, 100],
+          })) },
+        } }) }] },
+      } },
+    }));
+    await window.happyDOM.waitUntilComplete();
+  });
+  after(async () => { await window?.happyDOM.close(); });
+  it('does not hide loaded rows after the eighth quote', () => {
+    assert.equal(window.document.querySelectorAll('.qsym').length, 12);
+  });
+  it('offers the original chart and name from the loaded quote', () => {
+    assert.match(window.document.body.textContent, /Controlled asset 0/);
+    assert.equal(window.document.querySelectorAll('.terminal-chart').length, 12);
+    assert.equal(window.document.querySelectorAll('details').length, 12);
+  });
+});
