@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { DODO_PRODUCTS } from '@/config/products.generated';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import {
+  resolveHasUsedPowerFeature,
   decideActivationMount,
   computePendingMarker,
   parsePendingMarker,
@@ -1378,5 +1379,25 @@ describe('activation flow retry schedule', () => {
     assert.equal(activationFlowRetryDelay(0), 2_000);
     assert.equal(activationFlowRetryDelay(4), 30_000);
     assert.equal(activationFlowRetryDelay(5), null);
+  });
+});
+
+describe('resolveHasUsedPowerFeature (#5612)', () => {
+  it('counts a stored custom widget without consulting MCP clients', () => {
+    assert.equal(resolveHasUsedPowerFeature(1), true);
+    assert.equal(resolveHasUsedPowerFeature(3, []), true);
+  });
+
+  it('counts a connected, unrevoked MCP client when no widget exists', () => {
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: undefined }]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: null }]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_000_000 }, {}]), true);
+  });
+
+  it('does not count revoked clients, an empty list, or an unavailable read', () => {
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_000_000 }]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, []), false);
+    assert.equal(resolveHasUsedPowerFeature(0, null), false);
+    assert.equal(resolveHasUsedPowerFeature(0), false);
   });
 });
