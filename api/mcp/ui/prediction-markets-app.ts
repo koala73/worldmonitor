@@ -6,6 +6,7 @@ const STYLES = `
   .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
   .mkt { padding: 7px 0; border-bottom: 1px solid var(--border); }
   .mkt:last-child { border-bottom: none; }
+  .mkt:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .mkt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .mkt-title { font-size: 13px; color: var(--fg); min-width: 0; }
   .mkt-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
@@ -102,8 +103,11 @@ const RENDER = `
         let more = el("button", "mkt-more", "Show more markets");
         more.type = "button";
         more.onclick = function () {
+          var firstNew = sec.querySelectorAll(".mkt").length;
           more.remove();
           for (var j = 6; j < list.length; j++) appendMarket(sec, list[j]);
+          var target = sec.querySelectorAll(".mkt")[firstNew];
+          if (target) { target.tabIndex = -1; target.focus(); }
           count.textContent = list.length + " of " + total + " markets";
           reportSize();
         };
