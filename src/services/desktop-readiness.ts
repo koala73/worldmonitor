@@ -62,8 +62,13 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     id: 'strategic-risk',
     panel: 'StrategicRiskPanel',
     serviceFiles: ['src/services/cached-risk-scores.ts'],
-    apiRoutes: ['/api/risk-scores'],
-    apiHandlers: ['api/risk-scores.js'],
+    // The sebuf RPC behind cached-risk-scores.ts (IntelligenceServiceClient.
+    // getRiskScores). This entry kept citing the pre-sebuf edge route and its
+    // handler file long after the gateway split deleted both, and the string
+    // surfaced in Service Status (#5910). tests/desktop-readiness-registry-
+    // paths.test.mjs now pins every cited path to a file that exists.
+    apiRoutes: ['/api/intelligence/v1/get-risk-scores'],
+    apiHandlers: ['server/worldmonitor/intelligence/v1/get-risk-scores.ts'],
     locality: 'api-key',
     fallback: 'Panel stays available with local aggregate scoring when cached backend scores are unavailable.',
     priority: 1,

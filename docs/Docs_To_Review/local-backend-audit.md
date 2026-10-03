@@ -1,3 +1,5 @@
+> **Superseded (2026-09).** This is the pre-sebuf draft of the parity matrix and cites more than ten files that have since been deleted. It is kept for history only. The maintained desktop route-coverage baseline is [`docs/desktop-parity-matrix.md`](../desktop-parity-matrix.md) (#5902).
+
 # Local backend parity matrix (desktop sidecar)
 
 This matrix tracks desktop parity by mapping `src/services/*.ts` consumers to `api/*.js` handlers and classifying each feature as:
