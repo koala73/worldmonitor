@@ -1266,7 +1266,7 @@ export const GENERATED_MESSAGE_RULES = {
       "keys": {
         "kind": "string",
         "repeated": true,
-        "repeatedMaxItems": 1,
+        "repeatedMaxItems": 100,
         "stringMinLen": 1,
         "stringMaxBytes": 65536
       }
