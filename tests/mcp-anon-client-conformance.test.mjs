@@ -54,8 +54,13 @@ describe('api/mcp.ts — anonymous strict-client conformance (#4937)', () => {
     // deps); fixture the compiled HTML resource and cache responses so the
     // walk stays hermetic.
     globalThis.fetch = async (input) => {
-      if (['https://www.worldmonitor.app/plugin/plugin.html', 'https://www.worldmonitor.app/plugin/country.html'].includes(String(input))) {
-        return new Response(`<!DOCTYPE html><html><head></head><body><main id="${String(input).endsWith('/country.html') ? 'countryRoot' : 'pluginRoot'}"></main></body></html>`, {
+      const roots = {
+        'https://www.worldmonitor.app/plugin/plugin.html': 'pluginRoot',
+        'https://www.worldmonitor.app/plugin/country.html': 'countryRoot',
+        'https://www.worldmonitor.app/plugin/market.html': 'marketRoot',
+      };
+      if (roots[String(input)]) {
+        return new Response(`<!DOCTYPE html><html><head></head><body><main id="${roots[String(input)]}"></main></body></html>`, {
           headers: { 'Content-Type': 'text/html' },
         });
       }

@@ -492,7 +492,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
 
-对 `ui://` URI 的 `resources/read` 返回自包含的 HTML 视图。与数据资源不同，`ui://` 读取是**公开且豁免配额的** —— 该模板不承载数据，也不产生上游调用，因此宿主可以在无凭据、不触及 Pro 每日上限的情况下预加载它（agent 就绪性扫描器也可以获取它）。该视图完全自包含（无外部资源），并通过标准的 MCP Apps `postMessage` 桥（`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`）与宿主通信。
+对 `ui://` URI 的 `resources/read` 返回 HTML 视图。与数据资源不同，`ui://` 读取是**公开且豁免配额的** —— 该模板不承载数据，也不产生上游数据调用，因此宿主可以在无凭据、不触及 Pro 每日上限的情况下预加载它（agent 就绪性扫描器也可以获取它）。静态打包的组件是自包含的。新闻、国家和市场视图会根据资源元数据许可，从 `https://www.worldmonitor.app` 加载当前 JavaScript 和 CSS。所有视图都通过标准的 MCP Apps `postMessage` 桥（`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`）与宿主通信。
 
 有关完整的 MCP Apps 契约 —— 宿主流程、安全态势、各小部件清单、源文件以及 docs-stat 漂移检查 —— 请参阅 [MCP Apps](/zh/mcp-apps)。
 

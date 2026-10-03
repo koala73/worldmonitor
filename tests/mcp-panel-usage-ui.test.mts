@@ -6,7 +6,9 @@ import { UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry';
 const usage = { used: 1, limit: 50, remaining: 49, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' };
 describe('remaining usage in every static embedded panel', () => {
   assert.equal(UI_RESOURCE_REGISTRY.length, 10);
-  for (const resource of UI_RESOURCE_REGISTRY) {
+  const staticResources = UI_RESOURCE_REGISTRY.filter(resource => resource.html);
+  assert.equal(staticResources.length, 9);
+  for (const resource of staticResources) {
     it(`${resource.name} consumes host usage metadata without making data calls`, async () => {
       const win: any = new Window({ url: 'https://worldmonitor.app/' });
       try {

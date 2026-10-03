@@ -520,7 +520,7 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 
 All UI resources share `mimeType: text/html;profile=mcp-app`.
 
-`resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
+`resources/read` on a `ui://` URI returns an HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream data call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. Statically bundled widgets are self-contained. The news, country and market views load their current JavaScript and CSS from `https://www.worldmonitor.app`, as permitted by their resource metadata. All views communicate with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
 For the full MCP Apps contract — host flow, security posture, per-widget inventory, source files, and docs-stat drift checks — see [MCP Apps](/mcp-apps).
 

@@ -3,7 +3,7 @@ title: "MCP Apps：WorldMonitor 的交互式 ui:// 小部件"
 description: "WorldMonitor MCP Apps 完整实现契约文档，覆盖交互式 ui:// 资源、工具链接协议、宿主客户端渲染流程、沙箱与安全态势、能力协商、以及漂移检查机制，帮助集成开发者理解在 Claude、Cursor 等 MCP 客户端中嵌入可交互 UI 组件的规范与调试流程。"
 ---
 
-WorldMonitor 通过 `io.modelcontextprotocol/ui` 扩展支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)。当前阵容提供 MCP Apps：自包含的 `ui://` HTML 资源，MCP Apps 宿主可在关联的工具调用后内联渲染它们。
+WorldMonitor 通过 `io.modelcontextprotocol/ui` 扩展支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)。当前阵容提供 MCP Apps：`ui://` HTML 资源，MCP Apps 宿主可在关联的工具调用后内联渲染它们。
 
 本页面是交互式接口的权威指南。请与 [MCP Server 概述](/zh/mcp-overview)配合使用，以了解认证、配额、传输和一般 JSON-RPC 行为。
 
@@ -83,7 +83,7 @@ View -> Host: ui/notifications/size-changed
 
 应用外壳被刻意设计得静态且受限：
 
-- 它们是自包含的 HTML：没有外部脚本、样式、图像、iframe、字体或网络获取。
+- 静态打包的组件使用自包含 HTML。新闻、国家和市场引导程序也是内联资源，但会从资源元数据允许的来源加载当前公共界面资源。界面加载不会获取市场数据。
 - 渲染使用 DOM 构造和 `textContent`，绝不使用 `innerHTML`。
 - 链接仅通过 `http:` 或 `https:` URL 解析被允许，并以 `rel="noopener noreferrer"` 渲染。
 - 共享外壳在初始化后以及每次渲染后报告尺寸，以便宿主调整 iframe 大小。

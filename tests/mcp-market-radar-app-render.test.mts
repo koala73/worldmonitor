@@ -10,7 +10,11 @@ const bundle = buildSync({
   entryPoints: ['src/plugin-market-main.ts'], bundle: true, write: false, format: 'iife', platform: 'browser',
   alias: { '@': './src' }, loader: { '.css': 'empty' },
 }).outputFiles[0]!.text;
-const body = readFileSync('market.html', 'utf8').replace(/<script[\s\S]*?<\/script>/, '');
+const template = new Window();
+template.document.write(readFileSync('market.html', 'utf8'));
+for (const script of template.document.querySelectorAll('script')) script.remove();
+const body = template.document.documentElement.outerHTML;
+await template.happyDOM.close();
 const windows: Window[] = [];
 const fixture = { cached_at: '2026-10-03T18:25:00Z', stale: true, data: {
   'stocks-bootstrap': { asOf: '2026-10-03T18:20:00Z', quotes: Array.from({ length: 12 }, (_, i) => ({
@@ -43,6 +47,11 @@ describe('compiled Market Radar actual entry and host result', () => {
   it('renders every loaded row and original chart/name instead of dropping rows after eight', async () => {
     const { document } = await open();
     assert.equal(document.querySelectorAll('.qsym').length, 12);
+    assert.equal(document.querySelectorAll('.terminal-chart').length, 0);
+    for (const details of document.querySelectorAll('details')) {
+      details.open = true;
+      details.dispatchEvent(new document.defaultView!.Event('toggle'));
+    }
     assert.equal(document.querySelectorAll('.terminal-chart').length, 11);
     assert.equal(document.querySelectorAll('details').length, 11);
     assert.match(document.querySelector('#marketContent')!.textContent, /Controlled asset 11/);
@@ -55,7 +64,10 @@ describe('compiled Market Radar actual entry and host result', () => {
   it('preserves flat charts and unknown prices, changes and missing chart coverage', async () => {
     const { document } = await open();
     const rows = document.querySelectorAll('.quote');
-    assert.match(rows[9]!.textContent, /HI\/LO\/LAST 7/);
+    const flat = rows[9] as HTMLDetailsElement;
+    flat.open = true;
+    flat.dispatchEvent(new document.defaultView!.Event('toggle'));
+    assert.match(flat.textContent, /HI\/LO\/LAST 7/);
     assert.equal(rows[10]!.querySelector('.qprice')!.textContent, '—');
     assert.equal(rows[10]!.querySelector('.qchg')!.textContent, '—');
     assert.match(rows[11]!.textContent, /chart unavailable/);
@@ -95,6 +107,9 @@ describe('compiled Market Radar actual entry and host result', () => {
     }] } } });
     assert.match(document.body.textContent, /<img src=x/);
     assert.equal(document.querySelector('img,script'), null);
+    const chartRow = document.querySelector('details')!;
+    chartRow.open = true;
+    chartRow.dispatchEvent(new document.defaultView!.Event('toggle'));
     assert.equal(document.querySelectorAll('.terminal-chart').length, 1);
     assert.doesNotMatch(document.querySelector('.terminal-chart')!.outerHTML, /NaN|undefined/);
     assert.equal(document.querySelector('.terminal-chart img'), null);
@@ -135,6 +150,12 @@ describe('compiled Market Radar actual entry and host result', () => {
     const details = document.querySelector('details')!;
     details.open = true;
     details.dispatchEvent(new document.defaultView!.Event('toggle'));
+    const chart = details.querySelector('.terminal-chart');
+    details.open = false;
+    details.dispatchEvent(new document.defaultView!.Event('toggle'));
+    details.open = true;
+    details.dispatchEvent(new document.defaultView!.Event('toggle'));
+    assert.equal(details.querySelector('.terminal-chart'), chart);
     assert.match(document.querySelector('#marketUsage')!.textContent, /47 panel requests remaining/);
     assert.ok(messages.length > 0);
     assert.deepEqual(messages.filter(message => !['ui/initialize', 'ui/notifications/size-changed'].includes((message as { method: string }).method)), []);

@@ -3,7 +3,7 @@ title: "MCP Apps: interactive ui:// widgets for WorldMonitor"
 description: "Complete contract for WorldMonitor's MCP Apps interactive ui:// resources, tool links, host flow, security posture, and drift checks."
 ---
 
-WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
+WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships MCP Apps: `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
 
 This page is the source-of-truth guide for the interactive surface. Use it with the [MCP Server overview](/mcp-overview) for auth, quota, transport, and general JSON-RPC behavior.
 
@@ -85,7 +85,7 @@ All methods still count toward the 60/minute per-key, per-user, or anonymous-IP 
 
 The app shells are deliberately static and narrow:
 
-- Inline widgets are self-contained. The news, country and market bootstraps load current public interface assets from the origin allowed by their resource metadata. UI loading does not fetch market data.
+- Statically bundled widgets use self-contained HTML. The news, country and market bootstraps are also inline resources; they load current public interface assets from the origin allowed by their resource metadata. UI loading does not fetch market data.
 - Payload labels use DOM construction and `textContent`. Market charts use the website’s trusted SVG renderer with finite numeric series; payload markup is never inserted.
 - Links are admitted only through `http:` or `https:` URL parsing and are rendered with `rel="noopener noreferrer"`.
 - The shared shell reports size after initialization and after every render so hosts can resize the iframe.

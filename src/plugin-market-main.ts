@@ -14,6 +14,7 @@ const groups = [
   { key: 'crypto', list: 'quotes', label: 'Crypto' },
   { key: 'gulf-quotes', list: 'quotes', label: 'Gulf' },
   { key: 'sectors', list: 'sectors', label: 'Sectors' },
+  { key: 'projection', list: 'quotes', label: 'Projected quotes' },
 ] as const;
 
 function mount(): void {
@@ -59,9 +60,12 @@ function mount(): void {
     row.append(heading);
     if (charted) {
       const chart = node('div', 'market-chart');
-      setTrustedHtml(chart, trustedHtml(terminalChart(series, { change, ariaLabel: symbol + ' loaded intraday price chart' }), 'Shared chart renderer escapes the label and uses finite numeric points'));
-      chart.append(node('p', 'qcoverage', 'Loaded intraday series. ' + series.length + ' observed points. Expand without another request.'));
       row.append(chart);
+      row.addEventListener('toggle', () => {
+        if (!row.hasAttribute('open') || chart.childElementCount) return;
+        setTrustedHtml(chart, trustedHtml(terminalChart(series, { change, ariaLabel: symbol + ' loaded intraday price chart' }), 'Shared chart renderer escapes the label and uses finite numeric points'));
+        chart.append(node('p', 'qcoverage', 'Loaded intraday series. ' + series.length + ' observed points. Expansion reuses this snapshot.'));
+      });
     } else {
       row.append(node('p', 'qcoverage', 'Intraday chart unavailable in this snapshot.'));
     }
@@ -70,7 +74,14 @@ function mount(): void {
 
   const render = (result: RecordValue): void => {
     content.replaceChildren();
-    let payload = record(result.structuredContent);
+    const structured = record(result.structuredContent);
+    const projected = Object.prototype.hasOwnProperty.call(structured, 'projection');
+    const value = projected ? structured.projection : structured;
+    let payload = Array.isArray(value) ? { data: { projection: { quotes: value } } } :
+      record(value);
+    if (projected && (Array.isArray(payload.sample) || typeof payload.symbol === 'string' || typeof payload.name === 'string')) {
+      payload = { data: { projection: { quotes: Array.isArray(payload.sample) ? payload : [payload] } } };
+    }
     if (!Object.keys(payload).length && Array.isArray(result.content)) {
       for (const item of result.content) {
         if (record(item).type !== 'text') continue;
@@ -134,7 +145,8 @@ function mount(): void {
       }
       content.append(section);
     }
-    status.textContent = count ? count + ' loaded quotes. Select a chart row to expand its details.' : 'No market quotes available in this response.';
+    status.textContent = count ? count + ' loaded quotes. Select a chart row to expand its details.' :
+      projected ? 'This projection contains no quote groups. Request market data without this projection.' : 'No market quotes available in this response.';
   };
 
   window.addEventListener('message', event => {
