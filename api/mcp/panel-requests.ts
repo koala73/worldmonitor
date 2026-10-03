@@ -160,6 +160,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
     if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
   }
   return {
+    rateLimitKey: key,
     cached,
     save: async (value: unknown) => {
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'

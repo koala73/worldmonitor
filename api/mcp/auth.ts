@@ -828,6 +828,7 @@ export async function applyPerMinuteLimit(
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
   id: unknown = null,
+  panelRequestKey?: string,
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
@@ -855,7 +856,7 @@ export async function applyPerMinuteLimit(
     // rate-limit bypass. The id is validated upstream, so this is defence in
     // depth for a future caller, not a live bug — but the limiter decision and
     // the response construction do not belong under one catch-all.
-    if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
+    if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, { ...headers, 'X-RateLimit-Limit': String(MCP_DEFAULT_BURST_PER_MINUTE), 'X-RateLimit-Remaining': '0' });
     return null;
   }
   if (context.kind === 'free') {
@@ -871,7 +872,10 @@ export async function applyPerMinuteLimit(
   if (!rl) return null;
   let denied = false;
   try {
-    const { success } = await rl.limit(`pro-user:${context.userId}`);
+    const principal = panelRequestKey
+      ? `pro-panel:${hashKeySync(panelRequestKey)}`
+      : `pro-user:${context.userId}`;
+    const { success } = await rl.limit(principal);
     if (!success) {
       // The emitted limit must be the one that actually rejected: the
       // `mcp_minute_burst` scanner query reads `observed_limit` from this
@@ -886,7 +890,7 @@ export async function applyPerMinuteLimit(
     }
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see the env_key branch above.
-  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
+  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per ${panelRequestKey ? 'panel' : 'user'}.`, { ...headers, 'X-RateLimit-Limit': String(perMinute), 'X-RateLimit-Remaining': '0' });
   return null;
 }
 

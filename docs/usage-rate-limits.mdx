@@ -69,7 +69,9 @@ Today the REST and MCP halves reserve against separate counters that each hold t
 
 Pro includes **50 requests per UTC day**. Pro Business includes **250**. Both use a dedicated MCP counter.
 
-Opening any embedded panel costs **one request**, including its rendered details. The ten single-result widgets already obtain their data in one tool call, and loading a visual shell costs nothing. The country brief and news/maps dashboard also include their internal data calls in that allocation. A country brief includes its section reads, default assessment and source coverage. A news dashboard includes its category panels and bounded hazard snapshots. A request includes up to **64 uncached reads**. Every read retains account authorization and the per-minute burst limit.
+Opening any embedded panel costs **one request**, including its rendered details. The ten single-result widgets already obtain their data in one tool call, and loading a visual shell costs nothing. The country brief and news/maps dashboard also include their internal data calls in that allocation. A country brief includes its section reads, default assessment and source coverage. A news dashboard includes its category panels and bounded hazard snapshots. A request includes up to **64 uncached reads**.
+
+Panel openings retain the account's plan burst limit. Internal reads with a valid paid panel admission use a separate **64 requests per minute per admission** limit, including cached reads. Every read checks current account authorization, admission ownership, expiry, and allowed data scope. Invalid admissions and standalone calls retain the account burst limit. API plans retain their account burst limit for all calls.
 
 Same-country opens and default news-dashboard opens share their respective admissions in a five-minute window. News display filters share the full loaded digest. The admission lasts five to ten minutes, clipped at UTC midnight. Ready responses are reused while that admission is valid. Topic navigation and repeated questions in the loaded interface reuse ready data for five minutes. Failures are retried rather than cached as successful observations.
 

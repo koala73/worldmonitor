@@ -4,7 +4,7 @@ import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
-import { getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
+import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
 import {
   BothSourcesFailedError,
@@ -15,7 +15,7 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitCountryPanel, admitNewsPanel, authorizePanelRead, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitCountryPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import type { PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
@@ -328,14 +328,27 @@ export async function dispatchToolsCall(
   // Optional so existing callers keep compiling; omitted → header omitted
   // rather than emitted with a guessed URL.
   resourceMetadataUrl?: string,
+  toolBurstPerMinute?: number,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
+  const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
+    && (context.kind === 'pro' || context.kind === 'user_key');
+  const deferredBurst = toolBurstPerMinute !== undefined && dedicatedPanel && typeof p?.name === 'string' && p.arguments?.panel_request !== undefined
+    && p.name !== 'open_country_brief' && p.name !== 'open_news_dashboard';
+  if (toolBurstPerMinute !== undefined && !deferredBurst) {
+    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+    if (limited) return limited;
+  }
   if (!p || typeof p.name !== 'string') {
     return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
     return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
@@ -393,8 +406,6 @@ export async function dispatchToolsCall(
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
-  const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
-    && (context.kind === 'pro' || context.kind === 'user_key');
   try {
     if (dedicatedPanel && tool.name === 'open_country_brief') {
       panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')));
@@ -409,9 +420,17 @@ export async function dispatchToolsCall(
     }
   } catch (error) {
     if (!(error instanceof PanelRequestError)) throw error;
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
     if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
+  }
+  if (deferredBurst && panelRead) {
+    const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, panelRead.rateLimitKey);
+    if (limited) return limited;
   }
 
   // user_key (#4859) consumes the same per-user daily budget as pro: cache
