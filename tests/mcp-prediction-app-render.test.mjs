@@ -78,6 +78,19 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.match(doc.getElementById('groups').textContent, /Kalshi/);
     assert.doesNotMatch(doc.getElementById('groups').textContent, /Controlled contract|\$1\.3M/);
   });
+  it('expands each category independently', async () => {
+    const { doc, send } = await mount([]);
+    const contracts = category => Array.from({ length: 8 }, (_, i) => ({ ...market, title: `${category} ${i + 1}` }));
+    send({ data: { 'markets-bootstrap': { geopolitical: contracts('Geo'), tech: contracts('Tech'), finance: [] } } });
+    const [geo, tech] = doc.querySelectorAll('.mgroup');
+    geo.querySelector('.mkt-more').click();
+    assert.equal(geo.querySelectorAll('.mkt').length, 8);
+    assert.equal(tech.querySelectorAll('.mkt').length, 6);
+    assert.match(geo.querySelector('.mkt-count').textContent, /8 of 8/);
+    tech.querySelector('.mkt-more').click();
+    assert.equal(tech.querySelectorAll('.mkt').length, 8);
+    assert.match(tech.textContent, /Tech 8/);
+  });
   it('states when a summary sample contains fewer markets than the reported count', async () => {
     const { doc } = await mount({ count: 40, sample: [market] });
     assert.match(doc.querySelector('.mkt-count').textContent, /1 of 40/);

@@ -1,22 +1,3 @@
-// MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
-// interactive app shell for the `get_prediction_markets` tool: active event-
-// contract odds grouped by category (geopolitical / tech / finance), each with a
-// probability bar. Built on the shared shell foundation.
-//
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
-// The tool serves the raw `prediction:markets-bootstrap:v1` cache value under
-// label `markets-bootstrap`; bucket items carry `yesPrice` (a 0-100 percentage,
-// see src/components/PredictionPanel.ts) — NOT `probability`:
-//   { cached_at, stale, data: {
-//       "markets-bootstrap": {
-//         geopolitical: [{ title, source, yesPrice }],
-//         tech:         [{ title, source, yesPrice }],
-//         finance:      [{ title, source, yesPrice }] } } }
-// A bucket may be empty (category / query / source filters narrow the bundle).
-// Odds are shown as a percentage only — never dollar volume/liquidity.
-//
-// textContent-only rendering; renderBody stays backtick/`${`/regex-free.
-
 import { buildAppHtml } from './shell';
 
 const STYLES = `
@@ -28,7 +9,19 @@ const STYLES = `
   .mkt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .mkt-title { font-size: 13px; color: var(--fg); min-width: 0; }
   .mkt-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
-  .mkt-src { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
+  .mkt-src { font-size: 10px; letter-spacing: 0.05em; color: var(--muted); }
+  .mkt-title { overflow-wrap: anywhere; }
+  a.mkt-title { text-decoration: none; }
+  a.mkt-title:hover { text-decoration: underline; }
+  .mkt-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .mkt-conviction { color: var(--muted); }
+  .conv-yes, .mkt-yes { color: var(--accent); }
+  .conv-no, .mkt-no { color: var(--severe); }
+  .mkt-outcomes { display: flex; justify-content: space-between; font-size: 11px; margin-top: 5px; }
+  .mkt .pbar { background: color-mix(in srgb, var(--severe) 30%, var(--border)); }
+  .mkt-count { color: var(--muted); font-size: 10px; margin-left: 8px; }
+  .mkt-more { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--fg); cursor: pointer; }
+  #groups { max-height: 560px; overflow: auto; }
 `;
 
 const BODY = `
@@ -57,27 +50,64 @@ const RENDER = `
     ];
     var host = q("groups");
     host.textContent = "";
-    for (var g = 0; g < buckets.length; g++) {
-      var cfg = buckets[g];
-      var list = listState(mb && mb[cfg.key]).items;
-      if (!list || !list.length) continue;
-      var sec = el("div", "mgroup");
-      sec.appendChild(el("div", "sec-label", cfg.label));
-      for (var i = 0; i < list.length && i < 6; i++) {
-        var m = list[i];
-        if (!m || typeof m !== "object") continue;
-        var mkt = el("div", "mkt");
-        var head = el("div", "mkt-head");
-        head.appendChild(el("span", "mkt-title", collapseWs(m.title) || "Market"));
-        var p = num(m.yesPrice);
-        var pct = p == null ? null : p; // yesPrice is already a 0-100 percentage — no scaling
-        head.appendChild(el("span", "mkt-prob", pct == null ? "—" : Math.round(pct) + "%"));
-        mkt.appendChild(head);
-        var bar = probabilityBar(pct);
-        if (bar) mkt.appendChild(bar);
-        var src = collapseWs(m.source);
-        if (src) mkt.appendChild(el("div", "mkt-src", src));
-        sec.appendChild(mkt);
+    function appendMarket(sec, m) {
+      if (!m || typeof m !== "object") return;
+      var mkt = el("div", "mkt");
+      var head = el("div", "mkt-head");
+      var href = httpUrl(m.url);
+      var title = el(href ? "a" : "span", "mkt-title", collapseWs(m.title) || "Market");
+      if (href) { title.href = href; title.target = "_blank"; title.rel = "noopener noreferrer"; }
+      head.appendChild(title);
+      var p = num(m.yesPrice);
+      var pct = p == null ? null : Math.round(clampPct(p));
+      head.appendChild(el("span", "mkt-prob", pct == null ? "—" : pct + "%"));
+      mkt.appendChild(head);
+      var meta = el("div", "mkt-meta");
+      var src = collapseWs(m.source);
+      if (src) meta.appendChild(el("span", "mkt-src", src === "kalshi" ? "Kalshi" : src === "polymarket" ? "Polymarket" : src));
+      var volume = num(m.volume);
+      if (volume != null && volume > 0) {
+        var amount = volume >= 1000000 ? (volume / 1000000).toFixed(1) + "M"
+          : volume >= 1000 ? (volume / 1000).toFixed(0) + "K" : volume.toFixed(0);
+        meta.appendChild(el("span", "mkt-volume", "Vol: $" + amount));
+      }
+      if (typeof m.endDate === "string") {
+        var closes = new Date(m.endDate);
+        if (Number.isFinite(closes.getTime())) meta.appendChild(el("span", "mkt-closes", "Closes: " + closes.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })));
+      }
+      if (pct != null) meta.appendChild(el("span", "mkt-conviction " + (pct >= 60 ? "conv-yes" : pct <= 40 ? "conv-no" : "conv-neutral"), pct >= 60 ? "Lean Yes" : pct <= 40 ? "Lean No" : "Toss-up"));
+      mkt.appendChild(meta);
+      var outcomes = el("div", "mkt-outcomes");
+      outcomes.appendChild(el("span", "mkt-yes", "Yes " + (pct == null ? "—" : pct + "%")));
+      outcomes.appendChild(el("span", "mkt-no", "No " + (pct == null ? "—" : (100 - pct) + "%")));
+      mkt.appendChild(outcomes);
+      var bar = probabilityBar(pct);
+      if (bar) mkt.appendChild(bar);
+      sec.appendChild(mkt);
+    }
+    for (let g = 0; g < buckets.length; g++) {
+      let cfg = buckets[g];
+      let raw = mb && mb[cfg.key];
+      let list = listState(raw).items;
+      if (!list.length) continue;
+      let sec = el("div", "mgroup");
+      let label = el("div", "sec-label", cfg.label);
+      let reported = raw && !Array.isArray(raw) ? num(raw.count) : null;
+      let total = reported == null ? list.length : Math.max(list.length, Math.floor(reported));
+      let count = el("span", "mkt-count", Math.min(6, list.length) + " of " + total + " markets");
+      label.appendChild(count);
+      sec.appendChild(label);
+      for (var i = 0; i < list.length && i < 6; i++) appendMarket(sec, list[i]);
+      if (list.length > 6) {
+        let more = el("button", "mkt-more", "Show more markets");
+        more.type = "button";
+        more.onclick = function () {
+          more.remove();
+          for (var j = 6; j < list.length; j++) appendMarket(sec, list[j]);
+          count.textContent = list.length + " of " + total + " markets";
+          reportSize();
+        };
+        sec.appendChild(more);
       }
       host.appendChild(sec);
     }
