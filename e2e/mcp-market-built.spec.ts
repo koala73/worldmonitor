@@ -29,6 +29,8 @@ test.beforeAll(async () => {
 for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 900]] as const) {
   test('built market document, stylesheet and module load through the resource bootstrap on ' + name, async ({ page }) => {
     await page.setViewportSize({ width, height });
+    const projection = name === 'mobile'
+      ? { cached_at: fixture.cached_at, quotes: fixture.data['stocks-bootstrap'].quotes } : fixture;
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     const assets: string[] = [];
@@ -58,7 +60,7 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
         } }, '*');
       });
       document.querySelector('iframe')!.srcdoc = bootstrap;
-    }, { bootstrap, fixture });
+    }, { bootstrap, fixture: projection });
     const frame = page.frameLocator('iframe');
     await expect(frame.locator('.qsym')).toHaveCount(12);
     await expect(frame.locator('.terminal-chart')).toHaveCount(0);

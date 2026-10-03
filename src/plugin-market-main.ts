@@ -79,7 +79,9 @@ function mount(): void {
     const value = projected ? structured.projection : structured;
     let payload = Array.isArray(value) ? { data: { projection: { quotes: value } } } :
       record(value);
-    if (projected && (Array.isArray(payload.sample) || typeof payload.symbol === 'string' || typeof payload.name === 'string')) {
+    if (projected && (Array.isArray(payload.quotes) || Array.isArray(record(payload.quotes).sample))) {
+      payload = { ...payload, data: { projection: payload } };
+    } else if (projected && (Array.isArray(payload.sample) || typeof payload.symbol === 'string' || typeof payload.name === 'string')) {
       payload = { data: { projection: { quotes: Array.isArray(payload.sample) ? payload : [payload] } } };
     }
     if (!Object.keys(payload).length && Array.isArray(result.content)) {
