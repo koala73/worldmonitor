@@ -27,7 +27,8 @@ type Observation = { lat: number; lon: number; operatorCountry: string };
 
 export function isCountryActivityCoordinate(lat: number, lon: number, code: string): boolean {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-  if (isCoordinateInCountry(lat, lon, code) === true) return true;
+  const precise = isCoordinateInCountry(lat, lon, code);
+  if (precise !== null) return precise;
   const box = COUNTRY_ACTIVITY_BOUNDS[code];
   return !!box && lat >= box.s && lat <= box.n && lon >= box.w && lon <= box.e;
 }

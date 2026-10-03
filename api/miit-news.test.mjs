@@ -1,0 +1,122 @@
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, test } from 'node:test';
+import handler, { parseMiitNews, renderMiitRss } from './miit-news.js';
+
+const NOW = Date.parse('2026-10-03T17:00:00Z');
+const ARTICLE = 'https://www.miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html';
+const TITLE = '四部门关于开展2026年度享受增值税加计抵减政策的集成电路企业清单制定工作的通知';
+const row = (day, href, title = TITLE) => `<li><span>${day}</span><p><a href="${href}" title="${title}">${title}</a></p></li>`;
+const listing = row('2026-09-30', ARTICLE.replace('https:', 'http:'));
+const originalFetch = globalThis.fetch;
+const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+beforeEach((t) => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  t.mock.method(Date, 'now', () => NOW);
+});
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+  if (originalRedisToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+});
+
+test('official MIIT listing supplies dated articles independently of Google News', () => {
+  const items = parseMiitNews(listing + row('2026-09-30', ARTICLE), NOW);
+  assert.deepEqual(items, [{ title: TITLE, link: ARTICLE, date: '2026-09-29T16:00:00.000Z' }]);
+  const rss = renderMiitRss(items);
+  assert.match(rss, /<pubDate>Tue, 29 Sep 2026 16:00:00 GMT<\/pubDate>/);
+  assert.ok(rss.includes(`<link>${ARTICLE}</link>`));
+  assert.ok(rss.includes(TITLE));
+  assert.doesNotMatch(rss, /lastBuildDate/);
+});
+
+test('MIIT adapter rejects missing, invalid or future dates and nonofficial article links', () => {
+  const rejected = [
+    row('', ARTICLE), row('2026-02-30', ARTICLE), row('2026-10-05', ARTICLE), row('2026-09-20', ARTICLE),
+    row('2026-09-30', 'https://foreign.example/article.html'),
+    row('2026-09-30', 'https://www.miit.gov.cn.foreign.example/art/2026/art_a.html'),
+    row('2026-09-30', 'https://user@www.miit.gov.cn/zwgk/art/2026/art_a.html'),
+    row('2026-09-30', 'https://www.miit.gov.cn/'),
+    row('2026-09-30', ARTICLE, ''),
+  ].join('');
+  assert.deepEqual(parseMiitNews(rejected, NOW), []);
+});
+
+test('MIIT titles decode source entities and cannot terminate their RSS text section', () => {
+  const items = parseMiitNews(row('2026-09-30', ARTICLE, 'A &amp; B &#x4E2D; ]]&gt;&lt;script&gt;'), NOW);
+  assert.equal(items[0].title, 'A & B 中 ]]><script>');
+  const rss = renderMiitRss(items);
+  assert.ok(rss.includes(']]]]><![CDATA[>'));
+  assert.doesNotMatch(rss, /\]\]><script>/);
+});
+
+test('fallback listing titles remove markup recreated by nested malformed tags', () => {
+  const html = `<li><span>2026-09-30</span><a href="${ARTICLE}"><scr<script>ipt>Notice</script></a></li>`;
+  assert.equal(parseMiitNews(html, NOW)[0].title, 'Notice');
+});
+
+test('MIIT endpoint serves official RSS with original dates', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    if (url !== 'https://www.miit.gov.cn/') throw new Error('No cache credentials in this test');
+    calls.push({ url, options });
+    return new Response(listing);
+  };
+  const response = await handler(new Request('https://api.worldmonitor.app/api/miit-news'));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'application/rss+xml; charset=utf-8');
+  assert.match(await response.text(), /Tue, 29 Sep 2026 16:00:00 GMT/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.redirect, 'manual');
+  assert.ok(calls[0].options.headers['User-Agent']);
+});
+
+test('upstream failure or empty parsing fails without minting a healthy RSS feed', async () => {
+  for (const upstream of [new Response('failure', { status: 503 }), new Response(null, { status: 302, headers: { Location: 'https://foreign.example' } }), new Response('<html>challenge</html>')]) {
+    globalThis.fetch = async (url) => {
+      if (url !== 'https://www.miit.gov.cn/') throw new Error('Cache unavailable');
+      return upstream;
+    };
+    const response = await handler(new Request('https://api.worldmonitor.app/api/miit-news'));
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.doesNotMatch(await response.text(), /<rss|pubDate/);
+  }
+});
+
+test('cached MIIT articles retain the original dates without another source fetch or cache write', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const commands = [];
+  globalThis.fetch = async (url, options) => {
+    assert.ok(url.startsWith('https://redis.example/get/'));
+    commands.push({ url, method: options.method ?? 'GET' });
+    return Response.json({ result: JSON.stringify(parseMiitNews(listing, NOW)) });
+  };
+  const response = await handler(new Request('https://api.worldmonitor.app/api/miit-news'));
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Tue, 29 Sep 2026 16:00:00 GMT/);
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].method, 'GET');
+});
+
+test('empty official listing never publishes a cache record', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const commands = [];
+  globalThis.fetch = async (url, options) => {
+    if (url === 'https://www.miit.gov.cn/') return new Response('<html></html>');
+    if (url.startsWith('https://redis.example/get/')) {
+      commands.push({ url, method: options.method ?? 'GET' });
+      return Response.json({ result: null });
+    }
+    throw new Error('Unexpected test fetch');
+  };
+  const response = await handler(new Request('https://api.worldmonitor.app/api/miit-news'));
+  assert.equal(response.status, 502);
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].method, 'GET');
+});

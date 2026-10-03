@@ -10,6 +10,7 @@ import {
 } from '../server/worldmonitor/news/v1/_feeds.ts';
 import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
+import { parseMiitNews, renderMiitRss } from '../api/miit-news.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readText = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -133,6 +134,27 @@ describe('China A/H-share market coverage (#5272)', () => {
 });
 
 describe('China client/server news digest parity (#5272)', () => {
+  it('MIIT reads the official listing adapter without depending on Google indexing', () => {
+    const feed = VARIANT_FEEDS.full!.asia!.find((entry) => entry.name === 'MIIT (China)');
+    assert.equal(feed?.url, 'https://api.worldmonitor.app/api/miit-news');
+  });
+  it('the digest parser retains official MIIT article identity and publication day', () => {
+    const link = 'https://www.miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html';
+    const title = '四部门关于开展集成电路企业清单制定工作的通知';
+    const now = Date.now();
+    const day = new Date(now - 86400000).toISOString().slice(0, 10);
+    const rss = renderMiitRss(parseMiitNews(`<li><span>${day}</span><p><a href="${link}">${title}</a></p></li>`, now));
+    const feed = VARIANT_FEEDS.full!.asia!.find((entry) => entry.name === 'MIIT (China)')!;
+    const parsed = digestTesting.parseRssXml(rss, feed, 'full');
+    assert.equal(parsed?.parsedTotal, 1);
+    assert.equal(parsed?.droppedUndated, 0);
+    assert.equal(parsed?.items[0]?.title, title);
+    assert.equal(parsed?.items[0]?.link, link);
+    assert.equal(parsed?.items[0]?.source, 'MIIT (China)');
+    assert.equal(parsed?.items[0]?.publishedAt, Date.parse(`${day}T00:00:00+08:00`));
+    const hostile = digestTesting.parseRssXml(rss.replaceAll(link, 'https://foreign.example/article'), feed, 'full');
+    assert.equal(hostile?.items[0]?.link, '');
+  });
   const expectedMembership = new Map<string, { variant: string; category: string }>([
     ['Xinhua', { variant: 'full', category: 'asia' }],
     ['MIIT (China)', { variant: 'full', category: 'asia' }],

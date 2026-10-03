@@ -387,6 +387,50 @@ async function besttimeHarness(readings) {
   return { ...run, ids, status: () => run.state.cache.get(payloadKey).data.data.pizzint };
 }
 
+test('a nonempty PizzINT response with null readings recovers through live BestTime data', async () => {
+  const run = await besttimeHarness([[5, 35], [15, 30], [20, 50]]);
+  run.state.source = { success: true, data: Array.from({ length: 6 }, (_, i) => ({
+    ...validResponse.data[0], place_id: `missing-${i}`, current_popularity: null,
+    percentage_of_usual: null, recorded_at: new Date(run.state.now).toISOString(),
+  })) };
+  run.state.now += 25 * 60 * 60_000;
+  await run.seed();
+  assert.equal(run.state.besttimeCalls.length, 12, 'missing primary values must not suppress the configured fallback');
+  const status = run.status();
+  assert.deepEqual(status.locations.slice(0, 3).map(l => l.currentPopularity), [5, 15, 20]);
+  assert.equal(status.locationsOpen, 3);
+  assert.equal(run.state.cache.get(metaKey).data.recordCount, 3);
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now);
+  assert.equal(classifyPizzint(run.state).status, 'OK');
+});
+
+test('missing primary values and failed fallback preserve the expired live observation and metadata', async () => {
+  const run = await besttimeHarness([[5, 35]]);
+  await run.seed();
+  const previous = structuredClone(run.state.cache);
+  run.state.source = { success: true, data: [{ ...validResponse.data[0], current_popularity: null }] };
+  for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 503 });
+  run.state.now += 25 * 60 * 60_000;
+  await run.seed();
+  assert.equal(run.state.besttimeCalls.length, 18);
+  assert.deepEqual(run.state.cache, previous);
+  assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
+});
+
+test('a valid primary reading beside a null reading does not poll BestTime', async () => {
+  const run = harness();
+  run.state.source = { success: true, data: [validResponse.data[0], {
+    ...validResponse.data[0], place_id: 'missing-reading', current_popularity: null,
+  }] };
+  run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  await run.seed();
+  assert.equal(run.state.besttimeCalls.length, 0);
+  const locations = run.state.cache.get(payloadKey).data.data.pizzint.locations;
+  assert.equal(locations[0].currentPopularity, 75);
+  assert.equal(locations[0].dataSource, '');
+  assert.equal(locations[1].noLiveSignal, true);
+});
+
 test('normal Sunday lunch publishes DEFCON 5 even when a venue is 100% busy', async () => {
   const run = await besttimeHarness([[50, 45], [40, 40], [30, 35], [100, 100]]);
   await run.seed();

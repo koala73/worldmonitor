@@ -4,7 +4,8 @@ import type { CountryBriefSource } from '@/services/country-brief-source';
 vi.mock('@/utils', () => import('@/utils/circuit-breaker'));
 vi.mock('@/services/maritime', () => ({ registerAisCallback: vi.fn(), unregisterAisCallback: vi.fn(), isAisConfigured: () => false, initAisStream: vi.fn() }));
 vi.mock('@/services/related-assets', () => ({ preloadInfrastructureTables: async () => {}, getNearbyInfrastructure: () => [{ id: 'base', name: 'Controlled base', distanceKm: 25 }] }));
-import { loadHostCountryMilitaryActivity, projectCountryMilitaryActivity } from '@/services/country-military-activity';
+import { isCountryActivityCoordinate, loadHostCountryMilitaryActivity, projectCountryMilitaryActivity } from '@/services/country-military-activity';
+import * as geometry from '@/services/country-geometry';
 import { classifyMilitaryVessel } from '@/services/military-vessels';
 
 const own = { lat: 38, lon: -77, operatorCountry: 'US' };
@@ -19,6 +20,26 @@ function source(flights: ReturnType<typeof vi.fn>, aisAvailable = true) {
 }
 
 describe('shared country military observations', () => {
+  it('uses coarse bounds only when geometry is unavailable and retains precise inclusion outside them', () => {
+    const coordinate = vi.spyOn(geometry, 'isCoordinateInCountry').mockReturnValue(null);
+    expect(isCountryActivityCoordinate(48.8566, 2.3522, 'FR')).toBe(true);
+    expect(isCountryActivityCoordinate(52, 0, 'FR')).toBe(false);
+    coordinate.mockReturnValue(true);
+    expect(isCountryActivityCoordinate(52, 0, 'FR')).toBe(true);
+    expect(isCountryActivityCoordinate(Number.NaN, 0, 'FR')).toBe(false);
+    expect(isCountryActivityCoordinate(52, Number.POSITIVE_INFINITY, 'FR')).toBe(false);
+  });
+  it('does not count a neighboring observation rejected by precise country geometry', () => {
+    vi.spyOn(geometry, 'isCoordinateInCountry').mockImplementation((_lat, lon) => lon === 2.3522);
+    const paris = { lat: 48.8566, lon: 2.3522, operatorCountry: 'FR' };
+    const zurich = { lat: 47.3769, lon: 8.5417, operatorCountry: 'CH' };
+    expect(isCountryActivityCoordinate(zurich.lat, zurich.lon, 'FR')).toBe(false);
+    const summary = projectCountryMilitaryActivity('FR', 'France', [paris, zurich], [zurich]);
+    expect(summary.ownFlights).toBe(1);
+    expect(summary.foreignFlights).toBe(0);
+    expect(summary.nearbyVessels).toBe(0);
+    expect(summary.foreignPresence).toBe(false);
+  });
   it('uses geography, own operator normalization and foreign vessels instead of counting the global snapshot', () => {
     const summary = projectCountryMilitaryActivity('US', 'United States', [own, foreign, outside], [foreign, outside]);
     expect(summary.ownFlights).toBe(1);

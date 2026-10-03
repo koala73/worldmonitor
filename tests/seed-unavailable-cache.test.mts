@@ -348,6 +348,24 @@ it('World Bank failure is 503 without cache writes and a zero-record provider re
   assert.equal(recovered.status, 200);
   assert.deepEqual((await recovered.json()).data, []);
 });
+it('World Bank serves a seeded all snapshot when the live provider is 503', async () => {
+  const currentYear = new Date().getFullYear();
+  mode = 'hit';
+  cache.set(`economic:worldbank:v2:SP.POP.TOTL:all:5:${currentYear}`, {
+    data: [{
+      countryCode: 'USA',
+      countryName: 'United States',
+      indicatorCode: 'SP.POP.TOTL',
+      indicatorName: 'Population',
+      year: currentYear - 1,
+      value: 1,
+    }],
+  });
+  const response = await request('economic/v1/list-world-bank-indicators?indicator_code=SP.POP.TOTL&country_code=US');
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data[0].countryCode, 'USA');
+  assert.equal(writes, 0);
+});
 it('default crypto missing seed is degraded and no-store', async () => {
   const response = await request('market/v1/list-crypto-quotes');
   assertNoStore(response);

@@ -8304,7 +8304,8 @@ async function seedPizzint() {
       console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
       raw = null;
     }
-    const besttimeKey = raw ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
+    const hasPrimaryReading = raw?.data.some(d => Number.isFinite(d.current_popularity) && d.current_popularity >= 0);
+    const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
     if (!raw && !fallback) return;
 

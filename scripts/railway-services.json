@@ -999,7 +999,8 @@
       "scripts/seed-wb-indicators.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/iso3-to-iso2.json",
-      "scripts/shared/ucdp-candidate.cjs"
+      "scripts/shared/ucdp-candidate.cjs",
+      "scripts/shared/world-bank-rpc-cache.js"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
   },

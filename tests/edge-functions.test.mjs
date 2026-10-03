@@ -68,6 +68,8 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',
+    // Railway seed-wb-indicators.mjs writes the same v2 keys the Edge RPC reads.
+    'world-bank-rpc-cache.js',
   ]);
   // The attribution manifest is canonical at shared/ and is consumed by
   // repository-rooted build tooling. It is not a scripts-runtime input, so a

@@ -3,6 +3,13 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/miit-news.js",
+      "category": "non-json",
+      "reason": "Adapts the fixed official MIIT dated news listing to RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; the RSS transport cannot use a JSON proto envelope.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/public-domain-tools.ts",
       "category": "external-protocol",
       "reason": "MCP tool definitions for gold enrichment and internet observations. Fixed existing sebuf RPCs retain source schemas and gateway access; this module exports no HTTP route.",

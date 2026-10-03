@@ -1431,7 +1431,7 @@
     {
       "host": "api.worldmonitor.app",
       "provider": "World Monitor hosted API",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Excluded: World Monitor own service/control plane",
       "attribution": "Excluded from the external-provider count: first-party API endpoint.",
@@ -1499,6 +1499,9 @@
         },
         {
           "path": "scripts/verify-import-hhi-coverage.mjs"
+        },
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
         {
           "path": "src/app/desktop-updater.ts"
@@ -6270,18 +6273,10 @@
       "host": "miit.gov.cn",
       "provider": "miit.gov.cn",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit miit.gov.cn and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "mining-journal.com",
@@ -10422,6 +10417,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "api/miit-news.js"
+        },
+        {
           "path": "api/notification-suppressions.js"
         },
         {
@@ -12789,6 +12787,9 @@
       "attribution": "Credit www.miit.gov.cn and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/miit-news.js"
+        },
         {
           "path": "scripts/china-policy/adapters.mjs"
         }

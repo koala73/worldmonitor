@@ -14,6 +14,11 @@ const {
 } = require('../scripts/lib/publisher-link-relay-gate.cjs');
 
 describe('publisher-link relay gate (#8398)', () => {
+  it('keeps official MIIT article links and rejects other publishers', () => {
+    const link = 'https://www.miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html';
+    assert.equal(gateRelayStoryLink(link, 'MIIT (China)'), link);
+    assert.equal(gateRelayStoryLink('https://foreign.example/article', 'MIIT (China)'), '');
+  });
   it('keeps a link on the publisher family domain, blanks an off-publisher link', () => {
     assert.equal(
       gateRelayStoryLink('https://www.reuters.com/world/europe/x', 'reuters'),

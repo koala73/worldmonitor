@@ -530,8 +530,7 @@ describe('widget data-tool contracts', () => {
   }
 
   it('lists exactly the FRED series the RPC accepts', () => {
-    const shared = src('server/worldmonitor/economic/v1/_fred-shared.ts');
-    const allowed = [...shared.match(/ALLOWED_FRED_SERIES = new Set<string>\(\[([\s\S]*?)\]\)/)[1].matchAll(/'([A-Z0-9]+)'/g)].map(m => m[1]).sort();
+    const allowed = [...JSON.parse(src('shared/openapi-filter-param-contracts.json')).economicFredSeriesIds].sort();
     assert.ok(allowed.length > 10);
     for (const prompt of prompts) {
       const line = prompt.match(/get-fred-series \(series_id \(required, ONLY one of: ([^;]+);/);
