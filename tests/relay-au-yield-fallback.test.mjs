@@ -7,7 +7,10 @@ const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url)
 const day = 24 * 60 * 60 * 1000;
 const now = Date.parse('2026-10-03T20:00:00Z');
 
-function harness({ meta = null, enabled = true, childError = null, deferChild = false } = {}) {
+function harness({ meta = null, enabled = true, childError = null, deferChild = false,
+  canonical = { _seed: { fetchedAt: now - day / 2 - 100 } },
+  completion = { fetchedAt: now - day / 2 - 100, completedAt: now - day / 2 + 100 },
+} = {}) {
   const start = source.indexOf('const AU_YIELD_CHECK_INTERVAL_MS');
   assert.ok(start >= 0, 'relay must provide automatic AU fallback scheduling');
   const end = source.indexOf('// PizzINT Seed', start);
@@ -23,6 +26,8 @@ function harness({ meta = null, enabled = true, childError = null, deferChild = 
     if (!deferChild) finish();
   }, { execPath: '/usr/bin/node', env: { EXISTING_SETTING: 'kept' } }, async key => {
     reads.push(key);
+    if (key === 'economic:yield-curve:au:v1') return canonical;
+    if (key === 'seed-completion:economic:yield-curve-au') return completion;
     return meta;
   }, enabled, () => {}, (...args) => loops.push(args), { log() {}, warn() {} }, { now: () => now });
   return { ...subject, calls, loops, reads, finish: () => finish() };
@@ -33,8 +38,22 @@ const fresh = () => ({ fetchedAt: now - day / 2, newestItemAt: now - 3 * day });
 test('healthy primary publication suppresses fallback execution', async () => {
   const h = harness({ meta: fresh() });
   await h.seedAuYieldCurve();
-  assert.deepEqual(h.reads, ['seed-meta:economic:yield-curve-au']);
+  assert.deepEqual(h.reads, ['seed-meta:economic:yield-curve-au', 'economic:yield-curve:au:v1', 'seed-completion:economic:yield-curve-au']);
   assert.equal(h.calls.length, 0);
+});
+
+test('fresh clocks do not suppress an incomplete or differently attested publication', async () => {
+  for (const options of [
+    { completion: null },
+    { completion: { fetchedAt: now - day, completedAt: now } },
+    { canonical: null },
+    { canonical: { _seed: { fetchedAt: 'bad' } } },
+    { completion: { fetchedAt: now - day / 2 - 100, completedAt: now - day / 2 - 1 } },
+  ]) {
+    const h = harness({ meta: fresh(), ...options });
+    await h.seedAuYieldCurve();
+    assert.equal(h.calls.length, 1, JSON.stringify(options));
+  }
 });
 
 test('overdue heartbeat runs only the AU seeder with bounded time and its completion key', async () => {
