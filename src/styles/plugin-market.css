@@ -1,0 +1,42 @@
+:root {
+  color-scheme: dark; --bg:#141414; --fg:#eee; --muted:#a3a3a3; --border:#383838;
+  --green:#4ade80; --red:#fb7185; --text-dim:#a3a3a3;
+  font:14px/1.5 system-ui,sans-serif; color:var(--fg); background:var(--bg);
+}
+:root[data-theme="light"] {
+  color-scheme:light; --bg:#fff; --fg:#171717; --muted:#555; --border:#d5d5d5;
+  --green:#15803d; --red:#be123c; --text-dim:#555;
+}
+* { box-sizing:border-box; }
+body { margin:0; }
+#marketRoot { max-width:1000px; margin:auto; padding:16px; }
+header { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; justify-content:space-between; }
+h1 { font-size:20px; margin:0; }
+header span, footer, .qname, .qcoverage { color:var(--muted); font-size:12px; }
+#marketUsage { padding:8px; border:1px solid var(--border); border-radius:4px; }
+#marketContent { max-height:560px; overflow:auto; overscroll-behavior:contain; padding-right:4px; }
+h2 { font-size:12px; letter-spacing:.05em; text-transform:uppercase; margin:16px 0 6px; }
+.quote { padding:8px 0; border-bottom:1px solid var(--border); min-width:0; }
+.quote summary { cursor:pointer; }
+.quote summary::marker { color:var(--muted); }
+.quote-line { display:grid; grid-template-columns:minmax(0,1fr) minmax(50px,auto) minmax(68px,auto); gap:8px; align-items:center; }
+.qidentity { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; }
+.qsym { font-weight:650; overflow-wrap:anywhere; }
+.qname { overflow-wrap:anywhere; }
+.qprice, .qchg { font-variant-numeric:tabular-nums; text-align:right; }
+.qchg.up { color:var(--green); }
+.qchg.down { color:var(--red); }
+.qcoverage { margin:4px 0; overflow-wrap:anywhere; }
+.market-chart { padding:10px 0; }
+.terminal-chart { width:100%; height:auto; display:block; max-width:600px; }
+.mini-sparkline { flex:none; }
+footer { margin-top:12px; overflow-wrap:anywhere; }
+summary:focus-visible, #marketContent:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+
+.fg-card { display:flex; gap:12px; align-items:center; margin:12px 0; }
+.fg-score { font-size:34px; font-weight:700; font-variant-numeric:tabular-nums; }
+.fg-meta { flex:1; }
+.fg-meta h2 { margin:0; }
+.fg-label { font-weight:600; }
+.fg-track { height:8px; border-radius:10px; background:var(--border); overflow:hidden; margin-top:6px; }
+.fg-track span { display:block; height:100%; }

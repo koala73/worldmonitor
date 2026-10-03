@@ -5,6 +5,7 @@ import {
   applyAnonDiscoveryLimit,
   applyFreeTierLimit,
   applyPerMinuteLimit,
+  MCP_DEFAULT_BURST_PER_MINUTE,
   PRODUCTION_DEPS,
   resolveAuthContext,
   runContextPreChecks,
@@ -366,7 +367,9 @@ function replayEventsAfter(sessionId: string, lastEventId: string, owner: string
 // Shared by tools/call and template resources/read so the two surfaces
 // cannot drift (#7269).
 function classifyDispatchedUsage(usage: McpUsage, response: Response): void {
-  if (response.headers.get('X-Billing-Verification')) {
+  if (response.headers.get('X-RateLimit-Remaining') === '0' && response.headers.has('X-RateLimit-Limit')) {
+    usage.phase = 'limit';
+  } else if (response.headers.get('X-Billing-Verification')) {
     usage.phase = 'billing';
   } else if (response.status === 429 || response.status === 503) {
     usage.phase = 'dispatch';
@@ -993,6 +996,7 @@ async function mcpHandlerInner(
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
   let budget: McpBudget | undefined;
+  let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
@@ -1030,7 +1034,7 @@ async function mcpHandlerInner(
       // free-tier methods, and the tighter of the two sold thresholds is the
       // defensible guess. `undefined` for `perMinute` selects that default
       // explicitly; `id` after it keeps the denial correlatable (#7818).
-      const limited = await applyPerMinuteLimit(context, corsHeaders, undefined, id);
+      const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, undefined, id);
       if (limited) {
         usage.phase = 'limit';
         return limited;
@@ -1068,14 +1072,10 @@ async function mcpHandlerInner(
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
     }
-    // Plan-driven allowances, both resolved from the entitlement the pre-check
-    // already fetched (plan 2026-07-25-001 U3): the daily budget rides down to
-    // the two metered dispatch sites below, and the minute burst is spent right
-    // here. Set for `pro` and `user_key`; the other caller classes have no
-    // entitlement row and fall back to the defaults.
     budget = preCheck.budget;
+    burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
-    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
+    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
     if (limited) {
       usage.phase = 'limit';
       return limited;
@@ -1165,6 +1165,7 @@ async function mcpHandlerInner(
         budget,
         freeAccountAllowance,
         resourceMetadataUrl,
+        burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);

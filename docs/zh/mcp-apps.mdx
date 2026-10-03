@@ -3,7 +3,7 @@ title: "MCP Apps：WorldMonitor 的交互式 ui:// 小部件"
 description: "WorldMonitor MCP Apps 完整实现契约文档，覆盖交互式 ui:// 资源、工具链接协议、宿主客户端渲染流程、沙箱与安全态势、能力协商、以及漂移检查机制，帮助集成开发者理解在 Claude、Cursor 等 MCP 客户端中嵌入可交互 UI 组件的规范与调试流程。"
 ---
 
-WorldMonitor 通过 `io.modelcontextprotocol/ui` 扩展支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)。当前阵容提供 MCP Apps：自包含的 `ui://` HTML 资源，MCP Apps 宿主可在关联的工具调用后内联渲染它们。
+WorldMonitor 通过 `io.modelcontextprotocol/ui` 扩展支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)。当前阵容提供 MCP Apps：`ui://` HTML 资源，MCP Apps 宿主可在关联的工具调用后内联渲染它们。
 
 本页面是交互式接口的权威指南。请与 [MCP Server 概述](/zh/mcp-overview)配合使用，以了解认证、配额、传输和一般 JSON-RPC 行为。
 
@@ -38,7 +38,7 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | 国家风险（交互式） | 综合不稳定指数评分、组成部分细分、旅行建议和制裁风险敞口。 |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
-| `ui://worldmonitor/market-radar.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
+| `ui://worldmonitor/market-radar-v2.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
@@ -72,7 +72,7 @@ View -> Host: ui/notifications/size-changed
 
 | 读取类型 | 示例 | 认证 | Pro 每日配额 | 原因 |
 |---|---|---|---|---|
-| UI 模板 | `resources/read` `ui://worldmonitor/market-radar.html` | 否 | 否 | 静态 HTML 外壳，无数据、无上游获取。 |
+| UI 模板 | `resources/read` `ui://worldmonitor/market-radar-v2.html` | 否 | 否 | 无数据的界面引导程序；加载当前公开 UI 资源，不获取市场数据。 |
 | 公开元数据 | `resources/read` `worldmonitor://seed-meta/freshness` | 否 | 否 | 仅含元数据的健康/新鲜度探测。 |
 | 数据模板实例化 | `resources/read` `worldmonitor://countries/de/risk` | 是 | 是 | 经由与等效 `tools/call` 相同的调度器路由。 |
 | 工具数据 | `tools/call` `get_market_data` | 是 | 在 OAuth/Pro 上下文中为是 | 获取实时或缓存数据。 |
@@ -83,7 +83,7 @@ View -> Host: ui/notifications/size-changed
 
 应用外壳被刻意设计得静态且受限：
 
-- 它们是自包含的 HTML：没有外部脚本、样式、图像、iframe、字体或网络获取。
+- 静态打包的组件使用自包含 HTML。新闻、国家和市场引导程序也是内联资源，但会从资源元数据允许的来源加载当前公共界面资源。界面加载不会获取市场数据。
 - 渲染使用 DOM 构造和 `textContent`，绝不使用 `innerHTML`。
 - 链接仅通过 `http:` 或 `https:` URL 解析被允许，并以 `rel="noopener noreferrer"` 渲染。
 - 共享外壳在初始化后以及每次渲染后报告尺寸，以便宿主调整 iframe 大小。

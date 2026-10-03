@@ -10,6 +10,11 @@ const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
 const energy = { section: 'energy', arguments: { country_code: 'US' } };
+async function readPanel(...args) {
+  const read = await authorizePanelRead(...args);
+  await read.reserveUncachedRead();
+  return read;
+}
 describe('paid country workflow through the MCP handler', () => {
   let handler;
   let fetched;
@@ -66,7 +71,7 @@ describe('paid country workflow through the MCP handler', () => {
     const signature = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, '0')).join('');
     assert.equal(grant.token, `${country}.${window}.${expiry}.${signature}`);
     assert.ok(pipe.ops.flat().some(command => command[0] === 'EVAL' && String(command[5]).includes(`:country:US:${window}`)));
-    await authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now);
+    await readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now);
     assert.equal(pipe.count, 1);
   });
   it('includes a full country reader graph and ten exposure/dependency sectors in one charge', async () => {
@@ -92,9 +97,9 @@ describe('paid country workflow through the MCP handler', () => {
     assert.equal(fetched.length, readers.length + 5);
     assert.equal(pipe.count, 1);
     for (const name of ['get_country_brief', 'get_country_coverage']) {
-      const read = await authorizePanelRead(context, pipe.pipeline, name, { country_code: 'US' }, token);
+      const read = await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token);
       await read.save({ countryCode: 'US', brief: 'Controlled assessment', headlines: [] });
-      assert.equal((await authorizePanelRead(context, pipe.pipeline, name, { country_code: 'US' }, token)).cached.countryCode, 'US');
+      assert.equal((await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token)).cached.countryCode, 'US');
     }
     assert.equal(pipe.count, 1);
   });
@@ -243,14 +248,14 @@ describe('paid country workflow through the MCP handler', () => {
     await invoke(deps, 'get_country_brief_section', args);
     await invoke(deps, 'get_country_brief_section', args);
     assert.equal(fetched.length, 4);
-    const coverage = await authorizePanelRead(context, pipe.pipeline, 'get_country_coverage', { country_code: 'US' }, args.panel_request);
+    const coverage = await readPanel(context, pipe.pipeline, 'get_country_coverage', { country_code: 'US' }, args.panel_request);
     await coverage.save({ countryCode: 'US', degraded: true });
-    assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_country_coverage', { country_code: 'US' }, args.panel_request)).cached, undefined);
+    assert.equal((await readPanel(context, pipe.pipeline, 'get_country_coverage', { country_code: 'US' }, args.panel_request)).cached, undefined);
   });
   it('rejects another user, country, tool, custom assessment, reporter or forged signature before fetching', async () => {
     const { deps, pipe } = makeProDeps();
     const grant = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' });
-    const read = (ctx, name, args, token = grant.token) => authorizePanelRead(ctx, pipe.pipeline, name, args, token);
+    const read = (ctx, name, args, token = grant.token) => readPanel(ctx, pipe.pipeline, name, args, token);
     await assert.rejects(read({ ...context, userId: 'other' }, 'get_country_brief_section', energy));
     for (const [name, args] of [
       ['get_country_brief_section', { section: 'energy', arguments: { country_code: 'UA' } }],
@@ -274,11 +279,11 @@ describe('paid country workflow through the MCP handler', () => {
     const { pipe } = makeProDeps();
     const now = Date.UTC(2026, 9, 2, 12);
     const grant = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' }, now);
-    await assert.rejects(authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, Date.parse(grant.expiresAt)));
-    for (let i = 0; i < PANEL_READ_LIMIT; i++) await authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now);
-    await assert.rejects(authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now), error => error.code === 'reads');
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, Date.parse(grant.expiresAt)));
+    for (let i = 0; i < PANEL_READ_LIMIT; i++) await readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, grant.token, now), error => error.code === 'reads');
     const outage = async () => { throw new Error('Redis outage'); };
-    await assert.rejects(authorizePanelRead(context, outage, 'get_country_brief_section', energy, grant.token, now), error => error.code === 'backend');
+    await assert.rejects(readPanel(context, outage, 'get_country_brief_section', energy, grant.token, now), error => error.code === 'backend');
     await assert.rejects(admitCountryPanel(context, budget, outage, { country_code: 'US' }, now), error => error.code === 'backend');
     assert.equal(fetched.length, 0);
   });
@@ -306,8 +311,8 @@ describe('paid country workflow through the MCP handler', () => {
     assert.equal(retry.token, first.token);
     assert.equal(retry.expiresAt, first.expiresAt);
     assert.equal(pipe.count, 1);
-    await authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, retry.token, now + 299999);
-    await assert.rejects(authorizePanelRead(context, pipe.pipeline, 'get_country_brief_section', energy, retry.token, now + 300000), error => error.code === 'invalid');
+    await readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, retry.token, now + 299999);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_country_brief_section', energy, retry.token, now + 300000), error => error.code === 'invalid');
   });
 });
 
@@ -362,7 +367,7 @@ describe('one allocation per embedded panel', () => {
     assert.equal(fetched.length, 1);
     assert.deepEqual(second.body.result.structuredContent.requestedView, { country: 'US', query: 'trade' });
     assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
-    const snapshot = await authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
+    const snapshot = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
     await snapshot.save({ data: { earthquakes: { earthquakes: [] }, events: { events: [] } } });
     const result = await invoke(deps, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100, panel_request: grant.token });
     assert.deepEqual(result.body.result.structuredContent.data.earthquakes.earthquakes, []);
@@ -373,7 +378,7 @@ describe('one allocation per embedded panel', () => {
     assert.equal(pipe.count, 2);
     assert.equal(fetched.length, 2);
     assert.equal(refresh.body.result.structuredContent.panelRequest.usage.remaining, 48);
-    const fresh = await authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, refresh.body.result.structuredContent.panelRequest.token);
+    const fresh = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, refresh.body.result.structuredContent.panelRequest.token);
     assert.equal(fresh.cached, undefined);
   });
   it('reports the paid remaining allowance with a single-result panel', async () => {
@@ -389,7 +394,7 @@ describe('one allocation per embedded panel', () => {
     const first = await invoke(deps, 'open_news_dashboard');
     const grant = first.body.result.structuredContent.panelRequest;
     await invoke(deps, 'open_news_dashboard', { category: 'world' });
-    await authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['wildfires'], limit: 20 }, grant.token);
+    await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['wildfires'], limit: 20 }, grant.token);
     const denied = await invoke(deps, 'open_news_dashboard', { refresh: true });
     assert.equal(denied.response.status, 429);
     assert.ok(denied.response.headers.get('Retry-After'));
@@ -406,10 +411,10 @@ describe('one allocation per embedded panel', () => {
       ['get_natural_disasters', { dataset: ['earthquakes'], limit: 101 }],
       ['get_natural_disasters', { dataset: ['earthquakes'], limit: 20, active_only: true }],
       ['get_natural_disasters', { dataset: ['earthquakes', 'earthquakes'], limit: 20 }],
-    ]) await assert.rejects(authorizePanelRead(context, pipe.pipeline, name, args, news.token));
-    await assert.rejects(authorizePanelRead({ ...context, userId: 'other' }, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20 }, news.token));
+    ]) await assert.rejects(readPanel(context, pipe.pipeline, name, args, news.token));
+    await assert.rejects(readPanel({ ...context, userId: 'other' }, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20 }, news.token));
     const country = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' });
-    await assert.rejects(authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20 }, country.token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20 }, country.token));
     assert.equal((await invoke(deps, 'open_news_dashboard', { panel_request: news.token, refresh: true })).body.error.code, -32602);
     assert.equal(pipe.count, 2);
     assert.equal(fetched.length, 1);

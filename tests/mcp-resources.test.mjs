@@ -228,6 +228,7 @@ function installMockFetch({ riskPayload = null, keyOverrides = {} } = {}) {
 
   globalThis.fetch = async (url, init) => {
     const u = url.toString();
+    if (u === 'https://www.worldmonitor.app/plugin/market.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="marketRoot"></main><script type="module" src="/plugin/assets/market-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
     if (u === 'https://www.worldmonitor.app/plugin/country.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="countryRoot"></main><script type="module" src="/plugin/assets/country-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
     if (u === 'https://www.worldmonitor.app/plugin/plugin.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main><script type="module" src="/plugin/assets/plugin-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
 
@@ -388,7 +389,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/country-risk.html',
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
-      'ui://worldmonitor/market-radar.html',
+      'ui://worldmonitor/market-radar-v2.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
@@ -548,8 +549,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
-    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard-v2.html', 'ui://worldmonitor/country-view-v2.html'].includes(u));
-    const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri);
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard-v2.html', 'ui://worldmonitor/country-view-v2.html', 'ui://worldmonitor/market-radar-v2.html'].includes(u));
+    const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri).filter(uri => uri !== 'ui://worldmonitor/market-radar-v2.html');
     assert.deepEqual(uiUris, registryUiUris, 'inline-shell audit covers the inline registry; the compiled dashboard is checked in mcp-news-dashboard and browser tests');
 
     for (const uri of uiUris) {
@@ -613,7 +614,6 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const shellWidgets = [
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
-      'ui://worldmonitor/market-radar.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',

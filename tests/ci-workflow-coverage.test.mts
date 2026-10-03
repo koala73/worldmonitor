@@ -167,6 +167,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/dompurify-regression.spec.ts',
   'e2e/a11y-axe-scan.spec.ts',
   'e2e/map-overlay-marker-budget.spec.ts',
+  'e2e/mcp-market-built.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
