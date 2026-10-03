@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Multi-stage build for the World Monitor web app (frontend only).
+# PRs that touch this file are built and smoke-tested (GET / and /pro/) by
+# the docker-image job in .github/workflows/test.yml.
 
 # Stage 1: Build the frontend with TypeScript + Vite.
 FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
