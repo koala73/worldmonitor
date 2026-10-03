@@ -4,7 +4,7 @@ import type { CountryBriefSource } from '@/services/country-brief-source';
 vi.mock('@/utils', () => import('@/utils/circuit-breaker'));
 vi.mock('@/services/maritime', () => ({ registerAisCallback: vi.fn(), unregisterAisCallback: vi.fn(), isAisConfigured: () => false, initAisStream: vi.fn() }));
 vi.mock('@/services/related-assets', () => ({ preloadInfrastructureTables: async () => {}, getNearbyInfrastructure: () => [{ id: 'base', name: 'Controlled base', distanceKm: 25 }] }));
-import { isCountryActivityCoordinate, loadHostCountryMilitaryActivity, projectCountryMilitaryActivity } from '@/services/country-military-activity';
+import { isCountryActivityCoordinate, loadHostCountryMilitaryActivity, projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import * as geometry from '@/services/country-geometry';
 import { classifyMilitaryVessel } from '@/services/military-vessels';
 
@@ -20,6 +20,18 @@ function source(flights: ReturnType<typeof vi.fn>, aisAvailable = true) {
 }
 
 describe('shared country military observations', () => {
+  it('shares near and inside Signal counts without treating absent observations as zero', () => {
+    const near = { lat: 50, lon: -77, operatorCountry: 'GB' };
+    expect(projectCountryMilitarySignalCounts('US', [own, near, outside], [foreign, near])).toEqual({ militaryFlights: 2, militaryFlightsInCountry: 1, militaryVessels: 2, militaryVesselsInCountry: 1 });
+    expect(projectCountryMilitarySignalCounts('US', null, [])).toEqual({ militaryFlights: null, militaryFlightsInCountry: null, militaryVessels: 0, militaryVesselsInCountry: 0 });
+  });
+
+  it('keeps precise negative geometry for inside Signals while retaining near-country activity', () => {
+    vi.spyOn(geometry, 'isCoordinateInCountry').mockImplementation((_lat, lon) => lon === 2.3522);
+    const paris = { lat: 48.8566, lon: 2.3522, operatorCountry: 'FR' };
+    const zurich = { lat: 47.3769, lon: 8.5417, operatorCountry: 'CH' };
+    expect(projectCountryMilitarySignalCounts('FR', [paris, zurich], [])).toEqual({ militaryFlights: 2, militaryFlightsInCountry: 1, militaryVessels: 0, militaryVesselsInCountry: 0 });
+  });
   it('uses coarse bounds only when geometry is unavailable and retains precise inclusion outside them', () => {
     const coordinate = vi.spyOn(geometry, 'isCoordinateInCountry').mockReturnValue(null);
     expect(isCountryActivityCoordinate(48.8566, 2.3522, 'FR')).toBe(true);
