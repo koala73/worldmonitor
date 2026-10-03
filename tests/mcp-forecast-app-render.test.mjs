@@ -7,6 +7,7 @@ const windows = [];
 const forecast = {
   title: 'Controlled supply forecast', domain: 'energy', region: 'Europe', probability: 0.65,
   trend: 'rising', timeHorizon: '7 days', scenario: 'Executive scenario', priorProbability: 0.6,
+  signals: [{ value: 'Observed forecast signal' }], simulationAdjustment: 0.1, simPathConfidence: 0.6,
   calibration: { marketTitle: 'Controlled market', marketPrice: 0.55 }, cascades: [{ effect: 'Trade pressure' }],
   perspectives: { strategic: 'Strategic view', regional: 'Regional view', contrarian: 'Contrarian view' },
   caseFile: {
@@ -42,10 +43,11 @@ describe('forecast MCP analysis parity', () => {
     assert.ok(details, 'loaded analysis must be expandable');
     assert.equal(details.querySelector('summary').textContent, 'Analysis');
     const text = details.textContent;
-    for (const phrase of ['Executive scenario', 'Baseline outcome', 'Updated assessment', 'New observation', 'Current world state', 'Active pressure', 'Stabilizer', 'Unresolved question', 'Escalatory path', 'Alternative outcome', 'Supporting observation (80%)', 'Counter observation (30%)', 'Watch signal', 'Controlled actor', 'Actor role', 'Actor objective', 'Actor constraint', 'Actor action', 'Controlled branch', '40%', 'Branch summary', 'Branch outcome', 'Round development', 'Round action', 'Strategic view', 'Regional view', 'Contrarian view', 'Controlled market', '55%', 'Prior: 60%', 'Cascades: 1']) {
+    for (const phrase of ['Executive scenario', 'Baseline outcome', 'Updated assessment', 'New observation', 'Current world state', 'Active pressure', 'Stabilizer', 'Unresolved question', 'Escalatory path', 'Alternative outcome', 'Supporting observation (80%)', 'Counter observation (30%)', 'Watch signal', 'Observed forecast signal', 'Controlled actor', 'Actor role', 'Actor objective', 'Actor constraint', 'Actor action', 'Controlled branch', '40%', 'Branch summary', 'Branch outcome', 'Round development', 'Round action', 'Strategic view', 'Regional view', 'Contrarian view', 'Controlled market', '55%', 'Prior: 60%', 'Cascades: 1']) {
       assert.ok(text.includes(phrase), `missing website analysis field: ${phrase}`);
     }
     assert.match(doc.getElementById('list').textContent, /rising.*7 days/);
+    assert.match(doc.querySelector('.fc-meta').textContent, /AI backed.*AI signal \(moderate\).*\+10%/);
   });
   it('filters every loaded forecast locally without host tool calls or fetches', async () => {
     const { win, doc } = await mount(payload(Array.from({ length: 15 }, (_, i) => ({ ...forecast, title: `Forecast ${i + 1}`, domain: i === 14 ? 'conflict' : 'energy', region: i === 14 ? 'Asia' : 'Europe' }))));
@@ -75,6 +77,7 @@ describe('forecast MCP analysis parity', () => {
   it('distinguishes unavailable, empty and sampled results and missing analysis', async () => {
     const { doc, send } = await mount({ data: { predictions: null } });
     assert.match(doc.getElementById('list').textContent, /Forecast data unavailable/);
+    assert.doesNotMatch(doc.getElementById('count').textContent, /0 of 0/);
     send(payload([]));
     assert.match(doc.getElementById('list').textContent, /No forecasts available/);
     send(payload({ count: 30, sample: [{ title: 'Sample forecast', probability: null, hasCaseFile: true }] }));
@@ -82,6 +85,7 @@ describe('forecast MCP analysis parity', () => {
     assert.match(doc.querySelector('details').textContent, /Case evidence is not included in this result/);
     assert.equal(doc.querySelector('.pbar'), null);
     assert.match(doc.querySelector('.fc-prob').textContent, /—/);
+    assert.doesNotMatch(doc.querySelector('.fc').textContent, /AI backed|AI flagged|AI skeptical/);
   });
   it('shows degraded and stale source state without calling it fresh', async () => {
     const { doc } = await mount({ ...payload([forecast], { degraded: true, stale: true, error: 'upstream_unavailable' }), stale: true });
@@ -94,6 +98,14 @@ describe('forecast MCP analysis parity', () => {
     assert.equal(doc.getElementById('list').querySelector('img,script'), null);
     assert.match(doc.getElementById('list').textContent, /<script>alert\(1\)<\/script>/);
     assert.doesNotMatch(doc.getElementById('list').textContent, /\[object Object\]/);
+  });
+  it('keeps unknown calibration odds unknown and preserves skeptical and negative simulation verdicts', async () => {
+    const { doc, send } = await mount(payload([{ ...forecast, calibration: { marketTitle: 'Unknown market', marketPrice: null }, demotedBySimulation: true, simulationAdjustment: -0.12 }]));
+    assert.match(doc.getElementById('list').textContent, /Unknown market \(probability unknown\)/);
+    assert.doesNotMatch(doc.getElementById('list').textContent, /Unknown market \(0%\)/);
+    assert.match(doc.querySelector('.fc-meta').textContent, /AI skeptical.*AI flag: dropped.*−12%/);
+    send(payload([{ ...forecast, simulationAdjustment: -0.05 }]));
+    assert.match(doc.querySelector('.fc-meta').textContent, /AI flagged.*AI caution.*−5%/);
   });
   it('replaces prior analysis and resets a filter absent from the new result', async () => {
     const { win, doc, send } = await mount();
