@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -202,11 +205,46 @@ export function linkEnvFiles({
   return result;
 }
 
+// Bun leaves NO completed-install marker inside node_modules — only `.bin`,
+// which an interrupted install also creates. npm's `.package-lock.json` has no
+// bun equivalent, and `bun install --frozen-lockfile` on an already-installed
+// tree costs ~11s (measured), far too slow to run unconditionally in a gate
+// whose cached-green re-push is ~0.5s. So the repo writes its own marker: the
+// sha256 of the bun lockfile the tree was installed from. That is strictly
+// stronger than npm's marker, which proves completion but not freshness.
+export const BUN_INSTALL_MARKER = 'node_modules/.wm-bun-install';
+
+function bunLockDigest(rootDir) {
+  const lockfile = resolve(rootDir, 'bun.lock');
+  if (!existsSync(lockfile)) return null;
+  return createHash('sha256').update(readFileSync(lockfile)).digest('hex');
+}
+
+export function writeBunInstallMarker(rootDir = process.cwd()) {
+  const digest = bunLockDigest(rootDir);
+  if (!digest) return false;
+  writeFileSync(resolve(rootDir, BUN_INSTALL_MARKER), `${digest}\n`);
+  return true;
+}
+
+export function hasFreshBunInstall(rootDir = process.cwd()) {
+  const digest = bunLockDigest(rootDir);
+  if (!digest) return false;
+  const marker = resolve(rootDir, BUN_INSTALL_MARKER);
+  if (!existsSync(marker)) return false;
+  return readFileSync(marker, 'utf8').trim() === digest;
+}
+
 export function shouldInstallDependencies({
   forceInstall = false,
   rootDir = process.cwd(),
 } = {}) {
-  return forceInstall || !existsSync(resolve(rootDir, 'node_modules/.package-lock.json'));
+  if (forceInstall) return true;
+  if (existsSync(resolve(rootDir, 'node_modules/.package-lock.json'))) return false;
+  // Consulted only when a bun lockfile is present, so a checkout without one
+  // takes the exact npm path this function has always taken.
+  if (hasFreshBunInstall(rootDir)) return false;
+  return true;
 }
 
 export function assertNodeModulesNotSymlink(rootDir = process.cwd(), label = 'node_modules') {
