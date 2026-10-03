@@ -31,6 +31,10 @@ export const COUNTRY_VIEW_META = {
   ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org', 'data:'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
+export const MARKET_RADAR_META = {
+  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+};
+
 export async function readNewsDashboard(id: unknown, corsHeaders: Record<string, string>, uri = NEWS_DASHBOARD_UI_URI): Promise<Response> {
   return readPluginDocument(id, corsHeaders, 'plugin.html', 'pluginRoot', uri);
 }
@@ -39,7 +43,7 @@ export async function readCountryView(id: unknown, corsHeaders: Record<string, s
   return readPluginDocument(id, corsHeaders, 'country.html', 'countryRoot', uri);
 }
 
-async function readPluginDocument(id: unknown, corsHeaders: Record<string, string>, entry: 'plugin.html' | 'country.html', root: 'pluginRoot' | 'countryRoot', uri: string): Promise<Response> {
+export async function readPluginDocument(id: unknown, corsHeaders: Record<string, string>, entry: 'plugin.html' | 'country.html' | 'market.html', root: 'pluginRoot' | 'countryRoot' | 'marketRoot', uri: string): Promise<Response> {
   try {
     const response = await fetch(`${ASSET_ORIGIN}/plugin/${entry}`, {
       headers: { 'User-Agent': 'WorldMonitor-MCP/1.0' },
@@ -64,7 +68,7 @@ async function readPluginDocument(id: unknown, corsHeaders: Record<string, strin
     } finally { await reader.cancel(); }
     if (!html.includes(`id="${root}"`) || !html.includes('<head>')) throw new Error('Invalid plugin build');
     const text = buildPluginShell({ origin: ASSET_ORIGIN, entry, root });
-    return rpcOk(id, { contents: [{ uri, mimeType: UI_RESOURCE_MIME_TYPE, text, _meta: root === 'countryRoot' ? COUNTRY_VIEW_META : NEWS_DASHBOARD_META }] }, corsHeaders);
+    return rpcOk(id, { contents: [{ uri, mimeType: UI_RESOURCE_MIME_TYPE, text, _meta: root === 'pluginRoot' ? NEWS_DASHBOARD_META : root === 'marketRoot' ? MARKET_RADAR_META : COUNTRY_VIEW_META }] }, corsHeaders);
   } catch {
     return rpcError(id, -32603, 'WorldMonitor dashboard assets are unavailable. Retry after the plugin build is deployed.', corsHeaders);
   }

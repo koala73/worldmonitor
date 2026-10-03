@@ -1,7 +1,7 @@
 type PluginDocument = {
   origin: string;
-  entry: 'country.html' | 'plugin.html';
-  root: 'countryRoot' | 'pluginRoot';
+  entry: 'country.html' | 'plugin.html' | 'market.html';
+  root: 'countryRoot' | 'pluginRoot' | 'marketRoot';
 };
 
 export function buildPluginShell(config: PluginDocument): string {

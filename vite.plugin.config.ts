@@ -23,6 +23,6 @@ export default defineConfig({
   build: {
     outDir: 'dist/plugin',
     copyPublicDir: false,
-    rollupOptions: { input: { plugin: resolve(__dirname, 'plugin.html'), country: resolve(__dirname, 'country.html') } },
+    rollupOptions: { input: { plugin: resolve(__dirname, 'plugin.html'), country: resolve(__dirname, 'country.html'), market: resolve(__dirname, 'market.html') } },
   },
 });
