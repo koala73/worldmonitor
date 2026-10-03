@@ -34,7 +34,8 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.match(text, /Yes 62%/);
     assert.match(text, /No 38%/);
     assert.match(text, /Vol: \$1\.3M/);
-    assert.match(text, /Closes: Dec 31, 2026/);
+    const expectedDate = new Date(market.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    assert.ok(text.includes(`Closes: ${expectedDate}`));
     assert.match(text, /Lean Yes/);
     assert.match(text, /Polymarket/);
   });
@@ -60,6 +61,8 @@ describe('prediction MCP card parity with the website presentation', () => {
     const { win, doc } = await mount(Array.from({ length: 8 }, (_, i) => ({ ...market, title: `Contract ${i + 1}` })));
     let reads = 0;
     win.fetch = async () => { reads++; throw new Error('Unexpected data read'); };
+    const messages = [];
+    win.eval('window.parent').postMessage = message => messages.push(message);
     assert.equal(doc.querySelectorAll('.mkt').length, 6);
     const more = doc.querySelector('.mkt-more');
     assert.ok(more, 'loaded rows beyond six must remain reachable');
@@ -68,6 +71,17 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.match(doc.getElementById('groups').textContent, /Contract 8/);
     assert.equal(doc.querySelector('.mkt-more'), null);
     assert.equal(reads, 0);
+    assert.ok(messages.length > 0, 'expansion reports its size to the host');
+    assert.ok(messages.every(message => message.method === 'ui/notifications/size-changed'));
+  });
+  it('moves focus to the first new card even without a contract link', async () => {
+    const { doc } = await mount(Array.from({ length: 8 }, (_, i) => ({ ...market, url: '', title: `Contract ${i + 1}` })));
+    const more = doc.querySelector('.mkt-more');
+    more.focus();
+    assert.equal(doc.activeElement, more);
+    more.click();
+    assert.ok(doc.activeElement === doc.querySelectorAll('.mkt')[6], 'focus must move to the first new card');
+    assert.equal(doc.activeElement.getAttribute('tabindex'), '-1');
   });
   it('clears expanded rows and links when a new tool result arrives', async () => {
     const { doc, send } = await mount(Array.from({ length: 8 }, () => market));
