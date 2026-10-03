@@ -1,4 +1,5 @@
 import './styles/plugin-market.css';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';
 import { miniSparkline } from '@/utils/sparkline';
 
@@ -47,7 +48,7 @@ function mount(): void {
     identity.append(node('span', 'qsym', symbol));
     if (charted) {
       const preview = node('span', '');
-      preview.innerHTML = miniSparkline(series, change);
+      setTrustedHtml(preview, trustedHtml(miniSparkline(series, change), 'SVG geometry from finite numeric points'));
       identity.append(preview);
     }
     line.append(identity, node('span', 'qprice', format(number(quote.price))),
@@ -58,7 +59,7 @@ function mount(): void {
     row.append(heading);
     if (charted) {
       const chart = node('div', 'market-chart');
-      chart.innerHTML = terminalChart(series, { change, ariaLabel: symbol + ' loaded intraday price chart' });
+      setTrustedHtml(chart, trustedHtml(terminalChart(series, { change, ariaLabel: symbol + ' loaded intraday price chart' }), 'Shared chart renderer escapes the label and uses finite numeric points'));
       chart.append(node('p', 'qcoverage', 'Loaded intraday series. ' + series.length + ' observed points. Expand without another request.'));
       row.append(chart);
     } else {
