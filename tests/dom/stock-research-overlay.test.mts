@@ -202,3 +202,57 @@ describe('stock research overlay overlapping opens', () => {
     expect(analyzeSection()?.textContent).not.toContain('FIRST');
   });
 });
+
+describe('stock research overlay discloses AI-vs-template provenance (#5498)', () => {
+  const provenance = () => analyzeSection()?.querySelector('[data-analysis-provenance]') as HTMLElement | null;
+
+  it('labels a rules-based fallback template as such, above the summary', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'rules', fallback: true, model: '' });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.textContent).toContain('Rules-based template');
+    // The disclosure precedes the prose it qualifies.
+    const section = analyzeSection()!;
+    const order = [...section.querySelectorAll('p')].map((p) => p.textContent ?? '');
+    expect(order.findIndex((t) => t.includes('Rules-based template'))).toBeLessThan(order.findIndex((t) => t.includes('Rating summary')));
+  });
+
+  it('treats provider "rules" as a fallback even if the flag is missing', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'rules' });
+    await openStockResearchOverlay('AAPL');
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('rules-fallback');
+  });
+
+  it('labels model-generated commentary with its provider and model', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'openrouter', model: 'meta-llama/llama-3.3-70b', fallback: false });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('model');
+    expect(provenance()?.textContent).toContain('AI commentary');
+    expect(provenance()?.textContent).toContain('openrouter');
+    expect(provenance()?.textContent).toContain('meta-llama/llama-3.3-70b');
+    expect(analyzeSection()?.textContent).not.toContain('Rules-based template');
+  });
+
+  it('escapes provider and model strings', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: '<img src=x onerror=alert(1)>', model: '</p><script>1</script>', fallback: false });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.querySelector('img, script')).toBeNull();
+    expect(provenance()?.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('renders no provenance line in the locked or error states', async () => {
+    hasPremiumAccess.mockReturnValue(false);
+    await openStockResearchOverlay('AAPL');
+    expect(document.querySelector('[data-analysis-provenance]')).toBeNull();
+    closeStockResearchOverlay();
+
+    hasPremiumAccess.mockReturnValue(true);
+    analyzeStock.mockRejectedValue(new Error('boom'));
+    await openStockResearchOverlay('AAPL');
+    expect(document.querySelector('[data-analysis-provenance]')).toBeNull();
+  });
+});
