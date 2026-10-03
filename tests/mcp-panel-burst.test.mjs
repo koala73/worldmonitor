@@ -114,6 +114,22 @@ describe('bounded panel reads with an enabled minute limiter', () => {
       delete process.env.AXIOM_API_TOKEN;
     }
   });
+  it('preserves uncached read slots across denied retries until the minute window recovers', async () => {
+    const { deps, pipe } = makeProDeps();
+    const receipt = await open(deps);
+    await invoke(deps, 'get_country_brief_section', energy(receipt.token));
+    const panelBucket = calls.at(-1).key;
+    counts.set(panelBucket, 64);
+    const fresh = { section: 'food', arguments: { countryCode: 'US' }, panel_request: receipt.token };
+    for (let i = 0; i < 64; i++) assert.equal((await invoke(deps, 'get_country_brief_section', fresh)).body.error?.code, -32029);
+    assert.equal(fetched.length, 1);
+    counts.set(panelBucket, 0);
+    const recovered = await invoke(deps, 'get_country_brief_section', fresh);
+    assert.equal(recovered.body.error, undefined);
+    assert.equal(recovered.body.result.structuredContent.state, 'ready');
+    assert.equal(fetched.length, 2);
+    assert.equal(pipe.count, 1);
+  });
   it('keeps ordinary openings and tool calls on the plan user burst', async () => {
     const { deps, pipe } = makeProDeps();
     counts.set(userBucket, 60);
