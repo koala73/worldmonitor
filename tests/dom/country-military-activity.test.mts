@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CountrySectionError } from '@/services/country-brief-error';
 import type { CountryBriefSource } from '@/services/country-brief-source';
 
 vi.mock('@/utils', () => import('@/utils/circuit-breaker'));
@@ -123,4 +124,15 @@ describe('shared country military observations', () => {
     expect(summary.coverageNotes).toContain('USNI fleet roster unavailable.');
   });
 
+});
+
+it('keeps ambiguous empty flights unknown and reports authorization loss for refresh retention', async () => {
+  const reader = source(vi.fn().mockResolvedValue({ flights: [], pagination: { nextCursor: '' } }));
+  const empty = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
+  expect(empty.signalCounts.militaryFlights).toBeNull();
+  expect(empty.deniedSignalFields).toEqual([]);
+  reader.military.listMilitaryFlights = vi.fn().mockRejectedValue(new CountrySectionError('locked', 'Not authorized'));
+  reader.vessels.getVesselSnapshot = vi.fn().mockRejectedValue(new CountrySectionError('locked', 'Not authorized'));
+  const denied = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
+  expect(denied.deniedSignalFields).toEqual(['militaryFlights', 'militaryFlightsInCountry', 'militaryVessels', 'militaryVesselsInCountry']);
 });
