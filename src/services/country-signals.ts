@@ -16,3 +16,19 @@ export function countrySignalsFromMilitary(military?: CountryMilitarySignalCount
     thermalEscalations: null, sanctionsDesignations: null, sanctionsNewDesignations: null,
   };
 }
+
+export function recoverCountrySignals(next: CountrySignalCounts, previous: CountrySignalCounts | null, denied: readonly (keyof CountryMilitarySignalCounts)[]) {
+  const signals = { ...next };
+  const retained: string[] = [];
+  const labels = {
+    militaryFlights: 'near-country flights', militaryFlightsInCountry: 'in-country flights',
+    militaryVessels: 'near-country vessels', militaryVesselsInCountry: 'in-country vessels',
+  } satisfies Record<keyof CountryMilitarySignalCounts, string>;
+  for (const key of Object.keys(labels) as Array<keyof CountryMilitarySignalCounts>) {
+    if (next[key] === null && previous?.[key] != null && !denied.includes(key)) {
+      signals[key] = previous[key];
+      retained.push(labels[key]);
+    }
+  }
+  return { signals, notes: retained.length ? [`Refresh could not confirm ${retained.join(', ')}. Showing previously loaded observations for this country; these counts are not fresh.`] : [] };
+}

@@ -52,10 +52,10 @@ it('retains website recent evidence when a score refresh updates the count chips
   panel.updateScore(null, countrySignalsFromMilitary({ militaryFlights: 2, militaryFlightsInCountry: 1, militaryVessels: 0, militaryVesselsInCountry: 0 }));
   expect(recent?.textContent).toBe(before);
   expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe(breakdown);
+  expect(body.textContent).toContain('2 Military Air');
   panel.updateSignals(countrySignalsFromMilitary());
   expect(body.textContent).not.toContain('Observed evidence');
   expect(body.textContent).toContain('Aggregate severity');
-  expect(body.textContent).toContain('2 Military Air');
   panel.hide();
 });
 

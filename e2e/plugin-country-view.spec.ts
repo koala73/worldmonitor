@@ -20,6 +20,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   const links: string[] = [];
   let failFacts = false;
   let failActivity = false;
+  let denyActivity = false;
   let atlasDenied = false;
   let atlasUnavailable = false;
   let disruptionsFailed = false;
@@ -77,6 +78,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     const section = String(args.section);
     if (section === 'facts' && code === 'US' && delayUS) await delayed;
     if (section === 'facts' && failFacts) return { structuredContent: { section, state: 'unavailable', reason: 'Controlled source failure' } };
+    if (denyActivity && ['vessels', 'flights', 'fleet'].includes(section)) return { structuredContent: { section, state: 'locked', reason: 'Controlled authorization loss' } };
     if (failActivity && section === 'vessels') return { structuredContent: { section, state: 'unavailable', reason: 'Controlled AIS outage' } };
     if (delayAtlasDetail && ['pipelineDetail', 'facilityDetail'].includes(section)) await delayedAtlasDetail;
     if (atlasOutages.timeline && section === 'disruptions') await delayedDisruptions;
@@ -168,7 +170,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { calls, contexts, links, unmanaged, cancelled, action, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { calls, contexts, links, unmanaged, cancelled, action, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('country territory counts honor loaded polygons instead of neighboring bounding-box observations', async ({ page }, info) => {
@@ -218,21 +220,31 @@ test('country Signals reuse loaded military observations and keep missing source
   await signals.screenshot({ path: info.outputPath('signals-observed-desktop.png') });
   host.activityOutage();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
-  await expect(signals).toContainText('Naval Vessels unavailable');
+  await expect(signals).toContainText('Showing previously loaded observations');
+  await expect(signals).toContainText('1 Naval Vessels');
   await expect(signals).toContainText('1 Military Air');
-  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBeNull();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBe(1);
   await signals.screenshot({ path: info.outputPath('signals-source-outage-desktop.png') });
   host.activityRecover();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(signals).toContainText('1 Naval Vessels');
   await expect(signals).not.toContainText('Naval Vessels unavailable');
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBe(1);
+  await expect(signals).not.toContainText('Showing previously loaded observations');
   expect(host.admissions).toBe(3);
   expect(host.unmanaged).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
   await signals.screenshot({ path: info.outputPath('signals-recovered-mobile.png') });
   expect(await frame.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await writeFile(info.outputPath('signals-request-cost.json'), JSON.stringify({ surface: 'compiled opaque iframe, controlled observations', initialHostCalls: initialReads, initialDailyUnits: 1, navigationCalls: 0, newSignalsReaders: 0, signalProjection: 'observed military counts, remaining sources explicitly unavailable' }, null, 2));
+  host.denyActivity();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(signals).toContainText('Military Air unavailable');
+  await expect(signals).toContainText('Naval Vessels unavailable');
+  await expect(signals).not.toContainText('Showing previously loaded observations');
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBeNull();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBeNull();
+  expect(host.admissions).toBe(4);
 });
 
 test('cached country resource loads the current compiled panel after its old assets are removed', async ({ page }, info) => {

@@ -1,6 +1,6 @@
 import './bootstrap/zod-csp';
 import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
-import { countrySignalsFromMilitary } from '@/services/country-signals';
+import { countrySignalsFromMilitary, recoverCountrySignals } from '@/services/country-signals';
 import './styles/base-layer.css';
 import './styles/plugin-country.css';
 import { z } from 'zod';
@@ -217,12 +217,15 @@ async function mountPlugin(): Promise<void> {
     void preloadCountryGeometry().then(() => loadHostCountryMilitaryActivity(source, code, name, signal)).then(summary => {
       if (current()) {
         panel.updateMilitaryActivity(summary);
-        panel.updateSignals(countrySignalsFromMilitary(summary.signalCounts), summary.coverageNotes);
+        const recovered = recoverCountrySignals(countrySignalsFromMilitary(summary.signalCounts), refresh ? panel.getSignalCounts() : null, summary.deniedSignalFields);
+        panel.updateSignals(recovered.signals, [...summary.coverageNotes, ...recovered.notes]);
       }
-    }).catch(() => {
+    }).catch(error => {
       if (current()) {
         panel.updateMilitaryActivity(null);
-        panel.updateSignals(countrySignalsFromMilitary(), ['Military observations could not be loaded. Retry or refresh to recover them.']);
+        const previous = refresh && !(error instanceof CountrySectionError && error.state === 'locked') ? panel.getSignalCounts() : null;
+        const recovered = recoverCountrySignals(countrySignalsFromMilitary(), previous, []);
+        panel.updateSignals(recovered.signals, ['Military observations could not be loaded. Retry or refresh to recover them.', ...recovered.notes]);
       }
     });
     if (refresh) panel.refreshHostedSections();

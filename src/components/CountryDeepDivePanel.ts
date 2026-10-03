@@ -135,6 +135,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentName: string | null = null;
   private currentScore: CountryScore | null = null;
   private currentSignals: CountrySignalCounts | null = null;
+  private currentSignalDetails: CountryDeepDiveSignalDetails | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -482,6 +483,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public updateSignalDetails(details: CountryDeepDiveSignalDetails): void {
+    this.currentSignalDetails = details;
     if (!this.signalBreakdownBody || !this.signalRecentBody) return;
     this.renderSignalBreakdown(details);
     this.renderRecentSignals(details.recentHigh);
@@ -2827,7 +2829,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (_signals) {
       this.currentSignals = _signals;
       this.signalsBody?.querySelector('.cdp-signal-chips')?.replaceWith(this.buildSignalChipsElement(_signals));
-      this.renderInitialSignalBreakdown(_signals);
+      if (!this.currentSignalDetails) this.renderInitialSignalBreakdown(_signals);
     }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
@@ -3638,6 +3640,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private resetPanelContent(): void {
+    this.currentSignalDetails = null;
     this.outputClose?.();
     this.presentation?.destroy();
     this.presentation = null;
@@ -3732,6 +3735,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderInitialSignals(signals: CountrySignalCounts | null): void {
+    this.currentSignalDetails = null;
     if (!this.signalsBody) return;
     this.signalsBody.replaceChildren();
     if (!signals) { this.signalsBody.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return; }
@@ -3752,7 +3756,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const critical = sum(signals.criticalNews, signals.activeStrikes);
     const high = sum(signals.militaryFlights, signals.militaryVessels, signals.protests);
     const medium = sum(signals.outages, signals.cyberThreats, signals.aisDisruptions, signals.radiationAnomalies);
-    const low = sum(signals.earthquakes, signals.temporalAnomalies ?? 0, signals.satelliteFires);
+    const low = sum(signals.earthquakes, signals.temporalAnomalies, signals.satelliteFires);
     if (critical === null || high === null || medium === null || low === null) {
       this.signalBreakdownBody.replaceChildren(this.makeEmpty('Aggregate severity and recent high-severity observations are unavailable. Military counts alone do not establish these totals.'));
       return false;
