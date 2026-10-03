@@ -100,10 +100,19 @@ export default async function handler(req, ctx) {
       },
     });
   } catch (error) {
+    // AbortSignal.timeout(10000) on the official listing fetch surfaces as
+    // TimeoutError / AbortError when www.miit.gov.cn is slow or unreachable
+    // from the edge. The handler already returns 502; downgrade the Sentry
+    // capture to warning so one-shot upstream timeouts stay queryable without
+    // drowning real listing bugs (empty parse, HTTP non-ok, size limit).
+    // Same gate as api/brief/carousel and api/_relay (WORLDMONITOR-17C).
+    const errName = error instanceof Error ? error.name : '';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
     captureSilentError(error, {
       tags: { route: 'api/miit-news', step: 'listing' },
       fingerprint: ['api/miit-news', 'listing', error instanceof Error ? error.name : 'Error'],
       ctx,
+      ...(isTransientTimeout ? { level: 'warning' } : {}),
     });
     return jsonResponse({ error: 'MIIT official news unavailable' }, 502, {
       ...cors, 'Cache-Control': 'no-store',

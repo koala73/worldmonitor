@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, test } from 'node:test';
 import handler, { parseMiitNews, renderMiitRss } from './miit-news.js';
 
@@ -119,4 +120,24 @@ test('empty official listing never publishes a cache record', async () => {
   assert.equal(response.status, 502);
   assert.equal(commands.length, 1);
   assert.equal(commands[0].method, 'GET');
+});
+
+test('listing TimeoutError fails closed with 502 and does not mint RSS', async () => {
+  globalThis.fetch = async (url) => {
+    if (url !== 'https://www.miit.gov.cn/') throw new Error('Cache unavailable');
+    throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+  };
+  const response = await handler(new Request('https://example.test/api/miit-news'));
+  assert.equal(response.status, 502);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.doesNotMatch(await response.text(), /<rss|pubDate/);
+});
+
+test('listing TimeoutError / AbortError capture is downgraded to warning', () => {
+  // captureSilentError is a no-op under NODE_TEST_CONTEXT, so pin the gate in
+  // source the same way oauth/token contract tests pin capture shape. Real
+  // envelope delivery stays covered by api/_sentry-common.test.mjs.
+  const src = readFileSync(new URL('./miit-news.js', import.meta.url), 'utf8');
+  assert.match(src, /errName === 'AbortError' \|\| errName === 'TimeoutError'/);
+  assert.match(src, /isTransientTimeout \? \{ level: 'warning' \} : \{\}/);
 });
