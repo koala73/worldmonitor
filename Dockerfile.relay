@@ -157,6 +157,12 @@ COPY scripts/_html-entities.mjs ./scripts/_html-entities.mjs
 COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
 COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
 COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs
+COPY scripts/seed-yield-curve-au.mjs ./scripts/seed-yield-curve-au.mjs
+COPY scripts/seed-yield-curves-shared.mjs ./scripts/seed-yield-curves-shared.mjs
+COPY scripts/_content-age-helpers.mjs ./scripts/_content-age-helpers.mjs
+COPY scripts/_upstash-rest.mjs ./scripts/_upstash-rest.mjs
+COPY scripts/lib/yield-curves/model.mjs ./scripts/lib/yield-curves/model.mjs
+COPY scripts/lib/yield-curves/rba.mjs ./scripts/lib/yield-curves/rba.mjs
 
 # Shared helper required by the relay (rss-allowed-domains.cjs)
 COPY shared/ ./shared/

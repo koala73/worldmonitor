@@ -42,6 +42,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     assert.ok(copied.size > 0, 'Dockerfile.relay has no COPY scripts/*.mjs|cjs lines');
   });
 
+  it('includes the AU yield fallback seeder launched as a child process', () => {
+    assert.ok(copied.has('scripts/seed-yield-curve-au.mjs'));
+  });
+
   it('copies the China country-index helper that ais-relay loads dynamically', () => {
     assert.ok(copied.has('scripts/_country-stock-index.mjs'));
   });

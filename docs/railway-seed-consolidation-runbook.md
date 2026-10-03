@@ -1381,6 +1381,27 @@ Recovery is accepted only when:
 
 ---
 
+### Australian yield fallback
+
+The daily bundle remains the primary AU producer. The `ais-relay` service also
+checks `seed-meta:economic:yield-curve-au` every six hours. It runs the same
+`seed-yield-curve-au.mjs` only when the publication is at least 24 hours old,
+the newest curve is at least ten days old, or either clock is missing or invalid.
+Recent primary publication suppresses the fallback.
+
+This second request path addresses the RBA HTTP 403 responses observed in the
+yield bundle on October 1 to 3, 2026. Read-only RBA requests succeeded from the
+US-East relay. The upstream rejection policy is unknown; both paths can still
+fail. The fallback uses the existing seeder validation, shared economic lock,
+canonical payload, latest/year shards, and bundle completion marker. Failed
+fetches preserve the previous data and freshness clocks.
+
+The relay image and its registry watch paths must include the AU seeder and its
+import graph. After deploying the relay change, verify `[AuYieldFallback]`
+execution, matching canonical/latest/year data, a newer seed heartbeat, and
+the public AU health verdict. A healthy response after a manual seed is not
+proof that this scheduled fallback has run.
+
 ## Registry-covered live resilience services
 
 These live Country Resilience services are not slot-saving consolidation
