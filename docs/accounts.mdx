@@ -32,6 +32,8 @@ The billing tab shows the current plan and the state that matters operationally:
 
 Cancelling a subscription in the billing portal is not account deletion. To delete the signed-in World Monitor account itself, stay on **Plan & billing**, open **Delete account**, and type `DELETE`. That cancels covering subscriptions (remaining prepaid time is not refunded), revokes keys and tokens immediately, and removes or anonymizes personal Convex data. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry (name, email, phone, billing address); those records stop naming your login account, because the user id is replaced by a tombstone and signed identity markers are stripped from the payloads stored on them. Raw payment-provider webhook logs written before the deletion request are retained as delivered and still carry the identifiers they arrived with. Device-local dashboard preferences and desktop keychain secrets are not wiped remotely — sign out on other devices and clear this device's site data.
 
+If a deletion stops before it finishes, **Plan & billing** says so and shows **Retry deletion**. Until the deletion completes, the account cannot save changes. Retrying resumes from where it stopped. If it fails again, contact support with the code it shows.
+
 Invitees can delete their own account. That does not cancel the owner's subscription. An owner deletion revokes every seat grant immediately.
 
 Anonymous dashboard use has no server account to delete. Clear local site data instead.

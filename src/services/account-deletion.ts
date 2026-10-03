@@ -21,7 +21,7 @@ export type AccountDeletionResult = {
   userIdHash: string;
 };
 
-type DeletionStatus = {
+export type DeletionStatus = {
   status: 'pending' | 'complete' | 'failed';
   step: string;
   userIdHash: string;
@@ -81,6 +81,34 @@ function assertNotSwitched(expectedUserId: string): void {
   if (current != null && current !== expectedUserId) {
     throw accountChangedError();
   }
+}
+
+/**
+ * The current account's deletion row, or null when none was ever requested.
+ *
+ * A failed deletion keeps the account write-fenced with a live login, and the
+ * way out is requesting deletion again (the server resumes from saved
+ * progress), so Settings reads this to say so. Throws if another account is
+ * selected mid-flight.
+ */
+export async function getOwnAccountDeletionStatus(): Promise<DeletionStatus | null> {
+  const userId = currentUserId();
+  if (!userId) return null;
+
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  if (!await waitForConvexAuthForUser(userId)) {
+    throw accountChangedError();
+  }
+
+  return settleAccountOperation(
+    userId,
+    'checking account deletion',
+    () => client.query(
+      (api as any).accountDeletion.erase.getOwnDeletionStatus,
+      {},
+    ) as Promise<DeletionStatus | null>,
+  );
 }
 
 /**
