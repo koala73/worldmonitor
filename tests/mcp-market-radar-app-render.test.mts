@@ -61,6 +61,16 @@ describe('compiled Market Radar actual entry and host result', () => {
     assert.match(rows[11]!.textContent, /chart unavailable/);
     assert.equal(rows[11]!.querySelector('details'), null);
   });
+  it('renders the dispatcher projection wrapper used for summary and JMESPath', async () => {
+    const { document, send } = await open();
+    const projection = { data: { 'stocks-bootstrap': { quotes: { count: 30, sample: [fixture.data['stocks-bootstrap'].quotes[0]] } } } };
+    send({ structuredContent: { projection } });
+    assert.equal(document.querySelectorAll('.quote').length, 1);
+    assert.match(document.body.textContent, /Showing 1 of 30/);
+    send({ structuredContent: { projection: [fixture.data['stocks-bootstrap'].quotes[1]] } });
+    assert.equal(document.querySelector('.qsym')!.textContent, 'TEST1');
+    assert.match(document.body.textContent, /Projected quotes/);
+  });
   it('keeps sampled coverage, observed provider limits and source dates explicit', async () => {
     const { document } = await open({ data: { 'stocks-bootstrap': {
       quotes: { count: 30, sample: [fixture.data['stocks-bootstrap'].quotes[0]] },
