@@ -531,6 +531,25 @@ describe('reportServerError', () => {
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
   });
 
+  // WORLDMONITOR-ZH: closing the country deep-dive aborts its signal while
+  // withBillingVerificationRetry waits out Retry-After, and the wrapper hands
+  // back the FIRST 503. Nobody waited for the retry, so whether the outage was
+  // sustained is unknown — the canary must not count it.
+  it('skips a 503 handed back to a caller that already aborted', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    controller.abort();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 0, 'an abandoned retry wait is not an origin outage');
+  });
+
+  it('still captures a 503 when the caller signal is live', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 1, 'a caller still waiting must keep the canary');
+  });
+
   // -------------------------------------------------------------------------
   // Grouping — WORLDMONITOR-P4.
   //
