@@ -31,7 +31,7 @@ function requestWithoutCookies(req: Request): Request {
 }
 
 function embeddingApiKeyFromHeaders(headers: Headers): string | null {
-  const key = (headers.get('X-WorldMonitor-Key') ?? headers.get('X-Api-Key') ?? '').trim();
+  const key = (headers.get('X-WorldMonitor-Key')?.trim() || headers.get('X-Api-Key')?.trim() || '');
   return key || null;
 }
 
