@@ -8081,7 +8081,15 @@ async function seedAuYieldCurve() {
     const fetchedAt = Number(meta?.fetchedAt);
     const newestItemAt = Number(meta?.newestItemAt);
     if (fetchedAt > 0 && fetchedAt <= now && now - fetchedAt < AU_YIELD_REFRESH_INTERVAL_MS
-      && newestItemAt > 0 && newestItemAt <= now && now - newestItemAt < AU_YIELD_MAX_CONTENT_AGE_MS) return;
+      && newestItemAt > 0 && newestItemAt <= now && now - newestItemAt < AU_YIELD_MAX_CONTENT_AGE_MS) {
+      const [canonical, completion] = await Promise.all([
+        upstashGet('economic:yield-curve:au:v1'),
+        upstashGet('seed-completion:economic:yield-curve-au'),
+      ]);
+      if (Number.isFinite(canonical?._seed?.fetchedAt)
+        && completion?.fetchedAt === canonical._seed.fetchedAt
+        && Number.isFinite(completion?.completedAt) && completion.completedAt >= fetchedAt) return;
+    }
 
     await new Promise((resolve, reject) => {
       execFile(process.execPath, [path.join(__dirname, 'seed-yield-curve-au.mjs')], {

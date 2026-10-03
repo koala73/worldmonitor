@@ -1387,7 +1387,9 @@ The daily bundle remains the primary AU producer. The `ais-relay` service also
 checks `seed-meta:economic:yield-curve-au` every six hours. It runs the same
 `seed-yield-curve-au.mjs` only when the publication is at least 24 hours old,
 the newest curve is at least ten days old, or either clock is missing or invalid.
-Recent primary publication suppresses the fallback.
+Suppression also requires a completion marker that matches the canonical
+publication and was written after its freshness metadata. An incomplete run
+remains eligible even when both clocks are recent.
 
 This second request path addresses the RBA HTTP 403 responses observed in the
 yield bundle on October 1 to 3, 2026. Read-only RBA requests succeeded from the
