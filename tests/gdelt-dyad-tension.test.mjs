@@ -27,6 +27,14 @@ test('replayed cohorts do not count twice, and UTC buckets older than 90 complet
   assert.deepEqual(aged.days, {});
 });
 
+test('accepts the early-published next cohort but still rejects a far-future timestamp', () => {
+  const now = Date.parse('2026-09-27T11:48:50Z');
+  const early = { timestamp: '20260927120000', dyads: parseDyadExport(row('USA', 'RUS', 4)) };
+  assert.equal(mergeDyadBuckets(null, [early], now).cursor, '20260927120000');
+  const farFuture = { timestamp: '20260927121500', dyads: parseDyadExport(row('USA', 'RUS', 4)) };
+  assert.throws(() => mergeDyadBuckets(null, [farFuture], now), /Invalid dyad cohort timestamp/);
+});
+
 const { scoreDyads } = await import('../scripts/_gdelt-dyad-tension.mjs');
 const now = Date.parse('2026-09-27T12:00:00Z');
 function history(value) {

@@ -361,6 +361,20 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     assert.deepEqual(replay._dyads, first._dyads);
     assert.equal(first._dyads.days['2026-07-30'].pairs.usa_russia.intensity, 10);
   });
+  it('accepts a cohort GDELT published before its nominal timestamp', async () => {
+    // GDELT lists 193000 at ~19:18:45; a run starting then crashed every
+    // retry with "Invalid dyad cohort timestamp" (seed-gdelt-intel, 2026-10-03).
+    const nowMs = Date.parse('2026-07-30T11:48:50Z');
+    const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
+      _now: () => nowMs,
+      _readSnapshot: async () => null,
+      _fetchFiles: async () => materializationFiles(),
+    });
+    assert.equal(result._dyads.cursor, '20260730120000');
+    assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
+    assert.deepEqual(gdeltBulkContentMeta(result, nowMs), { newestItemAt: nowMs, oldestItemAt: nowMs });
+  });
   it('advances per-kind cursors and merges the rolling conflict window', async () => {
     const previousState = {
       cursor: { gkg: '20260730114500', export: '20260730114500' },
@@ -1042,7 +1056,7 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       _state: { cursor: { gkg: 20260730120000, export: '20260730120000' } },
     }, nowMs), null);
     assert.equal(gdeltBulkContentMeta({
-      _state: { cursor: { gkg: '20260730121500', export: '20260730121500' } },
+      _state: { cursor: { gkg: '20260730122500', export: '20260730122500' } },
     }, nowMs), null);
   });
 

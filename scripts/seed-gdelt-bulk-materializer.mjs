@@ -31,6 +31,7 @@ import {
 import {
   extractGdeltExportCsv,
   GDELT_MASTER_FILELIST_URL,
+  GDELT_PUBLICATION_LEAD_MS,
   GDELT_ROLLING_WINDOW_MS,
   gdeltTimestampToMs,
   mapGdeltExportToConflictEvents,
@@ -687,8 +688,8 @@ export function gdeltBulkContentMeta(data, nowMs = Date.now()) {
       : NaN;
   });
   if (requiredSourceTimes.some((timestamp) =>
-    !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowMs)) return null;
-  const observedAt = Math.min(...requiredSourceTimes);
+    !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowMs + GDELT_PUBLICATION_LEAD_MS)) return null;
+  const observedAt = Math.min(nowMs, ...requiredSourceTimes);
   return { newestItemAt: observedAt, oldestItemAt: observedAt };
 }
 

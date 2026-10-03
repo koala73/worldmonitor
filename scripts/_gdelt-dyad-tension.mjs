@@ -1,5 +1,5 @@
 import pairs from './shared/gdelt-tension-pairs.json' with { type: 'json' };
-import { gdeltTimestampToMs } from './_conflict-gdelt-bulk.mjs';
+import { GDELT_PUBLICATION_LEAD_MS, gdeltTimestampToMs } from './_conflict-gdelt-bulk.mjs';
 
 const DAY_MS = 86_400_000;
 const pairByActors = new Map(pairs.map(pair => [[...pair.actors].sort().join(':'), pair.id]));
@@ -39,7 +39,7 @@ export function mergeDyadBuckets(previous, batches, nowMs = Date.now()) {
   for (const batch of [...batches].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
     if (batch.timestamp <= cursor) continue;
     const timestampMs = gdeltTimestampToMs(batch.timestamp);
-    if (!Number.isFinite(timestampMs) || timestampMs > nowMs) throw new Error('Invalid dyad cohort timestamp');
+    if (!Number.isFinite(timestampMs) || timestampMs > nowMs + GDELT_PUBLICATION_LEAD_MS) throw new Error('Invalid dyad cohort timestamp');
     const date = new Date(timestampMs).toISOString().slice(0, 10);
     if (date >= cutoff) {
       const day = days[date] ??= { cohorts: 0, pairs: Object.fromEntries(pairs.map(pair => [pair.id, emptyPair()])) };
