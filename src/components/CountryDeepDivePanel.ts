@@ -1,7 +1,7 @@
 import type { ListPipelinesResponse, ListStorageFacilitiesResponse, ListFuelShortagesResponse } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type { CountryBriefSource } from '@/services/country-brief-source';
 import type { BriefTopic } from '../../shared/country-brief-sections';
-import type { CountryBriefSignals } from '@/types';
+import type { CountrySignalCounts } from '@/types';
 import {
   PERSPECTIVE_LABEL_CAVEAT,
   composeProvenanceSummary,
@@ -134,7 +134,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentCode: string | null = null;
   private currentName: string | null = null;
   private currentScore: CountryScore | null = null;
-  private currentSignals: CountryBriefSignals | null = null;
+  private currentSignals: CountrySignalCounts | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -370,7 +370,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.append(wrapper);
   }
 
-  public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals | null): void {
+  public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
     this.abortController.abort();
     this.abortController = new AbortController();
     this.currentCode = code;
@@ -462,6 +462,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public getTimelineMount(): HTMLElement | null {
     return this.timelineBody;
+  }
+
+  public getSignalCounts(): CountrySignalCounts | null {
+    return this.currentSignals ? { ...this.currentSignals } : null;
+  }
+
+  public updateSignals(signals: CountrySignalCounts, notes: readonly string[] = []): void {
+    this.currentSignals = signals;
+    this.renderInitialSignals(signals);
+    if (Object.values(signals).some(value => value === null)) {
+      const notice = this.el('p', 'cdp-economic-source', 'Signal coverage is partial. Unavailable inputs are not evidence of zero activity.');
+      if (Object.values(signals).every(value => value === null)) notice.dataset.briefState = 'unavailable';
+      this.signalsBody?.prepend(notice);
+    }
+    for (const note of notes) this.signalsBody?.append(this.el('p', 'cdp-economic-source', note));
+    const section = this.sections.find(section => section.id === 'signals');
+    if (section) section.card.dataset.briefCoverage = Object.values(signals).some(value => value === null) ? 'partial' : 'complete';
   }
 
   public updateSignalDetails(details: CountryDeepDiveSignalDetails): void {
@@ -2805,20 +2822,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.currentBriefIsFallback;
   }
 
-  public updateScore(score: CountryScore | null, _signals: CountryBriefSignals | null): void {
+  public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
     this.currentScore = score;
-    this.currentSignals = _signals;
-    if (this.signalsBody && _signals) {
-      const chips = this.buildSignalChipsElement(_signals);
-      this.signalsBody.querySelector('.cdp-signal-chips')?.replaceWith(chips);
-      const seeded: CountryDeepDiveSignalDetails = {
-        critical: _signals.criticalNews + Math.max(0, _signals.activeStrikes),
-        high: _signals.militaryFlights + _signals.militaryVessels + _signals.protests,
-        medium: _signals.outages + _signals.cyberThreats + _signals.aisDisruptions + _signals.radiationAnomalies,
-        low: _signals.earthquakes + (_signals.temporalAnomalies ?? 0) + _signals.satelliteFires,
-        recentHigh: [],
-      };
-      this.renderSignalBreakdown(seeded);
+    if (_signals) {
+      this.currentSignals = _signals;
+      this.signalsBody?.querySelector('.cdp-signal-chips')?.replaceWith(this.buildSignalChipsElement(_signals));
+      this.renderInitialSignalBreakdown(_signals);
     }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
@@ -2981,7 +2990,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.append(loading);
   }
 
-  private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals | null): void {
+  private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
     this.resetPanelContent();
 
     const shell = this.el('div', 'cdp-shell');
@@ -3678,13 +3687,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.replaceChildren();
   }
 
-  private buildSignalChipsElement(signals: CountryBriefSignals | null): HTMLElement {
+  private buildSignalChipsElement(signals: CountrySignalCounts | null): HTMLElement {
     const chips = this.el('div', 'cdp-signal-chips');
     if (!signals) { chips.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return chips; }
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
-    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights} near · ${signals.militaryFlightsInCountry} inside borders`);
-    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels} near · ${signals.militaryVesselsInCountry} inside borders`);
+    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights ?? 'unknown'} near · ${signals.militaryFlightsInCountry ?? 'unknown'} inside borders`);
+    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels ?? 'unknown'} near · ${signals.militaryVesselsInCountry ?? 'unknown'} inside borders`);
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
@@ -3696,7 +3705,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
-    if (signals.displacementOutflow > 0) {
+    if (signals.displacementOutflow === null) {
+      chips.append(this.makeSignalChip(`🌊 ${t('countryBrief.chips.displaced')} unavailable`, 'unavailable'));
+    } else if (signals.displacementOutflow > 0) {
       const fmt = signals.displacementOutflow >= 1_000_000
         ? `${(signals.displacementOutflow / 1_000_000).toFixed(1)}M`
         : `${(signals.displacementOutflow / 1000).toFixed(0)}K`;
@@ -3705,7 +3716,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.climateStress, t('countryBrief.chips.climateStress'), '🌡️', 'climate');
     this.addSignalChip(chips, signals.conflictEvents, t('countryBrief.chips.conflictEvents'), '⚔️', 'conflict');
     this.addSignalChip(chips, signals.activeStrikes, t('countryBrief.chips.activeStrikes'), '💥', 'conflict');
-    if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
+    if (signals.travelAdvisories === null) {
+      chips.append(this.makeSignalChip(`⚠️ ${t('countryBrief.chips.advisory')} unavailable`, 'unavailable'));
+    } else if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
       const advLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? t('countryBrief.chips.doNotTravel')
         : signals.travelAdvisoryMaxLevel === 'reconsider' ? t('countryBrief.chips.reconsiderTravel')
         : t('countryBrief.chips.exerciseCaution');
@@ -3718,7 +3731,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return chips;
   }
 
-  private renderInitialSignals(signals: CountryBriefSignals | null): void {
+  private renderInitialSignals(signals: CountrySignalCounts | null): void {
     if (!this.signalsBody) return;
     this.signalsBody.replaceChildren();
     if (!signals) { this.signalsBody.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return; }
@@ -3730,18 +3743,26 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody = this.el('div', 'cdp-signal-recent');
     this.signalsBody.append(this.signalBreakdownBody, this.signalRecentBody);
 
-    const seeded: CountryDeepDiveSignalDetails = {
-      critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
-      high: signals.militaryFlights + signals.militaryVessels + signals.protests,
-      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
-      low: signals.earthquakes + (signals.temporalAnomalies ?? 0) + signals.satelliteFires,
-      recentHigh: [],
-    };
-    this.renderSignalBreakdown(seeded);
-    this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
+    if (this.renderInitialSignalBreakdown(signals)) this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
   }
 
-  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string, tooltip?: string): void {
+  private renderInitialSignalBreakdown(signals: CountrySignalCounts): boolean {
+    if (!this.signalBreakdownBody) return false;
+    const sum = (...values: Array<number | null>) => values.some(value => value === null) ? null : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+    const critical = sum(signals.criticalNews, signals.activeStrikes);
+    const high = sum(signals.militaryFlights, signals.militaryVessels, signals.protests);
+    const medium = sum(signals.outages, signals.cyberThreats, signals.aisDisruptions, signals.radiationAnomalies);
+    const low = sum(signals.earthquakes, signals.temporalAnomalies ?? 0, signals.satelliteFires);
+    if (critical === null || high === null || medium === null || low === null) {
+      this.signalBreakdownBody.replaceChildren(this.makeEmpty('Aggregate severity and recent high-severity observations are unavailable. Military counts alone do not establish these totals.'));
+      return false;
+    }
+    this.renderSignalBreakdown({ critical, high, medium, low, recentHigh: [] });
+    return true;
+  }
+
+  private addSignalChip(container: HTMLElement, count: number | null, label: string, icon: string, cls: string, tooltip?: string): void {
+    if (count === null) { container.append(this.makeSignalChip(`${icon} ${label} unavailable`, 'unavailable')); return; }
     if (count <= 0) return;
     container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls, tooltip));
   }

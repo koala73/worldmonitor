@@ -1,4 +1,5 @@
 import { countryActivityQueries } from '../../shared/country-activity-query';
+import type { CountrySignalCounts } from '@/types';
 import { countryTermIndex } from '../../shared/country-headline-match';
 import { ME_STRIKE_BOUNDS, getCountryCentroid, hasCountryGeometry, isCoordinateInCountry, iso3ToIso2Code, nameToCountryCode } from './country-geometry';
 import { getNearbyInfrastructure, preloadInfrastructureTables } from './related-assets';
@@ -24,6 +25,26 @@ export const COUNTRY_ACTIVITY_BOUNDS: Record<string, { n: number; s: number; e: 
 const MAX_FLIGHT_PAGES = 8;
 
 type Observation = { lat: number; lon: number; operatorCountry: string };
+export type CountryMilitarySignalCounts = Pick<CountrySignalCounts, 'militaryFlights' | 'militaryFlightsInCountry' | 'militaryVessels' | 'militaryVesselsInCountry'>;
+type ObservedMilitarySignalCounts = { [K in keyof CountryMilitarySignalCounts]: number };
+
+export function projectCountryMilitarySignalCounts(code: string, flights: readonly Observation[], vessels: readonly Observation[]): ObservedMilitarySignalCounts;
+export function projectCountryMilitarySignalCounts(code: string, flights: readonly Observation[] | null, vessels: readonly Observation[] | null): CountryMilitarySignalCounts;
+export function projectCountryMilitarySignalCounts(code: string, flights: readonly Observation[] | null, vessels: readonly Observation[] | null): CountryMilitarySignalCounts {
+  const geographic = hasCountryGeometry(code) || !!COUNTRY_ACTIVITY_BOUNDS[code];
+  const inside = (item: Observation) => geographic ? isCountryActivityCoordinate(item.lat, item.lon, code) : item.operatorCountry?.toUpperCase() === code;
+  const near = (item: Observation) => {
+    if (inside(item)) return true;
+    const bounds = COUNTRY_ACTIVITY_BOUNDS[code];
+    return geographic && !!bounds && item.lat >= bounds.s - 2 && item.lat <= bounds.n + 2 && item.lon >= bounds.w - 2 && item.lon <= bounds.e + 2;
+  };
+  return {
+    militaryFlights: flights?.filter(near).length ?? null,
+    militaryVessels: vessels?.filter(near).length ?? null,
+    militaryFlightsInCountry: flights?.filter(inside).length ?? null,
+    militaryVesselsInCountry: vessels?.filter(inside).length ?? null,
+  };
+}
 
 export function isCountryActivityCoordinate(lat: number, lon: number, code: string): boolean {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
@@ -110,7 +131,7 @@ export async function loadHostCountryMilitaryActivity(source: CountryBriefSource
   signal.throwIfAborted();
   const summary = projectCountryMilitaryActivity(code, country, flights, vessels);
   if ((!ais || ais.invalidReports > 0 || !fleet) && summary.foreignPresence === false) summary.foreignPresence = null;
-  return { ...summary, coverage: flights && ais && !ais.invalidReports && fleet ? 'complete' as const : 'partial' as const, coverageNotes: [
+  return { ...summary, signalCounts: projectCountryMilitarySignalCounts(code, flights, vessels), coverage: flights && ais && !ais.invalidReports && fleet ? 'complete' as const : 'partial' as const, coverageNotes: [
     flights ? 'Flight counts include observations licensed for redistribution through this connection.' : 'Flight observations unavailable or unconfirmed. This is not a zero activity count.',
     ais ? `AIS snapshot ${new Date(ais.at).toISOString()}. Country counts use the relay candidate snapshot, bounded to 1,500 reports.${ais.invalidReports ? ` ${ais.invalidReports} military reports with invalid dates excluded; coverage is partial.` : ''}` : 'Live AIS observations unavailable. Vessel counts, if shown, use the reported fleet roster only.',
     fleet ? `USNI fleet report ${fleet.articleDate}. Reported regions and homeports are approximate locations, not live positions.` : 'USNI fleet roster unavailable.',

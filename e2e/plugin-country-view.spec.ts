@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import us from './fixtures/country-brief-us.json' with { type: 'json' };
 import { readCountryView } from '../api/mcp/ui/news-dashboard-app';
+import type { CountrySignalCounts } from '../src/types';
 
 const root = process.cwd();
 test.use({ serviceWorkers: 'block' });
@@ -15,7 +16,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let delayCoverage = false;
   let releaseCoverage: () => void = () => {};
   const coverageDelayed = new Promise<void>(resolve => { releaseCoverage = resolve; });
-  const contexts: Array<{ countryCode: string; topic: string; sections: Array<{ section: string; state: string; coverage?: string; renderedText: string }> }> = [];
+  const contexts: Array<{ countryCode: string; topic: string; signals?: CountrySignalCounts; sections: Array<{ section: string; state: string; coverage?: string; renderedText: string }> }> = [];
   const links: string[] = [];
   let failFacts = false;
   let failActivity = false;
@@ -194,6 +195,44 @@ test('country territory counts honor loaded polygons instead of neighboring boun
   await page.setViewportSize({ width: 390, height: 844 });
   await military.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('country-territory-mobile.png'), fullPage: true });
+});
+
+test('country Signals reuse loaded military observations and keep missing sources explicit', async ({ page }, info) => {
+  const host = await installCountryHost(page, true);
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  const signals = frame.locator('[data-brief-section=signals]');
+  await expect(signals).toContainText('1 Military Air');
+  await expect(signals).toContainText('1 Naval Vessels');
+  await expect(signals).toContainText('Critical News unavailable');
+  await expect(signals).toContainText('Aggregate severity and recent high-severity observations are unavailable');
+  await expect(signals).toHaveAttribute('data-brief-coverage', 'partial');
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
+  expect(host.contexts.at(-1)?.signals?.criticalNews).toBeNull();
+  await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
+  const initialReads = host.calls.length;
+  await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  expect(host.calls).toHaveLength(initialReads);
+  expect(host.admissions).toBe(1);
+  await signals.screenshot({ path: info.outputPath('signals-observed-desktop.png') });
+  host.activityOutage();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(signals).toContainText('Naval Vessels unavailable');
+  await expect(signals).toContainText('1 Military Air');
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBeNull();
+  await signals.screenshot({ path: info.outputPath('signals-source-outage-desktop.png') });
+  host.activityRecover();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(signals).toContainText('1 Naval Vessels');
+  await expect(signals).not.toContainText('Naval Vessels unavailable');
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBe(1);
+  expect(host.admissions).toBe(3);
+  expect(host.unmanaged).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signals.screenshot({ path: info.outputPath('signals-recovered-mobile.png') });
+  expect(await frame.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await writeFile(info.outputPath('signals-request-cost.json'), JSON.stringify({ surface: 'compiled opaque iframe, controlled observations', initialHostCalls: initialReads, initialDailyUnits: 1, navigationCalls: 0, newSignalsReaders: 0, signalProjection: 'observed military counts, remaining sources explicitly unavailable' }, null, 2));
 });
 
 test('cached country resource loads the current compiled panel after its old assets are removed', async ({ page }, info) => {

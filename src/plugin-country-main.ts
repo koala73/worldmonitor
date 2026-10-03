@@ -1,5 +1,6 @@
 import './bootstrap/zod-csp';
 import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
+import { countrySignalsFromMilitary } from '@/services/country-signals';
 import './styles/base-layer.css';
 import './styles/plugin-country.css';
 import { z } from 'zod';
@@ -82,6 +83,7 @@ async function mountPlugin(): Promise<void> {
       countryCode: panel.getCode(), countryName: panel.getName(), revision,
       usage: admission?.usage,
       selectedAtlasAsset: panel.getAtlasSelection(),
+      signals: panel.getSignalCounts(),
       topic: document.querySelector<HTMLElement>('.cdp-shell')?.dataset.briefTopic,
       sections: Array.from(document.querySelectorAll<HTMLElement>('[data-brief-section]')).map(card => {
         const body = card.querySelector<HTMLElement>('.cdp-card-body')!;
@@ -202,7 +204,8 @@ async function mountPlugin(): Promise<void> {
     if (!refresh) {
       timeline?.destroy();
       timeline = undefined;
-      panel.show(name, code, null, null);
+      panel.show(name, code, null, countrySignalsFromMilitary());
+      panel.updateSignals(countrySignalsFromMilitary());
       panel.updateMilitaryActivity(null);
     }
     panel.selectTopic(view.topic);
@@ -212,8 +215,16 @@ async function mountPlugin(): Promise<void> {
     hydratedAt = Date.now();
     controller.hydrate(code, name);
     void preloadCountryGeometry().then(() => loadHostCountryMilitaryActivity(source, code, name, signal)).then(summary => {
-      if (current()) panel.updateMilitaryActivity(summary);
-    }).catch(() => { if (current()) panel.updateMilitaryActivity(null); });
+      if (current()) {
+        panel.updateMilitaryActivity(summary);
+        panel.updateSignals(countrySignalsFromMilitary(summary.signalCounts), summary.coverageNotes);
+      }
+    }).catch(() => {
+      if (current()) {
+        panel.updateMilitaryActivity(null);
+        panel.updateSignals(countrySignalsFromMilitary(), ['Military observations could not be loaded. Retry or refresh to recover them.']);
+      }
+    });
     if (refresh) panel.refreshHostedSections();
     void Promise.all([preloadCountryGeometry(), preloadInfrastructureTables()]).then(() => { if (current()) panel.updateInfrastructure(code); }).catch(() => { if (current()) panel.setSectionFailure('infrastructure', 'unavailable', 'Country infrastructure locations could not be loaded.'); });
     status.textContent = `${name} country brief. Sections load independently. Use the topic tabs to explore.`;

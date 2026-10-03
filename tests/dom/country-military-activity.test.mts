@@ -73,6 +73,7 @@ describe('shared country military observations', () => {
   it('follows flight pages and retains vessels when flight pagination fails', async () => {
     const flights = vi.fn().mockImplementation(async (args: { cursor: string }) => args.cursor ? { flights: [flight('foreign', foreign)], pagination: { nextCursor: '' } } : { flights: [flight('own')], pagination: { nextCursor: 'next' } });
     const summary = await loadHostCountryMilitaryActivity(source(flights), 'US', 'United States', new AbortController().signal);
+    expect(summary.signalCounts).toEqual({ militaryFlights: 2, militaryFlightsInCountry: 2, militaryVessels: 1, militaryVesselsInCountry: 1 });
     expect(summary.ownFlights).toBe(1);
     expect(summary.foreignFlights).toBe(1);
     expect(summary.nearbyVessels).toBe(1);
@@ -81,6 +82,8 @@ describe('shared country military observations', () => {
     const partial = await loadHostCountryMilitaryActivity(source(flights), 'US', 'United States', new AbortController().signal);
     expect(partial.ownFlights).toBeNull();
     expect(partial.nearbyVessels).toBe(1);
+    expect(partial.signalCounts.militaryFlights).toBeNull();
+    expect(partial.signalCounts.militaryVessels).toBe(1);
     expect(partial.coverageNotes.join(' ')).toContain('not a zero');
   });
   it.each(['US', 'GB', 'RU'])('reads one valid global AIS candidate snapshot for %s', async code => {
@@ -107,6 +110,8 @@ describe('shared country military observations', () => {
     const summary = await loadHostCountryMilitaryActivity(source(flights, false), 'US', 'United States', new AbortController().signal);
     expect(summary.ownFlights).toBe(1);
     expect(summary.nearbyVessels).toBeNull();
+    expect(summary.signalCounts.militaryFlights).toBe(1);
+    expect(summary.signalCounts.militaryVessels).toBeNull();
     expect(summary.foreignPresence).toBeNull();
   });  it('retains independent observations when the fleet report is malformed', async () => {
     const flights = vi.fn().mockResolvedValue({ flights: [flight('own')], pagination: { nextCursor: '' } });
