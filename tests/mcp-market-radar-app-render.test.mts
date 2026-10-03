@@ -48,6 +48,10 @@ describe('compiled Market Radar actual entry and host result', () => {
     assert.match(document.querySelector('#marketContent')!.textContent, /Controlled asset 11/);
     assert.match(document.querySelector('.terminal-chart')!.textContent, /HI 110.*LAST 100.*LO 90/);
   });
+  it('retains the name-only sector identity supported by the former renderer', async () => {
+    const { document } = await open({ data: { sectors: { sectors: [{ name: 'Technology', change: 1.5 }] } } });
+    assert.equal(document.querySelector('.qsym')!.textContent, 'Technology');
+  });
   it('preserves flat charts and unknown prices, changes and missing chart coverage', async () => {
     const { document } = await open();
     const rows = document.querySelectorAll('.quote');

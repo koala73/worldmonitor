@@ -35,8 +35,8 @@ function mount(): void {
   const format = (value: number | null): string =>
     value == null ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   const renderQuote = (quote: RecordValue): HTMLElement => {
-    const symbol = text(quote.display) || text(quote.displaySymbol) || text(quote.symbol) || text(quote.ticker) || 'Unknown asset';
     const name = text(quote.name);
+    const symbol = text(quote.display) || text(quote.displaySymbol) || text(quote.symbol) || text(quote.ticker) || name || 'Unknown asset';
     const change = number(quote.change);
     const series = Array.isArray(quote.sparkline)
       ? quote.sparkline.filter((value): value is number => number(value) != null) : [];
