@@ -45,6 +45,13 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.economicBlsSeriesIds },
   },
   {
+    path: '/api/economic/v1/get-fred-series',
+    method: 'get',
+    name: 'series_id',
+    description: `FRED series ID. Supported values: ${quotedList(FILTER_PARAM_CONTRACTS.economicFredSeriesIds)}.`,
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.economicFredSeriesIds },
+  },
+  {
     path: '/api/forecast/v1/get-forecasts',
     method: 'get',
     name: 'domain',
