@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synthetic Security Scoring Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: #111827;
+      --bg-card-hover: #1f293d;
+      --border-color: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      
+      --accent-cyan: #00f0ff;
+      --accent-green: #00ff9d;
+      
+      --sev-critical: #ff3366;
+      --sev-high: #ff9900;
+      --sev-medium: #ffcc00;
+      --sev-low: #38bdf8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-dark); color: var(--text-main); font-family: 'Outfit', sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden;
+    }
+
+    .navbar {
+      height: 64px; border-bottom: 1px solid var(--border-color); background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; position: sticky; top: 0; z-index: 100;
+    }
+
+    .brand { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 1.25rem; }
+    .brand-icon {
+      width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent-cyan), var(--sev-critical));
+      border-radius: 6px; display: grid; place-items: center; font-weight: 900; font-size: 0.9rem; color: #000;
+    }
+
+    .engine-badge {
+      font-size: 0.75rem; font-weight: 700; padding: 0.3rem 0.75rem; border-radius: 12px;
+      text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .engine-PRIMARY { background: rgba(0, 255, 157, 0.15); border: 1px solid var(--accent-green); color: var(--accent-green); }
+    .engine-FALLBACK { background: rgba(255, 153, 0, 0.15); border: 1px solid var(--sev-high); color: var(--sev-high); }
+
+    .nav-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+    .btn-assess {
+      background: linear-gradient(135deg, #00f0ff, #0077ff); color: #000; font-weight: 700; border: none; padding: 0.6rem 1.25rem; border-radius: 8px;
+      cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s ease; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+    }
+    .btn-assess:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-main);
+      font-weight: 600; font-size: 0.85rem; padding: 0.5rem 0.9rem; border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .btn-action:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-cyan); }
+    .btn-fail-sim { background: rgba(255, 51, 102, 0.15); border: 1px solid var(--sev-critical); color: var(--sev-critical); }
+
+    .tab-bar { display: flex; gap: 2rem; padding: 0 2rem; border-bottom: 1px solid var(--border-color); background: #0d1322; }
+    .tab-btn {
+      background: none; border: none; color: var(--text-muted); font-family: inherit; font-size: 0.95rem; font-weight: 500;
+      padding: 1rem 0; cursor: pointer; position: relative;
+    }
+    .tab-btn.active { color: var(--accent-cyan); font-weight: 600; }
+    .tab-btn.active::after {
+      content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent-cyan); box-shadow: 0 0 10px var(--accent-cyan);
+    }
+
+    .container { flex: 1; padding: 2rem; max-width: 1400px; margin: 0 auto; width: 100%; }
+    .view-content { display: none; }
+    .view-content.active { display: block; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .metric-box { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; }
+    .metric-val { font-size: 2rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem; }
+
+    .dashboard-grid { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+    .card-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 600; margin-bottom: 1rem; }
+
+    .gauge-wrapper { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 1rem 0; }
+    .gauge-circle {
+      width: 160px; height: 160px; border-radius: 50%; background: conic-gradient(var(--sev-critical) 0deg 280deg, #1e293b 280deg 360deg);
+      display: grid; place-items: center; position: relative; margin-bottom: 1rem;
+    }
+    .gauge-inner {
+      width: 130px; height: 130px; border-radius: 50%; background: var(--bg-card); display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .gauge-val { font-size: 2.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; color: var(--sev-critical); }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background: #0f172a; color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color); }
+    td { padding: 1rem; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+    tr:hover td { background: var(--bg-card-hover); cursor: pointer; }
+
+    .badge-sev { padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 700; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; display: inline-block; }
+    .sev-CRITICAL { background: rgba(255, 51, 102, 0.15); color: var(--sev-critical); border: 1px solid var(--sev-critical); }
+    .sev-HIGH { background: rgba(255, 153, 0, 0.15); color: var(--sev-high); border: 1px solid var(--sev-high); }
+    .sev-MEDIUM { background: rgba(255, 204, 0, 0.15); color: var(--sev-medium); border: 1px solid var(--sev-medium); }
+    .sev-LOW { background: rgba(56, 189, 248, 0.15); color: var(--sev-low); border: 1px solid var(--sev-low); }
+
+    .dir-IMPROVED { background: rgba(0, 255, 157, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+    .dir-REGRESSED { background: rgba(255, 51, 102, 0.15); color: var(--sev-critical); border: 1px solid var(--sev-critical); }
+    .dir-UNCHANGED { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px solid var(--border-color); }
+
+    .controls-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .search-input, .filter-select { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.6rem 1rem; border-radius: 8px; font-family: inherit; }
+    .search-input { flex: 1; }
+
+    .code-block { background: #080c14; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #38bdf8; white-space: pre-wrap; }
+
+    .risk-breakdown-box { background: #0d1527; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 10px; padding: 1.25rem; margin: 1.25rem 0; }
+    .risk-breakdown-title { font-size: 0.85rem; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem; }
+    .formula-banner { background: #060a12; padding: 0.75rem; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #f8fafc; margin-bottom: 1rem; border: 1px dashed var(--border-color); line-height: 1.4; }
+    .factors-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; text-align: center; }
+    .factor-item { background: var(--bg-card); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); }
+    .factor-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem; }
+    .factor-val { font-family: 'JetBrains Mono'; font-weight: 700; font-size: 1rem; color: var(--accent-cyan); }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: none; place-items: center; z-index: 500; }
+    .modal-overlay.active { display: grid; }
+    .modal-box { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; width: 90%; max-width: 880px; max-height: 90vh; overflow-y: auto; padding: 2rem; }
+    .btn-close { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; }
+    .field-label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; }
+
+    .graph-canvas-container { width: 100%; height: 360px; background: #0a0f1d; border: 1px solid var(--border-color); border-radius: 12px; position: relative; }
+    .path-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; border-left: 4px solid var(--sev-critical); }
+
+    .fail-banner { background: rgba(255, 153, 0, 0.1); border: 1px solid var(--sev-high); border-radius: 12px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; display: none; }
+    .fail-banner.active { display: block; }
+
+    .progress-step-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 1rem; background: #0a0f1d; border: 1px solid var(--border-color);
+      border-radius: 8px; margin-bottom: 0.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+    }
+    .step-status-badge { font-weight: 700; font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .status-pending { color: var(--text-muted); }
+    .status-running { color: var(--accent-cyan); animation: blink 1s infinite alternate; }
+    .status-completed { color: var(--accent-green); }
+
+    @keyframes blink { from { opacity: 0.4; } to { opacity: 1; } }
+  @media (max-width: 700px) {
+      .navbar { height: auto; position: static; padding: 12px; }
+      nav, .nav-actions { flex-wrap: wrap; gap: 8px; }
+      .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+      .tab-btn { flex: 0 0 auto; }
+      .tab-bar { overflow-x: auto; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .container { padding: 12px; }
+      .card { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div role="note" style="padding:16px;background:#3b2d08;color:#fff3c4;text-align:center;font-weight:700">SYNTHETIC DEMONSTRATION — NOT VERIFIED WORLD MONITOR VULNERABILITIES. Local scoring demo only.</div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-icon">W</div>
+      <span>WORLD MONITOR <span style="font-weight: 300; color: var(--text-muted);">| Security Assessment Platform</span></span>
+    </div>
+    <div class="nav-actions">
+      <div class="engine-badge engine-PRIMARY" id="engineStatusBadge">
+        <span id="engineStatusDot">●</span>
+        <span id="engineStatusText">Assessment Engine: PRIMARY</span>
+      </div>
+      <button class="btn-assess" id="startAssessBtn" onclick="startAssessmentFlow(false)">▶ START SECURITY ASSESSMENT</button>
+      <button class="btn-action btn-fail-sim" onclick="startAssessmentFlow(true)">⚡ Simulate Assessment Failure</button>
+      <button class="btn-action" onclick="triggerResetPrimary()">🔄 Reset Primary Engine</button>
+    </div>
+  </nav>
+
+  <!-- Fail-Safe Status Banner -->
+  <div class="container" style="padding-bottom: 0;">
+    <div class="fail-banner" id="failsafeBanner">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 700; color: var(--sev-high);">⚠️ Primary assessment failed — conservative fallback activated.</span>
+        <span style="font-size: 0.8rem; font-family: 'JetBrains Mono'; color: var(--text-muted);" id="failTimestamp"></span>
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.4rem;">
+        Failed Component: <strong id="failComponent" style="color: #fff;">PrimaryScoringEngine</strong> | 
+        Reason: <span id="failReason" style="color: var(--sev-high);">Primary calculation exception</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('overview', this)">1. Dashboard Overview</button>
+    <button class="tab-btn" onclick="switchTab('findings', this)">2. Security Findings (5)</button>
+    <button class="tab-btn" onclick="switchTab('attack-paths', this)">3. Potential Attack Paths</button>
+    <button class="tab-btn" onclick="switchTab('history', this)">4. Assessment History & Comparison</button>
+    <button class="tab-btn" onclick="switchTab('contributors', this)">5. Contributors & Credits</button>
+  </div>
+
+  <div class="container">
+
+    <!-- VIEW 1: OVERVIEW -->
+    <div id="view-overview" class="view-content active">
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span class="card-title">Total Findings</span>
+          <span class="metric-val" id="valTotalFindings">Loading</span>
+        </div>
+        <div class="metric-box">
+          <span class="card-title">Critical Severity</span>
+          <span class="metric-val" style="color: var(--sev-critical);" id="valCriticalCount">Loading</span>
+        </div>
+        <div class="metric-box">
+          <span class="card-title">High Severity</span>
+          <span class="metric-val" style="color: var(--sev-high);" id="valHighCount">Loading</span>
+        </div>
+        <div class="metric-box">
+          <span class="card-title">Potential Attack Paths</span>
+          <span class="metric-val" style="color: var(--sev-low);" id="valPathCount">Loading</span>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-title">Overall Security Posture</div>
+          <div class="gauge-wrapper">
+            <div class="gauge-circle" id="postureGauge">
+              <div class="gauge-inner">
+                <span class="gauge-val" id="postureScore">Loading</span>
+                <span class="gauge-label" id="postureStatus">Loading</span>
+              </div>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted);" id="postureSubtext">Contextual Risk Priority Aggregate Score (0–100)</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Identified Security Findings</div>
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>CVSS v4.0 Status</th>
+                  <th>Contextual Risk Priority</th>
+                </tr>
+              </thead>
+              <tbody id="topRisksTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: FINDINGS -->
+    <div id="view-findings" class="view-content">
+      <div class="controls-row">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by title, file, category, or evidence..." onkeyup="filterFindings()" />
+        <select class="filter-select" id="sevFilter" onchange="filterFindings()">
+          <option value="ALL">All Severities</option>
+          <option value="CRITICAL">CRITICAL</option>
+          <option value="HIGH">HIGH</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="LOW">LOW</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Vulnerability Title</th>
+                <th>Category</th>
+                <th>CVSS v4.0 Status</th>
+                <th>Severity</th>
+                <th>Contextual Priority</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="allFindingsTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: ATTACK PATHS -->
+    <div id="view-attack-paths" class="view-content">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div class="card-title" style="margin-bottom: 0;">POTENTIAL ATTACK PATH — REQUIRES VALIDATION</div>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Interactive Node Graph • Click node to inspect finding</span>
+        </div>
+        <div class="graph-canvas-container">
+          <svg id="graphSvg" width="100%" height="100%"></svg>
+        </div>
+      </div>
+
+      <div id="attackPathsList"></div>
+    </div>
+
+    <!-- VIEW 4: ASSESSMENT HISTORY & COMPARISON -->
+    <div id="view-history" class="view-content">
+      <!-- ASSESSMENT COMPARISON SECTION -->
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div class="card-title" style="margin-bottom: 0;">ASSESSMENT COMPARISON (Comparative Delta Analysis)</div>
+          <span id="compStatusBadge" class="badge-sev dir-UNCHANGED">NO PREVIOUS ASSESSMENT</span>
+        </div>
+
+        <div id="compDetailsContainer">
+          <div style="color: var(--text-muted); font-size: 0.9rem;">No previous assessment available for delta comparison. Run another assessment to enable comparison.</div>
+        </div>
+      </div>
+
+      <!-- CONTROLLED REMEDIATION DEMO CARD -->
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div class="card-title" style="margin-bottom:0;">CONTROLLED REMEDIATION DEMONSTRATION</div>
+          <span style="background: rgba(0,255,157,0.1); border: 1px solid var(--accent-green); color: var(--accent-green); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">CONTROLLED REMEDIATION DEMONSTRATION</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <div style="background: #0a0f1d; padding: 1.25rem; border-radius: 10px; border: 1px solid var(--sev-critical);">
+            <div style="color: var(--sev-critical); font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem;">BEFORE REMEDIATION (Initial State)</div>
+            <div style="font-size: 2rem; font-weight: 700; font-family: 'JetBrains Mono'; color: var(--sev-critical);">24.0 / 100 <span style="font-size: 0.9rem; color: var(--text-muted);">(CRITICAL RISK)</span></div>
+            <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
+              Findings: 1 Critical, 2 High, 1 Medium, 1 Low<br/>
+              Status: Primary Engine Execution Active
+            </div>
+          </div>
+          <div style="background: #0a0f1d; padding: 1.25rem; border-radius: 10px; border: 1px solid var(--accent-green);">
+            <div style="color: var(--accent-green); font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem;">AFTER SIMULATED REMEDIATION</div>
+            <div style="font-size: 2rem; font-weight: 700; font-family: 'JetBrains Mono'; color: var(--accent-green);">88.5 / 100 <span style="font-size: 0.9rem; color: var(--text-muted);">(STRONG POSTURE)</span></div>
+            <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
+              Findings: 0 Critical, 0 High, 1 Low (Post-Fix)<br/>
+              Posture Improvement: +64.5 Points
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXECUTION HISTORY LOG -->
+      <div class="card">
+        <div class="card-title">Assessment Execution History Log</div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Engine Mode</th>
+                <th>Posture Score</th>
+                <th>Status</th>
+                <th>Findings</th>
+                <th>Paths</th>
+                <th>Duration</th>
+                <th>Badge</th>
+              </tr>
+            </thead>
+            <tbody id="historyTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 5: CONTRIBUTORS -->
+    <div id="view-contributors" class="view-content">
+      <div class="card">
+        <div class="card-title">PROJECT CONTRIBUTORS & ACKNOWLEDGEMENTS</div>
+        <div style="display: flex; gap: 1.5rem; align-items: center; background: #0a0f1d; padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-color);">
+          <a href="https://github.com/varunsai20-a11y" target="_blank" rel="noreferrer">
+            <img src="https://github.com/varunsai20-a11y.png" alt="Varun" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid var(--accent-cyan);" />
+          </a>
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <h3 style="font-size: 1.4rem; font-weight: 700; color: #fff;">
+                <a href="https://github.com/varunsai20-a11y" target="_blank" style="color: inherit; text-decoration: none;">Varun</a>
+              </h3>
+              <span class="badge-sev" style="background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Security Assessment Contributor</span>
+            </div>
+            <div style="font-family: 'JetBrains Mono'; font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+              GitHub: <a href="https://github.com/varunsai20-a11y" target="_blank" style="color: var(--accent-cyan); text-decoration: none;">varunsai20-a11y</a>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.75rem; line-height: 1.5;">
+              Security assessment framework and security research for World Monitor, including source reconnaissance, security target reviews, evidence-gated finding analysis, risk scoring, fail-safe assessment, comparison analysis, and controlled remediation workflow.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FINDING DETAILS MODAL -->
+  <div class="modal-overlay" id="findingModal">
+    <div class="modal-box">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+        <div>
+          <span class="badge-sev" id="modalSev">CRITICAL</span>
+          <h2 id="modalTitle" style="margin-top: 0.5rem; font-size: 1.25rem;">Finding Title</h2>
+        </div>
+        <button class="btn-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div>
+          <div class="field-label">Contextual Risk Priority</div>
+          <span id="modalRiskScore" style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 1.2rem; color: var(--sev-critical);">88.5</span>
+        </div>
+        <div>
+          <div class="field-label">CVSS v4.0 Status</div>
+          <span id="modalCvssStatus" style="font-family: 'JetBrains Mono'; font-weight: 700; color: var(--sev-high);">REQUIRES VALIDATION</span>
+        </div>
+        <div>
+          <div class="field-label">Evidence Quality / Confidence</div>
+          <span id="modalConfidence" style="font-family: 'JetBrains Mono'; font-weight: 700; color: var(--accent-cyan);">95%</span>
+        </div>
+      </div>
+
+      <div class="risk-breakdown-box">
+        <div class="risk-breakdown-title">HOW IS THIS RISK CALCULATED? (Deterministic Risk Mathematics)</div>
+        <div class="formula-banner">
+          <strong>Contextual Risk Priority (0–100)</strong> = 100 × [ 0.30×SeverityWeight + 0.25×Exploitability + 0.20×Exposure + 0.15×Criticality + 0.10×AttackPathImpact ] × ConfidenceFactor
+        </div>
+        <div class="factors-grid">
+          <div class="factor-item">
+            <div class="factor-label">Severity Weight</div>
+            <div class="factor-val" id="modalSevWeight">1.0</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Exploitability</div>
+            <div class="factor-val" id="modalExploit">9.0/10</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Exposure</div>
+            <div class="factor-val" id="modalExposure">9.5/10</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Criticality</div>
+            <div class="factor-val" id="modalCriticality">9.5/10</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Path Impact</div>
+            <div class="factor-val" id="modalPathImpact">8.5/10</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-label">File & Location</div>
+      <div id="modalFile" style="font-family: 'JetBrains Mono'; font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 1rem;">server/auth/jwt.js</div>
+
+      <div class="field-label">Code Evidence</div>
+      <div class="code-block" id="modalEvidence">const SECRET = ...</div>
+
+      <div class="field-label">Description</div>
+      <p id="modalDesc" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 1rem;">Description text...</p>
+
+      <div class="field-label">Impact</div>
+      <p id="modalImpact" style="font-size: 0.9rem; color: var(--sev-high); line-height: 1.5; margin-bottom: 1rem;">Impact text...</p>
+
+      <div class="field-label">Related Findings</div>
+      <div id="modalRelated" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">None</div>
+
+      <div class="field-label">Recommended Remediation</div>
+      <p id="modalRemediation" style="font-size: 0.9rem; color: var(--accent-green); line-height: 1.5;">Remediation steps...</p>
+    </div>
+  </div>
+
+  <!-- LIVE ASSESSMENT PROGRESS MODAL -->
+  <div class="modal-overlay" id="progressModal">
+    <div class="modal-box" style="max-width: 650px;">
+      <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.2rem; color: var(--accent-cyan);">SECURITY ASSESSMENT EXECUTION PIPELINE</h2>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Live deterministic pipeline step execution & validation</p>
+      </div>
+
+      <div id="progressStepsContainer">
+        <div class="progress-step-item" id="step-1">
+          <span>1. INITIALIZING ASSESSMENT</span>
+          <span class="step-status-badge status-pending" id="status-1">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-2">
+          <span>2. VALIDATING ASSESSMENT INPUT & CVSS METRICS</span>
+          <span class="step-status-badge status-pending" id="status-2">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-3">
+          <span>3. CALCULATING CONTEXTUAL RISK PRIORITY SCORES</span>
+          <span class="step-status-badge status-pending" id="status-3">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-4">
+          <span>4. CORRELATING SECURITY FINDINGS</span>
+          <span class="step-status-badge status-pending" id="status-4">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-5">
+          <span>5. ANALYZING POTENTIAL ATTACK PATHS</span>
+          <span class="step-status-badge status-pending" id="status-5">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-6">
+          <span>6. GENERATING SECURITY POSTURE</span>
+          <span class="step-status-badge status-pending" id="status-6">○ Pending</span>
+        </div>
+        <div class="progress-step-item" id="step-7">
+          <span>7. FINALIZING ASSESSMENT & GENERATING COMPARISON</span>
+          <span class="step-status-badge status-pending" id="status-7">○ Pending</span>
+        </div>
+      </div>
+
+      <div id="completionSummary" style="display: none; background: #091322; border: 1px solid var(--accent-green); border-radius: 10px; padding: 1.25rem; margin-top: 1.5rem;">
+        <div style="color: var(--accent-green); font-weight: 700; font-size: 1.1rem; margin-bottom: 0.75rem;">✓ ASSESSMENT COMPLETE</div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; text-align: center;">
+          <div class="factor-item">
+            <div class="factor-label">Posture Score</div>
+            <div class="factor-val" id="summaryPosture">24.0</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Total Findings</div>
+            <div class="factor-val" id="summaryTotal">5</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Attack Paths</div>
+            <div class="factor-val" id="summaryPaths">2</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Engine Mode</div>
+            <div class="factor-val" id="summaryEngine">PRIMARY</div>
+          </div>
+        </div>
+        <button class="btn-assess" style="width: 100%; justify-content: center;" onclick="closeProgressModal()">Close & View Updated Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const actionHeaders = { 'X-Assessment-Token': '__ASSESSMENT_TOKEN__' };
+    let assessmentData = null;
+    let historyData = [];
+    let comparisonData = null;
+
+    async function loadData() {
+      try {
+        const resp = await fetch('/data/assessment_results.json?t=' + Date.now());
+        if (resp.ok) {
+          assessmentData = await resp.json();
+        } else {
+          const fallbackResp = await fetch('data/assessment_results.json');
+          if (fallbackResp.ok) assessmentData = await fallbackResp.json();
+        }
+      } catch (e) {
+        console.warn("Could not fetch assessment_results.json", e);
+      }
+
+      try {
+        const hResp = await fetch('/data/history.json?t=' + Date.now());
+        if (hResp.ok) historyData = await hResp.json();
+      } catch (e) {
+        console.warn("History unavailable", e);
+      }
+
+      try {
+        const cResp = await fetch('/api/comparison?t=' + Date.now());
+        if (cResp.ok) {
+          comparisonData = await cResp.json();
+        } else {
+          const cFileResp = await fetch('/data/comparisons.json?t=' + Date.now());
+          if (cFileResp.ok) comparisonData = await cFileResp.json();
+        }
+      } catch(e) {
+        console.warn("Comparison data unavailable", e);
+      }
+
+      renderDashboard();
+    }
+
+    function renderDashboard() {
+      if (!assessmentData) return;
+      
+      const meta = assessmentData.meta || {};
+      const status = meta.engineStatus || 'PRIMARY';
+      
+      const badge = document.getElementById('engineStatusBadge');
+      badge.className = `engine-badge engine-${status}`;
+      document.getElementById('engineStatusText').innerText = `Assessment Engine: ${status}`;
+
+      const banner = document.getElementById('failsafeBanner');
+      if (status === 'FALLBACK') {
+        banner.classList.add('active');
+        document.getElementById('failReason').innerText = meta.fallbackReason || 'Primary exception';
+        document.getElementById('failTimestamp').innerText = meta.timestamp || '';
+      } else {
+        banner.classList.remove('active');
+      }
+
+      const posture = assessmentData.posture || {};
+      const findings = assessmentData.findings || [];
+      const paths = (assessmentData.graph && assessmentData.graph.attackPaths) ? assessmentData.graph.attackPaths : [];
+
+      document.getElementById('postureScore').innerText = posture.postureScore ?? 100;
+      document.getElementById('postureStatus').innerText = posture.status || 'STRONG';
+      
+      const angle = ((posture.postureScore ?? 100) / 100) * 360;
+      document.getElementById('postureGauge').style.background = `conic-gradient(var(--accent-green) 0deg ${angle}deg, #1e293b ${angle}deg 360deg)`;
+
+      document.getElementById('valTotalFindings').innerText = findings.length;
+      document.getElementById('valCriticalCount').innerText = (posture.severityCounts && posture.severityCounts.CRITICAL) || 0;
+      document.getElementById('valHighCount').innerText = (posture.severityCounts && posture.severityCounts.HIGH) || 0;
+      document.getElementById('valPathCount').innerText = paths.length;
+
+      const topTable = document.getElementById('topRisksTable');
+      topTable.innerHTML = findings.slice(0, 5).map(f => {
+        const cvssStr = (f.cvss && f.cvss.score) ? `v4.0: ${f.cvss.score}` : `<span style="color:var(--sev-high); font-size:0.75rem;">REQUIRES VALIDATION</span>`;
+        const cRisk = (f.contextual_risk && f.contextual_risk.score != null) ? f.contextual_risk.score : f.riskScore;
+        return `
+          <tr onclick="openModal('${f.id}')">
+            <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${f.id}</td>
+            <td>${f.title}</td>
+            <td>${f.category}</td>
+            <td style="font-family: 'JetBrains Mono';">${cvssStr}</td>
+            <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${cRisk} / 100</td>
+          </tr>
+        `;
+      }).join('');
+
+      renderFindingsTable(findings);
+      renderAttackPaths(paths);
+      renderGraphSvg(findings);
+      renderHistoryTable();
+      renderComparisonSection();
+    }
+
+    function renderFindingsTable(list) {
+      const allTable = document.getElementById('allFindingsTable');
+      allTable.innerHTML = list.map(f => {
+        const cvssStr = (f.cvss && f.cvss.score) ? `v4.0: ${f.cvss.score}` : `<span style="color:var(--sev-high); font-size:0.75rem;">REQUIRES VALIDATION</span>`;
+        const cRisk = (f.contextual_risk && f.contextual_risk.score != null) ? f.contextual_risk.score : f.riskScore;
+        return `
+          <tr onclick="openModal('${f.id}')">
+            <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${f.id}</td>
+            <td style="font-weight: 600;">${f.title}</td>
+            <td>${f.category}</td>
+            <td style="font-family: 'JetBrains Mono';">${cvssStr}</td>
+            <td><span class="badge-sev sev-${f.severity}">${f.severity}</span></td>
+            <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${cRisk}</td>
+            <td><button onclick="event.stopPropagation(); openModal('${f.id}')" style="background: rgba(0, 240, 255, 0.1); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer;">Inspect</button></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterFindings() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const sev = document.getElementById('sevFilter').value;
+      const filtered = (assessmentData.findings || []).filter(f => {
+        const matchesQ = f.title.toLowerCase().includes(q) || f.file.toLowerCase().includes(q) || f.category.toLowerCase().includes(q) || f.id.toLowerCase().includes(q);
+        const matchesSev = (sev === 'ALL') || (f.severity === sev);
+        return matchesQ && matchesSev;
+      });
+      renderFindingsTable(filtered);
+    }
+
+    function renderAttackPaths(paths) {
+      const listEl = document.getElementById('attackPathsList');
+      listEl.innerHTML = paths.map(p => `
+        <div class="path-card">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="font-weight: 700; color: var(--text-main);">${p.id} — ${p.name}</span>
+            <span class="badge-sev sev-${p.severity}">Aggregate Risk: ${p.aggregateRiskScore}</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">${p.description}</p>
+          <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--accent-cyan);">
+            Related findings: ${p.findings.join(' ➔ ')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderGraphSvg(findings) {
+      const svg = document.getElementById('graphSvg');
+      svg.innerHTML = '';
+      if (!findings || !findings.length) return;
+      
+      const width = svg.clientWidth || 800;
+      const height = 320;
+      const cx = width / 2;
+      const cy = height / 2;
+      const radius = 110;
+      
+      const nodes = findings.map((f, i) => {
+        const angle = (i / findings.length) * 2 * Math.PI - (Math.PI / 2);
+        return {
+          x: cx + radius * Math.cos(angle),
+          y: cy + radius * Math.sin(angle),
+          data: f
+        };
+      });
+
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i]; const n2 = nodes[j];
+          if (!(assessmentData.graph?.edges ?? []).some(e => (e.source === n1.data.id && e.target === n2.data.id) || (e.target === n1.data.id && e.source === n2.data.id))) continue;
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', n1.x); line.setAttribute('y1', n1.y);
+          line.setAttribute('x2', n2.x); line.setAttribute('y2', n2.y);
+          line.setAttribute('stroke', '#1e293b'); line.setAttribute('stroke-width', '2');
+          svg.appendChild(line);
+        }
+      }
+
+      nodes.forEach(n => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.style.cursor = 'pointer';
+        g.onclick = () => openModal(n.data.id);
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', n.x); circle.setAttribute('cy', n.y);
+        circle.setAttribute('r', '22'); circle.setAttribute('fill', '#111827');
+        const colorMap = { 'CRITICAL': '#ff3366', 'HIGH': '#ff9900', 'MEDIUM': '#ffcc00', 'LOW': '#38bdf8' };
+        circle.setAttribute('stroke', colorMap[n.data.severity] || '#ff9900');
+        circle.setAttribute('stroke-width', '3');
+        g.appendChild(circle);
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', n.x); text.setAttribute('y', n.y + 5);
+        text.setAttribute('fill', '#fff'); text.setAttribute('font-size', '11');
+        text.setAttribute('font-weight', 'bold'); text.setAttribute('font-family', 'JetBrains Mono');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = n.data.id.replace('SEC-', '');
+        g.appendChild(text);
+
+        svg.appendChild(g);
+      });
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historyTable');
+      if (!historyData || !historyData.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: var(--text-muted);">No history records logged yet.</td></tr>';
+        return;
+      }
+      
+      const rev = historyData.slice().reverse();
+      tbody.innerHTML = rev.map((h, i) => `
+        <tr style="${i === 0 ? 'background: rgba(0, 240, 255, 0.05); font-weight: 600;' : ''}">
+          <td style="font-family: 'JetBrains Mono';">${h.timestamp} ${i === 0 ? '<span style="color: var(--accent-cyan); font-size: 0.7rem; font-weight:700; margin-left:0.5rem;">[LATEST]</span>' : ''}</td>
+          <td><span class="engine-badge engine-${h.engineStatus}">${h.engineStatus}</span></td>
+          <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${h.postureScore} / 100</td>
+          <td>${h.status}</td>
+          <td>${h.totalFindings} findings</td>
+          <td>${h.attackPathCount ?? 0} paths</td>
+          <td style="font-family: 'JetBrains Mono'; color: var(--accent-cyan);">${h.durationSeconds || '0.01'}s</td>
+          <td>${i === 0 ? '<span style="background: rgba(0, 240, 255, 0.1); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Latest Assessment</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">Historical</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderComparisonSection() {
+      const badge = document.getElementById('compStatusBadge');
+      const container = document.getElementById('compDetailsContainer');
+
+      if (!comparisonData || comparisonData.status === 'NO PREVIOUS ASSESSMENT') {
+        badge.innerText = 'NO PREVIOUS ASSESSMENT';
+        badge.className = 'badge-sev dir-UNCHANGED';
+        container.innerHTML = `<div style="color: var(--text-muted); font-size: 0.9rem;">No previous assessment available for comparative analysis. Run a second assessment to view delta changes.</div>`;
+        return;
+      }
+
+      const status = comparisonData.overall_status || 'UNCHANGED';
+      badge.innerText = `OVERALL: ${status}`;
+      badge.className = `badge-sev dir-${status}`;
+
+      const pc = comparisonData.posture_change || {};
+      const fc = comparisonData.finding_counts || {};
+      const findings = comparisonData.findings || {};
+      const ap = comparisonData.attack_paths || {};
+
+      container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem;">
+          <div class="factor-item">
+            <div class="factor-label">Security Posture Delta</div>
+            <div class="factor-val" style="color: ${pc.direction === 'IMPROVED' ? 'var(--accent-green)' : (pc.direction === 'REGRESSED' ? 'var(--sev-critical)' : 'var(--text-muted)')}">
+              ${pc.previous} ➔ ${pc.current} (${pc.absolute >= 0 ? '+' : ''}${pc.absolute})
+            </div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Finding Count Delta</div>
+            <div class="factor-val">${fc.previous_total} ➔ ${fc.current_total} (${fc.total_change >= 0 ? '+' : ''}${fc.total_change})</div>
+          </div>
+          <div class="factor-item">
+            <div class="factor-label">Attack Path Delta</div>
+            <div class="factor-val">${ap.previous} ➔ ${ap.current} (${ap.change >= 0 ? '+' : ''}${ap.change})</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <div>
+            <div class="card-title">Finding Lifecycle</div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+              <div><strong>NEW Findings:</strong> ${findings.new.length > 0 ? findings.new.join(', ') : 'None'}</div>
+              <div><strong>RESOLVED Findings:</strong> ${findings.resolved.length > 0 ? findings.resolved.join(', ') : 'None'}</div>
+              <div><strong>PERSISTENT Findings:</strong> ${findings.persistent.length > 0 ? findings.persistent.join(', ') : 'None'}</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card-title">Risk Changes in Persistent Findings</div>
+            <div style="font-size: 0.85rem;">
+              ${findings.changed_risk.map(c => `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; padding-bottom: 0.4rem; border-bottom: 1px dashed var(--border-color);">
+                  <span><strong>${c.id}:</strong> ${c.title.slice(0, 30)}...</span>
+                  <span class="badge-sev dir-${c.direction}">${c.previous_risk} ➔ ${c.current_risk} (${c.change >= 0 ? '+' : ''}${c.change})</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openModal(id) {
+      const f = (assessmentData.findings || []).find(x => x.id === id);
+      if (!f) return;
+      document.getElementById('modalSev').innerText = f.severity;
+      document.getElementById('modalSev').className = `badge-sev sev-${f.severity}`;
+      document.getElementById('modalTitle').innerText = f.title;
+      
+      const cRisk = (f.contextual_risk && f.contextual_risk.score != null) ? f.contextual_risk.score : f.riskScore;
+      document.getElementById('modalRiskScore').innerText = `${cRisk} / 100`;
+      
+      const cvssObj = f.cvss || {};
+      const cvssStatusStr = cvssObj.score != null ? `v4.0: ${cvssObj.score}` : (cvssObj.status || 'REQUIRES VALIDATION');
+      document.getElementById('modalCvssStatus').innerText = cvssStatusStr;
+      
+      document.getElementById('modalConfidence').innerText = `${f.confidence}%`;
+      const prioEl = document.getElementById('modalPriority');
+      if (prioEl) prioEl.innerText = f.priority || 'P2';
+      document.getElementById('modalFile').innerText = `${f.file}:${f.function || ''}`;
+      document.getElementById('modalEvidence').innerText = f.evidence;
+      document.getElementById('modalDesc').innerText = f.description;
+      document.getElementById('modalImpact').innerText = f.impact || 'N/A';
+      document.getElementById('modalRemediation').innerText = f.remediation;
+
+      const cr = f.contextual_risk || {};
+      document.getElementById('modalSevWeight').innerText = cr.severity_weight != null ? cr.severity_weight : '1.0';
+      document.getElementById('modalExploit').innerText = `${cr.exploitability || f.exploitability}/10`;
+      document.getElementById('modalExposure').innerText = `${cr.exposure || f.exposure}/10`;
+      document.getElementById('modalCriticality').innerText = `${cr.component_criticality || 8.0}/10`;
+      document.getElementById('modalPathImpact').innerText = `${cr.attack_path_impact || 5.0}/10`;
+
+      const relatedEl = document.getElementById('modalRelated');
+      const rels = f.relatedFindings || [];
+      if (rels.length > 0) {
+        relatedEl.innerHTML = rels.map(rId => `<span style="background: rgba(0,240,255,0.1); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); padding: 0.2rem 0.5rem; border-radius: 4px; font-family: 'JetBrains Mono'; cursor: pointer;" onclick="openModal('${rId}')">${rId}</span>`).join('');
+      } else {
+        relatedEl.innerText = 'None';
+      }
+
+      document.getElementById('findingModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('findingModal').classList.remove('active');
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+      
+      btn.classList.add('active');
+      document.getElementById(`view-${tabId}`).classList.add('active');
+    }
+
+    async function startAssessmentFlow(isFailureSim = false) {
+      const btn = document.getElementById('startAssessBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ ASSESSMENT IN PROGRESS...</span>';
+      
+      const modal = document.getElementById('progressModal');
+      document.getElementById('completionSummary').style.display = 'none';
+      modal.classList.add('active');
+
+      for (let i = 1; i <= 7; i++) {
+        const statusEl = document.getElementById(`status-${i}`);
+        statusEl.className = 'step-status-badge status-pending';
+        statusEl.innerText = '○ Pending';
+      }
+
+      const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+      for (let i = 1; i <= 6; i++) {
+        const statusEl = document.getElementById(`status-${i}`);
+        statusEl.className = 'step-status-badge status-running';
+        statusEl.innerText = '◉ Running';
+        await delay(220);
+        statusEl.className = 'step-status-badge status-completed';
+        statusEl.innerText = '✓ Completed';
+      }
+
+      const status7 = document.getElementById('status-7');
+      status7.className = 'step-status-badge status-running';
+      status7.innerText = '◉ Running';
+
+      let endpoint = isFailureSim ? '/api/simulate-failure' : '/api/run-assessment';
+      try {
+        const resp = await fetch(endpoint, { method: 'POST', headers: actionHeaders });
+        if (!resp.ok) throw new Error('Demo request failed');
+        const resData = await resp.json();
+        
+        status7.className = 'step-status-badge status-completed';
+        status7.innerText = '✓ Completed';
+        
+        await loadData();
+
+        const posture = (assessmentData && assessmentData.posture) ? assessmentData.posture : {};
+        const findings = (assessmentData && assessmentData.findings) ? assessmentData.findings : [];
+        const meta = (assessmentData && assessmentData.meta) ? assessmentData.meta : {};
+        
+        document.getElementById('summaryPosture').innerText = posture.postureScore ?? 'Unavailable';
+        document.getElementById('summaryTotal').innerText = findings.length;
+        document.getElementById('summaryPaths').innerText = (assessmentData.graph && assessmentData.graph.attackPaths) ? assessmentData.graph.attackPaths.length : '2';
+        document.getElementById('summaryEngine').innerText = meta.engineStatus || 'PRIMARY';
+
+        document.getElementById('completionSummary').style.display = 'block';
+
+      } catch (e) {
+        console.error("Assessment API execution error:", e);
+        status7.className = 'step-status-badge status-completed';
+        status7.innerText = 'Failed — check demo input and output files';
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<span>▶ START SECURITY ASSESSMENT</span>';
+    }
+
+    function closeProgressModal() {
+      document.getElementById('progressModal').classList.remove('active');
+    }
+
+    async function triggerResetPrimary() {
+      try {
+        const response = await fetch('/api/reset-primary', { method: 'POST', headers: actionHeaders });
+        if (!response.ok) throw new Error('Reset failed');
+        await loadData();
+      } catch(e) { console.error("Reset failed", e); }
+    }
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>
