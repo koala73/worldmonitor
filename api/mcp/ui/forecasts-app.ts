@@ -56,6 +56,11 @@ const RENDER = `
     function object(v) { return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
     function text(v) { return typeof v === "string" ? collapseWs(v) : ""; }
     function number(v) { return typeof v === "number" && isFinite(v) ? v : null; }
+    function timestamp(v) {
+      if ((typeof v !== "number" && typeof v !== "string") || !v || (typeof v === "number" && v <= 0)) return "";
+      var date = new Date(v);
+      return isFinite(date.getTime()) ? date.toISOString() : "";
+    }
     function strings(v) { return Array.isArray(v) ? v.map(text).filter(Boolean) : []; }
     function copy(parent, value, prefix) {
       var str = text(value);
@@ -213,7 +218,8 @@ const RENDER = `
     options("region", "region", "All regions");
     renderList();
     var source = [];
-    if (node.generatedAt) source.push("Generated: " + text(node.generatedAt));
+    var generatedAt = timestamp(node.generatedAt);
+    if (generatedAt) source.push("Generated: " + generatedAt);
     if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
     if (node.degraded) source.push("Forecast source degraded");
     if (data.stale || node.stale) source.push("stale cache");
