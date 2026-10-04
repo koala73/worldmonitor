@@ -72,6 +72,33 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(fetched.length, 7); assert.equal(bundle.pipe.count, 1);
     const original = JSON.parse(cache(bundle)[0][1]); assert.equal(original.value.data.insights.topStories.length, 2); assert.equal(typeof original.reuseUntil, 'number');
   });
+  it('reuses GDELT originals whose producer record count measures articles', async () => {
+    const bundle = makeProDeps();
+    for (const topic of sources[keys[1]].topics) topic.articles.push({ ...topic.articles[0], title: `${topic.id} second article` });
+    sources[keys[5]].recordCount = 12;
+    const first = await invoke(bundle);
+    await invoke(bundle);
+    assert.equal(value(first).data['gdelt-intel'].topics.length, 6);
+    assert.equal(cache(bundle).length, 1);
+    assert.equal(fetched.length, 7);
+    assert.equal(bundle.pipe.count, 1);
+  });
+  for (const failure of [{ status: 'error' }, { errorReason: 'gdelt_bulk_outputs_incomplete' }, { status: 'error', errorReason: 'gdelt_bulk_cursor_write_failed' }]) {
+    it(`retains producer publication failure ${JSON.stringify(failure)} and recovers within one allocation`, async () => {
+      const bundle = makeProDeps();
+      Object.assign(sources[keys[5]], failure);
+      const first = await invoke(bundle);
+      assert.equal(value(first).stale, true);
+      assert.equal(cache(bundle).length, 0);
+      sources = payload();
+      const recovered = await invoke(bundle);
+      await invoke(bundle);
+      assert.equal(value(recovered).stale, false);
+      assert.equal(cache(bundle).length, 1);
+      assert.equal(fetched.length, 14);
+      assert.equal(bundle.pipe.count, 1);
+    });
+  }
   it('opens one UUID refresh and uses a closed owner-bound receipt', async () => {
     const bundle = makeProDeps(); const receipt = value(await invoke(bundle)).panelRequest;
     const request_id = '550E8400-E29B-41D4-A716-446655440000';
