@@ -1042,9 +1042,15 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `country` | string | Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive). |
 | `min_fatalities` | number | Drop events below this fatality count (UCDP deathsBest / unrest fatalities). |
 | `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
+| `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
+| `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the Conflict Events admission within five minutes. Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and successful cached-replay limits. Each execution reads five fixed Redis keys, or six with Iran enabled; these reads do not each spend an allocation.
+- **Reuse and refresh:** Successful filtered originals replay before summary or JMESPath presentation. Explicit refresh with a new UUID spends one new allocation; the same UUID retries it. An authorized receipt read queries current usage without reserving another unit. Unknown counters preserve data and omit the numeric notice. Paid calls reject unknown arguments and non-finite numeric filters before reservation. Ordinary API and free calls retain existing filter coercion and reject paid receipts or refresh controls.
+- **Source observation and recovery:** Optional `conflict_source.ucdp` preserves only correctly typed `fetchedAt`, `candidateVersion`, `candidateComplete` and `annualFailedPages` from already-read metadata. Missing fields stay absent. Known partial, missing, malformed, stale or incompatible observations remain retryable. Usable collections still honor their filters. Data and metadata are not an atomic snapshot; the observation does not prove complete unrest-provider coverage or independent CII/Iran freshness.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** per slice — UCDP conflict events **30 min**, unrest events **2 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
 

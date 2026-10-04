@@ -809,10 +809,16 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 筛选为一个国家 — 在冲突/动荡事件上匹配国家名称，在风险评分上匹配 ISO 3166-1 alpha-2 地区代码（不区分大小写）。 |
 | `min_fatalities` | number | 丢弃低于此死亡数的事件（UCDP deathsBest / 动荡死亡数）。 |
 | `limit` | number | 将每个事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `panel_request` | string | 付费冲突事件凭据，在到期前复用受限内部筛选读取。API 和免费账户不接受。 |
+| `refresh` | boolean | 仅限付费面板。true 需附带 UUID request_id，并省略 panel_request，以开始一次新分配。 |
+| `request_id` | string | 显式付费刷新的 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 
 - **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **访问与计量：** `free-account`。免费账户使用免费额度，API 套餐保留按工具权重计费。Pro 与 Pro Business 首次打开扣一次额度，规范化筛选与重复打开在五分钟内复用冲突事件分配。每份分配最多允许 64 次未缓存工具执行，未缓存执行与成功缓存回放分别限制为每分钟 64 次。每次执行读取五个固定 Redis 键，启用伊朗事件时为六个，不分别扣额度。
+- **复用与刷新：** 相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。显式刷新使用新的 UUID 扣一次新额度；同一 UUID 的重试复用该分配。授权凭据读取查询当前额度，不另行预留；计数器未知时保留数据并省略数字通知。付费参数在预留前拒绝未知字段及非有限数值。普通 API 和免费调用保留既有筛选转换，不接受付费凭据或刷新控制。
+- **来源观察与恢复：** 可选 `conflict_source.ucdp` 仅保留已读取元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据保持可重试；可用列表仍按请求筛选。元数据与数据不是原子快照，该观察不能证明所有动荡提供方的完整覆盖或 CII/伊朗的独立新鲜度。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** UCDP 冲突事件为 **30 分钟**，动荡事件为 **2 小时**。任一来源超过预算都会设置 `stale: true`。
 
 <CodeGroup>
 

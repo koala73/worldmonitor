@@ -934,7 +934,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_conflict_events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
     _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
-    description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.',
+    description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. Authorized panel_request reads include current usage when confirmed; unknown usage omits the numeric notice. API and free allowances retain per-tool billing and reject paid controls.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -57,7 +57,7 @@
     },
     {
       "name": "get_conflict_events",
-      "description": "Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.",
+      "description": "Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. Authorized panel_request reads include current usage when confirmed; unknown usage omits the numeric notice. API and free allowances retain per-tool billing and reject paid controls.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

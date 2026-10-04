@@ -79,6 +79,14 @@ View -> Host: ui/notifications/size-changed
 
 所有方法仍计入每密钥、每用户或匿名 IP 每分钟 60 次的速率限制器。
 
+## 冲突事件计量
+
+在 Pro 与 Pro Business 上，`get_conflict_events` 的首次打开扣一次冲突事件面板额度。国家、死亡人数和数量筛选及重复打开在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需设置 `refresh: true`，提供 UUID 格式的 `request_id`，并省略 `panel_request`；刷新扣一次新额度，同一 UUID 的重试复用该分配。API 和免费账户调用保留普通按工具计费，不接受这些付费控制。
+
+每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。每次未缓存执行读取五个固定 Redis 键，启用伊朗事件时为六个；各键读取不会分别扣面板额度。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。授权凭据读取在使用量已确认时返回当前通知，使用量未知时省略数字通知。
+
+可选的 `conflict_source.ucdp` 仅复制已读取 UCDP 元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据不作为成功缓存，可使用原凭据重试。其他来源降级时，可用列表仍按请求筛选。该观察不能证明原子发布、所有动荡提供方的完整覆盖或 CII/伊朗数据的独立新鲜度。
+
 ## 视图安全
 
 应用外壳被刻意设计得静态且受限：

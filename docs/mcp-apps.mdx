@@ -81,6 +81,14 @@ The view never fetches live WorldMonitor data itself. Live data always reaches t
 
 All methods still count toward the 60/minute per-key, per-user, or anonymous-IP rate limiter.
 
+## Conflict Events Accounting
+
+On Pro and Pro Business, `get_conflict_events` opens one paid Conflict Events allocation. Country, fatality and limit filters and repeated opens reuse it within five minutes. Use the returned `panelRequest.token` as `panel_request` for bounded reads. Set `refresh: true` with a UUID `request_id` and omit `panel_request` for one new allocation; the same UUID retries it. API and free-account calls keep ordinary per-tool billing and reject these paid controls.
+
+Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. One uncached execution reads five fixed Redis keys, or six when Iran events are enabled; these reads do not each spend an allocation. Identical successful filtered originals replay before summary or JMESPath presentation. An authorized receipt read includes current usage when confirmed; unknown usage omits the numeric notice.
+
+Optional `conflict_source.ucdp` copies only correctly typed `fetchedAt`, `candidateVersion`, `candidateComplete` and `annualFailedPages` from already-read UCDP metadata. Missing fields stay absent. Known partial, missing, malformed, stale or incompatible observations remain retryable under the receipt. Usable collections still honor their filters when another source is degraded. The observation does not establish atomic publication, complete unrest-provider coverage or independent CII/Iran freshness.
+
 ## View Security
 
 The app shells are deliberately static and narrow:
