@@ -484,7 +484,7 @@ describe('paid forecast panel admission', () => {
   });
   it('rejects invalid opening arguments before reservation', async () => {
     const { deps, pipe } = makeProDeps();
-    for (const args of [{ limit: 0 }, { limit: 31 }, { unexpected: true }]) {
+    for (const args of [{ limit: 0 }, { limit: 31 }, { unexpected: true }, { refresh: true }]) {
       const denied = await invoke(deps, 'get_forecast_predictions', args);
       assert.equal(denied.body.error?.code, -32602);
       assert.equal(pipe.count, 0);
@@ -496,8 +496,8 @@ describe('paid forecast panel admission', () => {
     const { pipe } = makeProDeps();
     const grant = await admitForecastPanel(context, budget, pipe.pipeline, {});
     const read = await readPanel(context, pipe.pipeline, 'get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000' }, grant.token);
-    await read.save({ state: 'ready', forecast: { id: 'controlled' } });
-    assert.deepEqual((await readPanel(context, pipe.pipeline, 'get_forecast_case', { generated_at: '1720000000000', forecast_id: 'controlled' }, grant.token)).cached, { state: 'ready', forecast: { id: 'controlled' } });
+    await read.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    assert.deepEqual((await readPanel(context, pipe.pipeline, 'get_forecast_case', { generated_at: '1720000000000', forecast_id: 'controlled' }, grant.token)).cached, { data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
     await readPanel(context, pipe.pipeline, 'get_forecast_predictions', { domain: 'energy', region: 'Europe', limit: 30 }, grant.token);
     for (const [name, args] of [
       ['get_forecast_predictions', { jmespath: 'data' }], ['get_forecast_predictions', { summary: true }],
@@ -523,10 +523,10 @@ describe('paid forecast panel admission', () => {
     const country = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' }, now);
     await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, country.token, now));
     const cached = await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now);
-    await cached.save({ state: 'ready', forecast: { id: 'controlled' } });
+    await cached.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
     for (let i = 1; i < PANEL_READ_LIMIT; i++) await readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: `case-${i}` }, grant.token, now);
     await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: 'new' }, grant.token, now), error => error.code === 'reads');
-    assert.equal((await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now)).cached.forecast.id, 'controlled');
+    assert.equal((await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now)).cached.data.forecastCase.forecast.id, 'controlled');
     assert.equal(pipe.count, 2);
   });
   it('does not grant forecast panels against API per-tool budgets', async () => {
