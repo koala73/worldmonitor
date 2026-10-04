@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 
 const opening = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
@@ -28,24 +28,28 @@ describe('bounded forecast list and original case transport', () => {
     const result = opening._postFilter(structuredClone({ predictions: full }), {});
     assert.deepEqual(result.predictions, full);
   });
+  it('advertises the original-case reader as subscription-only', () => {
+    assert.equal(toolAccess(detail), 'subscription');
+  });
   it('returns exactly one unchanged original case and rejects a different generation', () => {
     assert.ok(detail, 'original ID-selected reader must be registered');
-    const args = { forecast_id: 'case-19', generated_at: String(generation), panel_request: 'signed-test-receipt' };
-    const result = detail._postFilter(structuredClone({ predictions: full }), args);
+    const args = { forecast_id: 'case-19', generated_at: String(generation) };
+    const result = detail._postFilter(structuredClone({ predictions: full }), args, paid);
     assert.deepEqual(Object.keys(result), ['forecastCase']);
     assert.equal(result.forecastCase.status, 'ready');
     assert.deepEqual(result.forecastCase.forecast, full.predictions[19]);
     assert.ok(Buffer.byteLength(JSON.stringify({ data: result })) < detail._outputBudgetBytes);
-    const changed = detail._postFilter({ predictions: { ...full, generatedAt: generation + 1 } }, args);
+    const changed = detail._postFilter({ predictions: { ...full, generatedAt: generation + 1 } }, args, paid);
     assert.equal(changed.forecastCase.status, 'generation_changed');
     assert.equal(changed.forecastCase.forecast, null);
   });
   it('distinguishes missing cases and unavailable source without returning the feed', () => {
     assert.ok(detail);
-    const args = { forecast_id: 'absent', generated_at: String(generation), panel_request: 'signed-test-receipt' };
-    assert.deepEqual(detail._postFilter({ predictions: full }, args).forecastCase, { status: 'missing', generatedAt: generation, forecast: null });
-    assert.equal(detail._postFilter({ predictions: null }, args).forecastCase.status, 'unavailable');
-    assert.equal(detail._postFilter({ predictions: { generatedAt: generation, predictions: null } }, args).forecastCase.status, 'unavailable');
-    for (const bad of [{ ...args, forecast_id: '' }, { ...args, generated_at: '' }, { ...args, panel_request: '' }]) assert.throws(() => detail._postFilter({ predictions: full }, bad));
+    assert.throws(() => detail._postFilter({ predictions: full }, { forecast_id: 'case-19', generated_at: String(generation) }));
+    const args = { forecast_id: 'absent', generated_at: String(generation) };
+    assert.deepEqual(detail._postFilter({ predictions: full }, args, paid).forecastCase, { status: 'missing', generatedAt: generation, forecast: null });
+    assert.equal(detail._postFilter({ predictions: null }, args, paid).forecastCase.status, 'unavailable');
+    assert.equal(detail._postFilter({ predictions: { generatedAt: generation, predictions: null } }, args, paid).forecastCase.status, 'unavailable');
+    for (const bad of [{ ...args, forecast_id: '' }, { ...args, generated_at: '' }, { ...args, arbitrary: true }]) assert.throws(() => detail._postFilter({ predictions: full }, bad, paid));
   });
 });
