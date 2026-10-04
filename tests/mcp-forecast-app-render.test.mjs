@@ -163,7 +163,7 @@ describe('forecast MCP analysis parity', () => {
     assert.doesNotMatch(doc.querySelector('details').textContent, /Supporting observation/);
     doc.querySelector('details button').click();
     reply(call().id, { structuredContent: { data: { forecastCase: { status: 'generation_changed', generatedAt: 'new-generation', forecast: null } } } });
-    assert.match(doc.querySelector('details').textContent, /generation changed/);
+    assert.match(doc.querySelector('details').textContent, /generation changed.*ask to refresh forecasts.*1 new panel allocation/i);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 3);
   });
   it('bounds a stalled detail call and keeps unavailable and missing original cases explicit', async () => {
