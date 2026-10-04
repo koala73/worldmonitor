@@ -2,6 +2,9 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import { PREDICTION_MARKETS_APP_HTML } from '../api/mcp/ui/prediction-markets-app.ts';
+import { buildStructuredContent } from '../api/mcp/structured-content.ts';
+import { summarizeData } from '../api/mcp/filters.ts';
+import { applyJmespath } from '../api/mcp/jmespath.ts';
 
 const windows = [];
 const market = { title: 'Controlled contract', source: 'polymarket', yesPrice: 62, volume: 1250000, url: 'https://polymarket.com/event/controlled', endDate: '2026-12-31T12:00:00Z' };
@@ -12,13 +15,14 @@ async function mount(list) {
   windows.push(win);
   win.document.write(PREDICTION_MARKETS_APP_HTML);
   win.eval(win.document.querySelector('script').textContent);
-  const send = data => win.dispatchEvent(new win.MessageEvent('message', {
+  const sendResult = result => win.dispatchEvent(new win.MessageEvent('message', {
     source: win.eval('window.parent'),
-    data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result: { content: [{ type: 'text', text: JSON.stringify(data) }] } } },
+    data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result } },
   }));
+  const send = data => sendResult({ content: [{ type: 'text', text: JSON.stringify(data) }] });
   send(payload(list));
   await win.happyDOM.waitUntilComplete();
-  return { win, doc: win.document, send };
+  return { win, doc: win.document, send, sendResult };
 }
 afterEach(async () => { await Promise.all(windows.splice(0).map(win => win.happyDOM.close())); });
 
@@ -109,5 +113,56 @@ describe('prediction MCP card parity with the website presentation', () => {
     const { doc } = await mount({ count: 40, sample: [market] });
     assert.match(doc.querySelector('.mkt-count').textContent, /1 of 40/);
     assert.equal(doc.querySelector('.mkt-more'), null);
+  });
+  it('renders whole-envelope structured projections and expands every loaded category without reads', async () => {
+    const { win, doc, sendResult } = await mount([]);
+    const contracts = category => Array.from({ length: 8 }, (_, i) => ({ ...market, title: `${category} ${i + 1}`, yesPrice: i === 0 ? null : 62 }));
+    const full = { ...payload([]), stale: true, data: { 'markets-bootstrap': { geopolitical: contracts('Geo'), tech: contracts('Tech'), finance: [] } } };
+    const projected = applyJmespath(full, '@');
+    let reads = 0;
+    win.fetch = async () => { reads++; throw new Error('Unexpected data read'); };
+    const messages = [];
+    win.eval('window.parent').postMessage = message => messages.push(message);
+    sendResult({ content: [{ type: 'text', text: projected.text }], structuredContent: buildStructuredContent(projected.value, { reshaped: true, rider: null }) });
+    assert.equal(doc.querySelectorAll('.mkt').length, 12);
+    assert.equal(doc.querySelector('.mkt-title').href, market.url);
+    assert.match(doc.getElementById('groups').textContent, /Polymarket/);
+    assert.match(doc.querySelector('.mkt').textContent, /Yes —No —/);
+    assert.equal(doc.querySelector('.mkt .pbar'), null);
+    assert.equal(doc.getElementById('foot').textContent, `Snapshot: ${full.cached_at} (stale)`);
+    const [geo, tech] = doc.querySelectorAll('.mgroup');
+    geo.querySelector('.mkt-more').click();
+    assert.equal(geo.querySelectorAll('.mkt').length, 8);
+    assert.equal(tech.querySelectorAll('.mkt').length, 6);
+    assert.equal(doc.activeElement, geo.querySelectorAll('.mkt')[6]);
+    tech.querySelector('.mkt-more').click();
+    assert.equal(doc.querySelectorAll('.mkt').length, 16);
+    assert.match(tech.textContent, /Tech 8/);
+    assert.equal(reads, 0);
+    assert.ok(messages.length > 0);
+    assert.ok(messages.every(message => message.method === 'ui/notifications/size-changed'));
+  });
+  it('renders the actual structured summary envelope with source, unknown odds and reported count', async () => {
+    const { doc, sendResult } = await mount([]);
+    const full = { ...payload(Array.from({ length: 8 }, (_, i) => ({ ...market, title: `Sample ${i + 1}`, yesPrice: i === 0 ? null : 62 }))), stale: true };
+    const summary = { ...full, data: summarizeData(full.data) };
+    sendResult({ content: [{ type: 'text', text: JSON.stringify(summary) }], structuredContent: buildStructuredContent(summary, { reshaped: true, rider: null }) });
+    assert.equal(doc.querySelectorAll('.mkt').length, 3);
+    assert.match(doc.querySelector('.mkt-count').textContent, /3 of 8 markets/);
+    assert.equal(doc.querySelector('.mkt-more'), null);
+    assert.equal(doc.querySelector('.mkt-title').href, market.url);
+    assert.match(doc.querySelector('.mkt').textContent, /Polymarket.*Yes —No —/);
+    assert.equal(doc.getElementById('foot').textContent, `Snapshot: ${full.cached_at} (stale)`);
+  });
+  it('clears earlier contracts and metadata for projections that omit the contract shape', async () => {
+    const { doc, send, sendResult } = await mount([market]);
+    for (const projection of [null, ['Only a title'], 62, { title: 'Only a title' }]) {
+      send(payload([market]));
+      assert.equal(doc.querySelectorAll('.mkt').length, 1);
+      sendResult({ structuredContent: buildStructuredContent(projection, { reshaped: true, rider: null }) });
+      assert.equal(doc.querySelectorAll('.mkt').length, 0);
+      assert.match(doc.getElementById('groups').textContent, /No prediction markets available/);
+      assert.equal(doc.getElementById('foot').textContent, '');
+    }
   });
 });

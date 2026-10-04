@@ -32,12 +32,30 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
-import { UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE, UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const VALID_KEY = 'wm_test_key_resources';
+
+describe('prediction projection UI resource discovery', () => {
+  it('advertises v2 while retaining the original inline URI as a data-free read alias', async () => {
+    const current = 'ui://worldmonitor/prediction-markets-v2.html';
+    const legacy = 'ui://worldmonitor/prediction-markets.html';
+    assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === current));
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacy));
+    assert.equal(isUiResourceUri(current), true);
+    assert.equal(isUiResourceUri(legacy), true);
+    const read = async uri => (await (await buildUiResourceRead(1, uri, {})).json()).result.contents[0];
+    const advertised = await read(current);
+    const alias = await read(legacy);
+    assert.equal(alias.text, advertised.text);
+    assert.equal(alias.uri, current);
+    assert.equal(advertised.mimeType, 'text/html;profile=mcp-app');
+    assert.match(advertised.text, /Prediction Markets/);
+  });
+});
 
 function envKeyReq(body, headers = {}) {
   return new Request(BASE_URL, {
