@@ -998,4 +998,17 @@ describe('paid prediction panel through the MCP handler', () => {
       assert.equal(pipe.count, 2);
     }
   });
+  it('preserves malformed original pools without filter normalization on ordinary API and free connections', async () => {
+    for (const entitlement of [
+      { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 },
+      { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
+    ]) {
+      const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
+      bootstrapOverride = { tech: payload().tech };
+      const result = await invoke(deps, { category: 'finance', query: 'absent', source: 'kalshi', limit: 0.5 });
+      assert.deepEqual(data(result), bootstrapOverride);
+      assert.equal(result.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(pipe.count, 1);
+    }
+  });
 });

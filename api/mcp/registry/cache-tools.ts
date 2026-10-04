@@ -1794,11 +1794,14 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      const buckets = ['geopolitical', 'tech', 'finance'];
+      const bootstrap = data['markets-bootstrap'];
+      if (!bootstrap || typeof bootstrap !== 'object' || Array.isArray(bootstrap)
+        || !buckets.every(bucket => Array.isArray((bootstrap as Record<string, unknown>)[bucket]))) return data;
       const category = argStr(params.category);
       const query = argStr(params.query);
       const source = argStr(params.source);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
-      const buckets = ['geopolitical', 'tech', 'finance'];
       for (const b of buckets) {
         if (query) narrowNested(data, 'markets-bootstrap', b, (m) => ciIncludes(m.title, query));
         if (source) narrowNested(data, 'markets-bootstrap', b, (m) => argStr(m.source) === source);
