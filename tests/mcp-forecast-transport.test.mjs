@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
+import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
 const opening = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
 const detail = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_case');
@@ -27,6 +28,50 @@ describe('bounded forecast list and original case transport', () => {
   it('keeps original complete dossier contracts for ordinary API callers', () => {
     const result = opening._postFilter(structuredClone({ predictions: full }), {});
     assert.deepEqual(result.predictions, full);
+  });
+  it('preserves bounded source notices through paid compact openings and signed replay', async t => {
+    const originalFetch = globalThis.fetch;
+    const originalEnv = { ...process.env };
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+      Object.assign(process.env, originalEnv);
+    });
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://forecast-notices-fixture.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-fixture-token';
+    const source = { ...full, degraded: true, stale: true, error: 'upstream_unavailable', internalTrace: 'unused'.repeat(30000) };
+    globalThis.fetch = async url => {
+      const parsed = new URL(url);
+      assert.equal(parsed.hostname, 'forecast-notices-fixture.test');
+      if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+      const key = decodeURIComponent(parsed.pathname.slice('/get/'.length));
+      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+      return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2' ? source : { fetchedAt: Date.now() }) });
+    };
+    const { mcpHandler } = await import('../api/mcp.ts');
+    const { deps, pipe } = makeProDeps();
+    const invoke = async args => {
+      const response = await mcpHandler(proReq('POST', callBody('get_forecast_predictions', args)), deps);
+      return (await response.json()).result;
+    };
+    const result = await invoke({});
+    const node = result.structuredContent.data.predictions;
+    assert.equal(result.structuredContent.panelRequest.panel, 'forecasts');
+    assert.equal(result.structuredContent.stale, false);
+    assert.equal(node.degraded, true);
+    assert.equal(node.stale, true);
+    assert.equal(node.error, source.error);
+    assert.equal('internalTrace' in node, false);
+    assert.ok(node.predictions.every(row => row.hasCaseFile && !('caseFile' in row)));
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) <= opening._outputBudgetBytes);
+    const replay = await invoke({ panel_request: result.structuredContent.panelRequest.token });
+    assert.deepEqual(replay.structuredContent.data.predictions, node);
+    assert.equal(pipe.count, 1);
+    const oversized = opening._postFilter({ predictions: { ...source, error: 'x'.repeat(150000) } }, {}, paid);
+    assert.equal(oversized.predictions.error, 'x'.repeat(1200));
+    assert.ok(Buffer.byteLength(JSON.stringify({ data: oversized })) < opening._outputBudgetBytes);
   });
   it('advertises the original-case reader as subscription-only', () => {
     assert.equal(toolAccess(detail), 'subscription');

@@ -671,6 +671,31 @@ describe('forecast panel transport through production cache reads', () => {
     assert.equal(sourceReads.length, beforeDenied);
     assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
   });
+  it('recovers an unavailable opening under the same allocation and caches observed empty lists', async () => {
+    const { deps, pipe } = makeProDeps();
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const unavailable = await invoke(deps, 'get_forecast_predictions');
+    const panel_request = unavailable.body.result.structuredContent.panelRequest.token;
+    assert.equal(unavailable.body.result.structuredContent.data.predictions.predictions, null);
+    const failedReads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(recovered.body.result.structuredContent.data.predictions.predictions.length, original.length);
+    assert.ok(sourceReads.length > failedReads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(sourceReads.length, recoveredReads);
+    const emptyAccount = makeProDeps();
+    canonical.predictions = [];
+    const empty = await invoke(emptyAccount.deps, 'get_forecast_predictions');
+    assert.deepEqual(empty.body.result.structuredContent.data.predictions.predictions, []);
+    const emptyReads = sourceReads.length;
+    await invoke(emptyAccount.deps, 'get_forecast_predictions', { panel_request: empty.body.result.structuredContent.panelRequest.token });
+    assert.equal(sourceReads.length, emptyReads);
+    assert.equal(emptyAccount.pipe.count, 1);
+  });
   it('recovers an unavailable original case on same-generation retry without another daily allocation', async () => {
     const { deps, pipe } = makeProDeps();
     const opened = await invoke(deps, 'get_forecast_predictions');
