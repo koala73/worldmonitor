@@ -390,7 +390,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/market-radar-v3.html',
-      'ui://worldmonitor/chokepoint-monitor.html',
+      'ui://worldmonitor/chokepoint-monitor-v2.html',
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
@@ -614,7 +614,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const shellWidgets = [
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
-      'ui://worldmonitor/chokepoint-monitor.html',
+      'ui://worldmonitor/chokepoint-monitor-v2.html',
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',

@@ -4,6 +4,10 @@ import { Window } from 'happy-dom';
 import { CHOKEPOINT_MONITOR_APP_HTML } from '../api/mcp/ui/chokepoint-monitor-app.ts';
 import { buildStructuredContent } from '../api/mcp/structured-content.ts';
 import { summarizeData } from '../api/mcp/filters.ts';
+import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
+import { mcpHandler } from '../api/mcp.ts';
+import { makeProDeps } from './helpers/mcp-pro-deps.mjs';
 
 const row = (overrides = {}) => ({ todayTotal: 18, todayTanker: 4, wowChangePct: 12.5, riskLevel: 'normal', dataAvailable: true, ...overrides });
 const payload = (summaries = { hormuz: row({ todayTotal: null, dataAvailable: false, wowChangePct: -80, riskLevel: 'high' }), suez: row() }) => ({
@@ -77,6 +81,14 @@ describe('Chokepoint Monitor supplied projections', () => {
   it('keeps the original 20-row cap on complete supplied maps', async () => {
     await mount(result(payload(Object.fromEntries(Array.from({ length: 25 }, (_, i) => ['controlled_' + i, row()]))), true), document => { assert.equal(rows(document).length, 20); });
   });
+  it('does not claim an invalid or contradictory summary count', async () => {
+    for (const count of [null, '7', -1, 1.5, 1]) {
+      await mount(result(payload({ count, sample_keys: ['hormuz', 'suez'] }), true), document => {
+        assert.equal(rows(document).length, 0);
+        assert.match(document.getElementById('rows').textContent, /Summary count is unavailable/);
+      });
+    }
+  });
   it('replaces previous rows and stale snapshot on missing, empty and scalar projected results', async () => {
     await mount(result(payload(), true), async (document, send) => {
       assert.equal(rows(document).length, 2);
@@ -100,5 +112,44 @@ describe('Chokepoint Monitor supplied projections', () => {
       assert.match(document.getElementById('rows').textContent, /<img src=x onerror=/);
       assert.equal(document.querySelectorAll('#rows img, #rows script').length, 0);
     });
+  });
+});
+
+describe('Chokepoint Monitor current resource and private legacy read', () => {
+  const current = 'ui://worldmonitor/chokepoint-monitor-v2.html';
+  const legacy = 'ui://worldmonitor/chokepoint-monitor.html';
+  it('advertises one current URI and preserves both data-free static reads', async () => {
+    assert.equal(CACHE_TOOLS.find(tool => tool.name === 'get_chokepoint_status')._uiResourceUri, current);
+    assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === current));
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacy));
+    assert.equal(UI_RESOURCE_LIST_RESPONSE.filter(resource => resource.name === 'Chokepoint Monitor (interactive)').length, 1);
+    for (const uri of [current, legacy]) {
+      assert.ok(isUiResourceUri(uri));
+      const body = await (await buildUiResourceRead(1, uri, {})).json();
+      assert.equal(body.result.contents[0].uri, uri);
+      assert.equal(body.result.contents[0].text, CHOKEPOINT_MONITOR_APP_HTML);
+      assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+    }
+  });
+  it('serves current and legacy anonymously without reservations or data calls', async () => {
+    const { deps, pipe } = makeProDeps();
+    const original = globalThis.fetch;
+    let reads = 0;
+    try {
+      globalThis.fetch = async () => { reads++; throw new Error('Static read must not acquire data'); };
+      for (const uri of [current, legacy]) {
+        const response = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri } }),
+        }), deps);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.result.contents[0].uri, uri);
+        assert.equal(body.result.contents[0].text, CHOKEPOINT_MONITOR_APP_HTML);
+      }
+      assert.equal(reads, 0);
+      assert.equal(pipe.count, 0);
+      assert.deepEqual(pipe.ops, []);
+    } finally { globalThis.fetch = original; }
   });
 });

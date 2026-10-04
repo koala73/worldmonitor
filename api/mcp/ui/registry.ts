@@ -43,7 +43,8 @@ export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
 export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
 export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
 export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar-v3.html';
-export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
+export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor-v2.html';
+const LEGACY_CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
 export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.html';
 export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
 export const NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.html';
@@ -169,6 +170,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
+  if (uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI) return true;
   return uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
@@ -203,7 +205,7 @@ export async function buildUiResourceRead(
   if (uri === MARKET_RADAR_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI) return readMarketRadar(id, corsHeaders, uri);
   if (uri === COUNTRY_VIEW_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders, uri);
   if (uri === NEWS_DASHBOARD_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders, uri);
-  const def = UI_RESOURCE_BY_URI.get(uri);
+  const def = UI_RESOURCE_BY_URI.get(uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI ? CHOKEPOINT_MONITOR_UI_URI : uri);
   if (!def) {
     // Unreachable in practice — the handler only routes here after
     // isUiResourceUri(uri) is true — but fail closed with a spec -32602.
@@ -211,7 +213,7 @@ export async function buildUiResourceRead(
   }
   return rpcOk(
     id,
-    { contents: [{ uri: def.uri, mimeType: def.mimeType, text: def.html, _meta: def._meta }] },
+    { contents: [{ uri, mimeType: def.mimeType, text: def.html, _meta: def._meta }] },
     corsHeaders,
   );
 }
