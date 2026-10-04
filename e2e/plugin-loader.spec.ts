@@ -5,6 +5,41 @@ const origin = 'https://www.worldmonitor.app';
 const headers = { 'Access-Control-Allow-Origin': '*' };
 const currentHtml = (root: string, version: string) => `<!doctype html><html><head><link rel="stylesheet" href="/plugin/assets/current-${version}.css"></head><body><main id="${root}">Loading current panel</main><script type="module" src="/plugin/assets/current-${version}.js"></script><script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body></html>`;
 
+for (const failure of ['stalled', 'unavailable'] as const) {
+  test(`retry recovers a ${failure} shared chunk before the abandoned graph completes`, async ({ page }) => {
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    let recovered = false;
+    const sharedRequests: string[] = [];
+    await page.route(`${origin}/plugin/country.html`, route => route.fulfill({ headers, contentType: 'text/html', body: currentHtml('countryRoot', 'A') }));
+    await page.route(`${origin}/plugin/assets/**`, async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('.css')) return route.fulfill({ headers, contentType: 'text/css', body: '' });
+      if (url.pathname.endsWith('/shared.js')) {
+        sharedRequests.push(url.href);
+        if (!recovered) {
+          if (failure === 'stalled') await blocked;
+          else return route.fulfill({ headers, status: 503, contentType: 'application/javascript', body: '' });
+        }
+        return route.fulfill({ headers, contentType: 'application/javascript', body: 'export const panel="Recovered shared graph";' });
+      }
+      return route.fulfill({ headers, contentType: 'application/javascript', body: `import {panel} from './shared.js';const url=new URL(import.meta.url);const attempt=url.searchParams.get('wm-plugin-boot')||url.pathname.match(/boot-(\\d+)/)?.[1];document.addEventListener('wm-plugin-boot-'+attempt,()=>{document.getElementById('countryRoot').textContent=panel;parent.postMessage({mounted:true},'*');},{once:true});` });
+    });
+    await page.clock.install();
+    await page.evaluate(() => { Object.assign(window, { mounts: 0 }); window.addEventListener('message', event => { if (event.data?.mounted) (window as unknown as { mounts: number }).mounts++; }); });
+    const frame = await mount(page, buildPluginShell({ origin, entry: 'country.html', root: 'countryRoot' }));
+    await expect.poll(() => sharedRequests.length).toBe(1);
+    if (failure === 'stalled') await page.clock.fastForward(11000);
+    await expect(frame.getByRole('button', { name: 'Retry interface' })).toBeVisible();
+    recovered = true;
+    await frame.getByRole('button', { name: 'Retry interface' }).click();
+    await expect(frame.locator('main')).toHaveText('Recovered shared graph');
+    expect(new Set(sharedRequests).size).toBe(2);
+    release();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { mounts: number }).mounts)).toBe(1);
+  });
+}
+
 async function mount(page: Page, shell: string) {
   await page.setContent('<iframe title="WorldMonitor" sandbox="allow-scripts" style="width:100%;height:600px;border:0"></iframe>');
   await page.locator('iframe').evaluate((frame, html) => { (frame as HTMLIFrameElement).srcdoc = html; }, shell);
