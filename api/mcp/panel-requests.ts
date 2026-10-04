@@ -189,6 +189,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
     },
     save: async (value: unknown) => {
+      if (scope.panel === 'predictions' && (!value || typeof value !== 'object' || Array.isArray(value))) return;
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;
       if (value && typeof value === 'object') {
