@@ -76,7 +76,7 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
   const midnight = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1);
   const bucket = Math.floor(now / PANEL_REUSE_MS);
   let scope: PanelScope = {
-    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(/-/g, '')}` : `b${bucket}`,
+    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(/-/g, '').toLowerCase()}` : `b${bucket}`,
     expires: Math.min(midnight, request.refresh ? now + PANEL_REUSE_MS : (bucket + 2) * PANEL_REUSE_MS),
   };
   const previous: PanelScope = { panel: country, window: `b${bucket - 1}`, expires: Math.min(midnight, (bucket + 1) * PANEL_REUSE_MS) };
