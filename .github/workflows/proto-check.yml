@@ -133,7 +133,7 @@ jobs:
     outputs:
       codegen: ${{ steps.paths.outputs.codegen || steps.non-pr.outputs.codegen }}
       breaking: ${{ steps.paths.outputs.breaking || steps.non-pr.outputs.breaking }}
-      trusted_fork: ${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}
+      owner_trusted_head: ${{ steps.paths.outputs.owner_trusted_head || steps.non-pr.outputs.owner_trusted_head }}
     steps:
       - name: Classify proto codegen paths
         id: paths
@@ -197,7 +197,7 @@ jobs:
             } as $classification
             |
             $classification + {
-              trusted_fork: (
+              owner_trusted_head: (
                 $classification.codegen
                 and $action == "synchronize"
                 and ($actor | length) > 0
@@ -205,8 +205,10 @@ jobs:
                 and ($head_repository | length) > 0
                 and ($pr_author | length) > 0
                 and $actor == $repository_owner
-                and $head_repository != $repository
-                and $pr_author != "dependabot[bot]"
+                and (
+                  ($head_repository != $repository and $pr_author != "dependabot[bot]")
+                  or ($head_repository == $repository and $pr_author == "dependabot[bot]")
+                )
               )
             }
             | to_entries[]
@@ -219,7 +221,7 @@ jobs:
         run: |
           echo "codegen=false" >> "$GITHUB_OUTPUT"
           echo "breaking=false" >> "$GITHUB_OUTPUT"
-          echo "trusted_fork=false" >> "$GITHUB_OUTPUT"
+          echo "owner_trusted_head=false" >> "$GITHUB_OUTPUT"
 
   proto-breaking:
     needs: changes
@@ -267,7 +269,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
-      needs.changes.outputs.trusted_fork != 'true' &&
+      needs.changes.outputs.owner_trusted_head != 'true' &&
       (github.event.pull_request.head.repo.full_name != github.repository ||
       github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-latest
@@ -278,7 +280,7 @@ jobs:
         run: |
           echo "ERROR: Codegen inputs or generated outputs changed on a read-only PR."
           echo "CI does not execute or certify generated artifacts from this trust boundary."
-          echo "Ask a maintainer to move the commit to a trusted internal branch."
+          echo "Ask the repository owner to review and push this head, or use a trusted internal branch."
           exit 1
 
   internal-generate:
@@ -287,7 +289,7 @@ jobs:
       needs.changes.outputs.codegen == 'true' &&
       ((github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]') ||
-      needs.changes.outputs.trusted_fork == 'true')
+      needs.changes.outputs.owner_trusted_head == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -330,7 +332,7 @@ jobs:
         env:
           GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
-          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
+          OWNER_TRUSTED_HEAD: ${{ needs.changes.outputs.owner_trusted_head }}
         run: |
           MAKE_BIN=$(command -v make || true)
           GIT_BIN=$(command -v git || true)
@@ -390,8 +392,8 @@ jobs:
             exit 0
           fi
 
-          if [ "$TRUSTED_FORK" = "true" ]; then
-            echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
+          if [ "$OWNER_TRUSTED_HEAD" = "true" ]; then
+            echo "ERROR: Generated artifacts are stale on the owner-trusted head."
             echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
             "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
@@ -402,7 +404,7 @@ jobs:
 
       - name: Upload generated artifact patch
         if: >-
-          needs.changes.outputs.trusted_fork != 'true' &&
+          needs.changes.outputs.owner_trusted_head != 'true' &&
           steps.patch.outputs.changed == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
@@ -522,7 +524,7 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       needs.internal-auto-generate.result == 'success' &&
       needs.internal-auto-generate.outputs.pushed != 'true') ||
-      (needs.changes.outputs.trusted_fork == 'true' &&
+      (needs.changes.outputs.owner_trusted_head == 'true' &&
       needs.internal-auto-generate.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -648,7 +650,7 @@ jobs:
           CHANGE_RESULT: ${{ needs.changes.result }}
           CODEGEN_CHANGED: ${{ needs.changes.outputs.codegen }}
           BREAKING_CHANGED: ${{ needs.changes.outputs.breaking }}
-          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
+          OWNER_TRUSTED_HEAD: ${{ needs.changes.outputs.owner_trusted_head }}
           WRITABLE_INTERNAL_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
           BREAKING_RESULT: ${{ needs.proto-breaking.result }}
           FORK_RESULT: ${{ needs.fork-artifact-check.result }}
@@ -672,16 +674,16 @@ jobs:
             exit 1
           fi
 
-          if [ "$TRUSTED_FORK" = "true" ]; then
+          if [ "$OWNER_TRUSTED_HEAD" = "true" ]; then
             if [ "$WRITABLE_INTERNAL_PR" = "true" ] || \
                [ "$FORK_RESULT" != "skipped" ] || \
                [ "$GENERATE_RESULT" != "success" ] || \
                [ "$PUBLISH_RESULT" != "skipped" ] || \
                [ "$MERGE_RESULT" != "success" ]; then
-              echo "ERROR: Owner-trusted fork generation did not complete through the read-only path."
+              echo "ERROR: Owner-trusted generation did not complete through the read-only path."
               exit 1
             fi
-            echo "Owner-trusted fork artifacts are fresh at the exact head and merge result."
+            echo "Owner-trusted artifacts are fresh at the exact head and merge result."
             exit 0
           fi
 

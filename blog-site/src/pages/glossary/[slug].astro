@@ -18,6 +18,7 @@ const termLabel = `${term.term}${term.abbr ? ` (${term.abbr})` : ''}`;
 const metaTitle = term.abbr
   ? `${term.abbr} Definition | World Monitor`
   : `${term.term} Definition | World Monitor`;
+const titleTag = term.metaTitle ?? metaTitle;
 const description = term.metaDescription ?? term.short;
 const metaDescription = description.length <= 160
   ? description
@@ -81,7 +82,7 @@ const faqLd = {
 <Base
   title={`What is ${termLabel}?`}
   description={metaDescription}
-  metaTitle={metaTitle}
+  metaTitle={titleTag}
   ogType="website"
   jsonLd={jsonLd}
   breadcrumbLd={breadcrumbLd}

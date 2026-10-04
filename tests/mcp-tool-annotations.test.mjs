@@ -104,6 +104,23 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
     assert.deepEqual(failures, [], `tools on the wire missing annotations:\n  ${failures.join('\n  ')}`);
   });
 
+  it('tools/list marks company intelligence as read-only and open-world for SEC filings search', async () => {
+    const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const tool = body.result.tools.find(tool => tool.name === 'get_company_intelligence');
+    assert.deepEqual(tool.annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+  });
+
   // --------------------------------------------------------------------
   // Test 3 — buildPublicTool deep-clones annotations
   // --------------------------------------------------------------------

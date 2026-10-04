@@ -1785,7 +1785,7 @@ export class UnifiedSettings {
     switch (dimension) {
       case 'api_daily_requests': return 'Daily API requests';
       case 'api_minute_burst': return 'API burst traffic';
-      case 'mcp_daily_calls': return 'Daily MCP calls';
+      case 'mcp_daily_calls': return 'Daily MCP usage';
       case 'mcp_minute_burst': return 'MCP burst traffic';
     }
   }

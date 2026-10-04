@@ -890,6 +890,7 @@ export interface TenderSourceStatus {
 
 export interface GetUsCpiMonthlyRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsCpiMonthlyResponse {
@@ -919,6 +920,7 @@ export interface UsCpiPercentChange {
 
 export interface GetUsTreasuryParYieldCurveRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsTreasuryParYieldCurveResponse {
@@ -946,6 +948,7 @@ export interface UsTreasuryParYieldCurve {
 
 export interface GetUsInterestRatesRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsInterestRatesResponse {
@@ -966,6 +969,7 @@ export interface UsInterestRateObservation {
 export interface GetWorldCpiMonthlyRequest {
   history: boolean;
   country: string;
+  limit?: number;
 }
 
 export interface GetWorldCpiMonthlyResponse {
@@ -999,6 +1003,7 @@ export interface WorldCpiPercentChange {
 export interface GetGovernmentYieldCurveRequest {
   country: string;
   history: boolean;
+  limit?: number;
 }
 
 export interface GetGovernmentYieldCurveResponse {
@@ -2334,6 +2339,7 @@ export function createEconomicServiceRoutes(
           const params = url.searchParams;
           const body: GetUsCpiMonthlyRequest = {
             history: params.get("history") === "true",
+            limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getUsCpiMonthly", body);
@@ -2381,6 +2387,7 @@ export function createEconomicServiceRoutes(
           const params = url.searchParams;
           const body: GetUsTreasuryParYieldCurveRequest = {
             history: params.get("history") === "true",
+            limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getUsTreasuryParYieldCurve", body);
@@ -2428,6 +2435,7 @@ export function createEconomicServiceRoutes(
           const params = url.searchParams;
           const body: GetUsInterestRatesRequest = {
             history: params.get("history") === "true",
+            limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getUsInterestRates", body);
@@ -2476,6 +2484,7 @@ export function createEconomicServiceRoutes(
           const body: GetWorldCpiMonthlyRequest = {
             history: params.get("history") === "true",
             country: params.get("country") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getWorldCpiMonthly", body);
@@ -2524,6 +2533,7 @@ export function createEconomicServiceRoutes(
           const body: GetGovernmentYieldCurveRequest = {
             country: params.get("country") ?? "",
             history: params.get("history") === "true",
+            limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getGovernmentYieldCurve", body);

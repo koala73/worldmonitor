@@ -22,7 +22,7 @@ tags: [ucdp, hapi, acled, seeder, invariant, upstream-totals, redis, bootstrap, 
 
 Three seeder transforms changed the totals that UCDP and HAPI publish. A row cap dropped half of August's UCDP deaths. A category sum double counted HAPI civilian targeting. A retention rule kept one HAPI month. Every check in the pipeline passed, because each transform produced a well-formed payload. The panel total, `get_conflict_events`, CII, CRI, and the public humanitarian REST endpoint all read the wrong numbers.
 
-The rule this doc records: a seeder transform (cap, sum, retention) must preserve the upstream release's totals. Check that invariant against the upstream release itself. Nothing in the pipeline does it for you.
+The rule this doc records: for every period and measure a seeder publishes, its output must match the upstream release's total for that period. A cap or a category sum must not change a published period's total. A retention rule decides which periods are published, so state its window explicitly and compare every period inside it. Check the invariant against the upstream release itself. Nothing in the pipeline does it for you.
 
 ## Symptoms
 

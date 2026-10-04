@@ -1081,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Endeks: World Monitor · mekân verileri:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "VERİ YOK",
+      "statusNoBaseline": "REFERANS YOK",
+      "vsUsual": "olağana göre",
       "title": "Pentagon Pizza Endeksi",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} guncellendi",
       "tensionsTitle": "Jeopolitik Gerilimler",
+      "tensionsSource": "Gerilimler: GDELT olaylarından World Monitor hesaplaması",
+      "insufficientData": "Yetersiz veri",
+      "pizzaUnavailable": "Pizzacıların etkinlik verileri kullanılamıyor",
       "source": "Kaynak:",
       "statusClosed": "KAPALI",
       "statusSpike": "ANI ARTIS",
@@ -1096,11 +1104,11 @@
       "minutesAgo": "{{m}}dk once",
       "hoursAgo": "{{h}}sa once",
       "defconLabels": {
-        "1": "KURBALI TABANCA - MAKSIMUM HAZIRLIK",
-        "2": "HIZLI TEMPO - SILAHLI KUVVETLER HAZIR",
-        "3": "YUVARLAK EV - KUVVET HAZIRLIGINI ARTIR",
-        "4": "CIFT KONTROL - ARTIRILMIS ISTIHBARAT GOZETIMI",
-        "5": "SOLMA - EN DUSUK HAZIRLIK"
+        "1": "Maksimum Aktivite",
+        "2": "Yüksek Aktivite",
+        "3": "Artan Aktivite",
+        "4": "Normalin Üstünde",
+        "5": "Normal Aktivite"
       }
     },
     "strategicPosture": {
@@ -2897,6 +2905,10 @@
     "protest": {
       "acledVerified": "ACLED (dogrulanmis)",
       "gdelt": "GDELT",
+      "records": "kayıt",
+      "mediaSignal": "Doğrulanmamış medya sinyali",
+      "relatedArticle": "İlgili makale",
+      "mediaSignalDetail": "Bu konum, huzursuzlukla ilgili makalelerde geçiyor. Yerel bir olay doğrulanmamıştır.",
       "riots": "Isyanlar",
       "highSeverity": "Yuksek Siddet"
     },

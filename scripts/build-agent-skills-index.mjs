@@ -63,6 +63,8 @@ const INSTRUCTIONS = [
   '- Use `fetch-country-brief` when the user asks for a strategic read on one country’s geopolitical, economic, or security situation (a source-attributed narrative brief).',
   '- Use `fetch-resilience-score` when the user asks how resilient a country is, or wants its composite 0–100 resilience score, 30-day trend, or per-domain/pillar breakdown.',
   '- Use `check-chokepoint-status` when the user asks whether a maritime chokepoint (Suez, Hormuz, Malacca…) is disrupted, congested, or safe right now.',
+  '- Use `research-stocks` when the user asks for current stock research, a technical backtest or saved watchlist research; preserve model and simulation limitations.',
+  '- Use `compare-macro-history` when the user asks for inflation, interest-rate or sovereign-yield trends; preserve dates, source definitions and missing readings.',
   '- Use `get-market-quotes` when the user asks for current equity/index/ETF prices or a quick market snapshot.',
   '- Use `track-conflict-events` when the user asks about recent fighting or attacks — geolocated UCDP events with parties and fatality bands.',
   '- Use `scan-cyber-threats` when the user asks about active malware IOCs, C2 infrastructure, or CISA known-exploited vulnerabilities.',

@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "statusNormal": "ปกติ",
+      "statusNoData": "ไม่มีข้อมูล",
+      "statusNoBaseline": "ไม่มีค่าฐาน",
+      "vsUsual": "เทียบกับปกติ",
       "title": "ดัชนีพิซซ่าเพนตากอน",
       "defcon": "DEFCON {{level}}",
       "updated": "อัปเดต {{timeAgo}}",
       "tensionsTitle": "ความตึงเครียดภูมิรัฐศาสตร์",
+      "tensionsSource": "ความตึงเครียด: World Monitor คำนวณจากเหตุการณ์ของ GDELT",
+      "insufficientData": "ข้อมูลไม่เพียงพอ",
+      "pizzaUnavailable": "ไม่มีข้อมูลกิจกรรมของร้านพิซซ่า",
       "source": "แหล่งที่มา:",
       "statusClosed": "ปิด",
       "statusSpike": "พุ่งสูง",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}น. ที่แล้ว",
       "hoursAgo": "{{h}}ชม. ที่แล้ว",
       "defconLabels": {
-        "1": "COCKED PISTOL - ความพร้อมสูงสุด",
-        "2": "FAST PACE - กองกำลังพร้อมรบ",
-        "3": "ROUND HOUSE - เพิ่มความพร้อมรบ",
-        "4": "DOUBLE TAKE - เพิ่มการเฝ้าระวังข่าวกรอง",
-        "5": "FADE OUT - ความพร้อมต่ำสุด"
+        "1": "กิจกรรมสูงสุด",
+        "2": "กิจกรรมสูง",
+        "3": "กิจกรรมเพิ่มขึ้น",
+        "4": "สูงกว่าปกติ",
+        "5": "กิจกรรมปกติ"
       }
     },
     "strategicPosture": {
@@ -2877,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED (ยืนยันแล้ว)",
       "gdelt": "GDELT",
+      "records": "รายการ",
+      "mediaSignal": "สัญญาณจากสื่อที่ยังไม่ยืนยัน",
+      "relatedArticle": "บทความที่เกี่ยวข้อง",
+      "mediaSignalDetail": "สถานที่นี้ถูกกล่าวถึงในบทความเกี่ยวกับความไม่สงบ ยังไม่มีการยืนยันเหตุการณ์ในพื้นที่",
       "riots": "จลาจล",
       "highSeverity": "ความรุนแรงสูง"
     },

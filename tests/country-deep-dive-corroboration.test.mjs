@@ -80,7 +80,9 @@ describe('CountryDeepDivePanel corroboration (#6428, #6419)', () => {
     assert.ok(reutersOnly, `expected a one-publisher row, got ${JSON.stringify(rows)}`);
     assert.equal(reutersOnly.flag, 'components.corroboration.singlePublisher');
     assert.equal(reutersOnly.flagHint, 'components.corroboration.singlePublisherHint');
-    assert.equal(reutersOnly.roster, null, 'the pill already names the only publisher');
+    assert.equal(reutersOnly.roster, 'components.corroboration.rosterSummaryTier1',
+      'one publisher under three feeds still lists them, so "single publisher" is checkable');
+    assert.deepEqual(reutersOnly.publishers, ['Reuters']);
 
     const twoPublishers = rows.find((row) => row !== reutersOnly);
     assert.equal(twoPublishers.flag, null);

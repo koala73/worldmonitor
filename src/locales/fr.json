@@ -1035,10 +1035,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Indice : World Monitor · données des lieux :",
+      "statusNormal": "NORMAL",
+      "statusNoData": "AUCUNE DONNÉE",
+      "statusNoBaseline": "SANS RÉFÉRENCE",
+      "vsUsual": "par rapport à la normale",
       "title": "Index des pizzas du Pentagone",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} mis à jour",
       "tensionsTitle": "Tensions géopolitiques",
+      "tensionsSource": "Tensions : World Monitor à partir des événements GDELT",
+      "insufficientData": "Données insuffisantes",
+      "pizzaUnavailable": "Activité des pizzerias indisponible",
       "source": "Source:",
       "statusClosed": "FERMÉ",
       "statusSpike": "POINTE",
@@ -1050,11 +1058,11 @@
       "minutesAgo": "il y a {{m}} min",
       "hoursAgo": "il y a {{h}} h",
       "defconLabels": {
-        "1": "PISTOLET ARMÉ - PRÉPARATION MAXIMALE",
-        "2": "RYTHME RAPIDE - FORCES ARMÉES PRÊTES",
-        "3": "MAISON RONDE - AUGMENTER LA PRÉPARATION DE LA FORCE",
-        "4": "DOUBLE PRISE - VEILLE À INTELLIGENCE AUGMENTÉE",
-        "5": "FADE OUT - PRÉPARATION LA PLUS FAIBLE"
+        "1": "Activité Maximale",
+        "2": "Activité Élevée",
+        "3": "Activité Augmentée",
+        "4": "Au-dessus de la Normale",
+        "5": "Activité Normale"
       }
     },
     "strategicPosture": {
@@ -2916,6 +2924,10 @@
     "protest": {
       "acledVerified": "ACLED (vérifié)",
       "gdelt": "GDELT",
+      "records": "entrées",
+      "mediaSignal": "Signal médiatique non vérifié",
+      "relatedArticle": "Article associé",
+      "mediaSignalDetail": "Ce lieu est mentionné dans des articles sur des troubles. Aucun événement local n’est vérifié.",
       "riots": "Émeutes",
       "highSeverity": "Sévérité Élevée"
     },

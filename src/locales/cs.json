@@ -1075,10 +1075,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · data podniků:",
+      "statusNormal": "NORMÁLNÍ",
+      "statusNoData": "BEZ DAT",
+      "statusNoBaseline": "BEZ ZÁKLADU",
+      "vsUsual": "oproti obvyklému",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Aktualizováno před {{timeAgo}}",
       "tensionsTitle": "Geopolitické napětí",
+      "tensionsSource": "Napětí: World Monitor na základě událostí GDELT",
+      "insufficientData": "Nedostatek dat",
+      "pizzaUnavailable": "Aktivita pizzerií není dostupná",
       "source": "Zdroj:",
       "statusClosed": "ZAVŘENO",
       "statusSpike": "NÁRŮST",
@@ -1090,11 +1098,11 @@
       "minutesAgo": "před {{m}} min",
       "hoursAgo": "před {{h}} h",
       "defconLabels": {
-        "1": "COCKED PISTOL - MAXIMÁLNÍ PŘIPRAVENOST",
-        "2": "FAST PACE - OZBROJENÉ SÍLY PŘIPRAVENY",
-        "3": "ROUND HOUSE - ZVÝŠENÁ PŘIPRAVENOST SIL",
-        "4": "DOUBLE TAKE - ZVÝŠENÝ ZPRAVODAJSKÝ DOHLED",
-        "5": "FADE OUT - NEJNIŽŠÍ PŘIPRAVENOST"
+        "1": "Maximální aktivita",
+        "2": "Vysoká aktivita",
+        "3": "Zvýšená aktivita",
+        "4": "Nad normálem",
+        "5": "Normální aktivita"
       }
     },
     "strategicPosture": {
@@ -2894,7 +2902,7 @@
       "tierTitle4": "Úroveň 4: Agregátory a blogy",
       "tierTitleUndeclared": "Úroveň neuvedena: dosud nekontrolováno",
       "rosterSummary": "Zprávu přináší {{publishers}}",
-      "rosterSummaryTier1": "Zprávu přináší {{publishers}}, z toho {{tier1}} úrovně 1",
+      "rosterSummaryTier1": "Zprávu přináší {{publishers}}, z toho {{tier1}} v úrovni 1",
       "rosterPublishers_one": "{{count}} vydavatel",
       "rosterPublishers_few": "{{count}} vydavatelé",
       "rosterPublishers_many": "{{count}} vydavatelů",
@@ -2937,6 +2945,10 @@
     "protest": {
       "acledVerified": "ACLED (ověřeno)",
       "gdelt": "GDELT",
+      "records": "záznamů",
+      "mediaSignal": "Neověřený mediální signál",
+      "relatedArticle": "Související článek",
+      "mediaSignalDetail": "Toto místo je zmíněno v článcích o nepokojích. Místní událost není ověřena.",
       "riots": "Výtržnosti",
       "highSeverity": "Vysoká závažnost"
     },

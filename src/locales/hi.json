@@ -1222,10 +1222,18 @@
       "skipToEnd": "अंत पर जाएं"
     },
     "pizzint": {
+      "indexSource": "सूचकांक: World Monitor · स्थल डेटा:",
+      "statusNormal": "सामान्य",
+      "statusNoData": "डेटा नहीं",
+      "statusNoBaseline": "आधार नहीं",
+      "vsUsual": "सामान्य की तुलना में",
       "title": "पेंटागन पिज़्ज़ा इंडेक्स",
       "defcon": "डिफकॉन {{level}}",
       "updated": "{{timeAgo}} पहले अपडेट हुआ",
       "tensionsTitle": "भू-राजनीतिक तनाव",
+      "tensionsSource": "तनाव: GDELT घटनाओं पर आधारित World Monitor",
+      "insufficientData": "अपर्याप्त डेटा",
+      "pizzaUnavailable": "पिज़्ज़ा दुकानों की गतिविधि उपलब्ध नहीं है",
       "source": "स्रोत:",
       "statusClosed": "बंद",
       "statusSpike": "स्पाइक",
@@ -1237,11 +1245,11 @@
       "minutesAgo": "{{m}} मिनट पहले",
       "hoursAgo": "{{h}} घंटे पहले",
       "defconLabels": {
-        "1": "COCKED PISTOL - अधिकतम तत्परता",
-        "2": "FAST PACE - सेना तैयार",
-        "3": "ROUND HOUSE - बल तत्परता बढ़ाना",
-        "4": "DOUBLE TAKE - बढ़ी हुई खुफिया सतर्कता",
-        "5": "FADE OUT - न्यूनतम तत्परता"
+        "1": "अधिकतम गतिविधि",
+        "2": "उच्च गतिविधि",
+        "3": "बढ़ी हुई गतिविधि",
+        "4": "सामान्य से ऊपर",
+        "5": "सामान्य गतिविधि"
       }
     },
     "strategicPosture": {
@@ -2966,6 +2974,10 @@
     "protest": {
       "acledVerified": "ACLED (पुष्टि किया गया)",
       "gdelt": "GDELT",
+      "records": "रिकॉर्ड",
+      "mediaSignal": "अपुष्ट मीडिया संकेत",
+      "relatedArticle": "संबंधित लेख",
+      "mediaSignalDetail": "अशांति से जुड़े लेखों में इस स्थान का उल्लेख है। स्थानीय घटना की पुष्टि नहीं हुई है।",
       "riots": "दंगे",
       "highSeverity": "उच्च गंभीरता"
     },

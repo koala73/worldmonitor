@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { fetchHackerNews } from '../scripts/seed-research.mjs';
+import { fetchHackerNews, HN_TTL } from '../scripts/seed-research.mjs';
 import { listHackernewsItems } from '../server/worldmonitor/research/v1/list-hackernews-items';
 import contracts from '../shared/openapi-filter-param-contracts.json' with { type: 'json' };
 
@@ -70,4 +70,16 @@ test('each feed remains capped at 30 item reads and isolates item failures', asy
     assert.equal(produced[`research:hackernews:v1:${feed}:30`].items.length, 29);
     assert.equal(produced[`research:hackernews:v1:${feed}:30`].items[0].id, 2);
   }
+});
+
+test('an omitted (zero) pageSize returns the default page, not one item', async () => {
+  const items = Array.from({ length: 3 }, (_, index) => ({ id: index + 1, title: `Item ${index + 1}` }));
+  globalThis.fetch = async () => Response.json({ result: JSON.stringify({ items }) });
+  const context = { request: new Request('https://worldmonitor.app/research'), headers: {}, pathParams: {} };
+  const response = await listHackernewsItems(context, { feedType: 'top', pageSize: 0, cursor: '' });
+  assert.equal(response.items.length, 3);
+});
+
+test('HN snapshots outlive at least three hourly seed-research cron ticks', () => {
+  assert.ok(HN_TTL >= 3 * 3600, `HN_TTL (${HN_TTL}s) must be at least 3x the hourly cron (10800s)`);
 });

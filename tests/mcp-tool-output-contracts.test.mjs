@@ -45,6 +45,7 @@ const originalEnv = { ...process.env };
 const REQUIRED_ARGS = {
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
   get_country_brief: { country_code: 'US' },
+  open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
   get_consumer_prices: { country_code: 'US' },
   get_airspace: { country_code: 'US' },
@@ -58,6 +59,11 @@ const REQUIRED_ARGS = {
     origin: 'JFK', destination: 'LHR', start_date: '2026-06-01', end_date: '2026-06-10',
   },
   describe_tool: { tool_name: 'get_market_data' },
+  get_macro_history: { dataset: 'us-cpi' },
+  get_internet_activity: { dataset: 'traffic' },
+  get_stock_research: { operation: 'analysis', symbols: ['AAPL'] },
+  get_supply_chain_cost_shock: { mode: 'energy', country: 'JP', chokepoint_id: 'suez' },
+  compute_energy_shock: { country: 'JP', chokepoint_id: 'suez' },
 };
 
 // Generate the smallest concrete value satisfying a JSON-Schema-subset
@@ -91,6 +97,7 @@ function minimalShape(schema) {
 // hand-written payload, or the stub is not a valid instance of the very schema
 // it was derived from — which the Ajv check below would (rightly) reject.
 const STUB_FIXTURES = {
+  get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',

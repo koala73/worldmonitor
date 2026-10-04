@@ -484,23 +484,44 @@ describe('installStaleBundleCheck', () => {
     assert.deepEqual(env.deferralReports.map((r) => r.reloadPolicy), ['blocking', 'blocking']);
   });
 
-  it('default reporter publishes reload_policy beside blocked_by as a Sentry tag', async () => {
+  it('default reporter sends nothing to Sentry when an episode only starts', async () => {
+    // A modal open when a deploy lands is the state this guard exists for, not
+    // a failure. Reporting it made WORLDMONITOR-15X an always-open issue.
+    _resetSentryDeferStateForTests();
+    try {
+      env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
+      env.modal = 'open-declared-blocking';
+      install(env, 'sha-running-bundle', 60_000, 3, true);
+      await fireFocus(env);
+      assert.equal(env.reloadCalls, 0, 'precondition: the reload was deferred');
+
+      const captured = await drainSentryCalls();
+      assert.equal(captured.length, 0, 'an episode start is expected and stays out of Sentry');
+    } finally {
+      _resetSentryDeferStateForTests();
+    }
+  });
+
+  it('default reporter publishes a suspected wedge with reload_policy beside blocked_by', async () => {
     // Pins the tag set an alert rule keys on, through the real deferred Sentry
     // queue rather than the recording fake the other tests use.
     _resetSentryDeferStateForTests();
     try {
       env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
       env.modal = 'open-declared-blocking';
-      install(env, 'sha-running-bundle', 60_000, undefined, true);
-      await fireFocus(env);
-      assert.equal(env.reloadCalls, 0, 'precondition: the reload was deferred');
+      install(env, 'sha-running-bundle', 60_000, 3, true);
+      for (let i = 0; i < 3; i++) {
+        env.clock.tick(5 * 60_000);
+        await fireFocus(env);
+      }
+      assert.equal(env.reloadCalls, 0, 'precondition: the reload stayed deferred');
 
       const captured = await drainSentryCalls();
-      assert.equal(captured.length, 1, 'one Sentry message per episode start');
-      assert.equal(captured[0]?.message, '[stale-bundle] reload deferred, modal open');
+      assert.equal(captured.length, 1, 'one Sentry message per wedged episode');
+      assert.equal(captured[0]?.message, '[stale-bundle] reload still deferred, modal never closed');
       assert.equal(captured[0]?.tags.blocked_by, 'modal-overlay');
       assert.equal(captured[0]?.tags.reload_policy, 'blocking');
-      assert.equal(captured[0]?.tags.deferrals, '1');
+      assert.equal(captured[0]?.tags.deferrals, '3');
     } finally {
       _resetSentryDeferStateForTests();
     }

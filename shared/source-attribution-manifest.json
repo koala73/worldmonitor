@@ -782,6 +782,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
           "path": "scripts/seed-grocery-basket.mjs"
         }
       ]
@@ -1428,7 +1431,7 @@
     {
       "host": "api.worldmonitor.app",
       "provider": "World Monitor hosted API",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Excluded: World Monitor own service/control plane",
       "attribution": "Excluded from the external-provider count: first-party API endpoint.",
@@ -1445,6 +1448,9 @@
         },
         {
           "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "scripts/_widget-data-policy.cjs"
         },
         {
           "path": "scripts/ais-relay.cjs"
@@ -1493,6 +1499,9 @@
         },
         {
           "path": "scripts/verify-import-hhi-coverage.mjs"
+        },
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
         {
           "path": "src/app/desktop-updater.ts"
@@ -1938,6 +1947,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "besttime.app",
+      "provider": "besttime.app",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit besttime.app and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -6247,18 +6273,10 @@
       "host": "miit.gov.cn",
       "provider": "miit.gov.cn",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit miit.gov.cn and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "mining-journal.com",
@@ -7695,6 +7713,9 @@
         },
         {
           "path": "server/worldmonitor/market/v1/get-country-stock-index.ts"
+        },
+        {
+          "path": "server/worldmonitor/market/v1/get-price-history.ts"
         }
       ]
     },
@@ -10396,6 +10417,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "api/miit-news.js"
+        },
+        {
           "path": "api/notification-suppressions.js"
         },
         {
@@ -12764,6 +12788,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/miit-news.js"
+        },
+        {
           "path": "scripts/china-policy/adapters.mjs"
         }
       ]
@@ -13205,6 +13232,9 @@
         },
         {
           "path": "scripts/seed-conflict-intel.mjs"
+        },
+        {
+          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -14588,6 +14618,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "api/mcp/ui/news-dashboard-app.ts"
+        },
+        {
           "path": "api/not-found.ts"
         },
         {
@@ -14675,6 +14708,12 @@
           "path": "src/app/panel-layout.ts"
         },
         {
+          "path": "src/components/CountryBriefController.ts"
+        },
+        {
+          "path": "src/components/CountryDeepDivePanel.ts"
+        },
+        {
           "path": "src/components/RuntimeConfigPanel.ts"
         },
         {
@@ -14688,6 +14727,15 @@
         },
         {
           "path": "src/embed/embed-url.ts"
+        },
+        {
+          "path": "src/plugin-country-main.ts"
+        },
+        {
+          "path": "src/services/country-brief-host-transport.ts"
+        },
+        {
+          "path": "src/services/country-brief-source.ts"
         }
       ]
     },

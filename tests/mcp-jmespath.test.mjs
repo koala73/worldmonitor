@@ -2,6 +2,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { SERVER_VERSION } from '../api/mcp/constants.ts';
+
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
@@ -310,12 +312,13 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
   // Initialize handshake — version + instructions
   // ============================================================
   describe('initialize handshake', () => {
-    it('serverInfo.version === "1.21.0"', async () => {
-      // Tracks current SERVER_VERSION. Each minor bump needs to update
-      // this assertion + the cross-check at line 327 below.
+    it('serverInfo.version === SERVER_VERSION', async () => {
+      // Reads SERVER_VERSION from api/mcp/constants.ts so a deliberate bump
+      // does not need to edit this file; the bump itself is pinned by the
+      // published-versions ledger in tests/mcp-registry-artifacts.test.mjs.
       const res = await mod.default(makeReq(initBody(1)));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.21.0');
+      assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
     it('result.instructions is present and mentions jmespath', async () => {
@@ -340,12 +343,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
     });
 
-    it('server-card.json version matches SERVER_VERSION (currently 1.21.0)', () => {
+    it('server-card.json version matches SERVER_VERSION', () => {
       // Cross-check the comment at api/mcp.ts:~56 — discovery scanners
       // verify both values; a future bump that misses one would break
       // discovery. This is the test that prevents that drift.
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.21.0');
+      assert.equal(card.serverInfo.version, SERVER_VERSION);
       assert.equal(card.features?.responseProjection, 'jmespath');
     });
 

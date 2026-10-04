@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // WorldCpiPercentChange is a simple percent change computed from the index.
@@ -48,6 +49,12 @@ message GetWorldCpiMonthlyRequest {
   bool history = 1 [(sebuf.http.query) = {name: "history"}];
   // Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
   string country = 2 [(sebuf.http.query) = {name: "country"}];
+  // Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+  optional int32 limit = 3 [
+    (sebuf.http.query) = {name: "limit"},
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 366
+  ];
 }
 
 // GetWorldCpiMonthlyResponse is the worldwide CPI series for the requested window.

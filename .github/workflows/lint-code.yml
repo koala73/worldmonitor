@@ -94,7 +94,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run lint:unicode
       - run: npm run lint
       - run: npm run lint:boundaries
@@ -125,7 +125,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run lint:md
 
   public-docs:

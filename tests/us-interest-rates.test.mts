@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { getUsInterestRates } from '../server/worldmonitor/economic/v1/get-us-interest-rates.ts';
+import { createEconomicServiceRoutes } from '../src/generated/server/worldmonitor/economic/v1/service_server.ts';
 import {
   RATE_SERIES as SERVER_SERIES,
   RATES_CANONICAL_KEY,
@@ -92,8 +93,8 @@ describe('US interest rate history', () => {
 
     const withHistory = buildUsInterestRates(snapshot, {
       sofr: [
-        { date: '2018-04-03', value: 1.8 },
-        { date: '2018-04-02', value: 1.83 },
+        { date: '2018-04-04', value: 1.8 },
+        { date: '2018-04-03', value: 1.83 },
       ],
     }, true);
     assert.deepEqual(
@@ -129,6 +130,10 @@ describe('US interest rate history', () => {
     assert.equal(validateRateHistory({ series }), true);
     series.fedFundsEffective = series.fedFundsEffective.slice(0, 120);
     assert.equal(validateRateHistory({ series }), false);
+  });
+
+  it('expects SOFR history to start at FRED\'s first observation', () => {
+    assert.equal(SEEDED_SERIES.find((series) => series.id === 'sofr')?.startsWith, '2018-04-03');
   });
 
   it('uses the same Redis keys as the seeder', () => {
@@ -167,6 +172,26 @@ describe('US interest rate history', () => {
 });
 
 describe('US interest rate handler', () => {
+  it('receives the recent window through the generated GET route and returns only that tail', async () => {
+    redisEnv();
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.body) return redisResult({ fedFundsEffective: { date: '2026-09-18', value: 0 } });
+      const pipeline = JSON.parse(String(init.body)) as string[][];
+      return Response.json(pipeline.map(([, key]) => ({ result: key?.endsWith('fed-funds-effective:2020') ? JSON.stringify({ points: [
+        { date: '2026-09-16', value: 3 }, { date: '2026-09-17', value: 4 },
+      ] }) : null })));
+    }) as typeof fetch;
+    const routes = createEconomicServiceRoutes({ getUsInterestRates } as never);
+    const route = routes.find(route => route.path.endsWith('/get-us-interest-rates'))!;
+    const response = await route.handler(new Request('https://worldmonitor.test/api/economic/v1/get-us-interest-rates?history=true&limit=1'));
+    assert.equal(response.status, 200);
+    const data = await response.json() as Awaited<ReturnType<typeof getUsInterestRates>>;
+    const series = data.series.find(row => row.id === 'fed_funds_effective');
+    assert.equal(series?.points.length, 1);
+    assert.equal(series?.points[0]?.percent, 0);
+    assert.equal((await route.handler(new Request('https://worldmonitor.test/api/economic/v1/get-us-interest-rates?history=true&limit=367'))).status, 400);
+  });
+
   it('reads only the snapshot key for the current print', async () => {
     redisEnv();
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -205,6 +230,10 @@ describe('US interest rate handler', () => {
     const effective = response.series.find((row) => row.id === 'fed_funds_effective');
     assert.equal(effective?.points[0]?.percent, 1.55);
     assert.equal(effective?.points.at(-1)?.percent, 3.88);
+    const bounded = await getUsInterestRates({} as never, { history: true, limit: 1 });
+    for (const series of bounded.series) assert.ok(series.points.length <= 1);
+    assert.deepEqual(bounded.series.find(row => row.id === 'fed_funds_effective')?.points, effective?.points.slice(-1));
+    assert.deepEqual(await getUsInterestRates({} as never, { history: true, limit: 0 }), response);
   });
 
   it('returns unavailable when history is requested but no shard contributed points', async () => {
@@ -231,7 +260,7 @@ describe('US interest rate handler', () => {
 
   it('builds the latest print from history when the snapshot key is empty', () => {
     const histories = mergeRateHistories([
-      ['economic:us-interest-rates:v1:sofr:2010', [{ date: '2018-04-02', value: 1.8 }]],
+      ['economic:us-interest-rates:v1:sofr:2010', [{ date: '2018-04-03', value: 1.8 }]],
       ['economic:us-interest-rates:v1:sofr:2020', [{ date: '2026-09-18', value: 3.91 }]],
     ]);
     const response = buildUsInterestRates(undefined, histories, true);

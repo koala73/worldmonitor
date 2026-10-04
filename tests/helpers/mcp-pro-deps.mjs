@@ -1,3 +1,5 @@
+import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
+
 // Shared dependency-injection fixtures for the Pro-path MCP test surface.
 // Consumers: `tests/mcp.test.mjs` (U7 Pro-path), `tests/mcp-quota-concurrent.test.mjs`,
 // `tests/mcp-tool-output-contracts.test.mjs`. Single source of truth for the
@@ -46,6 +48,7 @@ export function makePipelineMock({
   throwOnEval = false,
   decrFails = false,
 } = {}) {
+  const store = new Map();
   let counter = initialCount;
   let limitFloor = initialLimitFloor;
   let freeRequestCount = 0;
@@ -67,7 +70,27 @@ export function makePipelineMock({
     }
     const out = [];
     for (const cmd of commands) {
-      if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3 && cmd.length >= 10) {
+      if (cmd[0] === 'EVAL' && cmd[1] === PANEL_REQUEST_RESERVE_SCRIPT) {
+        const marker = cmd[5];
+        if (store.has(marker)) { out.push({ result: [2, counter, Number(store.get(marker))] }); continue; }
+        if (store.has(cmd[6])) { out.push({ result: [3, counter, Number(store.get(cmd[6]))] }); continue; }
+        const limit = cmd[7] === '' ? null : Number(cmd[7]);
+        if (limit !== null && counter + 1 > limit) { out.push({ result: [0, counter] }); continue; }
+        counter++;
+        if (limit === null) limitFloor = -1;
+        else if (limitFloor !== -1) limitFloor = Math.max(limitFloor ?? 0, limit);
+        store.set(marker, String(cmd[12]));
+        out.push({ result: [1, counter, Number(cmd[12])] });
+      } else if (cmd[0] === 'EVAL' && cmd[1] === PANEL_REQUEST_READ_SCRIPT) {
+        const used = Number(store.get(cmd[4]) ?? 0);
+        if (store.get(cmd[3]) !== String(cmd[7])) out.push({ result: [-1, 0] });
+        else if (used >= Number(cmd[5])) out.push({ result: [0, used] });
+        else { store.set(cmd[4], used + 1); out.push({ result: [1, used + 1] }); }
+      } else if (cmd[0] === 'GET') {
+        out.push({ result: store.get(cmd[1]) ?? null });
+      } else if (cmd[0] === 'SET') {
+        store.set(cmd[1], cmd[2]); out.push({ result: 'OK' });
+      } else if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3 && cmd.length >= 10) {
         const nowMs = Number(cmd[6]);
         const idleGapMs = Number(cmd[7]);
         const callsLimit = Number(cmd[8]);
@@ -145,6 +168,7 @@ export function makePipelineMock({
   return {
     pipeline,
     ops,
+    store,
     get count() { return counter; },
     get limitFloor() { return limitFloor; },
   };

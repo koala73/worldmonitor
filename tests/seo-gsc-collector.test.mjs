@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
@@ -8,13 +8,18 @@ import { describe, it } from 'node:test';
 import {
   assertNoSecrets,
   collectGscSnapshot,
+  parseCoverageLedger,
   createFixtureTransport,
   createLiveTransport,
   createServiceAccountAssertion,
   decodeServiceAccount,
   describeDisagreement,
   buildInventory,
+  BRAND_QUERY_PATTERN,
+  isBrandQuery,
   pickIndexStatus,
+  QuotaExhaustedError,
+  weeklyTotals,
   renderGscMarkdown,
   runCli,
   stratifiedSample,
@@ -613,6 +618,177 @@ describe('Search Console collector on live data', () => {
   });
 });
 
+describe('Search Console site totals and brand split', () => {
+  it('reports the by-property total apart from the sum of page rows', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '28d');
+    assert.equal(window.totalsBasis, 'sum-of-page-rows');
+    assert.equal(window.totals.impressions, 2830, 'one search counts once per URL shown');
+    assert.equal(window.siteTotals.basis, 'by-property');
+    assert.equal(window.siteTotals.status, 'available');
+    assert.equal(window.siteTotals.all.impressions, 1500, 'the performance chart counts it once');
+    assert.equal(window.siteTotals.brand.impressions, 900);
+    assert.equal(window.siteTotals.nonBrand.impressions, 420);
+    assert.deepEqual(
+      window.siteTotals.anonymized,
+      { clicks: 12, impressions: 180 },
+      'a query filter drops anonymized queries, so the remainder is reported, not lost',
+    );
+    assert.equal(window.siteTotals.nonBrandShare.value, 0.28);
+    assert.equal(window.siteTotals.nonBrandShare.basis, 'by-property-impressions');
+    const { markdown } = await collect();
+    assert.match(markdown, /## Search totals[\s\S]*\| 28d \(2026-08-27 to 2026-09-23\) \| 1500 \| 50 \| 900 \| 420 \| 8 \| 180 \| 28\.0% \| 2830 \|/);
+    assert.match(markdown, /### Seven-day trend/);
+    assert.match(markdown, /\| geopolitical risk dashboard \| no \| 260 \|/);
+  });
+
+  it('splits non-brand impressions by page family across paginated rows', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '28d');
+    assert.equal(window.byFamily.homepage.nonBrandImpressions, 150);
+    assert.equal(window.byFamily.chokepoints.nonBrandImpressions, 96, 'the second page of rows is read');
+    assert.equal(window.byFamily.country_pages.nonBrandImpressions, 44);
+    assert.equal(window.byFamily.homepage.nonBrandReason, null);
+  });
+
+  it('records a daily by-property series over the widest window, oldest first', async () => {
+    const { snapshot } = await collect();
+    const { daily } = snapshot.performance;
+    assert.equal(daily.status, 'available');
+    assert.equal(daily.basis, 'by-property');
+    assert.equal(daily.startDate, snapshot.performance.windows.find((w) => w.label === '90d').startDate);
+    assert.deepEqual(daily.rows.map((row) => row.date), ['2026-07-01', '2026-08-01', '2026-09-01']);
+    assert.deepEqual(daily.rows.map((row) => row.impressions), [60, 55, 50]);
+    assert.deepEqual(
+      daily.rows.map((row) => row.nonBrandImpressions),
+      [20, 0, 25],
+      'a date the non-brand view answered without is a real zero',
+    );
+  });
+
+  it('keeps every unrecorded view null with a reason rather than zero', async () => {
+    const { snapshot } = await collect(`${FIXTURES}quota/`);
+    const [window] = snapshot.performance.windows;
+    assert.equal(window.siteTotals.status, 'unavailable');
+    assert.equal(window.siteTotals.all, null);
+    assert.equal(window.siteTotals.anonymized, null);
+    assert.match(window.siteTotals.reason, /site view was not collected/);
+    assert.equal(snapshot.performance.daily.status, 'unavailable');
+    assert.deepEqual(snapshot.performance.daily.rows, []);
+    for (const metrics of Object.values(window.byFamily)) {
+      assert.equal(metrics.nonBrandImpressions, null);
+      assert.match(metrics.nonBrandReason, /not collected/);
+    }
+  });
+
+  it('buckets the daily series into seven-day periods even when Google omits a day', () => {
+    const day = (date, impressions) => ({
+      date, impressions, clicks: 1, nonBrandImpressions: 1, nonBrandClicks: 0,
+    });
+    const weeks = weeklyTotals([
+      day('2026-09-01', 10),
+      day('2026-09-09', 20),
+      day('2026-09-10', 30),
+      day('2026-09-16', 40),
+    ]);
+    assert.deepEqual(weeks.map((week) => [week.startDate, week.endDate, week.days, week.impressions]), [
+      ['2026-08-27', '2026-09-02', 1, 10],
+      ['2026-09-03', '2026-09-09', 1, 20],
+      ['2026-09-10', '2026-09-16', 2, 70],
+    ]);
+    assert.deepEqual(weeklyTotals([]), []);
+    const unmeasured = weeklyTotals([{ ...day('2026-09-16', 5), nonBrandImpressions: null }]);
+    assert.equal(unmeasured[0].nonBrandImpressions, null, 'an unmeasured day keeps its week unmeasured');
+  });
+
+  it('reports non-brand family numbers as unmeasured when the quota cuts the view', async () => {
+    const quotaOn = (failPage) => memoryTransport({
+      pageRows: [pageRow('https://www.worldmonitor.app/countries/iran/', 10)],
+      searchAnalytics: async ({ dimension, page }) => {
+        if (dimension === 'pageNonBrand' && page === failPage) {
+          throw new QuotaExhaustedError('Search Console daily quota is exhausted (HTTP 429)');
+        }
+        if (dimension === 'pageNonBrand') {
+          return { rows: Array.from({ length: 1000 }, (_, index) => pageRow(`https://www.worldmonitor.app/countries/iran/?p=${index}`, 1)) };
+        }
+        return { rows: dimension === 'page' && page === 0 ? [pageRow('https://www.worldmonitor.app/countries/iran/', 10)] : [] };
+      },
+    });
+    for (const failPage of [0, 1]) {
+      const snapshot = await collectFrom(quotaOn(failPage));
+      const [window] = snapshot.performance.windows;
+      assert.equal(window.status, 'partial');
+      const family = window.byFamily.country_pages;
+      assert.equal(family.nonBrandImpressions, null, `quota on page ${failPage} must not publish a number`);
+      assert.equal(family.nonBrandClicks, null);
+      assert.match(family.nonBrandReason, /quota was exhausted after \d+ pageNonBrand rows/);
+    }
+  });
+
+  it('escapes backslashes and pipes in a query cell', async () => {
+    const { snapshot } = await collect();
+    const copy = structuredClone(snapshot);
+    copy.performance.windows[0].topQueries = [
+      { query: 'a|b\\|c\nd', brand: false, clicks: 1, impressions: 2, position: 3 },
+    ];
+    assert.match(renderGscMarkdown(copy), /^\| a\\\|b\\\\\\\|c d \| no \| 2 \| 1 \|/m);
+  });
+
+  it('flags each top query as brand or non-brand', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '90d');
+    assert.deepEqual(
+      window.topQueries.map((row) => [row.query, row.brand]),
+      [['world monitor', true], ['suez canal traffic', false], ['acled alternative', false]],
+    );
+  });
+
+  it('classifies the brand spellings seen in Search Console and nothing generic', () => {
+    for (const query of ['world monitor', 'worldmonitor', 'World Monitor app', 'worldmonitor.ap',
+      'word monitor', 'world-monitor github', 'ワールドモニター']) {
+      assert.equal(isBrandQuery(query), true, query);
+    }
+    for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
+      'pentagon pizza index', 'osint world map', 'world news']) {
+      assert.equal(isBrandQuery(query), false, query);
+    }
+  });
+
+  it('asks Google for by-property totals and filters on the same brand pattern', async () => {
+    const bodies = [];
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return jsonResponse(200, { rows: [] });
+      },
+      sleep: async () => {},
+    });
+    const window = { startDate: '2026-08-27', endDate: '2026-09-23' };
+    for (const dimension of ['site', 'siteNonBrand', 'siteBrand', 'dailyNonBrand', 'pageNonBrand']) {
+      await transport.searchAnalytics({ dimension, page: 0, ...window });
+    }
+    const [site, siteNonBrand, siteBrand, dailyNonBrand, pageNonBrand] = bodies;
+    assert.deepEqual(site.dimensions, []);
+    assert.equal(site.dimensionFilterGroups, undefined);
+    const filterOf = (body) => body.dimensionFilterGroups[0].filters[0];
+    assert.deepEqual(filterOf(siteNonBrand), {
+      dimension: 'query',
+      operator: 'excludingRegex',
+      expression: `(?i)${BRAND_QUERY_PATTERN}`,
+    });
+    assert.equal(filterOf(siteBrand).operator, 'includingRegex');
+    assert.deepEqual(dailyNonBrand.dimensions, ['date']);
+    assert.deepEqual(pageNonBrand.dimensions, ['page']);
+    assert.equal(filterOf(pageNonBrand).operator, 'excludingRegex');
+    await assert.rejects(
+      () => transport.searchAnalytics({ dimension: 'nope', page: 0, ...window }),
+      /unknown Search Analytics view nope/,
+    );
+  });
+});
+
 describe('Search Console live transport resilience', () => {
   const noSleep = async () => {};
   const liveTransport = (fetchImpl) => createLiveTransport({
@@ -692,5 +868,117 @@ describe('Search Console live transport resilience', () => {
       () => assertNoSecrets(JSON.stringify({ property: 'sc-domain:worldmonitor.app' }), { property: 'sc-domain:worldmonitor.app' }),
       /refusing to write/,
     );
+  });
+});
+
+describe('Search Console coverage totals recorded by hand', () => {
+  const reading = (exportedOn, extra = {}) => ({
+    exportedOn,
+    declaredUrls: 888,
+    pageWithRedirect: 1685,
+    notFound404: 666,
+    crawledNotIndexed: 1486,
+    source: 'https://github.com/koala73/worldmonitor/issues/8602',
+    ...extra,
+  });
+  const ledger = (...readings) => JSON.stringify({ readings });
+
+  it('accepts the committed ledger', () => {
+    const readings = parseCoverageLedger(
+      readFileSync(repoPath('docs/research/seo-ai-visibility/gsc/coverage-totals.json'), 'utf8'),
+    );
+    assert.ok(readings.length >= 2);
+    assert.deepEqual(readings.slice(0, 2).map((row) => row.exportedOn), ['2026-09-04', '2026-09-24']);
+  });
+
+  it('rejects a reading that would corrupt the trend', () => {
+    const cases = [
+      [ledger(reading('2026-09-24'), reading('2026-09-04')), /ascending/],
+      [ledger(reading('2026-09-24'), reading('2026-09-24')), /ascending/],
+      [ledger(reading('2026-9-24')), /exportedOn/],
+      [ledger(reading('2026-02-30')), /exportedOn/],
+      [ledger(reading('2026-09-24', { notFound404: '666' })), /notFound404/],
+      [ledger(reading('2026-09-24', { pageWithRedirect: -1 })), /pageWithRedirect/],
+      [ledger(reading('2026-09-24', { crawledNotIndexed: undefined })), /crawledNotIndexed/],
+      [ledger(reading('2026-09-24', { source: 'see issue' })), /source/],
+      [ledger(null), /reading 0: must be an object/],
+      [JSON.stringify({ readings: 'none' }), /readings/],
+      [JSON.stringify({}), /readings/],
+      ['{"readings": [', /not valid JSON/],
+    ];
+    for (const [text, expected] of cases) {
+      assert.throws(() => parseCoverageLedger(text), expected, text);
+    }
+  });
+
+  it('loads the ledger from the fixture set into the snapshot and the summary, oldest first', async () => {
+    const { snapshot, markdown } = await collect();
+    assert.deepEqual(snapshot.coverageTotals.readings.map((row) => row.exportedOn), ['2026-08-01', '2026-09-04']);
+    assert.equal(snapshot.coverageTotals.overdue, false);
+    assert.match(markdown, /## Coverage totals \(recorded by hand\)/);
+    assert.match(markdown, /\| 2026-08-01 \| 800 \| 900 \| 400 \| 1100 \|/);
+    assert.match(markdown, /\| 2026-09-04 \| 845 \| 1271 \| 512 \| 1245 \|/);
+    assert.doesNotMatch(markdown, /Overdue/);
+  });
+
+  it('treats a fixture set without a ledger as having no reading', async () => {
+    const { snapshot, markdown } = await collect(`${FIXTURES}quota/`);
+    assert.deepEqual(snapshot.coverageTotals.readings, []);
+    assert.equal(snapshot.coverageTotals.overdue, true);
+    assert.match(markdown, /Overdue: no reading is recorded/);
+  });
+
+  it('fails the run on a malformed ledger instead of dropping it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-gsc-ledger-'));
+    try {
+      cpSync(repoPath(FIXTURES), dir, { recursive: true });
+      writeFileSync(join(dir, 'coverage-totals.json'), ledger(reading('2026-09-04', { notFound404: 'n/a' })));
+      await assert.rejects(() => collect(`${dir}/`), /notFound404 must be a non-negative integer/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('flags the monthly reading as overdue once the latest one is too old', async () => {
+    const fresh = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-09-04')],
+    });
+    assert.equal(fresh.coverageTotals.latestAgeDays, 20);
+    assert.equal(fresh.coverageTotals.overdue, false);
+    assert.doesNotMatch(renderGscMarkdown(fresh), /Overdue/);
+
+    const limit = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-08-20')],
+    });
+    assert.equal(limit.coverageTotals.latestAgeDays, 35);
+    assert.equal(limit.coverageTotals.overdue, false);
+
+    const stale = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-08-19')],
+    });
+    assert.equal(stale.coverageTotals.latestAgeDays, 36);
+    assert.equal(stale.coverageTotals.overdue, true);
+    assert.match(renderGscMarkdown(stale), /Overdue: the latest reading is 36 days old/);
+
+    let calls = 0;
+    const counting = memoryTransport({
+      searchAnalytics: async () => { calls += 1; return { rows: [] }; },
+      inspect: async () => { calls += 1; return indexedResponse; },
+    });
+    await assert.rejects(
+      () => collectFrom(counting, { coverageReadings: [reading('2026-09-25')] }),
+      /later than the snapshot date/,
+    );
+    assert.equal(calls, 0, 'a bad ledger must stop the run before any API quota is spent');
+
+    const piped = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-09-04', { source: 'https://example.com/a|b' })],
+    });
+    assert.match(renderGscMarkdown(piped), /\| https:\/\/example\.com\/a\\\|b \|$/m);
+
+    const none = await collectFrom(memoryTransport());
+    assert.equal(none.coverageTotals.latestAgeDays, null);
+    assert.equal(none.coverageTotals.overdue, true);
+    assert.match(renderGscMarkdown(none), /Overdue: no reading is recorded/);
   });
 });

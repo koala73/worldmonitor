@@ -720,6 +720,21 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || /\bcalled with no selector\b/.test(msg)
         || /data-floot-id/.test(msg)
       )) return null;
+      // A Puppeteer-driven crawler dispatching synthetic events. Puppeteer tags
+      // the code it evaluates with a `pptr:` source URL, so its frame sits in
+      // the stack of everything that script sets off, including handlers of
+      // ours it fires with `isTrusted: false` events. No real user runs
+      // Puppeteer, so no frame gate applies (WORLDMONITOR-169). The scheme, not
+      // the word `puppeteer`, is the key: a colon cannot occur in a bundle asset
+      // path or a function name, so a frame of ours can never carry it.
+      if (frames.some(f => /\bpptr:/.test(`${f.function ?? ''} ${f.filename ?? ''}`))) return null;
+      // The service worker's own script evaluated in a page. `/sw.js` is only
+      // ever registered with `navigator.serviceWorker.register` (src/main.ts),
+      // where there is no `document` and this page's Sentry client cannot see
+      // it. An error whose every frame is `/sw.js` therefore comes from a client
+      // that loaded it as a page script, which a crawler did from 40 page loads
+      // (WORLDMONITOR-168: workbox's loader read `document.currentScript.src`).
+      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /^(?:https?:\/\/[^/]+)?\/sw\.js$/.test(f.filename ?? ''))) return null;
       // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
       // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
       if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
@@ -1177,7 +1192,8 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // credentials` appears nowhere else in src/ or api/. So a
           // no-first-party occurrence is third-party SDK / OS noise, while a
           // future first-party WebAuthn call site would keep a source-mapped
-          // .ts frame and still surface (WORLDMONITOR-11B).
+          // .ts frame and still surface. WORLDMONITOR-11B's events came from
+          // `/pro`, whose separate filter list carries its own entry.
           || /An unknown error occurred while talking to the credential manager/.test(msg)
           // The overlapping-request half of the same WebAuthn surface. Chrome
           // serialises `navigator.credentials` requests per page and rejects

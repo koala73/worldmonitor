@@ -212,7 +212,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 <a id="corpus-what-is-world-monitor"></a>
 ### What is World Monitor?
 
-World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It is designed for people who need to see when separate signals converge before they become a consensus headline.
+World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It costs $0 with no signup, is open source under AGPL-3.0, and is used by 2M+ people. It is designed for people who need to see when separate signals converge before they become a consensus headline.
 
 <a id="corpus-what-is-the-country-instability-index"></a>
 ### What is the Country Instability Index?
@@ -434,7 +434,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 World Monitor publishes 756 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 36 providers.
-- [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
+- [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
 - [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
 - [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
 - [News & OSINT — page 3](https://www.worldmonitor.app/sources/news/page/3/): 60 providers.
@@ -442,7 +442,7 @@ World Monitor publishes 756 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
-- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 44 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 43 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 3 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
@@ -515,11 +515,15 @@ Coverage drives a confidence gate: when a country’s average dimension coverage
 <a id="corpus-pentagon-pizza-index"></a>
 ### Pentagon Pizza Index
 
-The Pentagon Pizza Index is an open-source-intelligence activity proxy that watches late-night demand near key government sites as a rough tell for unusual operational tempo.
+The Pentagon Pizza Index is an OSINT folk indicator: unusual busyness at pizza places near the Pentagon, read as a hint of late-night crisis work.
 
-The Pentagon Pizza Index is an open-source-intelligence activity proxy — a light-hearted but long-observed heuristic that unusual late-night food-delivery demand near defense and government facilities can correlate with elevated operational tempo before any official signal appears.
+The Pentagon Pizza Index is an open-source-intelligence folk indicator. The idea is simple: when defense staff work late on a developing crisis, pizza places near the Pentagon get busier than usual for that hour, and the surge is visible to the public before any official statement. The notion comes from Washington lore of the Cold War and the 1990s, and it resurfaced on social media in recent years as people began posting Pentagon-area pizza traffic during international crises.
 
-In WorldMonitor it is one of several ambient indicators fused into the Strategic Risk context rather than a standalone forecast. It illustrates the platform’s broader thesis: correlating many weak, independent signals surfaces convergence earlier than any single authoritative source.
+World Monitor computes its own version of the index from live busyness at pizza venues around the Pentagon. PizzINT supplies the venue data, with BestTime as the fallback, and the same rule applies to both. A venue counts only when it is open, at least 150% as busy as its usual level for that hour, and at least 25 busyness points above its forecast, and only after three consecutive 15-minute readings. A normal lunch rush or a single blip does not register.
+
+Each sustained spike adds up to 25 points. The total maps to a DEFCON-style level: 5 (Normal Activity), 4 (Above Normal), 3 (Elevated Activity), 2 (High Activity) or 1 (Maximum Activity). The level appears next to a pizza icon in the header of the World Monitor dashboard, with each venue’s reading against its usual level. A venue that is closed or not reporting shows NO DATA rather than a guessed value.
+
+The level describes restaurant activity, not military readiness, and its thresholds are heuristic rather than a validated predictor of geopolitical events. The same panel shows GDELT-based tension scores for country pairs such as USA–Iran and USA–China, so a busy night can be read against other signals instead of on its own.
 
 <a id="corpus-focal-point-detection"></a>
 ### Focal Point Detection
@@ -729,9 +733,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.115 across 200 scored forecasts, against 0.25 for answering 0.5 to everything.
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.125 across 223 scored forecasts, against 0.25 for answering 0.5 to everything.
 
-Captured 2026-09-21.
+Captured 2026-09-28.
 
 This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 

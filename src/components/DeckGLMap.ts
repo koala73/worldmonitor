@@ -155,7 +155,13 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
-import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox, getCountryCentroid } from '@/services/country-geometry';
+import {
+  canonicalizeCountryCode,
+  getCountriesGeoJson,
+  getCountryAtCoordinates,
+  getCountryBbox,
+  getCountryCentroid,
+} from '@/services/country-geometry';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { ResilienceRankingItem } from '@/services/resilience';
@@ -217,6 +223,7 @@ interface DeckMapState {
 
 interface DeckGLMapOptions {
   chrome?: boolean;
+  mapLibreWorkerUrl?: string;
   /**
    * Fired when MapLibre cannot be (re)constructed after the initial ready
    * handshake — e.g. WebGL2 lost mid-session while recreating the fallback
@@ -758,7 +765,12 @@ export class DeckGLMap {
     const lngLat = this.maplibreMap.unproject([x, y]);
     if (!Number.isFinite(lngLat.lng)) return;
     const country = resolveCountryForPointerInteraction(
-      { code: this.hoveredCountryIso2, name: this.hoveredCountryName },
+      {
+        code: this.hoveredCountryIso2
+          ? canonicalizeCountryCode(this.hoveredCountryIso2)
+          : this.hoveredCountryIso2,
+        name: this.hoveredCountryName,
+      },
       this.hoverQueryThrottle?.isPending() ?? false,
       () => this.resolveCountryFromCoordinate(lngLat.lng, lngLat.lat),
     );
@@ -767,7 +779,7 @@ export class DeckGLMap {
       lon: lngLat.lng,
       screenX: e.clientX,
       screenY: e.clientY,
-      countryCode: country?.code,
+      countryCode: country?.code ? canonicalizeCountryCode(country.code) : country?.code,
       countryName: country?.name,
     });
   };
@@ -806,6 +818,7 @@ export class DeckGLMap {
   private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private readonly mapLibreWorkerUrl: string | undefined;
   private readonly onFatalError: ((error: unknown) => void) | null;
   private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -885,6 +898,7 @@ export class DeckGLMap {
   constructor(container: HTMLElement, initialState: DeckMapState, options: DeckGLMapOptions = {}) {
     this.container = container;
     this.chrome = options.chrome ?? true;
+    this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
     this.onFatalError = options.onFatalError ?? null;
     this.state = {
       ...initialState,
@@ -1085,7 +1099,7 @@ export class DeckGLMap {
   }
 
   private async initMapLibre(): Promise<void> {
-    maplibregl.setWorkerUrl(maplibreWorkerUrl);
+    maplibregl.setWorkerUrl(this.mapLibreWorkerUrl ?? maplibreWorkerUrl);
     // No `setRTLTextPlugin` here: MapLibre 6 shapes Arabic and reorders
     // bidirectional text itself and deprecates the plugin. Registering the
     // self-hosted plugin after the 6.x upgrade also broke RTL labels outright —
@@ -5263,17 +5277,31 @@ export class DeckGLMap {
         const [lon, lat] = info.coordinate as [number, number];
         let country: { code: string; name: string } | null = null;
         if (isChoropleth && info.object?.properties) {
-          country = { code: info.object.properties['ISO3166-1-Alpha-2'] as string, name: info.object.properties.name as string };
+          const rawCode = info.object.properties['ISO3166-1-Alpha-2'] as string;
+          country = {
+            code: typeof rawCode === 'string' ? canonicalizeCountryCode(rawCode) : '',
+            name: info.object.properties.name as string,
+          };
         } else {
           country = resolveCountryForPointerInteraction(
-            { code: this.hoveredCountryIso2, name: this.hoveredCountryName },
+            {
+              code: this.hoveredCountryIso2
+                ? canonicalizeCountryCode(this.hoveredCountryIso2)
+                : this.hoveredCountryIso2,
+              name: this.hoveredCountryName,
+            },
             this.hoverQueryThrottle?.isPending() ?? false,
             () => this.resolveCountryFromCoordinate(lon, lat),
           );
         }
         // Only fire if we have a country — ocean/no-country clicks are silently ignored
         if (country?.code && country?.name) {
-          this.onCountryClick({ lat, lon, code: country.code, name: country.name });
+          this.onCountryClick({
+            lat,
+            lon,
+            code: canonicalizeCountryCode(country.code),
+            name: country.name,
+          });
         }
       }
       return;
@@ -7962,7 +7990,7 @@ export class DeckGLMap {
       const features = this.maplibreMap.queryRenderedFeatures(point, { layers: ['country-interactive'] });
       const properties = (features?.[0]?.properties ?? {}) as Record<string, unknown>;
       const code = typeof properties['ISO3166-1-Alpha-2'] === 'string'
-        ? properties['ISO3166-1-Alpha-2'].trim().toUpperCase()
+        ? canonicalizeCountryCode(properties['ISO3166-1-Alpha-2'])
         : '';
       const name = typeof properties.name === 'string'
         ? properties.name.trim()
@@ -8092,7 +8120,10 @@ export class DeckGLMap {
         if (!map.getLayer('country-interactive')) return;
         const features = map.queryRenderedFeatures(point, { layers: ['country-interactive'] });
         const props = features?.[0]?.properties;
-        const iso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const rawIso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
+        // Keep MapLibre filters on the feature's property value (rewritten to
+        // ISO2 on geometry load) while storing the canonical code for clicks.
+        const iso2 = typeof rawIso2 === 'string' ? canonicalizeCountryCode(rawIso2) : undefined;
         const name = props?.['name'] as string | undefined;
 
         if (iso2 && iso2 !== hoveredIso2) {
@@ -8143,11 +8174,11 @@ export class DeckGLMap {
   }
 
   public highlightCountry(code: string): void {
-    this.highlightedCountryCode = code;
+    this.highlightedCountryCode = canonicalizeCountryCode(code);
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
     try {
       if (!this.maplibreMap.getLayer('country-highlight-fill')) return;
-      const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], code] as maplibregl.FilterSpecification;
+      const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], this.highlightedCountryCode] as maplibregl.FilterSpecification;
       this.maplibreMap.setFilter('country-highlight-fill', filter);
       this.maplibreMap.setFilter('country-highlight-border', filter);
       this.pulseCountryHighlight();

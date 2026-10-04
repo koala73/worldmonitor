@@ -16,6 +16,11 @@ import assert from 'node:assert/strict';
 import { describe, it, before, after, mock } from 'node:test';
 import { premiumFetch, proFreshRpcFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
 import { hasPremiumIntent } from '@/services/premium-intent';
+import {
+  _resetSentryDeferStateForTests,
+  _setSentryLoaderForTests,
+  scheduleSentryInit,
+} from '@/bootstrap/sentry-defer';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -531,6 +536,25 @@ describe('reportServerError', () => {
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
   });
 
+  // WORLDMONITOR-ZH: closing the country deep-dive aborts its signal while
+  // withBillingVerificationRetry waits out Retry-After, and the wrapper hands
+  // back the FIRST 503. Nobody waited for the retry, so whether the outage was
+  // sustained is unknown — the canary must not count it.
+  it('skips a 503 handed back to a caller that already aborted', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    controller.abort();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 0, 'an abandoned retry wait is not an origin outage');
+  });
+
+  it('still captures a 503 when the caller signal is live', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 1, 'a caller still waiting must keep the canary');
+  });
+
   // -------------------------------------------------------------------------
   // Grouping — WORLDMONITOR-P4.
   //
@@ -666,5 +690,73 @@ describe('reportServerError', () => {
     assert.equal(classOf(527), 'api-cf-5xx', '527 is the last Cloudflare code');
     assert.equal(classOf(528), 'api-5xx', '528 is above the Cloudflare window');
     assert.equal(classOf(530), 'api-5xx', 'CF 530 is deliberately outside the transient-transport window');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// premiumFetch → reportServerError signal forwarding (WORLDMONITOR-ZH).
+//
+// The reportServerError tests above pass the signal by hand, so they would
+// still pass if premiumFetch stopped forwarding the caller's signal. These go
+// through premiumFetch and the real enqueueSentryCall, with a recording SDK
+// loaded the way tests/stale-bundle-check.test.mts drains deferred calls.
+// ---------------------------------------------------------------------------
+describe('premiumFetch forwards the caller signal to the 5xx report', () => {
+  const captured: string[] = [];
+  let mock503: FetchMock;
+
+  before(async () => {
+    _resetSentryDeferStateForTests();
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const previousSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+    let delayedCallback: (() => void) | null = null;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { addEventListener() {}, removeEventListener() {} },
+    });
+    Object.defineProperty(globalThis, 'setTimeout', {
+      configurable: true,
+      value: (cb: () => void) => { delayedCallback = cb; return 1; },
+    });
+    _setSentryLoaderForTests(async () => ({
+      captureMessage(message: string) { captured.push(message); },
+    } as never));
+    try {
+      const initPromise = scheduleSentryInit();
+      delayedCallback?.();
+      await initPromise;
+    } finally {
+      for (const [name, descriptor] of [['window', previousWindow], ['setTimeout', previousSetTimeout]] as const) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    }
+    mock503 = mock.method(globalThis, 'fetch', () => Promise.resolve(fakeRes(503)));
+  });
+
+  after(() => {
+    mock503.mock.restore();
+    _resetSentryDeferStateForTests();
+  });
+
+  it('does not report the 503 when the caller aborted', async () => {
+    captured.length = 0;
+    const controller = new AbortController();
+    controller.abort();
+    const res = await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: controller.signal,
+    });
+    assert.equal(res.status, 503, 'the caller still receives the response');
+    assert.deepEqual(captured, [], 'an abandoned request must not reach Sentry');
+  });
+
+  it('reports the 503 when the caller is still waiting', async () => {
+    captured.length = 0;
+    await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: new AbortController().signal,
+    });
+    assert.deepEqual(captured, ['API 503: /api/sanctions/v1/list-sanctions-pressure']);
   });
 });

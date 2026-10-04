@@ -115,7 +115,7 @@ import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
-import { declareOverlay } from '@/utils/open-modal';
+import { declareOverlay, isModalOpen } from '@/utils/open-modal';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
@@ -922,9 +922,16 @@ export class EventHandlerManager implements AppModule {
       // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
       // offsetHeight) on the post-load path. Re-check state at fire time since
       // the idle wait can outlast an early user choice.
+      //
+      // That includes a modal the user opened first. On a slow machine the
+      // idle period lands after it; the prompt then took focus and swallowed
+      // the modal's Escape (its keydown handler stops propagation), leaving the
+      // modal impossible to close from the keyboard. Skipping costs nothing:
+      // an undismissed prompt re-appears on the next load.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
         if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        if (isModalOpen(document)) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }

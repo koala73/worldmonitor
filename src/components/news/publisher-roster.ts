@@ -42,9 +42,14 @@ export function tierChip(tier: DeclaredTier | null): TierChip {
     };
 }
 
-/** null when there is nothing to list: unknown, or single-publisher, where the pill and the row already name the source. */
+/**
+ * null when there is nothing to list: unknown, or a single publisher seen under
+ * one feed, where the pill and the row already name the source. A single
+ * publisher seen under several feeds still lists them, so "one publisher" is checkable.
+ */
 export function describePublisherRoster(c: Corroboration, roster: PublisherRoster): PublisherRosterView | null {
-  if (c.state === 'unknown' || c.state === 'single-publisher' || roster.length === 0) return null;
+  if (c.state === 'unknown' || roster.length === 0) return null;
+  if (c.state === 'single-publisher' && roster.every((publisher) => publisher.labels.length <= 1)) return null;
   const tier1 = roster.filter((publisher) => publisher.tier === 1).length;
   const publishers = t('components.corroboration.rosterPublishers', { count: c.publishers });
   const reported = tier1 > 0

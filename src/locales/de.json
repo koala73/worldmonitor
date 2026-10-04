@@ -1307,8 +1307,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · Standortdaten:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "KEINE DATEN",
+      "statusNoBaseline": "KEIN REFERENZWERT",
+      "vsUsual": "gegenüber üblich",
       "title": "Pentagon-Pizza-Index",
       "tensionsTitle": "Geopolitische Spannungen",
+      "tensionsSource": "Spannungen: World Monitor anhand von GDELT-Ereignissen",
+      "insufficientData": "Unzureichende Daten",
+      "pizzaUnavailable": "Pizzeria-Aktivität nicht verfügbar",
       "source": "Quelle:",
       "defcon": "DEFCON {{level}}",
       "updated": "Aktualisiert {{timeAgo}}",
@@ -1322,11 +1330,11 @@
       "minutesAgo": "Vor {{m}}m",
       "hoursAgo": "Vor {{h}}h",
       "defconLabels": {
-        "1": "GESPANNTE PISTOLE – MAXIMALE BEREITSCHAFT",
-        "2": "SCHNELLES TEMPO – STREITKRÄFTE BEREIT",
-        "3": "ROUND HOUSE – EINSATZBEREITSCHAFT DER STREITKRÄFTE ERHÖHEN",
-        "4": "DOUBLE TAKE – ERHÖHTE AUFKLÄRUNGSBEREITSCHAFT",
-        "5": "AUSBLENDUNG – NIEDRIGSTE BEREITSCHAFT"
+        "1": "Maximale Aktivität",
+        "2": "Hohe Aktivität",
+        "3": "Erhöhte Aktivität",
+        "4": "Über dem Normalwert",
+        "5": "Normale Aktivität"
       }
     },
     "playback": {
@@ -2896,6 +2904,10 @@
     "protest": {
       "acledVerified": "ACLED (verifiziert)",
       "gdelt": "GDELT",
+      "records": "Einträge",
+      "mediaSignal": "Unbestätigter Medienhinweis",
+      "relatedArticle": "Zugehöriger Artikel",
+      "mediaSignalDetail": "Dieser Ort wird in Artikeln über Unruhen erwähnt. Ein Ereignis vor Ort ist nicht bestätigt.",
       "riots": "Unruhen",
       "highSeverity": "Hoher Schweregrad"
     },

@@ -107,7 +107,7 @@ export const MCP_ALLOWANCE_RESOURCE_URI = 'worldmonitor://account/mcp-allowance'
 export const ACCOUNT_RESOURCE_LIST_RESPONSE = [{
   uri: MCP_ALLOWANCE_RESOURCE_URI,
   name: 'MCP Allowance Status',
-  description: 'Current authenticated account MCP usage, remaining daily calls, UTC reset time, and free-account request-window status when applicable. Reading this resource consumes no allowance.',
+  description: 'Current authenticated account MCP usage, remaining daily units, UTC reset time, and free-account request-window status when applicable. Reading this resource consumes no allowance.',
   mimeType: 'application/json',
   _meta: { 'worldmonitor/access': 'free-account' as const },
 }];

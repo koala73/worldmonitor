@@ -1081,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "statusNormal": "ΚΑΝΟΝΙΚΟ",
+      "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
+      "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
+      "vsUsual": "σε σχέση με το σύνηθες",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ενημερώθηκε {{timeAgo}}",
       "tensionsTitle": "Γεωπολιτικές Εντάσεις",
+      "tensionsSource": "Εντάσεις: World Monitor με βάση συμβάντα GDELT",
+      "insufficientData": "Ανεπαρκή δεδομένα",
+      "pizzaUnavailable": "Η δραστηριότητα των πιτσαριών δεν είναι διαθέσιμη",
       "source": "Πηγή:",
       "statusClosed": "ΚΛΕΙΣΤΟ",
       "statusSpike": "ΚΟΡΥΦΩΣΗ",
@@ -1096,11 +1104,11 @@
       "minutesAgo": "{{m}}λ πριν",
       "hoursAgo": "{{h}}ω πριν",
       "defconLabels": {
-        "1": "COCKED PISTOL - ΜΕΓΙΣΤΗ ΕΤΟΙΜΟΤΗΤΑ",
-        "2": "FAST PACE - ΕΝΟΠΛΕΣ ΔΥΝΑΜΕΙΣ ΕΤΟΙΜΕΣ",
-        "3": "ROUND HOUSE - ΑΥΞΗΣΗ ΕΤΟΙΜΟΤΗΤΑΣ ΔΥΝΑΜΕΩΝ",
-        "4": "DOUBLE TAKE - ΑΥΞΗΜΕΝΗ ΕΠΙΤΗΡΗΣΗ ΠΛΗΡΟΦΟΡΙΩΝ",
-        "5": "FADE OUT - ΧΑΜΗΛΟΤΕΡΗ ΕΤΟΙΜΟΤΗΤΑ"
+        "1": "Μέγιστη Δραστηριότητα",
+        "2": "Υψηλή Δραστηριότητα",
+        "3": "Αυξημένη Δραστηριότητα",
+        "4": "Πάνω από το Κανονικό",
+        "5": "Κανονική Δραστηριότητα"
       }
     },
     "strategicPosture": {
@@ -2897,6 +2905,10 @@
     "protest": {
       "acledVerified": "ACLED (επαληθευμένο)",
       "gdelt": "GDELT",
+      "records": "εγγραφές",
+      "mediaSignal": "Μη επαληθευμένη αναφορά μέσων",
+      "relatedArticle": "Σχετικό άρθρο",
+      "mediaSignalDetail": "Αυτή η τοποθεσία αναφέρεται σε άρθρα για αναταραχές. Δεν έχει επαληθευτεί τοπικό συμβάν.",
       "riots": "Ταραχές",
       "highSeverity": "Υψηλή Σοβαρότητα"
     },

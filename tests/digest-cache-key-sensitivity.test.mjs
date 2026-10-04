@@ -12,9 +12,8 @@
  * Guard on the cache-key string itself: if a future refactor drops
  * sensitivity from the key, this test fails.
  *
- * Follows the same static-shape pattern as
- * tests/digest-score-floor.test.mjs — the cron script has a top-level
- * env-exit block that makes runtime imports fragile.
+ * Static-shape check: the cron script has a top-level env-exit block
+ * and an unconditional main() call, so it cannot be imported at test time.
  *
  * Run: node --test tests/digest-cache-key-sensitivity.test.mjs
  */

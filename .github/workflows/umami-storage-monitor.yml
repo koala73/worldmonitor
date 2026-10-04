@@ -19,7 +19,10 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Two ~100 s volume attempts plus a retention read that can also run into
+    # the CLI's ~90 s timeout must fit, or the retention alarm never prints.
+    # Still under the 15-minute cadence, so runs do not overlap.
+    timeout-minutes: 8
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -63,7 +66,12 @@ jobs:
           done
           echo "::warning::No stored Umami storage history found; the growth trend starts over."
 
-      - name: Verify Railway production context
+      # No `railway status` precheck: it loads the whole project graph and took
+      # 41-90 s against the CLI's ~90 s request timeout, and a bad token or
+      # project fails the volume read just as clearly. The read retries a
+      # timeout and reports read=false when Railway never answers.
+      - name: Read Umami Postgres volume usage
+        id: volumes
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
@@ -77,18 +85,16 @@ jobs:
             echo "::error::RAILWAY_PROJECT_ID is required for the read-only storage monitor."
             exit 1
           fi
-          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
+          node scripts/read-railway-volumes.mjs --output .cache/railway-volumes.json
 
-      - name: Read Umami Postgres volume usage
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          mkdir -p .cache
-          railway volume --project "$RAILWAY_PROJECT_ID" --environment production list --json > .cache/railway-volumes.json
+      # Railway timed out on every read. Stay green while the stored samples
+      # are recent; fail once the monitor has been blind past one size refresh.
+      - name: Check the last capacity sample is recent
+        if: ${{ steps.volumes.outputs.read == 'false' }}
+        run: node scripts/check-umami-storage.mjs --state .cache/umami-storage-state.json --freshness-only
 
       - name: Check capacity and projected headroom
+        if: ${{ steps.volumes.outputs.read == 'true' }}
         env:
           UMAMI_POSTGRES_SERVICE_NAME: Postgres Umami
         run: node scripts/check-umami-storage.mjs --input .cache/railway-volumes.json --state .cache/umami-storage-state.json

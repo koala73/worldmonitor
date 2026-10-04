@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
 import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
@@ -2618,6 +2619,21 @@ describe('security header guardrails', () => {
     assert.ok(headerMediaSrc.split(/\s+/).includes('https:'), 'header media-src must keep https: for live media and CSP filtering');
   });
 
+  it('desktop (Tauri) CSP lets the sidecar YouTube embed frame and HLS media load', () => {
+    // Desktop Live News plays YouTube through the sidecar's /api/youtube-embed page on
+    // 127.0.0.1/localhost, and HLS streams directly from https CDNs.
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const tauriCsp = tauriConfig.app.security.csp;
+    const sidecarOrigins = ['http://127.0.0.1:*', 'http://localhost:*'];
+    const frameSrc = getCspDirectiveTokens(tauriCsp, 'frame-src');
+    const mediaSrc = getCspDirectiveTokens(tauriCsp, 'media-src');
+    for (const origin of sidecarOrigins) {
+      assert.ok(frameSrc.includes(origin), `Tauri CSP frame-src must allow ${origin} for the sidecar embed iframe`);
+      assert.ok(mediaSrc.includes(origin), `Tauri CSP media-src must allow ${origin} for sidecar media`);
+    }
+    assert.ok(mediaSrc.includes('https:'), 'Tauri CSP media-src must allow https: for direct HLS CDN streams');
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -2978,6 +2994,21 @@ describe('security header guardrails', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
+  });
+
+  it('security.txt points GitHub disclosures at the repository SECURITY.md names', () => {
+    const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
+    const securityMd = readFileSync(resolve(__dirname, '../SECURITY.md'), 'utf-8');
+    const policyRepo = securityMd.match(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/security\/advisories\/new/)?.[1];
+    assert.ok(policyRepo, 'SECURITY.md must link the private vulnerability reporting form');
+
+    const githubUrls = [...secTxt.matchAll(/https:\/\/github\.com\/[^\s]+/g)].map(([url]) => url);
+    assert.ok(githubUrls.length > 0, 'security.txt must offer a GitHub disclosure channel');
+    for (const url of githubUrls) {
+      assert.ok(url.startsWith(`https://github.com/${policyRepo}/`), `${url} must name ${policyRepo}`);
+    }
+    assert.match(secTxt, new RegExp(`^Contact: https://github\\.com/${policyRepo}/security/advisories/new$`, 'm'));
+    assert.match(secTxt, new RegExp(`^Policy: https://github\\.com/${policyRepo}/security/policy$`, 'm'));
   });
 });
 
@@ -5028,12 +5059,16 @@ describe('markdown canonical Link headers (#4999)', () => {
     });
   }
 
-  it('every sitemap-listed .md URL has the canonical Link header rule', () => {
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
-    const mdUrls = [...sitemap.matchAll(/<loc>https:\/\/www\.worldmonitor\.app(\/[^<]+\.md)<\/loc>/g)].map((m) => m[1]);
-    assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap-main.xml');
+  it('every announced .md URL has the canonical Link header rule', () => {
+    // The markdown twins left the sitemap (#8608); MACHINE_READABLE_URLS is
+    // now the list IndexNow announces, so the canonical-header sweep reads it.
+    const mdUrls = MACHINE_READABLE_URLS
+      .map((url) => new URL(url))
+      .filter((url) => url.hostname === 'www.worldmonitor.app' && url.pathname.endsWith('.md'))
+      .map((url) => url.pathname);
+    assert.ok(mdUrls.length > 0, 'expected .md entries in MACHINE_READABLE_URLS');
     for (const path of mdUrls) {
-      assert.ok(MD_PAGES.includes(path), `${path} is in sitemap-main.xml but has no canonical Link header rule — add it to vercel.json and this test`);
+      assert.ok(MD_PAGES.includes(path), `${path} is announced but has no canonical Link header rule — add it to vercel.json and this test`);
     }
   });
 });
@@ -5087,10 +5122,10 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       f,
       readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
     ]);
-    // The sitemap and the indexed "Build on World Monitor" blog post are the two
-    // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
-    // them directly so a dropped sitemap entry or blog cross-link is caught here,
-    // not only via the reverse #4999 sitemap->MD_PAGES sweep.
+    // IndexNow and the indexed "Build on World Monitor" blog post are the two
+    // web-search discovery surfaces (candidate fixes #1/#3 of the issue). The
+    // pages left the sitemap in #8608 because they are files, not pages; the
+    // IndexNow list replaced it here.
     const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     const blogPost = readFileSync(
       resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
@@ -5103,10 +5138,8 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
       }
-      assert.ok(
-        sitemap.includes(`https://www.worldmonitor.app${page.path}`),
-        `sitemap-main.xml must register ${page.path} on the www host`
-      );
+      assert.ok(MACHINE_READABLE_URLS.includes(url), `IndexNow must announce ${url}`);
+      assert.ok(!sitemap.includes(`<loc>${url}</loc>`), `sitemap-main.xml must not declare the file ${page.path}`);
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
   });

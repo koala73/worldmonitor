@@ -93,6 +93,8 @@ describe('api/mcp.ts — Pro daily quota is NOT refunded after execution (GHSA-h
     const body = await res.json();
     const out = JSON.parse(body.result.content[0].text);
     assert.equal(out._budget_exceeded, true, 'sanity: response is the budget-exceeded envelope');
+    assert.equal(body.result._meta?.['worldmonitor/usage']?.remaining, 49, 'the charged fallback must report the remaining panel allowance');
+    assert.equal(body.result._meta['worldmonitor/usage'].unit, 'requests');
     assert.equal(
       pipe.count, 1,
       'the tool already executed (full upstream cost incurred), so the daily slot must stay charged — refunding it is the GHSA-hcq5 cost-cap bypass',

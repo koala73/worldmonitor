@@ -115,6 +115,9 @@ describe('getWorldCpiMonthly handler', () => {
     assert.ok(us);
     assert.equal(us.periods.length, 3);
     assert.ok(seen[0].every((key) => key.endsWith(':v1')));
+    const bounded = await getWorldCpiMonthly({} as never, { history: true, country: '', limit: 1 });
+    assert.deepEqual(bounded.countries, result.countries.map(country => ({ ...country, periods: country.periods.slice(-1) })));
+    assert.deepEqual(await getWorldCpiMonthly({} as never, { history: true, country: '', limit: 0 }), result);
   });
 
   it('falls through a stalled Eurostat overlay to the fresher IMF harmonised series', async () => {

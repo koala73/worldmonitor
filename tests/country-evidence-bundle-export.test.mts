@@ -24,7 +24,17 @@ async function loadExportUtils(): Promise<ExportUtils> {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/services/i18n', 'i18n-stub'],
     ['@/utils/dom-utils', 'dom-utils-stub'],
   ]);
@@ -243,7 +253,17 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/utils/format-intel-brief', 'intel-brief-stub'],
     ['@/services/i18n', 'i18n-stub'],
@@ -621,7 +641,7 @@ describe('country evidence bundle export', () => {
 
     assert.match(dossierSource, /exportCountryEvidenceMarkdown/);
     assert.match(dossierSource, /cdp-evidence-export-btn/);
-    assert.match(dossierSource, /if \(!hasPremiumAccess\(getAuthState\(\)\)\)/);
+    assert.match(dossierSource, /if \(!this\.canRequestPremium\(\)\)/);
     assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
     assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
     assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);

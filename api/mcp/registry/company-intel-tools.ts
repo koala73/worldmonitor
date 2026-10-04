@@ -219,7 +219,7 @@ export const COMPANY_INTEL_TOOL: ToolDef = {
       },
     },
   },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
     const view = typeof params.view === 'string' && (COMPANY_INTEL_VIEWS as readonly string[]).includes(params.view)
       ? params.view

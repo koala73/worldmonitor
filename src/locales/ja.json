@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "指数: World Monitor · 店舗データ:",
+      "statusNormal": "通常",
+      "statusNoData": "データなし",
+      "statusNoBaseline": "基準なし",
+      "vsUsual": "通常比",
       "title": "ペンタゴンピザ指数",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}}に更新",
       "tensionsTitle": "地政学的緊張",
+      "tensionsSource": "緊張度：GDELTのイベントに基づくWorld Monitorの算出値",
+      "insufficientData": "データ不足",
+      "pizzaUnavailable": "ピザ店の活動データを取得できません",
       "source": "ソース:",
       "statusClosed": "閉鎖",
       "statusSpike": "急上昇",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}分前",
       "hoursAgo": "{{h}}時間前",
       "defconLabels": {
-        "1": "COCKED PISTOL — 最大即応態勢",
-        "2": "FAST PACE — 軍即応態勢",
-        "3": "ROUND HOUSE — 即応態勢強化",
-        "4": "DOUBLE TAKE — 情報監視強化",
-        "5": "FADE OUT — 最低即応態勢"
+        "1": "最大活動",
+        "2": "高い活動",
+        "3": "活動増加",
+        "4": "通常以上",
+        "5": "通常の活動"
       }
     },
     "strategicPosture": {
@@ -2877,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED（検証済）",
       "gdelt": "GDELT",
+      "records": "件の記録",
+      "mediaSignal": "未確認のメディア情報",
+      "relatedArticle": "関連記事",
+      "mediaSignalDetail": "この場所は騒乱に関する記事で言及されています。現地での出来事は確認されていません。",
       "riots": "暴動",
       "highSeverity": "高深刻度"
     },

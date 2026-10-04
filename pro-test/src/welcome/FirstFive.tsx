@@ -1,6 +1,8 @@
 import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n';
+import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
 import { DASHBOARD_PATH } from '../routes';
 import { SectionHeading } from './SectionHeading';
 
@@ -33,7 +35,7 @@ export const FirstFive = () => (
             <span className="font-mono text-sm text-wm-green w-14 shrink-0 pt-0.5">{time}</span>
             <div>
               <h3 className="font-display font-bold mb-1">{t(`welcome.firstFive.f${n}Title`)}</h3>
-              <p className="text-sm text-wm-muted">{t(`welcome.firstFive.f${n}Desc`)}</p>
+              <p className="text-sm text-wm-muted">{t(`welcome.firstFive.f${n}Desc`, { ...depthProofStats, ...copyStats })}</p>
             </div>
           </div>
         ))}

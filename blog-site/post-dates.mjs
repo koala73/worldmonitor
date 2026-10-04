@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const SITE_URL = 'https://www.worldmonitor.app';
 const BLOG_DIR = new URL('./src/content/blog/', import.meta.url);
+const GUIDES_DIR = new URL('./src/content/guides/', import.meta.url);
 const GLOSSARY_DATA = new URL('./src/data/glossary.ts', import.meta.url);
 const AUTHORS_DIR = new URL('./src/pages/authors/', import.meta.url);
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -86,6 +87,28 @@ export function buildPostDateMap() {
     if (date > blogLastmod) blogLastmod = date;
   }
 
+  const postsLastmod = blogLastmod;
+
+  if (existsSync(GUIDES_DIR)) {
+    let guidesLastmod = null;
+    for (const category of ['vs', 'alternatives', 'best']) {
+      const directory = new URL(`${category}/`, GUIDES_DIR);
+      if (!existsSync(directory)) continue;
+      for (const file of readdirSync(directory)) {
+        if (!file.endsWith('.md')) continue;
+        const markdown = readFileSync(new URL(file, directory), 'utf8');
+        const date = readFrontmatterDate(markdown, 'modifiedDate') || readFrontmatterDate(markdown, 'pubDate');
+        if (!date) continue;
+        setPostDate(postDates, `/blog/${category}/${basename(file, '.md')}/`, date);
+        guidesLastmod = laterDate(guidesLastmod, date);
+      }
+    }
+    if (guidesLastmod) {
+      setPostDate(postDates, '/blog/guides/', guidesLastmod);
+      blogLastmod = laterDate(blogLastmod, guidesLastmod);
+    }
+  }
+
   // Glossary + author hubs previously shipped without lastmod (#7382). Use
   // git material dates so Astro's sitemap serialize can stamp every blog URL.
   const glossaryLastmod = gitFileLastmod(GLOSSARY_DATA) || blogLastmod;
@@ -101,7 +124,7 @@ export function buildPostDateMap() {
       const slug = basename(file, '.astro');
       const authorLastmod = laterDate(
         gitFileLastmod(new URL(file, AUTHORS_DIR)),
-        blogLastmod,
+        postsLastmod,
       );
       setPostDate(postDates, `/blog/authors/${slug}/`, authorLastmod);
     }

@@ -47,6 +47,8 @@ it('loads the scenario after premium access arrives and discards an older entitl
     assert.ok(harness.getPanelRoot().querySelector('#cdp-section-scenario .cdp-pro-locked'));
     harness.setPremiumAccess(true);
     panel.syncCountryPremiumSectionsAccess(true);
+    panel.updateTradeExposure({ iso2: 'US', hs2: '27', primaryChokepointId: 'panama', vulnerabilityIndex: 20,
+      exposures: [{ chokepointId: 'panama', chokepointName: 'Panama Canal', exposureScore: 20, coastSide: '', shockSupported: true }], fetchedAt: '' });
     harness.getCostShockRequests()[1].resolve(null);
     await Promise.resolve();
     assert.match(harness.getPanelRoot().querySelector('#cdp-section-scenario').textContent, /No cost shock scenario/);
@@ -84,4 +86,22 @@ it('lists cited evidence under the brief sources in summary and full views', asy
   } finally {
     harness.cleanup();
   }
+});
+
+it('clears premium trade evidence on revocation and cannot reuse it on regrant', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true, deferCostShock: true });
+  try {
+    const panel = harness.createPanel(); panel.show('United States', 'US', null, {});
+    panel.updateTradeExposure({ iso2: 'US', hs2: '27', primaryChokepointId: 'panama', vulnerabilityIndex: 20,
+      exposures: [{ chokepointId: 'panama', chokepointName: 'Private Panama evidence', exposureScore: 20, coastSide: '', shockSupported: true }], fetchedAt: '' });
+    const root = harness.getPanelRoot();
+    assert.match(root.querySelector('#cdp-section-trade').textContent, /Private Panama evidence/);
+    const reads = harness.getCostShockRequests().length;
+    harness.setPremiumAccess(false); panel.syncCountryPremiumSectionsAccess(false);
+    assert.doesNotMatch(root.querySelector('#cdp-section-trade').textContent, /Private Panama evidence/);
+    assert.match(root.querySelector('#cdp-section-trade').textContent, /PRO/);
+    harness.setPremiumAccess(true); panel.syncCountryPremiumSectionsAccess(true);
+    assert.equal(harness.getCostShockRequests().length, reads, 'regrant requires new authorized trade observations');
+    panel.hide();
+  } finally { harness.cleanup(); }
 });

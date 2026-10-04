@@ -15,7 +15,7 @@ const breaker = createCircuitBreaker<USNIFleetReport | null>({
   persistCache: true,
 });
 
-function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | null {
+export function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | null {
   const r = resp.report;
   if (!r) return null;
 

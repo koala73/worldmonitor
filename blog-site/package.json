@@ -13,6 +13,7 @@
     "dev": "astro dev",
     "generate:og": "node scripts/generate-og-images.mjs",
     "build": "npm run generate:og && astro build",
+    "verify:guides": "node --test scripts/verify-buying-guides.test.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
@@ -21,12 +22,14 @@
     "@astrojs/sitemap": "^3.7.1",
     "astro": "^7.2.8",
     "gray-matter": "^4.0.3",
+    "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "satori": "^0.25.0",
     "sharp": "^0.35.4"
   },
   "overrides": {
+    "http-cache-semantics": "$http-cache-semantics",
     "sharp": "$sharp",
-    "devalue": "^5.9.2",
+    "devalue": "^5.9.4",
     "defu": "^6.1.5",
     "esbuild": "0.28.1",
     "fast-xml-parser": "^5.8.0",

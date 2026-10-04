@@ -795,3 +795,22 @@ describe('GDELT per-country article index ordering and bounds (#7748 review)', (
     assert.ok(bytes < MAX_PAYLOAD_BYTES, `worst case ${bytes} bytes must stay under ${MAX_PAYLOAD_BYTES}`);
   });
 });
+
+it('keeps riot articles with unrelated location mentions as unverified media signals', () => {
+  const rows = Array.from({ length: 105 }, (_, i) => gkgRow({
+    id: `riot-${i}`, url: `https://news.example/riot-${i}`,
+    title: 'Riot in Cairo; Paris officials comment', themes: 'VIOLENT_UNREST,1',
+    locations: '1#Cairo, Egypt#EG#EG11#30.0444#31.2357#-290692;1#Paris, France#FR#FR11#48.8566#2.3522#123',
+  }));
+  const result = materializeGdeltBulk({
+    batches: [{ timestamp: '20260730120000', records: parseGdeltGkgCsv(rows.join('\n')) }],
+    previous: {}, nowMs: Date.parse('2026-07-30T12:05:00Z'),
+  });
+  assert.equal(result.unrest.events.length, 2);
+  for (const event of result.unrest.events) {
+    assert.equal(event.eventType, 'UNREST_EVENT_TYPE_UNSPECIFIED');
+    assert.equal(event.severity, 'SEVERITY_LEVEL_UNSPECIFIED');
+    assert.equal(event.confidence, 'CONFIDENCE_LEVEL_LOW');
+    assert.match(event.summary, /not verified/i);
+  }
+});

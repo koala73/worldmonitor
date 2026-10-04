@@ -19,6 +19,7 @@ interface MapContainerHarness {
       whenRendererReady: () => Promise<void>;
       whenViewportSettled: (viewportActionToken?: number) => Promise<void>;
       switchToGlobe: () => Promise<{ renderer: 'globe' | 'deck' | 'svg'; mode: 'globe' | 'flat'; fallback: boolean }>;
+      switchToFlat: () => Promise<{ renderer: 'globe' | 'deck' | 'svg'; mode: 'globe' | 'flat'; fallback: boolean }>;
       isGlobeMode: () => boolean;
       isDeckGLActive: () => boolean;
       destroy: () => void;
@@ -477,3 +478,25 @@ describe('map viewport runtime lifecycle', () => {
   });
 
 });
+
+for (const scenario of [
+  { name: 'embedded desktop preference', mobile: true, preferDesktop: true, webgl: true, renderer: 'deck' },
+  { name: 'phone default', mobile: true, preferDesktop: false, webgl: true, renderer: 'svg' },
+  { name: 'desktop without WebGL2', mobile: true, preferDesktop: true, webgl: false, renderer: 'svg' },
+  { name: 'ordinary wide desktop', mobile: false, preferDesktop: false, webgl: true, renderer: 'deck' },
+]) {
+  it(`returns to the correct flat renderer for ${scenario.name}`, async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.useGlobe = true;
+    internals.isMobile = scenario.mobile;
+    internals.preferDesktopRenderer = scenario.preferDesktop;
+    internals.hasWebGLSupport = () => scenario.webgl;
+    internals.globeMap = { destroy() {}, getCenter: () => null, getState: () => internals.initialState };
+    internals.init = async () => {
+      internals.rendererReady = true;
+      if (internals.useDeckGL) internals.deckGLMap = {};
+      else internals.svgMap = {};
+    };
+    assert.deepEqual(await map.switchToFlat(), { renderer: scenario.renderer, mode: 'flat', fallback: false });
+  });
+}

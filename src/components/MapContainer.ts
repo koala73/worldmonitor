@@ -118,6 +118,8 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  mapLibreWorkerUrl?: string;
+  preferDesktopRenderer?: boolean;
   isFreeTierFallbackActive?: () => boolean;
 }
 
@@ -167,6 +169,7 @@ type CIIScore = { code: string; score: number; level: string };
 export class MapContainer {
   private container: HTMLElement;
   private isMobile: boolean;
+  private readonly preferDesktopRenderer: boolean;
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
@@ -175,6 +178,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly mapLibreWorkerUrl: string | undefined;
   private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
   private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
@@ -269,6 +273,7 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
     this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
       layer,
       currentlyEnabled === true,
@@ -276,6 +281,7 @@ export class MapContainer {
     );
     this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
+    this.preferDesktopRenderer = options.preferDesktopRenderer ?? false;
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
@@ -338,7 +344,7 @@ export class MapContainer {
     // Keep the default mobile path on the lightweight SVG renderer. High-end
     // phones can still request globe mode explicitly via the persisted mode,
     // but they should not pull Deck/MapLibre before first paint by default.
-    if (this.isMobile) return false;
+    if (this.isMobile && !this.preferDesktopRenderer) return false;
     if (!this.hasWebGLSupport()) return false;
     return true;
   }
@@ -688,6 +694,7 @@ export class MapContainer {
         // Mid-session MapLibre rebuilds (fallback basemap after WebGL loss)
         // can throw GPUInitializationError outside whenReady(); degrade to SVG.
         onFatalError: (error) => this.handleDeckGLRuntimeFailure(token, error),
+        mapLibreWorkerUrl: this.mapLibreWorkerUrl,
       });
       this.rehydrateActiveMap();
       // DeckGLMap defers MapLibre construction behind an async init. Await it so
@@ -1065,10 +1072,10 @@ export class MapContainer {
 
   // ─── Data setters ────────────────────────────────────────────────────────────
 
-  public setEarthquakes(earthquakes: Earthquake[]): void {
+  public setEarthquakes(earthquakes: Earthquake[], options: { replaceEmpty?: boolean } = {}): void {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes, options); }
   }
 
   public setConflictEvents(events: AcledConflictEvent[]): void {

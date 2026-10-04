@@ -12,6 +12,7 @@ import type {
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { macroHistoryWindow } from './macro-history-window';
 import {
   COVERED_MARKETS,
   OECD_LT_KEY,
@@ -43,6 +44,7 @@ export async function getGovernmentYieldCurve(
   _ctx: ServerContext,
   req: GetGovernmentYieldCurveRequest,
 ): Promise<GetGovernmentYieldCurveResponse> {
+  const recent = macroHistoryWindow(req.limit);
   const country = (req.country ?? '').trim();
   if (!/^[A-Za-z]{2}$/.test(country)) {
     throw new ValidationError([{ field: 'country', description: 'Expected an ISO 3166-1 alpha-2 country code' }]);
@@ -71,7 +73,7 @@ export async function getGovernmentYieldCurve(
         country: market.country,
         source: market.source,
         measure: market.measure,
-        curves: req.history === true ? curves : curves.slice(-1),
+        curves: req.history === true ? recent(curves) : curves.slice(-1),
         unavailable: false,
       };
     }
@@ -87,7 +89,7 @@ export async function getGovernmentYieldCurve(
       country: normalized,
       source: 'oecd-mei-monthly',
       measure: 'monthly-10y',
-      curves: req.history === true ? monthly : monthly.slice(-1),
+      curves: req.history === true ? recent(monthly) : monthly.slice(-1),
       unavailable: false,
     };
   } catch {

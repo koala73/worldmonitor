@@ -1276,8 +1276,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Indeks: World Monitor · dane lokali:",
+      "statusNormal": "NORMALNIE",
+      "statusNoData": "BRAK DANYCH",
+      "statusNoBaseline": "BRAK POZIOMU ODNIESIENIA",
+      "vsUsual": "względem normy",
       "title": "Indeks pizzy Pentagonu",
       "tensionsTitle": "Napięcia geopolityczne",
+      "tensionsSource": "Napięcia: World Monitor na podstawie zdarzeń GDELT",
+      "insufficientData": "Niewystarczające dane",
+      "pizzaUnavailable": "Dane o aktywności pizzerii są niedostępne",
       "source": "Źródło:",
       "defcon": "DEFCON {{level}}",
       "updated": "Zaktualizowano {{timeAgo}}",
@@ -1291,11 +1299,11 @@
       "minutesAgo": "{{m}}m temu",
       "hoursAgo": "{{h}}h temu",
       "defconLabels": {
-        "1": "PISTOLET Z NACIĘCIEM - MAKSYMALNA GOTOWOŚĆ",
-        "2": "SZYBKIE TEMPO – SIŁY ZBROJNE W GOTOWIE",
-        "3": "OKRĄGŁY DOM - ZWIĘKSZ GOTOWOŚĆ SIŁOWĄ",
-        "4": "PODWÓJNE UJĘCIE - ZEGAREK O WIĘKSZEJ INTELIGENCJI",
-        "5": "FADE OUT - NAJNIŻSZA GOTOWOŚĆ"
+        "1": "Maksymalna Aktywność",
+        "2": "Wysoka Aktywność",
+        "3": "Podwyższona Aktywność",
+        "4": "Powyżej Normy",
+        "5": "Normalna Aktywność"
       }
     },
     "playback": {
@@ -2936,6 +2944,10 @@
     "protest": {
       "acledVerified": "ACLED (zweryfikowany)",
       "gdelt": "GDELT",
+      "records": "wpisów",
+      "mediaSignal": "Niezweryfikowany sygnał medialny",
+      "relatedArticle": "Powiązany artykuł",
+      "mediaSignalDetail": "To miejsce jest wymieniane w artykułach o niepokojach. Lokalne zdarzenie nie zostało potwierdzone.",
       "riots": "Zamieszki",
       "highSeverity": "Wysoka dotkliwość"
     },

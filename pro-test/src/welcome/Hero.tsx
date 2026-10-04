@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
-import { t } from '../i18n';
+import { currentLanguageBase, t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import {
   DASHBOARD_SCREENSHOT_JPG,
@@ -12,6 +12,8 @@ import {
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
+import depthProofStats from '../generated/depth-stats.json';
+import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
@@ -126,7 +128,9 @@ export const Hero = () => (
           {t('welcome.hero.sub')}
         </p>
         <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
-          <time dateTime="2026-09-08">{t('welcome.hero.asOf')}</time>
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
         </p>
       </motion.div>
 
@@ -194,7 +198,7 @@ export const Hero = () => (
       </motion.div>
       <div className="mx-auto mt-10 max-w-2xl text-center">
         <h2 className="font-display text-xl font-bold text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
-        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody')}</p>
+        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody', depthProofStats)}</p>
       </div>
       <motion.div
         initial={false}

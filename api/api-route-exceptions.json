@@ -3,6 +3,27 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/miit-news.js",
+      "category": "non-json",
+      "reason": "Adapts the fixed official MIIT dated news listing to RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; the RSS transport cannot use a JSON proto envelope.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/public-domain-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for gold enrichment and internet observations. Fixed existing sebuf RPCs retain source schemas and gateway access; this module exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/country-view.ts",
+      "category": "external-protocol",
+      "reason": "MCP country-view tool definitions and fixed section readers. The external MCP protocol defines the tool/resource envelopes; this module exports no HTTP route and reads existing sebuf RPCs plus fixed bootstrap datasets.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/ask.ts",
       "category": "external-protocol",
       "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
@@ -41,6 +62,13 @@
       "path": "api/mcp/quota.ts",
       "category": "external-protocol",
       "reason": "MCP Pro daily-quota INCR-first reservation + F4 clamp loop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/panel-requests.ts",
+      "category": "internal-helper",
+      "reason": "Bounded paid country-request admission, signed reader scope, and response reuse for the MCP JSON-RPC dispatcher. Exports no HTTP route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -129,6 +157,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/news-dashboard.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for the WorldMonitor news dashboard and analysis adapter. Uses existing sebuf news RPCs; tool metadata and execution envelopes follow the external MCP protocol. No HTTP handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/analysis-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
@@ -160,6 +195,27 @@
       "path": "api/mcp/registry/source-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/macro-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY macro-history tool entry (get_macro_history) over the existing sebuf economic RPCs (US CPI, US interest rates, US Treasury and government yield curves, world CPI). Tool metadata and execution envelopes follow the external MCP protocol; exports no JSON data route. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/stock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP stock-research tool definition and fixed MarketService dispatch. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/cost-shock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP cost-shock tool definition and fixed SupplyChainService dispatch. Exports no standalone JSON data route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -339,6 +395,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/ui/news-dashboard-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps HTML resource loader for the compiled WorldMonitor dashboard. The ui:// resource envelope and CSP metadata follow the external MCP Apps protocol. No standalone HTTP data endpoint.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/ui/conflict-events-app.ts",
       "category": "external-protocol",
       "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/conflict-events.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
@@ -464,7 +527,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/download.js",
       "category": "non-json",
@@ -507,7 +569,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
@@ -564,7 +625,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/health.js",
       "category": "ops-admin",
@@ -663,7 +723,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
@@ -762,7 +821,6 @@
       "owner": "@koala73",
       "removal_issue": null
     },
-
     {
       "path": "api/latest-brief.ts",
       "category": "deferred",
@@ -833,7 +891,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },
-
     {
       "path": "api/scenario/v1/run.ts",
       "category": "deferred",
@@ -869,7 +926,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "#3282"
     },
-
     {
       "path": "api/v2/shipping/webhooks/[subscriberId].ts",
       "category": "migration-pending",

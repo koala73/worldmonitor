@@ -241,6 +241,7 @@ describe('isAppOwnedRedisKey (#7674)', () => {
     assert.equal(isAppOwnedRedisKey('seed-meta:temporal:anomalies'), true);
     assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v8'), true);
     assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v8'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v8'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores'), true);
     assert.equal(isAppOwnedRedisKey('supply_chain:chokepoints:v4'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:supply_chain:chokepoints'), true);

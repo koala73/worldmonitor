@@ -4,7 +4,7 @@ import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
-import { getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
+import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
 import {
   BothSourcesFailedError,
@@ -15,7 +15,10 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { isSharedRestCounter, reserveQuota, type McpBudget } from './quota';
+import { admitCountryPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
+import type { PanelUsage } from '../../shared/panel-admission';
+import { isSharedRestCounter, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
@@ -53,6 +56,8 @@ export async function executeTool(
   cached_at: string | null;
   stale: boolean;
   activationUnknown?: true;
+  freshnessUnknown?: true;
+  unreadable?: string[];
   contentFreshnessPendingUntil?: string;
   data: Record<string, unknown>;
 }> {
@@ -61,9 +66,16 @@ export async function executeTool(
   // exceptions (temporal anomalies snapshot + its stamp) ride the deployment
   // prefix so a preview deployment classifies its own producer instead of the
   // production rows.
-  const reads = tool._cacheKeys.map((k) => readJsonFromUpstash(k, 3_000, !isAppOwnedRedisKey(k)));
+  //
+  // Each read is settled on its own. `readJsonFromUpstash` resolves null for a
+  // miss but REJECTS when the request fails (AbortSignal.timeout, network
+  // tear), and those two must stay apart: under a bare Promise.all one timed-out
+  // key failed the whole tool as a raw TimeoutError (WORLDMONITOR-176/ZM/137),
+  // while folding the failure into null would read an unreadable seed-meta as
+  // "never seeded" and an unreadable data key as an empty section.
+  const reads = tool._cacheKeys.map((k) => settleRead(readJsonFromUpstash(k, 3_000, !isAppOwnedRedisKey(k))));
   const freshnessChecks = tool._freshnessChecks;
-  const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key)));
+  const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
   // none at all on every other tool.
@@ -84,11 +96,19 @@ export async function executeTool(
   const activationRead = activationKeys.length > 0
     ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]), 5_000, true)
     : Promise.resolve([]);
-  const [results, metas, activationResults] = await Promise.all([
+  const [dataReads, metaOutcomes, activationResults] = await Promise.all([
     Promise.all(reads),
     Promise.all(metaReads),
     activationRead,
   ]);
+  const results = dataReads.map((r) => (r.ok ? r.value : null));
+  // An unreadable seed-meta enters evaluateFreshness as null, so `stale` fails
+  // closed exactly as for an unreadable activation marker; `freshnessUnknown`
+  // is what tells the caller the verdict rests on a read that failed.
+  const metas = metaOutcomes.map((r) => (r.ok ? r.value : null));
+  const freshnessUnknown = metaOutcomes.some((r) => !r.ok);
+  const labels = tool._cacheKeys.map((key) => cacheKeyLabel(tool, key));
+  const unreadable = labels.filter((_, i) => !dataReads[i]!.ok);
   // Three-valued on purpose: only a marker we actually read and found ABSENT
   // earns the deployment-order grace. An unreadable marker stays out of the
   // map, so evaluateFreshness evaluates the block and fails closed rather than
@@ -137,22 +157,35 @@ export async function executeTool(
     tool._cacheKeys.length > 0 &&
     results.every((v: unknown) => v === null || v === undefined)
   ) {
+    // Nothing usable came back. If any of it was a failed read rather than a
+    // genuine miss, that is Redis being unreachable, not an empty dataset:
+    // report it as the source outage it is (warning level, own error kind).
+    if (unreadable.length > 0) {
+      throw new McpSourceUnavailableError(
+        'cache_read_failed',
+        labels.filter((_, i) => dataReads[i]!.ok),
+        unreadable,
+      );
+    }
     throw new Error('cache_all_null');
+  }
+  if (unreadable.length > 0 || freshnessUnknown) {
+    // The call still succeeds with what was readable, so nothing else would
+    // record that Redis failed some reads. Warning level: one blip is noise,
+    // a brownout escalates by volume under its own fingerprint.
+    captureSilentError(new Error('mcp cache read failed'), {
+      tags: { route: 'api/mcp', step: 'cache-read', tool: tool.name },
+      extra: {
+        unreadable,
+        freshness_unreadable: freshnessChecks.filter((_, i) => !metaOutcomes[i]!.ok).map((check) => check.key),
+      },
+      fingerprint: ['api/mcp', 'cache-read', 'Error'],
+      level: 'warning',
+    });
   }
 
   const data: Record<string, unknown> = {};
-  // Walk backward through ':'-delimited segments, skipping non-informative suffixes
-  // (version tags, bare numbers, internal format names) to produce a readable label.
-  const NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/;
-  tool._cacheKeys.forEach((key, i) => {
-    const parts = key.split(':');
-    let label = '';
-    for (let idx = parts.length - 1; idx >= 0; idx--) {
-      const seg = parts[idx] ?? '';
-      if (!NON_LABEL.test(seg)) { label = seg; break; }
-    }
-    data[tool._cacheLabels?.[key] || label || (parts[0] ?? key)] = results[i];
-  });
+  labels.forEach((label, i) => { data[label] = results[i]; });
 
   // Optional in-memory post-filter (declared per-tool, mirrors that tool's
   // inputSchema.properties). A filter bug must NEVER break the tool — on throw
@@ -198,9 +231,31 @@ export async function executeTool(
     cached_at,
     stale,
     ...(activationUnknown ? { activationUnknown: true } : {}),
+    ...(freshnessUnknown ? { freshnessUnknown: true } : {}),
+    ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     data: result,
   };
+}
+
+type SettledRead = { ok: true; value: unknown } | { ok: false };
+
+function settleRead(read: Promise<unknown>): Promise<SettledRead> {
+  return read.then((value) => ({ ok: true, value }), () => ({ ok: false }));
+}
+
+// Walk backward through ':'-delimited segments, skipping non-informative suffixes
+// (version tags, bare numbers, internal format names) to produce a readable label.
+const NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/;
+
+function cacheKeyLabel(tool: CacheToolDef, key: string): string {
+  const parts = key.split(':');
+  let label = '';
+  for (let idx = parts.length - 1; idx >= 0; idx--) {
+    const seg = parts[idx] ?? '';
+    if (!NON_LABEL.test(seg)) { label = seg; break; }
+  }
+  return tool._cacheLabels?.[key] || label || (parts[0] ?? key);
 }
 
 /**
@@ -273,14 +328,27 @@ export async function dispatchToolsCall(
   // Optional so existing callers keep compiling; omitted → header omitted
   // rather than emitted with a guessed URL.
   resourceMetadataUrl?: string,
+  toolBurstPerMinute?: number,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
+  const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
+    && (context.kind === 'pro' || context.kind === 'user_key');
+  const deferredBurst = toolBurstPerMinute !== undefined && dedicatedPanel && typeof p?.name === 'string' && p.arguments?.panel_request !== undefined
+    && p.name !== 'open_country_brief' && p.name !== 'open_news_dashboard';
+  if (toolBurstPerMinute !== undefined && !deferredBurst) {
+    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+    if (limited) return limited;
+  }
   if (!p || typeof p.name !== 'string') {
     return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
     return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
@@ -333,6 +401,39 @@ export async function dispatchToolsCall(
     return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
   }
 
+  let panelRequest: PaidPanelAdmission | undefined;
+  let panelUsage: PanelUsage | undefined;
+  let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
+  const suppliedPanel = p.arguments?.panel_request;
+  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  try {
+    if (dedicatedPanel && tool.name === 'open_country_brief') {
+      panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')));
+    } else if (dedicatedPanel && tool.name === 'open_news_dashboard') {
+      if (suppliedPanel !== undefined) throw new PanelRequestError('Open or refresh the dashboard without a reader token.', 'invalid');
+      panelRequest = await admitNewsPanel(context, budget, deps.redisPipeline, callArguments);
+      panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, {}, panelRequest.token);
+    } else if (suppliedPanel !== undefined) {
+      if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
+      panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
+        Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
+    }
+    if (deferredBurst && panelRead) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
+      if (limited) return limited;
+    }
+    await panelRead?.reserveUncachedRead();
+  } catch (error) {
+    if (!(error instanceof PanelRequestError)) throw error;
+    if (deferredBurst && !panelRead) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
+    if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
+    return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
+  }
+
   // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
@@ -343,6 +444,8 @@ export async function dispatchToolsCall(
     (context.kind === 'pro' || context.kind === 'user_key')
     && tool._freeTier !== true
     && !isMetadataTool
+    && !panelRequest
+    && !panelRead
   ) {
     if (freeAccountAllowance) {
       const reservation = await reserveFreeAccountAllowance(
@@ -399,6 +502,12 @@ export async function dispatchToolsCall(
       // No caller-side rollback of the reservation: once we pass this point the
       // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
       // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
+      if (dedicatedPanel && tool._uiResourceUri) {
+        const limit = resolveDailyLimit(budget?.limit);
+        const reset = new Date();
+        reset.setUTCHours(24, 0, 0, 0);
+        panelUsage = { used: reservation.newCount, limit, remaining: limit === null ? null : Math.max(0, limit - reservation.newCount), resetsAt: reset.toISOString(), unit: 'requests' };
+      }
     }
   }
 
@@ -413,16 +522,29 @@ export async function dispatchToolsCall(
   let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
-    if (tool._execute) {
+    if (panelRead?.cached !== undefined) {
+      result = panelRead.cached;
+    } else if (tool._execute) {
       execution = createMcpToolExecutionContext(req.url);
+      execution.panelRequest = panelRequest;
       result = await tool._execute(
-        p.arguments ?? {},
+        callArguments,
         execution.downstreamOrigin,
         context,
         execution,
       );
     } else {
-      result = await executeTool(tool, p.arguments ?? {});
+      result = await executeTool(tool, callArguments);
+    }
+    if (panelRead && panelRead.cached === undefined) {
+      if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
+        const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
+        await panelRead.save(snapshot);
+      } else await panelRead.save(result);
+    }
+    if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
+      const parsed = parseNewsDashboardRequest(callArguments);
+      result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.
@@ -512,7 +634,7 @@ export async function dispatchToolsCall(
         actual_bytes: textBytes,
         hint,
       };
-      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope }, corsHeaders);
+      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
     }
     // Every tool advertises an `outputSchema`, so a strict client rejects a
     // result without `structuredContent` before the model sees it (#8328). A
@@ -525,7 +647,7 @@ export async function dispatchToolsCall(
       reshaped: failed === undefined && (jmespathUsed || summaryUsed),
       rider,
     });
-    return rpcOk(id, { content: [{ type: 'text', text }], structuredContent }, corsHeaders);
+    return rpcOk(id, { content: [{ type: 'text', text }], structuredContent, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
   } catch (err: unknown) {
     // `latency_ms` is time-in-tool (from tStart, captured after the quota
     // reservation) so the P95 error-path dashboard isn't skewed by reservation

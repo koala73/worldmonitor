@@ -1,0 +1,32 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "2026-09-01"
+      ],
+      "clicks": 1,
+      "impressions": 50,
+      "ctr": 0.02,
+      "position": 11.2
+    },
+    {
+      "keys": [
+        "2026-07-01"
+      ],
+      "clicks": 2,
+      "impressions": 60,
+      "ctr": 0.033333,
+      "position": 10.1
+    },
+    {
+      "keys": [
+        "2026-08-01"
+      ],
+      "clicks": 2,
+      "impressions": 55,
+      "ctr": 0.036364,
+      "position": 10.4
+    }
+  ],
+  "responseAggregationType": "byProperty"
+}

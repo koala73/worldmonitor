@@ -1044,10 +1044,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "المؤشر: World Monitor · بيانات المطاعم:",
+      "statusNormal": "طبيعي",
+      "statusNoData": "لا توجد بيانات",
+      "statusNoBaseline": "لا يوجد خط أساس",
+      "vsUsual": "مقارنة بالمعتاد",
       "title": "مؤشر بيتزا البنتاغون",
       "defcon": "DEFCON {{level}}",
       "updated": "تم التحديث {{timeAgo}}",
       "tensionsTitle": "التوترات الجيوسياسية",
+      "tensionsSource": "التوترات: World Monitor استنادًا إلى أحداث GDELT",
+      "insufficientData": "بيانات غير كافية",
+      "pizzaUnavailable": "نشاط مطاعم البيتزا غير متاح",
       "source": "المصدر:",
       "statusClosed": "مغلق",
       "statusSpike": "ارتفاع حاد",
@@ -1059,11 +1067,11 @@
       "minutesAgo": "{{m}}د مضت",
       "hoursAgo": "{{h}}س مضت",
       "defconLabels": {
-        "1": "مسدس مُعدّ - أقصى جاهزية",
-        "2": "وتيرة سريعة - القوات المسلحة جاهزة",
-        "3": "بيت دائري - زيادة جاهزية القوات",
-        "4": "نظرة مزدوجة - تعزيز المراقبة الاستخباراتية",
-        "5": "تلاشي - أدنى مستوى جاهزية"
+        "1": "النشاط الأقصى",
+        "2": "نشاط مرتفع",
+        "3": "نشاط متزايد",
+        "4": "فوق المعدل الطبيعي",
+        "5": "النشاط الطبيعي"
       }
     },
     "strategicPosture": {
@@ -2977,6 +2985,10 @@
     "protest": {
       "acledVerified": "ACLED (موثّق)",
       "gdelt": "GDELT",
+      "records": "سجلات",
+      "mediaSignal": "إشارة إعلامية غير مؤكدة",
+      "relatedArticle": "مقال ذو صلة",
+      "mediaSignalDetail": "ورد ذكر هذا الموقع في مقالات عن اضطرابات. لم يتم التحقق من وقوع حدث محلي.",
       "riots": "أعمال شغب",
       "highSeverity": "شدة عالية"
     },

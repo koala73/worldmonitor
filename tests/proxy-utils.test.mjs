@@ -426,4 +426,32 @@ describe('proxy utilities', () => {
     );
     assert.equal(oversizedHarness.destroyed(), 1);
   });
+
+  // The tunnel is always to :443, but https.request given only `createConnection`
+  // has no agent and defaults to port 80, so it wrote `Host: <host>:80` on a TLS
+  // request. ENTSO-E's gateway rejects that ("inconsistent Forwarded/Host
+  // headers", HTTP 400), so the electricity proxy fallback never worked. This runs
+  // the real https.request so the header on the wire is what gets checked.
+  it('sends the bare target host on the wire, not a :80 port', async () => {
+    let written = '';
+    const socket = new PassThrough();
+    socket.write = (chunk, encoding, callback) => {
+      written += chunk.toString();
+      if (written.includes('\r\n\r\n')) {
+        queueMicrotask(() => socket.push('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'));
+      }
+      (typeof encoding === 'function' ? encoding : callback)?.();
+      return true;
+    };
+
+    const result = await proxyFetch('https://web-api.tp.entsoe.eu/api?documentType=A44', {
+      host: 'proxy.example', port: 443, auth: 'user:pass', tls: true,
+    }, {
+      connectTunnel: async () => ({ socket, destroy() {} }),
+    });
+
+    assert.equal(result.status, 200);
+    const hostLine = written.split('\r\n').find((line) => /^host:/i.test(line));
+    assert.equal(hostLine, 'Host: web-api.tp.entsoe.eu');
+  });
 });

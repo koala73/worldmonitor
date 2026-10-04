@@ -1230,10 +1230,18 @@
       "skipToEnd": "Preskoči na kraj"
     },
     "pizzint": {
+      "indexSource": "Indeks: World Monitor · podaci o objektima:",
+      "statusNormal": "NORMALNO",
+      "statusNoData": "NEMA PODATAKA",
+      "statusNoBaseline": "NEMA OSNOVE",
+      "vsUsual": "u odnosu na uobičajeno",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ažurirano {{timeAgo}}",
       "tensionsTitle": "Geopolitička napetost",
+      "tensionsSource": "Napetosti: World Monitor na temelju događaja GDELT-a",
+      "insufficientData": "Nedovoljno podataka",
+      "pizzaUnavailable": "Aktivnost pizzerija nije dostupna",
       "source": "Izvor:",
       "statusClosed": "ZATVORENO",
       "statusSpike": "SKOK",
@@ -1245,11 +1253,11 @@
       "minutesAgo": "prije {{m}}m",
       "hoursAgo": "prije {{h}}h",
       "defconLabels": {
-        "1": "REVOLVER SPREMAN - MAKSIMALNA SPREMNOST",
-        "2": "BRZ TEMPO - ORUŽANE SNAGE SPREMNE",
-        "3": "KRUŽNI DIM - POVEĆANA SPREMNOST SNAGA",
-        "4": "DVOSTRUKI POGLED - POJAČANO OBAVJEŠTAJNO PRAĆENJE",
-        "5": "BLIJEDI IZLAZ - NAJNIŽA SPREMNOST"
+        "1": "Maksimalna aktivnost",
+        "2": "Velika aktivnost",
+        "3": "Povećana aktivnost",
+        "4": "Iznad normalnog",
+        "5": "Normalna aktivnost"
       }
     },
     "strategicPosture": {
@@ -2995,6 +3003,10 @@
     "protest": {
       "acledVerified": "ACLED (potvrđeno)",
       "gdelt": "GDELT",
+      "records": "zapisa",
+      "mediaSignal": "Nepotvrđeni medijski signal",
+      "relatedArticle": "Povezani članak",
+      "mediaSignalDetail": "Ovo se mjesto spominje u člancima o nemirima. Lokalni događaj nije potvrđen.",
       "riots": "Neredi",
       "highSeverity": "Visoka Težina"
     },

@@ -1837,6 +1837,9 @@ module.exports = {
   // the real ones change.
   eventMatchesTickerScope,
   ruleMatchesEventType,
+  // Exported so the effective-sensitivity coercion and the importance-score
+  // threshold ladder are exercised directly rather than grepped from source.
+  shouldNotify,
   // Exported for the same reason as eventMatchesCountryScope: the
   // notify-field-validation tests must exercise the real formatter, not a
   // hand-copied mirror that cannot fail when the real one changes.

@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Váš AI analytik. Osobní zpravodajský stůl. Platforma, kterou si můžete přizpůsobit. Jeden klíč pro všechny služby.",
+    "proDesc": "Váš AI analytik. Osobní zpravodajský stůl. Platforma, kterou si můžete přizpůsobit.",
     "proF1": "WM Analyst chat — dotazování živých služeb přirozeným jazykem",
     "proF2": "AI digest — denně, dvakrát denně nebo týdně — na Slack, Discord, Telegram, E-mail nebo webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS s úpravami pomocí AI",
@@ -452,7 +452,7 @@
   "welcome": {
     "meta": {
       "title": "World Monitor — Bezplatný dashboard globální zpravodajské služby v reálném čase",
-      "description": "Když se to stane zprávou, už jste to věděli. Konflikty, kritické body v lodní dopravě, vojenské lety, trhy a kybernetika na jedné bezplatné živé mapě světa s analýzou AI. Bez registrace.",
+      "description": "Než se stane zprávou, už to víš. Konflikty, kritické průchody, vojenské lety, trhy, kybernetika: jedna bezplatná živá mapa s AI analýzou. Bez registrace.",
       "ogTitle": "World Monitor — Když se to stane zprávou, už jste to věděli.",
       "ogDescription": "Nezpracované signály světa — lodě, letadla, sirény, kabely, trhy — na jedné bezplatné živé zpravodajské mapě s AI, která upozorní, když se convergují. Zdarma, bez registrace."
     },
@@ -466,7 +466,8 @@
       "launch": "Otevřít dashboard",
       "blog": "Blog",
       "menu": "Menu",
-      "agents": "Pro agenty AI"
+      "agents": "Pro agenty AI",
+      "skipToContent": "Přejít na obsah"
     },
     "hero": {
       "eyebrow": "Bezplatný dashboard globální zpravodajské služby · live nyní",
@@ -482,9 +483,9 @@
       "plateNote": "Zachyceno z živé mapy — kliknutím ji otevřete",
       "trustBuild": "Postavte na tom:",
       "positioningLink": "WorldMonitor není open-source Palantir",
-      "asOf": "K 8. září 2026",
+      "asOf": "K {{date}}",
       "whatIsTitle": "Co je World Monitor?",
-      "whatIsBody": "World Monitor je bezplatný open-source dashboard, který streamuje geopolitické, tržní, námořní, letecké, infrastrukturní a kybernetické signály na jednu živou mapu světa. Koreluje samostatné kanály v jediný operační obraz a upozorňuje na konvergenci před titulky, přičemž každá číslice je zdrojována a každá metodika zdokumentována."
+      "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná."
     },
     "live": {
       "eyebrow": "Live právě teď",
@@ -509,7 +510,7 @@
     "moments": {
       "eyebrow": "Korelační engine",
       "title": "Jak World Monitor koreluje signály?",
-      "sub": "Zdroje dat najdete na stovce míst. Výhoda je jeden povrch, kde geopolitika, námořní doprava, komodity, makro, trhy, počasí, infrastruktura, kyber, zprávy a riziko zemí si mohou navzájem vysvětlit.",
+      "sub": "Umisťuje {{mapLayers}} typů mapových vrstev na jednu plochu, takže si geopolitika, lodní doprava, komodity, makro, trhy, počasí, infrastruktura, kyber, zpravodajství a riziko v jednotlivých zemích mohou navzájem vysvětlit. Kdokoli může sbírat feedy; jejich pohyb společně na jedné mapě je rozdíl.",
       "signalStack": "Signály sloučeny",
       "correlation": "Korelace",
       "bridge1": "Není to seznam zdrojů.",
@@ -518,7 +519,7 @@
         "kicker": "Geopolitika + trhy + makro",
         "title1": "Pohyb na trhu",
         "title2": "má svou mapu.",
-        "s1": "Riziko země, sankce, eskalace v ohniskách, oficiální výstrahy a rychlost zpravodajství ukazují, kde se geopolitický tlak zvyšuje.",
+        "s1": "Riziko země, sankce, eskalace v {{hotspots}} monitorovaných ohniscích, oficiální výstrahy a tempo zpráv ukazují, kde se zvyšuje geopolitický tlak.",
         "s2": "Lodě, úzkosti, lety, kabely a blízkost infrastruktury ukazují, zda se tento tlak může dostat na trasy dodávek, obchodu nebo kapitálu.",
         "s3": "Sazby, FX, akcie, krypto, energie a bezpečná aktiva ukazují, která tržní režim se přecení.",
         "s4": "Výhoda spočívá v tom, že vidíte geopolitický tlak, přenosovou cestu a cenový pohyb dohromady dříve, než se z toho stane konsenzuální poznámka.",
@@ -532,7 +533,7 @@
         "kicker": "Komodity + úzkosti + počasí",
         "title1": "Pohyby komodit začínají",
         "title2": "ve fyzickém světě.",
-        "s1": "AIS, přístavy, ropovody, LNG, rafinerie, vodní cesty a úzkosti ukazují, kdy se dodávka zpomaluje, přesměrovává nebo soustředí.",
+        "s1": "AIS, přístavy, potrubí, LNG, rafinerie, vodní cesty a {{chokepoints}} průsmyky ukazují, když se dodávky zpomalují, přesměrovávají nebo koncentrují.",
         "s2": "Počasí, požáry, zemětřesení, výpadky a vrstvy konfliktů ukazují fyzické události, které mohou zasáhnout produkci nebo dopravu.",
         "s3": "Ropa, plyn, zlato, zrní, těžaři, lodní společnosti a měny související s komoditami ukazují, jak se šok promítá do ceny.",
         "s4": "Komoditní analýza funguje pouze tehdy, když jsou fyzický tok, disrupční signál a tržní spread viditelné dohromady.",
@@ -546,7 +547,7 @@
         "kicker": "AI infrastruktura + energie + klima",
         "title1": "Boom AI má",
         "title2": "fyzickou rozvahu.",
-        "s1": "AI datacentra se nacházejí vedle sítí, ropvodů, LNG, jaderných zařízení, cloudových regionů a expozice tržního elektřiny.",
+        "s1": "{{aiDatacenters}} datových center AI je umístěno vedle sítí, potrubí, LNG, jaderných zařízení, cloudových regionů a expozice na trzích elektřiny.",
         "s2": "Zatížení sítě, výpadky, teplo, požáry a vrstva počasí ukazují, které výpočetní koridory jsou dnes pod tlakem.",
         "s3": "Panely společností, burz a makro ukazují, kdo je exponován, když se energie, výpočetní kapacita a kapitál střetnou.",
         "s4": "Riziko AI infrastruktury se projevuje pouze tehdy, když fyzická aktiva, klimatické signály a trhy sdílejí jednu obrazovku.",
@@ -559,7 +560,7 @@
       "m4": {
         "kicker": "Kabely + výpadky + obchod",
         "title": "Přerušení kabelu se stává kaskádou",
-        "s1": "Podmořské kabely, přistávací stanice, přístavy, potrubí a kritické body jsou mapovány společně.",
+        "s1": "{{submarineCables}} podvodních kabelů, přistávacích stanic, přístavů, potrubí a průsmyků je namapováno dohromady.",
         "s2": "Kanály internetových a BGP anomálií ukazují, zda se fyzická porucha stává digitálním výpadkem.",
         "s3": "Obchodní koridory, odolnost zemí a údaje o redundanci ukazují, kdo ztratí záložní trasy jako první.",
         "s4": "Poškození kabelu má důležitost, když se telekomunikační redundance, obchodní koridory a vystavení země sejdou.",
@@ -573,17 +574,17 @@
     "firstFive": {
       "eyebrow": "Od nuly k orientaci",
       "title": "Co se stane během prvních pěti minut na mapě?",
-      "sub": "Bez průvodce, bez prázdných stavů, bez zdi přihlášení. Toto se skutečně děje.",
+      "sub": "Žádný průvodce, žádné prázdné stavy, žádná registrační bariéra. Toto se stane během prvních 5 minut.",
       "f1Title": "Mapa se již pohybuje",
       "f1Desc": "Konflikty, plavidla, lety, požáry a výpadky se vykreslují při načítání stránky. Nic se nejdříve nekonfiguruje.",
       "f2Title": "Klikněte na jakoukoli zemi",
-      "f2Desc": "Otevře se úplný spis: skóre nestability s jeho komponentami, AI shrnutí s citovanými titulky, aktivní signály, 7denní časová osa.",
+      "f2Desc": "Pro vybranou zemi se otevře úplný spis: její skóre nestability rozložené na jednotlivé komponenty, briefing s podporou AI, který se odkazuje na články, na kterých je založen, aktivní signály na mapě a 7denní časová osa změn. Není potřeba nic připravovat; jeden klik otevře vše.",
       "f3Title": "Stiskněte ⌘K / Ctrl-K",
-      "f3Desc": "Příkazy. Přejděte na jakoukoli vrstvu, panel nebo zemi bez předchozího seznamování se s rozhraním.",
+      "f3Desc": "{{commands}} příkazů. Přejděte na jakoukoli vrstvu, panel nebo zemi bez nutnosti se nejdřív učit UI.",
       "f4Title": "Zvolte si svoji perspektivu",
-      "f4Desc": "World, Tech, Finance, Commodity, Energy nebo Happy — stejný engine, vyladěné monitory, jeden klik od sebe.",
+      "f4Desc": "Svět, Tech, Finance, Komodity, Energie nebo Happy — stejný základ, šest vyladěných monitorů, jeden klik od sebe.",
       "f5Title": "Viděli jste snad desetinu",
-      "f5Desc": "Zbytek se objevuje, když se svět pohybuje — průlety satelitů, GPS jamming, tmavé lodě, shluky protestů, upozornění na sirény.",
+      "f5Desc": "Když se mapa otevře na desktopu, {{defaultOnLayers}} z {{mapLayers}} typů vrstev mapy, přibližně {{defaultOnLayerPct}}%, je zapnuto. Zbývající se objevují s tím, jak se svět mění: průlety družic, rušení GPS, tmavé lodě označené z mezer v AIS, shluky protestů a výstrahy sirén civilní obrany. Většinu lze zapnout z nabídky vrstev nebo palety ⌘K.",
       "cta": "Spustit časomíru"
     },
     "depth": {
@@ -606,17 +607,17 @@
       "s14l": "Jazyky · včetně RTL",
       "s15l": "Nezávislé zdroje výstrah",
       "n1Title": "Sledování satelitů",
-      "n1Desc": "Živé orbitální pozice počítané v prohlížeči pomocí SGP4 — sledujte ISS, Starlink a vojenské družice nad vámi.",
+      "n1Desc": "Živé orbitální pozice počítané v prohlížeči pomocí SGP4 a aktualizované každé 3 sekundy — vojenské a pozorovací satelity Země z CelesTrak, aktualizované každé 2 hodiny.",
       "n2Title": "Zóny rušení GPS",
-      "n2Desc": "Živá mapa RF rušení ukazující, kde je GPS v tuto chvíli zhoršeno nebo zfalšováno.",
+      "n2Desc": "Denní mapa elektromagnetických interferencí ze zpráv letadel: buňky, kde nejméně 2 % letadel hlásí zhoršený GPS, jsou označeny, nad 10 % jsou označeny jako vysoké. Buňky jsou šestiúhelníky obnovované jednou denně z těchto zpráv, takže mapa ukazuje, kde se letadla v poslední den setkala s rušením nebo falšováním, nikoliv v tuto chvíli.",
       "n3Title": "Intel o kritických průchodech",
       "n3Desc": "Počty lodí procházejících Hormuzem, Suezem, Bab el-Mandebem a 10 dalšími průlivy — s vyhodnocením přerušení.",
       "n4Title": "Mapa AI datových center",
-      "n4Desc": "313 AI datových center zmapovaných s metadaty energie a operátora — fyzická vrstva AI závodu.",
+      "n4Desc": "{{aiDatacenters}} datových center AI namapováno s metadaty napájení a operátorů — fyzická vrstva závodu o AI.",
       "n5Title": "Podmořské kabely",
-      "n5Desc": "Podmořské kabely, které přenášejí internet, překryté signály výpadků a hrozeb.",
+      "n5Desc": "{{submarineCables}} podvodních kabelů, které přenášejí internet, překryté signály výpadků a hrozeb.",
       "n6Title": "Sledování protestů",
-      "n6Desc": "Detekce protestů ze dvou zdrojů s odstraňováním duplikátů — signál, ne zvěst.",
+      "n6Desc": "Detekce protestů z ACLED a GDELT; zprávy z jednoho zdroje ve stejné 0,1° buňce ve stejný den se sloučí do jedné události — signál, nikoli zvěst.",
       "faith": "Nevěřte číslům na slovo —",
       "faithCta": "otevřete aplikaci a počítejte sami.",
       "faithNote": "Zdroje jsou citovány na každém panelu."
@@ -624,8 +625,8 @@
     "agents": {
       "eyebrow": "Pro tvůrce a AI agenty",
       "title": "Jak vytvářím na World Monitor ze svého vlastního stacku?",
-      "sub": "Vše na mapě je také API. Připojte to do Claudea přes MCP, zavolejte REST endpointy odkudkoli, nebo nainstalujte nativního klienta pro Python, Ruby, Go nebo JavaScript — váš kód provádí výzkum s živými daty místo paměti trénovacích dat.",
-      "b1": "MCP nástroje — skóre rizika, úzká místa, konflikty, trhy, souhrny",
+      "sub": "Všechno na mapě je také API. Propojte to s Claude přes MCP s {{mcpTools}} živými nástroji, volajte REST endpointy odkudkoliv, nebo nainstalujte nativního klienta pro Python, Ruby, Go nebo JavaScript — váš kód provádí výzkum s živými daty místo pamětí z trénovacích dat. Přístup přes MCP je součástí Pro za ${{proMonthlyPrice}}/měsíc.",
+      "b1": "{{mcpTools}} nástrojů MCP – skóre rizika, úzká místa, konflikty, trhy, briefingy",
       "b2": "Dokumentované REST API — jedna specifikace OpenAPI 3.1, jeden klíč",
       "b3": "Oficiální SDK na npm, PyPI, RubyGems a Go — bez závislostí, MCP-first",
       "b4": "JMESPath projekce na každém volání — načtěte přesně ta pole, která potřebujete",
@@ -647,9 +648,9 @@
       "eyebrow": "Přístup",
       "title1": "Zdarma je observatoř.",
       "title2": "Pro je operační místnost.",
-      "sub": "Dashboard je zdarma — všechny mapové vrstvy kromě Resilience, všechny zdroje, bez registrace. Pro přidává vrstvu rozhodování.",
+      "sub": "Dashboard je zdarma za $0 — každá vrstva mapy kromě Resilience, bez registrace. Pro přidává vrstvu rozhodování.",
       "freeTitle": "Zdarma",
-      "freeDesc": "Bezplatná úroveň je úplný produkt, ne zkušební verze. Všechny mapové vrstvy kromě Resilience, všechny zdroje, všechny monitory — bez registrace, bez časového omezení.",
+      "freeDesc": "Bezplatná úroveň je plný produkt, nikoli zkušební verze. Každá vrstva mapy kromě Resilience, všech šest monitorů — bez registrace, bez časového limitu zkušební verze.",
       "freeF1": "Všechny mapové vrstvy kromě Resilience & kurovaných kanálů",
       "freeF2": "Zemské briefy, hotspoty, skóry instability",
       "freeF3": "Kritické průchody, kabely, analýza kaskád",
@@ -662,24 +663,24 @@
       "proF4": "MCP, REST API & oficiální SDK — živé nástroje pod jedním klíčem",
       "proF5": "Vlastní konstruktor widgetů pro vaše vlastní panely",
       "cta": "Zobrazit plány a ceny",
-      "note": "Od 39,99 Kč/měs · 3 měsíce zdarma při ročním fakturaci"
+      "note": "Od $39,99/měs · 3 měsíce zdarma při roční fakturaci"
     },
     "faq": {
       "eyebrow": "Bez háčku",
       "title": "Jaké jsou běžné otázky o World Monitor?",
       "q1": "Je World Monitor opravdu zdarma?",
-      "a1": "Ano. Živá mapa — každá vrstva kromě Resilience, kurovaných kanálů, zemských souhrnů, kritických upozornění a monitorovacích ploch — je zdarma bez registrace a bez časového limitu zkoušky. Pro platí za kanály: přidává WM Analyst, scenario engine, Route Explorer, plánované souhrny, přístup MCP pro AI klienty a mapovou vrstvu Resilience. Bez reklam a bez účtu znamená, že nejsou žádná uživatelská data k prodeji.",
+      "a1": "Ano. Live mapa je zdarma bez registrace a bez zkušební doby: {{mapLayers}} typů map layers, všechny kromě Resilience, plus kurátované zdroje, briefy o zemích, breaking alerts a monitoring surfaces. Pro financuje zdroje: přidává WM Analyst, scenario engine, Route Explorer, naplánované digesty, MCP access pro AI klienty a mapu layer Resilience. Bez reklam a bez účtu znamená, že není žádná uživatelská data k prodeji.",
       "q2": "Co je globální inteligentní panel?",
       "a2": "Jediné živé zobrazení, které spojuje signály, které většina nástrojů drží odděleně: konfliktní události, sledování lodí a letadel, kritická místa v přepravě, satelity, podmořské kabely, potrubí, trhy a kybernetické hrozby — na jedné mapě světa v reálném čase s AI skórováním a souhrny. World Monitor je ten zdarma.",
       "q3": "Odkud data pocházejí?",
-      "a3": "Pojmenované poskytovatele zahrnují ACLED a UCDP pro konflikty, AISStream pro živé plavidla, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makro — plus kurované zpravodajské kanály. Každý panel uvádí své zdroje a časové značky vložené.",
+      "a3": "Od {{providers}} atribuovaných poskytovatelů. Pojmenovaní poskytovatelé zahrnují ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makro – plus kurátorské zpravodajské zdroje. Každý panel cituje své zdroje a časové značky přímo v textu.",
       "q4": "Mohu sledovat kritická místa jako Hormuz nebo Bab el-Mandeb v reálném čase?",
-      "a4": "Ano. Úzká místa jsou sledována s počty živých AIS plavidel, změnami tranziturů týden na týden a skóre narušení — a anomálie hustoty jsou označeny proti základní linii každého průlivu.",
+      "a4": "Ano. {{chokepoints}} kritických bodů, jak průlivy tak kanály, od Hormuzského průlivu a Babelmandebského průlivu až po Suez, jsou sledovány s živými počty plavidel z AIS, změnami tranzitu týden na týden a skóre narušení — a anomálie hustoty jsou označeny vůči základní linii každého kritického bodu.",
       "q5": "Jak se liší od mapy konfliktů jako Liveuamap?",
       "a5": "Konflikt je jedna vrstva mapy. World Monitor spojuje konflikty se námořní dopravou, vojenským letectvem, infrastrukturou, trhy a kyberbezpečností — a pak AI vyhodnocuje jejich konvergenci: indexy nestability, eskalaci horkých míst, potvrzená urgentní hlášení a denní briefy. Porovnejte World Monitor s Liveuamap a dalšími konflikčními mapami: worldmonitor.app/compare/liveuamap-alternatives. Další možnosti monitorování najdete na worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
-      "a6": "Přerušující banner se aktivuje pouze pokud si nezávislé typy zdrojů potvrdí — klasifikace zpráv, rychlost klíčových slov, eskalace hotspotů, vojenské nárůsty, oficiální sirény — deduplikovány a omezeny podle frekvence. Méně alertů, skutečné.",
+      "a6": "Protože zpráva musí projít pevnými kontrolními body. Spustí se pro zprávy klasifikované jako kritická nebo vysoká hrozba a pro oficiální sirény civilní obrany. Výstraha zprávy musí být starší méně než 15 minut, stejná zpráva se zadržuje po dobu 30 minut a po jakékoli výstraze následuje 60sekundové zpoždění, pokud není nová výstraha vážnější. Shody pouze na základě klíčových slov z nižších zdrojů také potřebují potvrzení AI. Sirény přeskakují věková a zpoždění, protože jsou časově kritické.",
       "q7": "Mohou jej používat AI agenti jako Claude nebo GPT?",
-      "a7": "Ano. World Monitor dodává MCP server se živým registrem nástrojů, takže Claude, GPT nebo jakýkoliv MCP-kompatibilní agent může dotazovat živé skóre rizik, stav průsmyků, konflikty, trhy a briefy — s JMESPath projekcí, takže agenti získají přesně to, co potřebují.",
+      "a7": "Ano. Server MCP World Monitoru odhaluje {{mcpTools}} živých nástrojů, takže Claude, GPT nebo jakýkoliv agent kompatibilní s MCP může dotazovat skóre rizika, stav úzkých míst, konflikty, trhy a briefingy – s JMESPath projekcí, aby agenti načetli přesně to, co potřebují.",
       "q8": "Potřebuji účet?",
       "a8": "Ne. Dashboard funguje okamžitě bez registrace. Účet je důležitý pouze pokud upgradujete na Pro nebo chcete synchronizovat nastavení mezi zařízeními.",
       "q9": "Je to open source?",
@@ -688,11 +689,12 @@
       "q10": "Proč není World Monitor Palantir?",
       "a10": "Palantir zprovozňuje vlastní data instituce uvnitř té instituce. World Monitor začíná z druhé strany: shromažďuje, normalizuje, koreluje a monitoruje data veřejného světa, poté publikuje tuto inteligenční vrstvu přes bezplatný dashboard a open-source kód. Jiná úloha, jiný produkt.",
       "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "sub": "{{answers}} přímých odpovědí na cenu, data, upozornění a přístup k AI. Stručně: dashboard stojí $0, nevyžaduje účet a kód je open source pod licencí AGPL-3.0."
     },
     "cta": {
       "title": "Jak začít sledovat mapu světa?",
-      "subtitle": "Zatímco čteš tuto stránku, všechno se pořád pohybovalo — průlivy, hotspoty, trhy, kurátorované feedy. Jeden z nich je zítřejší titulní strana. Najdi ho první — zdarma, bez účtu.",
+      "subtitle": "Otevřete worldmonitor.app/dashboard v jakémkoliv prohlížeči za $0, bez účtu: {{mapLayers}} typů mapových vrstev, všechny kromě Resilience jsou zdarma k aktivaci. Klikněte na jakoukoli zemi pro její briefing, nebo stiskněte ⌘K / Ctrl-K pro příkazovou paletu. Mapa se během čtení této stránky stále aktualizuje.",
       "button": "Najdi jej první",
       "note": "Zdarma · Bez registrace · Načte se za sekundy",
       "secondary": "Nebo podívej se na Pro plány →"
@@ -700,13 +702,13 @@
     "tasks": {
       "eyebrow": "Začněte s otázkou",
       "title": "Co se snažíte zjistit?",
-      "sub": "Vyberte stopu důkazů, která odpovídá vaší úloze. Každá cesta otevře pohled podporovaný zdroji, nikoli prázdný dashboard.",
+      "sub": "Vyber kteroukoliv z {{routes}} stopů důkazů, který odpovídá tvému úkolu. Každá stopa otevře pohled podporovaný zdroji, ne prázdný dashboard.",
       "verifyTitle": "Ověřit prvotní zprávu",
       "verifyDesc": "Před důvěřením tvrzení o krizovém vývoji si ověřte aktuální sledování krizí, časově datované metriky a citované podklady.",
       "chokepointTitle": "Zkontrolovat kritické místo",
-      "chokepointDesc": "Zkontrolujte stav přerušení, toky plavidel a rizika na kritických námořních trasách.",
+      "chokepointDesc": "Prověřte stav poruch, toky lodí a rizika v {{chokepoints}} kritických námořních průsmycích.",
       "countryRiskTitle": "Vysvětlit posun v riziku země",
-      "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a resilienční signály za změnou v zemi.",
+      "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a odolnostní signály za změnami v jednotlivých zemích, s odolností hodnocenou pro {{resilienceRanked}} zemí.",
       "open": "Otevřít důkazy"
     }
   },

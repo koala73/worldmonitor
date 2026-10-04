@@ -1222,10 +1222,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · venue data:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "NO DATA",
+      "statusNoBaseline": "NO BASELINE",
+      "vsUsual": "vs usual",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Tensions: World Monitor from GDELT events",
+      "insufficientData": "Insufficient data",
+      "pizzaUnavailable": "Pizza activity unavailable",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",
@@ -1237,11 +1245,11 @@
       "minutesAgo": "{{m}}m ago",
       "hoursAgo": "{{h}}h ago",
       "defconLabels": {
-        "1": "COCKED PISTOL - MAXIMUM READINESS",
-        "2": "FAST PACE - ARMED FORCES READY",
-        "3": "ROUND HOUSE - INCREASE FORCE READINESS",
-        "4": "DOUBLE TAKE - INCREASED INTELLIGENCE WATCH",
-        "5": "FADE OUT - LOWEST READINESS"
+        "1": "Maximum Activity",
+        "2": "High Activity",
+        "3": "Elevated Activity",
+        "4": "Above Normal",
+        "5": "Normal Activity"
       }
     },
     "strategicPosture": {
@@ -2966,6 +2974,10 @@
     "protest": {
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
+      "records": "records",
+      "mediaSignal": "Unverified media signal",
+      "relatedArticle": "Related article",
+      "mediaSignalDetail": "This location is mentioned in unrest-related articles. A local event is not verified.",
       "riots": "Riots",
       "highSeverity": "High Severity"
     },

@@ -14298,8 +14298,11 @@ a.prediction-link:hover {
   display: flex;
 }
 
-/* Non-blocking confirm dialog (#4559) — replaces native confirm(). Sits above
-   the settings modal; mirrors the mobile-warning overlay tokens. */
+/* Non-blocking confirm dialog (#4559) — replaces native confirm(); mirrors the
+   mobile-warning overlay tokens. Appended to document.body, not nested in
+   #unifiedSettingsModal, so it must out-stack .modal-overlay (9999): below it,
+   the discard prompt is hidden behind Settings and the close button goes dead
+   while it waits (WORLDMONITOR-15Z). Same layer as the account-deletion dialog. */
 .confirm-dialog-overlay {
   position: fixed;
   inset: 0;
@@ -14308,7 +14311,7 @@ a.prediction-link:hover {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 4000;
+  z-index: 10050;
   padding: 20px;
 }
 
@@ -14503,11 +14506,6 @@ a.prediction-link:hover {
   color: var(--accent);
 }
 
-.pizzint-score {
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-dim);
-}
-
 .pizzint-panel {
   position: absolute;
   top: 100%;
@@ -14568,7 +14566,8 @@ a.prediction-link:hover {
 
 .pizzint-locations {
   padding: 8px 16px;
-  max-height: 180px;
+  /* Six venues without a scrollbar; more would scroll. */
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -14686,6 +14685,8 @@ a.prediction-link:hover {
 
 .pizzint-footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   justify-content: space-between;
   padding: 8px 16px;
   border-top: 1px solid var(--overlay-medium);

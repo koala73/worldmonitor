@@ -52,7 +52,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run typecheck
       - run: npm run typecheck:api
       # `npm run typecheck` covers src/ only, so tests/ and shared modules reached only from tests

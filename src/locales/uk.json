@@ -1230,10 +1230,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Індекс: World Monitor · дані закладів:",
+      "statusNormal": "НОРМА",
+      "statusNoData": "НЕМАЄ ДАНИХ",
+      "statusNoBaseline": "НЕМАЄ БАЗОВОГО РІВНЯ",
+      "vsUsual": "відносно норми",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Напруженість: World Monitor на основі подій GDELT",
+      "insufficientData": "Недостатньо даних",
+      "pizzaUnavailable": "Дані про активність піцерій недоступні",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",
@@ -1245,11 +1253,11 @@
       "minutesAgo": "{{m}}m ago",
       "hoursAgo": "{{h}}h ago",
       "defconLabels": {
-        "1": "COCKED PISTOL - MAXIMUM READINESS",
-        "2": "FAST PACE - ARMED FORCES READY",
-        "3": "ROUND HOUSE - INCREASE FORCE READINESS",
-        "4": "DOUBLE TAKE - INCREASED INTELLIGENCE WATCH",
-        "5": "FADE OUT - LOWEST READINESS"
+        "1": "Максимальна активність",
+        "2": "Висока активність",
+        "3": "Підвищена активність",
+        "4": "Вище норми",
+        "5": "Нормальна активність"
       }
     },
     "strategicPosture": {
@@ -2962,8 +2970,8 @@
       "tierTitle3": "Рівень 3: Спеціалізовані, регіональні джерела та аналітичні центри",
       "tierTitle4": "Рівень 4: Агрегатори та блоги",
       "tierTitleUndeclared": "Рівень не визначений: ще не переглянуто",
-      "rosterSummary": "Повідомляють {{publishers}}",
-      "rosterSummaryTier1": "Повідомляють {{publishers}}, зокрема рівня 1: {{tier1}}",
+      "rosterSummary": "Повідомили: {{publishers}}",
+      "rosterSummaryTier1": "Повідомили: {{publishers}}, з них рівня 1: {{tier1}}",
       "rosterPublishers_one": "{{count}} видавець",
       "rosterPublishers_few": "{{count}} видавці",
       "rosterPublishers_many": "{{count}} видавців",
@@ -3006,6 +3014,10 @@
     "protest": {
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
+      "records": "записів",
+      "mediaSignal": "Неперевірений медіасигнал",
+      "relatedArticle": "Пов’язана стаття",
+      "mediaSignalDetail": "Це місце згадується у статтях про заворушення. Місцеву подію не підтверджено.",
       "riots": "Riots",
       "highSeverity": "High Severity"
     },

@@ -12,6 +12,7 @@ import { PricingTeaser } from './welcome/PricingTeaser';
 import { FAQ } from './welcome/FAQ';
 import { FinalCta } from './welcome/FinalCta';
 import { Footer } from './components/Footer';
+import { t } from './i18n';
 import { readDocumentCookie } from './services/clerk-session';
 import { maybeRedirectWelcomeVisitor } from './services/welcome-redirect';
 
@@ -30,8 +31,14 @@ export default function WelcomeApp() {
 
   return (
     <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-sm focus:bg-wm-green focus:px-4 focus:py-2 focus:font-mono focus:text-xs focus:font-bold focus:uppercase focus:tracking-wider focus:text-wm-bg"
+      >
+        {t('welcome.nav.skipToContent')}
+      </a>
       <Nav />
-      <main>
+      <main id="main-content" tabIndex={-1} className="focus:outline-none">
         <Hero />
         <TaskRoutes />
         <LiveStrip />

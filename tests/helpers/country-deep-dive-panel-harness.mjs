@@ -351,7 +351,17 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/config/feeds', 'feeds-stub'],
     ['@/services/country-geometry', 'country-geometry-stub'],
     ['@/services/i18n', 'i18n-stub'],

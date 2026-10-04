@@ -1078,10 +1078,18 @@
       "skipToEnd": "跳到結尾"
     },
     "pizzint": {
+      "indexSource": "指數：World Monitor · 場所資料：",
+      "statusNormal": "正常",
+      "statusNoData": "無資料",
+      "statusNoBaseline": "無基準",
+      "vsUsual": "較平常",
       "title": "五角大樓披薩指數",
       "defcon": "DEFCON {{level}}",
       "updated": "更新於{{timeAgo}}",
       "tensionsTitle": "地緣政治緊張局勢",
+      "tensionsSource": "緊張局勢：World Monitor 根據 GDELT 事件計算",
+      "insufficientData": "資料不足",
+      "pizzaUnavailable": "披薩店活動資料不可用",
       "source": "來源：",
       "statusClosed": "已關閉",
       "statusSpike": "激增",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}分鐘前",
       "hoursAgo": "{{h}}小時前",
       "defconLabels": {
-        "1": "手槍上膛 - 最高戰備",
-        "2": "快速節奏 - 武裝部隊就緒",
-        "3": "圓屋 - 提高部隊戰備",
-        "4": "雙重確認 - 加強情報監視",
-        "5": "淡出 - 最低戰備"
+        "1": "最高活動",
+        "2": "高活動",
+        "3": "活動升高",
+        "4": "高於正常",
+        "5": "正常活動"
       }
     },
     "strategicPosture": {
@@ -2877,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED（已驗證）",
       "gdelt": "GDELT",
+      "records": "條記錄",
+      "mediaSignal": "未經核實的媒體訊號",
+      "relatedArticle": "相關文章",
+      "mediaSignalDetail": "此地點在有關動亂的文章中被提及。當地事件尚未得到核實。",
       "riots": "騷亂",
       "highSeverity": "高嚴重性"
     },

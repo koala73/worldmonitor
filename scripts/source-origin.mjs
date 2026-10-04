@@ -84,6 +84,7 @@ const HOST_ORIGINS = Object.freeze({
   'ayibopost.com': 'HT',
   'bangkokpost.com': 'TH',
   'bellingcat.com': 'NL',
+  'besttime.app': 'NL',
   'bihus.info': 'UA',
   'binance.com': null,
   'bloomberg.com': 'US',

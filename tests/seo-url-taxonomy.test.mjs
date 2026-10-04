@@ -10,6 +10,7 @@ import {
   sitemapUrls,
 } from '../scripts/lib/seo-url-taxonomy.mjs';
 import { PAGE_FAMILIES } from '../scripts/seo-ai-visibility-scorecard.mjs';
+import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
 
 const repoUrl = (relativePath) => new URL(`../${relativePath}`, import.meta.url);
 
@@ -45,7 +46,9 @@ describe('seo url taxonomy', () => {
   });
 
   it('maps every sitemap URL to exactly one family and exactly one kind', () => {
-    const allUrls = [...mainSitemapUrls, ...blogSitemapUrls, ...docsSitemapUrls];
+    // The markdown twins left the sitemap (#8608) but Search Console still
+    // reports them, so they must keep mapping to one family and kind.
+    const allUrls = [...mainSitemapUrls, ...blogSitemapUrls, ...docsSitemapUrls, ...MACHINE_READABLE_URLS];
     assert.ok(allUrls.length > 300, `expected all three sitemap inventories, got ${allUrls.length}`);
     const families = new Set();
     const kinds = new Set();

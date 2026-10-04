@@ -60,11 +60,13 @@ export interface CountryDeepDiveBaseSummary {
 }
 
 export interface CountryDeepDiveMilitarySummary {
-  ownFlights: number;
-  foreignFlights: number;
-  nearbyVessels: number;
+  ownFlights: number | null;
+  foreignFlights: number | null;
+  nearbyVessels: number | null;
   nearestBases: CountryDeepDiveBaseSummary[];
-  foreignPresence: boolean;
+  foreignPresence: boolean | null;
+  coverageNotes?: string[];
+  coverage?: 'complete' | 'partial';
 }
 
 export interface CountryDeepDiveEconomicIndicator {
@@ -202,6 +204,8 @@ export interface CountryPortActivityData {
 }
 
 export interface CountryBriefPanel {
+  setSectionFailure?(id: import('../../shared/country-brief-sections').BriefSectionId, state: 'locked' | 'unavailable', reason: string): void;
+  setSectionCoverage?(id: import('../../shared/country-brief-sections').BriefSectionId, missing: string[]): void;
   show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
   hide(): void;
   showLoading(): void;
@@ -220,7 +224,7 @@ export interface CountryBriefPanel {
   updateScore?(score: CountryScore | null, signals: CountryBriefSignals): void;
   isFallbackBrief?(): boolean;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
-  updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
+  updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary | null): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
   syncCountryPremiumSectionsAccess?(hasAccess: boolean): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;

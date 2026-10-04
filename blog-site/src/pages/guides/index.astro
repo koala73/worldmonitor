@@ -1,0 +1,65 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+const guides = await getCollection('guides');
+const sections = [
+  { category: 'vs', title: 'Head-to-head comparisons' },
+  { category: 'alternatives', title: 'Alternatives by task' },
+  { category: 'best', title: 'Best tools for your work' },
+].map(section => ({
+  ...section,
+  guides: guides.filter(guide => guide.id.startsWith(`${section.category}/`)),
+}));
+const orderedGuides = sections.flatMap(section => section.guides);
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Intelligence tool comparisons and buying guides',
+  url: 'https://www.worldmonitor.app/blog/guides/',
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: orderedGuides.map((guide, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: guide.data.title,
+      url: `https://www.worldmonitor.app/blog/${guide.id}/`,
+    })),
+  },
+};
+---
+
+<Base title="Intelligence tool comparisons and buying guides | World Monitor" description="Compare World Monitor with Liveuamap, ACLED, Dataminr, Recorded Future, and Crisis24. Find the best intelligence tools for ten audiences." jsonLd={jsonLd}>
+  <div class="blog-hero">
+    <h1>Choose the right <span class="green">intelligence tool.</span></h1>
+    <p class="subtitle">Twenty practical guides. Clear tradeoffs. Competitors recommended where they fit the work better.</p>
+  </div>
+  <div class="blog-list">
+    <p class="disclosure">Published by World Monitor. Recommendations reflect documented capabilities, not measured market share or a hands-on vendor benchmark. Sources checked October 2, 2026.</p>
+    {sections.map(section => (
+      <section aria-labelledby={section.category}>
+        <h2 id={section.category}>{section.title}</h2>
+        <div class="post-grid">
+          {section.guides.map(guide => (
+            <a class="post-card" href={`/blog/${guide.id}/`}>
+              <h3>{guide.data.title}</h3>
+              <p>{guide.data.description}</p>
+              <span class="meta">Read the guide &rarr;</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))}
+  </div>
+</Base>
+
+<style>
+  .disclosure { max-width: 780px; margin-bottom: 2rem; color: var(--wm-muted); font-size: 0.85rem; }
+  section { margin-bottom: 3rem; }
+  h2 { margin-bottom: 1rem; font: 700 1.4rem var(--font-display); }
+  h3 { padding: 1.5rem 1.75rem 0.75rem; color: var(--wm-text); font: 700 1.125rem/1.4 var(--font-display); }
+  @media (max-width: 480px) {
+    .blog-list { padding: 1.5rem 1.25rem; }
+    .post-card { padding: 0; }
+  }
+</style>

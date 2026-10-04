@@ -1504,10 +1504,11 @@ export const RPC_TOOLS: ToolDef[] = [
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
+    description: 'Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
       type: 'object',
       properties: {
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
@@ -1835,6 +1836,7 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
         window_hours: { type: 'integer', minimum: 0, maximum: 168, description: 'Look-back window in hours. 0 or omitted means the default 168 (7 days), which is what the UI shows. The upstream coverage query is pinned to 7 days, so a larger value is rejected rather than silently returning the same events.' },
         limit: { type: 'integer', minimum: 0, maximum: 500, description: 'Maximum timeline events to return, keeping the most recent. 0 or omitted means the default 200.' },
@@ -3099,7 +3101,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
     // useful growth headroom instead of charging quota for a budget envelope.
     _outputBudgetBytes: 524288,
-    description: 'An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
+    description: 'Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3150,7 +3152,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // Same redaction path and same empty licence surface as
     // get_supply_vulnerabilities above — no rider to attach.
     _outputBudgetBytes: 131072,
-    description: 'An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
+    description: 'Return country commodity dependencies by chokepoint, where an absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
     inputSchema: {
       type: 'object',
       properties: {

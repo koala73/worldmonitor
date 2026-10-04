@@ -33,6 +33,8 @@
  *   - byte-identical nested Schema Objects  -> reused local $refs
  *   - repeated response headers, generated int64 warnings, and China
  *     date-precision unions                  -> components $refs
+ *     (described int64 fields keep their own comment and numeric bounds
+ *     as OpenAPI 3.1 $ref siblings; the warning lives in the component)
  *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
  *     back to the source document in tests, proving they are lossless)
  *   - repeated subtrees too deep for an inline-target ref to pay for
@@ -208,7 +210,7 @@ function main() {
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
       `hoisted ${headerStats.hoisted} shared response headers into ${headerStats.replacedRefs} $refs; ` +
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
-      `reused ${int64Stats.replacedRefs} generated int64 schemas; ` +
+      `reused ${int64Stats.replacedRefs} generated int64 schemas (+${int64Stats.describedRefs} described int64 fields); ` +
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +

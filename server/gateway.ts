@@ -300,6 +300,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/search-google-dates': 'medium',
   '/api/aviation/v1/list-aviation-news': 'slow',
   '/api/market/v1/get-country-stock-index': 'slow',
+  '/api/market/v1/get-price-history': 'static',
 
   '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',

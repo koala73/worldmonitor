@@ -12,6 +12,9 @@ const pure = source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);
 const tail = source.slice(source.indexOf('async function fetchSanctionsPressure()')).replace(/^export /gm, '');
 const normalize = value => JSON.parse(JSON.stringify(value));
 const now = Date.UTC(2026, 8, 25);
+// OFAC's lists change slowly; a Railway container that loses egress for two 6h
+// runs must not drop ~20k OFAC entities (2026-09-27: 12h retention published 0 SDN).
+const RETAIN_MS = 48 * 3600000;
 const row = (source, i) => ({
   id: source === SEMA_SOURCE ? `sema-ca:iran:1-part-2:${i}` : `${source}:${i}`,
   name: `${source} Person ${i}`, sourceLists: [source], countryCodes: [], countryNames: [],
@@ -105,9 +108,10 @@ describe('sanctions source lifecycle', () => {
     const snapshot = failed.data._sourceSnapshots[SEMA_SOURCE];
     assert.deepEqual(normalize(snapshot.records[79]._aliases), ['Alias sema-ca 80']);
     assert.equal(snapshot.fetchedAt, now);
-    assert.equal(snapshot.retainedUntil, now + 12 * 3600000);
+    assert.equal(snapshot.retainedUntil, now + RETAIN_MS);
     assert.equal(failed.data.datasetDate, fresh.data.datasetDate);
-    const retried = await publish({ successes: [], stored: await save(failed), clock: now + 11 * 3600000 });
+    const retried = await publish({ successes: [], stored: await save(failed), clock: now + 12 * 3600000 });
+    assert.equal(retried.data.totalCount, 82, 'two missed 6h runs keep every retained source');
     assert.equal(retried.data._sourceSnapshots[SEMA_SOURCE].retainedUntil, snapshot.retainedUntil);
     assert.equal(retried.data._sourceSnapshots[SEMA_SOURCE].publishedAt, snapshot.publishedAt);
   });
@@ -119,7 +123,7 @@ describe('sanctions source lifecycle', () => {
 
   it('publishes an explicit empty error once every fixed source deadline expires', async () => {
     const stored = await save(await publish());
-    const { data, options } = await publish({ successes: [], stored, clock: now + 12 * 3600000 });
+    const { data, options } = await publish({ successes: [], stored, clock: now + RETAIN_MS });
     assert.equal(data.totalCount, 0);
     assert.equal(options.zeroIsValid, true);
     assert.equal(options.validateFn(data), true);
@@ -161,7 +165,7 @@ describe('sanctions source lifecycle', () => {
     const original = (await publish()).data._sourceSnapshots;
     const mutate = [
       snapshot => { snapshot.records[0].id = 'sema-ca:unspecified:unspecified:0'; },
-      snapshot => { snapshot.fetchedAt = now + 2 * 3600000; snapshot.retainedUntil = snapshot.fetchedAt + 720 * 60000; },
+      snapshot => { snapshot.fetchedAt = now + 2 * 3600000; snapshot.retainedUntil = snapshot.fetchedAt + RETAIN_MS; },
       snapshot => { snapshot.retainedUntil += 1; },
       snapshot => { snapshot.records.push(snapshot.records[0]); },
       snapshot => { snapshot.records[0].sourceLists = ['SDN']; },
@@ -173,6 +177,33 @@ describe('sanctions source lifecycle', () => {
       const { data } = await publish({ successes: ['SDN'], stored, clock: now + 3600000 });
       assert.equal(data.semaCount, 0);
       assert.equal(data._sourceHealth[SEMA_SOURCE].status, 'unavailable');
+    }
+  });
+
+  // A snapshot written by the 12h build must survive the deploy that introduces
+  // 48h, or the first failed run after deploy drops a still-live cohort.
+  it('accepts a 12h-era snapshot and moves its deadline to 48h from its original fetch', async () => {
+    const legacy = normalize((await publish()).data._sourceSnapshots);
+    for (const snapshot of Object.values(legacy)) snapshot.retainedUntil = snapshot.fetchedAt + 12 * 3600000;
+    const stored = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(legacy)).toString('base64') };
+    for (const clock of [now + 6 * 3600000, now + 30 * 3600000]) {
+      const { data } = await publish({ successes: [], stored, clock });
+      assert.equal(data.totalCount, 82, `retained at +${(clock - now) / 3600000}h`);
+      for (const snapshot of Object.values(data._sourceSnapshots)) {
+        assert.equal(snapshot.fetchedAt, now);
+        assert.equal(snapshot.retainedUntil, now + RETAIN_MS);
+      }
+    }
+    const expired = await publish({ successes: [], stored, clock: now + RETAIN_MS });
+    assert.equal(expired.data.totalCount, 0);
+  });
+
+  it('preserves the private snapshot key at its own TTL when a whole run fails', async () => {
+    const { options } = await publish();
+    const ttls = Object.fromEntries(options.preserveKeyTtls.map(({ key, ttlSeconds }) => [key, ttlSeconds]));
+    for (const key of ['sanctions:source-snapshots:v1', 'seed-meta:sanctions:source-snapshots']) {
+      assert.ok(ttls[key] * 1000 > RETAIN_MS, `${key} must outlive the retention deadline`);
+      assert.ok(!options.preserveKeys.includes(key), `${key} must not also sit in the canonical-TTL cohort`);
     }
   });
 
@@ -189,9 +220,9 @@ describe('sanctions source lifecycle', () => {
 
   it('writes complete selected companions, including empty companions after expiry', async () => {
     const stored = await save(await publish());
-    for (const clock of [now + 3600000, now + 720 * 60000]) {
+    for (const clock of [now + 3600000, now + RETAIN_MS]) {
       const { data, options, writes } = await publish({ successes: [], stored, clock });
-      const count = clock < now + 720 * 60000 ? 82 : 0;
+      const count = clock < now + RETAIN_MS ? 82 : 0;
       assert.equal(options.publishTransform(data).totalCount, count);
       assert.equal(options.validateFn(options.publishTransform(data)), true);
       assert.equal(options.declareRecords(options.publishTransform(data)), count);
@@ -262,7 +293,7 @@ it('uses the real strict Redis reader to distinguish missing snapshots from HTTP
 it('publishes all-source expiry through real runSeed with empty companions and persisted error metadata', async () => {
   await withLocalRedis(async ({ store, logs }) => {
     const stored = await save(await publish());
-    const { data, options } = await publish({ successes: [], stored, clock: now + 720 * 60000, io: { writeExtraKeyWithMeta } });
+    const { data, options } = await publish({ successes: [], stored, clock: now + RETAIN_MS, io: { writeExtraKeyWithMeta } });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => data, options), error => error.exitCode === 0);
     const canonical = JSON.parse(store.get('sanctions:pressure:v1'));
     assert.equal(canonical.data.totalCount, 0);

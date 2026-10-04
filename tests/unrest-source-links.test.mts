@@ -60,3 +60,13 @@ describe('unrest source links', () => {
     assert.doesNotMatch(html, /popup-source-links/);
   });
 });
+
+it('keeps GDELT media links separate from ACLED event evidence in either input order', () => {
+  for (const reverse of [false, true]) {
+    const media = serverEvent(['https://news.example/unrelated']);
+    const acled = { ...serverEvent(['https://acled.example/event']), sourceType: 'UNREST_SOURCE_TYPE_ACLED' as const, sources: ['ACLED'], confidence: 'CONFIDENCE_LEVEL_HIGH' as const };
+    const result = deduplicateEvents(reverse ? [media, acled] : [acled, media]);
+    assert.equal(result.length, 2);
+    assert.deepEqual(result.find(e => e.sourceType === 'UNREST_SOURCE_TYPE_ACLED')?.sourceUrls, ['https://acled.example/event']);
+  }
+});

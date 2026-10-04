@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Ihr KI-Analyst. Ein persönlicher Intelligence-Desk. Eine Plattform zum Aufbau darauf. Ein Key über alle Live-Services.",
+    "proDesc": "Ihr KI-Analyst. Ein persönlicher Intelligence-Desk. Eine Plattform zum Aufbau darauf.",
     "proF1": "WM Analyst Chat – Live-Services im Gespräch abfragen",
     "proF2": "KI-Digest — täglich, zweimal täglich oder wöchentlich — an Slack, Discord, Telegram, E-Mail oder Webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS mit KI-unterstützter Anpassung",
@@ -452,7 +452,7 @@
   "welcome": {
     "meta": {
       "title": "World Monitor — Kostenloses Live-Dashboard für globale Informationen in Echtzeit",
-      "description": "Bevor es Nachrichten sind, wussten Sie es bereits. Konflikte, Schifffahrtsengpässe, Militärflüge, Märkte und Cyber auf einer kostenlosen Live-Weltkarte mit KI-Analyse. Keine Anmeldung erforderlich.",
+      "description": "Bis es Nachrichten sind, wissen Sie bereits Bescheid. Konflikte, Engpässe, Militärflugverkehr, Märkte, Cyber: eine kostenlose Live-Karte mit KI-Analyse. Keine Registrierung erforderlich.",
       "ogTitle": "World Monitor — Bevor es Nachrichten sind, wussten Sie es bereits.",
       "ogDescription": "Die Rohsignale der Welt — Schiffe, Jets, Sirenen, Kabel, Märkte — auf einer kostenlosen Live-Intelligenz-Karte mit KI, die kennzeichnet, wenn sie zusammenlaufen. Kostenlos, keine Anmeldung."
     },
@@ -466,7 +466,8 @@
       "launch": "Dashboard starten",
       "blog": "Blog",
       "menu": "Menü",
-      "agents": "Für KI-Agenten"
+      "agents": "Für KI-Agenten",
+      "skipToContent": "Zum Inhalt springen"
     },
     "hero": {
       "eyebrow": "Kostenloses globales Informations-Dashboard · live jetzt",
@@ -482,9 +483,9 @@
       "plateNote": "Erfasst von der Live-Karte — klicken Sie zum Öffnen",
       "trustBuild": "Darauf aufbauen:",
       "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
-      "asOf": "Stand: 8. September 2026",
+      "asOf": "Stand: {{date}}",
       "whatIsTitle": "Was ist World Monitor?",
-      "whatIsBody": "World Monitor ist ein kostenloses, quelloffenes Dashboard, das geopolitische, Markt-, Schiffs-, Luftfahrt-, Infrastruktur- und Cyber-Signale auf eine Live-Weltkarte streamt. Es korreliert separate Feeds zu einem einzigen Lagebild und kennzeichnet Konvergenzen vor den Schlagzeilen, wobei jede Kennzahl belegt und jede Methode dokumentiert ist."
+      "whatIsBody": "World Monitor ist ein kostenloses ($0), quelloffenes (AGPL-3.0) Dashboard, das von über 2 Millionen Menschen genutzt wird. Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenebenentypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Das System korreliert diese Daten, sodass zusammenhängende Ereignisse bereits vor den Schlagzeilen sichtbar werden. Jede Angabe ist belegt und jede Methode dokumentiert."
     },
     "live": {
       "eyebrow": "Live jetzt",
@@ -509,7 +510,7 @@
     "moments": {
       "eyebrow": "Korrelations-Engine",
       "title": "Wie korreliert World Monitor Signale?",
-      "sub": "Feeds findest du überall. Die Kante ist eine Oberfläche, auf der Geopolitik, Schifffahrt, Rohstoffe, Makro, Märkte, Wetter, Infrastruktur, Cyber, Nachrichten und Länderrisiko sich gegenseitig erklären können.",
+      "sub": "Es kombiniert {{mapLayers}} Kartenebenentypen auf einer Oberfläche, sodass Geopolitik, Schifffahrt, Rohstoffe, Makro, Märkte, Wetter, Infrastruktur, Cyber, Nachrichten und Länderrisiken sich gegenseitig erklären können. Jeder kann die Feeds sammeln; wenn man sie zusammen auf einer Karte bewegen sieht, macht das den Unterschied.",
       "signalStack": "Signale fusioniert",
       "correlation": "Korrelation",
       "bridge1": "Keine Feed-Liste.",
@@ -518,7 +519,7 @@
         "kicker": "Geopolitik + Märkte + Makro",
         "title1": "Die Marktbewegung",
         "title2": "hat eine Karte.",
-        "s1": "Länderrisiko, Sanktionen, Eskalation von Konflikten, offizielle Warnungen und Nachrichtengeschwindigkeit zeigen, wo geopolitischer Druck steigt.",
+        "s1": "Länderrisiko, Sanktionen, Eskalation über {{hotspots}} bewertete Brennpunkte – offizielle Warnungen und Nachrichtengeschwindigkeit zeigen, wo geopolitischer Druck steigt.",
         "s2": "Schiffe, Engpässe, Flüge, Kabel und Infrastruktur-Nähe zeigen, ob dieser Druck Angebot, Handel oder Kapitalrouten treffen kann.",
         "s3": "Zinssätze, Devisen, Aktien, Krypto, Energie und sichere Häfen zeigen, welches Marktregime neu bewertet wird.",
         "s4": "Die Kante sieht geopolitischen Druck, Übertragungsweg und Preisbewegung zusammen, bevor es eine Konsens-Note wird.",
@@ -532,7 +533,7 @@
         "kicker": "Rohstoffe + Engpässe + Wetter",
         "title1": "Rohstoffbewegungen beginnen",
         "title2": "in der physischen Welt.",
-        "s1": "AIS, Häfen, Pipelines, LNG, Raffinerien, Wasserstraßen und Engpässe zeigen, wenn das Angebot sinkt, umgeleitet oder konzentriert wird.",
+        "s1": "AIS, Häfen, Pipelines, LNG, Raffinerien, Wasserstraßen und {{chokepoints}} Engpässe zeigen, wenn Lieferungen sich verlangsamen, umleiten oder konzentrieren.",
         "s2": "Wetter, Brände, Erdbeben, Ausfälle und Konflikt-Layer zeigen die physischen Ereignisse, die Produktion oder Transport treffen können.",
         "s3": "Öl, Gas, Gold, Getreide, Bergbaubetriebe, Schifffahrtsnamen und rohstoffgebundene Währungen zeigen, wie der Schock sich durchpreist.",
         "s4": "Rohstoffintelligenz funktioniert nur, wenn physischer Fluss, Disruptionssignal und Marktspanne zusammen sichtbar sind.",
@@ -546,7 +547,7 @@
         "kicker": "KI-Infrastruktur + Energie + Klima",
         "title1": "Der KI-Boom hat",
         "title2": "eine physische Bilanz.",
-        "s1": "KI-Rechenzentren sitzen neben Stromnetzen, Pipelines, LNG, Kernkraftwerken, Cloud-Regionen und Strommarkt-Engagement.",
+        "s1": "{{aiDatacenters}} KI-Rechenzentren liegen neben Stromnetzen, Pipelines, LNG, Kernkraftanlagen, Cloud-Regionen und Strommarkt-Exposure.",
         "s2": "Netzbelastung, Ausfälle, Hitze, Brände und Wetter-Layer zeigen, welche Compute-Korridore heute unter Druck stehen.",
         "s3": "Unternehmens-, Börsen- und Makro-Panels zeigen, wer exponiert ist, wenn Energie, Compute und Kapital aufeinandertreffen.",
         "s4": "KI-Infrastruktur-Risiko erscheint nur, wenn physische Assets, Klimasignale und Märkte einen Bildschirm teilen.",
@@ -559,7 +560,7 @@
       "m4": {
         "kicker": "Kabel + Ausfälle + Handel",
         "title": "Der Kabelbruch wird zur Kettenreaktion",
-        "s1": "Unterseekabel, Landestationen, Häfen, Pipelines und Engpässe werden zusammen kartiert.",
+        "s1": "{{submarineCables}} Unterseekabel, Landestationen, Häfen, Pipelines und Engpässe sind zusammen abgebildet.",
         "s2": "Internet- und BGP-Anomalie-Feeds zeigen, ob ein physischer Fehler zu einem digitalen Ausfall wird.",
         "s3": "Handelskorridore, Länderresilienz und Redundanzdaten zeigen, wer zuerst Ausweichrouten verliert.",
         "s4": "Kabelschäden sind relevant, wenn Telecom-Redundanz, Handelskorridore und Länderexposition zusammenfallen.",
@@ -573,17 +574,17 @@
     "firstFive": {
       "eyebrow": "Vom ersten Moment an orientiert",
       "title": "Was passiert in deinen ersten fünf Minuten auf der Karte?",
-      "sub": "Keine Tour, keine leeren Zustände, keine Registrierungsbarriere. Das ist, was wirklich passiert.",
+      "sub": "Keine Einführung, keine leeren Zustände, keine Registrierungssperre. Das ist, was in den ersten 5 Minuten tatsächlich passiert.",
       "f1Title": "Die Karte bewegt sich bereits",
       "f1Desc": "Konflikte, Schiffe, Flüge, Brände und Ausfälle werden beim Laden der Seite dargestellt. Vorher nichts zu konfigurieren.",
       "f2Title": "Klicke auf ein beliebiges Land",
-      "f2Desc": "Ein vollständiges Dossier öffnet sich: Instabilitätswert mit seinen Komponenten, eine AI-Zusammenfassung mit zitierten Schlagzeilen, aktive Signale, eine 7-Tage-Zeitleiste.",
+      "f2Desc": "Ein vollständiges Dossier öffnet sich für dieses Land: sein Instabilitätsscore aufgeschlüsselt nach den Komponenten, ein KI-Brief, der die zugrunde liegenden Schlagzeilen zitiert, die aktiven Signale auf der Karte und eine 7-Tage-Zeitleiste der Veränderungen. Es muss nichts vorher eingerichtet werden; ein Klick öffnet alles.",
       "f3Title": "Drücke ⌘K / Ctrl-K",
-      "f3Desc": "Befehle. Springen Sie zu jeder Ebene, jedem Panel oder Land, ohne die UI erst zu erlernen.",
+      "f3Desc": "{{commands}} Befehle. Springe zu einer beliebigen Ebene, einem Panel oder Land, ohne die Oberfläche erst zu lernen.",
       "f4Title": "Wähle deine Perspektive",
-      "f4Desc": "World, Tech, Finance, Commodity, Energy oder Happy – gleiche Engine, kalibrierte Monitore, ein Klick entfernt.",
+      "f4Desc": "Welt, Tech, Finanzen, Rohstoffe, Energie oder Happy – dasselbe System, sechs abgestimmte Monitore, einen Klick entfernt.",
       "f5Title": "Du hast vielleicht ein Zehntel gesehen",
-      "f5Desc": "Der Rest erscheint, wenn sich die Welt bewegt — Satellitenpässe, GPS-Jamming, dunkle Schiffe, Protestcluster, Sirenenwarnungen.",
+      "f5Desc": "Wenn die Karte auf dem Desktop geöffnet wird, sind {{defaultOnLayers}} von {{mapLayers}} Kartenschicht-Typen, etwa {{defaultOnLayerPct}}%, aktiviert. Die übrigen werden sichtbar, während sich die Welt bewegt: Satellitenpässe, GPS-Störungen, dunkle Schiffe, die aus AIS-Lücken gekennzeichnet sind, Protestcluster und Sirenenalarme der Zivilverteidigung. Die meisten können über das Ebenen-Menü oder die ⌘K-Palette aktiviert werden.",
       "cta": "Starten"
     },
     "depth": {
@@ -606,17 +607,17 @@
       "s14l": "Sprachen · RTL enthalten",
       "s15l": "Unabhängige Alarmquellen",
       "n1Title": "Satellitentracking",
-      "n1Desc": "Live-Umlaufbahnen berechnet im Browser mit SGP4 — überwachen Sie ISS, Starlink und Militärsatelliten über Ihrem Standort.",
+      "n1Desc": "Live-Orbitalposition, im Browser mit SGP4 berechnet und alle 3 Sekunden aktualisiert — Militär- und Erdbeobachtungssatelliten von CelesTrak, alle 2 Stunden aktualisiert.",
       "n2Title": "GPS-Störzonen",
-      "n2Desc": "Live-HF-Interferenzkarte zeigt, wo GPS gerade beeinträchtigt oder gefälscht wird.",
+      "n2Desc": "Tägliche HF-Störungskarte aus Flugzeugberichten: Zellen, in denen mindestens 2% der Flugzeuge ein verschlechtertes GPS-Signal feststellen, werden markiert, über 10% werden als hoch gekennzeichnet. Die Zellen sind Sechsecke, die einmal täglich aus diesen Berichten neu berechnet werden, sodass die Karte zeigt, wo Flüge am letzten Tag auf Störsignale oder Spoofing trafen, nicht in diesem Moment.",
       "n3Title": "Engpass-Transitintelligenz",
       "n3Desc": "Schiffszählungen durch Hormus, Suez, Bab el-Mandeb und 10 weitere Meerengen — mit Störungsbewertung.",
       "n4Title": "KI-Rechenzentren-Karte",
-      "n4Desc": "313 KI-Rechenzentren mit Strom- und Betreibermetadaten — die physische Schicht des KI-Wettlaufs.",
+      "n4Desc": "{{aiDatacenters}} KI-Rechenzentren abgebildet mit Strom- und Betreiber-Metadaten – die physische Schicht des KI-Wettlaufs.",
       "n5Title": "Unterseekabel",
-      "n5Desc": "Untermeerische Kabel, die das Internet transportieren, überlagert mit Ausfallrisiko- und Bedrohungssignalen.",
+      "n5Desc": "{{submarineCables}} Unterseekabel, die das Internet transportieren, überlagert mit Ausfalls- und Bedrohungssignalen.",
       "n6Title": "Protestverfolgung",
-      "n6Desc": "Dual-Source-Protestvarfolgung mit quellenübergreifender Deduplizierung — Signal, nicht Gerücht.",
+      "n6Desc": "Protesterfassung aus ACLED und GDELT; Meldungen aus einer Quelle in derselben 0,1°-Zelle am selben Tag werden zu einem Ereignis zusammengefasst – Signal, keine Gerüchte.",
       "faith": "Verlassen Sie sich nicht blind auf die Zahlen —",
       "faithCta": "öffnen Sie die App und zählen Sie selbst.",
       "faithNote": "Quellen sind auf jedem Panel angegeben."
@@ -624,8 +625,8 @@
     "agents": {
       "eyebrow": "Für Builder & KI-Agenten",
       "title": "Wie baue ich auf World Monitor aus meinem eigenen Stack auf?",
-      "sub": "Alles auf der Karte ist auch eine API. Integrieren Sie es in Claude über MCP, rufen Sie die REST-Endpunkte von überall auf, oder installieren Sie einen nativen Client für Python, Ruby, Go oder JavaScript — Ihr Code recherchiert mit Live-Daten statt Trainings-Speicher.",
-      "b1": "MCP-Tools – Risikowerte, Engpässe, Konflikte, Märkte, Briefs",
+      "sub": "Alles auf der Karte ist auch eine API. Verbinden Sie sie mit Claude über MCP mit {{mcpTools}} Live-Tools, rufen Sie die REST-Endpoints von überall auf, oder installieren Sie einen nativen Client für Python, Ruby, Go oder JavaScript – Ihr Code recherchiert mit Live-Daten statt mit Trainings-Erinnerungen. MCP-Zugriff ist in Pro enthalten, ab {{proMonthlyPrice}}$/Monat.",
+      "b1": "{{mcpTools}} MCP-Tools – Risikoscores, Engpässe, Konflikte, Märkte, Lageberichte",
       "b2": "Dokumentierte REST API – eine OpenAPI-3.1-Spezifikation, ein Key",
       "b3": "Offizielle SDKs auf npm, PyPI, RubyGems und Go — nullabhängig, MCP-First",
       "b4": "JMESPath-Projektion bei jedem Aufruf — rufen Sie genau die Felder ab, die Sie benötigen",
@@ -647,9 +648,9 @@
       "eyebrow": "Zugriff",
       "title1": "Kostenlos ist das Observatorium.",
       "title2": "Pro ist der Operationsraum.",
-      "sub": "Das Dashboard ist kostenlos — jede Kartenschicht außer Resilience, jeden Feed, keine Anmeldung. Pro fügt die Entscheidungsebene hinzu.",
+      "sub": "Das Dashboard ist kostenlos für 0 $ — jede Kartenebene außer Resilience, keine Anmeldung. Pro fügt die Entscheidungsebene hinzu.",
       "freeTitle": "Kostenlos",
-      "freeDesc": "Der kostenlose Plan ist ein vollständiges Produkt, keine Testversion. Jede Kartenschicht außer Resilience, jeden Feed, jeden Monitor — keine Anmeldung, keine Testfrist.",
+      "freeDesc": "Die kostenlose Version ist ein vollständiges Produkt, keine Testversion. Jede Kartenebene außer Resilience, alle sechs Monitore — ohne Anmeldung, ohne Zeitlimit.",
       "freeF1": "Alle Kartenebenen außer Resilience & kuratierte Feeds",
       "freeF2": "Länderübersichten, Hotspots, Instabilitätsbewertungen",
       "freeF3": "Engpässe, Kabel, Kaskadenanalyse",
@@ -662,25 +663,25 @@
       "proF4": "MCP, REST API & offizielle SDKs – Live-Tools unter einem Key",
       "proF5": "Custom-Widget-Builder für Ihre eigenen Panels",
       "cta": "Pläne & Preise ansehen",
-      "note": "Ab 39,99 €/Monat · 3 Monate kostenlos bei jährlicher Abrechnung"
+      "note": "Ab 39,99 $/Monat · 3 Monate kostenlos bei jährlicher Abrechnung"
     },
     "faq": {
       "eyebrow": "Kein Haken",
       "title": "Was sind häufige Fragen zu World Monitor?",
       "q1": "Ist World Monitor wirklich kostenlos?",
-      "a1": "Ja. Die Live-Karte – jede Ebene außer Resilience, kuratierte Feeds, Länder-Briefs, Breaking Alerts und Monitoring-Oberflächen – ist kostenlos ohne Anmeldung und ohne Test-Timer. Pro zahlt sich für die Feeds aus: Es fügt WM Analyst, die Szenario-Engine, Route Explorer, geplante Digests, MCP-Zugriff für KI-Clients und die Resilience-Kartenebene hinzu. Keine Anzeigen, und kein Konto bedeutet, dass es keine Nutzerdaten zu verkaufen gibt.",
+      "a1": "Ja. Die Live-Karte kostet $0 ohne Anmeldung und ohne Testphase: {{mapLayers}} Kartenebenen-Typen, alle außer Resilience, plus kuratierte Feeds, Länderberichte, Breaking-Alerts und Monitoring-Oberflächen. Pro bezahlt für die Feeds: Es ergänzt WM Analyst, die Szenario-Engine, Route Explorer, geplante Digests, MCP-Zugang für KI-Clients und die Resilience-Kartenebene. Keine Werbung und kein Benutzerkonto bedeutet, dass es keine Nutzerdaten zum Verkauf gibt.",
       "q2": "Was ist ein globales Intelligence-Dashboard?",
       "a2": "Eine einzige Live-Ansicht, die Signale zusammenführt, die die meisten Tools separat halten: Konfliktereignisse, Schiffs- und Flugzeugverfolgung, Versandengpässe, Satelliten, Unterseekabel, Pipelines, Märkte und Cyber-Bedrohungen — auf einer Echtzeit-Weltkarte mit KI-Bewertung und Zusammenfassungen. World Monitor ist eine kostenlose Version davon.",
       "q3": "Woher stammen die Daten?",
-      "a3": "Benannte Provider sind ACLED und UCDP für Konflikte, AISStream für Live-Schiffe, OpenSky für Flugzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makro – plus kuratierte News-Feeds. Jedes Panel zitiert seine Quellen und Zeitstempel inline.",
+      "a3": "Von {{providers}} geprüften Quellen. Darunter ACLED und UCDP für Konflikte, AISStream für live Schiffe, OpenSky für Luftfahrzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makro – plus kuratierte Nachrichten-Feeds. Jedes Panel nennt seine Quellen und Zeitstempel inline.",
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
-      "a4": "Ja. Engpässe werden mit Live-AIS-Schiffszählungen, Woche-über-Woche-Transitveränderung und Disruptions-Bewertung überwacht – und Dichte-Anomalien werden gegen jede Meerenge-Baseline gekennzeichnet.",
+      "a4": "Ja. {{chokepoints}} Engpässe, sowohl Meerengen als auch Kanäle, von Hormuz und Bab el-Mandeb bis zum Suezkanal, werden mit Live-AIS-Schiffszählungen, Woche-für-Woche-Transitveränderungen und Störungsbewertungen überwacht – und Dichteanomalien werden gegen die rollende Basis jedes Engpasses gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",
       "a5": "Konflikte sind eine Kartenschicht. World Monitor verbindet Konflikte mit Schiffsverkehr, Militärflüge, Infrastruktur, Märkte und Cyber — dann bewertet KI die Konvergenz: Instabilitätsindizes, Hotspot-Eskalation, bestätigte Breaking-Meldungen und tägliche Lageberichte. Vergleichen Sie World Monitor mit Liveuamap und anderen Konfliktkarten: worldmonitor.app/compare/liveuamap-alternatives. Für weitere Überwachungsoptionen siehe worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Warum sollte ich einem Alert vertrauen?",
-      "a6": "Ein Breaking-Banner wird nur angezeigt, wenn unabhängige Ursprungstypen bestätigt werden — Nachrichtenklassifizierung, Keyword-Geschwindigkeit, Hotspot-Eskalation, Militärsurgen, offizielle Sirenen — dedupliziert und drosselungsbegrenzt. Weniger Alerts, echte Alerts.",
+      "a6": "Weil ein Banner feste Kontrollpunkte durchlaufen muss. Es wird ausgelöst für Nachrichten, die als kritische oder hohe Bedrohung eingestuft sind, und für offizielle Zivilschutz-Sirenen. Eine Nachrichtenwarnung muss jünger als 15 Minuten sein, die gleiche Geschichte wird 30 Minuten lang zurückgehalten, und nach jeder Warnung folgt eine 60-Sekunden-Abkühlzeit, es sei denn, die neue ist schwerwiegender. Nur-Stichwort-Treffer von Outlets niedrigerer Stufen benötigen auch eine KI-Bestätigung. Sirenen umgehen die Alters- und Abkühlungs-Kontrollpunkte, da sie zeitkritisch sind.",
       "q7": "Können KI-Agenten wie Claude oder GPT es verwenden?",
-      "a7": "Ja. World Monitor wird mit einem MCP-Server und einer Live-Tool-Registry ausgeliefert, sodass Claude, GPT oder jeder MCP-kompatible Agent Live-Risikoscores, Chokepoint-Status, Konflikte, Märkte und Briefings abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie benötigen.",
+      "a7": "Ja. World Monitors MCP-Server stellt {{mcpTools}} Live-Tools bereit, sodass Claude, GPT oder jeder MCP-kompatible Agent Risikoscores, Engpass-Status, Konflikte, Märkte und Lageberichte abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie brauchen.",
       "q8": "Benötige ich ein Konto?",
       "a8": "Nein. Das Dashboard funktioniert sofort ohne Anmeldung. Ein Konto ist nur wichtig, wenn Sie auf Pro upgraden oder Einstellungen geräteübergreifend synchronisieren möchten.",
       "q9": "Ist es Open Source?",
@@ -688,11 +689,12 @@
       "q10": "Warum ist World Monitor nicht Palantir?",
       "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
       "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "sub": "{{answers}} direkte Antworten zu Preis, Daten, Warnmeldungen und KI-Zugang. Kurzfassung: Das Dashboard kostet 0 $, benötigt kein Konto und der Code ist Open Source unter AGPL-3.0."
     },
     "cta": {
       "title": "Wie starte ich die Überwachung der Weltkarte?",
-      "subtitle": "Während du diese Seite liest, bewegt sich alles weiter – Meerengen, Hotspots, Märkte, kuratierte Feeds. Einer davon ist die Titelseite von morgen. Finde ihn zuerst – kostenlos, ohne Konto.",
+      "subtitle": "Öffnen Sie worldmonitor.app/dashboard in einem beliebigen Browser für $0, ohne Konto: {{mapLayers}} Kartenebenentypen, alle außer Resilience können kostenlos aktiviert werden. Klicken Sie auf ein Land, um dessen Briefing zu sehen, oder drücken Sie ⌘K / Ctrl-K für die Befehlspalette. Die Karte hat sich weiterhin aktualisiert, während Sie diese Seite gelesen haben.",
       "button": "Finden Sie ihn zuerst",
       "note": "Kostenlos · Keine Anmeldung · Lädt in Sekunden",
       "secondary": "Oder siehe Pro-Pläne →"
@@ -700,13 +702,13 @@
     "tasks": {
       "eyebrow": "Beginnen Sie mit der Frage",
       "title": "Was möchten Sie herausfinden?",
-      "sub": "Wählen Sie die Nachweiskette, die zu Ihrer Aufgabe passt. Jede Route öffnet eine quellengestützte Ansicht, nicht ein leeres Dashboard.",
+      "sub": "Wählen Sie einen der {{routes}} Evidenzpfade, der zur anstehenden Aufgabe passt. Jeder Pfad öffnet eine quellengestützte Ansicht, nicht ein leeres Dashboard.",
       "verifyTitle": "Ein Breaking Event verifizieren",
       "verifyDesc": "Überprüfen Sie aktuelle Krisen-Tracker, datierte Metriken und zitierte Kontexte, bevor Sie einen Breaking-Bericht vertrauen.",
       "chokepointTitle": "Einen Engpass überprüfen",
-      "chokepointDesc": "Inspizieren Sie Störungsstatus, Schiffsflüsse und Risiken in kritischen maritimen Passages.",
+      "chokepointDesc": "Überprüfe Störungsstatus, Schiffsströme und Risiken über {{chokepoints}} kritische Meerespassagen hinweg.",
       "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
-      "countryRiskDesc": "Verfolgen Sie die politischen, sicherheitstechnischen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung.",
+      "countryRiskDesc": "Verfolge die politischen, sicherheitsbezogenen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung, mit Resilienz-Ranking für {{resilienceRanked}} Länder.",
       "open": "Belege öffnen"
     }
   },

@@ -253,7 +253,7 @@ function seedGeneratedRepo(repo: string, generatedPaths: string[]) {
 
 function runGenerationVerdict(
   mode: GenerationMode,
-  trustedFork: boolean,
+  ownerTrustedHead: boolean,
   options: { poison?: boolean } = {},
 ) {
   const temp = mkdtempSync(join(tmpdir(), 'wm-proto-generation-'));
@@ -290,7 +290,7 @@ function runGenerationVerdict(
       GITHUB_PATH: githubPath,
       PATH: `${fakeBin}:${process.env.PATH}`,
       RUNNER_TEMP: temp,
-      TRUSTED_FORK: String(trustedFork),
+      OWNER_TRUSTED_HEAD: String(ownerTrustedHead),
     },
   });
 
@@ -605,7 +605,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       actor: 'koala73',
     });
     assert.equal(trusted.status, 0, trusted.stderr);
-    assert.match(trusted.output, /^trusted_fork=true$/m);
+    assert.match(trusted.output, /^owner_trusted_head=true$/m);
 
     const untrustedCases: Array<[
       string,
@@ -647,8 +647,39 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     for (const [name, files, options] of untrustedCases) {
       const result = runChangeClassifier(files, options);
       assert.equal(result.status, 0, `${name}: ${result.stderr}`);
-      assert.match(result.output, /^trusted_fork=false$/m, name);
+      assert.match(result.output, /^owner_trusted_head=false$/m, name);
     }
+  });
+
+  it('allows an owner-reviewed Dependabot head only after an owner synchronization', () => {
+    const options = {
+      action: 'synchronize',
+      actor: 'koala73',
+      headRepository: 'koala73/worldmonitor',
+      pullRequestAuthor: 'dependabot[bot]',
+    };
+    const files = ['package.json', 'package-lock.json', 'scripts/package.json', 'scripts/package-lock.json'];
+    const trusted = runChangeClassifier(files, options);
+    assert.equal(trusted.status, 0, trusted.stderr);
+    assert.match(trusted.output, /^owner_trusted_head=true$/m);
+
+    for (const override of [
+      { actor: 'dependabot[bot]' },
+      { actor: 'contributor' },
+      { action: 'opened' },
+      { action: 'reopened' },
+      { actor: '' },
+      { repositoryOwner: '' },
+      { headRepository: 'contributor/worldmonitor' },
+    ]) {
+      const result = runChangeClassifier(files, { ...options, ...override });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.output, /^owner_trusted_head=false$/m, JSON.stringify(override));
+    }
+
+    const moved = runChangeClassifier(files, { ...options, headSha: '3333333333333333333333333333333333333333' });
+    assert.notEqual(moved.status, 0);
+    assert.equal(moved.output, '');
   });
 
   it('wires original event identity into the executable trusted-fork classifier', () => {
@@ -662,10 +693,10 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     );
     assert.equal(classifier.env?.PR_AUTHOR, '${{ github.event.pull_request.user.login }}');
     assert.equal(
-      job('changes').outputs?.trusted_fork,
-      '${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}',
+      job('changes').outputs?.owner_trusted_head,
+      '${{ steps.paths.outputs.owner_trusted_head || steps.non-pr.outputs.owner_trusted_head }}',
     );
-    assert.match(stepByName('changes', 'Publish non-PR path classification').run ?? '', /trusted_fork=false/);
+    assert.match(stepByName('changes', 'Publish non-PR path classification').run ?? '', /owner_trusted_head=false/);
     assert.doesNotMatch(workflowSource, /github\.triggering_actor/);
     assert.doesNotMatch(workflowSource, /commit(?:ter)?\.(?:name|email|login)/i);
   });
@@ -676,7 +707,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(fork.if ?? '', /head\.repo\.full_name != github\.repository/);
     assert.match(fork.if ?? '', /dependabot\[bot\]/);
     assert.match(fork.if ?? '', /needs\.changes\.outputs\.codegen == 'true'/);
-    assert.match(fork.if ?? '', /needs\.changes\.outputs\.trusted_fork != 'true'/);
+    assert.match(fork.if ?? '', /needs\.changes\.outputs\.owner_trusted_head != 'true'/);
 
     const executedCommands = (fork.steps ?? [])
       .flatMap((step) => (step.run ?? '').split('\n'))
@@ -706,7 +737,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     const generation = job('internal-generate');
     assert.deepEqual(generation.permissions, { contents: 'read' });
     assert.match(generation.if ?? '', /head\.repo\.full_name == github\.repository/);
-    assert.match(generation.if ?? '', /needs\.changes\.outputs\.trusted_fork == 'true'/);
+    assert.match(generation.if ?? '', /needs\.changes\.outputs\.owner_trusted_head == 'true'/);
     assert.match(generation.if ?? '', /user\.login != 'dependabot\[bot\]'/);
     assert.doesNotMatch(JSON.stringify(generation), /github\.token|GH_TOKEN/);
 
@@ -715,13 +746,13 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(String(generationCheckout?.with?.ref), /pull_request\.head\.sha/);
 
     const verdict = stepByName('internal-generate', exactHeadStepName);
-    assert.match(verdict.env?.TRUSTED_FORK ?? '', /needs\.changes\.outputs\.trusted_fork/);
-    assert.match(verdict.run ?? '', /TRUSTED_FORK/);
-    assert.match(verdict.run ?? '', /Generated artifacts are stale on the owner-trusted fork head/);
+    assert.match(verdict.env?.OWNER_TRUSTED_HEAD ?? '', /needs\.changes\.outputs\.owner_trusted_head/);
+    assert.match(verdict.run ?? '', /OWNER_TRUSTED_HEAD/);
+    assert.match(verdict.run ?? '', /Generated artifacts are stale on the owner-trusted head/);
     assertCapturedToolBoundary(verdict.run ?? '');
 
     const upload = generation.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
-    assert.match(upload?.if ?? '', /needs\.changes\.outputs\.trusted_fork != 'true'/);
+    assert.match(upload?.if ?? '', /needs\.changes\.outputs\.owner_trusted_head != 'true'/);
 
     const internal = job('internal-auto-generate');
     assert.deepEqual(internal.permissions, { contents: 'write', statuses: 'write' });
@@ -764,8 +795,8 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
   });
 
   it('executes clean, drift, and unexpected-write generation verdicts', () => {
-    for (const trustedFork of [false, true]) {
-      const clean = runGenerationVerdict('clean', trustedFork);
+    for (const ownerTrustedHead of [false, true]) {
+      const clean = runGenerationVerdict('clean', ownerTrustedHead);
       assert.equal(clean.result.status, 0, clean.result.stderr);
       assert.match(clean.output, /^changed=false$/m);
       assert.equal(clean.patchExists, false);
@@ -854,7 +885,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(exactHead.githubPath, /\/poison$/m);
     assert.equal(exactHead.fakeGitStatus, 0, 'the fake git must hide drift from an unqualified later step');
     assert.notEqual(exactHead.result.status, 0);
-    assert.match(exactHead.result.stdout, /stale on the owner-trusted fork head/i);
+    assert.match(exactHead.result.stdout, /stale on the owner-trusted head/i);
     assert.equal(exactHead.patchExists, false);
 
     const merge = runMergeVerdict('generated-drift', { poison: true });
@@ -870,7 +901,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(merge.if ?? '', /always\(\)/);
     assert.match(merge.if ?? '', /needs\.changes\.result == 'success'/);
     assert.match(merge.if ?? '', /needs\.internal-generate\.result == 'success'/);
-    assert.match(merge.if ?? '', /needs\.changes\.outputs\.trusted_fork == 'true'/);
+    assert.match(merge.if ?? '', /needs\.changes\.outputs\.owner_trusted_head == 'true'/);
     assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'skipped'/);
     assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'success'/);
     assert.match(merge.if ?? '', /needs\.internal-auto-generate\.outputs\.pushed != 'true'/);
@@ -905,12 +936,12 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       assert.match(deployGateScript, new RegExp(`"${checkName}"`), `${checkName} must remain required`);
     }
     const aggregateStep = stepByName('proto-freshness', 'Publish aggregate proto freshness result');
-    assert.equal(aggregateStep.env?.TRUSTED_FORK, '${{ needs.changes.outputs.trusted_fork }}');
+    assert.equal(aggregateStep.env?.OWNER_TRUSTED_HEAD, '${{ needs.changes.outputs.owner_trusted_head }}');
     const base = {
       CHANGE_RESULT: 'success',
       CODEGEN_CHANGED: 'true',
       BREAKING_CHANGED: 'false',
-      TRUSTED_FORK: 'false',
+      OWNER_TRUSTED_HEAD: 'false',
       WRITABLE_INTERNAL_PR: 'true',
       BREAKING_RESULT: 'skipped',
       FORK_RESULT: 'skipped',
@@ -941,7 +972,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
         'clean trusted fork',
         {
           ...base,
-          TRUSTED_FORK: 'true',
+          OWNER_TRUSTED_HEAD: 'true',
           WRITABLE_INTERNAL_PR: 'false',
           PUBLISH_RESULT: 'skipped',
         },
@@ -951,7 +982,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
         'trusted fork generation failure',
         {
           ...base,
-          TRUSTED_FORK: 'true',
+          OWNER_TRUSTED_HEAD: 'true',
           WRITABLE_INTERNAL_PR: 'false',
           GENERATE_RESULT: 'failure',
           PUBLISH_RESULT: 'skipped',
@@ -963,7 +994,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
         'trusted fork merge failure',
         {
           ...base,
-          TRUSTED_FORK: 'true',
+          OWNER_TRUSTED_HEAD: 'true',
           WRITABLE_INTERNAL_PR: 'false',
           PUBLISH_RESULT: 'skipped',
           MERGE_RESULT: 'failure',
@@ -974,7 +1005,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
         'trusted fork requires skipped blocker',
         {
           ...base,
-          TRUSTED_FORK: 'true',
+          OWNER_TRUSTED_HEAD: 'true',
           WRITABLE_INTERNAL_PR: 'false',
           FORK_RESULT: 'failure',
           PUBLISH_RESULT: 'skipped',
@@ -985,7 +1016,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
         'trusted fork requires skipped writer',
         {
           ...base,
-          TRUSTED_FORK: 'true',
+          OWNER_TRUSTED_HEAD: 'true',
           WRITABLE_INTERNAL_PR: 'false',
           PUBLISH_RESULT: 'success',
         },
@@ -1045,7 +1076,9 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(contributing, /later contributor push revokes that trust/);
     assert.match(contributing, /owner-pushed empty commit/);
     assert.match(contributing, /maintainer edits are disabled.*trusted internal branch/s);
-    assert.match(contributing, /Dependabot codegen changes remain blocked/);
+    assert.match(contributing, /For Dependabot pull requests from this repository/);
+    assert.match(contributing, /CI does not publish generated patches or write to the Dependabot branch/);
+    assert.match(contributing, /later Dependabot push revokes trust/);
 
     assert.match(agentInstructions, /Never run repository scripts from an unreviewed third-party PR checkout/);
     assert.match(agentInstructions, /reviewed the exact fork head/);

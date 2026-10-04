@@ -1,7 +1,9 @@
 {
-  "name": "worldmonitor-docs",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "app.worldmonitor/docs",
+  "title": "World Monitor Docs",
+  "description": "Search and read World Monitor developer docs, API references, and guides.",
   "kind": "docs",
-  "description": "World Monitor documentation as an MCP server: search and read the developer docs, API references, and guides. Use it for 'how do I…' questions about the platform; use the product MCP at /mcp for live intelligence data.",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
   "version": "1.0.0",
   "url": "https://www.worldmonitor.app/docs/mcp",

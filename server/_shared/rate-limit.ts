@@ -699,8 +699,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
   // Public market/economic provider proxies (#6236): caller-controlled symbols,
   // indicators, and year ranges create unbounded cache-key cardinality; the
-  // country-index route is bounded to the 45-country contract but still
-  // proxies Yahoo Finance on a cache miss. None may inherit the global
+  // country-index and price-history routes are bounded to their tracked
+  // symbol sets but still proxy Yahoo Finance on a cache miss. None may inherit the global
   // fail-open budget. The dashboard can legitimately fan out across 50 Pro
   // watchlist symbols, so those three per-symbol routes admit one full load
   // plus headroom. analyze-stock remains separately constrained by the
@@ -712,6 +712,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/market/v1/backtest-stock': { limit: 60, window: '60 s' },
   '/api/market/v1/get-insider-transactions': { limit: 60, window: '60 s' },
   '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
+  '/api/market/v1/get-price-history': { limit: 30, window: '60 s' },
   // Stablecoins are seed-backed for the DEFAULT request, but naming coins the
   // snapshot does not carry reaches CoinGecko, and the caller picks the IDs —
   // unbounded cardinality, so the per-ID-set cache cannot bound spend alone.
@@ -945,6 +946,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/market/v1/get-country-stock-index': {
     reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
+  },
+  '/api/market/v1/get-price-history': {
+    reason: 'Per-symbol daily-close history proxies Yahoo Finance on cache miss, up to four symbols per request.',
   },
   '/api/market/v1/list-crypto-quotes': {
     reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss.',

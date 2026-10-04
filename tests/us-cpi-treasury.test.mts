@@ -245,6 +245,9 @@ describe('CPI and Treasury handlers', () => {
     assert.equal(response.unavailable, false);
     assert.equal(response.months.length, 2);
     assert.equal(response.months[1]?.headline?.monthOverMonth?.percent, 10);
+    const bounded = await getUsCpiMonthly({} as never, { history: true, limit: 1 });
+    assert.deepEqual(bounded.months, response.months.slice(-1));
+    assert.deepEqual(await getUsCpiMonthly({} as never, { history: true, limit: 0 }), response);
   });
 
   it('returns unavailable when the curve has not been seeded', async () => {
@@ -268,5 +271,21 @@ describe('CPI and Treasury handlers', () => {
     assert.equal(response.curves[0]?.date, Date.parse('2026-09-21T00:00:00Z'));
     assert.equal(response.curves[0]?.oneMonth, 3.96);
     assert.equal(response.curves[0]?.twentyYear, undefined);
+  });
+
+  it('limits Treasury history before returning it and preserves missing tenors and zero yields', async () => {
+    redisEnv();
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const pipeline = JSON.parse(String(init?.body)) as string[][];
+      return Response.json(pipeline.map(([, key]) => ({ result: key?.endsWith(':2026') ? JSON.stringify({ curves: [
+        { date: '2026-09-01', tenYear: 3 }, { date: '2026-09-02', tenYear: 4 }, { date: '2026-09-03', tenYear: 0 },
+      ] }) : null })));
+    }) as typeof fetch;
+    const full = await getUsTreasuryParYieldCurve({} as never, { history: true });
+    assert.equal(full.curves.length, 3);
+    const bounded = await getUsTreasuryParYieldCurve({} as never, { history: true, limit: 1 });
+    assert.deepEqual(bounded, { ...full, curves: full.curves.slice(-1) });
+    assert.equal(bounded.curves[0]?.tenYear, 0);
+    assert.equal(bounded.curves[0]?.oneMonth, undefined);
   });
 });

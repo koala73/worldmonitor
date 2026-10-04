@@ -700,8 +700,8 @@ paths:
                 - name: keys
                   in: query
                   description: |-
-                    One registered bootstrap key, for example insights. Omit when using tier.
-                     The repeated wire field is retained for compatibility; multiple keys are rejected.
+                    Registered bootstrap keys, for example insights. Repeat the parameter for
+                     several fast/slow keys. Omit when using tier.
                   required: false
                   style: form
                   explode: true
@@ -709,7 +709,7 @@ paths:
                       - "example"
                   schema:
                     type: array
-                    maxItems: 1
+                    maxItems: 100
                     items:
                       type: string
                       minLength: 1
@@ -1921,15 +1921,17 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 1
+                        maxItems: 100
                         description: |-
-                            One registered bootstrap key, for example insights. Omit when using tier.
-                             The repeated wire field is retained for compatibility; multiple keys are rejected.
-                    maxItems: 1
+                            Registered bootstrap keys, for example insights. Repeat the parameter for
+                             several fast/slow keys. Omit when using tier.
+                    maxItems: 100
             description: |-
-                GetBootstrapDataRequest selects a fixed tier or one registered bootstrap key.
+                GetBootstrapDataRequest selects a fixed tier or registered bootstrap keys.
                  Exactly one selector is required: use tier OR keys, never both.
-                 Empty, unknown, mixed and multi-key selectors return HTTP 400.
+                 Several keys are accepted when every key belongs to the fast or slow tier;
+                 an on-demand key must be requested alone. Empty, unknown and mixed
+                 selectors return HTTP 400.
         GetBootstrapDataResponse:
             type: object
             properties:

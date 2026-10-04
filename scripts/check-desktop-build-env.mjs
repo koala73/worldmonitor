@@ -42,6 +42,7 @@ export const REQUIRED_DESKTOP_BUILD_ENV = [
 // SPA-read VITE_ vars that desktop builds deliberately do NOT set.
 // Every entry needs a reason: this map is the decision record.
 export const EXCLUDED_DESKTOP_BUILD_ENV = {
+  VITE_COUNTRY_OVERRIDES_URL: 'plugin-only public asset path; desktop retains the existing map CDN default',
   VITE_ENABLE_IRAN_ATTACKS: 'feature sunset, default-off everywhere (#4982)',
   VITE_ENABLE_AIS: "opt-out flag (only 'false' disables); unset default is enabled — correct on desktop, where AIS is gated by the aisRelay keyring feature instead",
   VITE_VAPID_PUBLIC_KEY: 'web-push is intentionally unsupported in Tauri; isWebPushSupported() excludes desktop contexts',

@@ -1,5 +1,6 @@
 export const GDELT_INTEL_KEY = 'intelligence:gdelt-intel:v1';
 export const GDELT_BULK_STATE_KEY = 'gdelt:bulk:materializer-state:v1';
+export const GDELT_BULK_DYAD_KEY = 'gdelt:bulk:dyad-tension:v1';
 export const GDELT_BULK_CONFLICT_KEY = 'gdelt:bulk:conflict-events:v1';
 export const GDELT_BULK_UNREST_KEY = 'gdelt:bulk:unrest-events:v1';
 export const GDELT_BULK_ARTICLES_KEY = 'gdelt:bulk:articles:v1';

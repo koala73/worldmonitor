@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { SERVER_VERSION } from '../api/mcp/constants.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 
 const originalEnv = { ...process.env };
@@ -372,6 +373,21 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       }
     });
 
+    it('discovery descriptions identify supply and economic data without unsupported capabilities', async () => {
+      const tools = await getToolsList();
+      const supply = tools.find(t => t.name === 'get_supply_vulnerabilities');
+      const chokepoint = tools.find(t => t.name === 'get_chokepoint_dependencies');
+      const economic = tools.find(t => t.name === 'get_economic_data');
+      assert.match(supply.description, /country.*commodity.*supply/i);
+      assert.match(chokepoint.description, /country.*commodity.*chokepoint/i);
+      for (const tool of [supply, chokepoint]) {
+        assert.match(tool.description, /absent score means insufficient.*never zero risk/i);
+      }
+      assert.match(economic.description, /rates.*calendars.*fuel prices/i);
+      const full = await callDescribeTool('get_economic_data');
+      assert.doesNotMatch(full.description, /energy storage/i);
+    });
+
     it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
       const tools = await getToolsList();
       const compressed = tools.find(t => t.name === 'get_market_data');
@@ -421,14 +437,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.21.0"', async () => {
+    it('serverInfo.version === SERVER_VERSION', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.21.0');
+      assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -445,9 +461,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.21.0) and tools[] matches the registry count', () => {
+    it('server-card.json version matches SERVER_VERSION and tools[] matches the registry count', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.21.0');
+      assert.equal(card.serverInfo.version, SERVER_VERSION);
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.
@@ -479,7 +495,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       // Top-level mirrors must stay consistent with the nested MCP shapes.
       assert.equal(card.version, card.serverInfo.version, 'top-level version must mirror serverInfo.version');
       assert.equal(card.serverUrl, card.transport.endpoint, 'serverUrl must mirror transport.endpoint');
-      assert.equal(card.name, card.serverInfo.name, 'top-level name must mirror serverInfo.name');
+      assert.match(card.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/, 'top-level name must be reverse-DNS (Server Card schema)');
 
       // tools[] must be a name+description projection of the live registry,
       // plus the same access marker tools/list emits, in the same order.

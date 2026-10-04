@@ -79,7 +79,7 @@ export function isElevatedCiiScore(score: number): boolean {
   return level === 'elevated' || level === 'high' || level === 'critical';
 }
 
-function toCachedCII(proto: CiiScore): CachedCIIScore {
+export function toCachedCII(proto: CiiScore): CachedCIIScore {
   return {
     code: proto.region,
     name: TIER1_COUNTRIES[proto.region] || proto.region,

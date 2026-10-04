@@ -14,6 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
+import { getThreatColor } from '@/services/threat-classifier';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
 import { measure, mutate } from '@/utils/layout-batch';
@@ -192,6 +193,7 @@ export class MapComponent {
   private baseHeight = 0;
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
+  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
   private weatherAlerts: WeatherAlert[] = [];
   private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
@@ -1802,6 +1804,7 @@ export class MapComponent {
     protests: readonly SocialUnrestEvent[];
     conflictEvents: readonly AcledConflictEvent[];
     weather: readonly WeatherAlert[];
+    news: readonly MapComponent['newsLocations'][number][];
   } {
     const withinTimeRange = <T extends { occurredAt: number }>(items: readonly T[]): readonly T[] => (
       this.state.timeRange === 'all'
@@ -1825,10 +1828,9 @@ export class MapComponent {
       // Already capped at 200 by the render loop; planned on the same slice so
       // the budget cannot spend share on the 201st position onwards.
       aircraft: layers.flights ? this.aircraftPositions.slice(0, 200) : [],
-      // Only riots and high-severity unrest reach the map; the rest stay in the
-      // CII analysis. Budgeting the full feed would cut the ones that render.
+      // Media mentions stay visible without borrowing incident severity.
       protests: layers.protests
-        ? this.protests.filter((event) => event.eventType === 'riot' || event.severity === 'high')
+        ? this.protests.filter((event) => event.sourceType === 'gdelt' || event.eventType === 'riot' || event.severity === 'high')
         : [],
       conflictEvents: withinTimeRange(layers.conflicts ? this.conflictEvents : []),
       // `centroid` is optional on WeatherAlert and the render loop skips an alert
@@ -1840,6 +1842,12 @@ export class MapComponent {
       // per-marker data precondition; the `newsCount === 0` skips sit on exempt
       // groups, which are outside the budget entirely.
       weather: layers.weather ? this.weatherAlerts.filter((alert) => alert.centroid) : [],
+      news: this.newsLocations.filter((item) => {
+        if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) return false;
+        if (this.state.timeRange === 'all') return true;
+        const timestamp = item.timestamp?.getTime();
+        return timestamp == null || !Number.isFinite(timestamp) || timestamp >= Date.now() - this.getTimeRangeMs();
+      }),
     };
   }
 
@@ -1857,6 +1865,7 @@ export class MapComponent {
     ): void => { if (markers.length) groups.push({ layer, markers, ...extra }); };
 
     const layers = this.state.layers;
+    add('news', slices.news);
     if (layers.waterways) add('waterways', STRATEGIC_WATERWAYS);
     if (layers.ais) {
       add('ais', this.aisDisruptions);
@@ -2049,6 +2058,7 @@ export class MapComponent {
     this.lastTruncationLabelKey = key;
     const { undisclosed } = renderLayerTruncationBadges(root, this.overlayMarkerTruncation, 'pan');
     this.overlayUndisclosedTruncation = undisclosed;
+    this.renderCompactTruncationSummary(this.overlayMarkerTruncation.news ? [this.overlayMarkerTruncation.news] : []);
   }
 
   /**
@@ -2066,13 +2076,8 @@ export class MapComponent {
    * embed opted out of — just the count and a `title` carrying the explanation.
    * Idempotent (one node, updated in place) and removed the moment nothing is
    * being withheld, so it cannot accumulate across renders or outlive the cut.
-   *
-   * Only for the no-rail case. A map that HAS a rail but whose trimmed layer has
-   * no row in that variant's picker is the separate problem tracked in #7144;
-   * fixing it with a second, parallel disclosure surface would be the wrong shape.
    */
-  private renderCompactTruncationSummary(): void {
-    const entries = Object.values(this.overlayMarkerTruncation);
+  private renderCompactTruncationSummary(entries = Object.values(this.overlayMarkerTruncation)): void {
     const existing = this.container.querySelector<HTMLElement>('.map-truncation-summary');
 
     if (entries.length === 0) {
@@ -2132,6 +2137,26 @@ export class MapComponent {
     this.overlayAppendTarget = fragment;
 
     try {
+    for (const item of slices.news) {
+      if (this.isOverlayMarkerCut(item)) continue;
+      const pos = projection([item.lon, item.lat]);
+      if (!pos) continue;
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = 'news-location-marker';
+      marker.style.cssText = 'position:absolute;width:24px;height:24px;border:0;padding:0;border-radius:50%;transform:translate(-50%,-50%) scale(var(--marker-scale,1));transform-origin:center;z-index:53;pointer-events:auto;cursor:pointer';
+      marker.style.left = `${pos[0]}px`;
+      marker.style.top = `${pos[1]}px`;
+      marker.style.background = `radial-gradient(circle, ${getThreatColor(item.threatLevel)} 4px, transparent 4px)`;
+      marker.title = item.title;
+      marker.setAttribute('aria-label', item.title);
+      marker.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        this.popup.show({ type: 'news', data: item, x: event.clientX - rect.left, y: event.clientY - rect.top });
+      });
+      this.appendOverlay(marker);
+    }
     // Strategic waterways
     if (this.state.layers.waterways) {
       this.renderWaterways(projection);
@@ -3177,7 +3202,6 @@ export class MapComponent {
     }
 
     // Protests / Social Unrest Events (severity colors + icons) - with clustering
-    // Filter to show only significant events on map (all events still used for CII analysis)
     if (this.state.layers.protests) {
       const significantProtests = this.keepBudgetedMarkers(slices.protests);
 
@@ -3206,9 +3230,11 @@ export class MapComponent {
           badge.className = 'cluster-badge';
           badge.textContent = String(cluster.items.length);
           div.appendChild(badge);
-          div.title = `${primaryEvent.country}: ${cluster.items.length} ${t('popups.events')}`;
+          div.title = `${primaryEvent.country}: ${cluster.items.length} ${t('popups.protest.records')}`;
         } else {
-          div.title = `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
+          div.title = primaryEvent.sourceType === 'gdelt'
+            ? `${primaryEvent.city || primaryEvent.country} - ${t('popups.protest.mediaSignal')}`
+            : `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
           if (primaryEvent.validated) {
             div.classList.add('validated');
           }
@@ -4893,9 +4919,9 @@ export class MapComponent {
     this.render();
   }
 
-  public setEarthquakes(earthquakes: Earthquake[]): void {
+  public setEarthquakes(earthquakes: Earthquake[], options: { replaceEmpty?: boolean } = {}): void {
     console.log('[Map] setEarthquakes called with', earthquakes.length, 'earthquakes');
-    if (earthquakes.length > 0 || this.earthquakes.length === 0) {
+    if (options.replaceEmpty || earthquakes.length > 0 || this.earthquakes.length === 0) {
       this.earthquakes = earthquakes;
     } else {
       console.log('[Map] Keeping existing', this.earthquakes.length, 'earthquakes (new data was empty)');
@@ -4997,8 +5023,9 @@ export class MapComponent {
     this.render();
   }
 
-  public setNewsLocations(_data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
-    // SVG/mobile fallback intentionally skips news locations to stay lightweight.
+  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+    this.newsLocations = data;
+    this.render();
   }
 
   public setTechActivity(activities: TechHubActivity[]): void {

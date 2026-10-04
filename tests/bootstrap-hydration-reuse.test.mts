@@ -49,6 +49,7 @@ type Harness = {
     dataFreshness: 'fresh' | 'stale';
     lastUpdate: Date;
   }>;
+  fetchGdeltTensions: () => Promise<Array<{ score: number }>>;
   fetchChokepointStatus: () => Promise<{
     chokepoints: Array<{ id: string }>;
     fetchedAt: string;
@@ -212,7 +213,7 @@ before(async () => {
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
         "export { fetchImdCycloneMarine } from './src/services/imd-cyclone-marine.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
-        "export { fetchPizzIntStatus } from './src/services/pizzint.ts';",
+        "export { fetchPizzIntStatus, fetchGdeltTensions } from './src/services/pizzint.ts';",
         "export { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from './src/services/supply-chain/index.ts';",
         "export { fetchConsumerPriceOverview, fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';",
         "export { createHydrationHandoff } from './src/services/hydration-handoff.ts';",
@@ -709,7 +710,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const staleStatus = {
       defconLevel: 4, defconLabel: 'stale', aggregateActivity: 10, activeSpikes: 1,
       locationsMonitored: 1, locationsOpen: 1, updatedAt: 1,
-      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [],
+      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [{
+        placeId: 'missing-live', name: 'Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, noLiveSignal: true, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_STALE',
+      }],
     };
     const freshStatus = {
       ...staleStatus,
@@ -717,6 +722,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
       defconLabel: 'fresh',
       updatedAt: 2,
       dataFreshness: 'DATA_FRESHNESS_FRESH',
+      locations: [...staleStatus.locations, {
+        placeId: 'quiet-live', name: 'Quiet Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, hasBaseline: true, noLiveSignal: false, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_FRESH',
+      }],
     };
     const requests = bootstrapStub(
       { pizzint: { pizzint: staleStatus, tensionPairs: [] } },
@@ -729,9 +739,23 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const cached = await harness.fetchPizzIntStatus();
 
     assert.equal(hydrated.dataFreshness, 'stale');
+    assert.equal(hydrated.locations[0].no_live_signal, true);
     assert.equal(recovered.dataFreshness, 'fresh');
+    assert.equal(recovered.locations[0].no_live_signal, true);
+    assert.equal(recovered.locations[1].percentage_of_usual, 0);
     assert.deepEqual(cached, recovered);
     assert.equal(rpcUrlCount(requests), 1, 'stale hydration must retry once and cache only the fresh result');
+  });
+
+  it('GDELT tensions: every refresh rechecks the server instead of serving a browser cache', async () => {
+    let score = 50;
+    const requests = bootstrapStub({}, () => ({ tensionPairs: [{ id: 'usa_russia',
+      countries: ['US', 'RU'], label: 'US–Russia', score,
+      trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' }] }));
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 50);
+    score = 75;
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 75);
+    assert.equal(rpcUrlCount(requests), 2);
   });
 
   it('chokepoints: degraded hydration renders promptly, refreshes once, and remains retryable', async () => {

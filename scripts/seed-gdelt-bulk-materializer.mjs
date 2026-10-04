@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import {
+  dyadDayExportTimestamps,
+  mergeDyadBuckets,
+  parseDyadExport,
+  planDyadRepair,
+  rebuildDyadDay,
+  replaceDyadDays,
+  scoreDyads,
+} from './_gdelt-dyad-tension.mjs';
+import { GDELT_BULK_DYAD_KEY } from './_gdelt-bulk-contract.mjs';
 
 import {
   loadEnvFile,
@@ -19,11 +29,14 @@ import {
   parseGdeltGkgCsv,
 } from './_gdelt-bulk-materializer.mjs';
 import {
+  extractGdeltExportCsv,
   GDELT_MASTER_FILELIST_URL,
+  GDELT_PUBLICATION_LEAD_MS,
   GDELT_ROLLING_WINDOW_MS,
   gdeltTimestampToMs,
   mapGdeltExportToConflictEvents,
   mergeGdeltBulkRollingWindow,
+  parseGdeltRecentExports,
 } from './_conflict-gdelt-bulk.mjs';
 export {
   GDELT_INTEL_KEY,
@@ -56,6 +69,15 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const SNAPSHOT_READ_TIMEOUT_MS = 30_000;
 const FETCH_CONCURRENCY = 4;
 const MAX_CATCHUP_FILES_PER_KIND = 8;
+// Dyad history repair. A day is 96 export ZIPs, about 3.6 MB and 11 s at this
+// concurrency (measured 2026-09-28). The live tick takes about 37 s of a 120 s
+// lock, so two days per tick fits and fills a 90-day window in about 11 hours.
+// The manifest lists about 288 lines (export, mentions, gkg) of about 107 bytes
+// per UTC day; 4 MB reaches 90 days back with margin, and each target day's
+// coverage is still checked before it is used.
+const DYAD_REPAIR_DAYS_PER_TICK = 2;
+const DYAD_REPAIR_BUDGET_MS = 60_000;
+const DYAD_REPAIR_TAIL_BYTES = 4_000_000;
 const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
 export const GDELT_BULK_MAX_CONTENT_AGE_MIN = 3 * 60;
 const GDELT_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
@@ -64,6 +86,7 @@ const MAX_RECENT_GEO_RECORDS = 5_000;
 const INTEL_TTL = 86_400;
 const TIMELINE_TTL = 7 * 86_400;
 const STATE_TTL = 14 * 86_400;
+const DYAD_TTL = 92 * 86_400;
 const CONFLICT_TTL = 6 * 60 * 60;
 const UNREST_TTL = 4.5 * 60 * 60;
 // 3h, NOT 45min: api/health.js gates positiveGeoEvents at maxStaleMin 60 AND
@@ -103,13 +126,13 @@ export function countryIndexRecordCount(index) {
 // Best-effort by design (mirrors seed-cbr-rates): failing to write the marker
 // must not degrade a run that already published good data. The cost of a
 // miss is one more tick of pending, not a wrong verdict.
-async function writeCountryIndexActivation() {
+async function writeActivation(key) {
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return;
-    await upstashCommand(creds, ['SET', COUNTRY_ARTICLES_ACTIVATION_KEY, '1']);
+    await upstashCommand(creds, ['SET', key, '1']);
   } catch (error) {
-    console.warn(`  WARN: country-index activation marker write failed: ${error?.message || error}`);
+    console.warn(`  WARN: ${key} activation marker write failed: ${error?.message || error}`);
   }
 }
 
@@ -160,7 +183,8 @@ function validateCurrentFeedCohort(values, nowMs) {
   }
 }
 
-async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, discardRangePrefix = false, ...options } = {}) {
+async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, discardRangePrefix = false, signal, ...options } = {}) {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const response = await fetchImpl(url, {
     ...options,
     headers: {
@@ -168,7 +192,10 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, di
       'User-Agent': USER_AGENT,
       ...(options.headers ?? {}),
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    // engines allows Node 20.0-20.2, which lack AbortSignal.any; the service
+    // runs Node 24 (.nvmrc). Without it only the caller's signal is honored.
+    signal: !signal ? timeout
+      : typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal,
   });
   if (!response.ok) throw new Error(`GDELT bulk HTTP ${response.status} for ${url}`);
   if (expectedStatus && response.status !== expectedStatus) {
@@ -256,10 +283,89 @@ export async function fetchGdeltBulkFiles({
       const csv = extractGdeltBulkCsv(zip, descriptor);
       return descriptor.kind === 'gkg'
         ? { descriptor, records: parseGdeltGkgCsv(csv) }
-        : { descriptor, events: mapGdeltExportToConflictEvents(csv) };
+        : { descriptor, events: mapGdeltExportToConflictEvents(csv), dyads: parseDyadExport(csv) };
     },
   );
   return downloaded;
+}
+
+// Rebuild incomplete past dyad days from the source exports, newest first.
+// Days a run skips without downloading (an upstream gap, or a manifest tail
+// that does not reach them) do not use the download budget. A day whose
+// download or verification fails is recorded in `failures` so the planner
+// backs it off. Completed days and failures are written to `into` and
+// `failures` as they happen, so a caller that stops waiting still keeps them.
+// `signal` aborts in-flight downloads and stops new ones. Outcomes use a fixed
+// vocabulary; no upstream text.
+export async function repairDyadHistory({
+  snapshot,
+  nowMs,
+  fetchImpl = globalThis.fetch,
+  maxDays = DYAD_REPAIR_DAYS_PER_TICK,
+  into = {},
+  failures = {},
+  signal,
+  deadlineAt = Infinity,
+  clock = Date.now,
+}) {
+  const outcomes = {};
+  const count = (outcome) => { outcomes[outcome] = (outcomes[outcome] ?? 0) + 1; };
+  const done = () => ({ days: into, outcomes, failures });
+  const dates = planDyadRepair(snapshot, nowMs, 90);
+  if (dates.length === 0 || maxDays <= 0) return done();
+  let manifest;
+  try {
+    manifest = await fetchBoundedBuffer(
+      fetchImpl,
+      GDELT_MASTER_FILELIST_URL,
+      DYAD_REPAIR_TAIL_BYTES,
+      {
+        headers: { Range: `bytes=-${DYAD_REPAIR_TAIL_BYTES}` },
+        expectedStatus: 206,
+        discardRangePrefix: true,
+        signal,
+      },
+    );
+  } catch (error) {
+    if (signal?.aborted) { count('over_budget'); return done(); }
+    throw error;
+  }
+  const descriptors = parseGdeltRecentExports(manifest.toString('utf8'), Number.MAX_SAFE_INTEGER);
+  const byTimestamp = new Map(descriptors.map((descriptor) => [descriptor.exportTimestamp, descriptor]));
+  const earliest = descriptors[0]?.exportTimestamp ?? '';
+  let downloaded = 0;
+  for (const date of dates) {
+    if (downloaded >= maxDays) break;
+    if (signal?.aborted || clock() >= deadlineAt) { count('over_budget'); break; }
+    const stamps = dyadDayExportTimestamps(date);
+    // A suffix range can start mid-day; only a tail that begins before the
+    // day proves a missing cohort is an upstream gap. Dates run newest first,
+    // so every later date predates the tail too.
+    if (!earliest || earliest > stamps[0]) { count('manifest_short'); break; }
+    const dayDescriptors = stamps.map((stamp) => byTimestamp.get(stamp));
+    if (dayDescriptors.some((descriptor) => !descriptor)) { count('upstream_gap'); continue; }
+    downloaded += 1;
+    try {
+      const batches = await mapWithConcurrency(dayDescriptors, FETCH_CONCURRENCY, async (descriptor) => {
+        signal?.throwIfAborted();
+        const zip = await fetchBoundedBuffer(fetchImpl, descriptor.url, descriptor.size, { signal });
+        if (zip.length !== descriptor.size
+          || createHash('md5').update(zip).digest('hex') !== descriptor.md5) {
+          throw Object.assign(new Error('dyad repair verification failed'), { repairOutcome: 'verify_failed' });
+        }
+        const csv = extractGdeltExportCsv(zip, descriptor.exportTimestamp);
+        return { timestamp: descriptor.exportTimestamp, dyads: parseDyadExport(csv) };
+      });
+      into[date] = rebuildDyadDay(date, batches);
+      count('repaired');
+    } catch (error) {
+      // An abort is the budget running out, not the day's fault.
+      if (signal?.aborted) { count('over_budget'); break; }
+      failures[date] = nowMs;
+      count(error?.repairOutcome ?? 'fetch_failed');
+    }
+  }
+  return done();
 }
 
 function recentBatches(previous, current, nowMs) {
@@ -383,16 +489,19 @@ export async function fetchMaterializedGdelt(deps = {}) {
     _now = () => Date.now(),
     _readSnapshot = (key) => readSeedSnapshot(key, { strict: true, timeoutMs: SNAPSHOT_READ_TIMEOUT_MS }),
     _fetchFiles = fetchGdeltBulkFiles,
+    _repairDyadHistory = repairDyadHistory,
+    _dyadRepairBudgetMs = DYAD_REPAIR_BUDGET_MS,
   } = deps;
   const nowMs = _now();
   // The country index is read back from its own key rather than carried in
   // the state key: the state already holds the compacted geo batches and the
   // conflict window, and ~250 countries of rows would push it toward the 5MB
   // write ceiling (#7748).
-  const [previousIntel, previousState, previousCountryIndex] = await Promise.all([
+  const [previousIntel, previousState, previousCountryIndex, previousDyads] = await Promise.all([
     _readSnapshot(GDELT_INTEL_KEY),
     _readSnapshot(GDELT_BULK_STATE_KEY),
     _readSnapshot(GDELT_BULK_COUNTRY_ARTICLES_KEY),
+    _readSnapshot(GDELT_BULK_DYAD_KEY),
   ]);
   const downloaded = await _fetchFiles({
     afterTimestamp: previousState?.cursor || {},
@@ -485,8 +594,51 @@ export async function fetchMaterializedGdelt(deps = {}) {
     throw new Error('GDELT bulk materializer has no conflict export data');
   }
 
+  const mergedDyads = mergeDyadBuckets(previousDyads, downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'export')
+    .map(({ descriptor, dyads, csv }) => ({
+      timestamp: descriptor.timestamp, dyads: dyads ?? parseDyadExport(csv),
+    })), nowMs);
+  // mergeDyadBuckets keeps only the cursor and days; carry the repair backoff.
+  const liveDyads = previousDyads?.repairFailures
+    ? { ...mergedDyads, repairFailures: previousDyads.repairFailures }
+    : mergedDyads;
+  // History repair is best-effort: a failure or an overrun keeps whatever days
+  // finished and never holds or fails the live publication.
+  // The budget aborts the repair's downloads, not just the wait for them.
+  const repairedDays = {};
+  const repairFailures = {};
+  const repairAbort = new AbortController();
+  let repairTimer;
+  const repairOutcome = await Promise.race([
+    Promise.resolve()
+      .then(() => _repairDyadHistory({
+        snapshot: liveDyads, nowMs, into: repairedDays, failures: repairFailures,
+        signal: repairAbort.signal, deadlineAt: Date.now() + _dyadRepairBudgetMs,
+      }))
+      .then((result) => {
+        Object.assign(repairedDays, result?.days ?? {});
+        Object.assign(repairFailures, result?.failures ?? {});
+        return result?.outcomes ?? {};
+      }, () => ({ failed: 1 })),
+    new Promise((resolve) => {
+      repairTimer = setTimeout(() => {
+        repairAbort.abort();
+        resolve({ over_budget: 1 });
+      }, _dyadRepairBudgetMs);
+      repairTimer.unref?.();
+    }),
+  ]).finally(() => clearTimeout(repairTimer));
+  const dyads = replaceDyadDays(liveDyads, repairedDays, nowMs, repairFailures);
+  if (Object.keys(repairOutcome).length > 0) {
+    const remaining = planDyadRepair(dyads, nowMs, 90).length;
+    const summary = Object.entries(repairOutcome).map(([outcome, n]) => `${outcome}=${n}`).join(' ');
+    console.log(`  Dyad history repair: ${summary} remaining=${remaining}`);
+  }
+
   return {
     ...materialized.intel,
+    _dyads: { ...dyads, ...scoreDyads(dyads, nowMs), updatedAt: nowMs },
     _timelines: materialized.timelines,
     _unrest: materialized.unrest,
     _positive: materialized.positive,
@@ -536,8 +688,8 @@ export function gdeltBulkContentMeta(data, nowMs = Date.now()) {
       : NaN;
   });
   if (requiredSourceTimes.some((timestamp) =>
-    !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowMs)) return null;
-  const observedAt = Math.min(...requiredSourceTimes);
+    !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowMs + GDELT_PUBLICATION_LEAD_MS)) return null;
+  const observedAt = Math.min(nowMs, ...requiredSourceTimes);
   return { newestItemAt: observedAt, oldestItemAt: observedAt };
 }
 
@@ -552,7 +704,8 @@ export async function afterPublish(data, _meta, deps = {}) {
   const {
     _writeExtraKey = writeExtraKey,
     _writeExtraKeyWithMeta = writeExtraKeyWithMeta,
-    _writeActivationMarker = writeCountryIndexActivation,
+    _writeActivationMarker = () => writeActivation(COUNTRY_ARTICLES_ACTIVATION_KEY),
+    _writeDyadActivationMarker = () => writeActivation('seed-activated:gdelt:bulk:dyad-tension'),
   } = deps;
   const outputOperations = Object.entries(data._timelines ?? {}).flatMap(
     ([topic, series]) => [
@@ -575,6 +728,14 @@ export async function afterPublish(data, _meta, deps = {}) {
     ],
   );
   outputOperations.push(
+    {
+      label: GDELT_BULK_DYAD_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        GDELT_BULK_DYAD_KEY, data._dyads, DYAD_TTL,
+        Object.keys(data._dyads?.days ?? {}).length,
+        'seed-meta:gdelt:bulk:dyad-tension',
+      ),
+    },
     {
       label: GDELT_BULK_CONFLICT_KEY,
       run: () => _writeExtraKey(GDELT_BULK_CONFLICT_KEY, data._conflict, CONFLICT_TTL),
@@ -626,6 +787,10 @@ export async function afterPublish(data, _meta, deps = {}) {
   const countryIndexResult = settled[outputOperations.findIndex(({ label }) => label === COUNTRY_ARTICLES_META_KEY)];
   if (countryIndexResult?.status === 'fulfilled' && countryIndexResult.value !== false) {
     await _writeActivationMarker();
+  }
+  const dyadResult = settled[outputOperations.findIndex(({ label }) => label === GDELT_BULK_DYAD_KEY)];
+  if (dyadResult?.status === 'fulfilled' && dyadResult.value !== false) {
+    await _writeDyadActivationMarker();
   }
   const failures = settled.flatMap((result, index) => {
     if (result.status === 'rejected') return [result.reason];

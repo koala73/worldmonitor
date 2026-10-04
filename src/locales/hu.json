@@ -1222,10 +1222,18 @@
       "skipToEnd": "Ugrás a végére"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · helyadatok:",
+      "statusNormal": "NORMÁL",
+      "statusNoData": "NINCS ADAT",
+      "statusNoBaseline": "NINCS VISZONYÍTÁSI ALAP",
+      "vsUsual": "a szokásoshoz képest",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Frissítve: {{timeAgo}}",
       "tensionsTitle": "Geopolitikai feszültségek",
+      "tensionsSource": "Feszültségek: World Monitor a GDELT eseményei alapján",
+      "insufficientData": "Nincs elegendő adat",
+      "pizzaUnavailable": "A pizzériák forgalmi adatai nem érhetők el",
       "source": "Forrás:",
       "statusClosed": "LEZÁRVA",
       "statusSpike": "CSÚCS",
@@ -1237,11 +1245,11 @@
       "minutesAgo": "{{m}}p ezelőtt",
       "hoursAgo": "{{h}}ó ezelőtt",
       "defconLabels": {
-        "1": "FEGYVEREZETT PISZTOLY - MAXIMÁLIS KÉSZENLÉT",
-        "2": "GYORS ÜTEM - FEGYVERES ERŐK KÉSZEN ÁLLNAK",
-        "3": "KEREK HÁZ - MEGNÖVELT ERŐKÉSZENLÉT",
-        "4": "KETTŐS NÉZET - MEGNÖVELT HÍRSZERZÉSI MEGFIGYELÉS",
-        "5": "ELHALVÁNYULÁS - LEGALACSONYABB KÉSZENLÉT"
+        "1": "Maximális aktivitás",
+        "2": "Magas aktivitás",
+        "3": "Emelt szintű aktivitás",
+        "4": "Az átlag felett",
+        "5": "Normál aktivitás"
       }
     },
     "strategicPosture": {
@@ -2966,6 +2974,10 @@
     "protest": {
       "acledVerified": "ACLED (ellenőrzött)",
       "gdelt": "GDELT",
+      "records": "rekord",
+      "mediaSignal": "Nem ellenőrzött médiajelzés",
+      "relatedArticle": "Kapcsolódó cikk",
+      "mediaSignalDetail": "Ezt a helyet zavargásokról szóló cikkek említik. Helyi esemény nincs igazolva.",
       "riots": "Zavargások",
       "highSeverity": "Magas súlyosság"
     },

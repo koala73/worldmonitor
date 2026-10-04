@@ -437,3 +437,16 @@ describe('redis-rest-proxy command gate', () => {
     );
   });
 });
+
+it('accepts the exact PizzINT archive script and rejects arbitrary edits', async () => {
+  const { default: history } = await import('../scripts/shared/pizzint-history.cjs');
+  const gate = buildGate();
+  assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(history.WRITE_LUA), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '2', 'history', 'metadata']), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA + ' ', '2', 'history', 'metadata']), false);
+  // Membership alone would still pass if the writer sent some OTHER script, so
+  // pin the call site too: recordPizzintHistory must put WRITE_LUA on the wire.
+  const source = readFileSync(new URL('../scripts/shared/pizzint-history.cjs', import.meta.url), 'utf8');
+  assert.match(source, /await evalCommand\(WRITE_LUA, write\.keys, args\)/);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '3', 'bucket', 'bucket-meta', 'heartbeat']), true);
+});

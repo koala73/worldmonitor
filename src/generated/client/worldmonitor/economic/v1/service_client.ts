@@ -890,6 +890,7 @@ export interface TenderSourceStatus {
 
 export interface GetUsCpiMonthlyRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsCpiMonthlyResponse {
@@ -919,6 +920,7 @@ export interface UsCpiPercentChange {
 
 export interface GetUsTreasuryParYieldCurveRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsTreasuryParYieldCurveResponse {
@@ -946,6 +948,7 @@ export interface UsTreasuryParYieldCurve {
 
 export interface GetUsInterestRatesRequest {
   history: boolean;
+  limit?: number;
 }
 
 export interface GetUsInterestRatesResponse {
@@ -966,6 +969,7 @@ export interface UsInterestRateObservation {
 export interface GetWorldCpiMonthlyRequest {
   history: boolean;
   country: string;
+  limit?: number;
 }
 
 export interface GetWorldCpiMonthlyResponse {
@@ -999,6 +1003,7 @@ export interface WorldCpiPercentChange {
 export interface GetGovernmentYieldCurveRequest {
   country: string;
   history: boolean;
+  limit?: number;
 }
 
 export interface GetGovernmentYieldCurveResponse {
@@ -1800,6 +1805,7 @@ export class EconomicServiceClient {
     let path = "/api/economic/v1/get-us-cpi-monthly";
     const params = new URLSearchParams();
     if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -1825,6 +1831,7 @@ export class EconomicServiceClient {
     let path = "/api/economic/v1/get-us-treasury-par-yield-curve";
     const params = new URLSearchParams();
     if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -1850,6 +1857,7 @@ export class EconomicServiceClient {
     let path = "/api/economic/v1/get-us-interest-rates";
     const params = new URLSearchParams();
     if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -1876,6 +1884,7 @@ export class EconomicServiceClient {
     const params = new URLSearchParams();
     if (req.history) params.set("history", String(req.history));
     if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -1902,6 +1911,7 @@ export class EconomicServiceClient {
     const params = new URLSearchParams();
     if (req.country != null && req.country !== "") params.set("country", String(req.country));
     if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

@@ -31,6 +31,8 @@
 // so the inline <script>/<style> deliberately avoid backticks and `${` to
 // keep the outer literal un-escaped and readable.
 
+import { PANEL_USAGE_BRIDGE } from './shell';
+
 export const COUNTRY_RISK_UI_PROTOCOL_VERSION = '2026-01-26';
 
 export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
@@ -338,6 +340,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     notify("ui/notifications/size-changed", { height: h });
   }
 
+  ${PANEL_USAGE_BRIDGE}
   window.addEventListener("message", function (event) {
     // Trust boundary: only the embedding host (window.parent) may drive us.
     if (event.source !== parentWin) return;
@@ -354,7 +357,9 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
 
     switch (msg.method) {
       case "ui/notifications/tool-result": {
-        var data = extractToolData(msg.params && msg.params.result ? msg.params.result : msg.params);
+        var result = msg.params && msg.params.result ? msg.params.result : msg.params;
+        showPanelUsage(result);
+        var data = extractToolData(result);
         if (data) render(data);
         break;
       }

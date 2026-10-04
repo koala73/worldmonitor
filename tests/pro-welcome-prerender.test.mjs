@@ -9,6 +9,10 @@ const welcomeHtml = () =>
   (cachedWelcomeHtml ??= readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8'));
 const enLocale = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/locales/en.json', import.meta.url), 'utf8'));
+// The FAQ answers interpolate the same build-measured figures the page renders.
+const proofFacts = () =>
+  JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
+const fillProofFacts = (text, facts) => text.replace(/\{\{(\w+)\}\}/g, (_, key) => String(facts[key]));
 const WELCOME_FAQ_COUNT = 11;
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
 
@@ -24,6 +28,54 @@ const welcomeJsonLdBlocks = () =>
 const skip = shouldSkipProBuiltOutput();
 guardProBuiltOutput();
 
+// Index scanners rather than regex replacement for reading section text. The
+// input is our own build output, but a single-pass `.replace` can leave a
+// partial tag behind (CodeQL js/incomplete-multi-character-sanitization) and a
+// case-sensitive `<script` pattern misses `<SCRIPT>` (js/bad-tag-filter).
+
+// Drop every <script>/<style> element (any case, closing tag may carry
+// whitespace or attributes). An unterminated element drops the rest.
+function withoutElements(html, tagNames) {
+  const lower = html.toLowerCase();
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    const lt = lower.indexOf('<', i);
+    if (lt === -1) return out + html.slice(i);
+    const name = tagNames.find((tag) => lower.startsWith(tag, lt + 1));
+    if (!name) {
+      out += html.slice(i, lt + 1);
+      i = lt + 1;
+      continue;
+    }
+    out += html.slice(i, lt);
+    const close = lower.indexOf(`</${name}`, lt + 1);
+    const end = close === -1 ? -1 : lower.indexOf('>', close);
+    if (end === -1) return out;
+    i = end + 1;
+  }
+  return out;
+}
+
+// Replace each `<...>` tag with `separator`, keeping text between tags. A `<`
+// with no later `>` (or an empty `<>`) stays literal, as with /<[^>]+>/g.
+function tagsToText(html, separator) {
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    const gt = lt === -1 ? -1 : html.indexOf('>', lt + 1);
+    if (lt === -1 || gt === -1) return out + html.slice(i);
+    if (gt === lt + 1) {
+      out += html.slice(i, gt + 1);
+    } else {
+      out += html.slice(i, lt) + separator;
+    }
+    i = gt + 1;
+  }
+  return out;
+}
+
 const welcomeRoot = () => {
   const rootMatch = welcomeHtml().match(/<div id="root"(?<attrs>[^>]*)>(?<content>[\s\S]*?)<\/body>/);
   assert.ok(rootMatch?.groups, 'welcome page should contain #root before body close');
@@ -35,6 +87,7 @@ const welcomeRoot = () => {
 
 test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => {
   const en = enLocale();
+  const facts = proofFacts();
   const faqPage = welcomeJsonLdBlocks().find((block) => block['@type'] === 'FAQPage');
 
   assert.ok(faqPage, 'welcome.html should include FAQPage JSON-LD');
@@ -42,11 +95,104 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => 
   for (let n = 1; n <= WELCOME_FAQ_COUNT; n += 1) {
     const entry = faqPage.mainEntity[n - 1];
     assert.equal(entry.name, en.welcome.faq[`q${n}`]);
-    assert.equal(entry.acceptedAnswer?.text, en.welcome.faq[`a${n}`]);
+    assert.equal(entry.acceptedAnswer?.text, fillProofFacts(en.welcome.faq[`a${n}`], facts));
   }
+  assert.doesNotMatch(welcomeHtml(), /\{\{\w+\}\}/, 'no raw {{placeholder}} may reach the published page');
+  // The chokepoint answer must state the measured count, not a placeholder.
+  assert.match(faqPage.mainEntity[3].acceptedAnswer.text, new RegExp(`^Yes\\. ${facts.chokepoints} chokepoints`));
   // The structured answer to the Liveuamap question must carry the compare
   // destination itself, not only the DOM anchor derived from it (#7746).
   assert.match(faqPage.mainEntity[4].acceptedAnswer.text, /worldmonitor\.app\/compare\/liveuamap-alternatives/);
+});
+
+// AI answers quote one passage, not the stat rail beside it, so each
+// question-headed passage must carry its own measured figure.
+test('question-headed welcome passages state their own measured figures', { skip }, () => {
+  const facts = proofFacts();
+  const { content } = welcomeRoot();
+  const passageAfter = (heading) => {
+    const at = content.indexOf(`>${heading}</h2>`);
+    assert.ok(at >= 0, `missing heading: ${heading}`);
+    return content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
+  };
+  const whatIs = passageAfter('What is World Monitor?');
+  assert.match(whatIs, new RegExp(`${facts.feeds} news and OSINT feeds from ${facts.providers} attributed providers`));
+  assert.match(whatIs, new RegExp(`${facts.mapLayers} map layer types`));
+  // Resilience is Pro-locked, so the free-start answer must not promise every counted layer.
+  assert.match(passageAfter('How do I start watching the world map?'), new RegExp(`${facts.mapLayers} map layer types, every one except Resilience free to switch on`));
+  assert.match(passageAfter('How do I build on World Monitor from my own stack?'), new RegExp(`${facts.mcpTools} live tools`));
+  assert.match(content, new RegExp(`${facts.mcpTools} MCP tools`));
+});
+
+// geo.new scores a plain count 0 on statistics and a block under ~40 words 60
+// on self-containment, so these two first-five cards carry a percentage or the
+// length that earns those dimensions. The figures come from copy-stats.json.
+test('first-five probe cards state measured figures at citation length', { skip }, () => {
+  const facts = proofFacts();
+  const copy = JSON.parse(readFileSync(new URL('../pro-test/src/generated/copy-stats.json', import.meta.url), 'utf8'));
+  const { content } = welcomeRoot();
+  const cardText = (heading) => {
+    const at = content.indexOf(`>${heading}</h3>`);
+    assert.ok(at >= 0, `missing card: ${heading}`);
+    return tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '').replace(/&#x27;/g, "'");
+  };
+  const tenth = cardText('You&#x27;ve seen maybe a tenth of it');
+  assert.match(tenth, new RegExp(`^When the map opens on desktop, ${copy.defaultOnLayers} of its ${facts.mapLayers} map layer types, about ${copy.defaultOnLayerPct}%, are switched on\\.`));
+  const country = cardText('Click any country');
+  for (const [name, text] of [['tenth', tenth], ['country', country]]) {
+    assert.ok(text.split(/\s+/).length >= 40, `${name} card is under 40 words: ${text}`);
+  }
+});
+
+// geo.new credits only prices, percentages and dates on statistics, so each of
+// these sections carries a real one: the $0 plan, the generated Pro price, and
+// the GPS thresholds at 40+ words.
+test('sections state a price or percentage the audit credits', { skip }, () => {
+  const copy = JSON.parse(readFileSync(new URL('../pro-test/src/generated/copy-stats.json', import.meta.url), 'utf8'));
+  const { content } = welcomeRoot();
+  const passageAfter = (heading) => {
+    const at = content.indexOf(`>${heading}</h`);
+    assert.ok(at >= 0, `missing heading: ${heading}`);
+    return tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  };
+  assert.match(passageAfter('What is World Monitor?'), /^World Monitor is a free \(\$0\), open-source/);
+  assert.match(passageAfter('How do I start watching the world map?'), /in any browser for \$0, with no account/);
+  const build = passageAfter('How do I build on World Monitor from my own stack?');
+  assert.ok(build.includes(`MCP access comes with Pro, from $${copy.proMonthlyPrice}/mo.`), build);
+  const gps = passageAfter('GPS jamming zones');
+  assert.match(gps, /at least 2% of aircraft/);
+  assert.ok(gps.split(/\s+/).length >= 40, `GPS card is under 40 words: ${gps}`);
+});
+
+// The FAQ figures live inside <details> answers, which geo.new did not credit
+// to the heading (the FAQ scored weakest, 37/100, though its first answer
+// opens with $0). The heading therefore needs its own paragraph, directly
+// under the <h2> and before the first <details>.
+test('FAQ heading carries its own figure paragraph before the answers', { skip }, () => {
+  const { content } = welcomeRoot();
+  const at = content.indexOf('>What are common questions about World Monitor?</h2>');
+  assert.ok(at >= 0, 'missing FAQ heading');
+  const beforeAnswers = content.slice(at, content.indexOf('<details', at));
+  const subtitle = tagsToText(beforeAnswers.match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  assert.match(subtitle, new RegExp(`^${WELCOME_FAQ_COUNT} straight answers on price, data, alerts and AI access\\.`));
+  assert.match(subtitle, /costs \$0/);
+  assert.match(subtitle, /AGPL-3\.0/);
+});
+
+// The geo.new CIT-02/03 audit judges each H2 section by its opening, roughly
+// the first 60 words, so a figure buried in the fifth FAQ answer does not
+// count. Every H2 section, the noscript fallback included, must open with one.
+test('every H2 section states a figure within its first 60 words', { skip }, () => {
+  const facts = proofFacts();
+  const html = withoutElements(welcomeHtml(), ['script', 'style']);
+  const parts = html.split(/<h2[^>]*>([\s\S]*?)<\/h2>/);
+  assert.ok(parts.length > 20, 'expected the welcome page H2 sections');
+  for (let i = 1; i < parts.length; i += 2) {
+    const heading = tagsToText(parts[i], '').trim();
+    const opening = tagsToText(parts[i + 1], ' ').split(/\s+/).filter(Boolean).slice(0, 60).join(' ');
+    assert.match(opening, /\d/, `"${heading}" opens without a figure: ${opening}`);
+  }
+  assert.match(welcomeHtml(), new RegExp(`${facts.feeds} news and OSINT feeds — onto one live map with ${facts.mapLayers} map layer types`));
 });
 
 test('welcome JSON-LD connects the page, website, application, and publisher', { skip }, () => {
@@ -121,6 +267,39 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   const heroSection = rootContent.slice(0, rootContent.indexOf('<section class="py-16'));
   assert.doesNotMatch(heroSection, /opacity:0/);
   assert.match(rootContent, /<img[^>]+src="\/pro\/assets\/worldmonitor-7-mar-2026-[^"]+\.jpg"[^>]+fetchPriority="high"/);
+});
+
+test('built welcome root hides no SSR content and links every primary reference page', { skip }, () => {
+  const { content: rootContent } = welcomeRoot();
+  // Content styled invisible or off-position before hydration reads to crawlers as cloaking.
+  const hiddenContentNodes = [...rootContent.matchAll(/<[a-z][a-z0-9:-]*\b[^>]*\bstyle="([^"]*)"[^>]*>/gi)]
+    .filter(([tag, style]) =>
+      !/\baria-hidden="true"/i.test(tag)
+      && /(?:opacity:\s*0(?![\d.])|transform:\s*translate(?:3d|[xyz])?\()/i.test(style),
+    )
+    .map(([tag]) => tag);
+  assert.deepEqual(hiddenContentNodes, [], 'the welcome root must not hide or translate SSR content before hydration');
+  assert.match(rootContent, /ACLED/);
+  assert.match(rootContent, /NASA FIRMS/);
+  // Exact href of a real anchor: a substring match would accept data-href=,
+  // non-anchor elements, or a longer path such as /countries/old.
+  const anchorHrefs = new Set(
+    [...rootContent.matchAll(/<a\b[^>]*>/gi)]
+      .map(([tag]) => /\shref="([^"]*)"/i.exec(tag)?.[1])
+      .filter((href) => href !== undefined),
+  );
+  for (const href of [
+    '/countries/',
+    '/chokepoints/',
+    '/crises/',
+    '/tools/',
+    '/blog/',
+    'https://www.worldmonitor.app/docs/documentation',
+    '/pro#pricing',
+    'https://github.com/koala73/worldmonitor',
+  ]) {
+    assert.ok(anchorHrefs.has(href), `visible welcome content should contain an <a href="${href}">`);
+  }
 });
 
 test('built welcome page prerenders task routes and agent discovery links', { skip }, () => {

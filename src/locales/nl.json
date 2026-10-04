@@ -770,8 +770,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "statusNormal": "NORMAAL",
+      "statusNoData": "GEEN GEGEVENS",
+      "statusNoBaseline": "GEEN REFERENTIE",
+      "vsUsual": "ten opzichte van normaal",
       "title": "Pentagon Pizza-index",
       "tensionsTitle": "Geopolitieke spanningen",
+      "tensionsSource": "Spanningen: World Monitor op basis van GDELT-gebeurtenissen",
+      "insufficientData": "Onvoldoende gegevens",
+      "pizzaUnavailable": "Activiteit van pizzeria's niet beschikbaar",
       "source": "Bron:",
       "defcon": "DEFCON {{level}}",
       "updated": "Bijgewerkt {{timeAgo}}",
@@ -785,11 +793,11 @@
       "minutesAgo": "{{m}}m geleden",
       "hoursAgo": "{{h}}u geleden",
       "defconLabels": {
-        "1": "GEREGISTREERD PISTOOL - MAXIMALE KLAARHEID",
-        "2": "SNEL TEMPO - STRIJDKRACHTEN KLAAR",
-        "3": "ROND HUIS - VERHOOG DE KRACHTBEREIDING",
-        "4": "DUBBEL NEMEN - VERHOOGDE INTELLIGENTIE HORLOGE",
-        "5": "FADE OUT - LAAGSTE KLAARHEID"
+        "1": "Maximale activiteit",
+        "2": "Hoge activiteit",
+        "3": "Verhoogde activiteit",
+        "4": "Boven normaal",
+        "5": "Normale activiteit"
       }
     },
     "stablecoins": {
@@ -2515,6 +2523,10 @@
     "protest": {
       "acledVerified": "ACLED (geverifieerd)",
       "gdelt": "GDELT",
+      "records": "vermeldingen",
+      "mediaSignal": "Onbevestigd mediasignaal",
+      "relatedArticle": "Gerelateerd artikel",
+      "mediaSignalDetail": "Deze locatie wordt genoemd in artikelen over onrust. Een lokale gebeurtenis is niet bevestigd.",
       "riots": "Rellen",
       "highSeverity": "Hoge ernst"
     },

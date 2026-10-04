@@ -506,12 +506,50 @@ export function dedupeSharedResponseHeaders(spec) {
   return stats;
 }
 
-/** Reuse sebuf's exact repeated int64 precision-warning schema. */
+// Bound keywords that may sit beside the int64 $ref on a described site. Any
+// other extra keyword leaves the site inline: only shapes whose meaning is the
+// shared component plus these siblings are rewritten.
+const INT64_SIBLING_KEYS = new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum']);
+export const INT64_WARNING_SUFFIX = `. ${INT64_SCHEMA.description}`;
+
+/**
+ * Split a sebuf int64 field that carries its own comment in front of the
+ * generated precision warning (`<comment>. Warning: Values > 2^53 ...`).
+ * Returns the comment and any bound siblings, or null when the site is not
+ * exactly that shape.
+ */
+function describedInt64Site(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return null;
+  if (schema.type !== INT64_SCHEMA.type || schema.format !== INT64_SCHEMA.format) return null;
+  const { description } = schema;
+  if (typeof description !== 'string' || !description.endsWith(INT64_WARNING_SUFFIX)) return null;
+  const lead = description.slice(0, -INT64_WARNING_SUFFIX.length);
+  if (!lead) return null;
+  const siblings = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === 'type' || key === 'format' || key === 'description') continue;
+    if (!INT64_SIBLING_KEYS.has(key)) return null;
+    siblings[key] = value;
+  }
+  return { lead, siblings };
+}
+
+/**
+ * Reuse sebuf's repeated int64 precision-warning schema.
+ *
+ * Exact copies become a bare $ref. Described copies — the field's own comment
+ * followed by the generated warning — become a $ref with the comment (and any
+ * numeric bounds) as OpenAPI 3.1 sibling keywords, so the shared component
+ * carries the type, format and warning once. Resolving restores the original
+ * exactly: `{ ...component, ...siblings, description: comment + ". " +
+ * component.description }`.
+ */
 export function dedupeRepeatedInt64Schemas(spec) {
-  const stats = { replacedRefs: 0 };
+  const stats = { replacedRefs: 0, describedRefs: 0 };
   const schemas = spec?.components?.schemas;
   if (!schemas || typeof schemas !== 'object') return stats;
   const sites = [];
+  const describedSites = [];
 
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
@@ -520,18 +558,28 @@ export function dedupeRepeatedInt64Schemas(spec) {
       return;
     }
     for (const [key, child] of Object.entries(value)) {
-      if (child && typeof child === 'object' && eq(child, INT64_SCHEMA)) sites.push({ parent: value, key });
+      if (child && typeof child === 'object' && eq(child, INT64_SCHEMA)) {
+        sites.push({ parent: value, key });
+        continue;
+      }
+      const described = describedInt64Site(child);
+      if (described) describedSites.push({ parent: value, key, ...described });
       else visit(child);
     }
   };
   for (const schema of Object.values(schemas)) visit(schema);
-  if (sites.length < 2) return stats;
+  if (sites.length + describedSites.length < 2) return stats;
 
   const name = availableComponentName(schemas, 'WorldMonitorInt64', INT64_SCHEMA);
   schemas[name] ??= structuredClone(INT64_SCHEMA);
+  const $ref = `#/components/schemas/${pointerSegment(name)}`;
   for (const { parent, key } of sites) {
-    parent[key] = { $ref: `#/components/schemas/${pointerSegment(name)}` };
+    parent[key] = { $ref };
     stats.replacedRefs += 1;
+  }
+  for (const { parent, key, lead, siblings } of describedSites) {
+    parent[key] = { $ref, ...siblings, description: lead };
+    stats.describedRefs += 1;
   }
   return stats;
 }

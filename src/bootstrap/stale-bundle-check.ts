@@ -70,7 +70,7 @@ interface StaleBundleCheckOptions {
   /**
    * Called when an open modal holds off a reload: once when an episode
    * starts, and once more if it survives `wedgeAfterDeferrals` triggers.
-   * Default reports to Sentry. A wedged tab (an overlay that never closes)
+   * The default reports only the suspected wedge to Sentry. A wedged tab (an overlay that never closes)
    * would otherwise keep a stale bundle with no signal anywhere but the
    * user's own console, which is the failure mode this suppression risks.
    */
@@ -161,12 +161,14 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   const setIntervalImpl = options.setInterval ?? ((cb: () => void, ms: number) => globalThis.setInterval(cb, ms));
   const reload = options.reload ?? (() => window.location.reload());
   const now = options.now ?? Date.now;
+  // Only a suspected wedge reaches Sentry. A modal open when a deploy lands is
+  // the state this guard exists for, so reporting every episode start kept
+  // WORLDMONITOR-15X open with no failure behind it; the console line remains.
   const reportDeferral = options.reportDeferral ?? ((report: DeferralReport) => {
+    if (report.phase !== 'suspected-wedge') return;
     enqueueSentryCall((Sentry) => {
       Sentry.captureMessage(
-        report.phase === 'suspected-wedge'
-          ? '[stale-bundle] reload still deferred, modal never closed'
-          : '[stale-bundle] reload deferred, modal open',
+        '[stale-bundle] reload still deferred, modal never closed',
         {
           level: 'warning',
           tags: {

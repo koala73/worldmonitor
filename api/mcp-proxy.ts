@@ -69,6 +69,7 @@ function logProxyCall(entry: {
   header_names: string[];
   status: number;
   duration_ms: number;
+  upstream_status?: number | null;
 }): void {
   // Structured audit log (#3805). Mirrors the `[name] { ...fields }` shape
   // used by api/cache-purge.js so the existing log-ingest tooling parses it
@@ -246,8 +247,16 @@ export class McpProxyUpstreamError extends Error {
   constructor(message, options) {
     super(message, options);
     this.name = 'McpProxyUpstreamError';
+    // HTTP status the remote MCP server answered with, when it answered.
+    this.upstreamStatus = options?.upstreamStatus ?? null;
   }
 }
+
+// The remote server refused the credentials the CALLER supplied (a panel saved
+// without its key, an expired token). That is the caller's configuration, not
+// a proxy defect, so it stays out of Sentry and lives in the audit log
+// (WORLDMONITOR-172).
+const UPSTREAM_CREDENTIAL_REJECTIONS = new Set([401, 403]);
 
 export function proxyFailureFor(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -264,6 +273,8 @@ export function proxyFailureFor(error) {
     // Sentry grouping key. Every proxy error class sets `this.name`, so this
     // separates expected upstream failures from unknown proxy defects.
     errorClass: isTimeout ? 'timeout' : (error instanceof Error ? error.name : 'Error'),
+    report: !(error instanceof McpProxyUpstreamError
+      && UPSTREAM_CREDENTIAL_REJECTIONS.has(error.upstreamStatus)),
   };
 }
 
@@ -579,7 +590,7 @@ async function mcpListTools(serverUrl, customHeaders) {
   const { response: initResp, url: sessionUrl, headers } = await postJson(
     serverUrl, buildInitPayload(), buildHeaders(customHeaders), null,
   );
-  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
@@ -587,7 +598,7 @@ async function mcpListTools(serverUrl, customHeaders) {
   const { response: listResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
-  if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`);
+  if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`, { upstreamStatus: listResp.status });
   const listData = await parseJsonRpcResponse(listResp);
   if (listData.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
   return listData.result?.tools || [];
@@ -597,7 +608,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   const { response: initResp, url: sessionUrl, headers } = await postJson(
     serverUrl, buildInitPayload(), buildHeaders(customHeaders), null,
   );
-  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
@@ -606,7 +617,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
   }, headers, sessionId);
-  if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`);
+  if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`, { upstreamStatus: callResp.status });
   const callData = await parseJsonRpcResponse(callResp);
   if (callData.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
   return callData.result;
@@ -650,7 +661,7 @@ class SseSession {
       redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
-    if (!resp.ok) throw new McpProxyUpstreamError(`SSE connect HTTP ${resp.status}`);
+    if (!resp.ok) throw new McpProxyUpstreamError(`SSE connect HTTP ${resp.status}`, { upstreamStatus: resp.status });
     this._reader = resp.body.getReader();
     this._startReadLoop();
     await this._endpointDeferred.promise;
@@ -769,7 +780,7 @@ class SseSession {
       await cancelResponseBody(postResp);
       if (!postResp.ok) {
         this._pending.delete(id);
-        throw new McpProxyUpstreamError(`${method} POST HTTP ${postResp.status}`);
+        throw new McpProxyUpstreamError(`${method} POST HTTP ${postResp.status}`, { upstreamStatus: postResp.status });
       }
       return await deferred.promise;
     } finally {
@@ -991,6 +1002,7 @@ export default async function handler(req, ctx) {
   }
 
   let response: Response;
+  let upstreamStatus: number | null = null;
   try {
     if (req.method === 'GET') {
       response = await handleListTools(req, cors, meta);
@@ -1006,6 +1018,7 @@ export default async function handler(req, ctx) {
       || err instanceof McpProxyJsonDepthError
       ? err.message : 'MCP proxy request failed';
     const failure = proxyFailureFor(err);
+    if (err instanceof McpProxyUpstreamError) upstreamStatus = err.upstreamStatus;
     // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
     // JSON body with no Sentry event, so a genuine proxy defect was visible
     // only to the caller who hit it. Capture it.
@@ -1016,13 +1029,15 @@ export default async function handler(req, ctx) {
     //
     // targetHost is caller-supplied, so it rides in `extra`, never a tag —
     // an attacker-controlled tag value would shred Sentry's tag cardinality.
-    captureSilentError(new Error(failure.isTimeout ? 'MCP server timed out' : msg), {
-      tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
-      fingerprint: ['api/mcp-proxy', 'proxy-dispatch', failure.errorClass],
-      extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
-      level: failure.level,
-      ctx,
-    });
+    if (failure.report) {
+      captureSilentError(new Error(failure.isTimeout ? 'MCP server timed out' : msg), {
+        tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
+        fingerprint: ['api/mcp-proxy', 'proxy-dispatch', failure.errorClass],
+        extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
+        level: failure.level,
+        ctx,
+      });
+    }
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
     response = jsonResponse(
       { error: failure.isTimeout ? 'MCP server timed out' : msg },
@@ -1039,6 +1054,7 @@ export default async function handler(req, ctx) {
     header_names: meta.headerNames,
     status: response.status,
     duration_ms: Date.now() - started,
+    upstream_status: upstreamStatus,
   });
   emitProxyUsage(req, response.status, Date.now() - startedAt, ctx, callerIdentity);
 

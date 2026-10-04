@@ -884,7 +884,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(body.error?.code === -32029 || body.result?.protocolVersion, 'Handler must return valid JSON-RPC (either rate limited or initialized)');
   });
 
-  it('tools/call returns JSON-RPC -32603 when Redis fetch throws (P1 fix)', async () => {
+  it('tools/call returns a retryable JSON-RPC error when Redis fetch throws (P1 fix)', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
@@ -900,7 +900,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     assert.equal(res.status, 200, 'Must return HTTP 200, not 500');
     const body = await res.json();
-    assert.equal(body.error?.code, -32603, 'Must return JSON-RPC -32603, not throw');
+    // Every cache read failed, so this is Redis being unreachable, not an empty
+    // dataset or a code fault: the source-unavailable error, marked retryable.
+    assert.equal(body.error?.code, -32003, 'Must return the source-unavailable JSON-RPC error, not throw');
+    assert.equal(body.error?.data?.retryable, true);
+    assert.ok(body.error?.data?.failed_inputs?.length > 0, 'must name the inputs whose read failed');
   });
 
   // --- inputSchema completion + cache-tool _postFilter narrowing (issue #3677) ---
@@ -1061,9 +1065,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.MCP_TELEMETRY = 'true';
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
-    // Force the cache-tool fetch path to throw — dispatchToolsCall's outer
-    // catch fires and one mcp.toolcall line with ok:false must land.
-    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    // Force the cache-tool path to throw — dispatchToolsCall's outer catch
+    // fires and one mcp.toolcall line with ok:false must land. Every key reads
+    // back absent, so the throw is `cache_all_null`, a server_error. (A Redis
+    // read that FAILS is a source outage instead; the P1 test above covers it.)
+    mockCacheKeys({});
 
     const captured = [];
     const origLog = console.log;
@@ -1494,11 +1500,6 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_country_macro: a country NAME narrows, rather than falling open to all', async () => {
-    // `pickMapKeys` FAILS OPEN — a filter matching nothing returns the whole
-    // map (api/mcp/filters.ts:100). The country-briefing prompt fans one
-    // argument out to three tools, and once the other two accepted names, an
-    // un-normalized name reaching this one spliced EVERY country's macro
-    // indicators into a single-country brief.
     const macro = { countries: { US: { inflationPct: 3 }, DE: { inflationPct: 2 }, CN: { inflationPct: 1 } }, seededAt: 1 };
     const meta = {
       'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 3 },

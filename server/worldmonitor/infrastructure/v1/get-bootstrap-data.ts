@@ -20,11 +20,22 @@ import { getCachedJsonBatch } from '../../../_shared/redis';
 // IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
+const isRegisteredKey = (key: string) => Object.prototype.hasOwnProperty.call(BOOTSTRAP_CACHE_KEYS, key);
+const isTieredKey = (key: string) => BOOTSTRAP_TIERS[key] === 'fast' || BOOTSTRAP_TIERS[key] === 'slow';
+
+// A multi-key read costs at most the fast and slow tiers together, which are
+// already servable; on-demand keys run to megabytes each, so they go alone.
+function isServableKeySelection(keys: string[]): boolean {
+  const unique = new Set(keys);
+  if (unique.size === 0 || ![...unique].every(isRegisteredKey)) return false;
+  return unique.size === 1 || [...unique].every(isTieredKey);
+}
+
 function buildRegistry(req: GetBootstrapDataRequest): Record<string, string> {
   if ((req.tier && req.keys.length > 0)
     || (req.tier && req.tier !== 'fast' && req.tier !== 'slow')
-    || (!req.tier && (req.keys.length !== 1 || !Object.prototype.hasOwnProperty.call(BOOTSTRAP_CACHE_KEYS, req.keys[0]!)))) {
-    throw new ApiError(400, 'Specify a fast/slow tier or one registered bootstrap key', '');
+    || (!req.tier && !isServableKeySelection(req.keys))) {
+    throw new ApiError(400, 'Specify a fast/slow tier, fast/slow bootstrap keys, or one on-demand bootstrap key', '');
   }
   let registry: Record<string, string>;
   if (req.tier === 'slow' || req.tier === 'fast') {
@@ -42,7 +53,7 @@ function buildRegistry(req: GetBootstrapDataRequest): Record<string, string> {
 }
 
 /**
- * Fetch one named dataset or a fixed public tier; never enumerate the full registry.
+ * Fetch named datasets or a fixed public tier; never enumerate the full registry.
  */
 export const getBootstrapData: InfrastructureServiceHandler['getBootstrapData'] = async (
   _ctx: ServerContext,

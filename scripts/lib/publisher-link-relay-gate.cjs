@@ -32,6 +32,7 @@
 // (guarded by tests/publisher-link-relay-gate.test.mjs).
 
 const PUBLISHER_LINK_DOMAINS = {
+  'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],
   'ap-news': ['apnews.com'],
   'arxiv': ['arxiv.org'],
@@ -109,6 +110,7 @@ function isPublisherLink(link, expectedHosts) {
 // the `label:<name>` singleton namespace, which names no domains and
 // therefore blanks at the gate (fail-closed).
 const PUBLISHER_LINK_LABELS = {
+  "miit (china)": "miit",
   "a16z blog": "a16z",
   "a16z insights": "a16z",
   "a16z podcast": "a16z",

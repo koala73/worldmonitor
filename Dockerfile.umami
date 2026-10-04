@@ -9,7 +9,7 @@
 # byte-verified upstream migration 23, wrapped only by the reviewed transaction
 # and lock/statement timeouts required for controlled production deployment.
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS source
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS source
 
 RUN apk add --no-cache git
 WORKDIR /upstream
@@ -99,7 +99,7 @@ RUN git init \
   && mkdir -p prisma/migrations/21_update_session_data \
   && cp /tmp/21_update_session_data.sql prisma/migrations/21_update_session_data/migration.sql
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS deps
 
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -108,7 +108,7 @@ RUN npm install --global pnpm@10.15.1
 RUN printf 'strictDepBuilds: false\n' > pnpm-workspace.yaml
 RUN pnpm install --frozen-lockfile
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS builder
 
 WORKDIR /app
 RUN npm install --global pnpm@10.15.1
@@ -124,7 +124,7 @@ ENV DATABASE_URL="postgresql://user:pass@localhost:5432/dummy"
 RUN pnpm vitest run src/queries/sql/sessions/saveSessionData.test.ts
 RUN npm run build-docker
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS runner
 
 LABEL org.opencontainers.image.source=https://github.com/koala73/worldmonitor \
   org.opencontainers.image.version=3.2.0-worldmonitor.1 \

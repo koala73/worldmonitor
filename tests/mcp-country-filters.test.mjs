@@ -66,6 +66,20 @@ it('country validation reaches callers as Invalid params through dispatch', asyn
 });
 
 for (const [name, label] of [
+  ['get_country_macro', 'macro'],
+  ['get_eu_housing_cycle', 'house-prices'],
+  ['get_eu_quarterly_gov_debt', 'gov-debt-q'],
+  ['get_eu_industrial_production', 'industrial-production'],
+]) {
+  it(`${name} returns no other countries when the requested country has no coverage`, () => {
+    const tool = TOOL_REGISTRY.find(tool => tool.name === name);
+    const fixture = { [label]: { countries: { DE: { value: 2 } } } };
+    const result = tool._postFilter(structuredClone(fixture), { countries: ['Japan'] });
+    assert.deepEqual(result[label].countries, {});
+  });
+}
+
+for (const [name, label] of [
   ['get_eu_housing_cycle', 'house-prices'],
   ['get_eu_quarterly_gov_debt', 'gov-debt-q'],
   ['get_eu_industrial_production', 'industrial-production'],

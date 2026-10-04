@@ -89,6 +89,16 @@ describe('official SEMA table JSON', () => {
     assert.deepEqual(result.records, []);
   });
 
+  it('collapses a row repeated with identical fields into one record', async () => {
+    const rows = validRows(600);
+    rows[1]['Ship IMO number'] = 'N/A';
+    const repeated = [...rows, { ...rows[0] }, { ...rows[1] }, { ...rows[2], 'Last Name': ` ${rows[2]['Last Name']}  ` }];
+    const result = await ingest({ data: repeated });
+    assert.equal(result.error, null);
+    assert.deepEqual(result.records, (await ingest({ data: rows })).records);
+    assert.deepEqual(result.quarantined.map(q => q.id), ['sema-ca:belarus:9:2']);
+  });
+
   it('rejects malformed shapes and empty sources', async () => {
     for (const data of [null, [], {}, { data: {} }, { data: [null] }, { data: [] }]) {
       const result = await ingest(data);
@@ -198,9 +208,9 @@ describe('SEMA row quarantine', () => {
     for (const [patch, error] of [
       [{ 'Ship IMO number': null }, 'SEMA_INVALID_RECORD'],
       [{ 'Date of Listing': 'yesterday' }, 'SEMA_INVALID_DATE'],
-      [{ 'Item Number': '2' }, 'SEMA_DUPLICATE_ID'],
+      [{ 'Item Number': '2', 'Last Name': 'Conflicting' }, 'SEMA_DUPLICATE_ID'],
       [{ 'Ship IMO number': 'N/A', 'Date of Listing': 'yesterday' }, 'SEMA_INVALID_DATE'],
-      [{ 'Ship IMO number': 'N/A', 'Item Number': '2' }, 'SEMA_DUPLICATE_ID'],
+      [{ 'Ship IMO number': 'N/A', 'Item Number': '2', 'Last Name': 'Conflicting' }, 'SEMA_DUPLICATE_ID'],
     ]) {
       const rows = validRows(600);
       Object.assign(rows[0], patch);

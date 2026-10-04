@@ -225,13 +225,27 @@ describe('publisher roster renders identically on every surface (#6419 step 3)',
     expect(roster?.rows.map((row) => row.chip)).toEqual(['T4', 'T4']);
   });
 
-  it('omits the roster where the pill already names the only publisher', () => {
+  it('lists the feeds of a single publisher that filed under several, so "one publisher" is checkable', () => {
     const oneNewsroom = ['Reuters World', 'Reuters US'];
-    expect(readRoster(newsPanelRow(oneNewsroom))).toBeNull();
+    const views = [readRoster(newsPanelRow(oneNewsroom))];
     document.body.innerHTML = '';
-    expect(readRoster(deepDiveRow(oneNewsroom))).toBeNull();
-    expect(readRoster(insightsStory(oneNewsroom, { uniqueSourceCount: 1 }))).toBeNull();
-    expect(readRoster(insightsBreaking(oneNewsroom))).toBeNull();
+    views.push(
+      readRoster(deepDiveRow(oneNewsroom)),
+      readRoster(insightsStory(oneNewsroom, { uniqueSourceCount: 1 })),
+      readRoster(insightsBreaking(oneNewsroom)),
+    );
+    for (const view of views) {
+      expect(view?.summary).toBe('Reported by 1 publisher, including 1 tier-1');
+      expect(view?.rows).toHaveLength(1);
+      expect(view?.rows[0]?.feeds).toContain('Reuters World');
+      expect(view?.rows[0]?.feeds).toContain('Reuters US');
+    }
+  });
+
+  it('omits the roster where the pill and the row already name the only feed', () => {
+    document.body.innerHTML = '';
+    expect(readRoster(deepDiveRow(['Reuters World']))).toBeNull();
+    expect(readRoster(insightsStory(['Reuters World'], { uniqueSourceCount: 1 }))).toBeNull();
   });
 
   it('replaces the NewsPanel "Also:" chips and the Deep Dive "+N sources" tooltip', () => {

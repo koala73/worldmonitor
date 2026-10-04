@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // UsCpiPercentChange is a simple percent change computed from the index.
@@ -42,6 +43,12 @@ message UsCpiMonth {
 message GetUsCpiMonthlyRequest {
   // When true, return every stored month. When false, return only the latest month.
   bool history = 1 [(sebuf.http.query) = {name: "history"}];
+  // Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+  optional int32 limit = 2 [
+    (sebuf.http.query) = {name: "limit"},
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 366
+  ];
 }
 
 // GetUsCpiMonthlyResponse is the CPI basket for the requested window.

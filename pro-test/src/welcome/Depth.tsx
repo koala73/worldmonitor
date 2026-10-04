@@ -75,7 +75,7 @@ export const Depth = () => (
           >
             <Icon className="w-5 h-5 text-wm-muted group-hover:text-wm-green transition-colors mb-3" aria-hidden="true" />
             <h3 className="font-bold text-sm mb-1.5">{t(`welcome.depth.n${n}Title`)}</h3>
-            <p className="text-xs text-wm-muted leading-relaxed">{t(`welcome.depth.n${n}Desc`)}</p>
+            <p className="text-xs text-wm-muted leading-relaxed">{t(`welcome.depth.n${n}Desc`, depthProofStats)}</p>
           </motion.a>
         ))}
       </div>

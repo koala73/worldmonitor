@@ -63,8 +63,14 @@ export function reportServerError(
   res: Response,
   input: RequestInfo | URL,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
+  signal?: AbortSignal | null,
 ): void {
   if (res.status < 500) return;
+  // A caller that aborted while withBillingVerificationRetry waited out
+  // Retry-After gets the FIRST 503 back without the retry ever running, so
+  // nothing shows the outage was sustained (WORLDMONITOR-ZH: closing the
+  // country deep-dive mid-wait).
+  if (signal?.aborted) return;
   // wm-session's dead-session cooldown synthesizes a local 503 (marked with
   // X-Wm-Session-Degraded) for every suppressed anonymous call — it never
   // left the browser, so reporting it here floods one `API 503:` issue per
@@ -153,7 +159,7 @@ async function fetchReportingServerErrors(
   init?: RequestInit,
 ): Promise<Response> {
   const res = await globalThis.fetch(input, init);
-  reportServerError(res, input);
+  reportServerError(res, input, undefined, init?.signal);
   return res;
 }
 

@@ -73,6 +73,14 @@ describe('declaredSourceTier', () => {
     }
   });
 
+  it('resolves a label that differs from its table key only in case or surrounding space', () => {
+    // Families fold case and trim, so a roster row built from such a label must not read as undeclared.
+    for (const label of declaredLabels) {
+      assert.equal(declaredSourceTier(` ${label.toUpperCase()} `), declaredSourceTier(label), label);
+      assert.equal(declaredSourceTier(label.toLowerCase()), declaredSourceTier(label), label);
+    }
+  });
+
   it('never returns 4 for a label absent from all three tables', () => {
     assert.equal(declaredSourceTier(UNDECLARED), null);
     assert.equal(declaredSourceTier(''), null);

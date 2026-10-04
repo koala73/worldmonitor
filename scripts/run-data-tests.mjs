@@ -9,6 +9,28 @@ import { isMainModule } from './lib/main-module.mjs';
 
 const timingPath = new URL('./shared/data-test-durations.json', import.meta.url);
 
+// CI builds dist/ and public/pro/ once, in the unit-built-output job, instead of
+// in every unit shard. A suite goes to that job when its source names the built
+// trees or the guards that gate on them, or loads pro-test's own install
+// (pro-test/node_modules, pro-test/vite.config), which only `npm run build:pro`
+// provides in CI. Over-matching only moves a suite to the
+// job that has the build; a suite that reads built output without naming it
+// still fails loudly in a shard, because the shards also run with
+// WM_EXPECT_BUILT_OUTPUT=1 and no build.
+const BUILT_OUTPUT_REFERENCE = /built-output-guard|pro-built-output|WM_EXPECT_BUILT_OUTPUT|['"`/]dist\/|public\/pro\/|pro-test\/(?:node_modules|vite\.config)/;
+const BUILT_OUTPUT_MODES = new Set(['all', 'only', 'exclude']);
+
+export function readsBuiltOutput(source) {
+  return BUILT_OUTPUT_REFERENCE.test(source);
+}
+
+export function selectByBuiltOutput(files, mode, readSource = (file) => readFileSync(file, 'utf8')) {
+  if (!BUILT_OUTPUT_MODES.has(mode)) throw new Error('--built-output must be all, only or exclude');
+  if (mode === 'all') return files;
+  const wantBuilt = mode === 'only';
+  return files.filter((file) => readsBuiltOutput(readSource(file)) === wantBuilt);
+}
+
 export function partitionTests(files, durations, total) {
   if (!Number.isSafeInteger(total) || total < 1) throw new Error('Shard count must be a positive integer');
   for (const duration of Object.values(durations)) {
@@ -33,6 +55,7 @@ export async function main(args) {
       shard: { type: 'string' },
       concurrency: { type: 'string', default: '4' },
       list: { type: 'boolean', default: false },
+      'built-output': { type: 'string', default: 'all' },
       timings: { type: 'string' },
       'test-name-pattern': { type: 'string' },
     },
@@ -51,12 +74,13 @@ export async function main(args) {
     }
   }
   if (!positionals.length) throw new Error('Supply test files or globs');
-  const files = [...new Set(positionals.flatMap((pattern) => {
+  const files = selectByBuiltOutput([...new Set(positionals.flatMap((pattern) => {
     const matches = (existsSync(pattern) && statSync(pattern).isFile() ? [pattern] : globSync(pattern))
       .map((file) => file.split(sep).join('/'));
     if (!matches.length) throw new Error(`No test files match ${pattern}`);
     return matches;
-  }))];
+  }))], values['built-output']);
+  if (!files.length) throw new Error(`No test files remain for --built-output=${values['built-output']}`);
   const durations = JSON.parse(readFileSync(timingPath, 'utf8'));
   if (total > files.length) throw new Error('Shard count exceeds the test file count');
   const selected = partitionTests(files, durations, total)[index - 1];

@@ -491,6 +491,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
       ['/api/market/v1/list-crypto-quotes', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/get-price-history', { limit: 30, window: '60 s' }],
       ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
     ] as const);
 

@@ -341,7 +341,7 @@ export function parseSemaJson(text) {
   if (data.length === 0) throw new Error(SEMA_EMPTY_ERROR);
   const records = [];
   const quarantined = [];
-  const ids = new Set();
+  const seen = new Map();
   let newest = 0;
   let oldest = Infinity;
   for (const [index, row] of data.entries()) {
@@ -365,8 +365,14 @@ export function parseSemaJson(text) {
     const identified = defect !== 'MISSING_COUNTRY' && defect !== 'INVALID_ITEM';
     const id = identified ? semaRecordId(fields.Country, fields.Schedule, fields.Item) : `${SEMA_SOURCE}:row:${index}`;
     if (identified) {
-      if (ids.has(id)) throw new Error('SEMA_DUPLICATE_ID');
-      ids.add(id);
+      // Canada republishes some rows verbatim; an exact copy adds nothing, a
+      // conflicting row under the same identity is still a table-wide break.
+      const fingerprint = JSON.stringify(fields);
+      if (seen.has(id)) {
+        if (seen.get(id) === fingerprint) continue;
+        throw new Error('SEMA_DUPLICATE_ID');
+      }
+      seen.set(id, fingerprint);
     }
     if (defect) {
       quarantined.push({ id, reason: defect });

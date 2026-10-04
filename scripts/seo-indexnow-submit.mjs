@@ -16,7 +16,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { SITE_ORIGIN, SITEMAP_INDEX_MEMBERS, SITEMAP_MAIN_FILENAME } from './build-sitemap.mjs';
+import {
+  MACHINE_READABLE_URLS,
+  SITE_ORIGIN,
+  SITEMAP_INDEX_MEMBERS,
+  SITEMAP_MAIN_FILENAME,
+} from './build-sitemap.mjs';
 
 // Keys must be genuinely random (`openssl rand -hex 16`). The previous value
 // (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
@@ -117,6 +122,8 @@ const APEX_URLS = uniqueSorted(getSitemapUrlsForHost(APEX_HOST));
 const WWW_URLS = uniqueSorted([
   ...getSitemapUrlsForHost(WWW_HOST),
   ...getBlogUrls(),
+  // Kept out of the sitemap (#8608) but still announced to IndexNow.
+  ...MACHINE_READABLE_URLS,
 ]);
 
 /**
@@ -218,6 +225,7 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
     const urls = [...pages].filter(url => new URL(url).hostname === config.host);
     if (urls.length === 0) throw new Error(`published sitemap has no pages for ${config.host}`);
     if (INDEXNOW_VARIANT_HOSTS.includes(config.host)) urls.push(`https://${config.host}/`);
+    if (config.host === WWW_HOST) urls.push(...MACHINE_READABLE_URLS);
     const uniqueUrls = uniqueSorted(urls);
     if (uniqueUrls.length > 10_000) throw new Error(`${config.host} exceeds the IndexNow 10000 URL batch limit`);
     return { ...config, urls: uniqueUrls };

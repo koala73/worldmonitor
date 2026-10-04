@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
+import depthProofStats from '../generated/depth-stats.json';
 
 export const FinalCta = () => (
   <section className="py-28 px-6 border-t border-wm-border relative overflow-hidden">
@@ -14,7 +15,7 @@ export const FinalCta = () => (
       className="max-w-3xl mx-auto text-center relative"
     >
       <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight">{t('welcome.cta.title')}</h2>
-      <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle')}</p>
+      <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle', depthProofStats)}</p>
       <div className="mt-9">
         <a
           href={DASHBOARD_PATH}

@@ -282,7 +282,12 @@ function parseMcpAppsInventory({
   if (!registryBlockMatch) {
     throw new Error('docs-stats: could not parse UI_RESOURCE_REGISTRY');
   }
-  const registryEntries = [...registryBlockMatch[1].matchAll(
+  const registryBody = [registryBlockMatch[1], ...[...uiRegistrySource.matchAll(/UI_RESOURCE_LIST_RESPONSE\.push\(\{([\s\S]*?)\}\);/g)].map(match => match[1])].join('\n');
+  const loaderSource = read('api/mcp/ui/news-dashboard-app.ts');
+  for (const [, name, uri] of loaderSource.matchAll(/^export\s+const\s+(\w+_UI_URI)\s*=\s*'([^']+)';/gm)) {
+    if (new RegExp(`\\b${name}\\b`).test(registryBody)) uiConstToUri.set(name, uri);
+  }
+  const registryEntries = [...registryBody.matchAll(
     /uri:\s*(\w+_UI_URI),\s*\n\s*name:\s*'((?:\\'|[^'])*)',\s*\n\s*description:\s*\n\s*'((?:\\'|[^'])*)',/g,
   )].map((m) => ({
     uriConst: m[1],
@@ -299,8 +304,11 @@ function parseMcpAppsInventory({
   }
 
   const toolLinks = [];
-  for (const source of [rpcToolsSource, cacheToolsSource]) {
-    for (const block of findTopLevelObjectBlocks(source)) {
+  const compiledToolSources = [];
+  if (uiConstToUri.has('NEWS_DASHBOARD_UI_URI')) compiledToolSources.push(read('api/mcp/registry/news-dashboard.ts'));
+  if (uiConstToUri.has('COUNTRY_VIEW_UI_URI')) compiledToolSources.push(read('api/mcp/registry/country-view.ts'));
+  for (const source of [rpcToolsSource, cacheToolsSource, ...compiledToolSources]) {
+    for (const block of (compiledToolSources.includes(source) ? source.split(/(?=^ {2}name:)/m) : findTopLevelObjectBlocks(source))) {
       const name = block.match(/^\s+name:\s*'([^']+)'/m)?.[1];
       const uriConst = block.match(/^\s+_uiResourceUri:\s*(\w+_UI_URI),/m)?.[1];
       if (name && uriConst) {

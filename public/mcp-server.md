@@ -27,22 +27,26 @@ The server ships tools covering world and country briefs, country risk and resil
 
 ## MCP Apps
 
-World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, and `get_forecast_predictions`; their UI resources are:
+World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:
 
 - `ui://worldmonitor/country-risk.html`
 - `ui://worldmonitor/world-brief.html`
 - `ui://worldmonitor/country-brief.html`
-- `ui://worldmonitor/market-radar.html`
+- `ui://worldmonitor/market-radar-v2.html`
 - `ui://worldmonitor/chokepoint-monitor.html`
 - `ui://worldmonitor/news-intelligence.html`
 - `ui://worldmonitor/conflict-events.html`
 - `ui://worldmonitor/natural-disasters.html`
 - `ui://worldmonitor/prediction-markets.html`
 - `ui://worldmonitor/forecasts.html`
+- `ui://worldmonitor/news-dashboard-v2.html`
+- `ui://worldmonitor/country-view-v2.html`
 
 Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumerate the shells through `resources/list`, and fetch each template with `resources/read`. `ui://` reads are public and quota-exempt because they return static, data-free HTML; live data still arrives through a normal authenticated `tools/call`. Full contract: [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps).
 
 ## Authentication
+
+`get_gold_intelligence` preserves gold quotes and optional COT, ETF and central-bank enrichment with individual observation dates; `unavailable` and absent enrichment remain explicit. `get_internet_activity` reads traffic anomalies (optional country) or global DDoS summaries with `limit` 1..100, default 30. The traffic `totalCount` is global before filtering; DDoS percentages are not country-filtered. Both require subscription access and make one signed downstream GET, charged at weight 2 on API allowances (the MCP request plus the downstream request). Missing internet snapshots return an error; valid empty snapshots retain empty lists.
 
 - **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough.
 - **`tools/list` and other stateless discovery calls:** anonymous, no key.

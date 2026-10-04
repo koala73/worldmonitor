@@ -36,6 +36,7 @@ const MIRRORED_FILES = [
   'stablecoins.json',
   'story-identity.js',
   'un-to-iso2.json',
+  'world-bank-rpc-cache.js',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {
@@ -70,6 +71,7 @@ describe('regional snapshot seed scripts use scripts/shared/ (not repo-root shar
     'scripts/_seed-utils.mjs',
     'scripts/_clustering.mjs',
     'scripts/seed-regional-snapshots.mjs',
+    'scripts/seed-wb-indicators.mjs',
     'scripts/regional-snapshot/actor-scoring.mjs',
     'scripts/regional-snapshot/balance-vector.mjs',
     'scripts/regional-snapshot/evidence-collector.mjs',

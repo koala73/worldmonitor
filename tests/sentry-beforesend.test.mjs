@@ -1942,6 +1942,87 @@ describe('injected browser-automation harness errors (Floot)', () => {
   });
 });
 
+// ─── WORLDMONITOR-169: Puppeteer crawler driving synthetic events ────────────
+//
+// A Chrome 141 crawler ran `PuppeteerPage.evaluate` scripts that dispatched
+// `isTrusted: false` events into the page; a handler threw on the null event
+// detail. Puppeteer's evaluated code carries a `pptr:` source URL, so its frame
+// sits at the bottom of the stack even when first-party frames sit above it.
+describe('Puppeteer-driven crawler frames (WORLDMONITOR-169)', () => {
+  const msg = "Cannot use 'in' operator to search for 'data' in null";
+  const pptrFrame = {
+    filename: 'file:///C:/snapshot/common-browser-driver/common/browser/adapters/puppeteer-adapter.js',
+    lineno: 11763,
+    function: 'async pptr:evaluate;PuppeteerPage.evaluate%20',
+  };
+
+  it('suppresses an error whose stack runs through a Puppeteer evaluate frame', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      pptrFrame,
+      { filename: 'file:///C:/snapshot/explorer.js', lineno: 7506, function: 'dispatchCustomEvent' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress on a "puppeteer"-named frame without the pptr: source URL', () => {
+    // The match keys on Puppeteer's source-URL scheme, which no bundle asset or
+    // function name can carry, not on the word. A chunk or function of ours that
+    // merely mentions puppeteer must still report.
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: '/assets/puppeteer-helpers-Bx81kQ2a.js', lineno: 12, function: 'puppeteerLikeDriver' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a puppeteer-named first-party frame must reach Sentry');
+  });
+
+  it('does NOT suppress the same error from first-party frames without Puppeteer', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'dispatchCustomEvent'),
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a real user hitting the same handler bug must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-168: `/sw.js` evaluated as a page script ────────────────────
+//
+// The same crawler loaded the service worker's script into pages. Workbox's
+// loader then read `document.currentScript.src` on a null `currentScript`. The
+// real registration (src/main.ts) runs it in a worker, which this client never
+// sees, so an all-`/sw.js` stack cannot come from a real user.
+describe('`/sw.js` evaluated as a page script (WORLDMONITOR-168)', () => {
+  const msg = "Cannot read properties of null (reading 'src')";
+
+  it('suppresses an error whose only frames are /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: null },
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress the same message from a first-party frame', () => {
+    const event = makeEvent(msg, 'TypeError', [firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadScript')]);
+    assert.ok(beforeSend(event) !== null, 'a first-party null currentScript read must reach Sentry');
+  });
+
+  it('does NOT suppress when a first-party frame shares the stack with /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'registerServiceWorker'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only an all-/sw.js stack is proof of page-context evaluation');
+  });
+
+  it('does NOT suppress a same-named script under another path', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/assets/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only the root /sw.js is the registered worker');
+  });
+});
+
 // ─── WORLDMONITOR-WH/WJ: `Failed to fetch (abacus.worldmonitor.app)` ──────────
 //
 // abacus.worldmonitor.app is our SELF-HOSTED Umami analytics collector

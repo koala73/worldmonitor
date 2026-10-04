@@ -855,6 +855,114 @@ curl -s https://worldmonitor.app/mcp \
 
 ## Energy
 
+### `compute_energy_shock`
+
+Compute the existing country oil/gas supply-sensitivity model for a supported chokepoint. This exposes the same scenario as the `assess-energy-shock` recipe.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Required. Country name or ISO code, normalized to ISO2. |
+| `chokepoint_id` | string | Required. One of `suez`, `hormuz_strait`, `malacca_strait`, `bab_el_mandeb`. |
+| `disruption_pct` | integer | Default 100, range 10..100 percent of flow disrupted. |
+| `fuel_mode` | string: oil / gas / both | Default oil. |
+
+The source response retains product supply/demand (thousand barrels per day), effective cover (days), gas quantities (terajoules) and observed gas storage (TWh). Read `dataAvailable`, individual coverage flags, `coverageLevel`, `limitations`, `degraded`, `chokepointConfidence` and `gasSensitivity.modelBasis` before interpreting numeric values. An assumed LNG-route sensitivity is not a measured live-flow shock. EU aggregate storage is not a country's usable storage buffer.
+
+- **API endpoint:** `GET /api/intelligence/v1/compute-energy-shock`.
+- **Access:** subscription; existing metering, gateway checks, billing denial and retry/backoff apply. Derived results may be cached; no user scenario or trade is saved.
+
+For example, `compute_energy_shock` with `{"country":"Japan","chokepoint_id":"hormuz_strait","disruption_pct":50,"fuel_mode":"both"}` requests the existing partial-disruption model.
+
+### `get_supply_chain_cost_shock`
+
+Existing country energy exposure or multi-sector import-cost scenarios for a chokepoint closure. This tool uses the premium SupplyChainService models and preserves their limitations and missing-data explanations.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `mode` | string: energy / multi-sector | Required. Energy exposure or multi-sector import-cost scenario. |
+| `country` | string | Required. Country name or ISO code; normalized to ISO2. |
+| `chokepoint_id` | string | Required. Canonical ID from the shared chokepoint registry. |
+| `hs2` | string | Energy mode only. Default `27` (mineral fuels); one or two digits. Other codes preserve the source unavailable explanation. |
+| `closure_days` | integer | Multi-sector mode only. Default 30, range 1..365 days. |
+
+The response is `{mode, data}` with original source fields. Energy mode retains `supplyDeficitPct`, `coverageDays`, `warRiskPremiumBps`, `hasEnergyModel` and `unavailableReason`. Multi-sector mode retains sector import values, freight and insurance estimates, added transit days, USD cost estimates for the requested window and `totalAddedCost`. An unavailable model or missing seeded imports is not a measured zero impact. Estimates are not realized losses or forecasts.
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-country-cost-shock`, `GET /api/supply-chain/v1/get-multi-sector-cost-shock`.
+- **Access:** subscription; existing metering, gateway checks, billing denial and retry/backoff contracts apply. The tool reads existing seeds and computes a scenario without saving it.
+
+For example, `get_supply_chain_cost_shock` with `{"mode":"multi-sector","country":"Japan","chokepoint_id":"hormuz_strait","closure_days":90}` requests the existing closure-cost calculation.
+
+### `get_stock_research`
+
+Subscriber stock research through existing MarketService routes. Analysis and backtesting accept one symbol; saved-history operations accept a watchlist. Analysis generation may use paid source data and an LLM, and analysis/backtest generation can save shared research snapshots. No trading or account changes occur.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `operation` | string: analysis / backtest / history / stored-backtests | Required. Select current analysis, technical backtest, saved analysis history, or saved backtests. |
+| `symbols` | array of strings | Required. One ticker for analysis/backtest; up to 50 for saved results. Trimmed and uppercased; no silent truncation. |
+| `include_news` | boolean | Analysis/history only. Default false. |
+| `limit_per_symbol` | integer | History only. Default 4, range 1..32. |
+| `eval_window_days` | integer | Backtest/stored-backtests only. Default 10 trading days, range 3..30. |
+
+The response is `{operation, data}`, retaining the existing API payload, including availability, generated timestamps, risk factors, model/fallback provenance and simulation basis. Empty saved results and unavailable analyses do not imply a zero return. Technical backtests omit point-in-time fundamentals and do not establish future performance.
+
+- **API endpoints:** `GET /api/market/v1/analyze-stock`, `GET /api/market/v1/backtest-stock`, `GET /api/market/v1/get-stock-analysis-history`, `GET /api/market/v1/list-stored-stock-backtests`.
+- **Access:** subscription. Existing MCP metering, gateway subscription checks, provider quotas, billing denial and retry/backoff contracts remain active. Cold analysis may take longer than seeded reads. The tool may save shared snapshots, so its read-only and idempotent hints are false; its destructive hint is false.
+- **Output budget:** 512 KiB. For a large watchlist use fewer symbols/snapshots or `jmespath` to select the fields needed. A budget-exceeded envelope is not complete history.
+
+For example, `get_stock_research` with `{"operation":"history","symbols":["AAPL","MSFT"],"limit_per_symbol":2}` reads saved analyses without generating new ones.
+
+### `get_gold_intelligence`
+
+Read seeded precious-metal futures quotes and optional gold COT positioning, session ranges, returns, drivers, ETF holdings and central-bank reserves. No tool-specific parameters. Universal `jmespath` projection remains available.
+
+The response retains source fields and optional enrichment. Prices are USD per troy ounce unless a cross-currency row names another currency; changes/returns are percentages. COT position counts are decimal strings, preserving int64 precision. ETF and reserve quantities are tonnes; ETF AUM is USD. Retain each observation date. The enrichment `updatedAt` does not establish freshness of every source. `unavailable: true`, absent enrichment and placeholder zero quotes are not confirmed zero market observations.
+
+- **API endpoint:** `GET /api/market/v1/get-gold-intelligence`.
+- **Access:** subscription. One signed downstream GET uses the standard API allowance weight of 2; a dedicated MCP allowance charges one call. Billing denial and retry/backoff contracts remain active.
+- **Output budget:** 128 KiB. The tool is read-only and does not create a trade or research snapshot.
+
+### `get_internet_activity`
+
+Read seeded Cloudflare Radar traffic anomalies or global DDoS summaries. Missing caches return an error; valid empty snapshots retain empty lists.
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | string: traffic / ddos | Required. Select one dataset. |
+| `country` | string | Traffic only. Optional ISO code or country name. Rejected for global DDoS summaries. |
+| `limit` | integer | Cap each list independently. Default 30; range 1 through 100. |
+
+The result is `{dataset, data, truncated}`. Traffic `totalCount` remains global before filtering; it is not the number of selected matches or shown rows. Traffic dates are epoch milliseconds and `endDate: 0` means ongoing. Global DDoS protocol/vector percentages and target locations retain `dateRangeStart` and `dateRangeEnd`. `truncated: true` means at least one list was capped. Loading a snapshot does not establish its source freshness.
+
+- **API endpoints:** `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`.
+- **Access:** subscription. One signed downstream GET uses the standard API allowance weight of 2; a dedicated MCP allowance charges one call. Billing denial and retry/backoff contracts remain active.
+- **Output budget:** 128 KiB. The tool is read-only.
+
+### `get_macro_history`
+
+Dated CPI, interest-rate, and sovereign-yield observations from the existing EconomicService seed readers. This tool preserves source labels, CPI index bases, observation frequency, and yield measures. It does not claim that every source is current.
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `us-cpi / us-interest-rates / us-treasury-yields / world-cpi / government-yields` | Required. Select one dataset. |
+| `country` | string | Required for `world-cpi` and `government-yields`. Accepts an ISO code or country name. Rejected for US-only datasets. |
+| `history` | boolean | Default true. False requests the latest available snapshot. |
+| `limit` | integer | Maximum newest observations per series, retained in chronological order. Default 30; range 1 through 365. |
+
+The result contains `dataset`, `history`, `truncated`, and the original API `data` with bounded observation lists. `truncated: true` means that the response omits older observations. `unavailable: true` or an empty list is not a confirmed zero rate. Missing CPI components and missing yield tenors remain absent.
+
+Dates use Unix milliseconds. Interest rates and yields use percentages. CPI index levels retain each source's index base. Country CPI can have different frequencies and definitions. Sovereign curves can use par, spot, benchmark, or monthly 10-year measures. Preserve those labels when comparing observations.
+
+- **API endpoints:** `GET /api/economic/v1/get-us-cpi-monthly`, `GET /api/economic/v1/get-us-interest-rates`, `GET /api/economic/v1/get-us-treasury-par-yield-curve`, `GET /api/economic/v1/get-world-cpi-monthly`, `GET /api/economic/v1/get-government-yield-curve`
+- **Access:** `subscription`. Each call makes one signed gateway request and uses the existing MCP quota policy. It accepts the universal `jmespath` argument.
+- **Example:** `{"dataset":"government-yields","country":"Japan","limit":30}` returns the newest available Japanese curve observations.
+
 ### `get_energy_intelligence`
 
 Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.
@@ -886,6 +994,27 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_energy_storage`
+
+EU aggregate gas storage and US natural-gas storage and commercial crude inventories from seeded GIE AGSI+ and EIA observations. These are dated reports, not live quotes.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: eu-gas-storage / nat-gas-storage / crude-inventories>` | Select EU gas storage, US natural gas storage, or US crude inventories. Omit for all three. |
+| `limit` | integer | Maximum observations per history, newest first. Default 30; 0 returns all available seeded observations. |
+
+The response uses the standard `cached_at`, `stale`, and `data` envelope. EU storage includes fill percentage, daily change, a consumption-days heuristic, and history in TWh. US gas history uses billion cubic feet. US crude history uses million barrels. Each history retains its observation date. A null dataset or weekly change means unavailable, not zero.
+
+- **API endpoints:** `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
+- **Access:** `free-account`. Authentication and the existing daily allowance apply. Pro calls spend the daily quota. This tool only reads seeded caches and accepts the universal `summary` and `jmespath` arguments.
+- **Freshness budget:** 48 hours for daily EU storage and 14 days for weekly US observations.
+
+The envelope checks every source even when selecting a subset. A missing timestamp makes `cached_at` null and `stale` true. A missing source remains null; if every source is missing the call returns a tool error.
+
+For example, call `get_energy_storage` with `{"dataset":["eu-gas-storage","nat-gas-storage"],"limit":5}` to compare the latest available gas-storage reports.
 
 ## Geopolitical & security
 
@@ -1120,6 +1249,28 @@ curl -s https://worldmonitor.app/mcp \
     "params":{"name":"get_defense_industrial_base","arguments":{"country_code":"UA"}}
   }'
 ```
+
+### `open_country_brief`
+
+Open the embedded country view. It reuses the website country panel, topics, evidence presentation and output components. Choose this tool for an ordinary country-brief request. Use `get_country_brief` for an explicit text assessment.
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | Country name or ISO2 code; resolved to a recognized country. |
+| `topic` | string | no | `overview`, `all`, `resilience`, `security`, `economy`, `resources`, `society` or `sources`. Defaults to overview. |
+
+The result identifies the country and topic and links `ui://worldmonitor/country-view-v2.html`. Data loads progressively through server tools. Availability and native observation dates remain visible. Dashboard-only signals and live military activity currently show unavailable. Follow/notification settings use a website handoff.
+
+### `get_country_brief_section`
+
+Read one fixed dataset for the country view. Requires a Pro connection. Each request maps to one reviewed downstream reader, uses existing authorization and quota enforcement, and accepts no arbitrary URL, header, method or RPC path.
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `section` | string | **yes** | Fixed reader name from the published tool schema. |
+| `arguments` | object | no | Section-specific bounded arguments; see the schema branches. Country readers accept the corresponding ISO2 parameter. Housing and IMF readers accept only their fixed bootstrap keys. |
+
+Ready results carry `value` and `retrievedAt`; retrieval time does not replace observation time. Access failures return a locked state. Billing and backoff errors preserve the transport's existing error policy. The tool has weight 2 and a 512 KiB output ceiling. The host country adapter limits active reads to three.
 
 ### `get_country_brief`
 
@@ -2300,6 +2451,7 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 
 | Name | Type | Description |
 |------|------|-------------|
+| `panel_request` | string | Server-issued news dashboard request token for its bounded internal map snapshots. |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
 | `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
@@ -2677,3 +2829,60 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `open_news_dashboard`
+
+**Access:** `subscription`
+
+Opens WorldMonitor's existing news panels and map as an MCP App. Global and thread entrypoints accept empty arguments. The initial tool result supplies the full-variant English feed digest; the app does not fetch it again on startup.
+
+**API endpoints:** `GET /api/news/v1/list-feed-digest`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `query` | `string` | Open the existing news search with this query (maximum 200 characters). |
+| `source` | `string` | Filter by source name (maximum 200 characters). |
+| `category` | `string` | Select a news category (maximum 80 characters). |
+| `country` | `string` | Two-letter uppercase country code for news filtering and map focus. |
+| `time_range` | `string` | `1h`, `6h`, `24h`, `48h`, `7d`, or `all`. |
+| `renderer` | `string` | `flat` or `globe`; the app reports the available renderer. |
+| `map_latitude` | `number` | Map center latitude, from -90 to 90; requires longitude. |
+| `map_longitude` | `number` | Map center longitude, from -180 to 180; requires latitude. |
+| `map_zoom` | `number` | Requested zoom, from 1 to 8. |
+| `map_layers` | `array<string>` | Selected hazard and reference layers: `natural`, `fires`, `cables`, `pipelines`, `waterways`, `bases`. |
+| `refresh` | `boolean` | Reload news and selected map data with one new paid request. Defaults to reuse. |
+| `request_id` | `string` | Stable UUID for refresh retries. |
+
+Returns categories, feed status, generation time, coverage, and `requestedView`. Coverage and freshness follow the existing feed-digest endpoint. The server reports requested state; the mounted app reports applied state after the map settles. App-local `apply_news_view` and `focus_news_article` actions operate on the mounted view when the host supports app tools.
+
+Dedicated paid MCP plans spend one request for the dashboard, including its bounded hazard loads. Default opens reuse the full loaded digest for at least five minutes; display filters and layer toggles reuse loaded data. Refresh starts one new request. The `panelRequest` receipt and the view show remaining usage and reset time. News summaries and translations are separate user requests. API plans retain weighted per-tool billing.
+
+```json
+{ "name": "open_news_dashboard", "arguments": { "country": "DE", "time_range": "24h" } }
+```
+
+### `analyze_news_headlines`
+
+**Access:** `subscription`
+
+Runs the existing news summary or translation service through authenticated MCP. Uses the server Groq provider and full variant; credentials are not passed to the app. Provider availability and cache behavior follow the summary endpoint. Denials remain errors rather than empty results.
+
+**API endpoints:** `POST /api/news/v1/summarize-article`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `headlines` | `array<string>` | Required: 1–8 headlines, each at most 4,000 characters. |
+| `bodies` | `array<string>` | Optional matching snippets, up to 8 entries of 400 characters each. |
+| `mode` | `string` | `brief` (default) or `translate`. |
+| `lang` | `string` | Output language, default `en`, maximum 16 characters. |
+| `geoContext` | `string` | Optional geographic context, maximum 100 characters. |
+
+Returns the summary endpoint's response, including summary, model, provider, and status/error fields. A successful MCP transport response does not guarantee that the provider generated a summary; inspect the returned status and error.
+
+```json
+{ "name": "analyze_news_headlines", "arguments": { "headlines": ["Energy ministers discuss winter supply"], "mode": "brief", "lang": "en" } }
+```

@@ -18,11 +18,41 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                  description: 'FRED series ID. Supported values: "BAMLC0A0CM", "BAMLH0A0HYM2", "CPIAUCSL", "DCOILWTICO", "DGS1", "DGS10", "DGS1MO", "DGS2", "DGS30", "DGS3MO", "DGS5", "DGS6MO", "ESTR", "EURIBOR1Y", "EURIBOR3M", "EURIBOR6M", "FEDFUNDS", "GDP", "GSCPI", "ICSA", "M2SL", "MORTGAGE30US", "SOFR", "STLFSI4", "T10Y2Y", "T10Y3M", "UNRATE", "VIXCLS", "WALCL".'
                   required: true
-                  example: "GDP"
+                  example: "BAMLC0A0CM"
                   schema:
                     type: string
+                    enum:
+                        - 'BAMLC0A0CM'
+                        - 'BAMLH0A0HYM2'
+                        - 'CPIAUCSL'
+                        - 'DCOILWTICO'
+                        - 'DGS1'
+                        - 'DGS10'
+                        - 'DGS1MO'
+                        - 'DGS2'
+                        - 'DGS30'
+                        - 'DGS3MO'
+                        - 'DGS5'
+                        - 'DGS6MO'
+                        - 'ESTR'
+                        - 'EURIBOR1Y'
+                        - 'EURIBOR3M'
+                        - 'EURIBOR6M'
+                        - 'FEDFUNDS'
+                        - 'GDP'
+                        - 'GSCPI'
+                        - 'ICSA'
+                        - 'M2SL'
+                        - 'MORTGAGE30US'
+                        - 'SOFR'
+                        - 'STLFSI4'
+                        - 'T10Y2Y'
+                        - 'T10Y3M'
+                        - 'UNRATE'
+                        - 'VIXCLS'
+                        - 'WALCL'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 120.
@@ -3931,6 +3961,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -4072,6 +4110,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -4193,6 +4239,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -4320,6 +4374,14 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -4455,6 +4517,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -5864,7 +5934,7 @@ components:
                     description: |-
                         Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
                          Absent for the oldest week when no prior week is available for comparison.
-            description: CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+            description: CrudeInventoryWeek represents one week of US commercial crude oil stockpile data from EIA WCESTUS1.
         GetNatGasStorageRequest:
             type: object
             description: GetNatGasStorageRequest is the request message for GetNatGasStorage.
@@ -6733,6 +6803,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored month. When false, return only the latest month.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsCpiMonthlyRequest chooses the latest print or the full monthly history.
         GetUsCpiMonthlyResponse:
             type: object
@@ -6791,6 +6867,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored business day since 1990. When false, return the latest day.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsTreasuryParYieldCurveRequest chooses the latest business day or the daily history.
         GetUsTreasuryParYieldCurveResponse:
             type: object
@@ -6875,6 +6957,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored observation. When false, return the latest point of each series.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsInterestRatesRequest chooses the latest prints or the full history.
         GetUsInterestRatesResponse:
             type: object
@@ -6923,6 +7011,12 @@ components:
                 country:
                     type: string
                     description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetWorldCpiMonthlyRequest chooses the latest print or the stored history.
         GetWorldCpiMonthlyResponse:
             type: object
@@ -6995,6 +7089,12 @@ components:
                 history:
                     type: boolean
                     description: True for every stored business day; false for the latest day.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             required:
                 - country
             description: GetGovernmentYieldCurveRequest selects one sovereign market and window.

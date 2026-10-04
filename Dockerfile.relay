@@ -37,6 +37,7 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_widget-response-parser.cjs ./scripts/_widget-response-parser.cjs
+COPY scripts/_widget-data-policy.cjs ./scripts/_widget-data-policy.cjs
 COPY scripts/_opensky-account-cooldown.cjs ./scripts/_opensky-account-cooldown.cjs
 # Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
 COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
@@ -113,6 +114,7 @@ COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-univer
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
+COPY scripts/shared/pizzint-history.cjs ./scripts/shared/pizzint-history.cjs
 # ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
@@ -155,6 +157,12 @@ COPY scripts/_html-entities.mjs ./scripts/_html-entities.mjs
 COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
 COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
 COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs
+COPY scripts/seed-yield-curve-au.mjs ./scripts/seed-yield-curve-au.mjs
+COPY scripts/seed-yield-curves-shared.mjs ./scripts/seed-yield-curves-shared.mjs
+COPY scripts/_content-age-helpers.mjs ./scripts/_content-age-helpers.mjs
+COPY scripts/_upstash-rest.mjs ./scripts/_upstash-rest.mjs
+COPY scripts/lib/yield-curves/model.mjs ./scripts/lib/yield-curves/model.mjs
+COPY scripts/lib/yield-curves/rba.mjs ./scripts/lib/yield-curves/rba.mjs
 
 # Shared helper required by the relay (rss-allowed-domains.cjs)
 COPY shared/ ./shared/

@@ -27,6 +27,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | Stablecoin markets | `GET /api/market/v1/list-stablecoin-markets` | Stablecoin peg-health panel; bootstrap-first via `stablecoinMarkets`. |
 | ETF flows | `GET /api/market/v1/list-etf-flows` | BTC spot ETF tracker; bootstrap-first via `etfFlows`. |
 | Country stock index | `GET /api/market/v1/get-country-stock-index` | Country Brief stock-index card for a selected country. |
+| Price history | `GET /api/market/v1/get-price-history` | Widget agent dated daily closes (1mo to 1y) for up to four tracked commodity, market or Gulf symbols. |
 | Gulf quotes | `GET /api/market/v1/list-gulf-quotes` | Gulf Economies panel; bootstrap-first via `gulfQuotes`. |
 | Premium stock analysis | `GET /api/market/v1/analyze-stock` | PRO stock-analysis card with technicals, headlines, targets, and AI synthesis. |
 | Stock analysis history | `GET /api/market/v1/get-stock-analysis-history` | PRO cached/shared premium analysis ledger. |
@@ -104,6 +105,7 @@ and seeder path must use a provider whose terms permit that commercial use
 | FX (Gulf / macro) | Seeders using AV `FX_DAILY` where wired | Seed cadence | Not part of equity watchlist gap fetch |
 | Crypto | CoinGecko → CoinPaprika (+ relay) | Seed + bounded gap (#6306) | Separate from equity adapter |
 | Historical series | Seeder-side AV daily commodity / FX series; premium analysis paths | Daily | Request-time gap fetch does **not** pull history (would double the budget) |
+| Dated daily closes for widgets | `GET /api/market/v1/get-price-history`: Yahoo Finance chart on a cache miss, up to 4 tracked commodity, market or Gulf symbols, 1mo to 1y | 3 h Redis cache per symbol and range; daily closes | Owner-approved exception (2026-10-01) to the no-Yahoo rule for request-time paths, pending #3731. Rate-limited 30/min fail-closed; symbols outside the tracked set are never fetched. |
 
 **Attribution / keys:** self-hosters need `FINNHUB_API_KEY` and/or `ALPHA_VANTAGE_API_KEY` for custom equity quotes; without either key the RPC reports `PROVIDER_NOT_CONFIGURED` for seed misses rather than calling an unauthorized source. Seeders additionally still use a Yahoo residual for a small yahooOnly set until #3731 fully retires it — that residual is not used on the edge gap path.
 

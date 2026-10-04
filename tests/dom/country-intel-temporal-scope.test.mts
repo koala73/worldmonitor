@@ -103,6 +103,7 @@ it('refreshes deep-dive signal chips and breakdown when updateScore receives new
   const pending = { ...await manager().getCountrySignals('FR', 'France'), temporalAnomalies: null, globalTemporalAnomalies: null };
   Reflect.get(panel, 'renderInitialSignals').call(panel, pending);
   expect(body.querySelector('.cdp-signal-chips')?.textContent).toContain('Temporal observations unavailable');
+  expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toContain('Aggregate severity');
   const refreshed = {
     ...pending,
     temporalAnomalies: 3,

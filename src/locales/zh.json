@@ -1078,10 +1078,18 @@
       "skipToEnd": "跳到结尾"
     },
     "pizzint": {
+      "indexSource": "指数：World Monitor · 场所数据：",
+      "statusNormal": "正常",
+      "statusNoData": "无数据",
+      "statusNoBaseline": "无基准",
+      "vsUsual": "较平常",
       "title": "五角大楼披萨指数",
       "defcon": "DEFCON {{level}}",
       "updated": "更新于{{timeAgo}}",
       "tensionsTitle": "地缘政治紧张局势",
+      "tensionsSource": "紧张局势：World Monitor 根据 GDELT 事件计算",
+      "insufficientData": "数据不足",
+      "pizzaUnavailable": "披萨店活动数据不可用",
       "source": "来源：",
       "statusClosed": "已关闭",
       "statusSpike": "激增",
@@ -1093,11 +1101,11 @@
       "minutesAgo": "{{m}}分钟前",
       "hoursAgo": "{{h}}小时前",
       "defconLabels": {
-        "1": "手枪上膛 - 最高战备",
-        "2": "快速节奏 - 武装部队就绪",
-        "3": "圆屋 - 提高部队战备",
-        "4": "双重确认 - 加强情报监视",
-        "5": "淡出 - 最低战备"
+        "1": "最高活动",
+        "2": "高活动",
+        "3": "活动升高",
+        "4": "高于正常",
+        "5": "正常活动"
       }
     },
     "strategicPosture": {
@@ -2877,6 +2885,10 @@
     "protest": {
       "acledVerified": "ACLED（已验证）",
       "gdelt": "GDELT",
+      "records": "条记录",
+      "mediaSignal": "未经核实的媒体信号",
+      "relatedArticle": "相关文章",
+      "mediaSignalDetail": "此地点在有关动乱的文章中被提及。当地事件尚未得到核实。",
       "riots": "骚乱",
       "highSeverity": "高严重性"
     },

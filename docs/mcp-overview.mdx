@@ -160,7 +160,7 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 | **API Business** | ✅ Yes | OAuth **or** `wm_…` key | **10,000 units / UTC day**, shared with REST and charged at the per-tool weight | **300** / minute / user | Higher REST/API throughput. |
 | **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | Unlimited on both doors | **1,000** / minute | Custom SLA available. |
 
-Per-minute throttling protects against burst storms across all paid tiers. Legacy operator-key clients get a flat 60 calls/minute/key. OAuth and dashboard-key contexts get their plan's burst from the table above. **The limiter runs before method dispatch, so every authenticated method (including `initialize`, `tools/list`, `prompts/list`, `resources/list`, `describe_tool`, etc.) counts against that burst.** Metadata and free-tier methods are the one exception to the plan rate: they are served before the entitlement pre-check, so the limiter has no plan in hand and evaluates them at 60. It is the same per-user pool either way, so on API Business or Enterprise a burst of `tools/list` rejects at 60 while data calls still run to the plan's ceiling. Anonymous `get_sources` calls instead use the separate fail-closed 10/minute/IP ceiling. The daily-quota cap is selective. Only subscription data-bearing `tools/call` and `resources/read` reservations consume it, on OAuth and dashboard-issued `wm_…` keys alike (see [Daily limit (Pro tier)](#daily-limit-pro-tier) above, and the [Error Catalog](/mcp-error-catalog#32029-—-rate-limited-per-minute-daily-cap-or-free-allowance) for the full method-exemption tables for both limits).
+Per-minute throttling protects against burst storms across paid tiers. Ordinary data calls use the account's plan burst from the table above. Recognized data-free protocol methods, including `initialize`, `notifications/initialized`, `ping`, catalog methods and public resource reads, use a separate **192 requests/minute/user** bucket. Both OAuth and dashboard keys share that bucket across sessions. It supports 64 panel-read connections with three setup calls each. A validated paid MCP panel receipt has separate **64 uncached reads/minute/panel** and **64 cached replays/minute/panel** buckets, one daily allocation per opening and at most 64 uncached executions per admission. Unsupported methods, account status reads and data-bearing resource reads retain the ordinary account burst. Legacy operator keys and anonymous discovery retain their combined 60/minute limits. Anonymous `get_sources` retains its fail-closed 10/minute/IP ceiling. The daily-quota cap applies to subscription data reservations. See [Daily limit (Pro tier)](#daily-limit-pro-tier) and the [Error Catalog](/mcp-error-catalog#32029-—-rate-limited-per-minute-daily-cap-or-free-allowance).
 
 The OAuth and dashboard-key burst is per-USER, so a user with 3 Claude installations or multiple `wm_…` keys shares one pool at their plan's rate. Legacy operator-key limiting is per-KEY.
 
@@ -463,6 +463,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 
 | Prompt | Purpose |
 |--------|---------|
+| `country-view` | Open the embedded country panel with progressive, authenticated section reads. |
 | `country-briefing` | Country risk, AI intelligence brief, and macro indicators for one ISO 3166-1 alpha-2 country. |
 | `energy-shock-watch` | Active energy disruptions, fuel shortages, and government crisis policies; optional country focus. |
 | `market-open-prep` | Lightweight equity, commodity, and crypto mover briefing for a market-open scan. |
@@ -507,17 +508,19 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | The precomputed, citation-grounded global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
-| `ui://worldmonitor/market-radar.html` | `get_market_data` | The Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. |
+| `ui://worldmonitor/market-radar-v2.html` | `get_market_data` | Fear & Greed plus all loaded equity, commodity, crypto, Gulf and sector quotes, asset names and expandable intraday charts. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and source. |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
 | `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
+| `ui://worldmonitor/news-dashboard-v2.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
+| `ui://worldmonitor/country-view-v2.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
 
 All UI resources share `mimeType: text/html;profile=mcp-app`.
 
-`resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
+`resources/read` on a `ui://` URI returns an HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream data call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. Statically bundled widgets are self-contained. The news, country and market views load their current JavaScript and CSS from `https://www.worldmonitor.app`, as permitted by their resource metadata. All views communicate with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
 For the full MCP Apps contract — host flow, security posture, per-widget inventory, source files, and docs-stat drift checks — see [MCP Apps](/mcp-apps).
 

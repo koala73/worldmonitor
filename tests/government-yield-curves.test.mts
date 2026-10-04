@@ -451,6 +451,8 @@ describe('GetGovernmentYieldCurve handler', () => {
     assert.equal(res.unavailable, false);
     assert.equal(res.measure, 'benchmark');
     assert.deepEqual(res.curves.map((c) => new Date(c.date).toISOString().slice(0, 10)), ['2013-05-20', '2024-06-03']);
+    const bounded = await getGovernmentYieldCurve({} as never, { country: 'AU', history: true, limit: 1 });
+    assert.deepEqual(bounded, { ...res, curves: res.curves.slice(-1) });
   });
 
   it('falls back to OECD monthly for an uncovered market', async () => {
@@ -481,6 +483,8 @@ describe('GetGovernmentYieldCurve handler', () => {
     const history = await getGovernmentYieldCurve({} as never, { country: 'IT', history: true });
     assert.equal(history.curves.length, 2);
     assert.deepEqual(history.curves.map((c) => c.tenors['10y']), [3.7, 3.8]);
+    const bounded = await getGovernmentYieldCurve({} as never, { country: 'IT', history: true, limit: 1 });
+    assert.deepEqual(bounded, { ...history, curves: history.curves.slice(-1) });
   });
 
   it('returns unavailable for a market with neither daily nor monthly data', async () => {

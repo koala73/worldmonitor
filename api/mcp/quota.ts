@@ -66,7 +66,7 @@ export function isRestEnforcementEnabled(): boolean {
  *
  * `allowance` decides the PRICE: `'api'` charges the per-tool weight, so a unit
  * of work costs the same whichever door it arrives through; `'mcp'` charges one
- * unit per call, which is what `docs/usage-rate-limits.mdx` sells on the
+ * unit per standalone call or bounded panel admission on the
  * dedicated counter and what the GHSA-hcq5 no-refund slot assumes.
  *
  * `counter` decides the PLACE, and exists only on the `api` arm — so "a
@@ -75,7 +75,7 @@ export function isRestEnforcementEnabled(): boolean {
  *
  *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
  *     ceiling, Enterprise `null`. `apiAccess: false` with a zero REST budget,
- *     so they keep `mcp:pro-usage:…` at one unit per call.
+ *     so they keep `mcp:pro-usage:…` at one unit per standalone call or bounded panel admission.
  *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
  *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
  *     dedicated counter.

@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Check } from 'lucide-react';
 import { t } from '../i18n';
+import depthProofStats from '../generated/depth-stats.json';
 import { DASHBOARD_PATH } from '../routes';
 import { SectionHeading } from './SectionHeading';
 
@@ -22,7 +23,7 @@ export const PricingTeaser = () => (
         >
           <h3 className="font-display font-bold text-2xl mb-1">{t('welcome.pricing.freeTitle')}</h3>
           <div className="font-mono text-xs uppercase tracking-widest text-wm-green mb-4">$0</div>
-          <p className="text-sm text-wm-muted mb-4">{t('welcome.pricing.freeDesc')}</p>
+          <p className="text-sm text-wm-muted mb-4">{t('welcome.pricing.freeDesc', depthProofStats)}</p>
           <ul className="space-y-2.5 mb-6 flex-1">
             {[1, 2, 3, 4].map(n => (
               <li key={n} className="flex items-start gap-2 text-sm">

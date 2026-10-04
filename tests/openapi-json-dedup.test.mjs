@@ -188,12 +188,25 @@ function restoreGeneratedSchemaRefs(before, after, transformedRoot) {
   return after;
 }
 
+// A $ref with sibling keywords is a described int64 site: the shared component
+// carries type, format and the generated warning, and the site keeps its own
+// comment (plus any numeric bounds). Restore the inline original the generator
+// emitted — `<comment>. <warning>` — instead of dropping the siblings.
+function restoreRefSite(site, target) {
+  const { $ref, ...siblings } = site;
+  const restored = structuredClone(target);
+  if (Object.keys(siblings).length === 0) return restored;
+  const { description, ...bounds } = siblings;
+  assert.equal(typeof description, 'string', `${$ref} sibling site must carry its own description`);
+  return { ...restored, ...bounds, description: `${description}. ${target.description}` };
+}
+
 function expandLocalRefs(spec, targets, { skipSchemaNames = [] } = {}) {
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
       const target = child?.$ref ? targets.get(child.$ref) : null;
-      if (target) value[key] = structuredClone(target);
+      if (target) value[key] = restoreRefSite(child, target);
       // A replacement can itself carry refs to other added components (a
       // hoisted subtree holding an expanded ChinaDatePrecision ref, say), so
       // the walk descends into what it just inserted as well.
@@ -605,7 +618,7 @@ describe('additional lossless schema dedupe (fixtures)', () => {
     };
 
     const stats = dedupeRepeatedInt64Schemas(spec);
-    assert.deepEqual(stats, { replacedRefs: 2 });
+    assert.deepEqual(stats, { replacedRefs: 2, describedRefs: 0 });
     assert.deepEqual(spec.components.schemas.WorldMonitorInt64, repeated);
     assert.deepEqual(spec.components.schemas.A.properties.measuredAt, {
       $ref: '#/components/schemas/WorldMonitorInt64',
@@ -614,6 +627,54 @@ describe('additional lossless schema dedupe (fixtures)', () => {
       $ref: '#/components/schemas/WorldMonitorInt64',
     });
     assert.deepEqual(spec.components.schemas.C.properties.id, { type: 'integer', format: 'int64' });
+  });
+
+  it('points described int64 fields at the shared warning schema and keeps their own comment', () => {
+    const warning = 'Warning: Values > 2^53 may lose precision in JavaScript';
+    const spec = {
+      components: {
+        schemas: {
+          A: {
+            properties: {
+              updatedAt: { type: 'integer', format: 'int64', description: `Last update, as Unix epoch milliseconds.. ${warning}` },
+              count: { type: 'integer', minimum: 0, format: 'int64', description: `Non-negative count.. ${warning}` },
+              plain: { type: 'integer', format: 'int64', description: warning },
+            },
+          },
+          B: {
+            properties: {
+              // Not the generated shape: kept inline.
+              other: { type: 'integer', format: 'int64', description: 'No warning here.' },
+              enumerated: { type: 'integer', format: 'int64', enum: [1, 2], description: `Picked.. ${warning}` },
+            },
+          },
+        },
+      },
+    };
+    const original = structuredClone(spec);
+
+    const stats = dedupeRepeatedInt64Schemas(spec);
+    assert.deepEqual(stats, { replacedRefs: 1, describedRefs: 2 });
+    const ref = '#/components/schemas/WorldMonitorInt64';
+    assert.deepEqual(spec.components.schemas.A.properties.updatedAt, {
+      $ref: ref,
+      description: 'Last update, as Unix epoch milliseconds.',
+    });
+    assert.deepEqual(spec.components.schemas.A.properties.count, {
+      $ref: ref,
+      minimum: 0,
+      description: 'Non-negative count.',
+    });
+    assert.deepEqual(spec.components.schemas.A.properties.plain, { $ref: ref });
+    assert.deepEqual(spec.components.schemas.B, original.components.schemas.B);
+
+    const component = spec.components.schemas.WorldMonitorInt64;
+    for (const key of ['updatedAt', 'count', 'plain']) {
+      assert.deepEqual(
+        restoreRefSite(spec.components.schemas.A.properties[key], component),
+        original.components.schemas.A.properties[key],
+      );
+    }
   });
 
   it('reuses identical China decision-signal date-precision unions', () => {
@@ -911,6 +972,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 39 });
     assert.equal(int64Stats.replacedRefs, 38);
+    // Described int64 fields (own comment + generated warning) keep their
+    // comment beside the shared $ref; a regression to zero would silently give
+    // back ~4 KB of the scanner budget.
+    assert.ok(int64Stats.describedRefs >= 100, `described int64 dedup: ${int64Stats.describedRefs} refs`);
     assert.equal(chinaDateStats.replacedRefs, 9);
   });
 
@@ -1094,6 +1159,7 @@ describe('build-openapi-json wiring', () => {
     assert.equal(schemaStats.replacedRefs, schemaStats.compared);
     assert.ok(chinaDateStats.replacedRefs >= 5, `China date dedup: ${chinaDateStats.replacedRefs} refs`);
     assert.ok(int64Stats.replacedRefs >= 30, `int64 dedup: ${int64Stats.replacedRefs} refs`);
+    assert.ok(int64Stats.describedRefs >= 100, `described int64 dedup: ${int64Stats.describedRefs} refs`);
     assert.ok(headerStats.replacedRefs >= 30, `response-header dedup: ${headerStats.replacedRefs} refs`);
     assert.ok(
       schemaSubtreeStats.replacedRefs > 0,

@@ -104,7 +104,7 @@ function fmtDelayMin(min: number | undefined): string {
   return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news';
 
 interface TechEventPopupData {
   id: string;
@@ -233,7 +233,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | Pick<NewsItem, 'title'>;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -828,11 +828,23 @@ export class MapPopup {
         return this.renderIranEventPopup(data.data as IranEventPopupData);
       case 'gpsJamming':
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
+      case 'news':
+        return this.renderNewsPopup(data.data as Pick<NewsItem, 'title'>);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       default:
         return '';
     }
+  }
+
+  private renderNewsPopup(news: Pick<NewsItem, 'title'>): string {
+    return `
+      <div class="popup-header">
+        <span class="popup-title">${t('components.deckgl.tooltip.news')}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body"><p>${escapeHtml(news.title)}</p></div>
+    `;
   }
 
   private renderRadiationPopup(observation: RadiationObservation): string {
@@ -1631,19 +1643,20 @@ export class MapPopup {
   }
 
   private renderProtestPopup(event: SocialUnrestEvent): string {
+    const mediaSignal = event.sourceType === 'gdelt';
     const severityClass = escapeHtml(event.severity);
     const severityLabel = escapeHtml(event.severity.toUpperCase());
-    const eventTypeLabel = escapeHtml(event.eventType.replace('_', ' ').toUpperCase());
+    const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(event.eventType.replace('_', ' ').toUpperCase());
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
     const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
-    const validatedBadge = event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
+    const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.fatalities')}</span><span class="stat-value alert">${event.fatalities}</span></div>`
       : '';
     const actorsSection = event.actors?.length
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.actors')}</span><span class="stat-value">${event.actors.map(a => escapeHtml(a)).join(', ')}</span></div>`
       : '';
-    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t('popups.source') });
+    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t(mediaSignal ? 'popups.protest.relatedArticle' : 'popups.source') });
     const tagsSection = event.tags?.length
       ? `<div class="popup-tags">${event.tags.map(t => `<span class="popup-tag">${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
@@ -1655,7 +1668,7 @@ export class MapPopup {
       <div class="popup-header protest ${severityClass}">
         <span class="popup-icon">${icon}</span>
         <span class="popup-title">${eventTypeLabel}</span>
-        <span class="popup-badge ${severityClass}">${severityLabel}</span>
+        ${mediaSignal ? '' : `<span class="popup-badge ${severityClass}">${severityLabel}</span>`}
         ${validatedBadge}
         <button class="popup-close" aria-label="Close">×</button>
       </div>
@@ -1674,6 +1687,8 @@ export class MapPopup {
           ${actorsSection}
         </div>
         ${event.title ? `<p class="popup-description">${escapeHtml(event.title)}</p>` : ''}
+        ${mediaSignal ? `<p class="popup-description">${t('popups.protest.mediaSignalDetail')}</p>` : ''}
+        ${mediaSignal && sourceLinks ? `<div class="popup-source-label">${t('popups.protest.relatedArticle')}</div>` : ''}
         ${sourceLinks}
         ${tagsSection}
         ${relatedHotspots}
@@ -1697,6 +1712,7 @@ export class MapPopup {
     });
 
     const listItems = sortedItems.slice(0, 10).map(event => {
+      const mediaSignal = event.sourceType === 'gdelt';
       const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
       const sevClass = event.severity;
       const dateStr = event.time.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -1704,20 +1720,20 @@ export class MapPopup {
       const title = event.title ? `: ${escapeHtml(event.title.slice(0, 40))}${event.title.length > 40 ? '...' : ''}` : '';
       const sourceUrl = event.sourceUrls?.find(url => sanitizeUrl(url));
       const sourceLink = sourceUrl
-        ? ` <a class="popup-link cluster-source-link" href="${sanitizeUrl(sourceUrl)}" target="_blank" rel="noopener noreferrer nofollow">${t('popups.source')} →</a>`
+        ? ` <a class="popup-link cluster-source-link" href="${sanitizeUrl(sourceUrl)}" target="_blank" rel="noopener noreferrer nofollow">${t(mediaSignal ? 'popups.protest.relatedArticle' : 'popups.source')} →</a>`
         : '';
-      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}${sourceLink}</li>`;
+      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}${mediaSignal ? ` • ${t('popups.protest.mediaSignal')}` : ''}${sourceLink}</li>`;
     }).join('');
 
     const renderedCount = Math.min(10, data.items.length);
     const remainingCount = Math.max(0, totalCount - renderedCount);
-    const moreCount = remainingCount > 0 ? `<li class="cluster-more">+${remainingCount} ${t('popups.moreEvents')}</li>` : '';
+    const moreCount = remainingCount > 0 ? `<li class="cluster-more">+${remainingCount} ${t('popups.protest.records')}</li>` : '';
     const headerClass = highSeverity > 0 ? 'high' : riots > 0 ? 'medium' : 'low';
 
     return `
       <div class="popup-header protest ${headerClass} cluster">
         <span class="popup-title">📢 ${escapeHtml(data.country)}</span>
-        <span class="popup-badge">${totalCount} ${t('popups.events').toUpperCase()}</span>
+        <span class="popup-badge">${totalCount} ${t('popups.protest.records').toUpperCase()}</span>
         <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body cluster-popup">

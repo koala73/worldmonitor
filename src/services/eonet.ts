@@ -40,7 +40,10 @@ const emptyFallback: ListNaturalEventsResponse = { events: [], fetchedAt: 0, dat
 
 /** Exported for the embed loader, which receives this wire shape from the
  *  composed map-frame endpoint rather than from this module's own fetch. */
-export function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): NaturalEvent {
+type NaturalMapEvent = Pick<ListNaturalEventsResponse['events'][number], 'id' | 'title' | 'category' | 'categoryTitle' | 'lat' | 'lon' | 'date' | 'closed'>
+  & Partial<ListNaturalEventsResponse['events'][number]>;
+
+export function toNaturalEvent(e: NaturalMapEvent): NaturalEvent {
   return {
     id: e.id,
     title: e.title,

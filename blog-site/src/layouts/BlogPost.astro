@@ -11,6 +11,7 @@ interface Props {
   pubDate: Date;
   modifiedDate?: Date;
   author?: string;
+  authorType?: 'Person' | 'Organization';
   authorUrl?: string;
   authorBio?: string;
   audience?: string;
@@ -18,23 +19,27 @@ interface Props {
   slug?: string;
   rawBody?: string;
   relatedPosts?: { title: string; description: string; href: string }[];
+  canonicalPath?: string;
 }
 
-const { title, description, metaTitle, keywords, pubDate, modifiedDate, author, authorUrl, authorBio, audience, heroImage, slug, rawBody, relatedPosts = [] } = Astro.props;
+const { title, description, metaTitle, keywords, pubDate, modifiedDate, author, authorType = 'Person', authorUrl, authorBio, audience, heroImage, slug, rawBody, relatedPosts = [], canonicalPath } = Astro.props;
 function toAbsoluteWorldMonitorUrl(pathOrUrl: string | undefined): string | undefined {
   if (!pathOrUrl) return undefined;
   if (/^https?:\/\//.test(pathOrUrl)) return pathOrUrl;
   return new URL(pathOrUrl, 'https://www.worldmonitor.app').href;
 }
 
-const ogImage = toAbsoluteWorldMonitorUrl(heroImage || (slug ? `/blog/images/blog/${slug}.jpg` : undefined));
-const canonicalUrl = slug
-  ? `https://www.worldmonitor.app/blog/posts/${slug}/`
-  : new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
+const ogImage = toAbsoluteWorldMonitorUrl(heroImage || (canonicalPath ? '/favico/og-image.png' : slug ? `/blog/images/blog/${slug}.jpg` : undefined));
+const canonicalUrl = canonicalPath
+  ? new URL(canonicalPath, 'https://www.worldmonitor.app').href
+  : slug
+    ? `https://www.worldmonitor.app/blog/posts/${slug}/`
+    : new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'short',
   day: 'numeric',
+  timeZone: 'UTC',
 });
 const isoDate = pubDate.toISOString();
 const isoModifiedDate = modifiedDate ? modifiedDate.toISOString() : isoDate;
@@ -55,7 +60,7 @@ const avatarSrc = authorName === DEFAULT_AUTHOR
 // siblings don't exist (e.g. deploy-generated /blog/og/*.png covers).
 const heroWebp = coverWebpSources(heroImage);
 const showUpdated = modifiedDate && modifiedDate.getTime() !== pubDate.getTime();
-const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : '';
 const wordCount = rawBody ? rawBody.trim().split(/\s+/).filter(Boolean).length : undefined;
 const readingMinutes = wordCount ? Math.max(1, Math.ceil(wordCount / 220)) : undefined;
 
@@ -128,7 +133,7 @@ const jsonLd = {
   ...(wordCount ? { "wordCount": wordCount } : {}),
   ...(readingMinutes ? { "timeRequired": `PT${readingMinutes}M` } : {}),
   "author": {
-    "@type": "Person",
+    "@type": authorType,
     "name": authorName,
     ...(resolvedAuthorUrl ? { "url": resolvedAuthorUrl } : {}),
     ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
@@ -210,7 +215,7 @@ const faqLd = extractFaqLd(rawBody);
   faqLd={faqLd ?? undefined}
   attributionCampaign={slug}
 >
-  <article>
+  <article class:list={{ 'buying-guide': Boolean(canonicalPath) }}>
     <div class="article-header">
       <a href="/blog/" class="back">&larr; All articles</a>
       <div class="meta">
@@ -303,3 +308,9 @@ const faqLd = extractFaqLd(rawBody);
     </div>
   </article>
 </Base>
+
+<style>
+  .buying-guide :global(table) { display: block; max-width: 100%; overflow-x: auto; }
+  .buying-guide :global(th), .buying-guide :global(td) { min-width: 10rem; }
+  .buying-guide :global(h2[id]) { scroll-margin-top: 5rem; }
+</style>

@@ -49,6 +49,7 @@
  * A literal is the one form that works everywhere.
  */
 const PUBLISHER_FAMILY_DATA = {
+  'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
   'acquired': { publisher: "Acquired", labels: ["Acquired Episodes", "Acquired Podcast"] },
   'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News"] },
@@ -210,6 +211,7 @@ export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
  * that several publishers share cannot name one.
  */
 const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
+  'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],
   'ap-news': ['apnews.com'],
   'arxiv': ['arxiv.org'],

@@ -1084,10 +1084,18 @@
       "skipToEnd": "Treci la final"
     },
     "pizzint": {
+      "indexSource": "Indice: World Monitor · date despre localuri:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "FĂRĂ DATE",
+      "statusNoBaseline": "FĂRĂ REFERINȚĂ",
+      "vsUsual": "față de normal",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Actualizat {{timeAgo}}",
       "tensionsTitle": "Tensiuni geopolitice",
+      "tensionsSource": "Tensiuni: World Monitor pe baza evenimentelor GDELT",
+      "insufficientData": "Date insuficiente",
+      "pizzaUnavailable": "Activitatea pizzeriilor nu este disponibilă",
       "source": "Sursa:",
       "statusClosed": "ÎNCHIS",
       "statusSpike": "SPIKE",
@@ -1099,11 +1107,11 @@
       "minutesAgo": "acum {{m}}m",
       "hoursAgo": "acum {{h}}h",
       "defconLabels": {
-        "1": "PISTOL ARMAT — Pregătire maximă",
-        "2": "FAST PACE — Forțele armate gata de luptă",
-        "3": "ROUND HOUSE — Pregătire de forță ridicată",
-        "4": "DOUBLE TAKE — Supraveghere sporită",
-        "5": "FADE OUT — Pregătire minimă"
+        "1": "Activitate Maximă",
+        "2": "Activitate Ridicată",
+        "3": "Activitate Crescută",
+        "4": "Deasupra Normalului",
+        "5": "Activitate Normală"
       }
     },
     "strategicPosture": {
@@ -2917,6 +2925,10 @@
     "protest": {
       "acledVerified": "ACLED (verificat)",
       "gdelt": "GDELT",
+      "records": "înregistrări",
+      "mediaSignal": "Semnal media neverificat",
+      "relatedArticle": "Articol asociat",
+      "mediaSignalDetail": "Acest loc este menționat în articole despre tulburări. Un eveniment local nu este verificat.",
       "riots": "Revolte",
       "highSeverity": "Severitate ridicată"
     },

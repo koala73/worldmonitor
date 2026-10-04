@@ -6592,11 +6592,41 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                  description: 'FRED series ID. Supported values: "BAMLC0A0CM", "BAMLH0A0HYM2", "CPIAUCSL", "DCOILWTICO", "DGS1", "DGS10", "DGS1MO", "DGS2", "DGS30", "DGS3MO", "DGS5", "DGS6MO", "ESTR", "EURIBOR1Y", "EURIBOR3M", "EURIBOR6M", "FEDFUNDS", "GDP", "GSCPI", "ICSA", "M2SL", "MORTGAGE30US", "SOFR", "STLFSI4", "T10Y2Y", "T10Y3M", "UNRATE", "VIXCLS", "WALCL".'
                   required: true
-                  example: "GDP"
+                  example: "BAMLC0A0CM"
                   schema:
                     type: string
+                    enum:
+                        - 'BAMLC0A0CM'
+                        - 'BAMLH0A0HYM2'
+                        - 'CPIAUCSL'
+                        - 'DCOILWTICO'
+                        - 'DGS1'
+                        - 'DGS10'
+                        - 'DGS1MO'
+                        - 'DGS2'
+                        - 'DGS30'
+                        - 'DGS3MO'
+                        - 'DGS5'
+                        - 'DGS6MO'
+                        - 'ESTR'
+                        - 'EURIBOR1Y'
+                        - 'EURIBOR3M'
+                        - 'EURIBOR6M'
+                        - 'FEDFUNDS'
+                        - 'GDP'
+                        - 'GSCPI'
+                        - 'ICSA'
+                        - 'M2SL'
+                        - 'MORTGAGE30US'
+                        - 'SOFR'
+                        - 'STLFSI4'
+                        - 'T10Y2Y'
+                        - 'T10Y3M'
+                        - 'UNRATE'
+                        - 'VIXCLS'
+                        - 'WALCL'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 120.
@@ -10505,6 +10535,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -10646,6 +10684,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -10767,6 +10813,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -10894,6 +10948,14 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -11029,6 +11091,14 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: limit
+                  in: query
+                  description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -13400,8 +13470,8 @@ paths:
                 - name: keys
                   in: query
                   description: |-
-                    One registered bootstrap key, for example insights. Omit when using tier.
-                     The repeated wire field is retained for compatibility; multiple keys are rejected.
+                    Registered bootstrap keys, for example insights. Repeat the parameter for
+                     several fast/slow keys. Omit when using tier.
                   required: false
                   style: form
                   explode: true
@@ -13409,7 +13479,7 @@ paths:
                       - "example"
                   schema:
                     type: array
-                    maxItems: 1
+                    maxItems: 100
                     items:
                       type: string
                       minLength: 1
@@ -20717,6 +20787,159 @@ paths:
                                 "indexName": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_GetCountryStockIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-price-history:
+        get:
+            tags:
+                - MarketService
+            summary: GetPriceHistory
+            description: GetPriceHistory retrieves dated daily closes for up to four tracked symbols from Yahoo Finance.
+            operationId: GetPriceHistory
+            parameters:
+                - name: symbols
+                  in: query
+                  description: |-
+                    Comma-separated Yahoo symbols, at most 4 (e.g. "GC=F,SI=F"). Only symbols
+                     carried by the commodity, market and Gulf quote sets are served; others
+                     are reported in `unavailable`. A single string because the widget relay
+                     sets each query parameter once.
+                  required: true
+                  example: "GC=F,SI=F"
+                  schema:
+                    type: string
+                    pattern: '^ *[A-Za-z0-9^=.&-]{1,20} *(, *[A-Za-z0-9^=.&-]{1,20} *){0,3}$'
+                - name: range
+                  in: query
+                  description: 'Lookback window: 1mo, 3mo, 6mo or 1y. Empty means 3mo.'
+                  required: false
+                  example: "3mo"
+                  schema:
+                    type: string
+                    pattern: '^(1mo|3mo|6mo|1y)?$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "range": "3mo"
+                                "series":
+                                    - "closes":
+                                        - 4176.4
+                                        - 4183.1
+                                        - 4192
+                                      "currency": "USD"
+                                      "name": "Gold"
+                                      "symbol": "GC=F"
+                                      "timestamps":
+                                          - 1785542400000
+                                          - 1785628800000
+                                          - 1785715200000
+                                    - "closes":
+                                        - 60.84
+                                        - 61.02
+                                        - 61.25
+                                      "currency": "USD"
+                                      "name": "Silver"
+                                      "symbol": "SI=F"
+                                      "timestamps":
+                                          - 1785542400000
+                                          - 1785628800000
+                                          - 1785715200000
+                                "unavailable":
+                                    []
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_market_v1_GetPriceHistoryResponse'
                 "400":
                     description: Validation error
                     content:
@@ -41941,7 +42164,7 @@ components:
                     description: |-
                         Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
                          Absent for the oldest week when no prior week is available for comparison.
-            description: CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+            description: CrudeInventoryWeek represents one week of US commercial crude oil stockpile data from EIA WCESTUS1.
         worldmonitor_economic_v1_GetNatGasStorageRequest:
             type: object
             description: GetNatGasStorageRequest is the request message for GetNatGasStorage.
@@ -42810,6 +43033,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored month. When false, return only the latest month.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsCpiMonthlyRequest chooses the latest print or the full monthly history.
         worldmonitor_economic_v1_GetUsCpiMonthlyResponse:
             type: object
@@ -42868,6 +43097,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored business day since 1990. When false, return the latest day.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsTreasuryParYieldCurveRequest chooses the latest business day or the daily history.
         worldmonitor_economic_v1_GetUsTreasuryParYieldCurveResponse:
             type: object
@@ -42952,6 +43187,12 @@ components:
                 history:
                     type: boolean
                     description: When true, return every stored observation. When false, return the latest point of each series.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetUsInterestRatesRequest chooses the latest prints or the full history.
         worldmonitor_economic_v1_GetUsInterestRatesResponse:
             type: object
@@ -43000,6 +43241,12 @@ components:
                 country:
                     type: string
                     description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             description: GetWorldCpiMonthlyRequest chooses the latest print or the stored history.
         worldmonitor_economic_v1_GetWorldCpiMonthlyResponse:
             type: object
@@ -43072,6 +43319,12 @@ components:
                 history:
                     type: boolean
                     description: True for every stored business day; false for the latest day.
+                limit:
+                    type: integer
+                    maximum: 366
+                    minimum: 0
+                    format: int32
+                    description: Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
             required:
                 - country
             description: GetGovernmentYieldCurveRequest selects one sovereign market and window.
@@ -44554,15 +44807,17 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 1
+                        maxItems: 100
                         description: |-
-                            One registered bootstrap key, for example insights. Omit when using tier.
-                             The repeated wire field is retained for compatibility; multiple keys are rejected.
-                    maxItems: 1
+                            Registered bootstrap keys, for example insights. Repeat the parameter for
+                             several fast/slow keys. Omit when using tier.
+                    maxItems: 100
             description: |-
-                GetBootstrapDataRequest selects a fixed tier or one registered bootstrap key.
+                GetBootstrapDataRequest selects a fixed tier or registered bootstrap keys.
                  Exactly one selector is required: use tier OR keys, never both.
-                 Empty, unknown, mixed and multi-key selectors return HTTP 400.
+                 Several keys are accepted when every key belongs to the fast or slow tier;
+                 an on-demand key must be requested alone. Empty, unknown and mixed
+                 selectors return HTTP 400.
         worldmonitor_infrastructure_v1_GetBootstrapDataResponse:
             type: object
             properties:
@@ -45089,24 +45344,24 @@ components:
                 currentPopularity:
                     type: integer
                     format: int32
-                    description: Current popularity score (0-200+).
+                    description: Live busyness (0-200+).
                 percentageOfUsual:
                     type: integer
                     format: int32
-                    description: Percentage of usual activity. Zero if unavailable.
+                    description: 'Percent of usual; see has_baseline (JSON: hasBaseline).'
                 isSpike:
                     type: boolean
-                    description: Whether activity constitutes a spike.
+                    description: Sustained anomaly.
                 spikeMagnitude:
                     type: number
                     format: double
-                    description: Spike magnitude above baseline. Zero if no spike.
+                    description: Confirmed excess busyness; otherwise zero.
                 dataSource:
                     type: string
-                    description: Data source identifier.
+                    description: Data provider.
                 recordedAt:
                     type: string
-                    description: Recording timestamp as ISO 8601 string.
+                    description: ISO 8601 observation time.
                 dataFreshness:
                     type: string
                     enum:
@@ -45116,16 +45371,22 @@ components:
                     description: DataFreshness represents how current the data is.
                 isClosedNow:
                     type: boolean
-                    description: Whether the location is currently closed.
+                    description: Venue is closed.
                 lat:
                     type: number
                     format: double
-                    description: Latitude of the location.
+                    description: Latitude.
                 lng:
                     type: number
                     format: double
-                    description: Longitude of the location.
-            description: PizzintLocation represents a single monitored pizza location near the Pentagon.
+                    description: Longitude.
+                noLiveSignal:
+                    type: boolean
+                    description: Live signal is missing.
+                hasBaseline:
+                    type: boolean
+                    description: Hourly baseline is known.
+            description: PizzintLocation is a monitored Pentagon-area venue.
         worldmonitor_intelligence_v1_GdeltTensionPair:
             type: object
             properties:
@@ -49233,6 +49494,68 @@ components:
                     type: string
                     description: When the data was fetched (ISO 8601).
             description: GetCountryStockIndexResponse contains the country's primary stock index data.
+        worldmonitor_market_v1_GetPriceHistoryRequest:
+            type: object
+            properties:
+                symbols:
+                    type: string
+                    maxLength: 100
+                    pattern: ^ *[A-Za-z0-9^=.&-]{1,20} *(, *[A-Za-z0-9^=.&-]{1,20} *){0,3}$
+                    description: |-
+                        Comma-separated Yahoo symbols, at most 4 (e.g. "GC=F,SI=F"). Only symbols
+                         carried by the commodity, market and Gulf quote sets are served; others
+                         are reported in `unavailable`. A single string because the widget relay
+                         sets each query parameter once.
+                range:
+                    type: string
+                    pattern: ^(1mo|3mo|6mo|1y)?$
+                    description: 'Lookback window: 1mo, 3mo, 6mo or 1y. Empty means 3mo.'
+            required:
+                - symbols
+            description: GetPriceHistoryRequest names up to four tracked Yahoo symbols and a lookback window.
+        worldmonitor_market_v1_GetPriceHistoryResponse:
+            type: object
+            properties:
+                range:
+                    type: string
+                    description: The lookback window that was served.
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_market_v1_PriceSeries'
+                unavailable:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Requested symbols reported unavailable because they are outside the
+                             tracked set or Yahoo could not serve them.
+            description: GetPriceHistoryResponse contains one series per served symbol.
+        worldmonitor_market_v1_PriceSeries:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    description: Yahoo symbol (e.g. "GC=F").
+                name:
+                    type: string
+                    description: Display name (e.g. "Gold").
+                currency:
+                    type: string
+                    description: Quote currency reported by Yahoo (e.g. "USD").
+                timestamps:
+                    type: array
+                    items:
+                        type: integer
+                        format: int64
+                        description: 'One timestamp per trading day, Unix epoch milliseconds, ascending.. Warning: Values > 2^53 may lose precision in JavaScript'
+                closes:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Daily close for the timestamp at the same index.
+            description: PriceSeries holds one symbol's daily closes as aligned parallel arrays.
         worldmonitor_market_v1_ListGulfQuotesRequest:
             type: object
         worldmonitor_market_v1_ListGulfQuotesResponse:

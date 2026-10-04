@@ -211,6 +211,10 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  if (where.includes('getpricehistory') || where.includes('get-price-history')) {
+    if (key === 'symbols') return 'GC=F,SI=F';
+    if (key === 'range') return '3mo';
+  }
   // UsInterestRateSeries.id is a closed wire-id set. The generic `example-id`
   // is not one of the published ids, so the documented 200 sample is un-runnable.
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
@@ -798,6 +802,18 @@ function getCompanyEnrichmentExample() {
 // previousValue/unit/spikeAlert. Curate it so the published example shows what
 // the endpoint actually returns, including the fail-closed shape where the
 // exchange published no comparable prior.
+function getPriceHistoryExample() {
+  const days = [1785542400000, 1785628800000, 1785715200000];
+  return {
+    range: '3mo',
+    series: [
+      { symbol: 'GC=F', name: 'Gold', currency: 'USD', timestamps: days, closes: [4176.4, 4183.1, 4192.0] },
+      { symbol: 'SI=F', name: 'Silver', currency: 'USD', timestamps: days, closes: [60.84, 61.02, 61.25] },
+    ],
+    unavailable: [],
+  };
+}
+
 function getShippingRatesExample() {
   return {
     indices: [
@@ -874,6 +890,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getCompanyEnrichmentExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getpricehistory'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getPriceHistoryExample();
   }
   if (
     depth === 0

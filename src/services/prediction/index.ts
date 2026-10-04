@@ -78,7 +78,7 @@ export function reprioritizeMarketsForRegion<T extends { regions?: string[] }>(
   return ranked.slice(0, limit);
 }
 
-function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
+export function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
   return {
     title: m.title,
     yesPrice: m.yesPrice * 100,

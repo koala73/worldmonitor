@@ -1,6 +1,6 @@
 Contact: mailto:elie@worldmonitor.app
-Contact: https://github.com/eliehabib/worldmonitor/security/advisories
-Policy: https://github.com/eliehabib/worldmonitor/security/advisories
+Contact: https://github.com/koala73/worldmonitor/security/advisories/new
+Policy: https://github.com/koala73/worldmonitor/security/policy
 Preferred-Languages: en
 Canonical: https://worldmonitor.app/.well-known/security.txt
 Expires: 2027-03-02T00:00:00.000Z

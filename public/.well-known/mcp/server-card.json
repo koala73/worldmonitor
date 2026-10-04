@@ -1,14 +1,16 @@
 {
-  "name": "worldmonitor",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "app.worldmonitor/mcp",
+  "title": "WorldMonitor",
+  "description": "Live markets, conflicts, country risk, chokepoints, energy, and China decision signals.",
   "kind": "product",
-  "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.21.0",
+  "version": "1.26.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.21.0",
+    "version": "1.26.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -97,7 +99,7 @@
     },
     {
       "name": "get_economic_data",
-      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.",
+      "description": "Read cached rates, calendars and fuel prices with official-only 12-series China macro (no proxies, see launchReady). Includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, US federal spending awards, earnings, COT positioning, BIS household debt service ratios, and BIS residential/commercial property prices. Optional China macro data has official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Requested datasets may be unavailable or stale; this tool reads cached data and does not fetch fresh upstream releases.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -160,7 +162,14 @@
     },
     {
       "name": "get_energy_intelligence",
-      "description": "Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.",
+      "description": "Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), national natural-gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies. Gas-storage observations include country fill percentage, stored TWh and observation date; _countries is only a coverage index. Null observations mean unavailable, not zero.",
+      "_meta": {
+        "worldmonitor/access": "free-account"
+      }
+    },
+    {
+      "name": "get_energy_storage",
+      "description": "EU gas storage and US gas/crude inventories with dated history. Seeded GIE AGSI+ and EIA data, not live quotes. Gas is in TWh or billion cubic feet; crude is in million barrels. Null datasets or weekly changes mean unavailable, not zero. Freshness covers all three sources, including when selecting a subset.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -300,7 +309,7 @@
     },
     {
       "name": "get_country_brief",
-      "description": "AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.",
+      "description": "Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -426,14 +435,14 @@
     },
     {
       "name": "get_supply_vulnerabilities",
-      "description": "An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
+      "description": "Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "get_chokepoint_dependencies",
-      "description": "An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.",
+      "description": "Return country commodity dependencies by chokepoint, where an absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -556,6 +565,76 @@
       "_meta": {
         "worldmonitor/access": "free"
       }
+    },
+    {
+      "name": "open_news_dashboard",
+      "description": "Open WorldMonitor with its news panels and interactive map. On dedicated paid MCP plans, one dashboard request includes bounded map snapshot loads; default opens reuse its loaded news for at least five minutes. Explicit refresh starts one new request. API plans retain per-tool billing. Returns the full feed digest with publication dates, source provenance, coordinates and coverage. Empty arguments open the dashboard. View arguments configure the rendered instance; requestedView confirms requested settings, not an already-open map’s applied state.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "analyze_news_headlines",
+      "description": "Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_macro_history",
+      "description": "CPI, interest-rate and sovereign yield histories from seeded official-source reports. Select a dataset; country is required for world CPI or government yields. Default 30 newest observations per series, kept in chronological order; maximum 365. Set history=false for latest snapshots. Dates are Unix milliseconds, rates and yields are percentages. Missing readings or tenors are unknown, not zero. Preserve source, frequency, index base and yield measure when comparing countries. A truncated response is not full history; unavailable is not a zero reading.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_stock_research",
+      "description": "Stock research through the existing subscription gateway: current analysis, technical backtest, saved analysis history, or saved backtests. Analyze or backtest one symbol; retrieve stored results for a watchlist. Default no news, four history snapshots per symbol, and a ten-trading-day evaluation window. Preserve availability, observation dates, model/fallback provenance, ratingBasis and engineVersion. Technical backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. Cold analysis may invoke upstream data and an LLM; Existing provider quotas and billing denials apply; account calls use the daily MCP meter, while env-key calls retain their existing rate limit. Analysis/backtest generation may save shared research snapshots. No trading or account changes. For large histories use fewer symbols/snapshots or a jmespath projection.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_supply_chain_cost_shock",
+      "description": "Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. Preserve hasEnergyModel and unavailableReason; missing models or imports are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "compute_energy_shock",
+      "description": "Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Preserve dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_gold_intelligence",
+      "description": "Read seeded gold intelligence: precious-metal futures quotes, cross-currency gold prices, COT positioning, session/returns/range, drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns/changes are percentages. Preserve unavailable: true and missing enrichment; placeholder zero prices are not confirmed zero observations. COT counts are decimal strings, ETF holdings tonnes/AUM USD, central-bank reserves tonnes. Each enrichment has its own observation date; updatedAt does not establish freshness of all sources. No trade or research snapshot is created.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_internet_activity",
+      "description": "Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "open_country_brief",
+      "description": "Open the interactive WorldMonitor country brief with its assessment, source evidence, resilience, energy, trade and security sections. Use for country brief requests and follow-up topic navigation. On dedicated paid MCP plans, one country request includes its internal section loads. Same-country opens reuse the request for five minutes. Explicit refresh starts a new request. API plans retain per-tool weighted billing. The interface loads sections progressively through the authenticated connection. Section availability and dates are shown in the view. Use get_country_brief only when the user explicitly wants a text assessment.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_country_brief_section",
+      "description": "Read one fixed country-view dataset for the embedded country brief. The section chooses a reviewed reader and its bounded arguments, including geographic flight observations, the bounded global AIS candidate snapshot, the reported fleet roster and country Atlas assets and details. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native observation dates remain in value; retrievedAt only records retrieval. Does not accept URLs, headers or arbitrary RPC paths.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
     }
   ],
   "toolCategories": [
@@ -609,11 +688,14 @@
       "apiBusiness": 10000,
       "enterprise": null
     },
-    "notes": "Subscription-gated tools/call and resources/read of a data-bearing URI-template instantiation reserve against a per-user daily counter before dispatch. The allowance is plan-resolved and identical on the OAuth and dashboard-issued wm_ API-key doors. Pro (50/day) and Pro Business (250/day) meter on a dedicated MCP counter at one unit per call. API Starter (1000/day) and API Business (10000/day) have no separate MCP allowance: their MCP calls spend the same daily allowance as their REST requests, charged at a per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data downstream, and 3 for get_country_brief and get_airspace which fetch from two sources. Those two halves currently reserve against separate counters holding the same number, and merge into one counter when REST enforcement is enabled; the sold allowance is the combined one either way. A weighted call is all-or-nothing, so a 2-unit call is rejected rather than partly served when only 1 unit remains. Enterprise can be unlimited. Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS are the only authenticated class outside this daily reservation path. get_sources is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Daily-quota exemptions: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, ping, describe_tool, skills/list, skills/get, get_sources, public resource reads, and the authenticated worldmonitor://account/mcp-allowance status read. resources/read of a template instantiation intentionally counts toward the daily cap symmetrically with the equivalent tools/call. Per-minute authenticated limiting counts all methods and uses the plan's burst from perMinuteByPlan, falling back to the perMinute default of 60 whenever no entitlement is in hand, which includes metadata and free-tier methods because they are served before the pre-check runs; legacy operator keys and anonymous discovery stay at a flat 60/min, and anonymous get_sources calls use the separate 10/min/IP ceiling.",
+    "notes": "Subscription-gated tools/call and resources/read of a data-bearing URI-template instantiation reserve against a per-user daily counter before dispatch. The allowance is plan-resolved and identical on the OAuth and dashboard-issued wm_ API-key doors. Pro (50/day) and Pro Business (250/day) meter on a dedicated MCP counter at one unit per call. API Starter (1000/day) and API Business (10000/day) have no separate MCP allowance: their MCP calls spend the same daily allowance as their REST requests, charged at a per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data downstream, and 3 for get_country_brief and get_airspace which fetch from two sources. Those two halves currently reserve against separate counters holding the same number, and merge into one counter when REST enforcement is enabled; the sold allowance is the combined one either way. A weighted call is all-or-nothing, so a 2-unit call is rejected rather than partly served when only 1 unit remains. Enterprise can be unlimited. Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS are the only authenticated class outside this daily reservation path. get_sources is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Daily-quota exemptions: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, ping, describe_tool, skills/list, skills/get, get_sources, public resource reads, and the authenticated worldmonitor://account/mcp-allowance status read. resources/read of a template instantiation intentionally counts toward the daily cap symmetrically with the equivalent tools/call. Per-minute authenticated limiting bounds all methods. Ordinary data calls use the plan's burst from perMinuteByPlan, with a default of 60. Recognized data-free protocol methods and public resource reads use a separate 192/minute user bucket, shared across OAuth and dashboard keys and all sessions. Validated paid MCP panel receipts use separate 64/minute uncached-read and 64/minute cached-replay buckets per admission, with one daily allocation per opening and 64 uncached executions per admission; API-plan and free-account data calls retain their account budgets. Unsupported methods do not use the protocol bucket. Legacy operator keys and anonymous discovery stay at a combined 60/minute, and anonymous get_sources calls use the separate 10/minute/IP ceiling.",
     "dailyBudgetSharedWithRestByPlan": [
       "apiStarter",
       "apiBusiness"
-    ]
+    ],
+    "protocolPerMinute": 192,
+    "panelReadsPerMinute": 64,
+    "panelCachedReadsPerMinute": 64
   },
   "tags": [
     "geopolitical-intelligence",
@@ -645,15 +727,17 @@
         "ui://worldmonitor/country-risk.html",
         "ui://worldmonitor/world-brief.html",
         "ui://worldmonitor/country-brief.html",
-        "ui://worldmonitor/market-radar.html",
+        "ui://worldmonitor/market-radar-v2.html",
         "ui://worldmonitor/chokepoint-monitor.html",
         "ui://worldmonitor/news-intelligence.html",
         "ui://worldmonitor/conflict-events.html",
         "ui://worldmonitor/natural-disasters.html",
         "ui://worldmonitor/prediction-markets.html",
-        "ui://worldmonitor/forecasts.html"
+        "ui://worldmonitor/forecasts.html",
+        "ui://worldmonitor/news-dashboard-v2.html",
+        "ui://worldmonitor/country-view-v2.html"
       ],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief.html, get_market_data → market-radar.html, get_chokepoint_status → chokepoint-monitor.html, get_news_intelligence → news-intelligence.html, get_conflict_events → conflict-events.html, get_natural_disasters → natural-disasters.html, get_prediction_markets → prediction-markets.html, get_forecast_predictions → forecasts.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief.html, get_market_data → market-radar.html, get_chokepoint_status → chokepoint-monitor.html, get_news_intelligence → news-intelligence.html, get_conflict_events → conflict-events.html, get_natural_disasters → natural-disasters.html, get_prediction_markets → prediction-markets.html, get_forecast_predictions → forecasts.html, open_news_dashboard → news-dashboard-v2.html, open_country_brief → country-view-v2.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {
