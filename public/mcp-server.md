@@ -82,7 +82,6 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 - Real-time geopolitical intelligence MCP server
 - MCP server for markets, conflicts, and global risk data
 
-
 ## Natural Disasters Panel Requests
 
 On Pro and Pro Business, `get_natural_disasters` opens one Natural Disasters allocation. Repeated opens and dataset, magnitude, activity and limit filters reuse that admission within five minutes. Use its returned `panelRequest.token` as `panel_request` for bounded reads. Explicit refresh needs `refresh: true`, a UUID `request_id`, and no reader token; the same UUID retries the refresh allocation. API and free-account callers keep ordinary per-tool charging and existing filter coercions, and reject the paid refresh controls.
