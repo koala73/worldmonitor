@@ -7,6 +7,7 @@ import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { CHOKEPOINT_THREAT_LEVELS } from '../shared/chokepoint-threat-levels.js';
 import { EIA_OIL_TRANSIT_CHOKEPOINTS } from '../scripts/chokepoint-eia-baselines.mjs';
 import { PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY } from '../api/_content-freshness.js';
+import { executeChokepointPanelRead } from '../api/mcp/dispatch.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch, OriginalDate = Date, originalEnv = { ...process.env };
@@ -119,6 +120,9 @@ describe('Chokepoint closed paid admission', () => {
     ['raw source error', 'ref', () => { sources[keys[4]] = { _seed: { state: 'ERROR', fetchedAt: now }, data: sources[keys[4]] }; }, 'stale'],
     ['old raw publication', 'ref', () => { sources[keys[4]] = { _seed: { state: 'OK', fetchedAt: now - 14 * 86400000 }, data: sources[keys[4]] }; }, 'stale'],
     ['failed selected metadata', 'ref', () => { sources[keys[10]].sourceState = 'degraded'; }, 'stale'],
+    ['metadata error status', 'ref', () => { sources[keys[10]].status = 'error'; }, 'stale'],
+    ['raw publication unassessed', 'ref', () => { sources[keys[4]] = { _seed: { state: 'OK', fetchedAt: now + 1 }, data: sources[keys[4]] }; }, 'freshnessUnknown'],
+    ['raw coverage contradiction', 'ref', () => { sources[keys[4]] = { _seed: { state: 'OK', fetchedAt: now, recordCount: 0 }, data: sources[keys[4]] }; }, 'freshnessUnknown'],
     ['unknown selected metadata', 'ref', () => { sources[keys[10]] = null; }, 'freshnessUnknown'],
     ['future selected metadata', 'ref', () => { sources[keys[10]].fetchedAt += 1; }, 'freshnessUnknown'],
     ['malformed references', 'ref', () => { sources[keys[4]]['cp-0'] = null; }, null],
@@ -139,6 +143,37 @@ describe('Chokepoint closed paid admission', () => {
     now += 1500; sources = payload(); await invoke(bundle, { dataset: ['_countries'] }); assert.equal(commands.length, 26); assert.equal(bundle.pipe.count, 1);
     const short = makeProDeps(); sources = payload(); sources[keys[10]].fetchedAt = now - 14 * 86400000 + 999; await invoke(short, { dataset: ['ref'] }); assert.equal(cache(short).length, 0);
     const elapsed = makeProDeps(); sources = payload(); sources[keys[10]].fetchedAt = now - 14 * 86400000 + 500; advanceOnSource = now + 501; await invoke(elapsed, { dataset: ['ref'] }); assert.equal(cache(elapsed).length, 0);
+  });
+  it('bounds actual uncached executions, retains rights/revocation and fails quota closed', async () => {
+    const bundle = makeProDeps(); sources[keys[4]]['cp-0'] = null;
+    const token = value(await invoke(bundle, { dataset: ['ref'] })).panelRequest.token;
+    for (let i = 1; i < 64; i++) assert.equal((await invoke(bundle, { panel_request: token, dataset: ['ref'] })).body.error, undefined);
+    assert.equal((await invoke(bundle, { panel_request: token, dataset: ['ref'] })).response.status, 429);
+    assert.equal(commands.length, 64 * 13); assert.equal(bundle.pipe.count, 1);
+    bundle.deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } }); assert.equal((await invoke(bundle, { panel_request: token })).response.status, 403);
+    bundle.deps.validateProMcpToken = async () => null; assert.equal((await invoke(bundle, { panel_request: token })).response.status, 401);
+    assert.equal((await invoke(makeProDeps({ pipelineOpts: { initialCount: 50 } }))).response.status, 429);
+    assert.equal((await invoke(makeProDeps({ pipelineOpts: { throwOnEval: true } }))).response.status, 503);
+    assert.equal(commands.length, 64 * 13);
+  });
+  it('rejects expired and malformed wrappers after lookup and checks SET deadline again', async () => {
+    const bundle = makeProDeps(); await invoke(bundle, { dataset: ['ref'] }); const [key, raw] = cache(bundle)[0];
+    for (const invalid of ['not-json', JSON.stringify({ ...JSON.parse(raw), extra: true }), JSON.stringify({ ...JSON.parse(raw), reuseUntil: now })]) {
+      bundle.pipe.store.set(key, invalid); await invoke(bundle, { dataset: ['ref'] });
+    }
+    assert.equal(commands.length, 52); assert.equal(bundle.pipe.count, 1);
+    const deadline = makeProDeps(); sources = payload(); sources[keys[10]].fetchedAt = now - 14 * 86400000 + 1500;
+    const first = value(await invoke(deadline, { dataset: ['ref'] })); const reader = await authorizePanelRead(context, deadline.pipe.pipeline, 'get_chokepoint_status', { dataset: ['ref'] }, first.panelRequest.token);
+    const read = await executeChokepointPanelRead({ dataset: ['ref'] }); deadline.pipe.store.delete(cache(deadline)[0][0]);
+    now += 1500; await reader.saveChokepoints(read); assert.equal(cache(deadline).length, 0);
+
+  });
+  it('preserves both output and wrapped cache budgets without extra allocations', async () => {
+    const bundle = makeProDeps(); sources[keys[4]]['cp-0'].description = '界'.repeat(180000);
+    const projected = await invoke(bundle, { dataset: ['ref'], jmespath: 'data.ref.*.portName' }); assert.equal(projected.body.error, undefined); assert.equal(cache(bundle).length, 0);
+    await invoke(bundle, { dataset: ['ref'], jmespath: 'data.ref.*.portName' }); assert.equal(commands.length, 26); assert.equal(bundle.pipe.count, 1);
+    sources = payload(); sources[keys[4]]['cp-0'].description = '界'.repeat(50000);
+    const oversized = await invoke(bundle, { dataset: ['ref'] }); assert.equal(value(oversized)._budget_exceeded, true); assert.equal(value(oversized).budget_bytes, 131072); assert.equal(bundle.pipe.count, 1);
   });
   it('retains healthy and partial API/free complete JSON', async () => {
     const rows = [];
