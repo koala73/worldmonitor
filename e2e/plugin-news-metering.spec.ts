@@ -25,7 +25,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   const delayedHazards = new Promise<void>(resolve => { releaseHazards = resolve; });
   const successfulRefreshes = new Set<string>();
   const article = { title: 'Controlled earthquake report in Japan', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: true };
-  let articles = selectionFixture ? [article, { ...article, source: 'Second publisher', link: 'https://example.com/second' }, { ...article, title: 'Tokyo earthquake controlled report', source: 'Approximate publisher', link: 'https://example.com/approximate', location: undefined }] : [article];
+  let articles = selectionFixture ? [article, { ...article, source: 'Second publisher', link: 'https://example.com/second', location: { latitude: 35, longitude: 70 } }, { ...article, title: 'Tokyo earthquake controlled report', source: 'Approximate publisher', link: 'https://example.com/approximate', location: undefined }, { ...article, title: 'Alternate loaded headline in Brazil', source: 'Repeated URL publisher', link: 'https://example.com/second', location: { latitude: -15, longitude: -47 } }, { ...article, source: 'Same URL publisher', link: 'https://example.com/second', location: { latitude: 30, longitude: 31 } }] : [article];
   await page.route('**/plugin/assets/**', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/plugin/plugin.html', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/plugin.html'), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/*.geojson', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
@@ -52,7 +52,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
     if (params.name === 'get_natural_disasters') {
       if (delayHazards) await delayedHazards;
       if (failHazards) return { isError: true };
-      const quake = { id: 'controlled-quake', place: 'Japan fixture', magnitude: 5, depthKm: 10, location: { latitude: 35, longitude: 139 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'Controlled USGS', category: 'earthquake' };
+      const quake = { id: 'controlled-quake', place: 'Controlled hazard fixture', magnitude: 5, depthKm: 10, location: { latitude: -45, longitude: -90 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'Controlled USGS', category: 'earthquake' };
       const fire = { id: 'controlled-fire', location: { latitude: 30, longitude: 35 }, detectedAt: Date.now(), brightness: 350, frp: 12, confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Fixture', dayNight: 'D' };
       return { structuredContent: { data: { earthquakes: { earthquakes: [quake] }, events: { dataAvailable: true, events: [] }, fires: { dataAvailable: true, fireDetections: [fire] } } } };
     }
@@ -110,7 +110,7 @@ test('loaded marker and search interactions retain original identity without dat
   const markers = frame.locator('.news-location-marker');
   await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
   await frame.getByRole('checkbox', { name: 'Natural Events' }).uncheck();
-  await expect(markers).toHaveCount(3);
+  await expect(markers).toHaveCount(5);
   await frame.getByRole('combobox', { name: 'News source' }).selectOption('Second publisher');
   await expect(markers).toHaveCount(1);
   await markers.first().click();
@@ -185,6 +185,66 @@ test('loaded mobile marker selection publishes a receipt in a clean controlled v
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
   expect(host.units).toBe(1);
   expect(host.methods).not.toContain('ui/message');
+});
+
+test('each marker retains its own loaded item when URLs repeat', async ({ page }) => {
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page, false, true, true);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  await frame.getByRole('checkbox', { name: 'Natural Events' }).uncheck();
+  const markers = frame.locator('.news-location-marker');
+  await expect(markers).toHaveCount(5);
+  await markers.nth(1).click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ link: 'https://example.com/second', title: 'Controlled earthquake report in Japan', source: 'Second publisher' });
+  await frame.locator('.popup-close').click();
+  await markers.nth(3).click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ link: 'https://example.com/second', title: 'Alternate loaded headline in Brazil', source: 'Repeated URL publisher', displayLabel: 'Alternate loaded headline in Brazil' });
+  await frame.locator('.popup-close').click();
+  await markers.nth(4).click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ link: 'https://example.com/second', title: 'Controlled earthquake report in Japan', source: 'Same URL publisher', displayLabel: 'Controlled earthquake report in Japan' });
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
+  expect(host.methods).not.toContain('ui/message');
+});
+
+test('replacement news clears the host interaction even when its hazard reload fails', async ({ page }) => {
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page, false, true, true);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  await newsAction(page, 'focus_news_article', { link: 'https://example.com/second' });
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/second');
+  host.removeSecondArticle();
+  host.failHazards();
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await expect(frame.locator('#pluginStatus')).toContainText('The requested view could not be applied');
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+});
+
+test('an older failed hydration cannot clear a newer loaded article interaction', async ({ page }) => {
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page, false, true, true);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  await newsAction(page, 'focus_news_article', { link: 'https://example.com/second' });
+  host.removeSecondArticle();
+  host.delayHazards();
+  host.failHazards();
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await expect.poll(() => host.calls.filter(call => call.name === 'get_natural_disasters').length).toBe(2);
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+  const replacement = { ...host.snapshot };
+  delete replacement.requestedView;
+  await page.evaluate(structuredContent => {
+    document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent } }, '*');
+  }, replacement);
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+  await frame.locator('.news-location-marker').first().click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
+  host.releaseHazards();
+  await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
+  expect(host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard', 'get_natural_disasters']);
 });
 
 test('news and map hydration share one request, toggles reuse data and refresh charges once', async ({ page }, info) => {
@@ -348,7 +408,8 @@ test('a host input is consumed once and cannot restore cleared filters', async (
     document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: result }, '*');
   });
   await expect(frame.locator('#pluginUsage')).toContainText('48 of 50 requests remaining');
-  await expect.poll(() => host.viewUpdates).toBe(4);
+  // Each of the three accepted snapshots clears identity, then publishes its applied view.
+  await expect.poll(() => host.viewUpdates).toBe(7);
   await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
 });
 

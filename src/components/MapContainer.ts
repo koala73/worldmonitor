@@ -213,7 +213,7 @@ export class MapContainer {
   private cachedOnStateChanged: ((state: MapContainerState) => void) | null = null;
   private cachedOnLayerChange: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   private cachedOnTimeRangeChanged: ((range: TimeRange) => void) | null = null;
-  private cachedOnNewsClicked: ((item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void) | null = null;
+  private cachedOnNewsClicked: ((item: Pick<NewsLocationMarker, 'article' | 'title'>) => void) | null = null;
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
@@ -1661,7 +1661,7 @@ export class MapContainer {
     }
   }
 
-  public onNewsClicked(callback: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void): void {
+  public onNewsClicked(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
     this.cachedOnNewsClicked = callback;
     if (this.useGlobe) { this.globeMap?.setOnNewsClick(callback); return; }
     if (this.useDeckGL) { this.deckGLMap?.setOnNewsClick(callback); } else { this.svgMap?.setOnNewsClick(callback); }

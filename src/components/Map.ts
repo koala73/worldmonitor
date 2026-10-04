@@ -223,7 +223,7 @@ export class MapComponent {
   private onTechHubClick?: (hub: TechHubActivity) => void;
   private onGeoHubClick?: (hub: GeoHubActivity) => void;
   private popup: MapPopup;
-  private onNewsClick?: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void;
+  private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
@@ -4803,7 +4803,7 @@ export class MapComponent {
     });
   }
 
-  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void): void {
+  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
     this.onNewsClick = callback;
   }
 

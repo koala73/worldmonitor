@@ -372,7 +372,7 @@ interface NotamRingMarker extends BaseMarker {
 interface NewsLocationMarker extends BaseMarker {
   _kind: 'newsLocation';
   id: string;
-  articleLink?: string;
+  article?: NewsLocationInput['article'];
   title: string;
   threatLevel: string;
 }
@@ -610,7 +610,7 @@ export class GlobeMap {
   private currentView: MapView = 'global';
 
   // Click callbacks
-  private onNewsClick?: (item: Pick<NewsLocationInput, 'articleLink' | 'title'>) => void;
+  private onNewsClick?: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
@@ -3141,7 +3141,7 @@ export class GlobeMap {
 
   // ─── Callback setters ─────────────────────────────────────────────────────
 
-  public setOnNewsClick(callback: (item: Pick<NewsLocationInput, 'articleLink' | 'title'>) => void): void {
+  public setOnNewsClick(callback: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void): void {
     this.onNewsClick = callback;
   }
 
@@ -3546,7 +3546,7 @@ export class GlobeMap {
         _lat: d.lat,
         _lng: d.lon,
         id: `news-${i}-${d.title.slice(0, 20)}`,
-        articleLink: d.articleLink,
+        article: d.article,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
       }));

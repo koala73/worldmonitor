@@ -113,7 +113,7 @@ export interface NewsLocationMarker {
   threatLevel: string;
   timestamp?: Date;
   /** Original loaded article identity; marker titles may include inferred locations. */
-  articleLink?: string;
+  article?: Pick<NewsItem, 'link' | 'title' | 'source'>;
 }
 
 export interface NewsItem {

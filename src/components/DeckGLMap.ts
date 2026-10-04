@@ -711,7 +711,7 @@ export class DeckGLMap {
   private hoveredCountryName: string | null = null;
 
   // Callbacks
-  private onNewsClick?: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void;
+  private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
@@ -7619,7 +7619,7 @@ export class DeckGLMap {
     this.render(); // Debounced
   }
 
-  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void): void {
+  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
     this.onNewsClick = callback;
   }
 

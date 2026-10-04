@@ -36,8 +36,8 @@ function mountPlugin(): void {
   let map: MapContainer;
   let search: SearchModal;
   let news: NewsItem[] = [];
-  const visibleNews = new Map<string, NewsItem>();
-  const visibleMarkerLabels = new Map<string, string>();
+  const visibleNews: NewsItem[] = [];
+  let visibleMarkers: Parameters<MapContainer['setNewsLocations']>[0] = [];
   // Latest loaded article interaction, independent of popup visibility.
   let latestInteraction: { kind: 'news-article'; link: string; title: string; source: string; displayLabel: string } | null = null;
   let digest: ListFeedDigestResponse | undefined;
@@ -98,13 +98,14 @@ function mountPlugin(): void {
     digest = data;
     latestInteraction = null;
     renderDigest();
+    publishContext({ view, latestInteraction, center: map.getCenter(), map: map.getState() });
     if (keepCurrentView || admissionChanged || requestedView) {
       await applyView(requestedView ?? {}, { keepCurrentView, reloadLayers: admissionChanged, generation }).catch(error => {
         if (generation !== renderGeneration) return;
         status.textContent = 'The requested view could not be applied. Showing news with the previous filters.';
         mapStatus.textContent = error instanceof Error ? error.message : 'The requested map view is unavailable.';
       });
-    } else publishContext({ view, latestInteraction, center: map.getCenter(), map: map.getState() });
+    }
     return true;
   }
 
@@ -134,8 +135,7 @@ function mountPlugin(): void {
     }
     const locations: Parameters<MapContainer['setNewsLocations']>[0] = [];
     news = [];
-    visibleNews.clear();
-    visibleMarkerLabels.clear();
+    visibleNews.length = 0;
     for (const [category, bucket] of Object.entries(digest.categories)) {
       if (!bucket || !Array.isArray(bucket.items)) continue;
       let panel = panels.get(category);
@@ -165,7 +165,7 @@ function mountPlugin(): void {
       if (items.length || !allItems.length) panel.renderNews(items);
       else panel.renderFilteredEmpty('No news matches these filters.');
       for (const item of view.category && view.category !== category ? [] : items) {
-        visibleNews.set(item.link, item);
+        visibleNews.push(item);
         const matches = Number.isFinite(item.lat) && Number.isFinite(item.lon)
           ? [] : inferGeoHubsFromTitle(item.title).filter(match => match.hub.type !== 'organization');
         const tokens = tokenizeForMatch(item.title);
@@ -176,15 +176,13 @@ function mountPlugin(): void {
         const lon = hub?.lon ?? item.lon;
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
           const title = hub ? `${item.title} (approximate location: ${hub.name})` : item.title;
-          visibleMarkerLabels.set(item.link, title);
-          locations.push({ lat: lat!, lon: lon!, title, articleLink: item.link, threatLevel: item.threat?.level ?? 'info', timestamp: item.pubDate });
+          locations.push({ lat: lat!, lon: lon!, title, article: { link: item.link, title: item.title, source: item.source }, threatLevel: item.threat?.level ?? 'info', timestamp: item.pubDate });
         }
       }
     }
-    if (latestInteraction) {
-      const item = visibleNews.get(latestInteraction.link);
-      if (!item || item.title !== latestInteraction.title || item.source !== latestInteraction.source) latestInteraction = null;
-    }
+    const interaction = latestInteraction;
+    if (interaction && !visibleNews.some(item => item.link === interaction.link && item.title === interaction.title && item.source === interaction.source)) latestInteraction = null;
+    visibleMarkers = locations;
     map.setNewsLocations(locations);
     updateSelect(sourceSelect, [...new Set(news.map(item => item.source))].sort(), view.source ?? '', 'All sources');
     updateSelect(categorySelect, Object.keys(digest.categories), view.category ?? '', 'All news panels');
@@ -298,22 +296,22 @@ function mountPlugin(): void {
     if (modelContext) void request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify(receipt) }] }).catch(() => {});
   }
 
-  function recordNewsInteraction(link: string, displayLabel: string): boolean {
-    const item = visibleNews.get(link);
-    if (!item || !link) return false;
+  function recordNewsInteraction(article: Pick<NewsItem, 'link' | 'title' | 'source'>, displayLabel: string): boolean {
+    const item = visibleNews.find(item => item.link === article.link && item.title === article.title && item.source === article.source);
+    if (!item || !item.link) return false;
     latestInteraction = { kind: 'news-article', link: item.link, title: item.title, source: item.source, displayLabel };
     return true;
   }
 
-  async function focusNews(link: string): Promise<object> {
+  async function focusNews(link: string, selectedItem?: NewsItem): Promise<object> {
     const generation = renderGeneration;
-    const item = news.find(item => item.link === link);
+    const item = news.find(item => item.link === link && (!selectedItem || item === selectedItem));
     if (!item || !digest) throw new Error('This article is not in the current news snapshot.');
-    const category = Object.entries(digest.categories).find(([, bucket]) => bucket.items.some(candidate => candidate.link === link))?.[0];
+    const category = Object.entries(digest.categories).find(([, bucket]) => bucket.items.some(candidate => candidate.link === link && candidate.title === item.title && candidate.source === item.source))?.[0];
     const mapFocused = Number.isFinite(item.lat) && Number.isFinite(item.lon);
     await applyView({ category, time_range: 'all', ...(mapFocused ? { map_latitude: item.lat, map_longitude: item.lon, map_zoom: 4 } : {}) }, { reset: true });
     if (generation !== renderGeneration) throw new Error('The news snapshot changed. Select the article again.');
-    if (!recordNewsInteraction(link, item.title)) throw new Error('This article is no longer in the current news view.');
+    if (!recordNewsInteraction(item, item.title)) throw new Error('This article is no longer in the current news view.');
     for (const panel of panels.values()) if (panel.hasNewsItem(item.link)) panel.scrollToNewsItem(item.link);
     const receipt = { applied: true, link, title: item.title, source: item.source, mapFocused, center: map.getCenter(), view, latestInteraction };
     publishContext(receipt);
@@ -380,7 +378,8 @@ function mountPlugin(): void {
     });
     map.onCountryClicked(country => { if (country.code) void applyView({ country: country.code }).catch(() => { status.textContent = 'Country view could not be applied.'; }); });
     map.onNewsClicked(item => {
-      if (!item.articleLink || visibleMarkerLabels.get(item.articleLink) !== item.title || !recordNewsInteraction(item.articleLink, item.title)) return;
+      const article = item.article;
+      if (!article || !visibleMarkers.some(marker => marker.title === item.title && marker.article?.link === article.link && marker.article.title === article.title && marker.article.source === article.source) || !recordNewsInteraction(article, item.title)) return;
       publishContext({ view, latestInteraction, center: map.getCenter(), map: map.getState() });
     });
     map.onTimeRangeChanged(time_range => {
@@ -390,7 +389,7 @@ function mountPlugin(): void {
     search = new SearchModal(document.body, { placeholder: 'Search news', scopes: ['all', 'signals'] });
     search.setCommandVisibleFn(() => false);
     search.setResultVisibleFn(result => result.type === 'news');
-    search.setOnSelect(result => { void focusNews(result.id).catch(() => { status.textContent = 'The article location could not be applied.'; }); });
+    search.setOnSelect(result => { void focusNews(result.id, result.data as NewsItem).catch(() => { status.textContent = 'The article location could not be applied.'; }); });
 
     for (const key of ['source', 'category'] as const) {
       const select = document.createElement('select');
