@@ -10,7 +10,7 @@ import './styles/plugin.css';
 import { SearchModal } from '@/components/SearchModal';
 import type { NewsItem } from '@/types';
 import { NewsPanel } from '@/components/NewsPanel';
-import { MapContainer } from '@/components/MapContainer';
+import { MapContainer, ViewportTransitionError } from '@/components/MapContainer';
 import { DEFAULT_MAP_LAYERS, DEFAULT_PANELS } from '@/config';
 import type { MapLayers } from '@/types';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
@@ -216,13 +216,33 @@ function mountPlugin(): void {
     }
     let renderer: object | undefined;
     if (next.renderer) {
+      const authority = map.getViewportAuthorityToken();
       const result = next.renderer === 'globe' ? await map.switchToGlobe() : await map.switchToFlat();
-      await map.whenViewportSettled();
+      let interruptedByHuman = false;
+      try { await map.whenViewportSettled(); }
+      catch (error) {
+        if (!(error instanceof ViewportTransitionError) || error.reason !== 'viewport_interrupted') throw error;
+        // OrbitControls can settle inside the wheel listener, before the same
+        // event bubbles to MapContainer's human-authority listener.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        if (superseded()) return { applied: false, superseded: true };
+        await map.whenRendererReady();
+        const effectiveRenderer = map.isGlobeMode() ? 'globe' : map.isDeckGLActive() ? 'deck' : 'svg';
+        if (effectiveRenderer !== result.renderer) throw new ViewportTransitionError('renderer_changed');
+        if (authority === map.getViewportAuthorityToken()) throw error;
+        interruptedByHuman = true;
+      }
       if (superseded()) return { applied: false, superseded: true };
       renderer = result;
       intended.renderer = result.mode;
       for (const control of document.querySelectorAll<HTMLButtonElement>('#mapDimensionToggle button')) {
         control.classList.toggle('active', control.dataset.mode === result.mode);
+      }
+      if (interruptedByHuman) {
+        view = { ...view, renderer: result.mode };
+        const receipt = { applied: false, view, renderer: result, center: map.getCenter(), map: map.getState(), viewport: { settled: false, interruptedBy: 'human' } };
+        if (modelContext) void request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify(receipt) }] }).catch(() => {});
+        return receipt;
       }
     }
     if (next.time_range) {
