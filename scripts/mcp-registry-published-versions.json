@@ -40,6 +40,10 @@
     "1.26.0": {
       "tools": 86,
       "manifestSha256": "3320ade37e1db7803d15f4ee58a48b41c6bf292f694cd744ab14fe91a89c06d5"
+    },
+    "1.27.0": {
+      "tools": 87,
+      "manifestSha256": "cb7ed3fe6b228521451d10449f1bf97f356f8994c9c07bbf645fb9cf213cea6e"
     }
   }
 }

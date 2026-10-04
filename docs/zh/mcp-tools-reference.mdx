@@ -2163,7 +2163,10 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `domain` | string | 筛选为一个预测领域（精确、不区分大小写 — 例如 "shipping"、"energy"、"macro"）。 |
 | `region` | string | 筛选为一个地区/战区（不区分大小写的子串）。 |
-| `limit` | number | 将预测列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | Paid panels accept integers 1–30. Ordinary API calls retain the existing cap semantics. |
+| `refresh` | boolean | Paid panel opening: starts a new admission when true. |
+| `request_id` | string | Optional UUID to reuse an explicit paid opening request. |
+| `panel_request` | string | Signed forecast admission for bounded loaded-list replay. |
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
@@ -2183,6 +2186,24 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+Read one unchanged original forecast case for an exact loaded ID and generation. Requires a valid paid forecast panel admission. The existing 64-read allowance includes this internal read; it does not charge a new daily panel allocation. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `forecast_id` | string | Exact original forecast ID from the loaded list. |
+| `generated_at` | string | Exact String(generatedAt) from the loaded list. |
+| `panel_request` | string | Signed forecast panel receipt. |
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `subscription` — requires a valid paid forecast admission, including owner, scope, expiry and entitlement checks.
+- **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
+- **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
+- **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
 
 ### `get_forecast_scorecard`
 

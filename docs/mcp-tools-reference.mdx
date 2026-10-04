@@ -2714,7 +2714,10 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 |------|------|-------------|
 | `domain` | string | Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro"). |
 | `region` | string | Filter to one region/theater (case-insensitive substring). |
-| `limit` | number | Cap the forecast list to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
+| `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
+| `request_id` | string | Unique idempotency identifier for an explicit refresh. |
+| `panel_request` | string | Signed forecast panel receipt for a bounded internal list replay. |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -2735,6 +2738,24 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+Read one unchanged original forecast case for an exact loaded ID and generation. Requires a valid paid forecast panel admission. The existing 64-read allowance includes this internal read; it does not charge a new daily panel allocation. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `forecast_id` | string | Exact original forecast ID from the loaded list. |
+| `generated_at` | string | Exact String(generatedAt) from the loaded list. |
+| `panel_request` | string | Signed forecast panel receipt. |
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `subscription` — requires a valid paid forecast admission, including owner, scope, expiry and entitlement checks.
+- **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
+- **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
+- **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
 
 ### `get_forecast_scorecard`
 
