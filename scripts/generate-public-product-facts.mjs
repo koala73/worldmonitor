@@ -340,12 +340,16 @@ transform('public/.well-known/agent-card.json', (source) => {
 // so adding tools cannot leave a syntactically valid but incomplete card.
 transform('public/.well-known/mcp/server-card.json', (source) => {
   const card = JSON.parse(source);
+  const disasterTool = TOOL_REGISTRY.find((tool) => tool.name === 'get_natural_disasters');
+  if (!disasterTool) throw new Error('get_natural_disasters must exist in TOOL_REGISTRY');
+  const disasterFilename = disasterTool._uiResourceUri?.match(/^ui:\/\/worldmonitor\/(natural-disasters(?:-v\d+)?\.html)$/)?.[1];
+  if (!disasterFilename) throw new Error('get_natural_disasters must advertise a ui://worldmonitor/natural-disasters HTML resource');
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
     /get_market_data → market-radar(?:-v\d+)?\.html/,
     'get_market_data → market-radar-v3.html',
   ).replace(
     /get_natural_disasters → natural-disasters(?:-v\d+)?\.html/,
-    'get_natural_disasters → natural-disasters-v2.html',
+    `get_natural_disasters → ${disasterFilename}`,
   );
   card.tools = TOOL_REGISTRY.map((tool) => ({
     name: tool.name,
