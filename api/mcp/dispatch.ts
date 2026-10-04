@@ -15,9 +15,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitCountryPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitCountryPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import type { PanelUsage } from '../../shared/panel-admission';
+import { marketPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -406,7 +406,21 @@ export async function dispatchToolsCall(
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_market_data') {
+      const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+      const parsed = marketPanelViewSchema.safeParse(view);
+      if (!parsed.success) throw new PanelRequestError('Supply valid curated market filters and a request_id for refresh.', 'invalid');
+      const { refresh, request_id: _requestId, ...filters } = parsed.data;
+      sourceArguments = filters;
+      if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the market panel without a reader token.', 'invalid');
+      if (dedicatedPanel && suppliedPanel === undefined) {
+        panelRequest = await admitMarketPanel(context, budget, deps.redisPipeline, parsed.data);
+        panelUsage = panelRequest.usage;
+        panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+      }
+    }
     if (dedicatedPanel && tool.name === 'open_country_brief') {
       panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')));
     } else if (dedicatedPanel && tool.name === 'open_news_dashboard') {
@@ -416,7 +430,7 @@ export async function dispatchToolsCall(
     } else if (suppliedPanel !== undefined) {
       if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
-        Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
+        Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
@@ -534,7 +548,7 @@ export async function dispatchToolsCall(
         execution,
       );
     } else {
-      result = await executeTool(tool, callArguments);
+      result = await executeTool(tool, sourceArguments);
     }
     if (panelRead && panelRead.cached === undefined) {
       if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
@@ -545,6 +559,11 @@ export async function dispatchToolsCall(
     if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
+    }
+    if (tool.name === 'get_market_data' && tool._execute === undefined && result && typeof result === 'object') {
+      const snapshot = result as Awaited<ReturnType<typeof executeTool>>;
+      if (argBool(callArguments.summary)) result = { ...snapshot, data: tool._summarize ? tool._summarize(snapshot.data) : summarizeData(snapshot.data) };
+      if (panelRequest) result = { ...result as Record<string, unknown>, panelRequest };
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.

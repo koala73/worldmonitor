@@ -450,6 +450,7 @@ describe('paid curated market panel through the MCP handler', () => {
   let handler;
   let fetched;
   let degraded;
+  let sourceFailure;
   const invoke = async (deps, args = {}) => {
     const response = await handler(proReq('POST', callBody('get_market_data', args)), deps);
     return { response, body: await response.json() };
@@ -461,9 +462,12 @@ describe('paid curated market panel through the MCP handler', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
     fetched = [];
     degraded = false;
+    sourceFailure = false;
     globalThis.fetch = async url => {
-      fetched.push(String(url));
       assert.ok(String(url).startsWith('https://market-seed.invalid/get/'), 'curated cache only');
+      if (!decodeURIComponent(String(url)).includes('market:')) return Response.json({ result: null });
+      fetched.push(String(url));
+      if (sourceFailure) throw new Error('controlled seed outage');
       if (decodeURIComponent(String(url)).includes('seed-meta:')) return Response.json({ result: JSON.stringify({ fetchedAt: Date.now() }) });
       return Response.json({ result: JSON.stringify({
         quotes: [{ symbol: 'AAPL', price: 100, change: 1 }, { symbol: 'MSFT', price: 200, change: 2 }],
@@ -482,6 +486,7 @@ describe('paid curated market panel through the MCP handler', () => {
     const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });
     const receipt = first.body.result.structuredContent.panelRequest;
     assert.equal(receipt?.panel, 'markets');
+    assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
     assert.equal(pipe.count, 1);
     const next = await invoke(deps, { symbols: ['MSFT'], asset_class: ['equity'] });
     assert.equal(next.body.result.structuredContent.panelRequest.token, receipt.token);
@@ -509,9 +514,24 @@ describe('paid curated market panel through the MCP handler', () => {
     assert.equal(fetched.length, 11);
     assert.equal(pipe.count, 1);
   });
+  it('retains existing empty-symbol and numeric-limit filtering with canonical default reuse', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, { asset_class: ['equity'] });
+    const token = first.body.result.structuredContent.panelRequest.token;
+    for (const args of [{}, { limit: 30 }, { symbols: [] }, { symbols: [' ', ''] }]) {
+      const result = await invoke(deps, { ...args, asset_class: ['equity'], panel_request: token });
+      assert.equal(result.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    }
+    assert.equal(fetched.length, 11);
+    for (const [limit, expected] of [[-1, 2], [0, 2], [1.5, 1], [0.5, 0]]) {
+      const result = await invoke(deps, { asset_class: ['equity'], limit, panel_request: token });
+      assert.equal(result.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, expected);
+    }
+    assert.equal(pipe.count, 1);
+  });
   it('rejects invalid filters, refresh controls and foreign receipts before quota or source work', async () => {
     const { deps, pipe } = makeProDeps();
-    for (const args of [{ unknown: true }, { symbols: 'AAPL' }, { symbols: [1] }, { asset_class: ['forex'] }, { limit: -1 }, { limit: 1.5 }, { refresh: true }, { refresh: true, request_id: 'bad' }]) {
+    for (const args of [{ unknown: true }, { symbols: 'AAPL' }, { symbols: [1] }, { asset_class: ['forex'] }, { limit: '1' }, { refresh: true }, { refresh: true, request_id: 'bad' }]) {
       assert.equal((await invoke(deps, args)).body.error?.code, -32602, JSON.stringify(args));
     }
     assert.equal(pipe.count, 0);
@@ -566,5 +586,60 @@ describe('paid curated market panel through the MCP handler', () => {
     assert.ok(denied.response.headers.get('Retry-After'));
     assert.equal(fetched.length, 33);
     assert.equal(pipe.count, 1);
+  });
+  it('keeps paid reads available at the daily cap and denies a new refresh before seed work', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(receipt.usage.remaining, 0);
+    const next = await invoke(deps, { symbols: ['MSFT'], asset_class: ['equity'] });
+    assert.equal(next.body.result.structuredContent.panelRequest.token, receipt.token);
+    const count = fetched.length;
+    const denied = await invoke(deps, { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(denied.response.status, 429);
+    assert.ok(denied.response.headers.get('Retry-After'));
+    assert.equal(pipe.count, 50);
+    assert.equal(fetched.length, count);
+  });
+  it('does not cache an execution error and can recover with the original paid receipt', async () => {
+    const { deps, pipe } = makeProDeps();
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const grant = await admitMarketPanel(context, budget, pipe.pipeline, {});
+    sourceFailure = true;
+    const failed = await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(failed.body.error.code, -32003);
+    sourceFailure = false;
+    const recovered = await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(recovered.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 22);
+  });
+  it('keeps incomplete and stale market seeds recoverable without changing refresh expiry on replay', async () => {
+    const { pipe } = makeProDeps();
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const now = Date.UTC(2026, 9, 4, 12);
+    const args = { refresh: true, request_id: crypto.randomUUID() };
+    const receipt = await admitMarketPanel(context, budget, pipe.pipeline, args, now);
+    const replay = await admitMarketPanel(context, budget, pipe.pipeline, args, now + 60000);
+    assert.equal(receipt.token, replay.token);
+    assert.equal(receipt.expiresAt, replay.expiresAt);
+    const read = await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now);
+    for (const value of [
+      { stale: true, data: { crypto: { quotes: [] } } },
+      { stale: false, unreadable: ['crypto'], data: { crypto: { quotes: [] } } },
+      { stale: false, data: { crypto: null } },
+      { stale: false, data: { crypto: { unavailable: true } } },
+      { stale: false, data: { 'stocks-bootstrap': { skipReason: 'SEED_UNAVAILABLE' } } },
+      { stale: false, data: { sectors: { valuationCoverage: { sourceStatus: 'degraded' } } } },
+    ]) {
+      await read.save(value);
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now)).cached, undefined);
+    }
+    const ready = { stale: false, data: { crypto: { quotes: [] } } };
+    await read.save(ready);
+    assert.deepEqual((await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now)).cached, ready);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 0);
   });
 });
