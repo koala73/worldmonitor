@@ -8,7 +8,7 @@ import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-n
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
 import type { NaturalDisastersPanelRead } from './natural-disasters-reuse';
-import { isConflictPanelSnapshotCacheable } from './registry/cache-tools';
+import { conflictPanelReuseUntil, isConflictPanelSnapshotCacheable } from './registry/cache-tools';
 import { resolveDailyLimit, type McpBudget } from './quota';
 import type { McpAuthContext, PipelineFn } from './types';
 
@@ -205,7 +205,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       try { parsed = JSON.parse(raw); } catch (error) { if (name !== 'get_natural_disasters') throw error; }
       if (name === 'get_natural_disasters') {
         if (validDisasterCache(parsed, Date.now(), scope.expires)) cached = parsed.value;
-      } else cached = parsed;
+      } else if (scope.panel !== 'conflicts' || conflictPanelReuseUntil(parsed) !== null) cached = parsed;
     }
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
@@ -270,7 +270,15 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       }
       const raw = JSON.stringify(value);
       if (!raw || encoder.encode(raw).length > cacheBudget) return;
-      try { await pipeline([['SET', cacheKey, raw, 'EX', ttl]], 5_000, true); } catch { /* Reads remain valid when optional response reuse is unavailable. */ }
+      let cacheTtl = ttl;
+      if (scope.panel === 'conflicts') {
+        const savedAt = Date.now();
+        const reuseUntil = conflictPanelReuseUntil(value, savedAt);
+        if (reuseUntil === null) return;
+        cacheTtl = Math.floor((Math.min(scope.expires, reuseUntil) - savedAt) / 1000);
+        if (cacheTtl < 1) return;
+      }
+      try { await pipeline([['SET', cacheKey, raw, 'EX', cacheTtl]], 5_000, true); } catch { /* Reads remain valid when optional response reuse is unavailable. */ }
     },
   };
 }
