@@ -180,6 +180,11 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
     },
     save: async (value: unknown) => {
+      if (name === 'get_forecast_predictions') {
+        if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object' || !('predictions' in value.data)) return;
+        const source = value.data.predictions;
+        if (!source || typeof source !== 'object' || !('predictions' in source) || !Array.isArray(source.predictions)) return;
+      }
       if (name === 'get_forecast_case') {
         if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object' || !('forecastCase' in value.data)) return;
         const detail = value.data.forecastCase;

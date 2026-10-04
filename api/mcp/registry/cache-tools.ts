@@ -3022,7 +3022,12 @@ export const CACHE_TOOLS: ToolDef[] = [
               if (caseFile !== undefined) { detailStripped++; return { ...row, hasCaseFile: true }; }
               return row;
             });
-            data.predictions = { generatedAt: node.generatedAt, predictions, detailStripped };
+            data.predictions = {
+              generatedAt: node.generatedAt, predictions, detailStripped,
+              ...(typeof node.degraded === 'boolean' ? { degraded: node.degraded } : {}),
+              ...(typeof node.stale === 'boolean' ? { stale: node.stale } : {}),
+              ...(typeof node.error === 'string' ? { error: node.error.slice(0, 1200) } : {}),
+            };
           }
         }
       }
