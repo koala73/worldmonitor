@@ -445,3 +445,126 @@ describe('one allocation per embedded panel', () => {
     assert.equal(pipe.count, 3);
   });
 });
+
+describe('paid curated market panel through the MCP handler', () => {
+  let handler;
+  let fetched;
+  let degraded;
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_market_data', args)), deps);
+    return { response, body: await response.json() };
+  };
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://market-seed.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
+    fetched = [];
+    degraded = false;
+    globalThis.fetch = async url => {
+      fetched.push(String(url));
+      assert.ok(String(url).startsWith('https://market-seed.invalid/get/'), 'curated cache only');
+      if (decodeURIComponent(String(url)).includes('seed-meta:')) return Response.json({ result: JSON.stringify({ fetchedAt: Date.now() }) });
+      return Response.json({ result: JSON.stringify({
+        quotes: [{ symbol: 'AAPL', price: 100, change: 1 }, { symbol: 'MSFT', price: 200, change: 2 }],
+        seededAt: new Date().toISOString(), rateLimited: degraded,
+      }) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('shares one allocation across opens and filters, while refresh retries share their original allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(receipt?.panel, 'markets');
+    assert.equal(pipe.count, 1);
+    const next = await invoke(deps, { symbols: ['MSFT'], asset_class: ['equity'] });
+    assert.equal(next.body.result.structuredContent.panelRequest.token, receipt.token);
+    assert.equal(pipe.count, 1);
+    assert.equal(next.body.result.structuredContent.data['stocks-bootstrap'].quotes[0].symbol, 'MSFT');
+    const reads = fetched.length;
+    await invoke(deps, { symbols: [' aapl ', 'AAPL'], asset_class: ['equity'], panel_request: receipt.token });
+    assert.equal(fetched.length, reads);
+    const request_id = crypto.randomUUID();
+    const refreshed = await invoke(deps, { refresh: true, request_id, symbols: ['AAPL'], asset_class: ['equity'] });
+    const replay = await invoke(deps, { refresh: true, request_id, symbols: ['AAPL'], asset_class: ['equity'] });
+    assert.equal(pipe.count, 2);
+    assert.equal(refreshed.body.result.structuredContent.panelRequest.token, replay.body.result.structuredContent.panelRequest.token);
+    assert.equal(fetched.length, reads + 11);
+  });
+  it('caches the canonical result before summary and JMESPath presentation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const summarized = await invoke(deps, { asset_class: ['equity'], summary: true });
+    assert.equal(summarized.body.result.structuredContent.projection.data['stocks-bootstrap'].quotes.count, 2);
+    const raw = await invoke(deps, { asset_class: ['equity'] });
+    const token = raw.body.result.structuredContent.panelRequest.token;
+    assert.equal(raw.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    const projected = await invoke(deps, { asset_class: ['equity'], panel_request: token, jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+    assert.deepEqual(projected.body.result.structuredContent, { projection: ['AAPL', 'MSFT'] });
+    assert.equal(fetched.length, 11);
+    assert.equal(pipe.count, 1);
+  });
+  it('rejects invalid filters, refresh controls and foreign receipts before quota or source work', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ unknown: true }, { symbols: 'AAPL' }, { symbols: [1] }, { asset_class: ['forex'] }, { limit: -1 }, { limit: 1.5 }, { refresh: true }, { refresh: true, request_id: 'bad' }]) {
+      assert.equal((await invoke(deps, args)).body.error?.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    const reads = fetched.length;
+    assert.equal((await invoke(deps, { panel_request: token, refresh: true, request_id: crypto.randomUUID() })).body.error?.code, -32602);
+    const news = (await import('../api/mcp/panel-requests.ts')).admitNewsPanel;
+    const grant = await news(context, budget, pipe.pipeline, {});
+    assert.equal((await invoke(deps, { panel_request: grant.token })).body.error?.code, -32602);
+    await assert.rejects(readPanel({ ...context, userId: 'other' }, pipe.pipeline, 'get_market_data', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'open_news_dashboard', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_quotes', { symbols: ['AAPL'] }, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_data', {}, token, Date.parse(first.body.result.structuredContent.panelRequest.expiresAt)));
+    await assert.rejects(readPanel(context, async () => { throw new Error('outage'); }, 'get_market_data', {}, token), error => error.code === 'backend');
+    assert.equal(fetched.length, reads);
+    assert.equal(pipe.count, 2);
+  });
+  it('rechecks current rights on cache replay and preserves per-tool API billing', async () => {
+    let revoked = false;
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: !revoked }, validUntil: Date.now() + 86400000 }) });
+    const opened = await invoke(deps);
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    revoked = true;
+    assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
+    assert.equal(fetched.length, 11);
+    assert.equal(pipe.count, 1);
+    const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    assert.equal((await invoke(api.deps)).body.result.structuredContent.panelRequest, undefined);
+    await invoke(api.deps, { symbols: ['AAPL'] });
+    assert.equal(api.pipe.count, 2);
+    assert.equal((await invoke(api.deps, { panel_request: token })).body.error?.code, -32602);
+    assert.equal((await invoke(api.deps, { unknown: true })).body.error?.code, -32602);
+    assert.equal(api.pipe.count, 2);
+  });
+  it('retries degraded seed results within the same allocation and stops at the existing 64-read ceiling', async () => {
+    const { deps, pipe } = makeProDeps();
+    degraded = true;
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(fetched.length, 22);
+    degraded = false;
+    const recovered = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(recovered.body.result.structuredContent.data['stocks-bootstrap'].rateLimited, false);
+    await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(fetched.length, 33);
+    for (let i = 0; i < PANEL_READ_LIMIT - 3; i++) await readPanel(context, pipe.pipeline, 'get_market_data', { symbols: [`MISS${i}`] }, token);
+    const denied = await invoke(deps, { symbols: ['LAST'], panel_request: token });
+    assert.equal(denied.response.status, 429);
+    assert.ok(denied.response.headers.get('Retry-After'));
+    assert.equal(fetched.length, 33);
+    assert.equal(pipe.count, 1);
+  });
+});
