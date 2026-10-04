@@ -23,9 +23,10 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   const successfulRefreshes = new Set<string>();
   const article = { title: 'Controlled earthquake report in Japan', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: true };
   await page.route('**/plugin/assets/**', async route => {
-    const path = join(process.cwd(), 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!);
+    const assetName = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    const path = join(process.cwd(), 'dist/plugin/assets', assetName);
     const headers = { 'Access-Control-Allow-Origin': '*' };
-    if (!observeCamera || !path.includes('/GlobeMap-')) return route.fulfill({ path, headers });
+    if (!observeCamera || !assetName.startsWith('GlobeMap-')) return route.fulfill({ path, headers });
     const source = await readFile(path, 'utf8');
     const exportedClass = source.match(/export\s*\{\s*([$\w]+)\s+as\s+GlobeMap/)?.[1];
     expect(exportedClass).toBeTruthy();
