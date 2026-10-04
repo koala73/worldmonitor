@@ -59,7 +59,7 @@ import {
 } from '../filters';
 import { resolveCountryFilter } from '../_country-args';
 import { RpcValidationError } from '../billing-denial';
-import type { ConflictSourceObservation, ToolDef } from '../types';
+import type { ConflictSourceObservation, FreshnessCheck, ToolDef } from '../types';
 
 import { utf8ByteLength } from '../utils';
 import {
@@ -114,6 +114,10 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
 const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
 const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+const CONFLICT_EVENTS_FRESHNESS_CHECKS: [FreshnessCheck, ...FreshnessCheck[]] = [
+  { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 30 },
+  { key: 'seed-meta:unrest:events', maxStaleMin: 120 },
+];
 const CONFLICT_PANEL_COLLECTIONS: [string, string][] = [['ucdp-events', 'events'], ['events', 'events'], ['scores', 'ciiScores'], ...(IRAN_EVENTS_ENABLED ? [['iran-events', 'events'] as [string, string]] : [])];
 const CROSS_SOURCE_SIGNAL_TYPES = [
   'CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION',
@@ -235,6 +239,15 @@ export function isConflictPanelSnapshotCacheable(value: unknown): boolean {
     && meta.candidateVersion === ucdp.candidateVersion
     && (ucdp.candidateComplete === undefined || ucdp.candidateComplete === true)
     && (ucdp.annualFailedPages === undefined || ucdp.annualFailedPages === 0);
+}
+
+export function conflictPanelReuseUntil(value: unknown, now = Date.now()): number | null {
+  if (!conflictRecord(value) || !isConflictPanelSnapshotCacheable(value)) return null;
+  const cachedAt = Date.parse(value.cached_at as string);
+  const source = value.conflict_source as ConflictSourceObservation;
+  if (cachedAt > now || (source.ucdp.fetchedAt ?? Number.POSITIVE_INFINITY) > now) return null;
+  const deadline = cachedAt + Math.min(...CONFLICT_EVENTS_FRESHNESS_CHECKS.map(check => check.maxStaleMin)) * 60_000;
+  return deadline > now ? deadline : null;
 }
 
 export function projectConflictSourceObservation(value: unknown): ConflictSourceObservation {
@@ -1040,10 +1053,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // Per-key budgets (#5864): unrest:events:v1 is materializer-backed since
     // #5863 and was invisible to this envelope — a dead 15-min pipeline still
     // reported stale:false to agents.
-    _freshnessChecks: [
-      { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 30 },  // 15min cron × 2
-      { key: 'seed-meta:unrest:events',        maxStaleMin: 120 }, // matches api/health.js unrestEvents
-    ],
+    _freshnessChecks: CONFLICT_EVENTS_FRESHNESS_CHECKS,
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
     // The audit-time hint matched only this tool's conflict/risk cache keys,
     // but the handler at server/worldmonitor/intelligence/v1/get-risk-scores.ts

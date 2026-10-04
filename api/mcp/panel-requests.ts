@@ -7,7 +7,7 @@ import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
-import { isConflictPanelSnapshotCacheable } from './registry/cache-tools';
+import { conflictPanelReuseUntil, isConflictPanelSnapshotCacheable } from './registry/cache-tools';
 import { resolveDailyLimit, type McpBudget } from './quota';
 import type { McpAuthContext, PipelineFn } from './types';
 
@@ -188,7 +188,10 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
     const results = await pipeline([['GET', key], ['GET', cacheKey]], 5_000, true);
     if (!results || results.length !== 2 || results.some(item => item.error) || results[0]?.result !== String(scope.expires)) throw new Error('Missing paid admission');
     const raw = results[1]?.result;
-    if (typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) cached = JSON.parse(raw);
+    if (typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) {
+      const value = JSON.parse(raw);
+      if (scope.panel !== 'conflicts' || conflictPanelReuseUntil(value) !== null) cached = value;
+    }
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
   return {
@@ -241,7 +244,15 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       }
       const raw = JSON.stringify(value);
       if (!raw || encoder.encode(raw).length > cacheBudget) return;
-      try { await pipeline([['SET', cacheKey, raw, 'EX', ttl]], 5_000, true); } catch { /* Reads remain valid when optional response reuse is unavailable. */ }
+      let cacheTtl = ttl;
+      if (scope.panel === 'conflicts') {
+        const savedAt = Date.now();
+        const reuseUntil = conflictPanelReuseUntil(value, savedAt);
+        if (reuseUntil === null) return;
+        cacheTtl = Math.floor((Math.min(scope.expires, reuseUntil) - savedAt) / 1000);
+        if (cacheTtl < 1) return;
+      }
+      try { await pipeline([['SET', cacheKey, raw, 'EX', cacheTtl]], 5_000, true); } catch { /* Reads remain valid when optional response reuse is unavailable. */ }
     },
   };
 }
