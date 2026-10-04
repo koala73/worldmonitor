@@ -322,6 +322,13 @@ describe('embed grant exchange', () => {
     assert.equal(source.includes('getCookie'), false);
   });
 
+  it('falls back to X-Api-Key when X-WorldMonitor-Key is empty in embed handlers', () => {
+    const sessionSource = readFileSync(resolve(__dirname, '../api/embed/session.ts'), 'utf-8');
+    assert.doesNotMatch(sessionSource, /X-WorldMonitor-Key'\)\s*\?\?\s*headers\.get\('X-Api-Key/);
+    const entitlementSource = readFileSync(resolve(__dirname, '../api/embed/entitlement.ts'), 'utf-8');
+    assert.doesNotMatch(entitlementSource, /X-WorldMonitor-Key'\)\s*\?\?\s*headers\.get\('X-Api-Key/);
+  });
+
   it('declares a fail-closed per-IP rate policy for the mint path', async () => {
     const { ENDPOINT_RATE_POLICIES, FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED } =
       await import('../server/_shared/rate-limit');
