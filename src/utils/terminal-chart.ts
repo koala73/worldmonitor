@@ -79,8 +79,6 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
       ];
 
   const marginL = 8;
-  // Reserve the formatted label width, including combined HI/LO/LAST labels.
-  // Right anchoring below keeps the label end inside the SVG across fonts.
   const marginR = Math.max(54, Math.max(...labelValues.map((label) => label.text.length)) * 6 + 14);
   const marginT = 16;
   const marginB = 18;
