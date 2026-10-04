@@ -23,7 +23,7 @@ function jwt(payload: Record<string, unknown>): string {
 
 const nowSec = Math.floor(Date.now() / 1000);
 
-function withDocumentCookie(cookie: string, run: () => void): void {
+function withDocumentCookie(cookie: unknown, run: () => void): void {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
@@ -71,6 +71,13 @@ describe('welcome auth probe — hasLiveSessionJwt (live __session token only)',
     assert.equal(hasLiveSessionJwt('foo=bar; baz=qux'), false);
   });
 
+  it('is false instead of throwing for a missing or non-string cookie header (WORLDMONITOR-17E)', () => {
+    assert.equal(hasLiveSessionJwt(undefined), false);
+    assert.equal(hasLiveSessionJwt(null), false);
+    assert.equal(hasLiveSessionJwt(42 as unknown as string), false);
+    assert.equal(hasLiveSessionJwt({} as unknown as string), false);
+  });
+
   it('decodes a URL-encoded __session value before parsing', () => {
     assert.equal(hasLiveSessionJwt(`__session=${encodeURIComponent(jwt({ exp: nowSec + 3600 }))}`), true);
   });
@@ -92,6 +99,25 @@ describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
     withDocumentCookie('', () => {
       assert.equal(hasLiveClientSession(), false);
     });
+  });
+
+  it('treats an undefined or non-string document.cookie as no session (WORLDMONITOR-17E)', () => {
+    for (const cookie of [undefined, null, 42, {}]) {
+      withDocumentCookie(cookie, () => {
+        assert.equal(readDocumentCookie(), '');
+        assert.equal(hasLiveClientSession(), false);
+        assert.equal(
+          maybeRedirectWelcomeVisitor(readDocumentCookie(), {
+            search: '',
+            hash: '',
+            replace() {
+              assert.fail('must not redirect when document.cookie is not a string');
+            },
+          }),
+          false,
+        );
+      });
+    }
   });
 
   it('treats sandboxed-iframe cookie SecurityError as no session (WORLDMONITOR-14B)', () => {

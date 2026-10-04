@@ -30,8 +30,12 @@ function decodeJwtExp(token: string): number | null {
  * to /dashboard WITHOUT loading the ~3MB Clerk SDK on the critical path
  * (issue #4428). Idle signed-in users (expired `__session`) simply stay on the
  * landing page and use the Launch CTA — the destination still validates auth.
+ *
+ * A missing or non-string header is treated as "no session" instead of
+ * throwing (Sentry WORLDMONITOR-17E).
  */
-export function hasLiveSessionJwt(cookieHeader: string): boolean {
+export function hasLiveSessionJwt(cookieHeader: string | null | undefined): boolean {
+  if (typeof cookieHeader !== 'string') return false;
   const match = cookieHeader.match(/(?:^|;\s*)__session=([^;]+)/);
   if (!match) return false;
   const exp = decodeJwtExp(safeDecodeCookieValue(match[1]).trim());
@@ -45,11 +49,17 @@ export function hasLiveSessionJwt(cookieHeader: string): boolean {
  * welcome bundle runs inside an iframe sandboxed without `allow-same-origin`
  * (Sentry WORLDMONITOR-14B). Treat that as "no cookies" — the redirect probe
  * simply keeps the visitor on the landing page.
+ *
+ * Some environments (headless crawlers, patched/stubbed `document` objects)
+ * expose `document.cookie` as `undefined` or another non-string value without
+ * throwing (Sentry WORLDMONITOR-17E), so coerce anything that is not a string
+ * to "no cookies" as well.
  */
 export function readDocumentCookie(): string {
   if (typeof document === 'undefined') return '';
   try {
-    return document.cookie;
+    const cookie: unknown = document.cookie;
+    return typeof cookie === 'string' ? cookie : '';
   } catch {
     return '';
   }
