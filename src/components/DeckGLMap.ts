@@ -16,6 +16,7 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
+  NewsLocationMarker,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -640,7 +641,7 @@ export class DeckGLMap {
   private aircraftPositions: PositionSample[] = [];
   private aircraftFetchTimer: ReturnType<typeof setInterval> | null = null;
   private news: NewsItem[] = [];
-  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
+  private newsLocations: NewsLocationMarker[] = [];
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
@@ -710,6 +711,7 @@ export class DeckGLMap {
   private hoveredCountryName: string | null = null;
 
   // Callbacks
+  private onNewsClick?: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
@@ -5310,6 +5312,11 @@ export class DeckGLMap {
     const rawClickLayerId = info.layer?.id || '';
     const layerId = rawClickLayerId.endsWith('-ghost') ? rawClickLayerId.slice(0, -6) : rawClickLayerId;
 
+    if (layerId === 'news-locations-layer') {
+      this.onNewsClick?.(info.object as NewsLocationMarker);
+      return;
+    }
+
     // Hotspots show popup with related news
     if (layerId === 'hotspots-layer') {
       const hotspot = info.object as Hotspot;
@@ -7353,7 +7360,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationMarker[]): void {
     const now = Date.now();
     for (const d of data) {
       if (!this.newsLocationFirstSeen.has(d.title)) {
@@ -7610,6 +7617,10 @@ export class DeckGLMap {
     }
 
     this.render(); // Debounced
+  }
+
+  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void): void {
+    this.onNewsClick = callback;
   }
 
   public setOnHotspotClick(callback: (hotspot: Hotspot) => void): void {

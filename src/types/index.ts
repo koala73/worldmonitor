@@ -106,6 +106,16 @@ export interface StoryMeta {
 }
 
 
+export interface NewsLocationMarker {
+  lat: number;
+  lon: number;
+  title: string;
+  threatLevel: string;
+  timestamp?: Date;
+  /** Original loaded article identity; marker titles may include inferred locations. */
+  articleLink?: string;
+}
+
 export interface NewsItem {
   source: string;
   title: string;

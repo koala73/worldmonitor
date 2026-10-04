@@ -6,8 +6,13 @@ import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
 
 test.use({ serviceWorkers: 'block' });
 type HostCall = { name: string; arguments: Record<string, unknown> };
-async function installNewsHost(page: Page, deniedInitially = false, serverTools = true) {
+type NewsInteraction = { kind: string; link: string; title: string; source: string; displayLabel: string };
+type NewsContext = { latestInteraction?: NewsInteraction | null; view: Record<string, unknown> };
+async function installNewsHost(page: Page, deniedInitially = false, serverTools = true, selectionFixture = false, modelContext = true) {
   const calls: HostCall[] = [];
+  const contexts: NewsContext[] = [];
+  const methods: string[] = [];
+  let snapshot: Record<string, unknown> = {};
   let units = 0;
   let viewUpdates = 0;
   let denied = deniedInitially;
@@ -20,14 +25,19 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   const delayedHazards = new Promise<void>(resolve => { releaseHazards = resolve; });
   const successfulRefreshes = new Set<string>();
   const article = { title: 'Controlled earthquake report in Japan', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: true };
+  let articles = selectionFixture ? [article, { ...article, source: 'Second publisher', link: 'https://example.com/second' }, { ...article, title: 'Tokyo earthquake controlled report', source: 'Approximate publisher', link: 'https://example.com/approximate', location: undefined }] : [article];
   await page.route('**/plugin/assets/**', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/plugin/plugin.html', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/plugin.html'), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/*.geojson', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/countries-*m.json', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
   await page.exposeFunction('newsHost', async (method: string, params: HostCall) => {
-    if (method === 'ui/initialize') return { hostCapabilities: { ...(serverTools ? { serverTools: {} } : {}), updateModelContext: {} }, hostContext: { theme: 'dark' } };
-    if (method === 'ui/update-model-context') viewUpdates++;
+    methods.push(method);
+    if (method === 'ui/initialize') return { hostCapabilities: { ...(serverTools ? { serverTools: {} } : {}), ...(modelContext ? { updateModelContext: {} } : {}) }, hostContext: { theme: 'dark' } };
+    if (method === 'ui/update-model-context') {
+      viewUpdates++;
+      contexts.push(JSON.parse((params as unknown as { content: Array<{ text: string }> }).content[0]!.text));
+    }
     if (method !== 'tools/call') return {};
     calls.push(params);
     if (params.name === 'open_news_dashboard') {
@@ -36,7 +46,8 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
       const id = String(params.arguments.request_id ?? 'initial');
       if (!successfulRefreshes.has(id)) { units++; successfulRefreshes.add(id); }
       const { refresh: _refresh, request_id: _id, ...requestedView } = params.arguments;
-      return { structuredContent: { categories: { world: { items: [article] } }, coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } } };
+      snapshot = { categories: { world: { items: articles } }, coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } };
+      return { structuredContent: snapshot };
     }
     if (params.name === 'get_natural_disasters') {
       if (delayHazards) await delayedHazards;
@@ -53,7 +64,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
     const frame = document.querySelector('iframe')!;
     const host = (window as unknown as { newsHost: (method: string, params: object) => Promise<object> }).newsHost;
     window.addEventListener('message', async event => {
-      if (event.source !== frame.contentWindow || event.data?.jsonrpc !== '2.0' || !event.data.id) return;
+      if (event.source !== frame.contentWindow || event.data?.jsonrpc !== '2.0' || !event.data.id || !event.data.method) return;
       const result = await host(event.data.method, event.data.params);
       frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: event.data.id, result }, '*');
       if (event.data.method === 'ui/initialize') {
@@ -65,8 +76,100 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
   }, html);
-  return { calls, get units() { return units; }, get viewUpdates() { return viewUpdates; }, deny: () => { denied = true; }, delayRefresh: () => { delayRefresh = true; }, releaseRefresh, delayHazards: () => { delayHazards = true; }, releaseHazards, failHazards: () => { failHazards = true; }, recoverHazards: () => { failHazards = false; } };
+  return { calls, contexts, methods, get snapshot() { return snapshot; }, removeSecondArticle: () => { articles = [article]; }, get units() { return units; }, get viewUpdates() { return viewUpdates; }, deny: () => { denied = true; }, delayRefresh: () => { delayRefresh = true; }, releaseRefresh, delayHazards: () => { delayHazards = true; }, releaseHazards, failHazards: () => { failHazards = true; }, recoverHazards: () => { failHazards = false; } };
 }
+
+async function newsAction(page: Page, name: string, args: object) {
+  return page.evaluate(({ name, args }) => new Promise<{ isError?: boolean; structuredContent?: NewsContext & { link: string; title: string; source: string; mapFocused: boolean } }>(resolve => {
+    const frame = document.querySelector('iframe')!.contentWindow!;
+    const id = crypto.randomUUID();
+    const listener = (event: MessageEvent) => {
+      if (event.source !== frame || event.data?.id !== id || event.data.method) return;
+      window.removeEventListener('message', listener);
+      resolve(event.data.result);
+    };
+    window.addEventListener('message', listener);
+    frame.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
+  }), { name, args });
+}
+
+test('loaded marker and search interactions retain original identity without data calls or prompts', async ({ page }, info) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
+      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
+      return Reflect.apply(original, this, [type, ...args]);
+    } as typeof original;
+  });
+  const host = await installNewsHost(page, false, true, true);
+  const frame = page.frameLocator('iframe');
+  const markers = frame.locator('.news-location-marker');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  await frame.getByRole('checkbox', { name: 'Natural Events' }).uncheck();
+  await expect(markers).toHaveCount(3);
+  await frame.getByRole('combobox', { name: 'News source' }).selectOption('Second publisher');
+  await expect(markers).toHaveCount(1);
+  await markers.first().click();
+  const expected = { kind: 'news-article', link: 'https://example.com/second', title: 'Controlled earthquake report in Japan', source: 'Second publisher', displayLabel: 'Controlled earthquake report in Japan' };
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toEqual(expected);
+  await page.screenshot({ path: info.outputPath('latest-news-interaction-desktop.png'), fullPage: true });
+  await frame.locator('.popup-close').click();
+  await frame.getByRole('combobox', { name: 'News source' }).selectOption('Fixture publisher');
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+  await frame.getByRole('combobox', { name: 'News source' }).selectOption('Approximate publisher');
+  await expect(markers).toHaveCount(1);
+  await expect(markers.first()).toHaveAttribute('title', 'Tokyo earthquake controlled report (approximate location: Tokyo)');
+  await markers.first().click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ link: 'https://example.com/approximate', title: 'Tokyo earthquake controlled report', displayLabel: 'Tokyo earthquake controlled report (approximate location: Tokyo)' });
+  await frame.locator('.popup-close').click();
+  await frame.getByRole('button', { name: 'Search news', exact: true }).click();
+  await frame.locator('.search-input').fill('Controlled earthquake');
+  await frame.locator('.search-result-item[data-index]').filter({ hasText: 'Second publisher' }).click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toEqual(expected);
+  expect(host.contexts.at(-1)?.view).toMatchObject({ category: 'world', time_range: 'all' });
+  const action = await newsAction(page, 'focus_news_article', { link: expected.link });
+  expect(action.structuredContent).toMatchObject({ applied: true, link: expected.link, title: expected.title, source: expected.source, mapFocused: true, latestInteraction: expected });
+  const unknown = await newsAction(page, 'focus_news_article', { link: 'https://example.com/not-loaded' });
+  expect(unknown.isError).toBe(true);
+  expect(host.contexts.at(-1)?.latestInteraction).toEqual(expected);
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
+  expect(host.units).toBe(1);
+  expect(host.methods).not.toContain('ui/message');
+  host.removeSecondArticle();
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+  await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' });
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
+  const replacement: Record<string, unknown> = { ...host.snapshot, categories: { world: { items: [] } } };
+  delete replacement.requestedView;
+  const beforeReplacementCalls = host.calls.length;
+  await page.evaluate(structuredContent => {
+    document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent } }, '*');
+  }, replacement);
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
+  expect(host.calls).toHaveLength(beforeReplacementCalls);
+  await writeFile(info.outputPath('latest-news-interaction-receipts.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, units: host.units }, null, 2));
+});
+
+test('loaded marker clicks need no server or model-context capability', async ({ page }, info) => {
+  await page.setViewportSize({ width: 430, height: 1500 });
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
+      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
+      return Reflect.apply(original, this, [type, ...args]);
+    } as typeof original;
+  });
+  const host = await installNewsHost(page, false, false, false, false);
+  const frame = page.frameLocator('iframe');
+  await frame.locator('.news-location-marker').click();
+  await expect(frame.locator('.map-popup')).toBeVisible();
+  await expect(frame.locator('.map-popup .popup-body')).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('latest-news-interaction-mobile.png'), fullPage: true });
+  expect(host.contexts).toEqual([]);
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
+  expect(host.methods).not.toContain('ui/message');
+});
 
 test('news and map hydration share one request, toggles reuse data and refresh charges once', async ({ page }, info) => {
   const host = await installNewsHost(page);

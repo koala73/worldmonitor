@@ -16,6 +16,7 @@
 
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
+import type { NewsLocationMarker as NewsLocationInput } from '@/types';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
@@ -371,6 +372,7 @@ interface NotamRingMarker extends BaseMarker {
 interface NewsLocationMarker extends BaseMarker {
   _kind: 'newsLocation';
   id: string;
+  articleLink?: string;
   title: string;
   threatLevel: string;
 }
@@ -608,6 +610,7 @@ export class GlobeMap {
   private currentView: MapView = 'global';
 
   // Click callbacks
+  private onNewsClick?: (item: Pick<NewsLocationInput, 'articleLink' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
@@ -1446,6 +1449,7 @@ export class GlobeMap {
       return;
     }
     this.showMarkerTooltip(d, anchor);
+    if (d._kind === 'newsLocation') this.onNewsClick?.(d);
   }
 
   private showMarkerTooltip(d: GlobeMarker, anchor: HTMLElement): void {
@@ -3137,6 +3141,10 @@ export class GlobeMap {
 
   // ─── Callback setters ─────────────────────────────────────────────────────
 
+  public setOnNewsClick(callback: (item: Pick<NewsLocationInput, 'articleLink' | 'title'>) => void): void {
+    this.onNewsClick = callback;
+  }
+
   public setOnHotspotClick(cb: (h: Hotspot) => void): void {
     this.onHotspotClickCb = cb;
   }
@@ -3530,7 +3538,7 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationInput[]): void {
     this.newsLocationMarkers = (data ?? [])
       .filter(d => d.lat != null && d.lon != null)
       .map((d, i) => ({
@@ -3538,6 +3546,7 @@ export class GlobeMap {
         _lat: d.lat,
         _lng: d.lon,
         id: `news-${i}-${d.title.slice(0, 20)}`,
+        articleLink: d.articleLink,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
       }));

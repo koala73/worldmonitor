@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord, MilitaryBase } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, NewsLocationMarker, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord, MilitaryBase } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
@@ -193,7 +193,7 @@ export class MapComponent {
   private baseHeight = 0;
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
-  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
+  private newsLocations: NewsLocationMarker[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
@@ -223,6 +223,7 @@ export class MapComponent {
   private onTechHubClick?: (hub: TechHubActivity) => void;
   private onGeoHubClick?: (hub: GeoHubActivity) => void;
   private popup: MapPopup;
+  private onNewsClick?: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
@@ -2154,6 +2155,7 @@ export class MapComponent {
         event.stopPropagation();
         const rect = this.container.getBoundingClientRect();
         this.popup.show({ type: 'news', data: item, x: event.clientX - rect.left, y: event.clientY - rect.top });
+        this.onNewsClick?.(item);
       });
       this.appendOverlay(marker);
     }
@@ -4801,6 +4803,10 @@ export class MapComponent {
     });
   }
 
+  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'articleLink' | 'title'>) => void): void {
+    this.onNewsClick = callback;
+  }
+
   public onHotspotClicked(callback: (hotspot: Hotspot) => void): void {
     this.onHotspotClick = callback;
   }
@@ -5023,7 +5029,7 @@ export class MapComponent {
     this.render();
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationMarker[]): void {
     this.newsLocations = data;
     this.render();
   }
