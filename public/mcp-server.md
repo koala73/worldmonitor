@@ -36,7 +36,7 @@ World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive 
 - `ui://worldmonitor/chokepoint-monitor.html`
 - `ui://worldmonitor/news-intelligence.html`
 - `ui://worldmonitor/conflict-events.html`
-- `ui://worldmonitor/natural-disasters.html`
+- `ui://worldmonitor/natural-disasters-v2.html`
 - `ui://worldmonitor/prediction-markets.html`
 - `ui://worldmonitor/forecasts.html`
 - `ui://worldmonitor/news-dashboard-v3.html`

@@ -393,7 +393,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
-      'ui://worldmonitor/natural-disasters.html',
+      'ui://worldmonitor/natural-disasters-v2.html',
       'ui://worldmonitor/prediction-markets.html',
       'ui://worldmonitor/forecasts.html',
       'ui://worldmonitor/news-dashboard-v3.html',
@@ -742,6 +742,20 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       const summaryText = summaryView.text(entry.hostId);
       for (const token of entry.summaryTokens) assert.match(summaryText, token, `${entry.uri}: summary sample token ${token}`);
     }
+  });
+
+  it('Natural Disasters advertises v2 and keeps the original URI as a private data-free alias', async () => {
+    const advertised = UI_RESOURCE_REGISTRY.find((resource) => resource.name === 'Natural Disasters (interactive)');
+    assert.equal(advertised.uri, 'ui://worldmonitor/natural-disasters-v2.html');
+    assert.equal(UI_RESOURCE_REGISTRY.some((resource) => resource.uri === 'ui://worldmonitor/natural-disasters.html'), false);
+    const original = await handler(anonReq(readBody('ui://worldmonitor/natural-disasters.html')));
+    const current = await handler(anonReq(readBody(advertised.uri)));
+    const originalContent = (await original.json()).result.contents[0];
+    const currentContent = (await current.json()).result.contents[0];
+    assert.equal(originalContent.uri, 'ui://worldmonitor/natural-disasters.html');
+    assert.equal(currentContent.uri, advertised.uri);
+    assert.equal(originalContent.text, currentContent.text);
+    assert.deepEqual(originalContent._meta, currentContent._meta);
   });
 
   for (const [name, project, summarize] of [
