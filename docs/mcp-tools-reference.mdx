@@ -827,7 +827,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.
+Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.
 
 **Parameters (tool-specific):**
 
@@ -836,11 +836,18 @@ Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), fin
 | `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. Finance also owns untagged non-geopolitical records. |
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
 | `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
-| `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
+| `limit` | number | Cap each category bucket to at most this many markets. Default 30. Zero or negative values apply no cap. Positive fractions use the integer part. |
+| `refresh` | boolean | Paid panel only. Default false reuses the prediction admission. True requires a UUID request_id and starts one new allocation. Omit panel_request when refreshing. |
+| `request_id` | string | Paid refresh UUID. Retries with the same UUID, including different letter case, reuse the allocation and its original expiry. |
+| `panel_request` | string | Server-issued prediction receipt token for authorized curated reads until expiry. API and free-account calls do not accept this receipt. |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.
+- **Paid argument validation:** Category and source trim whitespace and ignore letter case. Query matching ignores letter case and surrounding whitespace. Paid calls reject unknown arguments, invalid categories or sources, and non-finite or non-numeric limits before reservation. Ordinary API and free calls retain their existing filter coercion. Refresh controls and paid receipts are unavailable to API and free calls.
+- **Reuse and recovery:** Identical canonical filters replay successful original results before summary or JMESPath projection. A new uncached filter reads the existing bootstrap and freshness metadata. A fresh, valid filtered-empty result can replay. Stale, unavailable, malformed, and unknown observations remain retryable under the receipt. Upstream failures do not refund the opening.
+- **Usage notices:** An explicit authorized receipt read also reads the current daily allowance without reserving another unit. If the counter is unavailable or unconfirmed, contracts remain available without a numeric notice. A previous opening notice does not prove later accounting.
+- **Kind:** cache read from the Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
 <CodeGroup>

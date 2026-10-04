@@ -725,7 +725,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技，包括人工智能、加密货币和科学）、`finance`（金融/经济或未分类回退）。合约包含当前概率。Kalshi 目前不提供分类器标签，因此 `source=kalshi` 与 `category=tech` 组合不会返回记录；其他非地缘政治 Kalshi 记录会回退到 `finance`。
+预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技，包括人工智能、加密货币和科学）、`finance`（金融/经济或未分类回退）。合约包含当前概率。Kalshi 目前不提供分类器标签，因此 `source=kalshi` 与 `category=tech` 组合不会返回记录；其他非地缘政治 Kalshi 记录会回退到 `finance`。专属付费连接的打开和筛选共用一次面板分配。附带 `request_id` 的显式刷新开始一次新分配，同一 ID 的重试复用该分配。API 套餐仍按工具权重计费。
 
 **参数（工具特定）：**
 
@@ -734,10 +734,18 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string: geopolitical / tech / finance | 限制为一个市场类别桶。省略则返回全部三类。`finance` 也接收未分类的非地缘政治记录。 |
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
-| `limit` | number | 将每个类别桶限制为最多这么多市场（默认 30，传 0 表示不限）。 |
+| `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
+| `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
+| `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
+| `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
+- **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
+- **付费参数校验：** 类别和来源去除两端空白并忽略大小写。标题查询忽略大小写和两端空白。付费调用在预留额度前拒绝未知参数、无效类别或来源，以及非有限数值或非数字的 limit。普通 API 和免费账户调用保留既有筛选转换行为，不接受刷新控制或付费凭据。
+- **复用与恢复：** 相同规范化筛选在 summary 或 JMESPath 投影前复用成功的原始结果。新的未缓存筛选读取既有引导数据与新鲜度元数据。新鲜且有效的筛选空结果可以复用。陈旧、不可用、格式错误或未知观察仍可在同一凭据下重试。上游故障不退还已分配额度。
+- **用量通知：** 显式授权凭据读取同时查询当前每日额度，不再预留单位。计数器不可用或未确认时，保留合约数据而不显示数值通知。旧的打开通知不能证明后续计数。
+- **类型：** Redis 引导缓存读取。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
