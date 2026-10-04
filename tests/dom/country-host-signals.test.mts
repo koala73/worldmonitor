@@ -1,5 +1,6 @@
 import { beforeAll, expect, it } from 'vitest';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
+import { briefSectionState } from '@/components/country-brief-presentation';
 import { countrySignalsFromMilitary, recoverCountrySignals } from '@/services/country-signals';
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -84,5 +85,27 @@ it.each([['US', true], ['CH', false]] as const)('preserves known static tier for
   expect(body.textContent).toContain('Signal coverage is partial');
   expect(body.textContent).toContain('Military Air unavailable');
   expect(body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable');
+  expect(body.querySelector('[data-brief-state="unavailable"]')).not.toBeNull();
+  panel.hide();
+});
+
+it('counts observed zero as live coverage while excluding static classification', () => {
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  const card = document.createElement('section');
+  const section = { id: 'signals' as const, title: 'Signals', card, body };
+  Reflect.set(panel, 'signalsBody', body);
+  Reflect.set(panel, 'sections', [section]);
+  const signals = countrySignalsFromMilitary('CH', { militaryFlights: 0, militaryFlightsInCountry: 0, militaryVessels: 0, militaryVesselsInCountry: 0 });
+  panel.updateSignals(signals);
+  expect(briefSectionState(section)).toBe('ready');
+  expect(card.dataset.briefCoverage).toBe('partial');
+  expect(panel.getSignalCounts()?.isTier1).toBe(false);
+  expect(panel.getSignalCounts()?.militaryFlights).toBe(0);
+  const complete = Object.fromEntries(Object.keys(signals).map(key => [key, key === 'isTier1' ? null : 0])) as typeof signals;
+  panel.updateSignals(complete);
+  expect(card.dataset.briefCoverage).toBe('complete');
+  expect(body.querySelector('[data-brief-state="unavailable"]')).toBeNull();
+  expect(panel.getSignalCounts()?.isTier1).toBeNull();
   panel.hide();
 });

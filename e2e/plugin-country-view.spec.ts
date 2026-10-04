@@ -204,11 +204,13 @@ test('static country tiers match the website without adding host data readers', 
   await expect.poll(() => host.admissions).toBe(3);
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBeNull();
   await expect.poll(() => host.contexts.at(-1)?.signals?.isTier1).toBe(false);
+  await expect.poll(() => host.contexts.at(-1)?.sections.find(section => section.section === 'signals')?.state).toBe('unavailable');
   await frame.getByRole('textbox', { name: 'Country name or code' }).fill('USA');
   await frame.getByRole('button', { name: 'Open country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.countryCode).toBe('US');
   await expect.poll(() => host.contexts.at(-1)?.signals?.isTier1).toBe(true);
   expect(host.contexts.at(-1)?.signals?.militaryFlights).toBeNull();
+  await expect.poll(() => host.contexts.at(-1)?.sections.find(section => section.section === 'signals')?.state).toBe('unavailable');
   expect(host.admissions).toBe(3);
   expect(host.unmanaged).toEqual([]);
   await writeFile(info.outputPath('static-tier-final.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, admissions: host.admissions }, null, 2));
