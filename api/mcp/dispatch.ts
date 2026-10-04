@@ -21,7 +21,7 @@ import { conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSche
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
-import { filterConflictEvents, isConflictSourceDataUsable, presentConflictEvents, projectConflictSourceObservation } from './registry/cache-tools';
+import { filterConflictPanelEvents, presentConflictEvents, projectConflictSourceObservation } from './registry/cache-tools';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
@@ -590,7 +590,7 @@ export async function dispatchToolsCall(
       );
     } else {
       const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
-        ? { ...tool, _postFilter: (data: Record<string, unknown>, filters: Record<string, unknown>) => isConflictSourceDataUsable(data) ? filterConflictEvents(data, filters) : data }
+        ? { ...tool, _postFilter: filterConflictPanelEvents }
         : tool;
       result = await executeTool(sourceTool, sourceArguments);
     }
