@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import middleware from '../middleware.ts';
+import middleware, { config as middlewareConfig } from '../middleware.ts';
 import {
   AGENT_NOT_FOUND_CONTENT_TYPE,
   AGENT_NOT_FOUND_INDEXES,
@@ -53,7 +53,10 @@ function call(
 function examplePathFromSource(source: string): string | null {
   if (source.includes('(?!')) return null;
   const path = source
-    .replace(/:[A-Za-z0-9_]+(\([^)]+\))?/g, 'x')
+    .replace(/:[A-Za-z0-9_]+(\([^)]+\))?/g, (_match, pattern: string | undefined) => {
+      const extension = pattern?.match(/\\\.([A-Za-z0-9]+)\)$/)?.[1];
+      return extension ? `x.${extension}` : 'x';
+    })
     .replace(/\*+/g, 'x');
   if (!path.startsWith('/')) return null;
   if (/\.[A-Za-z0-9]+$/.test(path)) return null;
@@ -171,6 +174,16 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
       if (!isKnownPublicPagePath(example)) missed.push(`${source} (example ${example})`);
     }
     assert.deepEqual(missed, [], 'new vercel.json routes must be added to AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES');
+  });
+
+  it('keeps constrained static asset rewrites out of extensionless page inventory', () => {
+    const source = '/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)';
+    assert.equal(examplePathFromSource(source), null);
+    assert.equal(examplePathFromSource('/countries/:slug([a-z-]+)'), '/countries/x');
+    assert.equal(
+      new RegExp(`^${middlewareConfig.matcher[2]}$`).test('/plugin/assets/boot-1/market-fixture.js'),
+      false,
+    );
   });
 
   it('does not reintroduce a rewrite that would 200 the markdown 404 body', () => {
