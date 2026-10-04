@@ -198,7 +198,9 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
           if (typeof envelope.cached_at !== 'string' || !Number.isFinite(Date.parse(envelope.cached_at)) || envelope.stale !== false
             || Array.isArray(envelope.unreadable) && envelope.unreadable.length
             || !bootstrap || typeof bootstrap !== 'object' || Array.isArray(bootstrap)
-            || !['geopolitical', 'tech', 'finance'].every(category => Array.isArray((bootstrap as Record<string, unknown>)[category]))) return;
+            || !['geopolitical', 'tech', 'finance'].every(category => Array.isArray((bootstrap as Record<string, unknown>)[category]))
+            || ['unavailable', 'upstreamUnavailable', 'rateLimited', 'stale', 'degraded'].some(flag => (bootstrap as Record<string, unknown>)[flag] === true)
+            || typeof (bootstrap as Record<string, unknown>).error === 'string' && (bootstrap as Record<string, unknown>).error !== '') return;
         }
         if (scope.panel === 'markets') {
           if ('unreadable' in value && Array.isArray(value.unreadable) && value.unreadable.length) return;
