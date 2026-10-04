@@ -106,3 +106,31 @@ test('a stalled module reaches retry and a late import cannot mount the abandone
   await expect(frame.locator('main')).toHaveText('Current mounted panel');
   expect(await page.evaluate(() => (window as unknown as { moduleMounts: number }).moduleMounts)).toBe(1);
 });
+
+
+test('host-injected about:blank document recovers without navigating away', async ({ page }, info) => {
+  let failed = true;
+  let documentReads = 0;
+  const requests: string[] = [];
+  page.on('request', request => requests.push(request.url()));
+  await page.route(`${origin}/plugin/country.html`, route => {
+    documentReads++;
+    return route.fulfill({ headers, status: failed ? 503 : 200, contentType: 'text/html', body: currentHtml('countryRoot', 'injected') });
+  });
+  await page.route(`${origin}/plugin/assets/**`, route => {
+    const css = route.request().url().endsWith('.css');
+    return route.fulfill({ headers, contentType: css ? 'text/css' : 'application/javascript', body: css ? 'main{padding:24px}' : "function mountPlugin(){document.getElementById('countryRoot').textContent='Recovered injected panel';}document.addEventListener('wm-plugin-mount',mountPlugin,{once:true});" });
+  });
+  await page.setContent('<iframe title="WorldMonitor" sandbox="allow-scripts" style="width:100%;height:600px;border:0"></iframe>');
+  const injected = page.frames().find(frame => frame !== page.mainFrame())!;
+  await injected.evaluate(html => { document.open(); document.write(html); document.close(); }, buildPluginShell({ origin, entry: 'country.html', root: 'countryRoot' }));
+  const frame = page.frameLocator('iframe');
+  await expect(frame.getByRole('status')).toContainText('could not load');
+  await page.screenshot({ path: info.outputPath('injected-interface-failure.png') });
+  failed = false;
+  await frame.getByRole('button', { name: 'Retry interface' }).click();
+  await expect(frame.locator('main')).toHaveText('Recovered injected panel');
+  expect(documentReads).toBe(2);
+  expect(requests.some(url => url.includes('/mcp'))).toBe(false);
+  await page.screenshot({ path: info.outputPath('injected-interface-recovered.png') });
+});
