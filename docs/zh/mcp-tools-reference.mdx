@@ -217,6 +217,8 @@ if ('_budget_exceeded' in parsed) {
 
 来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格、SGE 实物金银相对 COMEX 的溢价与背离状态、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
 
+`symbols` 仅筛选已发布的精选快照。未收录的代码不会触发任意代码查询。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
@@ -224,9 +226,14 @@ if ('_budget_exceeded' in parsed) {
 | `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、实物溢价与背离别名、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | 将响应限制为一个或多个资产类别。省略则返回全部。 |
 | `limit` | number | 将每个类别的报价列表（股票/大宗商品/加密货币/海湾/板块/ETF 资金流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `refresh` | boolean | 默认为 false，复用付费市场面板。true 开始一次新的额度分配，必须提供 `request_id`。刷新时省略 `panel_request`。 |
+| `request_id` | string (UUID) | 固定的刷新 ID。同一 UUID 的重试复用额度与原始到期时间。UUID 字母大小写不改变其身份。 |
+| `panel_request` | string | 服务器签发的市场凭据，用于有界的精选数据读取。API 套餐不接受付费面板凭据。 |
 
 - **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **付费面板计量：** Pro 与 Pro Business 首次打开市场面板扣一次额度。五分钟复用窗口内的精选筛选和重复打开复用同一份分配。响应中的 `panelRequest.token` 可作为 `panel_request` 用于到期前的授权读取。新的刷新 UUID 扣一次新额度。API 套餐仍按工具权重计费，免费账户仍使用每日免费额度。
+- **数据范围：** 筛选仅选择已有的种子报价。面板凭据和刷新均不会读取任意代码、账户自选列表或新提供方数据。有效凭据允许重试不可用或陈旧的结果。上游故障不会退还首次分配的额度。
 - **新鲜度预算：** `stale` 仅追踪市场和板块快照（各 **30 分钟**）。每日 `physicalPremiums` 与 `physicalDivergence` 由 `/api/health` 监控。需要判断年龄时，请读取时间戳和背离状态。详见[实物贵金属背离指数方法](/zh/methodology/physical-divergence-index)。
 - 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。`stale` 描述的是种子写入本身，而非单条记录——刚写入的负载中仍可能包含较旧的估值。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`valuationCount` 同时统计实时获取与回放的记录；`currentValuationCount` 给出本轮真正实时获取的子集，当所有记录均为最新时会省略该字段。`staleValuationSymbols` 列出来自旧快照的代码——这些代码在 `valuations` 中**确实**有数值，其年龄由 `lastGood.fetchedAt` 给出（上限为 7 天快照 TTL）。`unavailableSymbols` 列出完全没有发布估值的代码，与 `staleValuationSymbols` 互不相交。`lastGood` 同时涵盖整条记录与借用的收益指标，并包含该快照时间戳。当没有任何记录是最新时 `sourceStatus` 为 `degraded`，当部分记录陈旧或缺失时为 `partial`。`valuationDiagnostics` 是按代码限制的路由元数据，覆盖 `v7Quote`、`v7QuoteBatch` 与 `quoteSummary` 路由，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 

@@ -50,7 +50,7 @@
     },
     {
       "name": "get_market_data",
-      "description": "Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.",
+      "description": "Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers. Dedicated paid plans open or reuse one market panel allocation across curated filters. Explicit refresh requires request_id and charges one new allocation; API plans retain per-tool billing.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
