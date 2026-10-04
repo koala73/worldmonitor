@@ -276,7 +276,8 @@ function mountPlugin(): void {
     if (next.query !== undefined) { search.open(); search.applyQuery(next.query); }
     countryBriefButton.disabled = !view.country;
     countryBriefButton.textContent = view.country ? `${view.country} country brief` : 'Select a country for its brief';
-    const receipt = { applied: true, view, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
+    const categoryLabel = view.category ? DEFAULT_PANELS[view.category]?.name ?? view.category : 'All news panels';
+    const receipt = { applied: true, view, categoryLabel, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
     if (modelContext) void request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify(receipt) }] }).catch(() => {});
     return receipt;
   }

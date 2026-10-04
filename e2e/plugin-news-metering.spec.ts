@@ -77,12 +77,26 @@ test('news category receipts retain the visible label without loading data', asy
   const host = await installNewsHost(page, false, true, ['politics', 'fixture']);
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#pluginUsage')).toContainText('49 of 50 requests remaining');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
   const initialCalls = host.calls.length;
+  await page.evaluate(() => {
+    const output = document.createElement('pre');
+    output.id = 'categoryContext';
+    output.style.whiteSpace = 'pre-wrap';
+    document.querySelector('iframe')!.before(output);
+    window.addEventListener('message', event => {
+      if (event.source !== document.querySelector('iframe')!.contentWindow || event.data.method !== 'ui/update-model-context') return;
+      const receipt = JSON.parse(event.data.params.content[0].text);
+      output.textContent = `Controlled host receipt: category=${receipt.view.category ?? '(all)'}, categoryLabel=${receipt.categoryLabel}`;
+    });
+  });
   await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
-  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
+  await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option:checked')).toHaveText('World News');
+  await expect(frame.locator('[data-panel="politics"]')).toContainText('Controlled earthquake report in Japan');
   await page.screenshot({ path: info.outputPath('news-category-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 1500 });
   await page.screenshot({ path: info.outputPath('news-category-mobile.png'), fullPage: true });
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
   await page.evaluate(() => {
     const frame = document.querySelector('iframe')!;
     window.addEventListener('message', event => {
