@@ -600,11 +600,14 @@ describe('forecast panel transport through production cache reads', () => {
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
-  it('opens every compact row within the fixed serialized output budget and reads one unchanged original case', async () => {
+  it('opens every compact row within the fixed serialized output budget and reads one unchanged original case', async t => {
     assert.ok(Buffer.byteLength(JSON.stringify(canonical)) > 131072);
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps, 'get_forecast_predictions');
     const result = first.body.result;
+    const openingBytes = Buffer.byteLength(JSON.stringify(result));
+    assert.ok(openingBytes <= 131072);
+    t.diagnostic(JSON.stringify({ originalBytes: Buffer.byteLength(JSON.stringify(canonical)), openingEnvelopeBytes: openingBytes, budgetBytes: 131072 }));
     assert.ok(Buffer.byteLength(result.content[0].text) <= 131072);
     assert.equal(result.structuredContent.data.predictions.predictions.length, 14);
     assert.ok(result.structuredContent.data.predictions.predictions.every(row => row.hasCaseFile && !('caseFile' in row)));
@@ -649,8 +652,11 @@ describe('forecast panel transport through production cache reads', () => {
     assert.equal(detail.body.result.structuredContent.budget_bytes, 131072);
     assert.ok(detail.body.result.structuredContent.actual_bytes > 131072);
     assert.equal(pipe.count, 1);
+    const reads = sourceReads.length;
     assert.equal((await invoke(deps, 'get_forecast_case', args)).body.result.structuredContent._budget_exceeded, true);
+    assert.equal(sourceReads.length, reads);
     assert.equal(pipe.count, 1);
+    assert.equal(pipe.ops.flat().some(command => command[0] === 'DECR'), false);
   });
   it('preserves the original full forecast shape and weighted per-tool accounting for API plans', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
@@ -665,4 +671,25 @@ describe('forecast panel transport through production cache reads', () => {
     assert.equal(sourceReads.length, beforeDenied);
     assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
   });
+  it('recovers an unavailable original case on same-generation retry without another daily allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const opened = await invoke(deps, 'get_forecast_predictions');
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request: opened.body.result.structuredContent.panelRequest.token };
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const failed = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(failed.body.result.structuredContent.data.forecastCase.status, 'unavailable');
+    const reads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(recovered.body.result.structuredContent.data.forecastCase.status, 'ready');
+    assert.deepEqual(recovered.body.result.structuredContent.data.forecastCase.forecast, original[0]);
+    assert.ok(sourceReads.length > reads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_case', args);
+    assert.equal(sourceReads.length, recoveredReads);
+    assert.equal(pipe.count, 1);
+  });
+
 });
