@@ -4,6 +4,7 @@ import { normalizeAdvisorySnapshot, normalizeGdeltTopicSnapshot } from '../../sh
 import { assessContentAge } from '../_content-age.js';
 
 export type NewsIntelligencePanelRead = { value: unknown; reuseUntil: number | null };
+const SOURCE_MAX_AGE_MS = [30, 45, 60].map(minutes => minutes * 60_000);
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -39,7 +40,7 @@ export function validNewsIntelligenceOriginal(data: unknown, now: number): data 
     && clock(advisories.fetchedAt, now) !== null;
 }
 
-export function newsIntelligenceFreshness(data: Record<string, unknown>, metas: unknown[], now: number): { stale: boolean; freshnessUnknown: boolean } {
+export function newsIntelligenceFreshness(data: Record<string, unknown>, seeds: unknown[], metas: unknown[], now: number): { stale: boolean; freshnessUnknown: boolean } {
   const rejection = insightsSnapshotRejection(data.insights, now);
   let stale = rejection === 'stale-snapshot';
   let freshnessUnknown = rejection !== null && rejection !== 'stale-snapshot';
@@ -51,6 +52,20 @@ export function newsIntelligenceFreshness(data: Record<string, unknown>, metas: 
     const bucket = data[label];
     if (!record(bucket) || clock(bucket[field], now) === null) freshnessUnknown = true;
   }
+  const signals = data['cross-source-signals'];
+  const evaluatedAt = record(signals) ? clock(signals.evaluatedAt, now) : null;
+  if (evaluatedAt !== null) stale ||= now >= evaluatedAt + SOURCE_MAX_AGE_MS[2]!;
+  for (const [index, seed] of seeds.entries()) {
+    if (seed === null || seed === undefined) continue;
+    if (!record(seed)) { freshnessUnknown = true; continue; }
+    if (seed.state === 'ERROR' || failed(seed)
+      || typeof seed.errorReason === 'string' && seed.errorReason !== ''
+      || Array.isArray(seed.failedDatasets) && seed.failedDatasets.length > 0) stale = true;
+    else if (!['OK', 'OK_ZERO'].includes(String(seed.state))) freshnessUnknown = true;
+    const publishedAt = clock(seed.fetchedAt, now);
+    if (publishedAt === null) freshnessUnknown = true;
+    else if (SOURCE_MAX_AGE_MS[index] !== undefined) stale ||= now >= publishedAt + SOURCE_MAX_AGE_MS[index]!;
+  }
   return { stale, freshnessUnknown };
 }
 
@@ -61,9 +76,8 @@ export function newsIntelligenceReuseUntil(data: Record<string, unknown>, seeds:
     || typeof seed.errorReason === 'string' && seed.errorReason !== ''
     || Array.isArray(seed.failedDatasets) && seed.failedDatasets.length > 0
     || clock(seed.fetchedAt, now) === null))) return null;
-  const ages = [30, 45, 60];
   const deadlines: number[] = [];
-  for (const [index, age] of ages.entries()) {
+  for (const [index, maxAgeMs] of SOURCE_MAX_AGE_MS.entries()) {
     const meta = metas[index];
     if (!record(meta) || failed(meta)) return null;
     const fetched = clock(meta.fetchedAt, now);
@@ -71,15 +85,15 @@ export function newsIntelligenceReuseUntil(data: Record<string, unknown>, seeds:
     const bucket = data[['insights', 'gdelt-intel', 'cross-source-signals'][index]!] as Record<string, unknown>;
     const rows = bucket[['topStories', 'topics', 'signals'][index]!] as unknown[];
     if (meta.recordCount !== undefined && (typeof meta.recordCount !== 'number' || !Number.isSafeInteger(meta.recordCount) || meta.recordCount !== rows.length)) return null;
-    deadlines.push(fetched + age * 60_000);
+    deadlines.push(fetched + maxAgeMs);
     const seed = seeds[index];
-    if (record(seed)) deadlines.push(clock(seed.fetchedAt, now)! + age * 60_000);
+    if (record(seed)) deadlines.push(clock(seed.fetchedAt, now)! + maxAgeMs);
   }
   const content = assessContentAge(metas[1], now);
   if (!content || content.contentStale || !Number.isFinite(content.maxContentAgeMin) || content.maxContentAgeMin <= 0
     || clock(content.newestItemAt, now) === null) return null;
   deadlines.push(content.newestItemAt! + (content.maxContentAgeMin + 0.5) * 60_000);
-  deadlines.push(clock((data['cross-source-signals'] as Record<string, unknown>).evaluatedAt, now)! + 60 * 60_000);
+  deadlines.push(clock((data['cross-source-signals'] as Record<string, unknown>).evaluatedAt, now)! + SOURCE_MAX_AGE_MS[2]!);
   deadlines.push(Date.parse((data.insights as Record<string, unknown>).generatedAt as string) + INSIGHTS_MAX_AGE_MS);
   const deadline = Math.min(...deadlines);
   return deadline > now ? deadline : null;

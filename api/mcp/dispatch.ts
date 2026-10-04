@@ -237,7 +237,7 @@ async function executeCacheTool(
   // summarises.
   if (panel !== 'news-intelligence' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
-  const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, metas, evaluatedAt) : undefined;
+  const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : undefined;
   return { reuseUntil, value: {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
