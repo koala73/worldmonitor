@@ -79,7 +79,10 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
       ];
 
   const marginL = 8;
-  const marginR = Math.max(54, Math.max(...labelValues.map((label) => label.text.length)) * 6 + 14);
+  const marginR = Math.min(
+    Math.max(54, Math.max(...labelValues.map((label) => label.text.length)) * 6 + 14),
+    Math.max(0, w - 2 * marginL),
+  );
   const marginT = 16;
   const marginB = 18;
   const chartW = w - marginL - marginR;
