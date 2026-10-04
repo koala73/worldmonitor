@@ -762,6 +762,7 @@ describe('paid prediction panel through the MCP handler', () => {
   let missingMeta;
   let seedFailure;
   let oversized;
+  let bootstrapOverride;
   const payload = () => ({
     geopolitical: [{ title: oversized ? 'US Election ' + 'x'.repeat(140000) : 'US Election', source: 'kalshi', yesPrice: 50 }, { title: 'World vote', source: 'polymarket', yesPrice: 30 }],
     tech: [{ title: 'AI launch', source: 'polymarket', yesPrice: 70 }, { title: 'AI research', source: 'polymarket', yesPrice: 20 }],
@@ -777,7 +778,7 @@ describe('paid prediction panel through the MCP handler', () => {
     process.env.MCP_TELEMETRY = 'false';
     process.env.UPSTASH_REDIS_REST_URL = 'https://prediction-seed.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
-    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false; oversized = false;
+    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false; oversized = false; bootstrapOverride = undefined;
     globalThis.fetch = async url => {
       const key = decodeURIComponent(new URL(String(url)).pathname.slice(5));
       assert.ok(['prediction:markets-bootstrap:v1', 'seed-meta:prediction:markets'].includes(key), key);
@@ -785,7 +786,7 @@ describe('paid prediction panel through the MCP handler', () => {
       if (seedFailure) throw new Error('controlled outage');
       return Response.json({ result: key.startsWith('seed-meta:')
         ? missingMeta ? null : JSON.stringify({ fetchedAt: Date.now() - (stale ? 100 * 60000 : 0) })
-        : JSON.stringify(malformed ? { tech: [] } : payload()) });
+        : JSON.stringify(bootstrapOverride ?? (malformed ? { tech: [] } : payload())) });
     };
     handler = (await import('../api/mcp.ts')).mcpHandler;
   });
@@ -865,6 +866,44 @@ describe('paid prediction panel through the MCP handler', () => {
     assert.equal((await invoke(deps, { panel_request: token })).body.error, undefined);
     deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
     assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
+  });
+  for (const [pool, invalid, category, title, filters] of [
+    ['geopolitical', undefined, 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1.9 }],
+    ['tech', undefined, 'geopolitical', 'US Election', { query: 'Election', source: 'kalshi', limit: 1 }],
+    ['finance', undefined, 'tech', 'AI launch', {}],
+    ['geopolitical', null, 'tech', 'AI launch', {}],
+    ['tech', {}, 'geopolitical', 'US Election', {}],
+    ['finance', 'unknown', 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1 }],
+  ]) {
+    it(`recovers ${invalid === undefined ? 'missing' : 'malformed'} original ${pool} before selected ${category} normalization`, async () => {
+      const { deps, pipe } = makeProDeps();
+      bootstrapOverride = payload();
+      bootstrapOverride[category] = [];
+      if (invalid === undefined) delete bootstrapOverride[pool];
+      else bootstrapOverride[pool] = invalid;
+      const args = { category, ...filters };
+      const first = await invoke(deps, args);
+      const token = first.body.result.structuredContent.panelRequest.token;
+      bootstrapOverride = undefined;
+      const recovered = await invoke(deps, { ...args, panel_request: token });
+      assert.equal(data(recovered)[category][0]?.title, title, 'repaired original source must rerun selected-category filters');
+      assert.equal(fetched.length, 4, 'recovery reads the original bootstrap and metadata');
+      assert.equal(pipe.count, 1, 'recovery reuses the opening allocation');
+      await invoke(deps, { ...args, panel_request: token });
+      assert.equal(fetched.length, 4, 'healthy recovered result replays');
+    });
+  }
+  it('does not turn the original selected-category malformed seed into a cacheable empty', async () => {
+    const { deps, pipe } = makeProDeps();
+    malformed = true;
+    const first = await invoke(deps, { category: 'tech' });
+    const token = first.body.result.structuredContent.panelRequest.token;
+    assert.equal(data(first).tech.length, 0);
+    malformed = false;
+    const recovered = await invoke(deps, { category: 'tech', panel_request: token });
+    assert.deepEqual(data(recovered).tech.map(row => row.title), ['AI launch', 'AI research']);
+    assert.equal(fetched.length, 4);
+    assert.equal(pipe.count, 1);
   });
   it('retries stale, malformed, missing-freshness and failed sources without another allocation', async () => {
     const { deps, pipe } = makeProDeps();
