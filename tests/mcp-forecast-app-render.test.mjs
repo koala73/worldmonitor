@@ -89,12 +89,13 @@ describe('forecast MCP analysis parity', () => {
     const calls = messages.filter(m => m.method === 'tools/call');
     assert.equal(calls.length, 1, 'first user expansion must request the original dossier once');
     assert.deepEqual(JSON.parse(JSON.stringify(calls[0].params)), { name: 'get_forecast_case', arguments: { forecast_id: forecast.id, generated_at: String(Date.parse('2026-10-03T16:55:00Z')), panel_request: 'signed-panel' } });
-    const result = { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } };
+    const result = { structuredContent: { cached_at: '2026-10-03T17:05:00Z', stale: true, freshnessUnknown: true, unreadable: ['predictions'], data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } };
     reply(calls[0].id, result, win);
     reply('wrong-request', result);
     assert.doesNotMatch(details.textContent, /Supporting observation/);
     reply(calls[0].id, result);
     assert.match(details.textContent, /Supporting observation \(80%\).*Controlled actor/);
+    assert.match(details.textContent, /Original case snapshot: 2026-10-03T17:05:00Z.*stale cache.*freshness unknown.*source coverage unavailable/);
     details.open = false;
     details.dispatchEvent(new win.Event('toggle'));
     details.open = true;
