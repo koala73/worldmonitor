@@ -51,13 +51,6 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const h = opts.height ?? 200;
   const fmt = opts.formatValue ?? defaultFormat;
 
-  const marginL = 8;
-  const marginR = 54;
-  const marginT = 16;
-  const marginB = 18;
-  const chartW = w - marginL - marginR;
-  const chartH = h - marginT - marginB;
-
   const min = Math.min(...series);
   const max = Math.max(...series);
   const range = max - min;
@@ -65,6 +58,34 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const last = series[series.length - 1]!;
   const rising = opts.change != null ? opts.change >= 0 : last >= first;
   const color = rising ? 'var(--green)' : 'var(--red)';
+  const labelValues = range === 0
+    ? [{ value: last, text: `HI/LO/LAST ${fmt(last)}`, fill: color, emphasis: true }]
+    : [
+        {
+          value: max,
+          text: `${last === max ? 'HI/LAST' : 'HI'} ${fmt(max)}`,
+          fill: last === max ? color : 'var(--text-dim)',
+          emphasis: last === max,
+        },
+        ...(last !== max && last !== min
+          ? [{ value: last, text: `LAST ${fmt(last)}`, fill: color, emphasis: true }]
+          : []),
+        {
+          value: min,
+          text: `${last === min ? 'LO/LAST' : 'LO'} ${fmt(min)}`,
+          fill: last === min ? color : 'var(--text-dim)',
+          emphasis: last === min,
+        },
+      ];
+
+  const marginL = 8;
+  // Reserve the formatted label width, including combined HI/LO/LAST labels.
+  // Right anchoring below keeps the label end inside the SVG across fonts.
+  const marginR = Math.max(54, Math.max(...labelValues.map((label) => label.text.length)) * 6 + 14);
+  const marginT = 16;
+  const marginB = 18;
+  const chartW = w - marginL - marginR;
+  const chartH = h - marginT - marginB;
 
   const x = (i: number): number => marginL + (i / (series.length - 1)) * chartW;
   const y = range === 0
@@ -87,28 +108,10 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
     })
     .join('');
 
-  const labelX = marginL + chartW + 6;
+  const labelX = w - 8;
   const labelTop = marginT + 3;
   const labelBottom = marginT + chartH + 3;
-  const labelSpecs = range === 0
-    ? [{ y: y(last) + 3, text: `HI/LO/LAST ${fmt(last)}`, fill: color, emphasis: true }]
-    : [
-        {
-          y: y(max) + 3,
-          text: `${last === max ? 'HI/LAST' : 'HI'} ${fmt(max)}`,
-          fill: last === max ? color : 'var(--text-dim)',
-          emphasis: last === max,
-        },
-        ...(last !== max && last !== min
-          ? [{ y: y(last) + 3, text: `LAST ${fmt(last)}`, fill: color, emphasis: true }]
-          : []),
-        {
-          y: y(min) + 3,
-          text: `${last === min ? 'LO/LAST' : 'LO'} ${fmt(min)}`,
-          fill: last === min ? color : 'var(--text-dim)',
-          emphasis: last === min,
-        },
-      ];
+  const labelSpecs = labelValues.map((label) => ({ ...label, y: y(label.value) + 3 }));
   labelSpecs.sort((a, b) => a.y - b.y);
 
   // Preserve readable baselines when LAST is very close to HI or LO. Exact
@@ -129,7 +132,7 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const labels = labelSpecs
     .map(
       (label) =>
-        `<text x="${labelX}" y="${label.y.toFixed(1)}" fill="${label.fill}" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
+        `<text x="${labelX}" y="${label.y.toFixed(1)}" text-anchor="end" fill="${label.fill}" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
     )
     .join('');
 
