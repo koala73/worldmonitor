@@ -198,6 +198,9 @@ describe('prediction returned-category coverage and freshness', () => {
     send(envelope({ geopolitical: { count: 14, sample: [] }, tech: [], finance: [] }));
     assert.match(doc.getElementById('groups').textContent, /Geopolitical summary reports 14 contracts but supplied no display sample/);
     assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts|No contracts in the available/);
+    send(envelope({ tech: { count: 14 } }));
+    assert.match(doc.getElementById('groups').textContent, /Tech summary reports 14 contracts but supplied no display sample/);
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts/);
   });
   it('shows unknown freshness and source notices independently of snapshot presence', async () => {
     const { doc, send } = await mount([]);
