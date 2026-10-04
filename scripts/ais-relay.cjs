@@ -8355,7 +8355,11 @@ async function seedPizzint() {
       console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
       raw = null;
     }
-    const hasPrimaryReading = raw?.data.some(d => Number.isFinite(d.current_popularity) && d.current_popularity >= 0);
+    // Stale numbers and open zero/zero rows cannot supply a usable primary signal.
+    // Keep fresh closed zeros valid, as in the existing scorer/publication contract.
+    const hasPrimaryReading = raw?.data.some(d => d.data_freshness === 'fresh'
+      && Number.isFinite(d.current_popularity) && d.current_popularity >= 0
+      && (d.current_popularity > 0 || d.is_closed_now));
     const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
     if (!raw && !fallback) return;
