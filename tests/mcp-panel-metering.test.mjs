@@ -761,8 +761,9 @@ describe('paid prediction panel through the MCP handler', () => {
   let malformed;
   let missingMeta;
   let seedFailure;
+  let oversized;
   const payload = () => ({
-    geopolitical: [{ title: 'US Election', source: 'kalshi', yesPrice: 50 }, { title: 'World vote', source: 'polymarket', yesPrice: 30 }],
+    geopolitical: [{ title: oversized ? 'US Election ' + 'x'.repeat(140000) : 'US Election', source: 'kalshi', yesPrice: 50 }, { title: 'World vote', source: 'polymarket', yesPrice: 30 }],
     tech: [{ title: 'AI launch', source: 'polymarket', yesPrice: 70 }, { title: 'AI research', source: 'polymarket', yesPrice: 20 }],
     finance: [{ title: 'US interest rate', source: 'kalshi', yesPrice: 40 }],
   });
@@ -776,7 +777,7 @@ describe('paid prediction panel through the MCP handler', () => {
     process.env.MCP_TELEMETRY = 'false';
     process.env.UPSTASH_REDIS_REST_URL = 'https://prediction-seed.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
-    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false;
+    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false; oversized = false;
     globalThis.fetch = async url => {
       const key = decodeURIComponent(new URL(String(url)).pathname.slice(5));
       assert.ok(['prediction:markets-bootstrap:v1', 'seed-meta:prediction:markets'].includes(key), key);
@@ -857,10 +858,10 @@ describe('paid prediction panel through the MCP handler', () => {
     const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
     const foreign = await admitMarketPanel(context, budget, pipe.pipeline, {});
     assert.equal((await invoke(deps, { panel_request: foreign.token })).body.error?.code, -32602);
-    for (let i = 1; i < 64; i++) await readPanel(context, pipe.pipeline, 'get_prediction_markets', { query: `case${i}` }, token);
+    for (let i = 1; i < 64; i++) assert.equal((await invoke(deps, { query: `case${i}`, panel_request: token })).body.error, undefined);
     const denied = await invoke(deps, { query: 'last', panel_request: token });
     assert.equal(denied.response.status, 429);
-    assert.equal(fetched.length, 2);
+    assert.equal(fetched.length, 128);
     assert.equal((await invoke(deps, { panel_request: token })).body.error, undefined);
     deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
     assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
@@ -910,6 +911,31 @@ describe('paid prediction panel through the MCP handler', () => {
     assert.equal(reads, 2);
     assert.equal(pipe.count, 1);
     assert.equal(fetched.length, 2);
+  });
+  it('narrows an oversized original under the same paid allocation without raising the output budget', async () => {
+    const { deps, pipe } = makeProDeps();
+    oversized = true;
+    const first = await invoke(deps);
+    assert.equal(first.body.result.structuredContent._budget_exceeded, true);
+    assert.equal(first.body.result.structuredContent.budget_bytes, 131072);
+    const narrow = await invoke(deps, { category: 'tech' });
+    assert.equal(data(narrow).tech.length, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 4);
+  });
+  it('keeps structured unavailable and unknown prediction data recoverable', async () => {
+    const { pipe } = makeProDeps();
+    const { admitPredictionPanel } = await import('../api/mcp/panel-requests.ts');
+    const grant = await admitPredictionPanel(context, budget, pipe.pipeline, {});
+    const reader = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token);
+    for (const bootstrap of [null, { tech: [] }, { geopolitical: [], tech: [], finance: [], unavailable: true }, { geopolitical: [], tech: [], finance: [], upstreamUnavailable: true }, { geopolitical: [], tech: [], finance: [], rateLimited: true }, { geopolitical: [], tech: [], finance: [], error: 'unavailable' }]) {
+      await reader.save({ cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': bootstrap } });
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
+    const ready = { cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': { geopolitical: [], tech: [], finance: [] } } };
+    await reader.save(ready);
+    assert.deepEqual((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, ready);
+    assert.equal(pipe.count, 1);
   });
   it('preserves ordinary API/free coercion and per-call charging but rejects paid controls before charge', async () => {
     for (const entitlement of [
