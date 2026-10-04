@@ -302,7 +302,10 @@ function mountPlugin(): void {
     window.addEventListener('pagehide', () => URL.revokeObjectURL(workerBlobUrl), { once: true });
     // MapLibre's .cjs suffix selects classic mode; ChatGPT permits blob workers only.
     const workerUrl = `${workerBlobUrl}#maplibre.cjs`;
-    map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerUrl });
+    map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, {
+      mapLibreWorkerUrl: workerUrl,
+      preferDesktopRenderer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    });
     const layerControls = document.createElement('fieldset');
     layerControls.id = 'pluginMapLayers';
     const legend = document.createElement('legend');
