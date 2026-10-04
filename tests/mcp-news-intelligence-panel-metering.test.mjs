@@ -274,6 +274,15 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
   });
 
+  for (const [label, failure] of [['sourceState', { sourceState: 'degraded' }], ['failedSources', { failedSources: ['fixture-provider'] }]]) it(`discloses failed metadata ${label} and recovers`, async () => {
+    const bundle = makeProDeps(); Object.assign(sources[keys[4]], failure);
+    const first = value(await invoke(bundle)); assert.equal(first.stale, true); assert.equal(first.freshnessUnknown, undefined);
+    assert.equal(cache(bundle).length, 0); assert.equal(first.data.insights.sourceState, undefined);
+    sources = payload(); const recovered = value(await invoke(bundle));
+    assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+  });
+
   it('marks stale Insights generation and unassessed GDELT clocks explicitly, then recovers the same admission', async () => {
     for (const source of ['Insights', 'GDELT']) {
       const bundle = makeProDeps(); sources = payload();
