@@ -7,7 +7,7 @@ Both advisories still list no released upstream fix. The private WorldMonitor ve
 | Advisory | Affected projects | Remediation |
 | --- | --- | --- |
 | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | Root and Pro | `braces` 3.0.4-worldmonitor.1 limits parser and AST walker depth. Deep braces and parentheses cannot exhaust the stack. |
-| [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp) | Blog | `http-cache-semantics` 4.2.1-worldmonitor.1 rejects restricted response reuse before `max-stale` and stale extension handling. |
+| [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp) | Blog | `http-cache-semantics` 4.2.1-worldmonitor.2 rejects restricted response reuse before `max-stale` and stale extension handling. |
 
 Each project declares the source package from `vendor/` and overrides transitive consumers to that same specification. npm packs the local source into each installation with `install-links=true`. Installs do not depend on lifecycle scripts or another project's node_modules.
 

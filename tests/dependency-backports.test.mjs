@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
@@ -11,7 +12,7 @@ describe('installed dependency backports', () => {
   for (const [lockfile, name, version, resolved] of [
     ['package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:vendor/braces'],
     ['pro-test/package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:../vendor/braces'],
-    ['blog-site/package-lock.json', 'http-cache-semantics', '4.2.1-worldmonitor.1', 'file:../vendor/http-cache-semantics'],
+    ['blog-site/package-lock.json', 'http-cache-semantics', '4.2.1-worldmonitor.2', 'file:../vendor/http-cache-semantics'],
   ]) {
     it(`${lockfile} selects only the source backport for ${name}`, () => {
       const lock = JSON.parse(readFileSync(new URL(`../${lockfile}`, import.meta.url), 'utf8'));
@@ -83,6 +84,34 @@ describe('braces stack-exhaustion remediation', () => {
 });
 
 describe('http-cache-semantics restricted response remediation', () => {
+  it('processes hostile Connection and Vary whitespace within a bounded time', () => {
+    const source = new URL('../vendor/http-cache-semantics/index.js', import.meta.url).pathname;
+    const result = spawnSync(process.execPath, ['-e', `
+      const assert = require('node:assert/strict');
+      const CachePolicy = require(${JSON.stringify(source)});
+      const policy = new CachePolicy({ url: '/', headers: {} }, {
+        status: 200, headers: {
+          'cache-control': 'public, max-age=60',
+          connection: 'x-hop, x' + ' '.repeat(300000) + 'y, y-hop',
+          'x-hop': 'remove', 'y-hop': 'remove', 'x-end': 'keep'
+        }
+      });
+      const headers = policy.responseHeaders();
+      assert.equal(headers['x-hop'], undefined);
+      assert.equal(headers['y-hop'], undefined);
+      assert.equal(headers['x-end'], 'keep');
+      const request = { url: '/', headers: { 'x-match': 'same', 'y-match': 'same' } };
+      const varied = new CachePolicy(request, { status: 200, headers: {
+        'cache-control': 'public, max-age=60',
+        vary: 'x-match, x' + ' '.repeat(300000) + 'y, y-match'
+      } });
+      assert.equal(varied.satisfiesWithoutRevalidation(request), true);
+      assert.equal(varied.satisfiesWithoutRevalidation({ ...request, headers: { ...request.headers, 'y-match': 'different' } }), false);
+    `], { timeout: 5000, encoding: 'utf8' });
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 0, result.stderr);
+  });
+
   const request = { url: 'https://example.test/account', method: 'GET', headers: {} };
   const restricted = [
     { 'cache-control': 'private, max-age=60' },

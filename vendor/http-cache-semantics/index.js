@@ -492,7 +492,8 @@ module.exports = class CachePolicy {
         const fields = this._resHeaders.vary
             .trim()
             .toLowerCase()
-            .split(/\s*,\s*/);
+            .split(',')
+            .map(field => field.trim());
         for (const name of fields) {
             const reqHasOwn = Object.prototype.hasOwnProperty.call(req.headers, name);
             const cachedHasOwn = Object.prototype.hasOwnProperty.call(this._reqHeaders, name);
@@ -520,7 +521,7 @@ module.exports = class CachePolicy {
         }
         // 9.1.  Connection
         if (inHeaders.connection) {
-            const tokens = inHeaders.connection.trim().split(/\s*,\s*/);
+            const tokens = inHeaders.connection.split(',').map(field => field.trim());
             for (const name of tokens) {
                 delete headers[name];
             }
