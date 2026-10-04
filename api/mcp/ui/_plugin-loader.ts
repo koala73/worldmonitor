@@ -82,7 +82,7 @@ const BOOT_SCRIPT = String.raw`async function(config) {
       let timeout;
       try {
         await Promise.race([
-          import(entry + '?wm-plugin-boot=' + attempt),
+          import(entry.replace('/plugin/assets/', '/plugin/assets/boot-' + attempt + '/')),
           new Promise((resolve, reject) => { timeout = setTimeout(() => reject(new Error('Panel module timed out')), 10000); }),
         ]);
       } finally { clearTimeout(timeout); }

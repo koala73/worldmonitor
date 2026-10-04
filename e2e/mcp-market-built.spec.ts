@@ -36,16 +36,20 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     page.on('pageerror', error => errors.push(error.message));
     const assets: string[] = [];
     let failDocument = true;
+    const retryRewrite = JSON.parse(readFileSync('vercel.json', 'utf8')).rewrites.find((rule: { source: string }) => rule.source.startsWith('/plugin/assets/boot-'));
+    expect(retryRewrite).toEqual({ source: '/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)', destination: '/plugin/assets/:asset' });
     await page.route('https://www.worldmonitor.app/plugin/**', async route => {
       const url = new URL(route.request().url());
-      expect(url.pathname).toMatch(/^\/plugin\/(market.html|assets\/[a-zA-Z0-9_.-]+\.(js|css))$/);
+      expect(url.pathname).toMatch(/^\/plugin\/(market.html|assets\/(boot-\d+\/)?[a-zA-Z0-9_.-]+\.(js|css))$/);
       assets.push(url.pathname);
-      if (url.pathname.endsWith('market.html') && failDocument) {
+      if (failDocument && (name === 'mobile' ? url.pathname.endsWith('market.html') : /\/dom-utils-[^/]+\.js$/.test(url.pathname))) {
         await route.fulfill({ status: 503, contentType: 'text/html', body: 'Temporarily unavailable', headers: { 'Access-Control-Allow-Origin': '*' } });
         return;
       }
+      const retryAsset = url.pathname.match(/^\/plugin\/assets\/boot-\d+\/([a-zA-Z0-9_.-]+\.js)$/);
+      const assetPath = retryAsset ? retryRewrite.destination.replace(':asset', retryAsset[1]) : url.pathname;
       await route.fulfill({
-        body: readFileSync('dist' + url.pathname),
+        body: readFileSync('dist' + assetPath),
         contentType: url.pathname.endsWith('.html') ? 'text/html' : url.pathname.endsWith('.js') ? 'application/javascript' : 'text/css',
         headers: { 'Access-Control-Allow-Origin': '*' },
       });
@@ -91,6 +95,10 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     expect(assets.some(asset => asset.endsWith('.css'))).toBe(true);
     expect(assets.some(asset => asset.endsWith('.js'))).toBe(true);
     expect(assets.filter(asset => asset === '/plugin/market.html')).toHaveLength(2);
+    if (name === 'desktop') {
+      expect(assets.filter(asset => /\/dom-utils-[^/]+\.js$/.test(asset))).toHaveLength(2);
+      expect(assets.some(asset => /\/boot-2\/dom-utils-/.test(asset))).toBe(true);
+    }
     expect(await page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages
       .filter(message => !['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(message.method)))).toEqual([]);
     expect(errors).toEqual([]);

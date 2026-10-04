@@ -176,8 +176,8 @@ function mount(): void {
   } });
 }
 if (document.documentElement.dataset.wmPluginManagedBoot === 'true') {
-  const attempt = new URL(import.meta.url).searchParams.get('wm-plugin-boot');
-  const mountEvent = attempt && /^\d+$/.test(attempt) ? 'wm-plugin-boot-' + attempt : 'wm-plugin-mount';
+  const attempt = new URL(import.meta.url).pathname.match(/\/plugin\/assets\/boot-(\d+)\//)?.[1];
+  const mountEvent = attempt ? 'wm-plugin-boot-' + attempt : 'wm-plugin-mount';
   document.addEventListener(mountEvent, mount, { once: true });
 } else {
   mount();
