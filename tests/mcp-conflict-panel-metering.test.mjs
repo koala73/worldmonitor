@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
-import { authorizePanelRead, admitMarketPanel } from '../api/mcp/panel-requests.ts';
+import { authorizePanelRead, admitConflictPanel, admitMarketPanel } from '../api/mcp/panel-requests.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch;
@@ -130,6 +130,10 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     ['missing original unrest bucket', () => { sources['unrest:events:v1'] = null; }],
     ['malformed original excluded row', () => { sources['conflict:ucdp-events:v1'].events.push(null); }],
     ['malformed original scores', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores = {}; }],
+    ['malformed source completeness', () => { sources['conflict:ucdp-events:v1'].candidateComplete = 'true'; }],
+    ['malformed source failed-pages', () => { sources['conflict:ucdp-events:v1'].annualFailedPages = '0'; }],
+    ['malformed original unrest row', () => { sources['unrest:events:v1'].events.push(false); }],
+    ['failed data read', () => { sources['unrest:events:v1'] = new Error('controlled read failure'); }],
     ['partial annual pages', () => { ucdpMeta.annualFailedPages = 2; }],
     ['partial candidate', () => { ucdpMeta.candidateComplete = false; }],
     ['missing completeness', () => { delete ucdpMeta.annualFailedPages; }],
@@ -206,6 +210,36 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     assert.equal(reads, 2);
     assert.equal(fetched.length, readCount);
     assert.equal(pipe.count, 1);
+  });
+  it('shares owner admission through the verified user-key door and fails closed on lost entitlement', async () => {
+    const { deps, pipe } = makeProDeps({ resolveBearerToContext: async () => ({ kind: 'user_key', userId: context.userId }) });
+    const first = await invoke(deps);
+    await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, readCount);
+    deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
+    const before = pipe.ops.length;
+    assert.equal((await invoke(deps, { panel_request: envelope(first).panelRequest.token })).response.status, 403);
+    assert.equal(pipe.ops.length, before);
+    assert.equal(fetched.length, readCount);
+  });
+  it('retains explicit refresh expiry and rejects removed markers, exhausted allowances and backend failure without source work', async () => {
+    const now = Date.UTC(2026, 9, 5, 23, 59);
+    const { deps, pipe } = makeProDeps();
+    const request_id = crypto.randomUUID();
+    const receipt = await admitConflictPanel(context, budget, pipe.pipeline, { refresh: true, request_id }, now);
+    const replay = await admitConflictPanel(context, budget, pipe.pipeline, { refresh: true, request_id }, now + 10_000);
+    assert.equal(receipt.token, replay.token);
+    assert.equal(Date.parse(receipt.expiresAt), Date.UTC(2026, 9, 6));
+    const current = envelope(await invoke(deps)).panelRequest;
+    for (const key of pipe.store.keys()) if (key.includes(':conflicts:conflicts:') && !key.includes(':data:')) pipe.store.delete(key);
+    assert.equal((await invoke(deps, { panel_request: current.token })).response.status, 503);
+    const count = fetched.length;
+    const exhausted = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    assert.equal((await invoke(exhausted.deps)).response.status, 429);
+    const unavailable = makeProDeps({ pipelineOpts: { throwOnEval: true } });
+    assert.equal((await invoke(unavailable.deps)).response.status, 503);
+    assert.equal(fetched.length, count);
   });
   it('keeps healthy API and free legacy filters and ordinary per-call charging while rejecting paid controls', async () => {
     for (const entitlement of [

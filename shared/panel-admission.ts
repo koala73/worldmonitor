@@ -37,3 +37,15 @@ export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
   refresh: z.boolean().default(false),
   request_id: z.string().uuid().optional(),
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
+
+export const conflictPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('conflicts') });
+export type ConflictPanelAdmission = z.infer<typeof conflictPanelAdmissionSchema>;
+export const conflictPanelReadSchema = z.object({
+  country: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
+  min_fatalities: z.number().finite().optional(),
+  limit: z.number().finite().default(30),
+}).strict();
+export const conflictPanelViewSchema = conflictPanelReadSchema.extend({
+  refresh: z.boolean().default(false),
+  request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');

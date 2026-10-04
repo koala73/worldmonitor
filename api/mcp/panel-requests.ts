@@ -2,11 +2,12 @@ import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmission } from '../../shared/country-brief-host';
 import { resolveCountryCode } from '../../shared/country-code-resolve';
-import { marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type PredictionPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
+import { conflictPanelReadSchema, conflictPanelViewSchema, type ConflictPanelAdmission, marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type PredictionPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
+import { isConflictPanelSnapshotCacheable } from './registry/cache-tools';
 import { resolveDailyLimit, type McpBudget } from './quota';
 import type { McpAuthContext, PipelineFn } from './types';
 
@@ -16,7 +17,7 @@ const MAX_CACHED_BYTES = 524288;
 const encoder = new TextEncoder();
 
 type PanelScope = { panel: string; window: string; expires: number };
-export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission;
+export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission | ConflictPanelAdmission;
 export class PanelRequestError extends Error {
   constructor(message: string, public code: 'invalid' | 'quota' | 'reads' | 'backend', public limit?: number, public retryAfter?: number) {
     super(message);
@@ -32,7 +33,7 @@ function panelKey(owner: string, scope: PanelScope): string {
   return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope)}:${scope.panel}:${scope.window}`;
 }
 function panelFamily(scope: PanelScope): string {
-  return scope.panel === 'news' || scope.panel === 'markets' || scope.panel === 'predictions' ? scope.panel : 'country';
+  return scope.panel === 'news' || scope.panel === 'markets' || scope.panel === 'predictions' || scope.panel === 'conflicts' ? scope.panel : 'country';
 }
 async function signature(owner: string, scope: PanelScope): Promise<string> {
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET;
@@ -74,6 +75,12 @@ export async function admitPredictionPanel(context: McpAuthContext, budget: McpB
   return { ...await admitPanel(context, budget, pipeline, 'predictions', parsed.data, now), panel: 'predictions' };
 }
 
+export async function admitConflictPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<ConflictPanelAdmission> {
+  const parsed = conflictPanelViewSchema.safeParse(args);
+  if (!parsed.success) throw new PanelRequestError('Supply valid conflict filters and a request_id for refresh.', 'invalid');
+  return { ...await admitPanel(context, budget, pipeline, 'conflicts', parsed.data, now), panel: 'conflicts' };
+}
+
 async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, country: string, request: { refresh: boolean; request_id?: string }, now: number) {
   if (budget?.allowance === 'api') throw new PanelRequestError('API allowances use per-tool billing.', 'invalid');
   const owner = userId(context);
@@ -106,6 +113,10 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
 }
 
 function checkReadScope(name: string, args: Record<string, unknown>, country: string): void {
+  if (country === 'conflicts') {
+    if (name !== 'get_conflict_events' || !conflictPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers conflict events.', 'invalid');
+    return;
+  }
   if (country === 'predictions') {
     if (name !== 'get_prediction_markets' || !predictionPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers curated prediction markets.', 'invalid');
     return;
@@ -155,7 +166,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(news|markets|predictions|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = /^(news|markets|predictions|conflicts|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');
@@ -166,7 +177,8 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   checkReadScope(name, args, scope.panel);
   const key = panelKey(owner, scope);
   const readArgs = scope.panel === 'markets' ? marketPanelReadSchema.parse(args)
-    : scope.panel === 'predictions' ? predictionPanelReadSchema.parse(args) : args;
+    : scope.panel === 'predictions' ? predictionPanelReadSchema.parse(args)
+      : scope.panel === 'conflicts' ? conflictPanelReadSchema.parse(args) : args;
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(readArgs)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
@@ -189,6 +201,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
     },
     save: async (value: unknown) => {
+      if (scope.panel === 'conflicts' && !isConflictPanelSnapshotCacheable(value)) return;
       if (scope.panel === 'predictions' && (!value || typeof value !== 'object' || Array.isArray(value))) return;
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;

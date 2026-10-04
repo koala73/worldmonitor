@@ -59,7 +59,7 @@ import {
 } from '../filters';
 import { resolveCountryFilter } from '../_country-args';
 import { RpcValidationError } from '../billing-denial';
-import type { ToolDef } from '../types';
+import type { ConflictSourceObservation, ToolDef } from '../types';
 
 import { utf8ByteLength } from '../utils';
 import {
@@ -201,6 +201,74 @@ function fitConflictEventsToBudget(data: Record<string, unknown>): void {
     caps.set(label, feedLow);
     applyCaps();
   }
+}
+
+function conflictRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isConflictSourceDataUsable(data: Record<string, unknown>): boolean {
+  if (['partial', 'stale', 'unavailable', 'upstreamUnavailable', 'degraded'].some(flag => data[flag] === true)) return false;
+  const collections: [string, string][] = [['ucdp-events', 'events'], ['events', 'events'], ['scores', 'ciiScores'], ...(IRAN_EVENTS_ENABLED ? [['iran-events', 'events'] as [string, string]] : [])];
+  return collections.every(([label, field]) => {
+    const bucket = data[label];
+    if (!conflictRecord(bucket)) return false;
+    const rows = bucket[field];
+    return Array.isArray(rows) && rows.every(conflictRecord)
+      && !['partial', 'stale', 'unavailable', 'upstreamUnavailable', 'rateLimited', 'degraded'].some(flag => bucket[flag] === true)
+      && !(typeof bucket.error === 'string' && bucket.error !== '');
+  });
+}
+
+export function isConflictPanelSnapshotCacheable(value: unknown): boolean {
+  if (!conflictRecord(value) || value.stale !== false || value.freshnessUnknown === true
+    || typeof value.cached_at !== 'string' || !Number.isFinite(Date.parse(value.cached_at))
+    || Array.isArray(value.unreadable) && value.unreadable.length
+    || !conflictRecord(value.data) || !isConflictSourceDataUsable(value.data)) return false;
+  const source = value.conflict_source;
+  if (!conflictRecord(source) || !conflictRecord(source.ucdp)) return false;
+  const meta = source.ucdp;
+  const ucdp = value.data['ucdp-events'] as Record<string, unknown>;
+  return typeof meta.fetchedAt === 'number' && Number.isFinite(meta.fetchedAt) && meta.fetchedAt > 0
+    && meta.candidateComplete === true && meta.annualFailedPages === 0
+    && typeof meta.candidateVersion === 'string' && meta.candidateVersion.trim() !== '' && !meta.candidateVersion.includes('+partial')
+    && meta.candidateVersion === ucdp.candidateVersion
+    && (ucdp.candidateComplete === undefined || ucdp.candidateComplete === true)
+    && (ucdp.annualFailedPages === undefined || ucdp.annualFailedPages === 0);
+}
+
+export function projectConflictSourceObservation(value: unknown): ConflictSourceObservation {
+  const ucdp: ConflictSourceObservation['ucdp'] = {};
+  if (conflictRecord(value)) {
+    if (typeof value.fetchedAt === 'number' && Number.isFinite(value.fetchedAt) && value.fetchedAt > 0) ucdp.fetchedAt = value.fetchedAt;
+    if (typeof value.candidateVersion === 'string' || value.candidateVersion === null) ucdp.candidateVersion = value.candidateVersion;
+    if (typeof value.candidateComplete === 'boolean') ucdp.candidateComplete = value.candidateComplete;
+    if (Number.isSafeInteger(value.annualFailedPages) && (value.annualFailedPages as number) >= 0) ucdp.annualFailedPages = value.annualFailedPages as number;
+  }
+  return { ucdp };
+}
+
+export function filterConflictEvents(data: Record<string, unknown>, params: Record<string, unknown>): Record<string, unknown> {
+  const country = argStr(params.country);
+  const minFatal = argNum(params.min_fatalities);
+  const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+  if (country) {
+    narrowNested(data, 'ucdp-events', 'events', (e) => ciIncludes(e.country, country));
+    narrowNested(data, 'events', 'events', (e) => ciIncludes(e.country, country));
+    narrowNested(data, 'scores', 'ciiScores', (s) => matchesCode(s.region, [country]));
+  }
+  if (minFatal != null) {
+    narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
+    narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
+  }
+  for (const label of CONFLICT_EVENT_LISTS) capNested(data, label, 'events', limit);
+  return data;
+}
+
+export function presentConflictEvents(data: Record<string, unknown>, params: Record<string, unknown>): Record<string, unknown> {
+  const presented = structuredClone(data);
+  if (!argBool(params.summary) && !argStr(params.jmespath)) fitConflictEventsToBudget(presented);
+  return presented;
 }
 
 function summarizeConflictEvents(data: Record<string, unknown>): Record<string, unknown> {
@@ -856,7 +924,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_conflict_events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
     _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
-    description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
+    description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -869,87 +937,90 @@ export const CACHE_TOOLS: ToolDef[] = [
           description: 'Drop events below this fatality count (UCDP deathsBest / unrest fatalities).',
         },
         limit: { type: 'number', description: 'Cap each event list to at most this many items (default 30, pass 0 for no cap).' },
+        panel_request: { type: 'string', description: 'Paid conflict panel receipt for bounded internal filtered reads without another daily allocation.' },
+        refresh: { type: 'boolean', description: 'Request one new paid conflict panel allocation. Requires request_id and no panel_request.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation.' },
       },
       required: [],
     },
-    outputSchema: cacheEnvelope({
-      'ucdp-events': {
-        type: ['object', 'null'],
-        properties: {
-          events: { type: 'array', items: { type: 'object', properties: {
-            id: { type: 'string' }, dateStart: { type: ['number', 'string'] }, dateEnd: { type: ['number', 'string'] },
-            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
-            country: { type: 'string' }, sideA: { type: 'string' }, sideB: { type: 'string' },
-            deathsBest: { type: 'number' }, deathsLow: { type: 'number' }, deathsHigh: { type: 'number' },
-            violenceType: { type: 'string' }, sourceOriginal: { type: 'string' },
-          } } },
-          fetchedAt: { type: ['number', 'string'] },
-          version: { type: ['string', 'number'] },
-          // Newest merged GED Candidate release, or null when the annual base is
-          // serving alone. A `+partial` suffix means the candidate was fetched
-          // incompletely.
-          candidateVersion: { type: ['string', 'null'] },
-          candidateComplete: { type: 'boolean' },
-          totalRaw: { type: 'number' },
-          filteredCount: { type: 'number' },
+    outputSchema: (() => {
+      const envelope = cacheEnvelope({
+        'ucdp-events': {
+          type: ['object', 'null'],
+          properties: {
+            events: { type: 'array', items: { type: 'object', properties: {
+              id: { type: 'string' }, dateStart: { type: ['number', 'string'] }, dateEnd: { type: ['number', 'string'] },
+              location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+              country: { type: 'string' }, sideA: { type: 'string' }, sideB: { type: 'string' },
+              deathsBest: { type: 'number' }, deathsLow: { type: 'number' }, deathsHigh: { type: 'number' },
+              violenceType: { type: 'string' }, sourceOriginal: { type: 'string' },
+            } } },
+            fetchedAt: { type: ['number', 'string'] },
+            version: { type: ['string', 'number'] },
+            // Newest merged GED Candidate release, or null when the annual base is
+            // serving alone. A `+partial` suffix means the candidate was fetched
+            // incompletely.
+            candidateVersion: { type: ['string', 'null'] },
+            candidateComplete: { type: 'boolean' },
+            totalRaw: { type: 'number' },
+            filteredCount: { type: 'number' },
+          },
         },
-      },
-      'iran-events': {
-        type: ['object', 'null'],
-        properties: {
-          events: { type: 'array', items: { type: 'object', properties: {
-            id: { type: 'string' }, country: { type: 'string' },
-            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
-          } } },
-          scrapedAt: { type: ['number', 'string'] },
+        'iran-events': {
+          type: ['object', 'null'],
+          properties: {
+            events: { type: 'array', items: { type: 'object', properties: {
+              id: { type: 'string' }, country: { type: 'string' },
+              location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            } } },
+            scrapedAt: { type: ['number', 'string'] },
+          },
         },
-      },
-      events: {
-        type: ['object', 'null'],
-        properties: {
-          events: { type: 'array', items: { type: 'object', properties: {
-            country: { type: 'string' }, fatalities: { type: 'number' },
-            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
-          } } },
-          clusters: { type: ['array', 'object', 'null'] },
+        events: {
+          type: ['object', 'null'],
+          properties: {
+            events: { type: 'array', items: { type: 'object', properties: {
+              country: { type: 'string' }, fatalities: { type: 'number' },
+              location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            } } },
+            clusters: { type: ['array', 'object', 'null'] },
+          },
         },
-      },
-      scores: {
-        type: ['object', 'null'],
-        properties: {
-          ciiScores: { type: 'array', items: { type: 'object', properties: { region: { type: 'string' }, score: { type: 'number' } } } },
-          strategicRisks: { type: ['array', 'object', 'null'] },
+        scores: {
+          type: ['object', 'null'],
+          properties: {
+            ciiScores: { type: 'array', items: { type: 'object', properties: { region: { type: 'string' }, score: { type: 'number' } } } },
+            strategicRisks: { type: ['array', 'object', 'null'] },
+          },
         },
-      },
-      partial: { type: 'boolean', description: 'True when event lists were shortened to fit the MCP output budget.' },
-      truncation: {
-        type: 'object',
-        properties: {
-          reason: { type: 'string' },
-          original_event_count: { type: 'number' },
-          returned_event_count: { type: 'number' },
+        partial: { type: 'boolean', description: 'True when event lists were shortened to fit the MCP output budget.' },
+        truncation: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string' },
+            original_event_count: { type: 'number' },
+            returned_event_count: { type: 'number' },
+          },
         },
-      },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return {
+        ...envelope,
+        properties: {
+          ...envelope.properties,
+          conflict_source: {
+            type: 'object',
+            description: 'Actual fields copied from the already-read UCDP seed metadata. Missing fields remain absent. This observation is not an atomic dataset snapshot or proof of all upstream provider coverage.',
+            properties: { ucdp: { type: 'object', properties: {
+              fetchedAt: { type: 'number' }, candidateVersion: { type: ['string', 'null'] },
+              candidateComplete: { type: 'boolean' }, annualFailedPages: { type: 'integer', minimum: 0 },
+            } } },
+          },
+        },
+      };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _summarize: summarizeConflictEvents,
-    _postFilter: (data, params) => {
-      const country = argStr(params.country);
-      const minFatal = argNum(params.min_fatalities);
-      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
-      if (country) {
-        narrowNested(data, 'ucdp-events', 'events', (e) => ciIncludes(e.country, country));
-        narrowNested(data, 'events', 'events', (e) => ciIncludes(e.country, country));
-        narrowNested(data, 'scores', 'ciiScores', (s) => matchesCode(s.region, [country]));
-      }
-      if (minFatal != null) {
-        narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
-        narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
-      }
-      for (const label of CONFLICT_EVENT_LISTS) capNested(data, label, 'events', limit);
-      if (!argBool(params.summary) && !argStr(params.jmespath)) fitConflictEventsToBudget(data);
-      return data;
-    },
+    _postFilter: (data, params) => presentConflictEvents(filterConflictEvents(data, params), params),
     _cacheKeys: [
       'conflict:ucdp-events:v1',
       ...(IRAN_EVENTS_ENABLED ? ['conflict:iran-events:v1'] : []),
