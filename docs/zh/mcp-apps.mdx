@@ -38,7 +38,7 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | 国家风险（交互式） | 综合不稳定指数评分、组成部分细分、旅行建议和制裁风险敞口。 |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
-| `ui://worldmonitor/market-radar-v2.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
+| `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
@@ -72,7 +72,7 @@ View -> Host: ui/notifications/size-changed
 
 | 读取类型 | 示例 | 认证 | Pro 每日配额 | 原因 |
 |---|---|---|---|---|
-| UI 模板 | `resources/read` `ui://worldmonitor/market-radar-v2.html` | 否 | 否 | 无数据的界面引导程序；加载当前公开 UI 资源，不获取市场数据。 |
+| UI 模板 | `resources/read` `ui://worldmonitor/market-radar-v3.html` | 否 | 否 | 无数据的界面引导程序；加载当前公开 UI 资源，不获取市场数据。 |
 | 公开元数据 | `resources/read` `worldmonitor://seed-meta/freshness` | 否 | 否 | 仅含元数据的健康/新鲜度探测。 |
 | 数据模板实例化 | `resources/read` `worldmonitor://countries/de/risk` | 是 | 是 | 经由与等效 `tools/call` 相同的调度器路由。 |
 | 工具数据 | `tools/call` `get_market_data` | 是 | 在 OAuth/Pro 上下文中为是 | 获取实时或缓存数据。 |

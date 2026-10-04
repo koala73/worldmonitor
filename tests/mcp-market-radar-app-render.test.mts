@@ -9,6 +9,7 @@ import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry
 const bundle = buildSync({
   entryPoints: ['src/plugin-market-main.ts'], bundle: true, write: false, format: 'iife', platform: 'browser',
   alias: { '@': './src' }, loader: { '.css': 'empty' },
+  define: { 'import.meta.url': JSON.stringify('https://www.worldmonitor.app/plugin/assets/market-test.js') },
 }).outputFiles[0]!.text;
 const template = new Window();
 template.document.write(readFileSync('market.html', 'utf8'));

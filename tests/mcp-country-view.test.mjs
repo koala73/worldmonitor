@@ -39,7 +39,7 @@ describe('country view MCP boundary', () => {
     assert.equal(body.result.structuredContent.panelRequest.usage.remaining, 49);
     const listed = await handler(proReq('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' }), makeProDeps().deps);
     const tool = (await listed.json()).result.tools.find(tool => tool.name === 'open_country_brief');
-    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v2.html');
+    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v3.html');
     assert.equal(requests.length, 0);
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
@@ -205,7 +205,7 @@ describe('country view MCP boundary', () => {
     const { UI_RESOURCE_LIST_RESPONSE } = await import('../api/mcp/ui/registry.ts');
     const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
     assert.deepEqual([...card.metadata.mcpApps.uiResources].sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
-    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v2\.html/);
+    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v3\.html/);
     const { parseMcpAppsInventory } = await import('../scripts/docs-stats.mjs');
     assert.deepEqual(parseMcpAppsInventory().uiResources.sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
   });

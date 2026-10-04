@@ -22,14 +22,14 @@ import { rpcError, rpcOk } from '../rpc';
 import { CHOKEPOINT_MONITOR_APP_HTML } from './chokepoint-monitor-app';
 import { COUNTRY_BRIEF_APP_HTML } from './country-brief-app';
 import { COUNTRY_RISK_APP_HTML } from './country-risk-app';
-import { LEGACY_MARKET_RADAR_UI_URI, readMarketRadar } from './market-radar-app';
+import { PREVIOUS_MARKET_RADAR_UI_URI, LEGACY_MARKET_RADAR_UI_URI, readMarketRadar } from './market-radar-app';
 import { buildUiMeta, UI_RESOURCE_MIME_TYPE as SHELL_UI_MIME_TYPE, type UiResourceMeta } from './shell';
 import { WORLD_BRIEF_APP_HTML } from './world-brief-app';
 import { NEWS_INTELLIGENCE_APP_HTML } from './news-intelligence-app';
 import { CONFLICT_EVENTS_APP_HTML } from './conflict-events-app';
 import { NATURAL_DISASTERS_APP_HTML } from './natural-disasters-app';
 import { PREDICTION_MARKETS_APP_HTML } from './prediction-markets-app';
-import { COUNTRY_VIEW_UI_URI, COUNTRY_VIEW_META, MARKET_RADAR_META, readCountryView, NEWS_DASHBOARD_UI_URI, NEWS_DASHBOARD_META, readNewsDashboard, LEGACY_COUNTRY_VIEW_UI_URI, LEGACY_NEWS_DASHBOARD_UI_URI } from './news-dashboard-app';
+import { PREVIOUS_COUNTRY_VIEW_UI_URI, PREVIOUS_NEWS_DASHBOARD_UI_URI, COUNTRY_VIEW_UI_URI, COUNTRY_VIEW_META, MARKET_RADAR_META, readCountryView, NEWS_DASHBOARD_UI_URI, NEWS_DASHBOARD_META, readNewsDashboard, LEGACY_COUNTRY_VIEW_UI_URI, LEGACY_NEWS_DASHBOARD_UI_URI } from './news-dashboard-app';
 import { FORECASTS_APP_HTML } from './forecasts-app';
 
 // Re-exported from the shared shell so the mimeType has a single source of
@@ -42,7 +42,7 @@ export const UI_RESOURCE_MIME_TYPE = SHELL_UI_MIME_TYPE;
 export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
 export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
 export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
-export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar-v2.html';
+export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar-v3.html';
 export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
 export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.html';
 export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
@@ -169,7 +169,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
-  return uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
+  return uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
 // resources/list public shape — {uri, name, description, mimeType} plus the
@@ -200,9 +200,9 @@ export async function buildUiResourceRead(
   uri: string,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
-  if (uri === MARKET_RADAR_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI) return readMarketRadar(id, corsHeaders, uri);
-  if (uri === COUNTRY_VIEW_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders, uri);
-  if (uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders, uri);
+  if (uri === MARKET_RADAR_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI) return readMarketRadar(id, corsHeaders, uri);
+  if (uri === COUNTRY_VIEW_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders, uri);
+  if (uri === NEWS_DASHBOARD_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders, uri);
   const def = UI_RESOURCE_BY_URI.get(uri);
   if (!def) {
     // Unreachable in practice — the handler only routes here after

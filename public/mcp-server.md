@@ -32,15 +32,15 @@ World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive 
 - `ui://worldmonitor/country-risk.html`
 - `ui://worldmonitor/world-brief.html`
 - `ui://worldmonitor/country-brief.html`
-- `ui://worldmonitor/market-radar-v2.html`
+- `ui://worldmonitor/market-radar-v3.html`
 - `ui://worldmonitor/chokepoint-monitor.html`
 - `ui://worldmonitor/news-intelligence.html`
 - `ui://worldmonitor/conflict-events.html`
 - `ui://worldmonitor/natural-disasters.html`
 - `ui://worldmonitor/prediction-markets.html`
 - `ui://worldmonitor/forecasts.html`
-- `ui://worldmonitor/news-dashboard-v2.html`
-- `ui://worldmonitor/country-view-v2.html`
+- `ui://worldmonitor/news-dashboard-v3.html`
+- `ui://worldmonitor/country-view-v3.html`
 
 Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumerate the shells through `resources/list`, and fetch each template with `resources/read`. `ui://` reads are public and quota-exempt because they return static, data-free HTML; live data still arrives through a normal authenticated `tools/call`. Full contract: [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps).
 

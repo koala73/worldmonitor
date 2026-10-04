@@ -11,6 +11,7 @@ export function buildPluginShell(config: PluginDocument): string {
 
 const BOOT_SCRIPT = String.raw`async function(config) {
   const styles = [];
+  let attempt = 0;
   const assetUrl = (path, extension) => {
     const url = new URL(path, config.origin);
     if (url.origin !== config.origin || url.search || url.hash || !new RegExp('^/plugin/assets/[a-zA-Z0-9_.-]+\\.' + extension + '$').test(url.pathname)) {
@@ -27,7 +28,7 @@ const BOOT_SCRIPT = String.raw`async function(config) {
     status.textContent = 'WorldMonitor could not load its interface. Retry to load the current version.';
     const retry = document.createElement('button');
     retry.textContent = 'Retry interface';
-    retry.onclick = () => { location.reload(); };
+    retry.onclick = () => { void load(); };
     notice.append(status, retry);
     document.body.replaceChildren(notice);
   };
@@ -77,14 +78,15 @@ const BOOT_SCRIPT = String.raw`async function(config) {
       document.body.className = current.body.className;
       document.body.replaceChildren(...current.body.childNodes);
       document.documentElement.dataset.wmPluginManagedBoot = 'true';
+      const mountEvent = 'wm-plugin-boot-' + ++attempt;
       let timeout;
       try {
         await Promise.race([
-          import(entry),
+          import(entry + '?wm-plugin-boot=' + attempt),
           new Promise((resolve, reject) => { timeout = setTimeout(() => reject(new Error('Panel module timed out')), 10000); }),
         ]);
       } finally { clearTimeout(timeout); }
-      document.dispatchEvent(new Event('wm-plugin-mount'));
+      document.dispatchEvent(new Event(mountEvent));
     } catch { showFailure(); }
   };
   await load();

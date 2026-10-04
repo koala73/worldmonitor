@@ -38,15 +38,15 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | World Brief (interactive) | Precomputed citation-grounded global brief, grounding headlines, and source feed articles. |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
-| `ui://worldmonitor/market-radar-v2.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed plus all loaded quote rows, asset names and expandable intraday charts from the same snapshot. |
+| `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed plus all loaded quote rows, asset names and expandable intraday charts from the same snapshot. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, and source. |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Conflict Events (interactive) | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from UCDP. |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
 | `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | Forecasts (interactive) | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
-| `ui://worldmonitor/news-dashboard-v2.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
-| `ui://worldmonitor/country-view-v2.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
+| `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
+| `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
 
 ## Runtime Flow
 
@@ -74,7 +74,7 @@ The view never fetches live WorldMonitor data itself. Live data always reaches t
 
 | Read kind | Example | Auth | Pro daily quota | Why |
 |---|---|---|---|---|
-| UI template | `resources/read` `ui://worldmonitor/market-radar-v2.html` | No | No | Data-free interface bootstrap; loads current public UI assets, with no market-data fetch. |
+| UI template | `resources/read` `ui://worldmonitor/market-radar-v3.html` | No | No | Data-free interface bootstrap; loads current public UI assets, with no market-data fetch. |
 | Public metadata | `resources/read` `worldmonitor://seed-meta/freshness` | No | No | Metadata-only health/freshness probe. |
 | Data template instantiation | `resources/read` `worldmonitor://countries/de/risk` | Yes | Yes | Routes through the same dispatcher as the equivalent `tools/call`. |
 | Tool data | `tools/call` `get_market_data` | Yes | Yes for OAuth/Pro contexts | Fetches live or cached data. |

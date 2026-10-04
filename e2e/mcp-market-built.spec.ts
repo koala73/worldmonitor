@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry';
 
 test.describe.configure({ mode: 'serial' });
@@ -27,17 +28,22 @@ test.beforeAll(async () => {
 });
 
 for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 900]] as const) {
-  test('built market document, stylesheet and module load through the resource bootstrap on ' + name, async ({ page }) => {
+  test('built market recovers in a host-injected document on ' + name, async ({ page }, info) => {
     await page.setViewportSize({ width, height });
     const projection = name === 'mobile'
       ? { cached_at: fixture.cached_at, quotes: fixture.data['stocks-bootstrap'].quotes } : fixture;
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     const assets: string[] = [];
+    let failDocument = true;
     await page.route('https://www.worldmonitor.app/plugin/**', async route => {
       const url = new URL(route.request().url());
       expect(url.pathname).toMatch(/^\/plugin\/(market.html|assets\/[a-zA-Z0-9_.-]+\.(js|css))$/);
       assets.push(url.pathname);
+      if (url.pathname.endsWith('market.html') && failDocument) {
+        await route.fulfill({ status: 503, contentType: 'text/html', body: 'Temporarily unavailable', headers: { 'Access-Control-Allow-Origin': '*' } });
+        return;
+      }
       await route.fulfill({
         body: readFileSync('dist' + url.pathname),
         contentType: url.pathname.endsWith('.html') ? 'text/html' : url.pathname.endsWith('.js') ? 'application/javascript' : 'text/css',
@@ -45,7 +51,7 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
       });
     });
     await page.setContent('<iframe sandbox="allow-scripts" style="width:100%;height:900px;border:0"></iframe>');
-    await page.evaluate(({ bootstrap, fixture }) => {
+    await page.evaluate(({ fixture }) => {
       const sent: unknown[] = [];
       Object.assign(window, { marketMessages: sent });
       window.addEventListener('message', event => {
@@ -59,9 +65,16 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
           } } },
         } }, '*');
       });
-      document.querySelector('iframe')!.srcdoc = bootstrap;
-    }, { bootstrap, fixture: projection });
+
+    }, { fixture: projection });
+    const injected = page.frames().find(frame => frame !== page.mainFrame())!;
+    await injected.evaluate(html => { document.open(); document.write(html); document.close(); }, bootstrap);
     const frame = page.frameLocator('iframe');
+    await expect(frame.getByRole('status')).toContainText('could not load');
+    expect(await page.evaluate(() => (window as unknown as { marketMessages: unknown[] }).marketMessages)).toEqual([]);
+    await page.screenshot({ path: info.outputPath('injected-market-failure-' + name + '.png') });
+    failDocument = false;
+    await frame.getByRole('button', { name: 'Retry interface' }).click();
     await expect(frame.locator('.qsym')).toHaveCount(12);
     await expect(frame.locator('.terminal-chart')).toHaveCount(0);
     const summary = frame.locator('summary').first();
@@ -77,9 +90,11 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     expect(await frame.locator('#marketContent').evaluate(element => getComputedStyle(element).maxHeight)).toBe('560px');
     expect(assets.some(asset => asset.endsWith('.css'))).toBe(true);
     expect(assets.some(asset => asset.endsWith('.js'))).toBe(true);
-    expect(assets.filter(asset => asset === '/plugin/market.html')).toHaveLength(1);
+    expect(assets.filter(asset => asset === '/plugin/market.html')).toHaveLength(2);
     expect(await page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages
       .filter(message => !['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(message.method)))).toEqual([]);
     expect(errors).toEqual([]);
+    await page.screenshot({ path: info.outputPath('injected-market-recovered-' + name + '.png') });
+    await writeFile(info.outputPath('native-recovery-messages.json'), JSON.stringify(await page.evaluate(() => (window as unknown as { marketMessages: unknown[] }).marketMessages), null, 2));
   });
 }
