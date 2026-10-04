@@ -340,6 +340,10 @@ transform('public/.well-known/agent-card.json', (source) => {
 // so adding tools cannot leave a syntactically valid but incomplete card.
 transform('public/.well-known/mcp/server-card.json', (source) => {
   const card = JSON.parse(source);
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_market_data → market-radar(?:-v\d+)?\.html/,
+    'get_market_data → market-radar-v3.html',
+  );
   card.tools = TOOL_REGISTRY.map((tool) => ({
     name: tool.name,
     description: tool.description,
