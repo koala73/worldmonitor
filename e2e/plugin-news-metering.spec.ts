@@ -24,7 +24,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   await page.route('**/plugin/plugin.html', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/plugin.html'), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/*.geojson', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/countries-*m.json', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
-  await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
+  await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
   await page.exposeFunction('newsHost', async (method: string, params: HostCall) => {
     if (method === 'ui/initialize') return { hostCapabilities: { ...(serverTools ? { serverTools: {} } : {}), updateModelContext: {} }, hostContext: { theme: 'dark' } };
     if (method === 'ui/update-model-context') viewUpdates++;
@@ -256,4 +256,38 @@ test('a delayed older host render cannot commit filters after a newer result', a
   await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
   await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
   expect(host.calls.at(-1)?.arguments.panel_request).toBe('news.controlled-3');
+});
+
+
+test('narrow news cards select the initial renderer from input capabilities', async ({ browser }, info) => {
+  for (const finePointer of [true, false]) {
+    const context = await browser.newContext({
+      baseURL: String(info.project.use.baseURL),
+      viewport: { width: 600, height: 1100 },
+      hasTouch: !finePointer,
+      isMobile: !finePointer,
+      serviceWorkers: 'block',
+    });
+    try {
+      const page = await context.newPage();
+      await page.addInitScript(() => {
+        const getExtension = WebGL2RenderingContext.prototype.getExtension;
+        WebGL2RenderingContext.prototype.getExtension = function (name) {
+          return name === 'WEBGL_debug_renderer_info' ? null : Reflect.apply(getExtension, this, [name]);
+        };
+      });
+      const host = await installNewsHost(page);
+      const frame = page.frameLocator('iframe');
+      await expect(frame.locator('#pluginUsage')).toContainText('49 of 50 requests remaining');
+      expect(await frame.locator('body').evaluate(() => innerWidth)).toBeLessThan(768);
+      expect(await frame.locator('body').evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)).toBe(finePointer);
+      await expect(frame.locator('#mapContainer')).toHaveClass(finePointer ? /deckgl-mode/ : /svg-mode/);
+      await expect(frame.locator(finePointer ? '.maplibregl-canvas' : 'path.country').first()).toBeAttached();
+      await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
+      expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
+      expect(host.units).toBe(1);
+    } finally {
+      await context.close();
+    }
+  }
 });
