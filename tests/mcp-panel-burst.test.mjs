@@ -164,6 +164,20 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.match(calls.at(-1).key, /:pro-panel:/);
     assert.ok(!calls.at(-1).key.includes(receipt.token));
   });
+  it('replays loaded observations without starving an uncached section in the same paid panel', async () => {
+    const { deps, pipe } = makeProDeps();
+    const receipt = await open(deps);
+    for (let i = 0; i < 64; i++) {
+      const result = await invoke(deps, 'get_country_brief_section', energy(receipt.token));
+      assert.equal(result.body.error, undefined, `loaded observation ${i + 1}`);
+    }
+    assert.equal(fetched.length, 1);
+    const fresh = await invoke(deps, 'get_country_brief_section', { section: 'food', arguments: { countryCode: 'US' }, panel_request: receipt.token });
+    assert.equal(fresh.body.error, undefined, 'cached replay must leave the unfinished section admitted');
+    assert.equal(fresh.body.result.structuredContent.state, 'ready');
+    assert.equal(fetched.length, 2);
+    assert.equal(pipe.count, 1);
+  });
   it('bounds cached replay too, without spending new daily allocations', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);
