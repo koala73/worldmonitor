@@ -22,9 +22,10 @@ name: Dependabot auto-merge
 #      this the human's own commit would ride in on the bot's arming.
 #
 # Because an arming survives new pushes, a run that finds the guards failing
-# does not merely skip arming: the disarm step below actively revokes whatever
-# a previous run armed. That covers a human's push and equally Dependabot's own
-# refresh of the group with a major or an untrusted action.
+# does not merely skip arming: the disarm step below actively revokes any
+# arming it finds, whoever set it, including one a maintainer made by hand.
+# That covers a human's push and equally Dependabot's own refresh of the group
+# with a major or an untrusted action.
 #   3. Grouped github-actions bump, minor or patch. On a grouped PR
 #      `update-type` is the highest semver change across the whole group, so a
 #      group carrying a major fails this and waits for a human. The
@@ -39,12 +40,24 @@ name: Dependabot auto-merge
 #      signing). Anything outside the list is not blocked — it simply falls
 #      through to the human path that exists today.
 #
-# In particular the docker base-image bumps are left to a human, because they
-# are what the weekly rebuild in docker-publish.yml then publishes.
+# In particular the docker base-image bumps are left to a human, because
+# docker-publish.yml rebuilds and publishes `latest` from them as soon as they
+# merge, with only its own smoke test in front.
+#
+# REACH. Not every group can land by itself. An action that proto-check.yml
+# pins (checkout, setup-node, setup-go, cache, upload-artifact,
+# download-artifact) also changes a codegen input, and the proto trust model
+# accepts a Dependabot change to one only after an owner push
+# (CONTRIBUTING.md, "Generated Artifacts in Pull Requests"). That push is not
+# Dependabot's, so the disarm step revokes the arming on purpose and the owner
+# merges by hand, exactly as for the individual bump PRs this group replaces.
+# Tests that pin some of those actions' SHAs can need a human commit too.
+# Groups that touch none of that arm and merge on their own once the required
+# checks pass.
 #
 # /!\ Requires "Allow auto-merge" in Settings -> General. Until it is on, the
-# arming step fails and this workflow goes red on every Dependabot PR rather
-# than merging anything unchecked.
+# arming step fails and this workflow goes red on each Dependabot PR it would
+# arm, rather than merging anything unchecked.
 #
 # A workflow triggered by a Dependabot pull request runs with a read-only
 # GITHUB_TOKEN unless it asks for more, so the grant below is what the merge
@@ -54,7 +67,12 @@ name: Dependabot auto-merge
 #
 # A pull request from a fork gets a read-only token whatever this file asks
 # for, which is what keeps `on: pull_request` safe to grant write on. Nothing
-# here checks out or runs the pull request's code either way.
+# here checks out or runs the pull request's code either way, with one
+# exception: dependabot/fetch-metadata, the action that reports what a PR bumps.
+# A group that bumps it runs the new release with this token before anyone has
+# read it, and its report is what the guards below read. It comes from GitHub's
+# own dependabot organisation and is pinned by SHA, the same kind of trust the
+# trusted-publisher list extends to actions/*, github/* and docker/*.
 
 on: pull_request
 

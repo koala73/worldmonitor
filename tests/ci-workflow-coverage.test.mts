@@ -2312,6 +2312,25 @@ describe('privileged publish and auto-merge conditions', () => {
       { timeout: 1000 },
     );
 
+  // GitHub runs a job or step whose `if` names no status function only while
+  // everything before it succeeded (an implicit `success() &&`), and the
+  // evaluator above cannot model that. The conditions that exist to run AFTER a
+  // failure are therefore pinned by the function they must keep naming.
+  const namesStatusFunction = (expression: unknown) => /\b(?:always|cancelled|failure|success)\(\)/.test(String(expression));
+
+  // The environment a step really receives: its own `env:` block with every
+  // `${{ ... }}` evaluated against the given context. A test that writes the
+  // environment by hand cannot notice a mapping that is wrong or missing.
+  const stepEnvironment = (step: { env?: Record<string, unknown> }, context: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(step.env ?? {}).map(([name, value]) => [
+        name,
+        String(value).replace(/\$\{\{\s*([^}]+?)\s*\}\}/g, (_, expression: string) =>
+          String(evaluateExpression(expression, context)),
+        ),
+      ]),
+    );
+
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
   const autoMerge = YAML.parse(read(resolve(workflowsDir, 'dependabot-auto-merge.yml')));
   const dependabotConfig = YAML.parse(read(resolve(root, '.github/dependabot.yml')));
@@ -2372,7 +2391,7 @@ describe('privileged publish and auto-merge conditions', () => {
       ['release', 'refs/tags/v2.5.23', true, true],
       // The scheduled rebuild is why `latest` follows main at all.
       ['schedule', 'refs/heads/main', true, false],
-      // Repair path for a failed weekly run: republish `latest` without a release.
+      // Repair path for a failed rebuild: republish `latest` without a release.
       ['workflow_dispatch', 'refs/heads/main', true, false],
       // Mirror repair path: re-cut the version tags from a release tag. Gating
       // the semver entries on the EVENT instead of the ref silently loses this.
@@ -2394,6 +2413,35 @@ describe('privileged publish and auto-merge conditions', () => {
         );
       }
     }
+
+    // A prefix match on the branch name would let these through.
+    for (const ref of ['refs/heads/main-experiment', 'refs/heads/mainline']) {
+      assert.equal(
+        evaluateExpression(latest[1], { github: { event_name: 'workflow_dispatch', ref } }),
+        false,
+        `latest on ${ref}`,
+      );
+    }
+    // Only the sha entry may be unconditional, and exactly one entry may move
+    // `latest`: a second, ungated line would publish it from anywhere.
+    assert.deepEqual(
+      [...enables.entries()].filter(([, expression]) => expression === 'true').map(([key]) => key),
+      ['type=sha,prefix=sha-'],
+      'every tag entry except the sha one must be gated',
+    );
+    assert.equal([...enables.keys()].filter((key) => key.includes('latest')).length, 1, 'exactly one entry may move latest');
+    // And the build that pushes must consume those gated tags, not a literal.
+    const publishing = (dockerPublish.jobs.docker.steps as { with?: Record<string, unknown> }[]).find(
+      (step) => step.with?.push === true,
+    );
+    assert.equal(publishing?.with?.tags, '${{ steps.meta.outputs.tags }}');
+  });
+
+  it('keeps the triggers the ARCHITECTURE row promises', () => {
+    const on = dockerPublish.on as { release?: { types?: string[] }; schedule?: { cron: string }[]; workflow_dispatch?: unknown };
+    assert.deepEqual(on.release?.types, ['published']);
+    assert.deepEqual(on.schedule, [{ cron: '19 2 * * 3' }], 'the backstop is weekly; a per-minute cron would queue a multi-arch build every minute');
+    assert.ok('workflow_dispatch' in on, 'the repair path for a failed rebuild is a manual dispatch');
   });
 
   it('republishes on a push to main unless it only touches build-irrelevant paths', () => {
@@ -2416,7 +2464,7 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.deepEqual(
       paths.filter((path) => path.startsWith('!')).sort(),
       [
-        '!**/*.md',
+        '!*.md',
         '!.agents/**',
         '!.claude/**',
         '!.factory/**',
@@ -2439,6 +2487,56 @@ describe('privileged publish and auto-merge conditions', () => {
     const corpusScript = read(resolve(root, 'scripts/build-crawlable-corpus.mjs'));
     assert.match(corpusScript, /CHANGELOG_PATH = 'CHANGELOG\.md'/);
     assert.match(corpusScript, /RESILIENCE_SNAPSHOT_DIR = 'docs\/snapshots'/);
+    // Nested Markdown is image content, not documentation: vite copies public/
+    // into dist/ untouched, and the corpus script lists the blog directory to
+    // choose which blog links its pages render. Excluding `**/*.md` hid both
+    // (found in review), so Markdown is excluded at the repository root only,
+    // which is also all `.dockerignore`'s `*.md` removes from the build context.
+    assert.doesNotMatch(read(resolve(root, 'vite.config.ts')), /publicDir/, 'public/ is vite\'s default publicDir, so it is copied into dist/ as it is');
+    assert.match(corpusScript, /readdirSync\(join\(rootDir, 'blog-site\/src\/content\/blog'\)/);
+
+    // Evaluate the real list the way GitHub does: patterns run in order for each
+    // changed file, the last one that matches decides (a `!` pattern switches
+    // the file off again), `*` stops at `/` and `**` does not, and the workflow
+    // runs when any changed file ends up on. `**` is taken to match dot-prefixed
+    // names as well.
+    const escapeRegExp = (text: string) => text.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const globToRegExp = (glob: string) =>
+      new RegExp(`^${glob.split('**').map((part) => part.split('*').map(escapeRegExp).join('[^/]*')).join('.*')}$`);
+    const isOn = (file: string) => {
+      let on = false;
+      for (const pattern of paths) {
+        const negated = pattern.startsWith('!');
+        if (globToRegExp(negated ? pattern.slice(1) : pattern).test(file)) on = !negated;
+      }
+      return on;
+    };
+    const triggers = (files: string[]) => files.some(isOn);
+    for (const [files, expected, why] of [
+      [['src/App.ts'], true, 'application source is bundled into the image'],
+      [['docker/Dockerfile'], true, 'the Dockerfile itself'],
+      [['docker/nginx.conf.template'], true, 'a sibling config the Dockerfile COPYs'],
+      [['package-lock.json'], true, 'the npm ci input'],
+      [['.dockerignore'], true, 'the build-context policy'],
+      [['scripts/build-sitemap.mjs'], true, 'run by build:sitemap'],
+      [['public/pricing.md'], true, 'served verbatim from dist/'],
+      [['public/.well-known/agent-skills/track-flights/SKILL.md'], true, 'served verbatim from dist/'],
+      [['blog-site/src/content/blog/a-new-post.md'], true, 'its file name feeds the crawlable pages'],
+      [['CHANGELOG.md'], true, 'rendered into the changelog pages'],
+      [['docs/snapshots/live-pulse.json'], true, 'rendered into the live-pulse and resilience pages'],
+      [['docs/guide.md', 'src/App.ts'], true, 'one relevant file in a mixed push is enough'],
+      [['README.md'], false, 'root Markdown never enters the image'],
+      [['ARCHITECTURE.md', 'AGENTS.md'], false, 'root Markdown never enters the image'],
+      [['docs/api/WorldmonitorService.openapi.yaml'], false, 'only reaches the unserved stats'],
+      [['docs/methodology/index.mdx'], false, 'documentation'],
+      [['tests/ci-workflow-coverage.test.mts'], false, 'tests are not in the build context'],
+      [['e2e/map.spec.ts'], false, 'e2e is not in the build context'],
+      [['.github/workflows/test.yml', '.github/dependabot.yml'], false, 'CI files are not served'],
+      [['src-tauri/tauri.conf.json'], false, 'the desktop app is a different artifact'],
+      [['.claude/settings.json'], false, 'agent metadata'],
+    ] as [string[], boolean, string][]) {
+      assert.equal(triggers(files), expected, `${files.join(', ')}: ${why}`);
+    }
   });
 
   it('keeps everything that is not main out of the pending slot main rebuilds evict', () => {
@@ -2509,6 +2607,80 @@ describe('privileged publish and auto-merge conditions', () => {
       /elif \[ -z "\$\(curl -fsS "http:\/\/127\.0\.0\.1:8080\$\{path\}"\)" \]/,
       'the empty-body check must read $path, not a hardcoded route',
     );
+
+    // Wiring: nothing may skip, soften or redirect the two builds and the gate
+    // between them, and the gate must run the very image the first build loaded.
+    const smokeStep = steps.slice(loadIndex + 1, pushIndex).find((step) => String((step as { run?: string }).run ?? '').includes('docker run')) as
+      { run: string; if?: string; 'continue-on-error'?: unknown } | undefined;
+    assert.ok(smokeStep, 'the smoke step must sit between the two builds');
+    for (const step of [steps[loadIndex], smokeStep, steps[pushIndex]] as { if?: string; 'continue-on-error'?: unknown }[]) {
+      assert.equal(step.if, undefined, 'no condition may skip a gate, or the build it guards');
+      assert.equal(step['continue-on-error'], undefined, 'a failed gate must fail the job');
+    }
+    assert.equal(steps[loadIndex].with?.file, 'docker/Dockerfile');
+    assert.equal(steps[pushIndex].with?.file, 'docker/Dockerfile');
+    assert.ok(smokeStep.run.includes(String(steps[loadIndex].with?.tags)), 'the gate must run the image the first build loaded');
+  });
+
+  it('fails the smoke step, and so the push, when the image does not serve its routes', () => {
+    // Execute the real step against fake docker and curl, because the property
+    // that matters is its exit status: a green step here is what lets a broken
+    // image reach `latest`, and matching the text of the script proves nothing
+    // about that. The scenarios are the ones the step exists to catch.
+    const steps = dockerPublish.jobs.docker.steps as { run?: string; with?: Record<string, unknown> }[];
+    const smoke = steps.find((step) => String(step.run ?? '').includes('docker run'));
+    assert.ok(smoke?.run, 'docker-publish.yml must keep the smoke step');
+
+    const workDir = mkdtempSync(resolve(tmpdir(), 'wm-smoke-'));
+    try {
+      const callLog = resolve(workDir, 'calls');
+      const fake = (name: string, body: string) => writeFileSync(resolve(workDir, name), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+      fake('docker', `echo "docker $*" >> "${callLog}"
+case "$1" in
+  run) echo fake-container-id ;;
+  logs) echo "nginx: fake log line" ;;
+esac`);
+      // sleep is a no-op so the 30-try readiness loop does not take 30 seconds.
+      fake('sleep', 'exit 0');
+      // curl answers per SCENARIO: -w asks for the status code, -o names a file
+      // (nothing is written there), and -f turns a status of 400 or more into 22.
+      fake('curl', `url="\${@:$#}"
+path="\${url#http://127.0.0.1:8080}"
+mode=body; out=stdout; prev=""
+for arg in "$@"; do
+  [ "$arg" = "-w" ] && mode=code
+  [ "$prev" = "-o" ] && out="$arg"
+  prev="$arg"
+done
+[ "$SCENARIO" = "down" ] && exit 7
+code=200; body="<html>ok</html>"
+[ "$SCENARIO" = "pro-404" ] && [ "$path" = "/pro/" ] && { code=404; body="not found"; }
+[ "$SCENARIO" = "pro-empty" ] && [ "$path" = "/pro/" ] && body=""
+[ "$SCENARIO" = "root-empty" ] && [ "$path" = "/" ] && body=""
+if [ "$mode" = code ]; then printf '%s' "$code"; exit 0; fi
+if [ "$code" -ge 400 ]; then exit 22; fi
+[ "$out" = stdout ] && printf '%s' "$body"
+exit 0`);
+
+      const run = (scenario: string) =>
+        spawnSync('bash', ['-c', smoke.run as string], {
+          env: { PATH: `${workDir}:${process.env.PATH}`, SCENARIO: scenario },
+          encoding: 'utf8',
+        });
+
+      assert.equal(run('ok').status, 0, 'a healthy image must pass the gate');
+      assert.match(readFileSync(callLog, 'utf8'), /docker rm -f/, 'the container must be removed whatever the outcome');
+      for (const [scenario, why] of [
+        ['pro-404', '/pro/ answering 404 is the regression docker/Dockerfile cannot see'],
+        ['pro-empty', '/pro/ answering 200 with no body is not a working page'],
+        ['root-empty', '/ answering 200 with no body is not a working page'],
+        ['down', 'a server that never comes up must not pass'],
+      ]) {
+        assert.notEqual(run(scenario).status, 0, `${scenario}: ${why}`);
+      }
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
   });
 
   it('alarms when an unattended rebuild of main fails, because nothing else watches it', () => {
@@ -2526,6 +2698,9 @@ describe('privileged publish and auto-merge conditions', () => {
     };
     assert.ok(reportJob, 'a failed unattended rebuild must report somewhere durable');
     assert.equal(reportJob.needs, 'docker');
+    // Without a status function GitHub wraps the condition in `success() &&`,
+    // which skips this job exactly when the build job failed or timed out.
+    assert.match(String(reportJob.if), /\balways\(\)/, 'the alarm job must not be gated on the build job succeeding');
     assert.equal(dockerPublish.jobs.docker.permissions.issues, undefined, 'the build job itself no longer needs to open issues');
     assert.equal(reportJob.permissions?.issues, 'write');
 
@@ -2552,6 +2727,99 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.match(String(alarm.run), /gh issue comment/, 'a repeat failure must not open a duplicate issue');
   });
 
+  it('gives the failure report the repository gh needs, because that job has no checkout', () => {
+    // The report job has no checkout, so gh has no git remote to read the
+    // repository from and stops at "not a git repository" unless GH_REPO (or
+    // --repo) names it. The step used to sit in the build job, whose checkout
+    // hid that, and the regex assertions above never run it. Execute the real
+    // step against a fake gh that fails the way gh does without a repository.
+    const reportJob = dockerPublish.jobs['report-failure'] as {
+      steps: { run?: string; env?: Record<string, string> }[];
+    };
+    const report = reportJob.steps.find((step) => String(step.run ?? '').includes('gh issue create'));
+    assert.ok(report?.run && report.env, 'the report job must keep its issue-filing step');
+    assert.ok(
+      !reportJob.steps.some((step) => String((step as { uses?: string }).uses ?? '').startsWith('actions/checkout')),
+      'the report job is meant to stay checkout-free; if that changes, this test and GH_REPO can go',
+    );
+
+    const env = stepEnvironment(report, {
+      github: {
+        repository: 'koala73/worldmonitor',
+        server_url: 'https://github.com',
+        run_id: '123456',
+        token: 'token',
+      },
+    });
+
+    const workDir = mkdtempSync(resolve(tmpdir(), 'wm-report-'));
+    try {
+      const callLog = resolve(workDir, 'calls');
+      writeFileSync(
+        resolve(workDir, 'gh'),
+        `#!/bin/bash
+echo "$*" >> "${callLog}"
+if [ -z "\${GH_REPO:-}" ] && [[ "$*" != *--repo* ]]; then
+  echo "fatal: not a git repository (or any of the parent directories): .git" >&2
+  exit 1
+fi
+if [ "$1 $2" = "issue list" ]; then printf '%s' "\${FAKE_EXISTING_ISSUE:-}"; fi
+`,
+        { mode: 0o755 },
+      );
+      const runReport = (existingIssue: string) => {
+        writeFileSync(callLog, '');
+        execFileSync('bash', ['-c', report.run as string], {
+          cwd: workDir,
+          env: {
+            ...env,
+            PATH: `${workDir}:${process.env.PATH}`,
+            GITHUB_EVENT_NAME: 'push',
+            GITHUB_SHA: 'abc1234',
+            FAKE_EXISTING_ISSUE: existingIssue,
+          },
+          stdio: 'pipe',
+        });
+        return readFileSync(callLog, 'utf8');
+      };
+
+      const first = runReport('');
+      assert.match(first, /^issue create --title Docker rebuild of main failed --body /m, 'the first failure opens the tracking issue');
+      assert.doesNotMatch(first, /issue comment/);
+      const repeat = runReport('42');
+      assert.match(repeat, /^issue comment 42 --body /m, 'a repeat failure comments on the open issue');
+      assert.doesNotMatch(repeat, /issue create/, 'a repeat failure must not open a duplicate');
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the auto-merge workflow inside the trust envelope its header argues from', () => {
+    // The header's safety argument: a fork's token stays read-only under
+    // `pull_request` (never pull_request_target, which would hand a fork PR this
+    // job's write token), the grant sits on the job and not the workflow,
+    // nothing checks out the pull request's code, and arming has no plain-merge
+    // fallback, which would merge without waiting for the Deploy Gate.
+    const triggers = typeof autoMerge.on === 'string' ? [autoMerge.on] : Object.keys(autoMerge.on);
+    assert.deepEqual(triggers, ['pull_request']);
+    assert.deepEqual(autoMerge.permissions, {}, 'the workflow level stays default-deny');
+    const job = autoMerge.jobs['auto-merge'] as { permissions: Record<string, string>; steps: { uses?: string; run?: string }[] };
+    assert.deepEqual(job.permissions, { contents: 'write', 'pull-requests': 'write' });
+    assert.ok(
+      !job.steps.some((step) => String(step.uses ?? '').startsWith('actions/checkout')),
+      'nothing may check out the pull request',
+    );
+    for (const step of job.steps) {
+      const code = String(step.run ?? '')
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('#'))
+        .join('\n');
+      for (const merge of code.matchAll(/gh pr merge[^\n]*/g)) {
+        assert.match(merge[0], /--auto|--disable-auto/, `no plain merge: ${merge[0]}`);
+      }
+    }
+  });
+
   it('arms Dependabot auto-merge only for a trusted, grouped, minor or patch action bump', () => {
     const job = autoMerge.jobs['auto-merge'];
     const enable = (job.steps as { name?: string; if?: string }[]).find(
@@ -2574,7 +2842,7 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.equal(evaluate({ updateType: 'version-update:semver-minor' }), true);
     // Each of these is a guard whose removal would widen the automation.
     assert.equal(evaluate({ updateType: 'version-update:semver-major' }), false, 'a major must wait for a human');
-    assert.equal(evaluate({ ecosystem: 'docker' }), false, 'base-image bumps are what the weekly rebuild publishes');
+    assert.equal(evaluate({ ecosystem: 'docker' }), false, 'base-image bumps are what the push-triggered rebuild publishes');
     assert.equal(evaluate({ ecosystem: 'npm' }), false);
     assert.equal(evaluate({ group: '' }), false, 'an ungrouped or advisory action PR is out of scope');
     assert.equal(evaluate({ trusted: 'false' }), false, 'an untrusted publisher keeps the human merge click');
@@ -2611,12 +2879,26 @@ describe('privileged publish and auto-merge conditions', () => {
       }),
       true,
     );
+    // ...and only on that author: widening it would let any PR reach the
+    // arming steps.
+    for (const login of ['a-maintainer', 'dependabot-preview[bot]', 'renovate[bot]']) {
+      assert.equal(
+        evaluateExpression(String(job.if), { github: { event: { pull_request: { user: { login } } } } }),
+        false,
+        `${login} is not Dependabot`,
+      );
+    }
 
     const steps = job.steps as { name?: string; if?: string; run?: string }[];
     const disarm = steps.find((step) => String(step.run ?? '').includes('--disable-auto'));
     const enable = steps.find((step) => step.name === 'Enable auto-merge');
     assert.ok(disarm, 'a disqualified commit must revoke a previous arming, not merely skip renewing it');
     assert.ok(enable?.if);
+    // Without a status function GitHub wraps the condition in `success() &&`,
+    // so the step would be skipped when the metadata or publisher step failed,
+    // leaving the earlier arming on a commit that no longer qualifies.
+    assert.match(String(disarm.if), /!cancelled\(\)/, 'the disarm step must still run after a failed guard step');
+    assert.equal(namesStatusFunction(enable.if), false, 'the enable step must keep the implicit success() gate');
     const disarms = (overrides: Partial<typeof autoMergeRunBase>) =>
       evaluateExpression(String(disarm.if), autoMergeRunContext(overrides));
     const arms = (overrides: Partial<typeof autoMergeRunBase>) =>
@@ -2651,8 +2933,10 @@ describe('privileged publish and auto-merge conditions', () => {
     // exactly this; `--disable-auto` has none, so the script checks by hand.
     // Executes the real step against a fake `gh` rather than evaluating the
     // `if:` expression, because the guard this covers is bash logic inside
-    // the step, not a step condition.
-    const disarm = (autoMerge.jobs['auto-merge'].steps as { name?: string; run?: string }[]).find(
+    // the step, not a step condition, and takes its environment from the
+    // step's own `env:` block, so a wrong mapping there (HEAD_SHA read from
+    // `github.sha`, which is the merge commit, never the PR head) fails here.
+    const disarm = (autoMerge.jobs['auto-merge'].steps as { name?: string; run?: string; env?: Record<string, string> }[]).find(
       (step) => step.name === 'Disarm auto-merge when this commit does not qualify',
     );
     assert.ok(disarm?.run, 'dependabot-auto-merge.yml must keep the disarm step');
@@ -2668,23 +2952,27 @@ describe('privileged publish and auto-merge conditions', () => {
         `#!/bin/bash
 echo "$*" >> "${callLog}"
 if [[ "$*" == *"--json autoMergeRequest"* ]]; then
-  echo '{"state":"ENABLED"}'
+  [ "$FAKE_ARMED" = yes ] && echo '{"state":"ENABLED"}'
 elif [[ "$*" == *"--json headRefOid"* ]]; then
   echo "$FAKE_CURRENT_HEAD"
 fi
+exit 0
 `,
         { mode: 0o755 },
       );
 
-      const runDisarm = (headSha: string, currentHead: string) => {
+      const runDisarm = ({ eventHead, liveHead, armed = true }: { eventHead: string; liveHead: string; armed?: boolean }) => {
         writeFileSync(callLog, '');
+        const env = stepEnvironment(disarm, {
+          github: { event: { pull_request: { html_url: 'https://github.com/koala73/worldmonitor/pull/1', head: { sha: eventHead } } }, sha: 'merge-commit-sha' },
+          secrets: { GITHUB_TOKEN: 'token' },
+        });
         execFileSync('bash', ['-c', disarm.run as string], {
           env: {
+            ...env,
             PATH: `${workDir}:${process.env.PATH}`,
-            PR_URL: 'https://example.invalid/pr/1',
-            HEAD_SHA: headSha,
-            FAKE_CURRENT_HEAD: currentHead,
-            GH_TOKEN: 'x',
+            FAKE_CURRENT_HEAD: liveHead,
+            FAKE_ARMED: armed ? 'yes' : 'no',
             GITHUB_ACTOR: 'a-maintainer',
           },
           stdio: 'pipe',
@@ -2693,13 +2981,19 @@ fi
       };
 
       // This run's own head is still the PR's live head: disarm for real.
-      assert.match(runDisarm('abc123', 'abc123'), /--disable-auto/, 'a genuinely stale run must still disarm');
+      assert.match(runDisarm({ eventHead: 'abc123', liveHead: 'abc123' }), /--disable-auto/, 'a genuinely stale run must still disarm');
       // A newer run already moved the head before this stale run reached the
       // API: it must not disarm what the newer run may have just armed.
       assert.doesNotMatch(
-        runDisarm('abc123', 'def456'),
+        runDisarm({ eventHead: 'abc123', liveHead: 'def456' }),
         /--disable-auto/,
         'a run racing behind a newer head must leave the decision to the run evaluating that head',
+      );
+      // Nothing armed, nothing to revoke.
+      assert.doesNotMatch(
+        runDisarm({ eventHead: 'abc123', liveHead: 'abc123', armed: false }),
+        /--disable-auto/,
+        'an unarmed PR must not be touched',
       );
     } finally {
       rmSync(workDir, { recursive: true, force: true });
@@ -2727,6 +3021,14 @@ fi
       assert.equal(trustedFor('actions/checkout, tauri-apps/tauri-action'), 'trusted=false', 'one untrusted action withholds the group');
       assert.equal(trustedFor('actions-rs/toolchain'), 'trusted=false', 'a look-alike org is not a trusted org');
       assert.equal(trustedFor(''), 'trusted=false', 'no names reported must not read as all trusted');
+      // The list is comma-separated; a name must not be able to hide behind a
+      // trusted neighbour when the separator is missing a space, or a prefix
+      // that merely starts like a trusted org.
+      assert.equal(trustedFor('actions/checkout,tauri-apps/tauri-action'), 'trusted=false', 'no space after the comma');
+      assert.equal(trustedFor(' actions/checkout , docker/build-push-action '), 'trusted=true', 'stray spaces around names');
+      for (const lookAlike of ['githubnext-fork/x', 'github-evil/x', 'docker-practice/x', 'dockerhub/x']) {
+        assert.equal(trustedFor(lookAlike), 'trusted=false', `${lookAlike} is not a trusted org`);
+      }
     } finally {
       rmSync(outputDir, { recursive: true, force: true });
     }
@@ -2747,6 +3049,12 @@ fi
     // fail anything at runtime -- auto-merge just silently stops arming, which
     // looks exactly like a quiet week.
     assert.deepEqual(Object.keys(actions.groups), [expected[1]]);
+    // The same silence follows from a group that no longer carries the bumps:
+    // version updates only (a security-updates group never reaches the
+    // dependency-group output the workflow reads) and every action in it.
+    const group = (actions.groups as Record<string, { 'applies-to'?: string; patterns?: string[] }>)[expected[1]];
+    assert.equal(group['applies-to'], 'version-updates');
+    assert.deepEqual(group.patterns, ['*']);
   });
 
   it('keeps update-types off the github-actions group so major bumps still get proposed', () => {
@@ -2776,7 +3084,10 @@ fi
     // Three entries were folded into one; a directory dropped in that fold
     // silently stops getting base bumps.
     assert.equal(docker.length, 1);
-    assert.deepEqual([...(docker[0].directories ?? [])].sort(), ['/', '/consumer-prices-core', '/docker']);
+    // Derived from the Dockerfiles that exist, so a new one in a new directory
+    // is flagged here instead of silently never getting a base bump.
+    const dockerfileDirectories = [...new Set(collectDockerfiles().map((file) => (dirname(file) === '.' ? '/' : `/${dirname(file)}`)))].sort();
+    assert.deepEqual([...(docker[0].directories ?? [])].sort(), dockerfileDirectories);
     // A Node or Postgres major is a deliberate migration, never a grouped
     // base-image refresh.
     for (const name of ['node', 'postgres']) {
@@ -2785,6 +3096,10 @@ fi
     }
     // Digest-only bumps (the common case) carry no semver update type, so a
     // filter would leave them ungrouped.
-    assert.equal(docker[0].groups?.['docker-base-images']?.['update-types'], undefined);
+    const dockerGroups = Object.values(docker[0].groups ?? {});
+    assert.ok(dockerGroups.length > 0, 'the docker entry must keep its group');
+    for (const group of dockerGroups) {
+      assert.equal(group['update-types'], undefined);
+    }
   });
 });

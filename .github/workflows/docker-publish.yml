@@ -51,10 +51,21 @@ on:
     #
     # The list below matches everything, then excludes only what plainly
     # cannot reach the served output: tests, e2e, docs, desktop (src-tauri),
-    # agent/editor metadata directories, CI workflow files, and Markdown. A
-    # future top-level directory that is genuinely build-irrelevant needs an
-    # exclusion added here to stay quiet; one that IS build-relevant needs no
-    # entry at all, which is the safer direction for a filter to fail in.
+    # agent/editor metadata directories, CI workflow files, and Markdown at the
+    # repository root. A future top-level directory that is genuinely
+    # build-irrelevant needs an exclusion added here to stay quiet; one that IS
+    # build-relevant needs no entry at all, which is the safer direction for a
+    # filter to fail in.
+    #
+    # Markdown is excluded at the root ONLY, never as `**/*.md`: nested
+    # Markdown is not necessarily documentation. vite copies public/ into
+    # dist/ and nginx serves it as it is, so the root pages the sitemap lists
+    # (public/pricing.md, support.md, mcp-server.md, ...) and
+    # public/.well-known/**/SKILL.md are the image's content, and
+    # build:crawlable-corpus lists blog-site/src/content/blog/ to decide which
+    # blog links its pages render. .dockerignore's `*.md` has the same
+    # root-only reach, and the build reads no root Markdown other than
+    # CHANGELOG.md, which is re-included below.
     #
     # `paths` with negations rather than `paths-ignore`, because two inputs
     # inside the excluded globs are rendered into the image and must win them
@@ -67,12 +78,12 @@ on:
     #
     # This is what makes the schedule below a backstop rather than the primary
     # mechanism: a Dependabot base-image bump or an ordinary application change
-    # now republishes `latest` within minutes of merging, not up to six days
+    # now republishes `latest` within minutes of merging, not up to a week
     # later. Action bumps live under .github/ and do not trigger it; they reach
     # the image with the next rebuild.
     paths:
       - '**'
-      - '!**/*.md'
+      - '!*.md'
       - '!.github/**'
       - '!.agents/**'
       - '!.claude/**'
@@ -179,7 +190,7 @@ jobs:
           # `latest` was gated on the event being a release, which is why it had
           # never been published. It now follows the default branch too: a
           # scheduled run always runs there, and a manual dispatch from main can
-          # repair `latest` after a failed weekly run without cutting a release.
+          # repair `latest` after a failed rebuild without cutting a release.
           # A dispatch from any other branch still publishes its `sha-*` tag
           # alone, so `latest` cannot be moved onto a feature branch by hand.
           tags: |
@@ -315,6 +326,11 @@ jobs:
       - name: Report a failed rebuild of main
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job has no checkout, so there is no git remote for gh to read
+          # the repository from: it would stop at "not a git repository" and the
+          # alarm would go silent for every failure it exists to report. The
+          # step used to sit in the build job, whose checkout hid the gap.
+          GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TITLE: 'Docker rebuild of main failed'
         run: |

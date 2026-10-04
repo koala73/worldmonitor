@@ -6,7 +6,11 @@ updates:
     # minor/patch case is auto-merged by
     # .github/workflows/dependabot-auto-merge.yml once the required checks
     # pass, so a shorter interval shortens the delay before a fix lands without
-    # adding review work. A group carrying a major still waits for a human.
+    # adding review work. A group carrying a major still waits for a human, and
+    # so does one that bumps an action proto-check.yml pins (checkout,
+    # setup-node, setup-go, cache, upload/download-artifact): the proto trust
+    # model wants an owner push for it, which disarms auto-merge on purpose.
+    # That workflow's header spells out the reach.
     schedule:
       interval: "daily"
     # The default is 5, and it caps VERSION updates only — the same distinction
@@ -56,13 +60,14 @@ updates:
     # image genuinely fresher, because every FROM line in the repository is
     # pinned to an immutable digest and tests/ci-workflow-coverage.test.mts
     # requires it. On a weekly interval a base fix could sit unproposed for
-    # seven days before the weekly rebuild in docker-publish.yml could even see
-    # it.
+    # seven days before there was anything to merge; once merged, a bump
+    # republishes `latest` through docker-publish.yml's push trigger.
     schedule:
       interval: "daily"
-    # More Dockerfiles live under these three directories than the default cap
-    # of 5 allows for, so a slow week of reviews can silently stop new base
-    # bumps from being proposed at all.
+    # Many Dockerfiles share these three directories. Grouping should keep the
+    # open PRs well under the default cap of 5, but if the group ever splits or
+    # a bump falls outside it, a slow week of reviews would fill that cap and
+    # silently stop new base bumps from being proposed at all.
     open-pull-requests-limit: 99
     ignore:
       # Hold the Node base image at the current LTS major (24). Dependabot still
@@ -70,10 +75,12 @@ updates:
       # deliberate manual step once it reaches LTS. See PR #4709.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
-      # Same treatment for the Umami Postgres base (Dockerfile.umami,
-      # Dockerfile.umami-retention): a Postgres major is a data-migration
-      # decision, never a base-image refresh, and without this rule it would
-      # join the group below like any other bump.
+      # Same treatment for the postgres image Dockerfile.umami-retention builds
+      # from: tests/umami-runtime-remediation.test.mjs pins postgres:18-alpine,
+      # so a major would turn the unit shards red until a human edits that
+      # test. It is a deliberate step, never part of a grouped base-image
+      # refresh, and without this rule it would join the group below like any
+      # other bump.
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
     groups:
