@@ -2,6 +2,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, PRO_USER_ID, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
+import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 import { admitCountryPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 
 const originalEnv = { ...process.env };
@@ -52,6 +53,33 @@ async function open(deps) {
 const energy = token => ({ section: 'energy', arguments: { country_code: 'US' }, panel_request: token });
 
 describe('bounded panel reads with an enabled minute limiter', () => {
+  it('reads exhausted allowance through the shared protocol bucket without daily or panel reservation', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    pipe.store.set(dailyCounterKey(PRO_USER_ID), '50');
+    counts.set(userBucket, 60);
+    for (let i = 0; i < 192; i++) {
+      const result = await invoke(deps, 'get_mcp_allowance', {});
+      assert.equal(result.body.error, undefined, `status ${i + 1}`);
+      assert.equal(result.body.result.structuredContent.remaining, 0);
+    }
+    const denied = await invoke(deps, 'get_mcp_allowance', {});
+    assert.equal(denied.body.error?.code, -32029);
+    assert.equal(denied.response.headers.get('X-RateLimit-Limit'), '192');
+    assert.equal(pipe.count, 50);
+    assert.equal(fetched.length, 0);
+    assert.ok(calls.every(call => call.tokens === 192 && call.key.endsWith(`pro-protocol:${PRO_USER_ID}`)));
+    assert.equal(counts.get(userBucket), 60);
+  });
+
+  it('shares callable status limits across OAuth and user-key doors', async () => {
+    const keyed = makeProDeps({ resolveBearerToContext: async () => ({ kind: 'user_key', userId: PRO_USER_ID }) }).deps;
+    const oauth = makeProDeps().deps;
+    for (let i = 0; i < 192; i++) assert.equal((await invoke(i % 2 ? keyed : oauth, 'get_mcp_allowance', {})).body.error, undefined);
+    assert.equal((await invoke(oauth, 'get_mcp_allowance', {})).body.error?.code, -32029);
+    assert.equal(counts.get(userBucket), undefined);
+    assert.equal(fetched.length, 0);
+  });
+
   it('bounds market receipt replays separately from ordinary account calls', async () => {
     const { deps, pipe } = makeProDeps();
     const context = { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: 'k57mcptokenid' };

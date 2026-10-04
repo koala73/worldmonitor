@@ -3377,6 +3377,42 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   COMPANY_INTEL_TOOL,
   {
+    name: 'get_mcp_allowance',
+    _outputBudgetBytes: 4096,
+    description: 'Read the authenticated account remaining MCP allowance and UTC reset time without spending a daily allocation. Includes free-account request-window status and whether REST shares the budget. No account selector or provider-data calls. Unavailable counter state returns an error.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        access: { type: 'string', enum: ['subscription', 'free-account'] },
+        used: { type: 'integer', minimum: 0 },
+        limit: { type: ['integer', 'null'], minimum: 0 },
+        remaining: { type: ['integer', 'null'], minimum: 0 },
+        resetsAt: { type: 'string', format: 'date-time' },
+        requestWindows: {
+          type: ['object', 'null'],
+          properties: {
+            used: { type: 'integer', minimum: 0 },
+            limit: { type: 'integer', minimum: 0 },
+            remaining: { type: 'integer', minimum: 0 },
+            idleGapMs: { type: 'integer', minimum: 0 },
+            active: { type: 'boolean' },
+            expiresAt: { type: ['string', 'null'], format: 'date-time' },
+          },
+          required: ['used', 'limit', 'remaining', 'idleGapMs', 'active', 'expiresAt'],
+        },
+        sharedWithRestApi: { type: 'boolean' },
+      },
+      required: ['access', 'used', 'limit', 'remaining', 'resetsAt', 'requestWindows', 'sharedWithRestApi'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (_params, _base, _context, execution) => {
+      if (!execution?.readAccountAllowance) throw new Error('Account allowance reader is unavailable.');
+      return execution.readAccountAllowance();
+    },
+    _apiPaths: [],
+  },
+  {
     // describe_tool (v1.5.0) — on-demand escape hatch for the full
     // uncompressed tool definition. tools/list (default) emits each tool's
     // description compressed to ≤TOOL_DESCRIPTION_MAX_BYTES (first sentence

@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mcpHandler } from '../api/mcp/handler.ts';
-import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
+import { SHARED_API_BUDGET } from '../api/mcp/quota.ts';
+import { apiKeyDailyKey } from '../server/_shared/api-key-rate-limit.ts';
+import { envPrefix } from '../server/_shared/pro-mcp-token.ts';
+import { TOOL_REGISTRY, toolAccess, buildPublicTool, isQuotaExemptMetadataTool } from '../api/mcp/registry/index.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 import { READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT } from '../shared/free-account-allowance-scripts.mjs';
 import { BASE_URL, HMAC_SECRET, PRO_USER_ID, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
@@ -28,7 +32,7 @@ function fixture({ free = false, raw = '50', limit = 50, kind = 'pro' } = {}) {
   });
   deps.redisPipeline = async commands => {
     observed.push(...commands);
-    return commands.map(([op]) => ({ result: op === 'EVAL' ? raw : raw }));
+    return commands.map(() => ({ result: raw }));
   };
   return { deps, pipe, observed };
 }
@@ -47,18 +51,24 @@ describe('callable authenticated allowance', () => {
     assert.deepEqual(tool.inputSchema.properties, {});
     assert.deepEqual(tool._apiPaths, []);
     assert.equal(tool.annotations.readOnlyHint, true);
+    assert.equal(isQuotaExemptMetadataTool({ ...tool, name: 'get_mcp_allowance_extra' }), false);
     const { deps } = fixture();
     const result = await invoke(deps, callBody('describe_tool', { tool_name: tool.name }));
     const described = JSON.parse(result.body.result.content[0].text);
     assert.equal(described.name, tool.name);
     assert.equal(described.inputSchema.properties.summary, undefined);
-    assert.equal(described.outputSchema.properties.sharedWithRestApi.type, 'boolean');
+    assert.equal(described.outputSchema.anyOf[0].properties.sharedWithRestApi.type, 'boolean');
+    const listed = await invoke(deps, { jsonrpc: '2.0', id: 302, method: 'tools/list', params: { verbose: true } });
+    const advertised = listed.body.result.tools.find(entry => entry.name === tool.name);
+    assert.equal(advertised._meta['worldmonitor/access'], 'free-account');
+    assert.deepEqual(advertised.outputSchema, described.outputSchema);
   });
 
   for (const kind of ['pro', 'user_key']) {
     for (const entry of [
       { label: 'exhausted paid', raw: '50', limit: 50 },
       { label: 'first paid', raw: null, limit: 50 },
+      { label: 'zero paid', raw: '3', limit: 0 },
       { label: 'unlimited paid', raw: '61', limit: null },
       { label: 'exhausted free', free: true, raw: ['5', '3', -2] },
       { label: 'first free', free: true, raw: [null, null, -2] },
@@ -70,12 +80,45 @@ describe('callable authenticated allowance', () => {
       const status = JSON.parse(called.body.result.content[0].text);
       assert.deepEqual(status, JSON.parse(resource.body.result.contents[0].text));
       assert.deepEqual(called.body.result.structuredContent, status);
+      const tool = TOOL_REGISTRY.find(entry => entry.name === 'get_mcp_allowance');
+      const ajv = new Ajv2020({ allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false });
+      const validate = ajv.compile(buildPublicTool(tool, { compressDescriptions: false }).outputSchema);
+      assert.equal(validate(status), true, JSON.stringify(validate.errors));
       assert.match(called.response.headers.get('Cache-Control'), /no-store/);
       assert.equal(observed.length, 2);
       if (entry.free) assert.ok(observed.every(command => command[0] === 'EVAL' && command[1] === READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT));
       else assert.deepEqual(observed, [['GET', dailyCounterKey(PRO_USER_ID)], ['GET', dailyCounterKey(PRO_USER_ID)]]);
     });
   }
+
+  it('keeps enforced API REST sharing and shadow counter selection exact for both credential doors', async () => {
+    for (const kind of ['pro', 'user_key']) for (const enforce of [false, true]) {
+      process.env.API_RATE_LIMIT_ENFORCE = String(enforce);
+      const { deps, observed } = fixture({ kind });
+      deps.getEntitlements = async () => ({ planKey: 'api_starter', features: { tier: 2, mcpAccess: true, planLimits: { mcpCallsPerDay: SHARED_API_BUDGET, apiRequestsPerDay: 1000 } }, validUntil: Date.now() + 86400000 });
+      const called = await invoke(deps, allowanceCall({}));
+      const resource = await invoke(deps, resourceCall);
+      const status = called.body.result.structuredContent;
+      assert.deepEqual(status, JSON.parse(resource.body.result.contents[0].text));
+      assert.equal(status.limit, 1000);
+      assert.equal(status.sharedWithRestApi, enforce);
+      assert.deepEqual(observed, [
+        ['GET', enforce ? `${envPrefix()}${apiKeyDailyKey(PRO_USER_ID)}` : dailyCounterKey(PRO_USER_ID)],
+        ['GET', enforce ? `${envPrefix()}${apiKeyDailyKey(PRO_USER_ID)}` : dailyCounterKey(PRO_USER_ID)],
+      ]);
+    }
+  });
+
+  it('never converts impossible free snapshots into successful numeric status', async () => {
+    for (const raw of [[], ['1', null, -2], ['0', '1', 60000], [null, null, 60000], ['1', '1', -1], ['bad', '1', -2], [undefined, undefined, -2]]) {
+      const { deps, observed } = fixture({ free: true, raw });
+      const called = await invoke(deps, allowanceCall({}));
+      assert.equal(called.body.error?.code, -32603, JSON.stringify(raw));
+      assert.equal(called.body.result, undefined);
+      assert.equal(observed.length, 1);
+      assert.equal(observed[0][1], READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT);
+    }
+  });
 
   it('rejects panel receipts, account selectors and extra arguments before any counter operation', async () => {
     for (const args of [{ panel_request: 'forged' }, { panel_request: null }, { account: 'another-owner' }, { userId: 'another-owner' }, { summary: true }]) {
@@ -106,7 +149,7 @@ describe('callable authenticated allowance', () => {
     const anonymous = await mcpHandler(new Request(BASE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allowanceCall({})) }), deps);
     assert.equal(anonymous.status, 401);
     for (const overrides of [
-      { resolveBearerToContext: async () => ({ kind: 'env_key' }) },
+      { resolveBearerToContext: async () => ({ kind: 'env_key', apiKey: 'operator-key' }) },
       { validateProMcpToken: async () => null },
       { validateProMcpToken: async () => ({ userId: 'other-owner' }) },
       { getEntitlements: async () => null },

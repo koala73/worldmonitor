@@ -45,6 +45,7 @@ export type McpInboundHostClass =
   | 'other';
 
 export interface McpToolExecutionContext {
+  readAccountAllowance?: () => Promise<import('./account-allowance').McpAllowanceStatus>;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
