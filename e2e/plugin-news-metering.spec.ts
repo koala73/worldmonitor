@@ -6,10 +6,11 @@ import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
 
 test.use({ serviceWorkers: 'block' });
 type HostCall = { name: string; arguments: Record<string, unknown> };
-async function installNewsHost(page: Page, deniedInitially = false, serverTools = true) {
+async function installNewsHost(page: Page, deniedInitially = false, serverTools = true, categoryIds = ['world']) {
   const calls: HostCall[] = [];
   let units = 0;
   let viewUpdates = 0;
+  const contexts: Array<{ view: { category?: string }; categoryLabel?: string }> = [];
   let denied = deniedInitially;
   let failHazards = false;
   let delayRefresh = false;
@@ -27,7 +28,10 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
   await page.exposeFunction('newsHost', async (method: string, params: HostCall) => {
     if (method === 'ui/initialize') return { hostCapabilities: { ...(serverTools ? { serverTools: {} } : {}), updateModelContext: {} }, hostContext: { theme: 'dark' } };
-    if (method === 'ui/update-model-context') viewUpdates++;
+    if (method === 'ui/update-model-context') {
+      viewUpdates++;
+      contexts.push(JSON.parse((params as unknown as { content: Array<{ text: string }> }).content[0]!.text));
+    }
     if (method !== 'tools/call') return {};
     calls.push(params);
     if (params.name === 'open_news_dashboard') {
@@ -36,7 +40,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
       const id = String(params.arguments.request_id ?? 'initial');
       if (!successfulRefreshes.has(id)) { units++; successfulRefreshes.add(id); }
       const { refresh: _refresh, request_id: _id, ...requestedView } = params.arguments;
-      return { structuredContent: { categories: { world: { items: [article] } }, coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } } };
+      return { structuredContent: { categories: Object.fromEntries(categoryIds.map((category, index) => [category, { items: index === 0 ? [article] : [] }])), coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } } };
     }
     if (params.name === 'get_natural_disasters') {
       if (delayHazards) await delayedHazards;
@@ -65,8 +69,39 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
   }, html);
-  return { calls, get units() { return units; }, get viewUpdates() { return viewUpdates; }, deny: () => { denied = true; }, delayRefresh: () => { delayRefresh = true; }, releaseRefresh, delayHazards: () => { delayHazards = true; }, releaseHazards, failHazards: () => { failHazards = true; }, recoverHazards: () => { failHazards = false; } };
+  return { calls, contexts, get units() { return units; }, get viewUpdates() { return viewUpdates; }, deny: () => { denied = true; }, delayRefresh: () => { delayRefresh = true; }, releaseRefresh, delayHazards: () => { delayHazards = true; }, releaseHazards, failHazards: () => { failHazards = true; }, recoverHazards: () => { failHazards = false; } };
 }
+
+
+test('news category receipts retain the visible label without loading data', async ({ page }, info) => {
+  const host = await installNewsHost(page, false, true, ['politics', 'fixture']);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginUsage')).toContainText('49 of 50 requests remaining');
+  const initialCalls = host.calls.length;
+  await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
+  await page.screenshot({ path: info.outputPath('news-category-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 430, height: 1500 });
+  await page.screenshot({ path: info.outputPath('news-category-mobile.png'), fullPage: true });
+  await page.evaluate(() => {
+    const frame = document.querySelector('iframe')!;
+    window.addEventListener('message', event => {
+      if (event.source === frame.contentWindow && event.data.id === 'category-receipt') {
+        (window as unknown as { categoryReceipt: object }).categoryReceipt = event.data.result.structuredContent;
+      }
+    });
+    frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'category-receipt', method: 'tools/call', params: { name: 'apply_news_view', arguments: { category: 'politics' } } }, '*');
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { categoryReceipt: object }).categoryReceipt)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
+  await frame.getByRole('combobox', { name: 'News category' }).selectOption('fixture');
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'fixture' }, categoryLabel: 'fixture' });
+  await frame.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ categoryLabel: 'All news panels' });
+  expect(host.contexts.at(-1)?.view.category).toBeUndefined();
+  expect(host.calls).toHaveLength(initialCalls);
+  expect(host.units).toBe(1);
+  await writeFile(info.outputPath('news-category-receipts.json'), JSON.stringify(host.contexts, null, 2));
+});
 
 test('news and map hydration share one request, toggles reuse data and refresh charges once', async ({ page }, info) => {
   const host = await installNewsHost(page);
