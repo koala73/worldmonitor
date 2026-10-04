@@ -93,8 +93,10 @@ test('news category receipts retain the visible label without loading data', asy
   await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
   await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option:checked')).toHaveText('World News');
   await expect(frame.locator('[data-panel="politics"]')).toContainText('Controlled earthquake report in Japan');
+  await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
   await page.screenshot({ path: info.outputPath('news-category-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 1500 });
+  await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
   await page.screenshot({ path: info.outputPath('news-category-mobile.png'), fullPage: true });
   await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
   await page.evaluate(() => {
