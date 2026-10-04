@@ -270,6 +270,10 @@ test('narrow news cards select the initial renderer from input capabilities', as
     });
     try {
       const page = await context.newPage();
+      await page.route(/^https:\/\/(tiles\.openfreemap\.org\/styles\/|basemaps\.cartocdn\.com\/gl\/)/, route => route.fulfill({
+        json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#111111' } }] },
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      }));
       await page.addInitScript(() => {
         const getExtension = WebGL2RenderingContext.prototype.getExtension;
         WebGL2RenderingContext.prototype.getExtension = function (name) {
