@@ -26,13 +26,14 @@ async function mount(data = payload([forecast])) {
   windows.push(win);
   win.document.write(FORECASTS_APP_HTML);
   win.eval(win.document.querySelector('script').textContent);
-  const send = value => win.dispatchEvent(new win.MessageEvent('message', {
+  const sendResult = result => win.dispatchEvent(new win.MessageEvent('message', {
     source: win.eval('window.parent'),
-    data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } },
+    data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result } },
   }));
+  const send = value => sendResult({ content: [{ type: 'text', text: JSON.stringify(value) }] });
   send(data);
   await win.happyDOM.waitUntilComplete();
-  return { win, doc: win.document, send };
+  return { win, doc: win.document, send, sendResult };
 }
 afterEach(async () => { await Promise.all(windows.splice(0).map(win => win.happyDOM.close())); });
 
@@ -48,6 +49,31 @@ describe('forecast MCP analysis parity', () => {
     }
     assert.match(doc.getElementById('list').textContent, /rising.*7 days/);
     assert.match(doc.querySelector('.fc-meta').textContent, /AI backed.*AI signal \(moderate\).*\+10%/);
+  });
+  it('renders full and sampled forecasts from the dispatcher projection envelope', async () => {
+    const { doc, sendResult } = await mount({ data: { predictions: null } });
+    sendResult({ structuredContent: { projection: payload([forecast]) }, content: [{ type: 'text', text: JSON.stringify({ data: { predictions: null } }) }] });
+    assert.equal(doc.querySelectorAll('.fc').length, 1, 'structured projected forecasts must override the fallback text');
+    assert.match(doc.querySelector('details').textContent, /Supporting observation \(80%\).*Controlled actor/);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-03T17:00:00Z/);
+    sendResult({ structuredContent: { projection: { ...payload({ count: 14, sample: [{ ...forecast, probability: null }] }, { degraded: true, stale: true }), stale: true } } });
+    assert.equal(doc.querySelectorAll('.fc').length, 1);
+    assert.match(doc.getElementById('count').textContent, /1 of 14 loaded/);
+    assert.equal(doc.querySelector('.fc-prob').textContent, '—');
+    assert.equal(doc.querySelector('.pbar'), null);
+    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z.*Snapshot: 2026-10-03T17:00:00Z.*source degraded.*stale cache/);
+  });
+  it('keeps projected unknown, empty and malformed coverage distinct and replaces prior forecasts', async () => {
+    const { doc, sendResult } = await mount();
+    sendResult({ structuredContent: { projection: payload([]) } });
+    assert.equal(doc.querySelectorAll('.fc').length, 0);
+    assert.match(doc.getElementById('list').textContent, /No forecasts available/);
+    for (const projection of [null, [], { data: { predictions: null } }]) {
+      sendResult({ structuredContent: { projection }, content: [{ type: 'text', text: JSON.stringify(payload([forecast])) }] });
+      assert.equal(doc.querySelectorAll('.fc').length, 0, 'an unknown projection must not fall back to unrelated prior/text forecasts');
+      assert.match(doc.getElementById('list').textContent, /Forecast data unavailable/);
+      assert.doesNotMatch(doc.getElementById('count').textContent, /0 of 0/);
+    }
   });
   it('filters every loaded forecast locally without host tool calls or fetches', async () => {
     const { win, doc } = await mount(payload(Array.from({ length: 15 }, (_, i) => ({ ...forecast, title: `Forecast ${i + 1}`, domain: i === 14 ? 'conflict' : 'energy', region: i === 14 ? 'Asia' : 'Europe' }))));
