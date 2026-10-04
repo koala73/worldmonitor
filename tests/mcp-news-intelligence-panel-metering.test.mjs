@@ -9,6 +9,7 @@ import { writeFileSync, readFileSync } from 'node:fs';
 
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
+const OriginalDate = Date;
 const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
@@ -36,7 +37,11 @@ describe('News Intelligence closed paid admission', () => {
   const value = result => result.body.result.structuredContent.projection ?? result.body.result.structuredContent;
   const cache = bundle => [...bundle.pipe.store].filter(([key]) => key.includes(':data:'));
   beforeEach(async () => {
-    now = start; Date.now = () => now; fetched = []; advanceOnSource = null;
+    now = start;
+    globalThis.Date = class extends OriginalDate {
+      constructor(...args) { if (args.length) super(...args); else super(now); }
+      static now() { return now; }
+    }; fetched = []; advanceOnSource = null;
     Object.assign(process.env, { MCP_INTERNAL_HMAC_SECRET: HMAC_SECRET, MCP_TELEMETRY: 'false', USAGE_TELEMETRY: 'false', UPSTASH_REDIS_REST_URL: 'https://intelligence-fixture.invalid', UPSTASH_REDIS_REST_TOKEN: 'fixture-no-credential' });
     sources = payload();
     globalThis.fetch = async url => {
@@ -49,7 +54,7 @@ describe('News Intelligence closed paid admission', () => {
     handler = (await import('../api/mcp.ts')).mcpHandler;
   });
   afterEach(() => {
-    globalThis.fetch = originalFetch; Date.now = originalNow;
+    globalThis.fetch = originalFetch; globalThis.Date = OriginalDate; Date.now = originalNow;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
