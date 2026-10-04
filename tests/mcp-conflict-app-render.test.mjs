@@ -71,7 +71,7 @@ after(() => {
 });
 
 async function result(args = {}, state = 'normal') {
-  activeEvents = state === 'large' ? largeEvents : events;
+  activeEvents = state === 'large' ? largeEvents : state === 'empty' ? [] : events;
   missingUcdp = state === 'missing';
   const { deps } = makeProDeps();
   const response = await handler(proReq('POST', callBody('get_conflict_events', args)), deps);
@@ -140,6 +140,13 @@ describe('Conflict Events actual-handler supported envelopes', () => {
       assert.equal(doc.querySelectorAll('.evt').length, 14);
       assert.ok(doc.getElementById('foot').textContent.includes('Source response includes ' + data.truncation.returned_event_count + ' of 160 events (output limit).'));
       assert.match(doc.getElementById('foot').textContent, /\(stale\)/);
+    });
+  });
+  it('keeps an authoritative empty projected list distinct from a missing source', async () => {
+    const wire = await result({ jmespath: '@' }, 'empty');
+    await mount(wire, doc => {
+      assert.equal(doc.querySelectorAll('.evt').length, 0);
+      assert.equal(doc.getElementById('list').textContent, 'No conflict events available.');
     });
   });
   it('replaces loaded rows with a later missing-source result', async () => {
