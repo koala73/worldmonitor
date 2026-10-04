@@ -1930,9 +1930,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `panel_request` | string | 自然灾害面板凭据，或已有新闻凭据的固定受限地图读取。 |
-| `refresh` | boolean | 付费独立面板刷新扣一次新额度；省略 `panel_request` 并提供 UUID 格式的 `request_id`。 |
-| `request_id` | string (UUID) | 同一刷新 UUID 的重试复用该分配。 |
+| `panel_request` | string | 服务器签发的自然灾害面板凭据，或已有新闻凭据的固定受限地图读取。普通付费打开时省略；新闻凭据不能扩大地图读取范围。 |
+| `refresh` | boolean | 仅限付费独立面板。显式开始一次新分配，省略 panel_request 并提供 UUID 格式的 request_id。 |
+| `request_id` | string | 付费独立面板的刷新标识。同一 UUID 的重试复用该分配。 |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | 限制为一个或多个灾害数据集（地震 / 野火 / 其他自然事件）。省略则返回全部。 |
 | `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
 | `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |

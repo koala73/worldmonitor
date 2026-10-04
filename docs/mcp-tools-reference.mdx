@@ -2470,9 +2470,9 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 
 | Name | Type | Description |
 |------|------|-------------|
-| `panel_request` | string | Server-issued Natural Disasters token, or the existing news token for its exact bounded map reads. |
-| `refresh` | boolean | Paid standalone refresh opens one new allocation. Omit `panel_request` and supply a UUID `request_id`. |
-| `request_id` | string (UUID) | Retrying the same paid refresh UUID reuses its allocation. |
+| `panel_request` | string | Server-issued Natural Disasters panel token, or the existing news token for its exact bounded map reads. Omit for an ordinary paid opening; a news token cannot widen its map scope. |
+| `refresh` | boolean | Paid standalone panel only. Explicitly open one new allocation. Omit panel_request and supply a UUID request_id. |
+| `request_id` | string | Paid standalone refresh identity. Retrying the same UUID reuses that allocation. |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
 | `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
