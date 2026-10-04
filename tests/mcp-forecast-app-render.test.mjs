@@ -88,7 +88,7 @@ describe('forecast MCP analysis parity', () => {
     details.dispatchEvent(new win.Event('toggle'));
     const calls = messages.filter(m => m.method === 'tools/call');
     assert.equal(calls.length, 1, 'first user expansion must request the original dossier once');
-    assert.deepEqual(calls[0].params, { name: 'get_forecast_case', arguments: { forecast_id: forecast.id, generated_at: String(Date.parse('2026-10-03T16:55:00Z')), panel_request: 'signed-panel' } });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0].params)), { name: 'get_forecast_case', arguments: { forecast_id: forecast.id, generated_at: String(Date.parse('2026-10-03T16:55:00Z')), panel_request: 'signed-panel' } });
     const result = { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } };
     reply(calls[0].id, result, win);
     reply('wrong-request', result);
@@ -109,6 +109,22 @@ describe('forecast MCP analysis parity', () => {
     doc.querySelector('details').dispatchEvent(new win.Event('toggle'));
     assert.match(doc.querySelector('details').textContent, /Supporting observation/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 1, 'loaded evidence and filter navigation must reuse the original case');
+  });
+  it('delivers an in-flight original case to the current filtered row without a duplicate read', async () => {
+    const { win, doc, messages } = await mount({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'signed-panel' } });
+    const reply = (id, result) => win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', id, result } }));
+    reply(1, { hostCapabilities: { serverTools: {} } });
+    doc.querySelector('details').open = true;
+    doc.querySelector('details').dispatchEvent(new win.Event('toggle'));
+    const call = messages.find(m => m.method === 'tools/call');
+    const domain = doc.getElementById('domain');
+    domain.value = 'energy';
+    domain.dispatchEvent(new win.Event('change'));
+    doc.querySelector('details').open = true;
+    doc.querySelector('details').dispatchEvent(new win.Event('toggle'));
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+    reply(call.id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
+    assert.match(doc.querySelector('details').textContent, /Supporting observation \(80%\)/);
   });
   it('does not use a missing capability, unsigned result, or absent case as permission to fetch', async () => {
     const compact = { ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'signed-panel' } };
@@ -161,7 +177,7 @@ describe('forecast MCP analysis parity', () => {
     };
     doc.querySelector('details').open = true;
     doc.querySelector('details').dispatchEvent(new win.Event('toggle'));
-    assert.equal(typeof expire, 'function', 'a detail request must have a bounded15second timeout');
+    assert.equal(typeof expire, 'function', 'a detail request must have a bounded 15-second timeout');
     expire();
     assert.match(doc.querySelector('details').textContent, /timed out/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
