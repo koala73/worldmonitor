@@ -247,7 +247,10 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(selectCountryHeadlines(payload.countries.PW.items, 'PW')), null);
   });
 
-  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async () => {
+  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async (t) => {
+    const now = Date.now();
+    let clockTicks = 0;
+    t.mock.method(Date, 'now', () => now + clockTicks++ * 1000);
     // #8398 ingest gate: links must belong to the item's own publisher. The
     // fixture hosts stand in for the feeds' own publisher domains — the
     // registered Africa News / Sahel Crisis feeds are Google News searches,
