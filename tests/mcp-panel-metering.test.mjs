@@ -928,6 +928,10 @@ describe('paid prediction panel through the MCP handler', () => {
     const { admitPredictionPanel } = await import('../api/mcp/panel-requests.ts');
     const grant = await admitPredictionPanel(context, budget, pipe.pipeline, {});
     const reader = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token);
+    for (const value of [null, false, 0, 'unknown', []]) {
+      await reader.save(value);
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
     for (const bootstrap of [null, { tech: [] }, { geopolitical: [], tech: [], finance: [], unavailable: true }, { geopolitical: [], tech: [], finance: [], upstreamUnavailable: true }, { geopolitical: [], tech: [], finance: [], rateLimited: true }, { geopolitical: [], tech: [], finance: [], error: 'unavailable' }]) {
       await reader.save({ cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': bootstrap } });
       assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
