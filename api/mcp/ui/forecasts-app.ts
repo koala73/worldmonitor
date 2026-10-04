@@ -159,6 +159,9 @@ const RENDER = `
               && stringArray(theater.stabilizers) && theater.stabilizers.length <= 3 && stringArray(theater.invalidators) && theater.invalidators.length <= 2;
           });
         if (!valid) { failure("Original theater response is invalid."); return; }
+        if (["unavailable", "missing", "processing", "failed"].indexOf(value.status) >= 0 && theaterState.value && theaterState.value.theaters.length) {
+          failure("Latest theater read: " + value.status + (value.error ? " · " + value.error : "") + ". Previously loaded evidence remains visible; freshness unknown."); return;
+        }
         cancel(); theaterState.value = Object.assign({}, value, { theaters: theaters }); renderTheaters();
       }
       theaterState.cancel = cancel;

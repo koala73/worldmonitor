@@ -125,6 +125,19 @@ describe('original forecast theater signed transport', () => {
     assert.deepEqual((await f.invoke('get_forecast_theaters', { panel_request: f.token })).result.structuredContent.data.forecastTheaters, { ...completed, status: 'ready' });
     assert.equal(f.requests.length, 3);
   });
+  it('does not cache a source that fits the read limit but exceeds the wrapped output limit', async t => {
+    const source = { ...completed, theaterSummariesJson: JSON.stringify([{ ...theaters[0], topPaths: [{ ...theaters[0].topPaths[0], summary: '' }] }]) };
+    const padding = 131050 - Buffer.byteLength(JSON.stringify(source));
+    source.theaterSummariesJson = JSON.stringify([{ ...theaters[0], topPaths: [{ ...theaters[0].topPaths[0], summary: 'x'.repeat(padding) }] }]);
+    assert.equal(Buffer.byteLength(JSON.stringify(source)), 131050);
+    const f = await fixture(t, source);
+    const first = (await f.invoke('get_forecast_theaters', { panel_request: f.token })).result.structuredContent;
+    assert.equal(first.data?.forecastTheaters?.error, 'theater_response_too_large');
+    f.setSource(completed);
+    assert.deepEqual((await f.invoke('get_forecast_theaters', { panel_request: f.token })).result.structuredContent.data.forecastTheaters, { ...completed, status: 'ready' });
+    assert.equal(f.requests.length, 2);
+    assert.equal(f.pipe.count, 1);
+  });
   it('advertises a subscription reader with no run selector, UI opening or producer API', () => {
     const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_theaters');
     assert.equal(toolAccess(tool), 'subscription');

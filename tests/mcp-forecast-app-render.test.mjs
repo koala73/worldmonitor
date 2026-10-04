@@ -104,6 +104,31 @@ describe('original forecast theater UI', () => {
     assert.match(doc.getElementById('theaters').textContent, /invalid/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 2);
   });
+  it('retains partial evidence on unavailable retries, then replaces it with an authoritative empty result', async () => {
+    const { doc, win, messages } = await mount(signedForecasts());
+    enableTools(win);
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.find(m => m.method === 'tools/call'), { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1 });
+    const empty = { ...theaterResponse, theaterCount: 0, theaterSummariesJson: '', eligibleTheaterCount: 0, completionStatus: '' };
+    const missing = { ...empty, found: false, runId: '', generatedAt: 0 };
+    for (const source of [
+      { ...missing, status: 'unavailable', error: 'redis_unavailable' },
+      { ...missing, status: 'missing' },
+      { ...missing, status: 'processing', processing: true },
+      { ...empty, status: 'failed', eligibleTheaterCount: 2, failedTheaterCount: 2, allTheatersFailed: true, completionStatus: 'all_theaters_failed' },
+    ]) {
+      doc.getElementById('load-theaters').click();
+      theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), source);
+      assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+      assert.match(doc.getElementById('theaters').textContent, /Previously loaded evidence remains visible/);
+      assert.ok(doc.getElementById('theaters').textContent.includes(source.status));
+    }
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), { ...empty, status: 'empty', completionStatus: 'no_eligible_theaters' });
+    assert.doesNotMatch(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    assert.match(doc.getElementById('theaters').textContent, /No eligible theaters/);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 6);
+  });
   it('bounds a stalled theater read and ignores a response from outside the host', async () => {
     const { doc, win, messages } = await mount(signedForecasts());
     enableTools(win);

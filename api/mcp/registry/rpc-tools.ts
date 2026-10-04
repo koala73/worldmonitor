@@ -29,6 +29,7 @@ import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import { FORECAST_THEATER_STATUSES, forecastTheaterReadSchema, parseForecastTheaterResult, unavailableForecastTheaters } from '../../../shared/forecast-theaters';
 import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-body';
+import { utf8ByteLength } from '../utils';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
 import {
@@ -2867,7 +2868,11 @@ export const RPC_TOOLS: ToolDef[] = [
       } catch (error) {
         result = unavailableForecastTheaters(error instanceof ResponseBodyTooLargeError ? 'theater_response_too_large' : 'invalid_theater_response');
       }
-      return { data: { forecastTheaters: result } };
+      const output = { data: { forecastTheaters: result } };
+      if (utf8ByteLength(JSON.stringify(output)) > 131072) {
+        return { data: { forecastTheaters: unavailableForecastTheaters('theater_response_too_large') } };
+      }
+      return output;
     },
     _apiPaths: ['GET /api/forecast/v1/get-simulation-outcome'],
   },
