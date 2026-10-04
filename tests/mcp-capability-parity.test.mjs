@@ -332,6 +332,8 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     }
     assert.equal(card.rateLimits.protocolPerMinute, MCP_PROTOCOL_BURST_PER_MINUTE);
     assert.equal(card.rateLimits.panelReadsPerMinute, PANEL_READ_LIMIT);
+    assert.equal(card.rateLimits.panelCachedReadsPerMinute, PANEL_READ_LIMIT);
+    assert.match(notes, /separate 64\/minute uncached-read and 64\/minute cached-replay buckets/);
     assert.match(notes, /Per-minute authenticated limiting bounds all methods/i);
     assert.match(notes, /separate 192\/minute user bucket/i);
     assert.match(notes, /Unsupported methods do not use the protocol bucket/i);

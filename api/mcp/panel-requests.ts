@@ -155,7 +155,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
   return {
-    rateLimitKey: key,
+    rateLimitKey: `${key}:${cached === undefined ? 'read' : 'replay'}`,
     cached,
     reserveUncachedRead: async () => {
       if (cached !== undefined) return;

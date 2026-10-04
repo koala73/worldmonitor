@@ -23,7 +23,8 @@ Ordinary MCP data calls use the plan burst shared by an account's OAuth tokens a
 | API Business (per user) | **300 requests** | 60 s |
 | Enterprise (per user) | **1,000 requests** | 60 s |
 | Data-free protocol (per user) | **192 requests** | 60 s |
-| Validated paid MCP panel (per panel) | **64 requests** | 60 s |
+| Validated paid MCP panel uncached reads (per admission) | **64 requests** | 60 s |
+| Validated paid MCP panel cached replays (per admission) | **64 requests** | 60 s |
 | Legacy operator key (per key) | **60 requests** | 60 s |
 | Anonymous discovery (per IP) | **60 requests** | 60 s |
 | Anonymous `get_sources` (per IP) | **10 requests**, fail-closed | 60 s |
@@ -73,7 +74,7 @@ Pro includes **50 requests per UTC day**. Pro Business includes **250**. Both us
 
 Opening any embedded panel costs **one request**, including its rendered details. The ten single-result widgets already obtain their data in one tool call, and loading a visual shell costs nothing. The country brief and news/maps dashboard also include their internal data calls in that allocation. A country brief includes its section reads, default assessment and source coverage. A news dashboard includes its category panels and bounded hazard snapshots. A request includes up to **64 uncached reads**.
 
-Panel openings retain the account's plan burst limit. Internal reads with a valid paid panel admission use a separate **64 requests per minute per admission** limit, including cached reads. Every read checks current account authorization, admission ownership, expiry, and allowed data scope. Invalid admissions and standalone calls retain the account burst limit. API plans retain their account burst limit for all calls.
+Panel openings retain the account's plan burst limit. Internal reads with a valid paid panel admission use separate **64 uncached requests per minute** and **64 cached replays per minute** limits per admission. Only server-confirmed cached results use the replay bucket, so reopening a loaded result card does not spend the unfinished sections' read burst. The admission still permits at most 64 uncached executions over its reuse window. Every read checks current account authorization, admission ownership, expiry, and allowed data scope. Invalid admissions and standalone calls retain the account burst limit. API plans retain their account burst limit for all calls.
 
 Same-country opens and default news-dashboard opens share their respective admissions in a five-minute window. News display filters share the full loaded digest. The admission lasts five to ten minutes, clipped at UTC midnight. Ready responses are reused while that admission is valid. Topic navigation and repeated questions in the loaded interface reuse ready data for five minutes. Failures are retried rather than cached as successful observations.
 

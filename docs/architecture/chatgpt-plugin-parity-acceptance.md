@@ -179,3 +179,24 @@ The matching account window recorded 39 initialization attempts, including 20 re
 | Deployed ChatGPT behavior matches local proof | Several sections still unavailable | The local regression is controlled evidence. Exact deployment and fresh native acceptance remain required. Full source parity and the separate cloud-plugin installation are open. |
 
 Local verification passed 2,098 MCP JavaScript checks and 223 typed MCP checks, API typecheck, API contract, scoped Biome, Markdown and generated public discovery checks. These runs use the real handler with controlled dependencies and an enabled minute limiter. They do not establish production source freshness or installed-host acceptance.
+
+## Deployed native checkpoint, October 4
+
+The exact handshake merge deployed to Vercel Production at 00:43:15 UTC. Native Chrome country and news panels identify WorldMonitor MCP Acceptance. The separate cloud plugin installation remains unaccepted. The country validation chat saved observations before workspace routing timed out; the panels chat delivered 66 controlled passing checks but could not initialize native computer use. The owner retained both evidence sets and resumed the news interactions in signed-in Chrome. These are partial acceptance results.
+
+| Expected website concept | Native result | Remaining difference |
+|---|---|---|
+| Country brief opens with sections | USA interactive panel, 18 ready and five unavailable; two result cards for one prompt | Resilience hit 64 requests/minute/panel. A retry recovered score 58 and coverage 87%. Complete-section acceptance fails. |
+| Original Atlas details and evidence | 158 pipelines, 16 storage assets; Acadian pipeline and Bryan Mound SPR original detail/evidence/timeline UI opened | Website matching country, tier and observation comparison was blocked; this verifies the native detail concept only. |
+| Economic measurements retain units | IMF growth 2.3%, CPI 3.2%, unemployment 4.4%, primary balance -3.7% GDP, per-capita GDP 94.4k; BIS residential 154.2, commercial 187.3 and debt service 8.0 | Values captured; matching website source dates remain unaccepted. |
+| Military sources and Signals coverage | Flights, AIS and fleet unavailable or unconfirmed; derived counts unknown | Unknown is not zero. Other 24 Signals fields and aggregate severity/recent items remain open. |
+| Native news dashboard with coverage | Ordinary prompt opened interactive news and maps. Summary reported 288 stories, 125 publishers, 234/245 feeds and 17/17 categories, generated 07:39 UTC | Later snapshot than the website observation; no claim of identical feed completion or freshness. |
+| Desktop 2D and 3D maps | Colored headline markers in 2D; headline rings on the 3D globe | Native 2D uses the green-grid fallback while the observed website uses WEBGL. Approximate capital locations are not verified event coordinates. |
+| Marker selection and source details | Reuters North Korea headline opens a News popup labeled approximate Pyongyang | Popup shows headline only; source link and further details are absent in this observation. |
+| Map inspection beside conversation | Workspace expansion puts globe beside composer | Inline composer consumes the lower visible map area. Native mobile layout remains unaccepted. |
+| One allocation per meaningful opening | USA cards show 49 remaining; news shows 48. Retry and navigation retain the opening notice | Notices are not a direct post-navigation accounting audit. Explicit refresh and paid cost/allowance suitability remain pending. |
+| Compact forecast, prediction and market details | Controlled checks pass for case evidence, contract fields and shared charts | Native compact-panel acceptance remains pending. Forecast theaters, account watchlist and arbitrary-symbol lookup remain separate proven gaps. |
+
+The bounded account/time telemetry window records 64 successful and 64 denied country-section calls with successful protocol initialization. It does not identify each card/transport or cache hit. A real-handler regression independently proves that settled cached replay can exhaust the minute bucket needed by a remaining uncached section.
+
+The repair separates server-confirmed cached replay and uncached reads after paid admission validation. Each retains a 64-per-minute bound. Durable actual uncached work remains capped at 64 per admission; one opening still charges one daily allocation. Client input cannot select the bucket. Owner, scope, expiry, account revocation and ordinary operator/API limits remain enforced. Simultaneous cold duplicates are not claimed coalesced. Local proof and a ready PR do not establish deployed native recovery.

@@ -181,6 +181,7 @@ describe('bounded panel reads with an enabled minute limiter', () => {
   it('bounds cached replay too, without spending new daily allocations', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);
+    await invoke(deps, 'get_country_brief_section', energy(receipt.token));
     for (let i = 0; i < 64; i++) {
       const result = await invoke(deps, 'get_country_brief_section', energy(receipt.token));
       assert.equal(result.body.error, undefined, `read ${i + 1}`);
@@ -197,6 +198,7 @@ describe('bounded panel reads with an enabled minute limiter', () => {
   it('records a dispatched JSON-RPC burst denial as a limit event', async () => {
     const { deps } = makeProDeps();
     const receipt = await open(deps);
+    await invoke(deps, 'get_country_brief_section', energy(receipt.token));
     await invoke(deps, 'get_country_brief_section', energy(receipt.token));
     const panelBucket = calls.at(-1).key;
     counts.set(panelBucket, 64);
@@ -241,6 +243,34 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(recovered.body.result.structuredContent.state, 'ready');
     assert.equal(fetched.length, 2);
     assert.equal(pipe.count, 1);
+  });
+  it('retains the 64 uncached work budget independently of replay capacity and minute recovery', async () => {
+    const { deps, pipe } = makeProDeps();
+    const receipt = await open(deps);
+    await invoke(deps, 'get_country_brief_section', energy(receipt.token));
+    const cold = { section: 'food', arguments: { countryCode: 'US' }, panel_request: receipt.token };
+    const transport = globalThis.fetch;
+    globalThis.fetch = async url => {
+      fetched.push(String(url));
+      return Response.json({ countryCode: 'US', upstreamUnavailable: true });
+    };
+    try {
+      for (let i = 0; i < 63; i++) {
+        const result = await invoke(deps, 'get_country_brief_section', cold);
+        assert.equal(result.body.error, undefined, `uncached attempt ${i + 2}`);
+        assert.equal(result.body.result.structuredContent.value.upstreamUnavailable, true);
+      }
+      for (let i = 0; i < 64; i++) assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined);
+      const denied = await invoke(deps, 'get_country_brief_section', cold);
+      assert.equal(denied.body.error.code, -32029);
+      counts.clear();
+      const durable = await invoke(deps, 'get_country_brief_section', cold);
+      assert.equal(durable.body.error.code, -32029);
+      assert.match(durable.body.error.message, /read budget/);
+      assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined);
+      assert.equal(fetched.length, 64);
+      assert.equal(pipe.count, 1);
+    } finally { globalThis.fetch = transport; }
   });
   it('keeps ordinary openings and tool calls on the plan user burst', async () => {
     const { deps, pipe } = makeProDeps();
