@@ -232,6 +232,48 @@ describe('News Intelligence closed paid admission', () => {
     await invoke(bundle); assert.equal(bundle.pipe.count, 1); assert.equal(fetched.length, 7);
   });
 
+  for (const [age, stale] of [[3_599_999, false], [3_600_000, true], [3_600_001, true]]) it(`discloses cross-source evaluation age ${age} and recovers the same admission`, async () => {
+    const bundle = makeProDeps(); sources[keys[2]].evaluatedAt = now - age;
+    const first = value(await invoke(bundle));
+    assert.equal(first.stale, stale, 'paid source evaluation age must match the existing 60-minute reuse deadline');
+    assert.equal(first.freshnessUnknown, undefined, 'a known evaluation age is not unknown');
+    assert.equal(cache(bundle).length, 0, 'expired or subsecond originals are not saved');
+    sources = payload();
+    const recovered = value(await invoke(bundle));
+    assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined);
+    assert.equal(cache(bundle).length, 1); await invoke(bundle);
+    assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    for (const plan of ['api', 'free']) {
+      sources[keys[2]].evaluatedAt = now - 3_600_001;
+      const getEntitlements = async () => plan === 'api'
+        ? { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 }
+        : { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 };
+      const ordinary = makeProDeps({ getEntitlements }); const result = value(await invoke(ordinary));
+      assert.equal(result.stale, false); assert.equal(result.freshnessUnknown, undefined); assert.equal(ordinary.pipe.count, 1);
+    }
+  });
+
+  for (const [age, stale] of [[1_799_999, false], [1_800_000, true], [1_800_001, true]]) it(`discloses original seed publication age ${age} and recovers`, async () => {
+    const bundle = makeProDeps(); sources[keys[0]] = { _seed: { fetchedAt: now - age, state: 'OK' }, data: sources[keys[0]] };
+    const first = value(await invoke(bundle)); assert.equal(first.stale, stale); assert.equal(first.freshnessUnknown, undefined);
+    assert.equal(cache(bundle).length, 0);
+    sources = payload(); const recovered = value(await invoke(bundle));
+    assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+  });
+  for (const [seed, stale, unknown] of [
+    [{ fetchedAt: start, state: 'ERROR', failedDatasets: ['cyber'], errorReason: 'gdelt_429' }, true, undefined],
+    [{ fetchedAt: start, state: 'UNKNOWN_STATE' }, false, true],
+    [{ fetchedAt: start + 1, state: 'OK' }, false, true],
+  ]) it(`discloses seed evidence ${seed.state}/${seed.fetchedAt} without leaking private metadata`, async () => {
+    const bundle = makeProDeps(); sources[keys[1]] = { _seed: seed, data: sources[keys[1]] };
+    const first = value(await invoke(bundle)); assert.equal(first.stale, stale); assert.equal(first.freshnessUnknown, unknown);
+    assert.equal(first.data['gdelt-intel']._seed, undefined); assert.equal(cache(bundle).length, 0);
+    sources = payload(); const recovered = value(await invoke(bundle));
+    assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+  });
+
   it('marks stale Insights generation and unassessed GDELT clocks explicitly, then recovers the same admission', async () => {
     for (const source of ['Insights', 'GDELT']) {
       const bundle = makeProDeps(); sources = payload();
