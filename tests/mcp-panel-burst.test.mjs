@@ -74,6 +74,82 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(response.headers.get('X-RateLimit-Limit'), '192');
     assert.equal(pipe.count, 1);
   });
+  it('does not let exhausted setup consume or bypass ordinary data admission', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (let i = 0; i < 192; i++) {
+      const response = await handler(proReq('POST', { jsonrpc: '2.0', id: i, method: 'ping' }), deps);
+      assert.equal((await response.json()).error, undefined);
+    }
+    const receipt = await open(deps);
+    assert.equal(pipe.count, 1);
+    assert.equal(counts.get(userBucket), 1);
+    counts.set(userBucket, 60);
+    assert.equal((await invoke(deps, 'open_country_brief', { country_code: 'FR' })).body.error?.code, -32029);
+    const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 99, method: 'resources/read', params: { uri: 'worldmonitor://countries/us/risk' } }), deps);
+    assert.equal((await response.json()).error?.code, -32029);
+    assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined);
+    assert.equal(pipe.count, 1);
+  });
+  it('shares setup limits across OAuth and user-key doors and all catalog methods', async () => {
+    const { deps, pipe } = makeProDeps({ resolveBearerToContext: async () => ({ kind: 'user_key', userId: PRO_USER_ID }) });
+    for (let i = 0; i < 192; i++) {
+      const response = await handler(proReq('POST', { jsonrpc: '2.0', id: i, method: 'ping' }), deps);
+      assert.equal((await response.json()).error, undefined);
+    }
+    const oauth = makeProDeps().deps;
+    for (const method of ['initialize', 'ping', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list', 'prompts/get', 'skills/list', 'skills/get', 'logging/setLevel']) {
+      const response = await handler(proReq('POST', { jsonrpc: '2.0', id: method, method }), oauth);
+      assert.equal((await response.json()).error?.code, -32029, method);
+    }
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+    assert.equal(counts.get(userBucket), undefined);
+    assert.ok(calls.every(call => call.tokens === 192 && call.key.endsWith(`pro-protocol:${PRO_USER_ID}`)));
+  });
+  it('validates revoked credentials before any setup allowance', async () => {
+    const { deps, pipe } = makeProDeps({ validateProMcpToken: async () => null });
+    const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 42, method: 'initialize' }), deps);
+    assert.equal(response.status, 401);
+    assert.match((await response.json()).error.message, /revoked/i);
+    assert.equal(calls.length, 0);
+    assert.equal(pipe.count, 0);
+  });
+  it('keeps unsupported methods and unknown resources outside the setup scope', async () => {
+    const { deps, pipe } = makeProDeps();
+    const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 1, method: 'client-minted-setup' }), deps);
+    assert.equal((await response.json()).error?.code, -32601);
+    counts.set(userBucket, 60);
+    for (const body of [
+      { jsonrpc: '2.0', id: 2, method: 'another-setup' },
+      { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://client-minted-shell' } },
+    ]) assert.equal((await (await handler(proReq('POST', body), deps)).json()).error?.code, -32029);
+    assert.ok(calls.every(call => call.key === userBucket && call.tokens === 60));
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+  });
+  it('retains the operator key combined 60-request burst for setup', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'operator-test-key';
+    try {
+      const { deps } = makeProDeps();
+      for (let i = 0; i < 61; i++) {
+        const response = await handler(proReq('POST', { jsonrpc: '2.0', id: i, method: 'ping' }, { Authorization: '', 'X-WorldMonitor-Key': 'operator-test-key' }), deps);
+        assert.equal((await response.json()).error?.code, i < 60 ? undefined : -32029);
+      }
+      assert.ok(calls.every(call => call.tokens === 60 && call.key.startsWith('rl:mcp:key:')));
+    } finally {
+      if (originalEnv.WORLDMONITOR_VALID_KEYS === undefined) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = originalEnv.WORLDMONITOR_VALID_KEYS;
+    }
+  });
+  it('retains the anonymous discovery 60-request IP burst', async () => {
+    const { deps } = makeProDeps();
+    for (let i = 0; i < 61; i++) {
+      const request = new Request('https://worldmonitor.app/.well-known/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: i, method: 'ping' }) });
+      const response = await handler(request, deps);
+      assert.equal((await response.json()).error?.code, i < 60 ? undefined : -32029);
+    }
+    assert.ok(calls.every(call => call.tokens === 60 && call.key.startsWith('rl:mcp:anon:')));
+  });
   it('completes paid internal reads after the ordinary user burst is spent', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);

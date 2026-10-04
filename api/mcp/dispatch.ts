@@ -419,7 +419,7 @@ export async function dispatchToolsCall(
         Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (deferredBurst && panelRead) {
-      const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, panelRead.rateLimitKey);
+      const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();

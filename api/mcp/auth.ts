@@ -84,6 +84,11 @@ function getMcpRatelimit(): Ratelimit | null {
  * value every plan below API Business sells anyway.
  */
 export const MCP_DEFAULT_BURST_PER_MINUTE = 60;
+// One 64-read panel can establish a fresh connection per read, with initialize,
+// initialized acknowledgment and one catalog/control request per connection.
+export const MCP_PROTOCOL_BURST_PER_MINUTE = 192;
+
+type McpMinuteScope = { kind: 'protocol' } | { kind: 'panel'; key: string };
 
 /**
  * The burst threshold a plan sells, from `planLimits.mcpBurstRequestsPerMinute`.
@@ -811,9 +816,8 @@ export async function runContextPreChecks(
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
  *  or pass-through, a Response on a real burst limit hit.
  *  `perMinute` is the caller's plan threshold, carried from the pre-check that
- *  already read the entitlement; it defaults to the catalog's common value for
- *  the one call site that has no pre-check to carry it (a credentialed caller
- *  on a PUBLIC method), which errs to the lower of the two ceilings sold.
+ *  already read the entitlement. Data-free protocol requests use a separate
+ *  fixed user bucket so connection setup cannot spend the data burst.
  *  user_key (#4859) shares the per-USER limiter with pro — the principal is
  *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
  *  one combined budget instead of two stackable ones.
@@ -828,7 +832,7 @@ export async function applyPerMinuteLimit(
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
   id: unknown = null,
-  panelRequestKey?: string,
+  scope?: McpMinuteScope,
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
@@ -868,13 +872,14 @@ export async function applyPerMinuteLimit(
     // worse than useless — every free caller would share one bucket.
     return null;
   }
+  if (scope?.kind === 'protocol') perMinute = MCP_PROTOCOL_BURST_PER_MINUTE;
   const rl = getMcpProMinRatelimit(perMinute);
   if (!rl) return null;
   let denied = false;
   try {
-    const principal = panelRequestKey
-      ? `pro-panel:${hashKeySync(panelRequestKey)}`
-      : `pro-user:${context.userId}`;
+    const principal = scope?.kind === 'panel'
+      ? `pro-panel:${hashKeySync(scope.key)}`
+      : `${scope?.kind === 'protocol' ? 'pro-protocol' : 'pro-user'}:${context.userId}`;
     const { success } = await rl.limit(principal);
     if (!success) {
       // The emitted limit must be the one that actually rejected: the
@@ -890,7 +895,8 @@ export async function applyPerMinuteLimit(
     }
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see the env_key branch above.
-  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per ${panelRequestKey ? 'panel' : 'user'}.`, { ...headers, 'X-RateLimit-Limit': String(perMinute), 'X-RateLimit-Remaining': '0' });
+  const bucket = scope?.kind === 'panel' ? 'panel' : scope?.kind === 'protocol' ? 'user protocol bucket' : 'user';
+  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per ${bucket}.`, { ...headers, 'X-RateLimit-Limit': String(perMinute), 'X-RateLimit-Remaining': '0' });
   return null;
 }
 

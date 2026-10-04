@@ -1028,13 +1028,7 @@ async function mcpHandlerInner(
           return validation.response;
         }
       }
-      // No pre-check runs on the public branch, so there is no entitlement in
-      // hand to read a plan burst from. `applyPerMinuteLimit` defaults to the
-      // common ceiling rather than fetching one: these are metadata and
-      // free-tier methods, and the tighter of the two sold thresholds is the
-      // defensible guess. `undefined` for `perMinute` selects that default
-      // explicitly; `id` after it keeps the denial correlatable (#7818).
-      const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, undefined, id);
+      const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, undefined, id, { kind: 'protocol' });
       if (limited) {
         usage.phase = 'limit';
         return limited;

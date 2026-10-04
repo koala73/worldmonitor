@@ -15,13 +15,15 @@ Applies to all `/api/*` routes that don't have a stricter override. Implemented 
 
 ## MCP server
 
-The MCP per-minute burst is set by plan, and it is per account for OAuth tokens and dashboard-issued `wm_…` keys alike.
+Ordinary MCP data calls use the plan burst shared by an account's OAuth tokens and dashboard-issued `wm_…` keys. Data-free protocol methods use a separate fixed account bucket. Validated paid MCP panel reads use a separate panel bucket.
 
 | Scope | Limit | Window |
 |-------|-------|--------|
 | Pro, Pro Business, API Starter (per user) | **60 requests** | 60 s |
 | API Business (per user) | **300 requests** | 60 s |
 | Enterprise (per user) | **1,000 requests** | 60 s |
+| Data-free protocol (per user) | **192 requests** | 60 s |
+| Validated paid MCP panel (per panel) | **64 requests** | 60 s |
 | Legacy operator key (per key) | **60 requests** | 60 s |
 | Anonymous discovery (per IP) | **60 requests** | 60 s |
 | Anonymous `get_sources` (per IP) | **10 requests**, fail-closed | 60 s |

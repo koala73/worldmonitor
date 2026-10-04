@@ -165,3 +165,17 @@ Verification includes 198 focused market/chart/resource, anonymous conformance, 
 Review repairs preserve same-country loaded military Signal counts on an unavailable refresh and label them as previously loaded, not fresh. Authorization loss clears the affected counts, and a successful observed zero replaces a prior positive count. A new country does not inherit old counts. An empty flight RPC remains unknown because the producer returns the same empty shape for source failures and the host registry explicitly rejects unconfirmed initial empties. AIS supplies a separate connected-snapshot coverage contract. Unknown temporal observations also leave initial aggregate severity unknown.
 
 The initial DOM-test typecheck failed because a fixture used `Strike` instead of the typed `MILITARY` value. The repaired fixture and refresh regressions run through the actual DOM-test typecheck before delivery; the initial CI failure is not a passing validation result.
+
+## Native setup burst repair, October 3
+
+An ordinary USA panel opened through WorldMonitor MCP Acceptance after the paid-panel burst deployment. It reported 16 ready and seven unavailable sections. Resilience reported a 60-per-minute user limit. The daily notice decreased once, from 48 to 47 of 50. Those observations do not attribute every unavailable section to the limiter.
+
+The matching account window recorded 39 initialization attempts, including 20 refusals, and 19 successful initialized acknowledgments. Another 39 methods were recorded as unregistered, so their actual names remain unknown. Recognized data-free methods shared the ordinary data bucket before the repair.
+
+| Website or panel expectation | Native observation | Repair and remaining proof |
+|---|---|---|
+| Internal section loads complete under one admission | Connection initialization exhausted the user burst before some section calls | A separate fixed user protocol bucket allows 192 requests per minute, enough for 64 read connections with three setup calls each. A real-handler regression failed on connection 20 before the repair. |
+| Data budgets and authorization still apply | Paid panel reads already had their own 64-request burst | Ordinary plan data limits, panel receipt checks, daily accounting and grant revocation remain enforced. Operator-key and anonymous discovery limits remain 60. Unsupported methods do not enter the protocol bucket. |
+| Deployed ChatGPT behavior matches local proof | Several sections still unavailable | The local regression is controlled evidence. Exact deployment and fresh native acceptance remain required. Full source parity and the separate cloud-plugin installation are open. |
+
+Local verification passed 2,098 MCP JavaScript checks and 223 typed MCP checks, API typecheck, API contract, scoped Biome, Markdown and generated public discovery checks. These runs use the real handler with controlled dependencies and an enabled minute limiter. They do not establish production source freshness or installed-host acceptance.
