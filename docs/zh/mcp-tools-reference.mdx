@@ -1930,6 +1930,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 自然灾害面板凭据，或已有新闻凭据的固定受限地图读取。 |
+| `refresh` | boolean | 付费独立面板刷新扣一次新额度；省略 `panel_request` 并提供 UUID 格式的 `request_id`。 |
+| `request_id` | string (UUID) | 同一刷新 UUID 的重试复用该分配。 |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | 限制为一个或多个灾害数据集（地震 / 野火 / 其他自然事件）。省略则返回全部。 |
 | `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
 | `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |
@@ -1953,6 +1956,10 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+在 Pro 与 Pro Business 上，`get_natural_disasters` 首次打开扣一次自然灾害面板额度。重复打开及数据集、震级、活动状态和数量筛选在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需提供 `refresh: true` 和 UUID 格式的 `request_id`，且不携带读取凭据；同一 UUID 的重试复用刷新额度。API 与免费账户调用保留普通按工具计费及现有参数转换，不接受付费刷新控制。
+
+每次未缓存执行读取三个固定数据键及已存在的地震元数据键，作为 64 次读取预算中的一次工具执行。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放，但不得超过最早可观察的来源时效或 EONET 保留期限。新筛选或不可用、格式错误、已知降级、时间未知的数据可在同一分配内重新读取。区域来源的阻止决策保持可读但不缓存，包括未发出请求的预检决策。该策略不证明所有提供方覆盖完整。已有新闻凭据仍仅允许其固定灾害数据集列表及数量 100、20 或 1，不能使用独立面板的震级或活动筛选。内部来源时间和复用期限不会添加公开元数据字段。授权读取返回已确认的当前使用量；计数未知时省略数字通知。
 
 ### `get_radiation_data`
 

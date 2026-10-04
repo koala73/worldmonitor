@@ -14,7 +14,7 @@ const start = Date.UTC(2026, 9, 5, 10, 1, 0, 250);
 
 describe('Natural Disasters paid admission and original source deadlines', () => {
   let handler, fetched, sources, meta, now, advanceOnSource;
-  const seeded = (data, fetchedAt = now) => ({ _seed: { fetchedAt, state: 'ok' }, data });
+  const seeded = (data, fetchedAt = now) => ({ _seed: { fetchedAt, state: 'OK' }, data });
   const payload = () => ({
     [sourceKeys[0]]: seeded({ earthquakes: [{ id: 'low', magnitude: 4.5 }, { id: 'high', magnitude: 6 }] }),
     [sourceKeys[1]]: seeded({ fireDetections: [{ id: 'fire1' }, { id: 'fire2' }], _firmsState: 'ok', _firmsPartial: false, _cwfisState: 'ok', _bcState: 'ok' }),
@@ -25,6 +25,19 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     return { response, body: await response.json() };
   };
   const envelope = result => result.body.result.structuredContent;
+  const fixture = (options = {}) => {
+    const bundle = makeProDeps(options);
+    const pipeline = bundle.pipe.pipeline;
+    const expiry = new Map();
+    const expiringPipeline = async (commands, ...args) => {
+      for (const command of commands) if (command[0] === 'GET' && expiry.has(command[1]) && expiry.get(command[1]) <= now) bundle.pipe.store.delete(command[1]);
+      const result = await pipeline(commands, ...args);
+      for (const command of commands) if (command[0] === 'SET' && command[3] === 'EX') expiry.set(command[1], now + Number(command[4]) * 1000);
+      return result;
+    };
+    bundle.pipe.pipeline = expiringPipeline; bundle.deps.redisPipeline = expiringPipeline;
+    return bundle;
+  };
   const news = async bundle => admitNewsPanel(context, budget, bundle.pipe.pipeline, {});
   const cachedEntries = bundle => [...bundle.pipe.store].filter(([key]) => key.includes(':data:'));
   beforeEach(async () => {
@@ -49,7 +62,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
   });
 
   it('opens once, reuses normalized filters and stores the canonical original before summary or projection', async () => {
-    const bundle = makeProDeps();
+    const bundle = fixture();
     const first = await invoke(bundle.deps); await invoke(bundle.deps);
     assert.equal(bundle.pipe.count, 1, 'one meaningful opening allocation');
     const token = envelope(first).panelRequest.token;
@@ -73,7 +86,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal(bundle.pipe.count, 1);
   });
   it('keeps news scope exact and standalone refresh UUID retries stable', async () => {
-    const bundle = makeProDeps(); const receipt = await news(bundle);
+    const bundle = fixture(); const receipt = await news(bundle);
     for (const limit of [100, 20, 1]) {
       const args = { dataset: ['other'], limit, panel_request: receipt.token };
       await invoke(bundle.deps, args); await invoke(bundle.deps, { ...args, summary: true });
@@ -89,7 +102,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal((await invoke(bundle.deps, { panel_request: fresh.token, refresh: true, request_id })).body.error?.code, -32602);
   });
   it('rejects paid invalid fields and cross-family/owner/expired/removed receipts before source reads', async () => {
-    const bundle = makeProDeps();
+    const bundle = fixture();
     for (const args of [{ dataset: 'other' }, { dataset: ['wrong'] }, { min_magnitude: '2' }, { active_only: 'true' }, { limit: '2' }, { refresh: true }, { request_id: 'bad' }, { extra: true }]) {
       assert.equal((await invoke(bundle.deps, args)).body.error?.code, -32602, JSON.stringify(args));
     }
@@ -114,15 +127,18 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     ['BC error', () => { sources[sourceKeys[1]].data._bcErrorCode = 'BC_WILDFIRE_SOURCE_FAILED'; }, ['wildfires']],
     ['public unavailable', () => { sources[sourceKeys[1]].data.upstreamUnavailable = true; }, ['wildfires']],
     ['western Pacific unavailable', () => { sources[sourceKeys[2]].data.westernPacific.dataAvailable = false; }, ['other']],
+    ['blocked regional preflight', () => { sources[sourceKeys[2]].data.westernPacific.sourceDecisions = [{ source: 'JMA RSMC Tokyo', status: 'blocked', reason: 'EXPERIMENTAL_CAP_NOT_OPERATIONAL', requestCount: 0 }]; }, ['other']],
     ['HKO unavailable', () => { sources[sourceKeys[2]].data.hkoWarnings.dataAvailable = false; }, ['other']],
     ['seismology source degraded', () => { meta.sourceState = 'degraded'; meta.errorCode = 'EARTHQUAKE_UPSTREAM_INCOMPLETE'; }, ['earthquakes']],
     ['missing seismology metadata', () => { meta = null; }, ['other']],
+    ['seismology failed sources', () => { meta.failedSources = ['nrcan']; }, ['earthquakes']],
+    ['malformed retained indexes', () => { sources[sourceKeys[2]].data.eonetRetention = { retainedUntil: now + 5000, eventIndexes: [9] }; }, ['other']],
     ['failed source read', () => { sources[sourceKeys[1]] = new Error('controlled'); }, ['wildfires']],
     ['future publication', () => { sources[sourceKeys[1]]._seed.fetchedAt += 1; }, ['wildfires']],
     ['legacy unknown clock', () => { sources[sourceKeys[1]] = sources[sourceKeys[1]].data; }, ['wildfires']],
   ]) {
     it(`keeps ${label} readable but retryable in the same news admission`, async () => {
-      const bundle = makeProDeps(); const receipt = await news(bundle); mutate();
+      const bundle = fixture(); const receipt = await news(bundle); mutate();
       const args = { dataset, limit: 20, panel_request: receipt.token };
       const first = await invoke(bundle.deps, args); assert.equal(first.body.error, undefined);
       sources = payload(); meta = { fetchedAt: now, sourceState: 'ok' };
@@ -132,7 +148,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     });
   }
   it('does not let an unrequested failed source hide filtering or prevent healthy requested reuse', async () => {
-    const bundle = makeProDeps(); sources[sourceKeys[1]] = new Error('unused fire source');
+    const bundle = fixture(); sources[sourceKeys[1]] = new Error('unused fire source');
     const first = await invoke(bundle.deps, { dataset: ['earthquakes'], min_magnitude: 5 });
     assert.deepEqual(envelope(first).data.earthquakes.earthquakes.map(row => row.id), ['high']);
     const token = envelope(first).panelRequest.token;
@@ -140,7 +156,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal(fetched.length, 4); assert.equal(bundle.pipe.count, 1);
   });
   it('narrows healthy lists independently when a requested different list contains a malformed row', async () => {
-    const bundle = makeProDeps(); sources[sourceKeys[1]].data.fireDetections.push(null);
+    const bundle = fixture(); sources[sourceKeys[1]].data.fireDetections.push(null);
     const first = await invoke(bundle.deps, { min_magnitude: 5, active_only: true, limit: 1 });
     assert.deepEqual(envelope(first).data.earthquakes.earthquakes.map(row => row.id), ['high']);
     assert.deepEqual(envelope(first).data.events.events.map(row => row.id), ['eonet']);
@@ -149,7 +165,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal(fetched.length, 8); assert.equal(bundle.pipe.count, 1);
   });
   it('rechecks the original EONET deadline after lookup and does not extend it with rounded cache TTL', async () => {
-    const bundle = makeProDeps(); const receipt = await news(bundle);
+    const bundle = fixture(); const receipt = await news(bundle);
     const retainedUntil = start + 2_550;
     sources[sourceKeys[2]].data.eonetRetention = { retainedUntil, eventIndexes: [0] };
     const args = { dataset: ['other'], limit: 20, panel_request: receipt.token };
@@ -162,7 +178,7 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal(fetched.length, 8); assert.equal(bundle.pipe.count, 1);
   });
   it('rechecks source age during read, cached lookup and delayed writes', async () => {
-    const bundle = makeProDeps(); const receipt = await news(bundle);
+    const bundle = fixture(); const receipt = await news(bundle);
     const deadline = start + 2_000;
     meta.fetchedAt = deadline - 30 * 60_000;
     const args = { dataset: ['other'], limit: 20, panel_request: receipt.token };
@@ -177,27 +193,86 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     assert.equal(fetched.length, 8);
     bundle.deps.redisPipeline = original; now = start; meta = { fetchedAt: start, sourceState: 'ok' };
     advanceOnSource = start + 31 * 60_000;
-    const other = makeProDeps(); await news(other); now = start;
+    const other = fixture(); await news(other); now = start;
     await invoke(other.deps, { dataset: ['other'], limit: 20 });
     assert.equal(cachedEntries(other).length, 0, 'read completion cannot extend original source age');
   });
   it('treats legacy and malformed cached entries as misses without changing the allocation', async () => {
-    const bundle = makeProDeps(); const receipt = await news(bundle);
+    const bundle = fixture(); const receipt = await news(bundle);
     const args = { dataset: ['other'], limit: 20, panel_request: receipt.token };
     await invoke(bundle.deps, args);
     const [key, raw] = cachedEntries(bundle)[0]; const wrapper = JSON.parse(raw);
-    for (const value of [wrapper.value, { value: wrapper.value, reuseUntil: 'future' }, { value: wrapper.value, reuseUntil: now }, { value: null, reuseUntil: now + 1000 }]) {
+    for (const value of [wrapper.value, { value: wrapper.value, reuseUntil: 'future' }, { value: wrapper.value, reuseUntil: now }, { value: null, reuseUntil: now + 1000 }, { value: { ...wrapper.value, data: {} }, reuseUntil: now + 1000 }]) {
       bundle.pipe.store.set(key, JSON.stringify(value)); const before = fetched.length;
       await invoke(bundle.deps, args); assert.equal(fetched.length, before + 4);
     }
+    bundle.pipe.store.set(key, 'not-json');
+    const before = fetched.length; await invoke(bundle.deps, args); assert.equal(fetched.length, before + 4);
     assert.equal(bundle.pipe.count, 1);
+  });
+  it('declines subsecond saves and delayed writes cannot extend source reuse', async () => {
+    const bundle = fixture(); const receipt = await news(bundle);
+    const args = { dataset: ['wildfires'], limit: 20, panel_request: receipt.token };
+    sources[sourceKeys[1]]._seed.fetchedAt = now - 7_200_000 + 999;
+    await invoke(bundle.deps, args); assert.equal(cachedEntries(bundle).length, 0);
+    await invoke(bundle.deps, args); assert.equal(fetched.length, 8);
+    const deadline = now + 2_550;
+    sources[sourceKeys[1]]._seed.fetchedAt = deadline - 7_200_000;
+    const pipeline = bundle.deps.redisPipeline;
+    let delay = true;
+    bundle.deps.redisPipeline = async (commands, ...options) => {
+      if (delay && commands.some(command => command[0] === 'SET' && String(command[1]).includes(':data:'))) { now = deadline + 1; delay = false; }
+      return pipeline(commands, ...options);
+    };
+    await invoke(bundle.deps, args); assert.equal(cachedEntries(bundle).length, 1, 'delayed optional write retains an absolute expiry');
+    await invoke(bundle.deps, args); assert.equal(fetched.length, 16, 'delayed cache record is not a reusable snapshot');
+    assert.equal(bundle.pipe.count, 1);
+  });
+  it('counts wrapper bytes in the optional cache budget and forbids a generic save bypass', async () => {
+    const bundle = fixture(); const receipt = await news(bundle);
+    const read = await authorizePanelRead(context, bundle.pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20 }, receipt.token);
+    const value = { cached_at: new Date(now).toISOString(), stale: false, data: { earthquakes: { earthquakes: [] } }, padding: '' };
+    value.padding = 'x'.repeat(524288 - Buffer.byteLength(JSON.stringify(value)));
+    assert.equal(Buffer.byteLength(JSON.stringify(value)), 524288);
+    await read.save(value); assert.equal(cachedEntries(bundle).length, 0);
+    await read.saveNaturalDisasters({ value, reuseUntil: now + 10_000 }); assert.equal(cachedEntries(bundle).length, 0, 'wrapper overhead must not escape the cache budget');
+    value.padding = value.padding.slice(0, -100);
+    await read.saveNaturalDisasters({ value, reuseUntil: now + 10_000 }); assert.equal(cachedEntries(bundle).length, 1);
+    assert.ok(Buffer.byteLength(cachedEntries(bundle)[0][1]) <= 524288);
+  });
+  it('caps durable uncached work at 64 and preserves quota, revocation and entitlement controls', async () => {
+    const bundle = fixture(); const first = await invoke(bundle.deps); const token = envelope(first).panelRequest.token;
+    for (let index = 1; index < 64; index++) assert.equal((await invoke(bundle.deps, { min_magnitude: index, panel_request: token })).body.error, undefined);
+    assert.equal((await invoke(bundle.deps, { min_magnitude: 100, panel_request: token })).response.status, 429);
+    assert.equal(fetched.length, 64 * 4); assert.equal(bundle.pipe.count, 1);
+    assert.equal((await invoke(bundle.deps, { panel_request: token })).body.error, undefined);
+    bundle.deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
+    assert.equal((await invoke(bundle.deps, { panel_request: token })).response.status, 403);
+    bundle.deps.validateProMcpToken = async () => null;
+    assert.equal((await invoke(bundle.deps, { panel_request: token })).response.status, 401);
+    assert.equal((await invoke(fixture({ pipelineOpts: { initialCount: 50 } }).deps)).response.status, 429);
+    assert.equal((await invoke(fixture({ pipelineOpts: { throwOnEval: true } }).deps)).response.status, 503);
+    assert.equal(fetched.length, 64 * 4);
+  });
+  it('shows independently read current usage only after authorization and omits unknown counters', async () => {
+    const bundle = fixture(); const token = envelope(await invoke(bundle.deps)).panelRequest.token;
+    const key = dailyCounterKey(context.userId, new Date(now)); const pipeline = bundle.deps.redisPipeline;
+    let counter = '2'; let reads = 0;
+    bundle.deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) { reads++; return [{ result: counter }]; }
+      return pipeline(commands, ...options);
+    };
+    assert.equal((await invoke(bundle.deps, { panel_request: token })).body.result._meta['worldmonitor/usage'].remaining, 48);
+    counter = null;
+    assert.equal((await invoke(bundle.deps, { panel_request: token })).body.result._meta?.['worldmonitor/usage'], undefined);
+    await invoke(bundle.deps, { panel_request: 'forged' }); assert.equal(reads, 2); assert.equal(fetched.length, 4); assert.equal(bundle.pipe.count, 1);
   });
   it('preserves healthy API/free coercions and ordinary per-call counters but rejects new paid controls', async () => {
     for (const entitlement of [
       { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 },
       { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 },
     ]) {
-      const bundle = makeProDeps({ getEntitlements: async () => entitlement });
+      const bundle = fixture({ getEntitlements: async () => entitlement });
       const first = await invoke(bundle.deps, { dataset: 'WILDFIRES', limit: '1', active_only: 'true', extra: true });
       assert.equal(first.body.error, undefined); assert.equal(envelope(first).panelRequest, undefined);
       assert.equal(envelope(first).data.fires.fireDetections.length, 1);
