@@ -518,8 +518,10 @@ describe('paid curated market panel through the MCP handler', () => {
     const { deps, pipe } = makeProDeps();
     const key = dailyCounterKey(context.userId);
     const pipeline = deps.redisPipeline;
+    let allowanceReads = 0;
     deps.redisPipeline = async (commands, ...options) => {
       if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+        allowanceReads++;
         return [{ result: String(pipe.count) }];
       }
       return pipeline(commands, ...options);
@@ -529,6 +531,7 @@ describe('paid curated market panel through the MCP handler', () => {
     const reads = fetched.length;
     const reused = await invoke(deps, { asset_class: ['equity'], panel_request: token });
     assert.equal(reused.body.result._meta?.['worldmonitor/usage']?.remaining, 49);
+    assert.equal(allowanceReads, 1);
     assert.equal(pipe.count, 1);
     assert.equal(fetched.length, reads);
     await pipe.pipeline([['INCR', key]]);
@@ -540,6 +543,57 @@ describe('paid curated market panel through the MCP handler', () => {
     });
     assert.equal(pipe.count, 2);
     assert.equal(fetched.length, reads);
+    assert.equal(allowanceReads, 2);
+    const resourceResponse = await handler(proReq('POST', {
+      jsonrpc: '2.0', id: 987, method: 'resources/read', params: { uri: 'worldmonitor://account/mcp-allowance' },
+    }), deps);
+    const resource = await resourceResponse.json();
+    const status = JSON.parse(resource.result.contents[0].text);
+    assert.deepEqual(projected.body.result._meta['worldmonitor/usage'], {
+      used: status.used, limit: status.limit, remaining: status.remaining, resetsAt: status.resetsAt, unit: 'requests',
+    });
+    assert.equal(allowanceReads, 3);
+    assert.equal(pipe.count, 2);
+  });
+  it('omits unverified market receipt usage on missing or invalid counter replies without charging or repeating source work', async () => {
+    const { deps, pipe } = makeProDeps();
+    const key = dailyCounterKey(context.userId);
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const pipeline = deps.redisPipeline;
+    const reads = fetched.length;
+    for (const [label, result] of [
+      ['missing', [{ result: null }]], ['zero', [{ result: '0' }]], ['undefined', [{ result: undefined }]],
+      ['negative', [{ result: '-1' }]], ['fractional', [{ result: '1.5' }]], ['blank', [{ result: ' ' }]],
+      ['boolean', [{ result: true }]], ['unsafe integer', [{ result: '9007199254740992' }]],
+      ['absent result', [{}]], ['empty pipeline', []], ['errored', [{ result: '1', error: 'outage' }]],
+      ['transport unavailable', null],
+    ]) {
+      let allowanceReads = 0;
+      deps.redisPipeline = async (commands, ...options) => {
+        if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+          allowanceReads++;
+          if (result === null) throw new Error('controlled outage');
+          return result;
+        }
+        return pipeline(commands, ...options);
+      };
+      const response = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+      assert.equal(response.body.error, undefined, label);
+      assert.equal(response.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2, label);
+      assert.equal(response.body.result._meta?.['worldmonitor/usage'], undefined, label);
+      assert.equal(allowanceReads, 1, label);
+      assert.equal(pipe.count, 1, label);
+      assert.equal(fetched.length, reads, label);
+    }
+    let allowanceReads = 0;
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) allowanceReads++;
+      return pipeline(commands, ...options);
+    };
+    assert.equal((await invoke(deps, { asset_class: ['equity'], panel_request: 'forged' })).body.error?.code, -32602);
+    assert.equal(allowanceReads, 0);
+    assert.equal(pipe.count, 1);
   });
   it('accepts an uppercase refresh UUID and replays its lowercase spelling without another allocation', async () => {
     const { deps, pipe } = makeProDeps();

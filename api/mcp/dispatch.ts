@@ -18,7 +18,7 @@ import { applyJmespath } from './jmespath';
 import { admitCountryPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { marketPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
-import { isSharedRestCounter, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
+import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
@@ -437,6 +437,11 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
+    if (tool.name === 'get_market_data' && suppliedPanel !== undefined && panelRead
+      && (context.kind === 'pro' || context.kind === 'user_key')) {
+      const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
+      if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
+    }
   } catch (error) {
     if (!(error instanceof PanelRequestError)) throw error;
     if (deferredBurst && !panelRead) {
