@@ -2,7 +2,7 @@ import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmission } from '../../shared/country-brief-host';
 import { resolveCountryCode } from '../../shared/country-code-resolve';
-import { marketPanelReadSchema, marketPanelViewSchema, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
+import { marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type PredictionPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
@@ -16,7 +16,7 @@ const MAX_CACHED_BYTES = 524288;
 const encoder = new TextEncoder();
 
 type PanelScope = { panel: string; window: string; expires: number };
-export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | MarketPanelAdmission;
+export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission;
 export class PanelRequestError extends Error {
   constructor(message: string, public code: 'invalid' | 'quota' | 'reads' | 'backend', public limit?: number, public retryAfter?: number) {
     super(message);
@@ -32,7 +32,7 @@ function panelKey(owner: string, scope: PanelScope): string {
   return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope)}:${scope.panel}:${scope.window}`;
 }
 function panelFamily(scope: PanelScope): string {
-  return scope.panel === 'news' || scope.panel === 'markets' ? scope.panel : 'country';
+  return scope.panel === 'news' || scope.panel === 'markets' || scope.panel === 'predictions' ? scope.panel : 'country';
 }
 async function signature(owner: string, scope: PanelScope): Promise<string> {
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET;
@@ -68,6 +68,12 @@ export async function admitMarketPanel(context: McpAuthContext, budget: McpBudge
   return { ...await admitPanel(context, budget, pipeline, 'markets', parsed.data, now), panel: 'markets' };
 }
 
+export async function admitPredictionPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<PredictionPanelAdmission> {
+  const parsed = predictionPanelViewSchema.safeParse(args);
+  if (!parsed.success) throw new PanelRequestError('Supply valid prediction filters and a request_id for refresh.', 'invalid');
+  return { ...await admitPanel(context, budget, pipeline, 'predictions', parsed.data, now), panel: 'predictions' };
+}
+
 async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, country: string, request: { refresh: boolean; request_id?: string }, now: number) {
   if (budget?.allowance === 'api') throw new PanelRequestError('API allowances use per-tool billing.', 'invalid');
   const owner = userId(context);
@@ -100,6 +106,10 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
 }
 
 function checkReadScope(name: string, args: Record<string, unknown>, country: string): void {
+  if (country === 'predictions') {
+    if (name !== 'get_prediction_markets' || !predictionPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers curated prediction markets.', 'invalid');
+    return;
+  }
   if (country === 'markets') {
     if (name !== 'get_market_data' || !marketPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers curated market data.', 'invalid');
     return;
@@ -145,7 +155,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(news|markets|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = /^(news|markets|predictions|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');
@@ -155,7 +165,8 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   if (mismatch) throw new PanelRequestError('Invalid panel request.', 'invalid');
   checkReadScope(name, args, scope.panel);
   const key = panelKey(owner, scope);
-  const readArgs = scope.panel === 'markets' ? marketPanelReadSchema.parse(args) : args;
+  const readArgs = scope.panel === 'markets' ? marketPanelReadSchema.parse(args)
+    : scope.panel === 'predictions' ? predictionPanelReadSchema.parse(args) : args;
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(readArgs)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
@@ -181,6 +192,14 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;
       if (value && typeof value === 'object') {
+        if (scope.panel === 'predictions') {
+          const envelope = value as { cached_at?: unknown; stale?: unknown; unreadable?: unknown; data?: Record<string, unknown> };
+          const bootstrap = envelope.data?.['markets-bootstrap'];
+          if (typeof envelope.cached_at !== 'string' || !Number.isFinite(Date.parse(envelope.cached_at)) || envelope.stale !== false
+            || Array.isArray(envelope.unreadable) && envelope.unreadable.length
+            || !bootstrap || typeof bootstrap !== 'object' || Array.isArray(bootstrap)
+            || !['geopolitical', 'tech', 'finance'].every(category => Array.isArray((bootstrap as Record<string, unknown>)[category]))) return;
+        }
         if (scope.panel === 'markets') {
           if ('unreadable' in value && Array.isArray(value.unreadable) && value.unreadable.length) return;
           if ('data' in value && value.data && typeof value.data === 'object'

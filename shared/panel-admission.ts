@@ -24,3 +24,16 @@ export const marketPanelViewSchema = marketPanelReadSchema.extend({
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
 export type MarketPanelView = z.infer<typeof marketPanelViewSchema>;
 export type PanelUsage = z.infer<typeof panelReceiptSchema>['usage'];
+
+export const predictionPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('predictions') });
+export type PredictionPanelAdmission = z.infer<typeof predictionPanelAdmissionSchema>;
+export const predictionPanelReadSchema = z.object({
+  category: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['geopolitical', 'tech', 'finance']).optional()),
+  source: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['kalshi', 'polymarket']).optional()),
+  query: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
+  limit: z.number().default(30),
+}).strict();
+export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
+  refresh: z.boolean().default(false),
+  request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');

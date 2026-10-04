@@ -904,7 +904,7 @@ describe('paid prediction panel through the MCP handler', () => {
     assert.equal(current.body.result._meta['worldmonitor/usage'].remaining, 48);
     counter = null;
     const unknown = await invoke(deps, { panel_request: token });
-    assert.equal(unknown.body.result._meta['worldmonitor/usage'], undefined);
+    assert.equal(unknown.body.result._meta?.['worldmonitor/usage'], undefined);
     assert.equal(data(unknown).tech.length, 2);
     assert.equal((await invoke(deps, { panel_request: 'forged' })).body.error?.code, -32602);
     assert.equal(reads, 2);
