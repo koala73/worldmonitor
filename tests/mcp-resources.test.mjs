@@ -412,7 +412,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
-      'ui://worldmonitor/prediction-markets.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
       'ui://worldmonitor/forecasts.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
@@ -636,7 +636,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
-      'ui://worldmonitor/prediction-markets.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
       'ui://worldmonitor/forecasts.html',
     ];
     for (const uri of shellWidgets) {
@@ -720,7 +720,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html',
         hostId: 'groups',
         raw: { data: { 'markets-bootstrap': {
           geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }],
@@ -765,7 +765,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('EXPANSION WIDGETS: probability nulls remain unknown and visual ranges clamp safely', async () => {
     const payloads = [
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [
           { title: 'Unknown market', yesPrice: null },
           { title: 'Low outlier', yesPrice: -5 },
@@ -1003,7 +1003,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         } },
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {

@@ -128,13 +128,13 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.equal(doc.querySelector('.mkt-title').href, market.url);
     assert.match(doc.getElementById('groups').textContent, /Polymarket/);
     assert.match(doc.querySelector('.mkt').textContent, /Yes —No —/);
-    assert.equal(doc.querySelector('.mkt .pbar'), null);
+    assert.equal(doc.querySelector('.mkt').querySelector('.pbar'), null);
     assert.equal(doc.getElementById('foot').textContent, `Snapshot: ${full.cached_at} (stale)`);
     const [geo, tech] = doc.querySelectorAll('.mgroup');
     geo.querySelector('.mkt-more').click();
     assert.equal(geo.querySelectorAll('.mkt').length, 8);
     assert.equal(tech.querySelectorAll('.mkt').length, 6);
-    assert.equal(doc.activeElement, geo.querySelectorAll('.mkt')[6]);
+    assert.ok(doc.activeElement === geo.querySelectorAll('.mkt')[6], 'category expansion focuses its first new contract');
     tech.querySelector('.mkt-more').click();
     assert.equal(doc.querySelectorAll('.mkt').length, 16);
     assert.match(tech.textContent, /Tech 8/);
