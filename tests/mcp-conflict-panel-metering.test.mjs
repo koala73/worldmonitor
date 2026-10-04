@@ -159,6 +159,30 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       assert.equal(pipe.count, 1);
     });
   }
+  for (const [label, mutate] of [
+    ['degraded scores', () => { sources['risk:scores:sebuf:stale:v8'].degraded = true; }],
+    ['missing unrest', () => { sources['unrest:events:v1'] = null; }],
+    ['malformed unrelated scores row', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores.push(null); }],
+  ]) {
+    it(`still narrows usable events when ${label} makes the original noncacheable`, async () => {
+      const { deps, pipe } = makeProDeps();
+      mutate();
+      const first = await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1 });
+      assert.deepEqual(envelope(first).data['ucdp-events'].events.map(row => row.id), ['fr1']);
+      const token = envelope(first).panelRequest.token;
+      await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1, panel_request: token });
+      assert.equal(fetched.length, 2 * readCount, 'partial source stays retryable after narrowing healthy collections');
+      assert.equal(pipe.count, 1);
+    });
+  }
+  it('keeps malformed original event evidence while independently filtering other usable collections', async () => {
+    const { deps } = makeProDeps();
+    sources['conflict:ucdp-events:v1'].events.push(null);
+    const first = await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1 });
+    assert.deepEqual(envelope(first).data['ucdp-events'].events, sources['conflict:ucdp-events:v1'].events);
+    assert.deepEqual(envelope(first).data.events.events, [{ country: 'France', fatalities: 3 }]);
+    assert.deepEqual(envelope(first).data.scores.ciiScores, []);
+  });
   it('replays authoritative filtered empty while keeping omitted threshold distinct from zero', async () => {
     const { deps, pipe } = makeProDeps();
     const token = envelope(await invoke(deps, { country: 'absent' })).panelRequest.token;
