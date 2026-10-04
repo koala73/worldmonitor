@@ -47,7 +47,10 @@ export function newsIntelligenceFreshness(data: Record<string, unknown>, seeds: 
   const content = assessContentAge(metas[1], now);
   if (!content || !Number.isFinite(content.maxContentAgeMin) || content.maxContentAgeMin <= 0 || clock(content.newestItemAt, now) === null) freshnessUnknown = true;
   else stale ||= content.contentStale;
-  for (const meta of metas) if (!record(meta) || clock(meta.fetchedAt, now) === null) freshnessUnknown = true;
+  for (const meta of metas) {
+    if (!record(meta) || clock(meta.fetchedAt, now) === null) freshnessUnknown = true;
+    if (record(meta) && failed(meta)) stale = true;
+  }
   for (const [label, field] of [['cross-source-signals', 'evaluatedAt'], ['advisories-bootstrap', 'fetchedAt']] as const) {
     const bucket = data[label];
     if (!record(bucket) || clock(bucket[field], now) === null) freshnessUnknown = true;
