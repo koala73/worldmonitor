@@ -445,3 +445,68 @@ describe('one allocation per embedded panel', () => {
     assert.equal(pipe.count, 3);
   });
 });
+
+describe('paid forecast panel admission', () => {
+  let handler;
+  let forecastTool;
+  let previousExecute;
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+    forecastTool = (await import('../api/mcp/registry/index.ts')).TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
+    previousExecute = forecastTool._execute;
+    forecastTool._execute = async (_args, _origin, _context, execution) => ({ data: { predictions: { generatedAt: '1720000000000', predictions: [{ id: 'controlled', title: 'Controlled forecast' }] } }, panelRequest: execution.panelRequest });
+  });
+  afterEach(() => {
+    forecastTool._execute = previousExecute;
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  const invoke = async (deps, name, args = {}) => {
+    const response = await handler(proReq('POST', callBody(name, args)), deps);
+    return { response, body: await response.json() };
+  };
+  it('opens and replays compact forecasts under one signed allocation and charges explicit refresh once', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const grant = first.body.result.structuredContent.panelRequest;
+    assert.equal(grant?.panel, 'forecasts');
+    assert.equal(grant.usage.remaining, 49);
+    const second = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
+    assert.equal(pipe.count, 1);
+    const request_id = crypto.randomUUID();
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    assert.equal(pipe.count, 2);
+  });
+  it('rejects projection transforms before opening or replay reservation', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ summary: true }, { jmespath: 'data.predictions' }, { limit: 0 }]) {
+      const denied = await invoke(deps, 'get_forecast_predictions', args);
+      assert.equal(denied.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+    }
+  });
+  it('allows only fixed forecast list and exact case reads within the forecast scope', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    assert.equal(typeof admitForecastPanel, 'function');
+    const { pipe } = makeProDeps();
+    const grant = await admitForecastPanel(context, budget, pipe.pipeline, {});
+    const read = await readPanel(context, pipe.pipeline, 'get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000' }, grant.token);
+    await read.save({ state: 'ready', forecast: { id: 'controlled' } });
+    assert.deepEqual((await readPanel(context, pipe.pipeline, 'get_forecast_case', { generated_at: '1720000000000', forecast_id: 'controlled' }, grant.token)).cached, { state: 'ready', forecast: { id: 'controlled' } });
+    await readPanel(context, pipe.pipeline, 'get_forecast_predictions', { domain: 'energy', region: 'Europe', limit: 30 }, grant.token);
+    for (const [name, args] of [
+      ['get_forecast_predictions', { jmespath: 'data' }], ['get_forecast_predictions', { summary: true }],
+      ['get_forecast_predictions', { limit: 0 }], ['get_forecast_predictions', { refresh: true }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000', domain: 'energy' }],
+      ['get_forecast_case', { forecast_id: '', generated_at: '1720000000000' }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: 'not-a-generation' }],
+      ['get_market_data', {}], ['get_country_brief', { country_code: 'US' }],
+    ]) await assert.rejects(readPanel(context, pipe.pipeline, name, args, grant.token));
+    assert.equal(pipe.count, 1);
+  });
+});
