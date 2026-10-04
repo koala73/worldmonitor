@@ -52,6 +52,28 @@ async function open(deps) {
 const energy = token => ({ section: 'energy', arguments: { country_code: 'US' }, panel_request: token });
 
 describe('bounded panel reads with an enabled minute limiter', () => {
+  it('completes a full panel when the host reconnects before each internal read', async () => {
+    const { deps, pipe } = makeProDeps();
+    const receipt = await open(deps);
+    for (let i = 0; i < 64; i++) {
+      for (const method of ['initialize', 'notifications/initialized', 'ping']) {
+        const response = await handler(proReq('POST', { jsonrpc: '2.0', ...(method === 'notifications/initialized' ? {} : { id: i }), method }), deps);
+        if (method === 'notifications/initialized') assert.equal(response.status, 202, `acknowledgment ${i + 1}`);
+        else assert.equal((await response.json()).error, undefined, `${method} ${i + 1}`);
+      }
+      assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined, `read ${i + 1}`);
+    }
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 1);
+    assert.equal(counts.get(userBucket), 1);
+    const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 'setup-193', method: 'initialize' }), deps);
+    const denied = await response.json();
+    assert.equal(denied.id, 'setup-193');
+    assert.equal(denied.error?.code, -32029);
+    assert.match(denied.error.message, /192.*protocol/);
+    assert.equal(response.headers.get('X-RateLimit-Limit'), '192');
+    assert.equal(pipe.count, 1);
+  });
   it('completes paid internal reads after the ordinary user burst is spent', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);
