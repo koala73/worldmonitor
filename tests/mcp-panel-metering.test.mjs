@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { admitCountryPanel, authorizePanelRead, PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { countryActivityQueries } from '../shared/country-activity-query.ts';
-import { envPrefix } from '../server/_shared/pro-mcp-token.ts';
+import { dailyCounterKey, envPrefix } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -513,6 +513,33 @@ describe('paid curated market panel through the MCP handler', () => {
     assert.deepEqual(projected.body.result.structuredContent, { projection: ['AAPL', 'MSFT'] });
     assert.equal(fetched.length, 11);
     assert.equal(pipe.count, 1);
+  });
+  it('reports current server allowance on authorized market receipt results without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const key = dailyCounterKey(context.userId);
+    const pipeline = deps.redisPipeline;
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+        return [{ result: String(pipe.count) }];
+      }
+      return pipeline(commands, ...options);
+    };
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const reads = fetched.length;
+    const reused = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(reused.body.result._meta?.['worldmonitor/usage']?.remaining, 49);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, reads);
+    await pipe.pipeline([['INCR', key]]);
+    const projected = await invoke(deps, { asset_class: ['equity'], panel_request: token, jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+    assert.deepEqual(projected.body.result.structuredContent, { projection: ['AAPL', 'MSFT'] });
+    assert.deepEqual(projected.body.result._meta['worldmonitor/usage'], {
+      used: 2, limit: 50, remaining: 48,
+      resetsAt: opened.body.result._meta['worldmonitor/usage'].resetsAt, unit: 'requests',
+    });
+    assert.equal(pipe.count, 2);
+    assert.equal(fetched.length, reads);
   });
   it('accepts an uppercase refresh UUID and replays its lowercase spelling without another allocation', async () => {
     const { deps, pipe } = makeProDeps();
