@@ -22,10 +22,12 @@
     "@astrojs/sitemap": "^3.7.1",
     "astro": "^7.2.8",
     "gray-matter": "^4.0.3",
+    "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "satori": "^0.25.0",
     "sharp": "^0.35.4"
   },
   "overrides": {
+    "http-cache-semantics": "$http-cache-semantics",
     "sharp": "$sharp",
     "devalue": "^5.9.4",
     "defu": "^6.1.5",

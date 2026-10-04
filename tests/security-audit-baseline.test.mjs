@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -328,43 +327,23 @@ describe('baseline rot', () => {
 });
 
 describe('baseline entry validation', () => {
-  it('leases the unpatched braces and http-cache-semantics findings until an upstream release exists', () => {
-    const decisions = [
+  it('does not suppress the backported braces and http-cache-semantics advisories', () => {
+    for (const [lockfile, id] of [
       ['package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
       ['pro-test/package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
       ['blog-site/package-lock.json', 'GHSA-ch52-4w7c-c8xp'],
-    ];
-    for (const [lockfile, id] of decisions) {
-      const entry = baselineEntriesFor(lockfile).find((item) => item.id === id);
-      assert.ok(entry, `${lockfile} has no bounded caller decision for ${id}`);
-      const now = Date.parse('2026-10-03T00:00:00Z');
-      const lockfileSha256 = createHash('sha256')
-        .update(readFileSync(new URL(`../${lockfile}`, import.meta.url)))
-        .digest('hex');
-      const args = {
+    ]) {
+      assert.equal(baselineEntriesFor(lockfile).some((entry) => entry.id === id), false);
+      const result = classifyAudit({
         findings: [finding(id)],
         lockfile,
         presentAdvisoryIds: new Set([id]),
-        introducedIds: new Set(),
+        introducedIds: new Set([id]),
         publishedAt: new Map(),
-        now,
-        lockfileSha256,
-      };
-      const live = formatAuditReport(classifyAudit(args), { now });
-      assert.equal(live.failed, false);
-      assert.ok(live.info.some((line) => line.includes('::warning') && line.includes(id)));
-      const changed = formatAuditReport(classifyAudit({ ...args, lockfileSha256: '0'.repeat(64) }), { now });
-      assert.equal(changed.failed, true, `${lockfile} must reject a changed dependency tree even for an inherited advisory ID`);
-      assert.ok(changed.errors.some((line) => line.includes('reviewed lockfile')));
-      assert.equal(formatAuditReport(classifyAudit({ ...args, lockfileSha256: undefined }), { now }).failed, true);
-      const expiredNow = Date.parse(entry.expiresAt) + 1;
-      const expired = formatAuditReport(classifyAudit({ ...args, now: expiredNow }), { now: expiredNow });
-      assert.equal(expired.failed, true);
-      const stale = formatAuditReport(
-        classifyAudit({ ...args, findings: [], presentAdvisoryIds: new Set() }),
-        { now },
-      );
-      assert.equal(stale.failed, true);
+        now: NOW,
+      });
+      assert.equal(result.suppressed.length, 0);
+      assert.equal(formatAuditReport(result, { now: NOW }).failed, true);
     }
   });
 

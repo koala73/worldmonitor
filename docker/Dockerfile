@@ -7,6 +7,7 @@ FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b533
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Copy source and build.
 COPY . .

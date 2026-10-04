@@ -24,6 +24,7 @@
     "@sentry/react": "^10.47.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "braces": "file:../vendor/braces",
     "hls.js": "^1.6.15",
     "i18next": "^25.8.14",
     "i18next-browser-languagedetector": "^8.2.1",
@@ -41,6 +42,7 @@
     "typescript": "~5.8.2"
   },
   "overrides": {
+    "braces": "$braces",
     "esbuild": "0.28.1",
     "postcss": "8.5.23",
     "ws": "8.21.0",

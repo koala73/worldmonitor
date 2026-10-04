@@ -36,25 +36,10 @@ const DAY_MS = 86_400_000;
  * not grants.
  */
 export const BASELINE_ADVISORIES_BY_LOCKFILE = {
-  'package-lock.json': [{
-    id: 'GHSA-vfj7-8cjw-p6xm',
-    reason: 'No patched braces release exists on npm (latest remains 3.0.3). Production inclusion is through Clerk/Solana React Native Metro peer tooling; the Vite browser bundle does not ship braces, micromatch, Metro, or Jest. Inspected API, server, CLI, and application sources do not pass untrusted brace patterns to those walkers. Markdown lint globs are repository-controlled. Caller evidence and removal conditions: docs/security/dependency-dispositions-2026-10-02.md.',
-    expiresAt: '2026-11-03T00:00:00Z',
-    lockfileSha256: 'c69d7459919ab51958835da8d11d1ed86d2205baa68b20394376da985ae755a1',
-  }],
+  'package-lock.json': [],
   'consumer-prices-core/package-lock.json': [],
-  'blog-site/package-lock.json': [{
-    id: 'GHSA-ch52-4w7c-c8xp',
-    reason: 'No patched http-cache-semantics release exists on npm (latest remains 4.2.0). Astro builds a static blog with no server adapter. Build-time remote-image CachePolicy callers receive no incoming client max-stale directive or user cookie, and the deployed blog does not serve a shared user-response cache. Caller evidence and removal conditions: docs/security/dependency-dispositions-2026-10-02.md.',
-    expiresAt: '2026-11-03T00:00:00Z',
-    lockfileSha256: '9a23f7e02febd7708e7b61bee88343c6765e972db7863ae34d875dcf7ffbeee4',
-  }],
-  'pro-test/package-lock.json': [{
-    id: 'GHSA-vfj7-8cjw-p6xm',
-    reason: 'No patched braces release exists on npm (latest remains 3.0.3). The Pro lockfile pulls braces through Clerk/Solana React Native Metro peer tooling. The shipped Vite browser bundle does not include braces, micromatch, Metro, or Jest, and the Pro site has no Node pattern endpoint. Caller evidence and removal conditions: docs/security/dependency-dispositions-2026-10-02.md.',
-    expiresAt: '2026-11-03T00:00:00Z',
-    lockfileSha256: '5f6e1022d23980b394d12baaa47013b85f67f431015676df39ed3c460e91eb60',
-  }],
+  'blog-site/package-lock.json': [],
+  'pro-test/package-lock.json': [],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };
