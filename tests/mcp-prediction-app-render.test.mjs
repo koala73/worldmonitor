@@ -161,8 +161,60 @@ describe('prediction MCP card parity with the website presentation', () => {
       assert.equal(doc.querySelectorAll('.mkt').length, 1);
       sendResult({ structuredContent: buildStructuredContent(projection, { reshaped: true, rider: null }) });
       assert.equal(doc.querySelectorAll('.mkt').length, 0);
-      assert.match(doc.getElementById('groups').textContent, /No prediction markets available/);
-      assert.equal(doc.getElementById('foot').textContent, '');
+      assert.match(doc.getElementById('groups').textContent, /Prediction data unavailable/);
+      assert.match(doc.getElementById('foot').textContent, /Snapshot time unavailable/);
     }
+  });
+});
+
+
+describe('prediction returned-category coverage and freshness', () => {
+  const envelope = bootstrap => ({ cached_at: '2026-10-04T20:00:00Z', stale: false, data: { 'markets-bootstrap': bootstrap } });
+  it('distinguishes returned empty arrays from omitted or malformed categories', async () => {
+    const { doc, send } = await mount([]);
+    send(envelope({ geopolitical: [], tech: [], finance: [] }));
+    assert.match(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
+    assert.equal(doc.querySelector('.mkt-coverage'), null);
+    for (const bootstrap of [{ tech: [] }, { geopolitical: [], tech: [], finance: 'unreadable' }]) {
+      send(envelope(bootstrap));
+      assert.match(doc.querySelector('.mkt-coverage').textContent, /Unavailable or omitted categories: .*Finance/);
+      assert.match(doc.getElementById('groups').textContent, /No contracts in the available returned categories/);
+      assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
+    }
+    send(envelope({}));
+    assert.match(doc.getElementById('groups').textContent, /Prediction data unavailable/);
+  });
+  it('keeps supplied contracts and names missing categories in full and summary projections', async () => {
+    const { doc, sendResult } = await mount([]);
+    for (const raw of [[market], { count: 14, sample: [market] }]) {
+      sendResult({ structuredContent: { projection: envelope({ tech: raw }) } });
+      assert.equal(doc.querySelectorAll('.mkt').length, 1);
+      assert.equal(doc.querySelector('.mkt-title').href, market.url);
+      assert.equal(doc.querySelector('.mkt-coverage').textContent, 'Unavailable or omitted categories: Geopolitical, Finance.');
+    }
+  });
+  it('does not treat a positive summary count with no display sample as empty', async () => {
+    const { doc, send } = await mount([]);
+    send(envelope({ geopolitical: { count: 14, sample: [] }, tech: [], finance: [] }));
+    assert.match(doc.getElementById('groups').textContent, /Geopolitical summary reports 14 contracts but supplied no display sample/);
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts|No contracts in the available/);
+  });
+  it('shows unknown freshness and source notices independently of snapshot presence', async () => {
+    const { doc, send } = await mount([]);
+    send({ ...envelope({ tech: [market] }), cached_at: null, stale: true, freshnessUnknown: true });
+    assert.equal(doc.querySelectorAll('.mkt').length, 1);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot time unavailable.*stale.*Freshness could not be verified/);
+    send({ ...envelope({ tech: [market], degraded: true, error: '<img onerror=alert(1)>' }), freshnessUnknown: true });
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-04T20:00:00Z.*Freshness could not be verified.*Source degraded.*<img/);
+    assert.equal(doc.getElementById('foot').querySelector('img'), null);
+  });
+  it('replaces earlier coverage and unknown freshness after an authoritative returned recovery', async () => {
+    const { doc, send } = await mount([]);
+    send({ ...envelope({ tech: [market] }), cached_at: null, freshnessUnknown: true });
+    assert.ok(doc.querySelector('.mkt-coverage'));
+    send(envelope({ geopolitical: [], tech: [], finance: [] }));
+    assert.equal(doc.querySelector('.mkt-coverage'), null);
+    assert.match(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
+    assert.equal(doc.getElementById('foot').textContent, 'Snapshot: 2026-10-04T20:00:00Z');
   });
 });
