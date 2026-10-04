@@ -6,6 +6,8 @@ import { buildStructuredContent } from '../api/mcp/structured-content.ts';
 import { summarizeData } from '../api/mcp/filters.ts';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { mcpHandler } from '../api/mcp.ts';
+import { makeProDeps } from './helpers/mcp-pro-deps.mjs';
 
 const currentUri = 'ui://worldmonitor/news-intelligence-v2.html';
 const legacyUri = 'ui://worldmonitor/news-intelligence.html';
@@ -107,6 +109,16 @@ describe('News Intelligence accepted projections', () => {
     }
   });
 
+  it('does not invent absent originals when a summary sample contains every reported story', async () => {
+    for (const sample of [[], [story(0)]]) {
+      await mount(result(envelope({ count: sample.length, sample }), true), document => {
+        assert.equal(rows(document).length, sample.length);
+        assert.match(foot(document), /Sample contains all reported stories/);
+        assert.doesNotMatch(foot(document), /Full list is not loaded/);
+      });
+    }
+  });
+
   it('replaces rows, sample limits and old timestamps on empty, unknown and scalar results', async () => {
     await mount(result(envelope(), true), async (document, send) => {
       send(result({ insights: { topStories: [] } }, true));
@@ -150,6 +162,30 @@ describe('News Intelligence current and private legacy static resource', () => {
       assert.equal(body.result.contents[0].uri, uri);
       assert.equal(body.result.contents[0].text, NEWS_INTELLIGENCE_APP_HTML);
       assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+    }
+  });
+
+  it('serves both static URIs anonymously without data reads or quota reservations', async () => {
+    const originalFetch = globalThis.fetch;
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    try {
+      globalThis.fetch = async () => { reads++; throw new Error('Static UI must not read data'); };
+      for (const uri of [currentUri, legacyUri]) {
+        const response = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri } }),
+        }), deps);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.result.contents[0].uri, uri);
+        assert.equal(body.result.contents[0].text, NEWS_INTELLIGENCE_APP_HTML);
+      }
+      assert.equal(pipe.count, 0);
+      assert.deepEqual(pipe.ops, []);
+      assert.equal(reads, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

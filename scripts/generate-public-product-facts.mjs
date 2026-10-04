@@ -344,6 +344,10 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     /get_market_data → market-radar(?:-v\d+)?\.html/,
     'get_market_data → market-radar-v3.html',
   );
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_news_intelligence → news-intelligence(?:-v\d+)?\.html/,
+    'get_news_intelligence → news-intelligence-v2.html',
+  );
   card.tools = TOOL_REGISTRY.map((tool) => ({
     name: tool.name,
     description: tool.description,
