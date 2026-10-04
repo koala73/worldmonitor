@@ -86,7 +86,7 @@ export function naturalDisastersReuseUntil(
 export function filterNaturalDisastersPanelData(data: Record<string, unknown>, args: Record<string, unknown>): Record<string, unknown> {
   const magnitude = argNum(args.min_magnitude);
   const limit = argNum(args.limit) ?? DEFAULT_LIST_LIMIT;
-  if (record(data.events) && validRows(data.events.events)) data.events = projectNaturalEventsRetention(data.events);
+  if (record(data.events) && Array.isArray(data.events.events)) data.events = projectNaturalEventsRetention(data.events);
   for (const source of Object.values(SOURCES)) {
     const bucket = data[source.label];
     if (!record(bucket) || !validRows(bucket[source.list])) continue;
