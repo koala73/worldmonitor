@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CACHE_TOOLS, filterConflictPanelEvents } from '../api/mcp/registry/cache-tools.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Registry now lives split across two files. Concatenate them so the
@@ -165,6 +166,26 @@ describe('MCP schema-vs-behaviour parity (regression guard)', () => {
   });
 
   describe('cache tools — limit:default 30 is enforced via DEFAULT_LIST_LIMIT', () => {
+    it('conflict filters enforce default 30 and explicit limits through the extracted helper', () => {
+      const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_conflict_events');
+      assert.match(tool.inputSchema.properties.limit.description, /default 30/);
+      const rows = Array.from({ length: 40 }, (_, id) => ({ id }));
+      const snapshot = {
+        'ucdp-events': { events: rows },
+        'iran-events': { events: rows },
+        events: { events: rows },
+      };
+      for (const filter of [tool._postFilter, filterConflictPanelEvents]) {
+        for (const [params, expected] of [[{}, 30], [{ limit: 0 }, 40], [{ limit: 2 }, 2]]) {
+          const result = filter(structuredClone(snapshot), params);
+          for (const label of ['ucdp-events', 'events', ...(process.env.IRAN_EVENTS_ENABLED?.toLowerCase() === 'true' ? ['iran-events'] : [])]) {
+            assert.deepEqual(result[label].events.map((row) => row.id),
+              Array.from({ length: expected }, (_, id) => id), `${label}, ${JSON.stringify(params)}`);
+          }
+        }
+      }
+    });
+
     it('every "limit: default 30" claim has a corresponding DEFAULT_LIST_LIMIT use in the same tool block', () => {
       const src = MCP_SRC;
       const tools = src.split(/(?=\n\s{2}\{\s*\n\s+name:\s+'[a-z_]+')/);
