@@ -1,4 +1,5 @@
 import { argBool, argNum, argStrList, capNested, selectDatasets } from './filters';
+import { DEFAULT_LIST_LIMIT } from './constants';
 import { projectNaturalEventsRetention } from '../_natural-events-dashboard.js';
 
 export type NaturalDisastersPanelRead = { value: unknown; reuseUntil: number | null };
@@ -84,7 +85,7 @@ export function naturalDisastersReuseUntil(
 
 export function filterNaturalDisastersPanelData(data: Record<string, unknown>, args: Record<string, unknown>): Record<string, unknown> {
   const magnitude = argNum(args.min_magnitude);
-  const limit = argNum(args.limit) ?? 30;
+  const limit = argNum(args.limit) ?? DEFAULT_LIST_LIMIT;
   if (record(data.events) && validRows(data.events.events)) data.events = projectNaturalEventsRetention(data.events);
   for (const source of Object.values(SOURCES)) {
     const bucket = data[source.label];
