@@ -5,6 +5,8 @@ import { authorizePanelRead, admitConflictPanel, admitMarketPanel } from '../api
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch;
+const originalNow = Date.now;
+const originalStringify = JSON.stringify;
 const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
@@ -55,9 +57,136 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+    JSON.stringify = originalStringify;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
+
+  it('expires replay at the source deadline and recovers under the same daily admission', async () => {
+    let clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    ucdpMeta.fetchedAt = clock - 29.5 * 60000;
+    unrestMeta.fetchedAt = clock;
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = envelope(first).panelRequest.token;
+    const cacheSet = pipe.ops.flat().find(command => command[0] === 'SET' && command[1].includes(':data:'));
+    assert.equal(cacheSet.at(-1), 30, 'reuse ends when the source freshness window ends');
+    clock += 29_000;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, readCount);
+    clock += 1_000;
+    const expired = await authorizePanelRead(context, pipe.pipeline, 'get_conflict_events', {}, token);
+    assert.equal(expired.cached, undefined);
+    assert.ok(expired.rateLimitKey.endsWith(':read'));
+    const boundary = await invoke(deps, { panel_request: token });
+    assert.equal(envelope(boundary).stale, false, 'the ordinary evaluator includes the exact 30-minute boundary');
+    assert.equal(fetched.length, 2 * readCount, 'an expired snapshot is reevaluated even at the boundary');
+    clock += 1;
+    const stale = await invoke(deps, { panel_request: token });
+    assert.equal(envelope(stale).stale, true);
+    assert.equal(fetched.length, 3 * readCount);
+    ucdpMeta.fetchedAt = clock;
+    const recovered = await invoke(deps, { panel_request: token });
+    assert.equal(envelope(recovered).stale, false);
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 4 * readCount);
+    assert.equal(pipe.count, 1);
+  });
+
+  for (const [remainingMs, expectedTtl] of [[1599, 1], [999, null]]) {
+    it(`floors a ${remainingMs}ms source reuse interval without overshooting it`, async () => {
+      const clock = Date.UTC(2026, 9, 5, 12);
+      Date.now = () => clock;
+      ucdpMeta.fetchedAt = clock - 30 * 60000 + remainingMs;
+      unrestMeta.fetchedAt = clock;
+      const { deps, pipe } = makeProDeps();
+      await invoke(deps);
+      const sets = pipe.ops.flat().filter(command => command[0] === 'SET' && command[1].includes(':data:'));
+      assert.deepEqual(sets.map(command => command.at(-1)), expectedTtl === null ? [] : [expectedTtl]);
+      assert.equal(pipe.count, 1);
+    });
+  }
+
+  it('leaves old but valid unrest readable without caching a misleading shared freshness window', async () => {
+    const clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    ucdpMeta.fetchedAt = clock;
+    unrestMeta.fetchedAt = clock - 45 * 60000;
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    assert.equal(envelope(first).stale, false);
+    await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+    assert.equal(fetched.length, 2 * readCount);
+    assert.equal(pipe.count, 1);
+  });
+
+  for (const [label, mutate] of [
+    ['invalid cached timestamp', value => { value.cached_at = 'not a date'; }],
+    ['missing cached timestamp', value => { delete value.cached_at; }],
+    ['future cached timestamp', (value, now) => { value.cached_at = new Date(now + 1).toISOString(); }],
+    ['future UCDP timestamp', (value, now) => { value.conflict_source.ucdp.fetchedAt = now + 1; }],
+  ]) {
+    it(`recovers from ${label} without another allocation`, async () => {
+      const clock = Date.UTC(2026, 9, 5, 12);
+      Date.now = () => clock;
+      ucdpMeta.fetchedAt = unrestMeta.fetchedAt = clock;
+      const { deps, pipe } = makeProDeps();
+      const first = await invoke(deps);
+      const key = [...pipe.store.keys()].find(value => value.includes(':conflicts:conflicts:') && value.includes(':data:'));
+      const value = JSON.parse(pipe.store.get(key));
+      mutate(value, clock);
+      pipe.store.set(key, JSON.stringify(value));
+      const recovered = await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+      assert.equal(envelope(recovered).cached_at, new Date(clock).toISOString());
+      assert.equal(fetched.length, 2 * readCount);
+      await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+      assert.equal(fetched.length, 2 * readCount);
+      assert.equal(pipe.count, 1);
+    });
+  }
+
+  it('checks the source deadline after a delayed cache lookup', async () => {
+    let clock = Date.UTC(2026, 9, 5, 12);
+    Date.now = () => clock;
+    ucdpMeta.fetchedAt = clock - 29.5 * 60000;
+    unrestMeta.fetchedAt = clock;
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    clock += 29_000;
+    const pipeline = deps.redisPipeline;
+    deps.redisPipeline = async (commands, ...options) => {
+      const results = await pipeline(commands, ...options);
+      if (commands.length === 2 && commands[1][0] === 'GET' && commands[1][1].includes(':data:')) clock += 2_000;
+      return results;
+    };
+    const delayed = await invoke(deps, { panel_request: envelope(first).panelRequest.token });
+    assert.equal(envelope(delayed).stale, true);
+    assert.equal(fetched.length, 2 * readCount);
+    assert.equal(pipe.count, 1);
+  });
+
+  for (const [label, delayMs] of [['source deadline', 31_000], ['admission deadline within one second', 599_500]]) {
+    it(`does not save after serialization reaches the ${label}`, async () => {
+      let clock = Date.UTC(2026, 9, 5, 12);
+      Date.now = () => clock;
+      ucdpMeta.fetchedAt = label === 'source deadline' ? clock - 29.5 * 60000 : clock;
+      unrestMeta.fetchedAt = clock;
+      let delayed = false;
+      JSON.stringify = (value, ...args) => {
+        const text = originalStringify(value, ...args);
+        if (!delayed && value?.conflict_source && value.data) { clock += delayMs; delayed = true; }
+        return text;
+      };
+      const { deps, pipe } = makeProDeps();
+      const first = await invoke(deps);
+      assert.equal(first.body.error, undefined);
+      assert.equal(delayed, true);
+      assert.equal(pipe.ops.flat().filter(command => command[0] === 'SET' && command[1].includes(':data:')).length, 0);
+      assert.equal(pipe.count, 1);
+    });
+  }
 
   it('opens once and replays normalized country/default filters with only the fixed source keys', async () => {
     const { deps, pipe } = makeProDeps();
