@@ -166,7 +166,9 @@ describe('NASA FIRMS Area API sequence', () => {
     const detail = `https://provider.invalid/${secret} address=192.0.2.1`;
     const reset = Object.assign(new Error(detail), { code: 'ECONNRESET' });
     const unknown = Object.assign(new Error(detail), { code: 'PRIVATE_MAP_KEY' });
-    const aggregate = new AggregateError([reset, unknown, reset], detail);
+    const dns = Object.assign(new Error(detail), { code: 'EAI_AGAIN' });
+    const beyondLimit = Object.assign(new Error(detail), { code: 'EPIPE' });
+    const aggregate = new AggregateError([reset, unknown, reset, dns, null, null, null, null, beyondLimit], detail);
     aggregate.cause = aggregate;
     const failure = new TypeError(detail, { cause: aggregate });
     const { logger, messages } = captureLogger();
@@ -177,13 +179,13 @@ describe('NASA FIRMS Area API sequence', () => {
       sleepFn: async (ms) => sleeps.push(ms),
       logger,
     }), (error) => {
-      assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [ECONNRESET], primary retry request error [ECONNRESET])');
+      assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [ECONNRESET, EAI_AGAIN], primary retry request error [ECONNRESET, EAI_AGAIN])');
       assert.doesNotMatch(JSON.stringify([error.message, messages]), /private-map-key|PRIVATE_MAP_KEY|provider|192\.0\.2\.1|TypeError/);
       return true;
     });
     assert.equal(attempts, 2);
     assert.deepEqual(sleeps, [6_000]);
-    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary request error [ECONNRESET]; trying primary retry');
+    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary request error [ECONNRESET, EAI_AGAIN]; trying primary retry');
   });
 
   it('distinguishes a failed response body from a failed request', async () => {
