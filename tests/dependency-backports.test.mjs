@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const braces = require('braces');
@@ -85,7 +86,7 @@ describe('braces stack-exhaustion remediation', () => {
 
 describe('http-cache-semantics restricted response remediation', () => {
   it('processes hostile Connection and Vary whitespace within a bounded time', () => {
-    const source = new URL('../vendor/http-cache-semantics/index.js', import.meta.url).pathname;
+    const source = fileURLToPath(new URL('../vendor/http-cache-semantics/index.js', import.meta.url));
     const result = spawnSync(process.execPath, ['-e', `
       const assert = require('node:assert/strict');
       const CachePolicy = require(${JSON.stringify(source)});
