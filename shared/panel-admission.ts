@@ -72,3 +72,12 @@ export const newsIntelligencePanelReadSchema = z.object({
 export const newsIntelligencePanelViewSchema = newsIntelligencePanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
+
+export const chokepointPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('chokepoints') });
+export type ChokepointPanelAdmission = z.infer<typeof chokepointPanelAdmissionSchema>;
+export const chokepointPanelReadSchema = z.object({
+  chokepoint: z.unknown().optional(), dataset: z.unknown().optional(), limit: z.unknown().optional(),
+}).strict();
+export const chokepointPanelViewSchema = chokepointPanelReadSchema.extend({
+  refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');

@@ -2,6 +2,7 @@ import { buildAttributionRider, mergeAttributionRider } from '../../shared/attri
 import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — Edge-safe JS envelope mirror.
 import { unwrapEnvelope } from '../_seed-envelope.js';
+import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
 import { resolveCountryFilter } from './_country-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
@@ -20,9 +21,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitChokepointPanel, admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { chokepointPanelViewSchema, newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -80,7 +81,12 @@ export async function executeNewsIntelligencePanelRead(): Promise<NewsIntelligen
   return executeCacheTool(tool, {}, undefined, 'news-intelligence');
 }
 
-type CachePanelDomain = 'natural-disasters' | 'news-intelligence';
+export async function executeChokepointPanelRead(params: Record<string, unknown>): Promise<ChokepointPanelRead> {
+  const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_chokepoint_status')! as CacheToolDef;
+  return executeCacheTool(tool, params, undefined, 'chokepoints');
+}
+
+type CachePanelDomain = 'natural-disasters' | 'news-intelligence' | 'chokepoints';
 
 async function executeCacheTool(
   tool: CacheToolDef, params: Record<string, unknown>, now?: number, panel?: CachePanelDomain,
@@ -131,9 +137,9 @@ async function executeCacheTool(
   // closed exactly as for an unreadable activation marker; `freshnessUnknown`
   // is what tells the caller the verdict rests on a read that failed.
   const metas = metaOutcomes.map((r) => (r.ok ? r.value : null));
-  const freshnessUnknown = metaOutcomes.some((r) => !r.ok);
+  let freshnessUnknown = metaOutcomes.some((r) => !r.ok);
   const labels = tool._cacheKeys.map((key) => cacheKeyLabel(tool, key));
-  const unreadable = labels.filter((_, i) => !dataReads[i]!.ok);
+  let unreadable = labels.filter((_, i) => !dataReads[i]!.ok);
   // Three-valued on purpose: only a marker we actually read and found ABSENT
   // earns the deployment-order grace. An unreadable marker stays out of the
   // map, so evaluateFreshness evaluates the block and fails closed rather than
@@ -148,7 +154,7 @@ async function executeCacheTool(
   // told its CALLER nothing — `stale: true` looked the same whether the marker
   // was unreadable, the producer regressed, or the grace window closed. One
   // boolean drives both the alarm and the wire field so they cannot drift.
-  const activationUnknown = activationKeys.length > 0
+  let activationUnknown = activationKeys.length > 0
     && activationStates.size !== activationKeys.length;
   if (activationUnknown) {
     captureSilentError(new Error('mcp activation marker read failed'), {
@@ -162,7 +168,7 @@ async function executeCacheTool(
   // still live, or MCP briefly disagrees with the health surfaces at the exact
   // instant the deadline passes. `now` stays injectable as a test seam.
   const evaluatedAt = now ?? Date.now();
-  const { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
+  let { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
     freshnessChecks,
     metas,
     evaluatedAt,
@@ -209,10 +215,23 @@ async function executeCacheTool(
     });
   }
 
-  const data: Record<string, unknown> = {};
+  let data: Record<string, unknown> = {};
   labels.forEach((label, i) => { data[label] = results[i]; });
 
-  const reuseUntil = panel === 'natural-disasters'
+  let chokepointPolicy: ReturnType<typeof chokepointSourcePolicy> | undefined;
+  if (panel === 'chokepoints') {
+    data = filterCacheToolData(tool, data, { limit: 0 });
+    const required = chokepointCacheIdentity(params).dataset;
+    const indices = labels.flatMap((label, index) => required.includes(label) ? [index] : []);
+    const freshness = evaluateFreshness(indices.map(index => freshnessChecks[index]!), indices.map(index => metas[index]), evaluatedAt, activationStates);
+    cached_at = freshness.cached_at; stale = freshness.stale; contentFreshnessPendingUntil = freshness.contentFreshnessPendingUntil;
+    freshnessUnknown = indices.some(index => !metaOutcomes[index]!.ok);
+    unreadable = indices.filter(index => !dataReads[index]!.ok).map(index => labels[index]!);
+    activationUnknown &&= required.includes('_countries');
+    chokepointPolicy = chokepointSourcePolicy(data, unwrapped.map(value => value._seed), metas, params, evaluatedAt, activationStates.size === activationKeys.length);
+  }
+
+  const reuseUntil = panel === 'chokepoints' ? chokepointPolicy!.reuseUntil : panel === 'natural-disasters'
     ? naturalDisastersReuseUntil(data, Object.fromEntries(labels.map((label, index) => [label, unwrapped[index]!._seed])), metas[0], params, evaluatedAt)
     : panel === 'news-intelligence' ? newsIntelligenceReuseUntil(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : null;
 
@@ -229,21 +248,21 @@ async function executeCacheTool(
   // Redis output is JSON-safe and the data map is small (tens of KB), so the
   // clone is cheap.
   let result: Record<string, unknown> = data;
-  if (panel !== 'news-intelligence') result = filterCacheToolData(tool, data, params, panel);
+  if (panel !== 'news-intelligence' && panel !== 'chokepoints') result = filterCacheToolData(tool, data, params, panel);
 
   // Summary mode (issue #3678) — collapse to counts + samples. Applied AFTER
   // the filter so it composes (`country: "DE", summary: true` → counts/samples
   // for DE). Independent of filter success: a thrown filter still pristine-
   // summarises.
-  if (panel !== 'news-intelligence' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
+  if (panel !== 'news-intelligence' && panel !== 'chokepoints' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : undefined;
   return { reuseUntil, value: {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
-    stale: stale || intelligenceFreshness?.stale === true,
+    stale: stale || intelligenceFreshness?.stale === true || chokepointPolicy?.stale === true,
     ...(activationUnknown ? { activationUnknown: true } : {}),
-    ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown ? { freshnessUnknown: true } : {}),
+    ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown || chokepointPolicy?.freshnessUnknown ? { freshnessUnknown: true } : {}),
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     data: result,
@@ -442,6 +461,22 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_chokepoint_status') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Chokepoint refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = chokepointPanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid chokepoint filters and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        sourceArguments = filters;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh chokepoints without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitChokepointPanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_news_intelligence') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('News intelligence refresh controls require a paid panel allowance.', 'invalid');
       if (dedicatedPanel) {
@@ -536,7 +571,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence') && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -641,9 +676,13 @@ export async function dispatchToolsCall(
   try {
     let result: unknown;
     let intelligenceRead: NewsIntelligencePanelRead | undefined;
+    let chokepointRead: ChokepointPanelRead | undefined;
     let disasterRead: NaturalDisastersPanelRead | undefined;
     if (panelRead?.cached !== undefined) {
       result = panelRead.cached;
+    } else if (tool.name === 'get_chokepoint_status' && panelRead) {
+      chokepointRead = await executeChokepointPanelRead(sourceArguments);
+      result = chokepointRead.value;
     } else if (tool.name === 'get_news_intelligence' && panelRead) {
       intelligenceRead = await executeNewsIntelligencePanelRead();
       result = intelligenceRead.value;
@@ -666,7 +705,8 @@ export async function dispatchToolsCall(
       result = await executeTool(sourceTool, sourceArguments);
     }
     if (panelRead && panelRead.cached === undefined) {
-      if (intelligenceRead) await panelRead.saveNewsIntelligence(intelligenceRead);
+      if (chokepointRead) await panelRead.saveChokepoints(chokepointRead);
+      else if (intelligenceRead) await panelRead.saveNewsIntelligence(intelligenceRead);
       else if (disasterRead) await panelRead.saveNaturalDisasters(disasterRead);
       else if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
         const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
@@ -677,9 +717,9 @@ export async function dispatchToolsCall(
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
     }
-    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
+    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
       const original = result as Awaited<ReturnType<typeof executeTool>>;
-      const snapshot = tool.name === 'get_news_intelligence'
+      const snapshot = tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status'
         ? { ...original, data: filterCacheToolData(tool, original.data, callArguments) }
         : tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
       result = snapshot;

@@ -211,7 +211,7 @@
     },
     {
       "name": "get_chokepoint_status",
-      "description": "Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.",
+      "description": "Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. Paid openings use one signed chokepoint panel allocation; repeated views reuse complete requested source subsets while partial sources remain retryable. Different source subsets may reacquire data under the same allocation. Explicit refresh requires a request_id UUID and spends one new allocation; same-UUID retry is idempotent. API/free accounts retain per-tool accounting.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

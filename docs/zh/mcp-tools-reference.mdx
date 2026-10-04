@@ -1464,6 +1464,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 仅授权此工具的付费用户读取凭据；显式刷新时省略。 |
+| `refresh` | boolean | 显式分配新付费额度；需要 UUID `request_id`。 |
+| `request_id` | string | 付费刷新 UUID；同一 UUID 重试复用该额度。 |
 | `chokepoint` | string | 筛选为一个咽喉要道 — 在各数据集使用的不同标识符间按不区分大小写的子串匹配（例如 "hormuz" 匹配 "hormuz_strait"、"Strait of Hormuz"）。 |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `limit` | number | 将 chokepoint-baselines 列表和 _countries ISO2 索引限制为最多这么多项（默认 30，传 0 表示不限）。键控对象映射（transit-summaries、chokepoint_transits、ref、chokepoint-flows）有意不做限制 — 请改用 `chokepoint` 筛选。 |
@@ -1471,7 +1474,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **12 小时**、PortWatch 咽喉参考 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
-- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **72 小时**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
+- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **10 天**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
 
 <CodeGroup>
 
@@ -1487,6 +1490,14 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+**咽喉要道面板额度。**
+
+在 Pro 和 Pro Business 中，`get_chokepoint_status` 打开一次签名的 `chokepoints` 面板只消耗一个额度。重复筛选、`summary` 和 JMESPath 视图共享该额度。实际请求的来源子集完整时复用未截断的原始数据；规范化数据集子集或咽喉筛选变化时，可在同一额度内重新获取来源。仅含未知名称的数据集选择器代表全部六个来源。键控筛选未匹配时保留原映射，不能制造完整空覆盖。稀疏 AIS、不可用的今日计数和部分建模流量保持可见且可重试。
+
+返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具。显式 `refresh: true` 需要 UUID `request_id`，并省略读取凭据；同一 UUID 的重试复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+每次未缓存执行仍使用六个数据 GET、六个元数据 GET 和一个激活 EXISTS 命令。64 次读取限制按工具执行计数，不按这 13 个 Redis 命令计数。复用在缓存查询后和保存前验证所选来源形状、可用性、发布时间以及 CN/HK 关键内容时效。部分、格式错误、未经评估或过期的原始数据不会作为完整数据缓存。基准参考年份和建模流量发布时间不能证明当前实测油流或底层历史的新鲜度。私有封装缓存仍为 512 KiB，工具输出仍为 128 KiB。此额度修改不增加网站详情、历史、警告或提供商读取。
 
 ### `get_supply_vulnerabilities`
 

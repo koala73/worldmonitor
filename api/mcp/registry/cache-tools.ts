@@ -2745,10 +2745,13 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_chokepoint_status',
     _outputBudgetBytes: 131072,
-    description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.',
+    description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. Paid openings use one signed chokepoint panel allocation; repeated views reuse complete requested source subsets while partial sources remain retryable. Different source subsets may reacquire data under the same allocation. Explicit refresh requires a request_id UUID and spends one new allocation; same-UUID retry is idempotent. API/free accounts retain per-tool accounting.',
     inputSchema: {
       type: 'object',
       properties: {
+        panel_request: { type: 'string', description: 'Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh.' },
+        refresh: { type: 'boolean', description: 'Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID.' },
+        request_id: { type: 'string', description: 'UUID for an explicit paid refresh; retry the same UUID to reuse that allocation.' },
         chokepoint: {
           type: 'string',
           description: 'Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz").',
