@@ -180,6 +180,7 @@ test('static country tiers match the website without adding host data readers', 
   await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
   await writeFile(info.outputPath('static-tier-opening.json'), JSON.stringify({ context: host.contexts.at(-1), calls: host.calls }, null, 2));
   await expect.poll(() => host.contexts.at(-1)?.signals?.isTier1).toBe(true);
+  await page.screenshot({ path: info.outputPath('static-tier-us-desktop.png'), fullPage: true });
   const initialCalls = host.calls.length;
   const selected = await host.action('select_country_view', { country_code: 'US', topic: 'security' });
   expect(selected).toMatchObject({ structuredContent: { countryCode: 'US', signals: { isTier1: true } } });
@@ -195,6 +196,8 @@ test('static country tiers match the website without adding host data readers', 
   expect(host.contexts.at(-1)?.signals?.criticalNews).toBeNull();
   expect(host.contexts.at(-1)?.signals?.protests).toBeNull();
   expect(host.admissions).toBe(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: info.outputPath('static-tier-ch-mobile.png'), fullPage: true });
 
   host.denyActivity();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
@@ -208,7 +211,7 @@ test('static country tiers match the website without adding host data readers', 
   expect(host.contexts.at(-1)?.signals?.militaryFlights).toBeNull();
   expect(host.admissions).toBe(3);
   expect(host.unmanaged).toEqual([]);
-  await writeFile(info.outputPath('static-tier-final.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, admissions: host.admissions, newSignalsReaders: 0 }, null, 2));
+  await writeFile(info.outputPath('static-tier-final.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, admissions: host.admissions }, null, 2));
 });
 
 test('country territory counts honor loaded polygons instead of neighboring bounding-box observations', async ({ page }, info) => {
