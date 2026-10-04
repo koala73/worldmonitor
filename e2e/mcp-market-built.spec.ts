@@ -8,8 +8,9 @@ test.describe.configure({ mode: 'serial' });
 let bootstrap: string;
 const fixture = { cached_at: '2026-10-03T18:30:00Z', data: {
   'stocks-bootstrap': { quotes: Array.from({ length: 12 }, (_, i) => ({
-    symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: 100 + i, change: 1.25,
-    sparkline: i === 11 ? [] : [90, 110, 100],
+    symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: i === 0 ? 85233 : 100 + i, change: 1.25,
+    sparkline: i === 11 ? [] : i === 0 ? [86789.9, 83340, 85233]
+      : i === 9 ? [85233, 85233] : i === 10 ? [1234567890120, 1234567890125, 1234567890123.4] : [90, 110, 100],
   })) },
 } };
 
@@ -85,7 +86,19 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     await summary.press('Enter');
     await expect(frame.locator('details').first()).toHaveAttribute('open', '');
     await expect(frame.locator('.terminal-chart')).toBeVisible();
-    await expect(frame.locator('.terminal-chart')).toContainText('LAST 100');
+    await expect(frame.locator('.terminal-chart')).toContainText('LAST 85233');
+    await frame.locator('details').evaluateAll(rows => rows.forEach(row => (row as HTMLDetailsElement).open = true));
+    await expect(frame.locator('.terminal-chart')).toHaveCount(11);
+    const clippedLabels = await frame.locator('.terminal-chart').evaluateAll(charts => charts.flatMap(chart => {
+      const svg = chart as SVGSVGElement;
+      return Array.from(svg.querySelectorAll('text')).flatMap(label => {
+        const bounds = label.getBBox();
+        return bounds.x < 0 || bounds.x + bounds.width > svg.viewBox.baseVal.width
+          ? [{ text: label.textContent, left: bounds.x, right: bounds.x + bounds.width, width: svg.viewBox.baseVal.width }]
+          : [];
+      });
+    }));
+    expect(clippedLabels).toEqual([]);
     await expect(frame.locator('#marketUsage')).toContainText('47 panel requests remaining');
     const last = frame.getByText('Controlled asset 11', { exact: true });
     await last.scrollIntoViewIfNeeded();
