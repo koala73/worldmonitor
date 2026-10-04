@@ -2757,6 +2757,21 @@ Read one unchanged original forecast case for an exact loaded ID and generation.
 - **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
 - **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
 
+### `get_forecast_theaters`
+
+Read the latest original simulation theater summaries with a valid paid forecast admission. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. No other arguments are accepted. |
+
+- **API endpoint:** `GET /api/forecast/v1/get-simulation-outcome`, latest-only.
+- **Access:** `subscription` with owner, scope, expiry and entitlement checks.
+- **Allocation:** shares the opening's daily allocation and 64 uncached-read budget. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
+- **Output budget:** 128 KB for unchanged original evidence. Invalid or oversized source reports unavailable; no silent truncation, run selector, simulation trigger or private artifact read.
+
 ### `get_forecast_scorecard`
 
 Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.

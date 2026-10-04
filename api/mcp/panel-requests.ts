@@ -4,6 +4,7 @@ import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmi
 import { resolveCountryCode } from '../../shared/country-code-resolve';
 import { forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, type ForecastPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
+import { forecastTheaterReadSchema, reusableForecastTheaterResult } from '../../shared/forecast-theaters';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
@@ -103,7 +104,8 @@ function checkReadScope(name: string, args: Record<string, unknown>, country: st
   if (country === 'forecasts') {
     if (name === 'get_forecast_predictions' && forecastPanelReadSchema.safeParse(args).success) return;
     if (name === 'get_forecast_case' && forecastCaseReadSchema.safeParse(args).success) return;
-    throw new PanelRequestError('Panel request only covers bounded forecast lists and original case details.', 'invalid');
+    if (name === 'get_forecast_theaters' && forecastTheaterReadSchema.safeParse(args).success) return;
+    throw new PanelRequestError('Panel request only covers bounded forecast lists, original cases and latest theater summaries.', 'invalid');
   }
   if (country === 'news') {
     const snapshot = z.object({
@@ -180,6 +182,10 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
     },
     save: async (value: unknown) => {
+      if (name === 'get_forecast_theaters') {
+        if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object'
+          || !('forecastTheaters' in value.data) || !reusableForecastTheaterResult(value.data.forecastTheaters)) return;
+      }
       if (name === 'get_forecast_predictions') {
         if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object' || !('predictions' in value.data)) return;
         const source = value.data.predictions;

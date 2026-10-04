@@ -357,6 +357,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Cached forecasts; paid interactive openings return a compact list and signed case admission. | Cache |
 | `get_forecast_case` | One original case for an exact loaded ID and generation under the forecast admission. | Cache |
+| `get_forecast_theaters` | Latest original simulation theaters under the same forecast admission; source run/time and partial coverage remain explicit. | RPC |
 | `get_forecast_scorecard` | Cached forecast-resolution calibration and scorecard. | Cache |
 
 ### Meta
@@ -424,6 +425,7 @@ Reverse lookup workflow:
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
 | `get_forecast_case` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_theaters` | `GET /api/forecast/v1/get-simulation-outcome` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
@@ -516,7 +518,7 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
-| `ui://worldmonitor/forecasts-v2.html` | `get_forecast_predictions` | Loaded forecast cards and local filters, with original case evidence read under the same signed opening allocation. |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | Loaded forecast cards and local filters, with original case evidence read under the same signed opening allocation. |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
 
