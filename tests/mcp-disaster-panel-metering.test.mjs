@@ -164,6 +164,28 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
     await invoke(bundle.deps, { min_magnitude: 5, active_only: true, limit: 1, panel_request: envelope(first).panelRequest.token });
     assert.equal(fetched.length, 8); assert.equal(bundle.pipe.count, 1);
   });
+  for (const expired of [false, true]) {
+    it(`projects ${expired ? 'expired' : 'active'} retained EONET events despite a malformed neighbor and preserves recovery`, async () => {
+      const bundle = fixture(); const receipt = await news(bundle);
+      sources[sourceKeys[2]].data.events.push(null);
+      sources[sourceKeys[2]].data.eonetRetention = { retainedUntil: now + (expired ? -1 : 5_000), eventIndexes: [0] };
+      const args = { dataset: ['other'], limit: 20, panel_request: receipt.token };
+      const first = await invoke(bundle.deps, args);
+      assert.equal(first.body.error, undefined);
+      assert.deepEqual(envelope(first).data.events.events, expired
+        ? [{ id: 'gdacs', magnitude: 2, closed: true }, null]
+        : sources[sourceKeys[2]].data.events);
+      assert.equal(Object.hasOwn(envelope(first).data.events, 'eonetRetention'), false, 'private retention must not escape the projection');
+      assert.equal(cachedEntries(bundle).length, 0, 'malformed neighbors remain retryable');
+      sources = payload();
+      const recovered = await invoke(bundle.deps, args);
+      assert.deepEqual(envelope(recovered).data.events.events.map(row => row.id), ['eonet', 'gdacs']);
+      assert.equal(fetched.length, 8);
+      await invoke(bundle.deps, args);
+      assert.equal(fetched.length, 8, 'healthy recovery replays without another source read');
+      assert.equal(bundle.pipe.count, 1);
+    });
+  }
   it('rechecks the original EONET deadline after lookup and does not extend it with rounded cache TTL', async () => {
     const bundle = fixture(); const receipt = await news(bundle);
     const retainedUntil = start + 2_550;
