@@ -1331,6 +1331,9 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 
 | Name | Type | Description |
 |------|------|-------------|
+| `panel_request` | string | Server-issued closed News Intelligence panel token. Omit for a paid opening; repeat and filters reuse its original source snapshot. |
+| `refresh` | boolean | Paid panel only. Explicitly open a new allocation without panel_request and with a UUID request_id. |
+| `request_id` | string | Refresh identity. Retrying the same UUID reuses that allocation. |
 | `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | Filter GDELT intelligence to a single topic. |
 | `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
 | `country` | string | Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
@@ -1344,6 +1347,10 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, `effectiveImportanceScore`, and `credibilityScore` (0-100 source reliability, distinct from importance; state-controlled media is capped at 40).
 - **Freshness budget:** per slice — news insights **30 min**, GDELT intel **45 min**, cross-source signals **60 min**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.
 
 <CodeGroup>
 

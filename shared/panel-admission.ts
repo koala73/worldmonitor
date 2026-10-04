@@ -62,3 +62,13 @@ export const disasterPanelViewSchema = disasterPanelReadSchema.extend({
   refresh: z.boolean().default(false),
   request_id: z.string().uuid().optional(),
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
+
+export const newsIntelligencePanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('news-intelligence') });
+export type NewsIntelligencePanelAdmission = z.infer<typeof newsIntelligencePanelAdmissionSchema>;
+export const newsIntelligencePanelReadSchema = z.object({
+  topic: z.unknown().optional(), category: z.unknown().optional(), country: z.unknown().optional(),
+  alerts_only: z.unknown().optional(), query: z.unknown().optional(), min_importance: z.unknown().optional(), limit: z.unknown().optional(),
+}).strict();
+export const newsIntelligencePanelViewSchema = newsIntelligencePanelReadSchema.extend({
+  refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');

@@ -974,6 +974,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 服务端签发的专用 News Intelligence 凭据。 |
+| `refresh` | boolean | 付费刷新；省略凭据并提供 UUID。 |
+| `request_id` | string (UUID) | 同一 UUID 重试同一刷新额度。 |
 | `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | 将 GDELT 情报筛选为单个主题。 |
 | `category` | string | 将顶级新闻故事筛选为一个类别（例如 "conflict"、"economy"；回退为 "general"）。 |
 | `country` | string | 将顶级故事和旅行警示筛选为一个 ISO 3166-1 alpha-2 国家代码（不区分大小写）。 |
@@ -984,6 +987,10 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+在 Pro 和 Pro Business 中，`get_news_intelligence` 打开一次 News Intelligence 面板只消耗一个额度。重复打开、筛选、`summary` 和 JMESPath 视图在授权窗口内复用同一完整原始快照。返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具；新闻和国家面板凭据不能授权它。显式刷新需设置 `refresh: true`，提供 UUID `request_id`，并省略读取凭据。重试同一 UUID 复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+复用仍使用现有四个数据 GET 和三个元数据 GET。有效期取 30/45/60 分钟元数据期限、共享的 60 分钟 Insights 生成期限、已评估的 GDELT 内容年龄期限及面板授权期限的最早值。公告发布时间会验证，但此读取图没有独立的公告新鲜度评估。缺失、降级、格式错误、过期、未来或未评估的来源可以重试。付费读取通过 `stale` 表示已证实的生成时间过期，通过 `freshnessUnknown` 表示未评估的时钟；原始来源值保持不变。跨源生产程序允许已观察的空信号列表；空 Insights 和公告引导列表不可复用。64 次读取上限计算未缓存的工具执行次数，不是单个 Redis GET 次数。这不证明所有提供方的完整覆盖。
 
 <CodeGroup>
 

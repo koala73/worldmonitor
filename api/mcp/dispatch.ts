@@ -2,6 +2,8 @@ import { buildAttributionRider, mergeAttributionRider } from '../../shared/attri
 import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — Edge-safe JS envelope mirror.
 import { unwrapEnvelope } from '../_seed-envelope.js';
+import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
+import { resolveCountryFilter } from './_country-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
@@ -18,9 +20,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -73,8 +75,15 @@ export async function executeNaturalDisastersPanelRead(params: Record<string, un
   return executeCacheTool(tool, params, undefined, 'natural-disasters');
 }
 
+export async function executeNewsIntelligencePanelRead(): Promise<NewsIntelligencePanelRead> {
+  const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_news_intelligence')! as CacheToolDef;
+  return executeCacheTool(tool, {}, undefined, 'news-intelligence');
+}
+
+type CachePanelDomain = 'natural-disasters' | 'news-intelligence';
+
 async function executeCacheTool(
-  tool: CacheToolDef, params: Record<string, unknown>, now?: number, panel?: 'natural-disasters',
+  tool: CacheToolDef, params: Record<string, unknown>, now?: number, panel?: CachePanelDomain,
 ): Promise<{ value: CacheToolValue; reuseUntil: number | null }> {
   // Per-key namespace decision (#7674): most _cacheKeys / freshness keys are
   // written by the Railway seeder fleet and are read raw; the route-owned
@@ -88,7 +97,7 @@ async function executeCacheTool(
   // key failed the whole tool as a raw TimeoutError (WORLDMONITOR-176/ZM/137),
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
-  const reads = tool._cacheKeys.map((k) => settleRead((panel === 'natural-disasters' ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
+  const reads = tool._cacheKeys.map((k) => settleRead((panel !== undefined ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
   const freshnessChecks = tool._freshnessChecks;
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
@@ -117,7 +126,7 @@ async function executeCacheTool(
     activationRead,
   ]);
   const unwrapped: Array<{ _seed: unknown; data: unknown }> = dataReads.map(r => unwrapEnvelope(r.ok ? r.value : null));
-  const results = dataReads.map((r, index) => (r.ok ? panel === 'natural-disasters' ? unwrapped[index]!.data : r.value : null));
+  const results = dataReads.map((r, index) => (r.ok ? panel !== undefined ? unwrapped[index]!.data : r.value : null));
   // An unreadable seed-meta enters evaluateFreshness as null, so `stale` fails
   // closed exactly as for an unreadable activation marker; `freshnessUnknown`
   // is what tells the caller the verdict rests on a read that failed.
@@ -205,7 +214,7 @@ async function executeCacheTool(
 
   const reuseUntil = panel === 'natural-disasters'
     ? naturalDisastersReuseUntil(data, Object.fromEntries(labels.map((label, index) => [label, unwrapped[index]!._seed])), metas[0], params, evaluatedAt)
-    : null;
+    : panel === 'news-intelligence' ? newsIntelligenceReuseUntil(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : null;
 
   // Optional in-memory post-filter (declared per-tool, mirrors that tool's
   // inputSchema.properties). A filter bug must NEVER break the tool — on throw
@@ -220,9 +229,31 @@ async function executeCacheTool(
   // Redis output is JSON-safe and the data map is small (tens of KB), so the
   // clone is cheap.
   let result: Record<string, unknown> = data;
-  if (tool._postFilter) {
+  if (panel !== 'news-intelligence') result = filterCacheToolData(tool, data, params, panel);
+
+  // Summary mode (issue #3678) — collapse to counts + samples. Applied AFTER
+  // the filter so it composes (`country: "DE", summary: true` → counts/samples
+  // for DE). Independent of filter success: a thrown filter still pristine-
+  // summarises.
+  if (panel !== 'news-intelligence' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
+
+  const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, metas, evaluatedAt) : undefined;
+  return { reuseUntil, value: {
+    ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
+    cached_at,
+    stale: stale || intelligenceFreshness?.stale === true,
+    ...(activationUnknown ? { activationUnknown: true } : {}),
+    ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown ? { freshnessUnknown: true } : {}),
+    ...(unreadable.length > 0 ? { unreadable } : {}),
+    ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
+    data: result,
+  } };
+}
+
+function filterCacheToolData(tool: CacheToolDef, data: Record<string, unknown>, params: Record<string, unknown>, panel?: CachePanelDomain): Record<string, unknown> {
+  if (!tool._postFilter) return data;
     try {
-      result = panel === 'natural-disasters' ? filterNaturalDisastersPanelData(structuredClone(data), params) : tool._postFilter(structuredClone(data), params);
+      return panel === 'natural-disasters' ? filterNaturalDisastersPanelData(structuredClone(data), params) : tool._postFilter(structuredClone(data), params);
     } catch (err) {
       // Input validation must reach the caller instead of serving unfiltered data.
       // A stored-contract violation must NOT fall through to `data`: that path serves the
@@ -237,26 +268,8 @@ async function executeCacheTool(
         tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name },
         fingerprint: mcpErrorFingerprint('post-filter', tool.name, err),
       });
-      result = data;
+      return data;
     }
-  }
-
-  // Summary mode (issue #3678) — collapse to counts + samples. Applied AFTER
-  // the filter so it composes (`country: "DE", summary: true` → counts/samples
-  // for DE). Independent of filter success: a thrown filter still pristine-
-  // summarises.
-  if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
-
-  return { reuseUntil, value: {
-    ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
-    cached_at,
-    stale,
-    ...(activationUnknown ? { activationUnknown: true } : {}),
-    ...(freshnessUnknown ? { freshnessUnknown: true } : {}),
-    ...(unreadable.length > 0 ? { unreadable } : {}),
-    ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
-    data: result,
-  } };
 }
 
 type SettledRead = { ok: true; value: unknown } | { ok: false };
@@ -429,6 +442,23 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_news_intelligence') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('News intelligence refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = newsIntelligencePanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid news intelligence filters and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        try { resolveCountryFilter(filters.country, 'country'); } catch { throw new PanelRequestError('Supply a recognized country filter.', 'invalid'); }
+        sourceArguments = filters;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh news intelligence without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitNewsIntelligencePanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_natural_disasters') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Disaster refresh controls require a paid panel allowance.', 'invalid');
       if (dedicatedPanel) {
@@ -506,7 +536,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters') && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -610,9 +640,13 @@ export async function dispatchToolsCall(
   let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
+    let intelligenceRead: NewsIntelligencePanelRead | undefined;
     let disasterRead: NaturalDisastersPanelRead | undefined;
     if (panelRead?.cached !== undefined) {
       result = panelRead.cached;
+    } else if (tool.name === 'get_news_intelligence' && panelRead) {
+      intelligenceRead = await executeNewsIntelligencePanelRead();
+      result = intelligenceRead.value;
     } else if (tool.name === 'get_natural_disasters' && panelRead) {
       disasterRead = await executeNaturalDisastersPanelRead(sourceArguments);
       result = disasterRead.value;
@@ -632,7 +666,8 @@ export async function dispatchToolsCall(
       result = await executeTool(sourceTool, sourceArguments);
     }
     if (panelRead && panelRead.cached === undefined) {
-      if (disasterRead) await panelRead.saveNaturalDisasters(disasterRead);
+      if (intelligenceRead) await panelRead.saveNewsIntelligence(intelligenceRead);
+      else if (disasterRead) await panelRead.saveNaturalDisasters(disasterRead);
       else if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
         const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
         await panelRead.save(snapshot);
@@ -642,9 +677,11 @@ export async function dispatchToolsCall(
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
     }
-    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
+    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
       const original = result as Awaited<ReturnType<typeof executeTool>>;
-      const snapshot = tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
+      const snapshot = tool.name === 'get_news_intelligence'
+        ? { ...original, data: filterCacheToolData(tool, original.data, callArguments) }
+        : tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
       result = snapshot;
       if (argBool(callArguments.summary)) result = { ...snapshot, data: tool._summarize ? tool._summarize(snapshot.data) : summarizeData(snapshot.data) };
       if (panelRequest) result = { ...result as Record<string, unknown>, panelRequest };
