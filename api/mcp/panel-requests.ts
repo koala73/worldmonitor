@@ -239,7 +239,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (encoder.encode(raw).length > cacheBudget) return;
       const remaining = Math.floor((wrapper.reuseUntil - Date.now()) / 1000);
       if (remaining < 1) return;
-      try { await pipeline([['SET', cacheKey, raw, 'EX', remaining]], 5_000, true); } catch { }
+      try { await pipeline([['SET', cacheKey, raw, 'EX', remaining]], 5_000, true); } catch { /* Optional reuse must not turn a valid read into an error. */ }
     },
     saveNaturalDisasters: async (read: NaturalDisastersPanelRead) => {
       if (name !== 'get_natural_disasters' || read.reuseUntil === null) return;
