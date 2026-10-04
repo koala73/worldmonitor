@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, admitCountryPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 import { INTEL_TOPIC_IDS } from '../shared/intelligence-snapshots.js';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -87,6 +89,9 @@ describe('News Intelligence closed paid admission', () => {
     ['degraded Insights', () => { sources[keys[0]].status = 'degraded'; }],
     ['empty Insights', () => { sources[keys[0]].topStories = []; }],
     ['missing cross-source evaluation', () => { delete sources[keys[2]].evaluatedAt; }],
+    ['old cross-source evaluation', () => { sources[keys[2]].evaluatedAt -= 3_600_000; }],
+    ['contradictory metadata count', () => { sources[keys[4]].recordCount = 0; }],
+    ['source error object', () => { sources[keys[0]].error = { reason: 'unavailable' }; }],
     ['malformed signal', () => { sources[keys[2]].signals = [null]; }],
     ['missing GDELT topic', () => { sources[keys[1]].topics.pop(); }],
     ['old content', () => { sources[keys[5]].newestItemAt -= 7_200_000; }],
@@ -133,4 +138,107 @@ describe('News Intelligence closed paid admission', () => {
       assert.equal(bundle.pipe.count, 0); assert.equal(fetched.length, 0);
     }
   });
+  it('reports current independently read usage only after receipt authorization', async () => {
+    const bundle = makeProDeps(); const token = value(await invoke(bundle)).panelRequest.token;
+    const key = dailyCounterKey(context.userId, new Date(now)); const pipeline = bundle.deps.redisPipeline;
+    let counter = '2'; let reads = 0;
+    bundle.deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) { reads++; return [{ result: counter }]; }
+      return pipeline(commands, ...options);
+    };
+    assert.equal((await invoke(bundle, { panel_request: token })).body.result._meta['worldmonitor/usage'].remaining, 48);
+    counter = null;
+    assert.equal((await invoke(bundle, { panel_request: token })).body.result._meta?.['worldmonitor/usage'], undefined);
+    await invoke(bundle, { panel_request: 'forged' }); assert.equal(reads, 2); assert.equal(fetched.length, 7); assert.equal(bundle.pipe.count, 1);
+  });
+  it('retains rights, revocation, quota and the 64 uncached execution limit', async () => {
+    const bundle = makeProDeps(); sources[keys[0]].status = 'degraded';
+    const token = value(await invoke(bundle)).panelRequest.token;
+    for (let i = 1; i < 64; i++) assert.equal((await invoke(bundle, { panel_request: token })).body.error, undefined);
+    assert.equal((await invoke(bundle, { panel_request: token })).response.status, 429);
+    assert.equal(fetched.length, 64 * 7); assert.equal(bundle.pipe.count, 1);
+    bundle.deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
+    assert.equal((await invoke(bundle, { panel_request: token })).response.status, 403);
+    bundle.deps.validateProMcpToken = async () => null;
+    assert.equal((await invoke(bundle, { panel_request: token })).response.status, 401);
+    assert.equal((await invoke(makeProDeps({ pipelineOpts: { initialCount: 50 } }))).response.status, 429);
+    assert.equal((await invoke(makeProDeps({ pipelineOpts: { throwOnEval: true } }))).response.status, 503);
+    assert.equal(fetched.length, 64 * 7);
+  });
+  it('validates source envelopes, cache wrappers and the wrapped 512KiB boundary', async () => {
+    const bundle = makeProDeps(); const opened = value(await invoke(bundle)); const token = opened.panelRequest.token;
+    const reader = await authorizePanelRead(context, bundle.pipe.pipeline, 'get_news_intelligence', {}, token);
+    const [key, raw] = cache(bundle)[0]; const original = JSON.parse(raw);
+    for (const invalid of ['invalid json', JSON.stringify({ ...original, reuseUntil: now }), JSON.stringify({ ...original, extra: true }), JSON.stringify({ ...original, value: { ...original.value, data: { ...original.value.data, insights: null } } })]) {
+      bundle.pipe.store.set(key, invalid); await invoke(bundle, { panel_request: token });
+    }
+    assert.equal(fetched.length, 35); assert.equal(bundle.pipe.count, 1);
+    bundle.pipe.store.delete(key);
+    const { panelRequest: _receipt, ...originalValue } = opened;
+    originalValue.padding = 'x'.repeat(524288 - Buffer.byteLength(JSON.stringify(originalValue)));
+    await reader.saveNewsIntelligence({ value: originalValue, reuseUntil: now + 10_000 }); assert.equal(cache(bundle).length, 0);
+    originalValue.padding = originalValue.padding.slice(0, -100);
+    await reader.saveNewsIntelligence({ value: originalValue, reuseUntil: now + 10_000 }); assert.equal(cache(bundle).length, 1);
+    assert.ok(Buffer.byteLength(cache(bundle)[0][1]) <= 524288);
+    bundle.pipe.store.delete(key); sources[keys[0]] = { _seed: { fetchedAt: now - 1_800_000, state: 'OK' }, data: sources[keys[0]] };
+    await invoke(bundle, { panel_request: token }); assert.equal(cache(bundle).length, 0);
+  });
+  it('does not reuse a wrapper whose deadline passed during the two-key lookup', async () => {
+    const bundle = makeProDeps(); sources[keys[4]].fetchedAt = now - 1_800_000 + 1500;
+    const token = value(await invoke(bundle)).panelRequest.token; const pipeline = bundle.deps.redisPipeline;
+    sources = payload();
+    bundle.deps.redisPipeline = async (commands, ...options) => {
+      const result = await pipeline(commands, ...options);
+      if (commands.length === 2 && commands.every(command => command[0] === 'GET')) now += 1500;
+      return result;
+    };
+    await invoke(bundle, { panel_request: token }); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+  });
+  for (const [index, age] of [[4, 30], [5, 45], [6, 60]]) it(`bounds reuse by metadata source ${index}`, async () => {
+    const bundle = makeProDeps(); sources[keys[index]].fetchedAt = now - age * 60_000 + 2000;
+    await invoke(bundle); assert.equal(JSON.parse(cache(bundle)[0][1]).reuseUntil, now + 2000);
+  });
+  it('bounds reuse by actual GDELT content and shared Insights generation', async () => {
+    for (const source of ['content', 'generation']) {
+      const bundle = makeProDeps(); sources = payload();
+      if (source === 'content') sources[keys[5]].newestItemAt = now - 45.5 * 60_000 + 2000;
+      else sources[keys[0]].generatedAt = new Date(now - 3_600_000 + 2000).toISOString();
+      await invoke(bundle); assert.equal(JSON.parse(cache(bundle)[0][1]).reuseUntil, now + 2000);
+    }
+  });
+
+  it('preserves ordinary and deferred presentation pristine fallback on an unexpected filter failure', async () => {
+    const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_news_intelligence');
+    const original = tool._postFilter;
+    try {
+      tool._postFilter = data => { data.insights.topStories.pop(); throw new Error('controlled filter failure'); };
+      const paid = makeProDeps(); const first = await invoke(paid);
+      assert.equal(value(first).data.insights.topStories.length, 2);
+      assert.equal(value(await invoke(paid, { category: 'cyber' })).data.insights.topStories.length, 2);
+      const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 }) });
+      assert.equal(value(await invoke(api)).data.insights.topStories.length, 2);
+      assert.equal(fetched.length, 14); assert.equal(paid.pipe.count, 1);
+    } finally { tool._postFilter = original; }
+  });
+
+  it('retains the public 128KiB output budget without another admission on retry', async () => {
+    const bundle = makeProDeps(); sources[keys[0]].padding = 'x'.repeat(140000);
+    const first = await invoke(bundle); assert.equal(first.body.result.structuredContent._budget_exceeded, true); assert.equal(first.body.result.structuredContent.budget_bytes, 131072);
+    await invoke(bundle); assert.equal(bundle.pipe.count, 1); assert.equal(fetched.length, 7);
+  });
+
+  it('marks stale Insights generation and unassessed GDELT clocks explicitly, then recovers the same admission', async () => {
+    for (const source of ['Insights', 'GDELT']) {
+      const bundle = makeProDeps(); sources = payload();
+      if (source === 'Insights') sources[keys[0]].generatedAt = new Date(now - 3_600_000).toISOString();
+      else delete sources[keys[5]].maxContentAgeMin;
+      const initial = value(await invoke(bundle));
+      if (source === 'Insights') assert.equal(initial.stale, true, 'fresh metadata cannot hide proven stale generation');
+      else assert.equal(initial.freshnessUnknown, true, 'absent content assessment cannot report assessed fresh');
+      assert.equal(cache(bundle).length, 0); sources = payload();
+      const recovered = value(await invoke(bundle)); assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined);
+      await invoke(bundle); assert.equal(fetched.length, source === 'Insights' ? 14 : 28); assert.equal(bundle.pipe.count, 1);
+    }
+  });
+
 });
