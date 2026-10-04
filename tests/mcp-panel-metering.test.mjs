@@ -514,6 +514,35 @@ describe('paid curated market panel through the MCP handler', () => {
     assert.equal(fetched.length, 11);
     assert.equal(pipe.count, 1);
   });
+  it('accepts an uppercase refresh UUID and replays its lowercase spelling without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const first = await invoke(deps, { refresh: true, request_id, asset_class: ['equity'] });
+    assert.equal(first.body.error, undefined);
+    const second = await invoke(deps, { refresh: true, request_id: request_id.toLowerCase(), asset_class: ['equity'] });
+    assert.equal(second.body.error, undefined);
+    assert.equal(first.body.result.structuredContent.panelRequest.token, second.body.result.structuredContent.panelRequest.token);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 11);
+  });
+  it('canonicalizes refresh UUID identity for existing country and news admissions', async () => {
+    const { pipe } = makeProDeps();
+    const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const now = Date.UTC(2026, 9, 4, 12);
+    for (const [admit, name, args, readArgs] of [
+      [admitCountryPanel, 'get_country_brief_section', { country_code: 'US' }, energy],
+      [admitNewsPanel, 'open_news_dashboard', {}, {}],
+    ]) {
+      const first = await admit(context, budget, pipe.pipeline, { ...args, refresh: true, request_id }, now);
+      await readPanel(context, pipe.pipeline, name, readArgs, first.token, now);
+      const replay = await admit(context, budget, pipe.pipeline, { ...args, refresh: true, request_id: request_id.toLowerCase() }, now + 60000);
+      assert.equal(first.token, replay.token);
+      assert.equal(first.expiresAt, replay.expiresAt);
+    }
+    assert.equal(pipe.count, 2);
+    assert.equal(fetched.length, 0);
+  });
   it('retains existing empty-symbol and numeric-limit filtering with canonical default reuse', async () => {
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps, { asset_class: ['equity'] });
