@@ -46,7 +46,7 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。缺失或无效的类别会明确标记为不可用或未包含；未知的新鲜度也会明确显示。 |
 | `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
 
-原始的 `ui://worldmonitor/prediction-markets.html` 仍作为未列出的读取别名。刷新已安装连接的元数据并打开新卡片后才能加载 v2；已有的缓存卡片仍使用旧 HTML。省略合约数据的投影无法恢复被省略的详情。
+原始的 `ui://worldmonitor/prediction-markets.html` 和之前的 `ui://worldmonitor/prediction-markets-v2.html` 仍作为未列出的读取别名。刷新已安装连接的元数据并打开新卡片后才能加载 v3。已有的缓存卡片仍使用旧 HTML。省略合约数据的投影无法恢复被省略的详情。返回的空类别不能证明上游交易平台的完整覆盖。
 
 ## 运行时流程
 
