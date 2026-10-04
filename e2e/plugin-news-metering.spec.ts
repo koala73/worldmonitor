@@ -93,7 +93,7 @@ async function newsAction(page: Page, name: string, args: object) {
   }), { name, args });
 }
 
-test('loaded marker and search interactions retain original identity without data calls or prompts', async ({ page }, info) => {
+async function useSvgNewsMap(page: Page) {
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
@@ -101,6 +101,10 @@ test('loaded marker and search interactions retain original identity without dat
       return Reflect.apply(original, this, [type, ...args]);
     } as typeof original;
   });
+}
+
+test('loaded marker and search interactions retain original identity without data calls or prompts', async ({ page }, info) => {
+  await useSvgNewsMap(page);
   const host = await installNewsHost(page, false, true, true);
   const frame = page.frameLocator('iframe');
   const markers = frame.locator('.news-location-marker');
@@ -153,13 +157,7 @@ test('loaded marker and search interactions retain original identity without dat
 
 test('loaded marker clicks need no server or model-context capability', async ({ page }, info) => {
   await page.setViewportSize({ width: 430, height: 1500 });
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
-      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
-      return Reflect.apply(original, this, [type, ...args]);
-    } as typeof original;
-  });
+  await useSvgNewsMap(page);
   const host = await installNewsHost(page, false, false, false, false);
   const frame = page.frameLocator('iframe');
   await frame.locator('.news-location-marker').click();
@@ -168,6 +166,24 @@ test('loaded marker clicks need no server or model-context capability', async ({
   await page.screenshot({ path: info.outputPath('latest-news-interaction-mobile.png'), fullPage: true });
   expect(host.contexts).toEqual([]);
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
+  expect(host.methods).not.toContain('ui/message');
+});
+
+test('loaded mobile marker selection publishes a receipt in a clean controlled view', async ({ page }, info) => {
+  await page.setViewportSize({ width: 430, height: 1500 });
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  await frame.getByRole('checkbox', { name: 'Natural Events' }).uncheck();
+  await expect(frame.locator('#pluginMapStatus')).toBeEmpty();
+  await frame.locator('.news-location-marker').click();
+  await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ kind: 'news-article', link: 'https://example.com/news', source: 'Fixture publisher', title: 'Controlled earthquake report in Japan' });
+  await expect(frame.locator('#pluginStatus')).toBeEmpty();
+  await expect(frame.locator('.map-popup .popup-body')).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('latest-news-interaction-mobile-clean.png'), fullPage: true });
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
+  expect(host.units).toBe(1);
   expect(host.methods).not.toContain('ui/message');
 });
 
