@@ -14,9 +14,9 @@ function clock(value: unknown, now: number): number | null {
   return typeof stamp === 'number' && Number.isSafeInteger(stamp) && stamp > 0 && stamp <= now ? stamp : null;
 }
 function failed(value: Record<string, unknown>): boolean {
-  return Boolean(value.error) || ['unavailable', 'upstreamUnavailable', 'degraded', 'stale', 'rateLimited', 'fallback'].some(key => value[key] === true)
+  return Boolean(value.error) || value.status === 'error' || ['unavailable', 'upstreamUnavailable', 'degraded', 'stale', 'rateLimited', 'fallback'].some(key => value[key] === true)
     || value.dataAvailable === false
-    || ['error', 'errorCode', 'skipReason'].some(key => typeof value[key] === 'string' && value[key] !== '')
+    || ['error', 'errorCode', 'errorReason', 'skipReason'].some(key => typeof value[key] === 'string' && value[key] !== '')
     || value.sourceState !== undefined && value.sourceState !== 'ok'
     || Array.isArray(value.failedSources) && value.failedSources.length > 0;
 }
@@ -87,7 +87,10 @@ export function newsIntelligenceReuseUntil(data: Record<string, unknown>, seeds:
     if (fetched === null) return null;
     const bucket = data[['insights', 'gdelt-intel', 'cross-source-signals'][index]!] as Record<string, unknown>;
     const rows = bucket[['topStories', 'topics', 'signals'][index]!] as unknown[];
-    if (meta.recordCount !== undefined && (typeof meta.recordCount !== 'number' || !Number.isSafeInteger(meta.recordCount) || meta.recordCount !== rows.length)) return null;
+    const recordCount = index === 1
+      ? (rows as { articles: unknown[] }[]).reduce((total, topic) => total + topic.articles.length, 0)
+      : rows.length;
+    if (meta.recordCount !== undefined && (typeof meta.recordCount !== 'number' || !Number.isSafeInteger(meta.recordCount) || meta.recordCount !== recordCount)) return null;
     deadlines.push(fetched + maxAgeMs);
     const seed = seeds[index];
     if (record(seed)) deadlines.push(clock(seed.fetchedAt, now)! + maxAgeMs);
