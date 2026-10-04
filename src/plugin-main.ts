@@ -217,6 +217,7 @@ function mountPlugin(): void {
     let renderer: object | undefined;
     if (next.renderer) {
       const result = next.renderer === 'globe' ? await map.switchToGlobe() : await map.switchToFlat();
+      await map.whenViewportSettled();
       if (superseded()) return { applied: false, superseded: true };
       renderer = result;
       intended.renderer = result.mode;
