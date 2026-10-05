@@ -27,7 +27,7 @@ export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
 
 /** Metadata reads stay authenticated but never spend an allowance or quota slot. */
 export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
-  return tool.name === 'describe_tool';
+  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance';
 }
 
 /**

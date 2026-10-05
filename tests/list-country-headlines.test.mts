@@ -247,7 +247,11 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(selectCountryHeadlines(payload.countries.PW.items, 'PW')), null);
   });
 
-  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async () => {
+  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async (t) => {
+    const now = Date.now();
+    let clockTicks = 0;
+    t.mock.method(Date, 'now', () => now + clockTicks++ * 1000);
+    const date = new Date(now - 3600_000).toUTCString();
     // #8398 ingest gate: links must belong to the item's own publisher. The
     // fixture hosts stand in for the feeds' own publisher domains — the
     // registered Africa News / Sahel Crisis feeds are Google News searches,
@@ -258,7 +262,6 @@ describe('country headlines from existing curated RSS caches', () => {
     for (const name of ['NPR News', 'PBS NewsHour']) {
       const source = feed(name!);
       const host = new URL(source.url).hostname;
-      const date = new Date(Date.now() - 3600_000).toUTCString();
       const preceding = `<item><title>Kenya holds talks</title><link>https://${host}/kenya</link><pubDate>${date}</pubDate></item>`.repeat(5);
       const xml = `<rss><channel>${preceding}<item><title>Mali agrees peace talks</title><source>Reuters</source><link>https://${host}/mali-talks</link><pubDate>${date}</pubDate></item></channel></rss>`;
       cache.set(rssFeedCacheKey('full', source.url), digest.parseRssXml(xml, source, 'full'));

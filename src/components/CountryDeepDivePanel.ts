@@ -472,14 +472,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateSignals(signals: CountrySignalCounts, notes: readonly string[] = []): void {
     this.currentSignals = signals;
     this.renderInitialSignals(signals);
-    if (Object.values(signals).some(value => value === null)) {
+    const liveValues = Object.entries(signals).filter(([key]) => key !== 'isTier1').map(([, value]) => value);
+    const partial = liveValues.some(value => value === null);
+    if (partial) {
       const notice = this.el('p', 'cdp-economic-source', 'Signal coverage is partial. Unavailable inputs are not evidence of zero activity.');
-      if (Object.values(signals).every(value => value === null)) notice.dataset.briefState = 'unavailable';
+      if (liveValues.every(value => value === null)) notice.dataset.briefState = 'unavailable';
       this.signalsBody?.prepend(notice);
     }
     for (const note of notes) this.signalsBody?.append(this.el('p', 'cdp-economic-source', note));
     const section = this.sections.find(section => section.id === 'signals');
-    if (section) section.card.dataset.briefCoverage = Object.values(signals).some(value => value === null) ? 'partial' : 'complete';
+    if (section) section.card.dataset.briefCoverage = partial ? 'partial' : 'complete';
   }
 
   public updateSignalDetails(details: CountryDeepDiveSignalDetails): void {
