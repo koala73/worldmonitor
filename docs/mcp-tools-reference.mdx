@@ -2664,10 +2664,13 @@ Citation-grounded world intelligence brief from the same precomputed `news:insig
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `geo_context` | string | no | Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request. |
+| `refresh` | boolean | no | Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id. |
+| `request_id` | string | no | UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation. |
+| `panel_request` | string | no | Signed paid World Brief receipt for loaded reads. Do not combine with refresh. |
 
 - **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data` (called with `?keys=insights`) — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Kind:** cache-backed RPC — returns the latest accepted seeder snapshot and fails closed when it is missing, stale, or degraded. No request-time LLM call.
+- **Kind:** cache-backed RPC. A paid opening uses one World Brief allocation; healthy repeat and JMESPath calls reuse the accepted original within its source and admission deadlines. Valid last-known-good content under three hours remains serveable with its stale notice, but stale content is retryable rather than cached for fresh replay. Missing, broken or older content is unavailable. No request-time LLM call. API allowances retain ordinary per-tool billing; free accounts retain the subscription denial.
 - **Sources:** returns the bounded `worldBriefSources` array published with the seeded payload in producer order. URLs are copied from explicit source records, not generated at MCP execution time; empty URL fallbacks are retained so citation indexes cannot shift.
 - **Corroboration:** each entry in `headlines` has an index-aligned entry in `topStories` (`topStories[i]` describes `headlines[i]`) carrying `sourceCount`, `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, and the contributing outlet names in `sources` (capped at 12). All of it is published by the insights seeder, so nothing is computed per request. Note that this per-story `sources` is a list of outlet names, unlike the tool's top-level `sources`, which carries citation records. `memberTitles` is deliberately not returned here — it is available on `get_news_intelligence`, which has a larger output budget.
 

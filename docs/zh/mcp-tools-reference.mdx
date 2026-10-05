@@ -2119,9 +2119,12 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `geo_context` | string | 否 | 已弃用的兼容字段；预计算的全球快照不会按请求重新生成或聚焦。 |
+| `refresh` | boolean | 否 | Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id. |
+| `request_id` | string | 否 | UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation. |
+| `panel_request` | string | 否 | Signed paid World Brief receipt for loaded reads. Do not combine with refresh. |
 
 - **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
-- **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
+- **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
 
