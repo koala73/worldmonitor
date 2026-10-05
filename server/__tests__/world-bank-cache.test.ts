@@ -120,7 +120,7 @@ test('preserves first-party session access through the gateway and existing rate
   expect((await response.json()).data[0].countryCode).toBe('USA');
   expect(providerUrls).toHaveLength(1);
 });
-for (const code of ['IT.NET.USER.ZS', 'IT.CEL.SETS.P2', 'IT.NET.BBND.P2', 'IT.NET.SECR.P6', 'GB.XPD.RSDV.GD.ZS', 'IP.PAT.RESD', 'IP.PAT.NRES', 'IP.TMK.TOTL', 'TX.VAL.TECH.MF.ZS', 'BX.GSR.CCIS.ZS', 'TM.VAL.ICTG.ZS.UN', 'SE.TER.ENRR', 'SE.XPD.TOTL.GD.ZS', 'NY.GDP.MKTP.KD.ZG', 'NY.GDP.PCAP.CD', 'NE.EXP.GNFS.ZS', 'NY.GDP.MKTP.CD']) {
+for (const code of ['IT.NET.USER.ZS', 'IT.CEL.SETS.P2', 'IT.NET.BBND.P2', 'IT.NET.SECR.P6', 'GB.XPD.RSDV.GD.ZS', 'IP.PAT.RESD', 'IP.PAT.NRES', 'IP.TMK.RSCT', 'IP.TMK.NRCT', 'TX.VAL.TECH.MF.ZS', 'BX.GSR.CCIS.ZS', 'TM.VAL.ICTG.ZS.UN', 'SE.TER.ENRR', 'SE.XPD.TOTL.GD.ZS', 'NY.GDP.MKTP.KD.ZG', 'NY.GDP.PCAP.CD', 'NE.EXP.GNFS.ZS', 'NY.GDP.MKTP.CD']) {
   test(`supports the catalogue or documented indicator ${code}`, async () => {
     expect((await request({ indicatorCode: code })).data).toHaveLength(1);
     expect(providerUrls[0]!.pathname.endsWith(`/indicator/${encodeURIComponent(code)}`)).toBe(true);

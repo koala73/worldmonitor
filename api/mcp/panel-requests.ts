@@ -2,8 +2,9 @@ import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmission } from '../../shared/country-brief-host';
 import { resolveCountryCode } from '../../shared/country-code-resolve';
-import { disasterPanelReadSchema, disasterPanelViewSchema, type DisasterPanelAdmission, conflictPanelReadSchema, conflictPanelViewSchema, type ConflictPanelAdmission, marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type PredictionPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
+import { conflictPanelReadSchema, conflictPanelViewSchema, disasterPanelReadSchema, disasterPanelViewSchema, forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type ConflictPanelAdmission, type DisasterPanelAdmission, type ForecastPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission, type PredictionPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
+import { forecastTheaterReadSchema, reusableForecastTheaterResult } from '../../shared/forecast-theaters';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
@@ -18,7 +19,7 @@ const MAX_CACHED_BYTES = 524288;
 const encoder = new TextEncoder();
 
 type PanelScope = { panel: string; window: string; expires: number };
-export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission | ConflictPanelAdmission | DisasterPanelAdmission;
+export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | ForecastPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission | ConflictPanelAdmission | DisasterPanelAdmission;
 export class PanelRequestError extends Error {
   constructor(message: string, public code: 'invalid' | 'quota' | 'reads' | 'backend', public limit?: number, public retryAfter?: number) {
     super(message);
@@ -30,17 +31,17 @@ function userId(context: McpAuthContext): string {
   if (context.kind !== 'pro' && context.kind !== 'user_key') throw new PanelRequestError('A paid user-bound connection is required.', 'invalid');
   return context.userId;
 }
-function panelKey(owner: string, scope: PanelScope): string {
-  return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope)}:${scope.panel}:${scope.window}`;
+function panelFamily(panel: string): 'country' | 'news' | 'forecasts' | 'markets' | 'predictions' | 'conflicts' | 'disasters' {
+  return panel === 'news' || panel === 'forecasts' || panel === 'markets' || panel === 'predictions' || panel === 'conflicts' || panel === 'disasters' ? panel : 'country';
 }
-function panelFamily(scope: PanelScope): string {
-  return scope.panel === 'news' || scope.panel === 'markets' || scope.panel === 'predictions' || scope.panel === 'conflicts' || scope.panel === 'disasters' ? scope.panel : 'country';
+function panelKey(owner: string, scope: PanelScope): string {
+  return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope.panel)}:${scope.panel}:${scope.window}`;
 }
 async function signature(owner: string, scope: PanelScope): Promise<string> {
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET;
   if (!secret) throw new PanelRequestError('Panel authentication is unavailable.', 'backend');
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const bytes = await crypto.subtle.sign('HMAC', key, encoder.encode(`${panelFamily(scope)}-panel:${envPrefix()}:${owner}:${scope.panel}:${scope.window}:${scope.expires}`));
+  const bytes = await crypto.subtle.sign('HMAC', key, encoder.encode(`${panelFamily(scope.panel)}-panel:${envPrefix()}:${owner}:${scope.panel}:${scope.window}:${scope.expires}`));
   return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, '0')).join('');
 }
 async function tuple(pipeline: PipelineFn, command: Array<string | number>): Promise<[number, number, number?]> {
@@ -68,6 +69,12 @@ export async function admitMarketPanel(context: McpAuthContext, budget: McpBudge
   const parsed = marketPanelViewSchema.safeParse(args);
   if (!parsed.success) throw new PanelRequestError('Supply valid curated market filters and a request_id for refresh.', 'invalid');
   return { ...await admitPanel(context, budget, pipeline, 'markets', parsed.data, now), panel: 'markets' };
+}
+
+export async function admitForecastPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<ForecastPanelAdmission> {
+  const parsed = forecastPanelViewSchema.safeParse(args);
+  if (!parsed.success) throw new PanelRequestError('Supply valid forecast filters and refresh arguments.', 'invalid');
+  return { ...await admitPanel(context, budget, pipeline, 'forecasts', parsed.data, now), panel: 'forecasts' };
 }
 
 export async function admitPredictionPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<PredictionPanelAdmission> {
@@ -136,6 +143,12 @@ function checkReadScope(name: string, args: Record<string, unknown>, country: st
     if (name !== 'get_market_data' || !marketPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers curated market data.', 'invalid');
     return;
   }
+  if (country === 'forecasts') {
+    if (name === 'get_forecast_predictions' && forecastPanelReadSchema.safeParse(args).success) return;
+    if (name === 'get_forecast_case' && forecastCaseReadSchema.safeParse(args).success) return;
+    if (name === 'get_forecast_theaters' && forecastTheaterReadSchema.safeParse(args).success) return;
+    throw new PanelRequestError('Panel request only covers bounded forecast lists, original cases and latest theater summaries.', 'invalid');
+  }
   if (country === 'news') {
     const snapshot = z.object({
       dataset: z.array(z.enum(['earthquakes', 'other', 'wildfires'])).min(1).max(3).refine(values => new Set(values).size === values.length),
@@ -177,7 +190,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(news|markets|predictions|conflicts|disasters|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = /^(news|markets|predictions|forecasts|conflicts|disasters|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');
@@ -187,11 +200,18 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   if (mismatch) throw new PanelRequestError('Invalid panel request.', 'invalid');
   checkReadScope(name, args, scope.panel);
   const key = panelKey(owner, scope);
-  const readArgs = scope.panel === 'markets' ? marketPanelReadSchema.parse(args)
-    : scope.panel === 'predictions' ? predictionPanelReadSchema.parse(args)
-      : scope.panel === 'conflicts' ? conflictPanelReadSchema.parse(args)
-        : scope.panel === 'disasters' ? disasterPanelReadSchema.parse(args) : args;
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(readArgs)])));
+  const cacheArguments = scope.panel === 'markets'
+    ? marketPanelReadSchema.parse(args)
+    : scope.panel === 'predictions'
+      ? predictionPanelReadSchema.parse(args)
+      : scope.panel === 'conflicts'
+        ? conflictPanelReadSchema.parse(args)
+        : scope.panel === 'disasters'
+          ? disasterPanelReadSchema.parse(args)
+          : scope.panel === 'forecasts' && name === 'get_forecast_predictions'
+            ? forecastPanelReadSchema.parse(args)
+            : args;
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(cacheArguments)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
   const cacheBudget = name === 'open_news_dashboard' ? 1048576 : MAX_CACHED_BYTES;
@@ -210,6 +230,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
   return {
+    panel: scope.panel,
     rateLimitKey: `${key}:${cached === undefined ? 'read' : 'replay'}`,
     cached,
     reserveUncachedRead: async () => {
@@ -232,6 +253,23 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (name === 'get_natural_disasters') return;
       if (scope.panel === 'conflicts' && !isConflictPanelSnapshotCacheable(value)) return;
       if (scope.panel === 'predictions' && (!value || typeof value !== 'object' || Array.isArray(value))) return;
+      if (name === 'get_forecast_theaters') {
+        if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object'
+          || !('forecastTheaters' in value.data) || !reusableForecastTheaterResult(value.data.forecastTheaters)) return;
+      }
+      if (name === 'get_forecast_predictions') {
+        if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object' || !('predictions' in value.data)) return;
+        const source = value.data.predictions;
+        if (!source || typeof source !== 'object' || !('predictions' in source) || !Array.isArray(source.predictions)) return;
+      }
+      if (name === 'get_forecast_case') {
+        if (!value || typeof value !== 'object' || !('data' in value) || !value.data || typeof value.data !== 'object' || !('forecastCase' in value.data)) return;
+        const detail = value.data.forecastCase;
+        if (!detail || typeof detail !== 'object' || !('status' in detail) || detail.status !== 'ready'
+          || !('generatedAt' in detail) || String(detail.generatedAt) !== args.generated_at
+          || !('forecast' in detail) || !detail.forecast || typeof detail.forecast !== 'object' || Array.isArray(detail.forecast)
+          || !('id' in detail.forecast) || detail.forecast.id !== args.forecast_id) return;
+      }
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;
       if (value && typeof value === 'object') {
