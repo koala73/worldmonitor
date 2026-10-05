@@ -481,7 +481,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |-----------------|-------------|---------|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII 评分、动荡/冲突/安全/新闻组成部分分解、旅行警示级别，以及 OFAC 制裁敞口。 |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | 以可读段落呈现的预计算、有引用依据的全球情报简报，外加支撑性头条和来源文章。 |
-| `ui://worldmonitor/country-brief.html` | `get_country_brief` | 以段落呈现的 AI 合成各国简报，附带分析框架视角和支撑来源。 |
+| `ui://worldmonitor/country-brief-v2.html` | `get_country_brief` | 以段落呈现的 AI 合成各国简报，附带分析框架视角和支撑来源。 |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Fear & Greed 综合指标，外加各资产类别的报价表（股票、大宗商品、加密货币、海湾、板块），带有带符号、色彩编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 各咽喉要道的滚动过境摘要（今日计数、周环比变化、油轮占比），并带有风险级别标记。 |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI 分类的热门报道，带有类别、警报标记、国家和来源。 |
@@ -493,6 +493,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
 
 对 `ui://` URI 的 `resources/read` 返回 HTML 视图。与数据资源不同，`ui://` 读取是**公开且豁免配额的** —— 该模板不承载数据，也不产生上游数据调用，因此宿主可以在无凭据、不触及 Pro 每日上限的情况下预加载它（agent 就绪性扫描器也可以获取它）。静态打包的组件是自包含的。新闻、国家和市场视图会根据资源元数据许可，从 `https://www.worldmonitor.app` 加载当前 JavaScript 和 CSS。所有视图都通过标准的 MCP Apps `postMessage` 桥（`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`）与宿主通信。
+
+精简国家简报视图支持原始响应和受支持的对象投影。替换结果会清除之前的段落、证据、来源链接和生成时间。宿主声明 `country-brief-v2.html`；原始 `country-brief.html` 作为旧版已安装元数据的私有读取别名保留，直到这些宿主刷新资源发现。普通国家请求仍打开完整国家视图。
 
 有关完整的 MCP Apps 契约 —— 宿主流程、安全态势、各小部件清单、源文件以及 docs-stat 漂移检查 —— 请参阅 [MCP Apps](/zh/mcp-apps)。
 

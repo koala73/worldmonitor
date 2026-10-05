@@ -325,7 +325,7 @@ function renderBridgeTail(appName: string): string {
         var result = msg.params && msg.params.result ? msg.params.result : msg.params;
         showPanelUsage(result);
         var data = extractToolData(result);
-        if (data) safeRender(data);
+        safeRender(data);
         break;
       }
       case "ui/notifications/tool-input":

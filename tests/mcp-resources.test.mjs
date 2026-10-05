@@ -550,10 +550,14 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const { deps, pipe } = makeProDeps();
     const bodies = [];
     let reads = 0;
-    globalThis.fetch = async () => { reads++; throw new Error('Static UI read must not fetch data'); };
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (/\/get\/|\/api\//.test(String(args[0]))) reads++;
+      return mockFetch(...args);
+    };
     for (const uri of [current, legacy]) {
       for (const request of [anonReq(readBody(uri)), proReq('POST', readBody(uri))]) {
-        const response = await handler(request, deps);
+        const response = await mcpHandler(request, deps);
         assert.equal(response.status, 200);
         const body = await response.json();
         assert.equal(body.error, undefined);

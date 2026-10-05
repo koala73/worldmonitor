@@ -37,7 +37,7 @@ Three discovery signals must stay aligned:
 |---|---|---|---|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | World Brief (interactive) | Precomputed citation-grounded global brief, grounding headlines, and source feed articles. |
-| `ui://worldmonitor/country-brief.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
+| `ui://worldmonitor/country-brief-v2.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed plus all loaded quote rows, asset names and expandable intraday charts from the same snapshot. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, and source. |
@@ -47,6 +47,8 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | Forecasts (interactive) | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
+
+The compact Country Brief view accepts the original response and supported object projections. Replacing a result clears prior paragraphs, evidence, source links and generation time. Hosts advertise `country-brief-v2.html`; the original `country-brief.html` remains a private read alias for older installed metadata until those hosts refresh their resource discovery. Ordinary country asks still open the full country view.
 
 ## Runtime Flow
 
