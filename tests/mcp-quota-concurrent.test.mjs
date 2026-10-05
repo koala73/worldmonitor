@@ -77,7 +77,7 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
 
     const calls = Array.from({ length: CONCURRENT_FIRES },
-      () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
+      () => mcpHandler(proReq('POST', callBody('get_country_macro')), deps));
     const responses = await Promise.all(calls);
 
     // Partition by HTTP status. 200 ⇒ tools/call success (counter consumed);
@@ -134,7 +134,7 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
       pipelineOpts: { initialCount: QUOTA_LIMIT + PRESEED_OVERSHOOT },
     });
 
-    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    const res = await mcpHandler(proReq('POST', callBody('get_country_macro')), deps);
 
     assert.equal(
       res.status, 429,
@@ -155,7 +155,7 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
     });
 
     const calls = Array.from({ length: CONCURRENT_OVERSHOT_REJECTIONS },
-      () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
+      () => mcpHandler(proReq('POST', callBody('get_country_macro')), deps));
     const responses = await Promise.all(calls);
     const rejectedBodies = await Promise.all(responses.map((r) => r.json()));
 
@@ -178,7 +178,7 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
       pipelineOpts: { initialCount: 200, initialLimitFloor: 250 },
     });
 
-    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    const res = await mcpHandler(proReq('POST', callBody('get_country_macro')), deps);
     assert.equal(res.status, 429, 'the 50/day default must still reject at 201');
     assert.equal(
       pipe.count,

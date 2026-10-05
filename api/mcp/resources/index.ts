@@ -49,7 +49,7 @@ import type {
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
-import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
+import { dailyAllowanceResetAt, isSharedRestCounter, readDailyAllowance, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
@@ -130,12 +130,6 @@ function redisInteger(raw: unknown, missingValue?: number): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function countFromRedis(raw: unknown, limit: number | null): number | null {
-  const used = redisInteger(raw, 0);
-  if (used === null || used < 0) return null;
-  return limit === null ? used : Math.min(used, limit);
-}
-
 function hasRedisResult(entry: unknown): entry is { result: unknown; error?: unknown } {
   return typeof entry === 'object'
     && entry !== null
@@ -161,26 +155,23 @@ export async function buildAccountAllowanceResourceResponse(
     return rpcError(id, -32002, 'Account allowance status requires a user-bound credential.', corsHeaders);
   }
 
-  const now = new Date(nowMs);
-  const resetsAt = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + 1,
-  )).toISOString();
-  const limit = freeAccountAllowance
-    ? FREE_ACCOUNT_CALLS_PER_DAY
-    : resolveDailyLimit(budget?.limit);
+  if (!freeAccountAllowance) {
+    const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget, nowMs);
+    if (!allowance) return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+    const text = JSON.stringify({ access: 'subscription', ...allowance, requestWindows: null, sharedWithRestApi: isSharedRestCounter(budget) });
+    return rpcOk(id, { contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }] }, corsHeaders);
+  }
+  const resetsAt = dailyAllowanceResetAt(nowMs);
+  const limit = FREE_ACCOUNT_CALLS_PER_DAY;
 
-  const commands: Array<Array<string | number>> = freeAccountAllowance
-    ? [[
-        'EVAL',
-        READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
-        3,
-        freeAccountCallsKey(context.userId, nowMs),
-        freeAccountRequestsKey(context.userId, nowMs),
-        freeAccountLastActivityKey(context.userId, nowMs),
-      ]]
-    : [['GET', budgetCounterKey(budget, context.userId, now)]];
+  const commands: Array<Array<string | number>> = [[
+    'EVAL',
+    READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
+    3,
+    freeAccountCallsKey(context.userId, nowMs),
+    freeAccountRequestsKey(context.userId, nowMs),
+    freeAccountLastActivityKey(context.userId, nowMs),
+  ]];
 
   let result: Array<{ result?: unknown; error?: unknown }> | null;
   try {
@@ -201,76 +192,54 @@ export async function buildAccountAllowanceResourceResponse(
     return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
   }
 
-  let used: number | null = null;
-  let requestWindows: {
-    used: number;
-    limit: number;
-    remaining: number;
-    idleGapMs: number;
-    active: boolean;
-    expiresAt: string | null;
-  } | null = null;
-
-  if (freeAccountAllowance) {
-    const tuple = firstResult.result;
-    if (!Array.isArray(tuple) || tuple.length !== 3) {
-      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
-    }
-    const [rawCalls, rawRequests, rawActivityPttl] = tuple;
-    const callsMissing = rawCalls === null;
-    const requestsMissing = rawRequests === null;
-    const storedCalls = redisInteger(rawCalls, 0);
-    const storedRequests = redisInteger(rawRequests, 0);
-    const rawPttl = redisInteger(rawActivityPttl);
-    if (
-      rawCalls === undefined
-      || rawRequests === undefined
-      || storedCalls === null
-      || storedCalls < 0
-      || storedRequests === null
-      || storedRequests < 0
-      || callsMissing !== requestsMissing
-      || storedRequests > storedCalls
-      || rawPttl === null
-      || rawPttl < -2
-      || rawPttl === -1
-      || (rawPttl > 0 && storedCalls === 0)
-    ) {
-      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
-    }
-    used = Math.min(storedCalls, FREE_ACCOUNT_CALLS_PER_DAY);
-    const requestUsed = Math.min(storedRequests, FREE_ACCOUNT_REQUESTS_PER_DAY);
-    const pttl = rawPttl > 0 ? rawPttl : null;
-    requestWindows = {
-      used: requestUsed,
-      limit: FREE_ACCOUNT_REQUESTS_PER_DAY,
-      remaining: Math.max(0, FREE_ACCOUNT_REQUESTS_PER_DAY - requestUsed),
-      idleGapMs: FREE_ACCOUNT_IDLE_GAP_MS,
-      active: pttl !== null,
-      expiresAt: pttl === null ? null : new Date(nowMs + pttl).toISOString(),
-    };
-  } else {
-    used = countFromRedis(firstResult.result, limit);
-    if (used === null) {
-      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
-    }
+  const tuple = firstResult.result;
+  if (!Array.isArray(tuple) || tuple.length !== 3) {
+    return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
   }
+  const [rawCalls, rawRequests, rawActivityPttl] = tuple;
+  const callsMissing = rawCalls === null;
+  const requestsMissing = rawRequests === null;
+  const storedCalls = redisInteger(rawCalls, 0);
+  const storedRequests = redisInteger(rawRequests, 0);
+  const rawPttl = redisInteger(rawActivityPttl);
+  if (
+    rawCalls === undefined
+    || rawRequests === undefined
+    || storedCalls === null
+    || storedCalls < 0
+    || storedRequests === null
+    || storedRequests < 0
+    || callsMissing !== requestsMissing
+    || storedRequests > storedCalls
+    || rawPttl === null
+    || rawPttl < -2
+    || rawPttl === -1
+    || (rawPttl > 0 && storedCalls === 0)
+  ) {
+    return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+  }
+  const used = Math.min(storedCalls, FREE_ACCOUNT_CALLS_PER_DAY);
+  const requestUsed = Math.min(storedRequests, FREE_ACCOUNT_REQUESTS_PER_DAY);
+  const pttl = rawPttl > 0 ? rawPttl : null;
+  const requestWindows = {
+    used: requestUsed,
+    limit: FREE_ACCOUNT_REQUESTS_PER_DAY,
+    remaining: Math.max(0, FREE_ACCOUNT_REQUESTS_PER_DAY - requestUsed),
+    idleGapMs: FREE_ACCOUNT_IDLE_GAP_MS,
+    active: pttl !== null,
+    expiresAt: pttl === null ? null : new Date(nowMs + pttl).toISOString(),
+  };
 
-  const remaining = limit === null ? null : Math.max(0, limit - used);
+  const remaining = Math.max(0, limit - used);
 
   const text = JSON.stringify({
-    access: freeAccountAllowance ? 'free-account' : 'subscription',
+    access: 'free-account',
     used,
     limit,
     remaining,
     resetsAt,
     requestWindows,
-    // Whose traffic `used` counts. On an API plan with REST enforcement on,
-    // this budget IS the REST meter, so `used` includes requests the agent
-    // never made and it must not read the number as its own tool history. A
-    // boolean rather than the counter name: the agent can act on "someone else
-    // spends this too", and the Redis key is ours to move.
-    sharedWithRestApi: !freeAccountAllowance && isSharedRestCounter(budget),
+    sharedWithRestApi: false,
   });
   return rpcOk(id, {
     contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }],

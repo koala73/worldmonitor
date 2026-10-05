@@ -418,7 +418,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/forecasts-v3.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
@@ -569,6 +569,27 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // CSP / dark-mode / bridge contract. Generalises the single-widget check to
   // the whole ui:// registry read back off the wire.
   // -------------------------------------------------------------------------
+  it('FORECAST: advertises one versioned shell and preserves the saved original URI as a public read alias', async () => {
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const resources = (await listRes.json()).result.resources;
+    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts-v3.html').length, 1);
+    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts.html').length, 0, 'saved alias must not create another advertised resource');
+    const currentRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v3.html')));
+    const current = (await currentRes.json()).result.contents[0];
+    const legacyRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts.html')));
+    const legacy = (await legacyRes.json()).result.contents[0];
+    assert.equal(current.uri, 'ui://worldmonitor/forecasts-v3.html');
+    assert.equal(legacy.uri, 'ui://worldmonitor/forecasts.html', 'read responses must preserve the requested URI');
+    assert.equal(legacy.text, current.text, 'saved alias must serve the current forecast renderer');
+    assert.equal(legacy.mimeType, current.mimeType);
+    const previousRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v2.html')));
+    const previous = (await previousRes.json()).result.contents[0];
+    assert.equal(previous.uri, 'ui://worldmonitor/forecasts-v2.html');
+    assert.equal(previous.text, current.text);
+    assert.equal(resources.filter(resource => resource.uri === previous.uri).length, 0);
+    assert.deepEqual(legacy._meta, current._meta);
+    assert.match(resources.find(resource => resource.uri === current.uri).description, /original case/);
+  });
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
@@ -642,7 +663,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/forecasts-v3.html',
     ];
     for (const uri of shellWidgets) {
       const res = await handler(envKeyReq(readBody(uri)));
@@ -739,7 +760,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html',
+        uri: 'ui://worldmonitor/forecasts-v3.html',
         hostId: 'list',
         raw: { data: { predictions: { predictions: [{
           title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
@@ -778,7 +799,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         ] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [
           { title: 'Unknown forecast', probability: null },
           { title: 'Fraction forecast', probability: 0.25 },
@@ -1012,7 +1033,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
       },
     ];
