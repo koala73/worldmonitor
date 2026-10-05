@@ -1,7 +1,8 @@
+import { TIER1_COUNTRIES } from '@/config/countries';
 import type { CountrySignalCounts } from '@/types';
 import type { CountryMilitarySignalCounts } from './country-military-activity';
 
-export function countrySignalsFromMilitary(military?: CountryMilitarySignalCounts): CountrySignalCounts {
+export function countrySignalsFromMilitary(code: string, military?: CountryMilitarySignalCounts): CountrySignalCounts {
   return {
     criticalNews: null, protests: null,
     militaryFlights: military?.militaryFlights ?? null,
@@ -12,7 +13,7 @@ export function countrySignalsFromMilitary(military?: CountryMilitarySignalCount
     temporalAnomalies: null, globalTemporalAnomalies: null, cyberThreats: null, earthquakes: null,
     displacementOutflow: null, climateStress: null, conflictEvents: null, activeStrikes: null,
     orefSirens: null, orefHistory24h: null, aviationDisruptions: null, travelAdvisories: null,
-    travelAdvisoryMaxLevel: null, gpsJammingHexes: null, isTier1: null,
+    travelAdvisoryMaxLevel: null, gpsJammingHexes: null, isTier1: !!TIER1_COUNTRIES[code],
     thermalEscalations: null, sanctionsDesignations: null, sanctionsNewDesignations: null,
   };
 }

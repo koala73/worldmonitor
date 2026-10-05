@@ -27,6 +27,9 @@ import {
 } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
+import { FORECAST_THEATER_STATUSES, forecastTheaterReadSchema, parseForecastTheaterResult, unavailableForecastTheaters } from '../../../shared/forecast-theaters';
+import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-body';
+import { utf8ByteLength } from '../utils';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
 import {
@@ -2840,6 +2843,41 @@ export const RPC_TOOLS: ToolDef[] = [
     _apiPaths: [
       "POST /api/intelligence/v1/deduct-situation",
     ],
+  },
+  {
+    name: 'get_forecast_theaters',
+    _subscriptionOnly: true,
+    _outputBudgetBytes: 131072,
+    description: 'Read the latest original forecast simulation theater summaries using a signed forecasts panel_request. Shares the panel allocation and its 64 uncached-read limit. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, source run/time and completion counts. No run selector or simulation trigger. Partial, unknown and unavailable results can be retried manually; source time is separate from forecast generation and does not establish freshness.',
+    inputSchema: { type: 'object', properties: { panel_request: { type: 'string', maxLength: 160, description: 'Signed receipt from get_forecast_predictions.' } }, required: ['panel_request'],
+      oneOf: [{ type: 'object', properties: { panel_request: { type: 'string', maxLength: 160 } }, required: ['panel_request'], additionalProperties: false }] },
+    outputSchema: { type: 'object', required: ['data'], properties: { data: { type: 'object', required: ['forecastTheaters'], properties: { forecastTheaters: {
+      type: 'object', required: ['status', 'found', 'runId', 'schemaVersion', 'theaterCount', 'generatedAt', 'note', 'error', 'theaterSummariesJson', 'processing', 'eligibleTheaterCount', 'failedTheaterCount', 'allTheatersFailed', 'completionStatus'],
+      properties: { status: { type: 'string', enum: [...FORECAST_THEATER_STATUSES] }, found: { type: 'boolean' }, runId: { type: 'string' }, schemaVersion: { type: 'string' },
+        theaterCount: { type: 'integer' }, generatedAt: { type: 'integer' }, note: { type: 'string' }, error: { type: 'string' }, theaterSummariesJson: { type: 'string' },
+        processing: { type: 'boolean' }, eligibleTheaterCount: { type: 'integer' }, failedTheaterCount: { type: 'integer' }, allTheatersFailed: { type: 'boolean' }, completionStatus: { type: 'string' } },
+    } } } } },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context, execution) => {
+      if (execution?.panelScope !== 'forecasts' || !forecastTheaterReadSchema.safeParse(params).success) throw new RpcValidationError('get-forecast-theaters', [{ field: 'panel_request', description: 'A signed forecasts panel request is required.' }]);
+      const url = `${base}/api/forecast/v1/get-simulation-outcome`;
+      const auth = await buildAuthHeaders(context, 'GET', url, undefined);
+      const res = await fetchMcpDownstream(url, { method: 'GET', headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, signal: AbortSignal.timeout(15_000) }, execution);
+      await assertToolFetchOk(res, 'get-simulation-outcome');
+      let result;
+      try {
+        const bytes = await readBoundedResponseBody(res, 131072);
+        result = parseForecastTheaterResult(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) ?? unavailableForecastTheaters('invalid_theater_response');
+      } catch (error) {
+        result = unavailableForecastTheaters(error instanceof ResponseBodyTooLargeError ? 'theater_response_too_large' : 'invalid_theater_response');
+      }
+      const output = { data: { forecastTheaters: result } };
+      if (utf8ByteLength(JSON.stringify(output)) > 131072) {
+        return { data: { forecastTheaters: unavailableForecastTheaters('theater_response_too_large') } };
+      }
+      return output;
+    },
+    _apiPaths: ['GET /api/forecast/v1/get-simulation-outcome'],
   },
   {
     name: 'generate_forecasts',

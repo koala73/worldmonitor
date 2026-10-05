@@ -59,7 +59,8 @@ const BODY = `
 `;
 
 const RENDER = `
-    if (!data || typeof data !== "object") return;
+    if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, "projection")) data = data.projection;
+    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     var brief = typeof data.brief === "string" && data.brief ? data.brief
       : (typeof data.summary === "string" ? data.summary : "");
     q("empty").style.display = "none";
@@ -112,12 +113,12 @@ const RENDER = `
     // otherwise an old brief is presented identically to a current one and the
     // labelling this rests on reaches the agent but never the human.
     var staleEl = q("stale-note");
+    staleEl.textContent = "";
     if (data.stale === true) {
       var age = typeof data.ageMinutes === "number" && isFinite(data.ageMinutes) ? Math.round(data.ageMinutes) : null;
       var howOld = age == null ? "" :
         age < 60 ? age + " minutes old" :
         Math.floor(age / 60) + "h " + (age % 60) + "m old";
-      staleEl.textContent = "";
       var lead = document.createElement("b");
       lead.textContent = "Stale brief";
       staleEl.appendChild(lead);
