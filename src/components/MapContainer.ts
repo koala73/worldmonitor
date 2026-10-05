@@ -23,6 +23,7 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
+  NewsLocationMarker,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -159,7 +160,6 @@ interface TechEventMarker {
 }
 
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
-type NewsLocationMarker = { lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date };
 type CIIScore = { code: string; score: number; level: string };
 
 /**
@@ -213,6 +213,7 @@ export class MapContainer {
   private cachedOnStateChanged: ((state: MapContainerState) => void) | null = null;
   private cachedOnLayerChange: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   private cachedOnTimeRangeChanged: ((range: TimeRange) => void) | null = null;
+  private cachedOnNewsClicked: ((item: Pick<NewsLocationMarker, 'article' | 'title'>) => void) | null = null;
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
@@ -794,6 +795,7 @@ export class MapContainer {
     if (this.cachedOnLayerChange) this.setOnLayerChange(this.cachedOnLayerChange);
     if (this.cachedOnTimeRangeChanged) this.onTimeRangeChanged(this.cachedOnTimeRangeChanged);
     if (this.cachedOnCountryClicked) this.onCountryClicked(this.cachedOnCountryClicked);
+    if (this.cachedOnNewsClicked) this.onNewsClicked(this.cachedOnNewsClicked);
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
     if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
@@ -1659,6 +1661,12 @@ export class MapContainer {
     }
   }
 
+  public onNewsClicked(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
+    this.cachedOnNewsClicked = callback;
+    if (this.useGlobe) { this.globeMap?.setOnNewsClick(callback); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnNewsClick(callback); } else { this.svgMap?.setOnNewsClick(callback); }
+  }
+
   public onCountryClicked(callback: (country: CountryClickPayload) => void): void {
     this.cachedOnCountryClicked = callback;
     if (this.useGlobe) { this.globeMap?.setOnCountryClick(callback); return; }
@@ -1801,6 +1809,7 @@ export class MapContainer {
     this.cachedOnLayerChange = null;
     this.cachedOnTimeRangeChanged = null;
     this.cachedOnCountryClicked = null;
+    this.cachedOnNewsClicked = null;
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;

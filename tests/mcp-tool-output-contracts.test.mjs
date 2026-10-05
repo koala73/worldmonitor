@@ -187,8 +187,28 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
         tool._execute = async () => stubReturn;
       }
 
-      const args = REQUIRED_ARGS[name] ?? {};
-      const { deps } = makeProDeps();
+      let args = REQUIRED_ARGS[name] ?? {};
+      const { deps, pipe } = makeProDeps();
+      let originalForecast;
+      if (name === 'get_forecast_case') {
+        const generatedAt = Date.now();
+        originalForecast = { id: 'contract-case', title: 'Controlled original forecast', caseFile: { baseCase: 'Original case evidence' } };
+        globalThis.fetch = async url => {
+          const parsedUrl = new URL(url);
+          assert.equal(parsedUrl.hostname, 'stub.upstash', 'contract fixture must never fetch a live service');
+          if (!parsedUrl.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+          const key = decodeURIComponent(parsedUrl.pathname.slice('/get/'.length));
+          assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+          return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2'
+            ? { generatedAt, predictions: [originalForecast] }
+            : { fetchedAt: generatedAt }) });
+        };
+        const opening = await mcpHandler(proReq('POST', callBody('get_forecast_predictions', {})), deps);
+        const openingBody = await opening.json();
+        const receipt = openingBody.result?.structuredContent?.panelRequest;
+        assert.equal(receipt?.panel, 'forecasts', 'original case fixture must obtain a real signed admission');
+        args = { forecast_id: originalForecast.id, generated_at: String(generatedAt), panel_request: receipt.token };
+      }
       const res = await mcpHandler(proReq('POST', callBody(name, args)), deps);
 
       assert.equal(res.status, 200, `tools/call must return 200 for ${name}`);
@@ -198,6 +218,11 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
         `tools/call response for ${name} missing content[0].text`,
       );
       const parsed = JSON.parse(body.result.content[0].text);
+      if (name === 'get_forecast_case') {
+        assert.equal(parsed.data.forecastCase.status, 'ready');
+        assert.deepEqual(parsed.data.forecastCase.forecast, originalForecast);
+        assert.equal(pipe.count, 1, 'opening and original case share one daily allocation');
+      }
 
       // Cache tools must always carry the envelope keys, regardless of the
       // schema's per-tool `data.properties`. Asserting these explicitly here
