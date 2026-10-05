@@ -661,6 +661,39 @@ describe('public product facts generation contract', () => {
     });
   });
 
+  it('derives the natural-disasters discovery note from the advertised registry URI', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import { TOOL_REGISTRY } from './api/mcp/registry/index.ts';
+      TOOL_REGISTRY.find((tool) => tool.name === 'get_natural_disasters')._uiResourceUri = 'ui://worldmonitor/natural-disasters-v3.html';
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /public\/\.well-known\/mcp\/server-card\.json is stale/);
+  });
+
+  it('fails discovery generation when the natural-disasters tool is absent', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import { TOOL_REGISTRY } from './api/mcp/registry/index.ts';
+      TOOL_REGISTRY.splice(TOOL_REGISTRY.findIndex((tool) => tool.name === 'get_natural_disasters'), 1);
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /get_natural_disasters must exist in TOOL_REGISTRY/);
+  });
+
+  it('fails discovery generation for an unrelated natural-disasters resource URI', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import { TOOL_REGISTRY } from './api/mcp/registry/index.ts';
+      TOOL_REGISTRY.find((tool) => tool.name === 'get_natural_disasters')._uiResourceUri = 'ui://unrelated/natural-disasters-v3.html';
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /get_natural_disasters must advertise a ui:\/\/worldmonitor\/natural-disasters HTML resource/);
+  });
+
   it('derives hero proof stats from live registries, not literals', async () => {
     const { getCompleteLayerCatalogKeys } = await import('../src/config/map-layer-definitions.ts');
     const { loadManifest, scanUpstreamHosts, sourceAttributionStats } = await import('../scripts/source-attribution.mjs');

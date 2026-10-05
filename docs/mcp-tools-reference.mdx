@@ -827,7 +827,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.
+Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.
 
 **Parameters (tool-specific):**
 
@@ -837,10 +837,18 @@ Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), fin
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
 | `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation. |
+| `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
+| `request_id` | string | Paid refresh identifier. Required when refresh is true. |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.
+- **Limits and refresh:** The default limit is 30 per category. Zero or negative values apply no cap; positive fractions use the integer part. Default `refresh: false` reuses the prediction admission. Set `refresh: true` with a UUID `request_id` and omit `panel_request` to start a new allocation. Retries with the same UUID, including different letter case, reuse the allocation and its original expiry.
+- **Paid argument validation:** Category and source trim whitespace and ignore letter case. Query matching ignores letter case and surrounding whitespace. Paid calls reject unknown arguments, invalid categories or sources, and non-finite or non-numeric limits before reservation. Ordinary API and free calls retain their existing filter coercion. Refresh controls and paid receipts are unavailable to API and free calls.
+- **Reuse and recovery:** Identical canonical filters replay successful original results before summary or JMESPath projection. A new uncached filter reads the existing bootstrap and freshness metadata. A fresh, valid filtered-empty result can replay. Stale, unavailable, malformed, and unknown observations remain retryable under the receipt. Upstream failures do not refund the opening.
+- **Usage notices:** An explicit authorized receipt read also reads the current daily allowance without reserving another unit. If the counter is unavailable or unconfirmed, contracts remain available without a numeric notice. A previous opening notice does not prove later accounting.
+- **Kind:** cache read from the Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
 <CodeGroup>
@@ -1034,9 +1042,15 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `country` | string | Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive). |
 | `min_fatalities` | number | Drop events below this fatality count (UCDP deathsBest / unrest fatalities). |
 | `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
+| `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
+| `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the Conflict Events admission within five minutes. Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and successful cached-replay limits. Each execution reads five fixed Redis keys, or six with Iran enabled; these reads do not each spend an allocation.
+- **Reuse and refresh:** Successful filtered originals replay before summary or JMESPath presentation. Explicit refresh with a new UUID spends one new allocation; the same UUID retries it. An authorized receipt read queries current usage without reserving another unit. Unknown counters preserve data and omit the numeric notice. Paid calls reject unknown arguments and non-finite numeric filters before reservation. Ordinary API and free calls retain existing filter coercion and reject paid receipts or refresh controls.
+- **Source observation and recovery:** Optional `conflict_source.ucdp` preserves only correctly typed `fetchedAt`, `candidateVersion`, `candidateComplete` and `annualFailedPages` from already-read metadata. Missing fields stay absent. Known partial, missing, malformed, stale or incompatible observations remain retryable. Usable collections still honor their filters. Data and metadata are not an atomic snapshot; the observation does not prove complete unrest-provider coverage or independent CII/Iran freshness.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** per slice — UCDP conflict events **30 min**, unrest events **2 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
 

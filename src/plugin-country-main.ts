@@ -204,8 +204,8 @@ async function mountPlugin(): Promise<void> {
     if (!refresh) {
       timeline?.destroy();
       timeline = undefined;
-      panel.show(name, code, null, countrySignalsFromMilitary());
-      panel.updateSignals(countrySignalsFromMilitary());
+      panel.show(name, code, null, countrySignalsFromMilitary(code));
+      panel.updateSignals(countrySignalsFromMilitary(code));
       panel.updateMilitaryActivity(null);
     }
     panel.selectTopic(view.topic);
@@ -217,14 +217,14 @@ async function mountPlugin(): Promise<void> {
     void preloadCountryGeometry().then(() => loadHostCountryMilitaryActivity(source, code, name, signal)).then(summary => {
       if (current()) {
         panel.updateMilitaryActivity(summary);
-        const recovered = recoverCountrySignals(countrySignalsFromMilitary(summary.signalCounts), refresh ? panel.getSignalCounts() : null, summary.deniedSignalFields);
+        const recovered = recoverCountrySignals(countrySignalsFromMilitary(code, summary.signalCounts), refresh ? panel.getSignalCounts() : null, summary.deniedSignalFields);
         panel.updateSignals(recovered.signals, [...summary.coverageNotes, ...recovered.notes]);
       }
     }).catch(error => {
       if (current()) {
         panel.updateMilitaryActivity(null);
         const previous = refresh && !(error instanceof CountrySectionError && error.state === 'locked') ? panel.getSignalCounts() : null;
-        const recovered = recoverCountrySignals(countrySignalsFromMilitary(), previous, []);
+        const recovered = recoverCountrySignals(countrySignalsFromMilitary(code), previous, []);
         panel.updateSignals(recovered.signals, ['Military observations could not be loaded. Retry or refresh to recover them.', ...recovered.notes]);
       }
     });

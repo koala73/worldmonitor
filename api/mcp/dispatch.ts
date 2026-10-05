@@ -16,12 +16,13 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitCountryPanel, admitForecastPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitConflictPanel, admitCountryPanel, admitForecastPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { forecastPanelReadSchema, marketPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { conflictPanelViewSchema, forecastPanelReadSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { filterConflictPanelEvents, presentConflictEvents, projectConflictSourceObservation } from './registry/cache-tools';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
@@ -33,6 +34,7 @@ import {
 } from './telemetry';
 import type {
   CacheToolDef,
+  ConflictSourceObservation,
   McpAuthContext,
   McpHandlerDeps,
   McpToolExecutionContext,
@@ -55,6 +57,7 @@ export async function executeTool(
   now?: number,
   execution?: McpToolExecutionContext,
 ): Promise<{
+  conflict_source?: ConflictSourceObservation;
   cached_at: string | null;
   stale: boolean;
   activationUnknown?: true;
@@ -230,6 +233,7 @@ export async function executeTool(
   if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   return {
+    ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
     stale,
     ...(activationUnknown ? { activationUnknown: true } : {}),
@@ -420,6 +424,38 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_conflict_events') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Conflict refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = conflictPanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid conflict filters and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        sourceArguments = filters;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the conflict panel without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitConflictPanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
+    if (tool.name === 'get_prediction_markets') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Prediction refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = predictionPanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid prediction filters and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        sourceArguments = filters;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the prediction panel without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitPredictionPanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_market_data') {
       const { summary: _summary, jmespath: _projection, ...view } = callArguments;
       const parsed = marketPanelViewSchema.safeParse(view);
@@ -458,7 +494,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if (tool.name === 'get_market_data' && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -581,7 +617,12 @@ export async function dispatchToolsCall(
         context,
         execution,
       );
-      else result = await executeTool(tool, execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+      else {
+        const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
+          ? { ...tool, _postFilter: filterConflictPanelEvents }
+          : tool;
+        result = await executeTool(sourceTool, execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+      }
     }
     if (panelRead && panelRead.cached === undefined) {
       if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
@@ -601,8 +642,10 @@ export async function dispatchToolsCall(
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
     }
-    if (tool.name === 'get_market_data' && tool._execute === undefined && result && typeof result === 'object') {
-      const snapshot = result as Awaited<ReturnType<typeof executeTool>>;
+    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
+      const original = result as Awaited<ReturnType<typeof executeTool>>;
+      const snapshot = tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
+      result = snapshot;
       if (argBool(callArguments.summary)) result = { ...snapshot, data: tool._summarize ? tool._summarize(snapshot.data) : summarizeData(snapshot.data) };
       if (panelRequest) result = { ...result as Record<string, unknown>, panelRequest };
     }

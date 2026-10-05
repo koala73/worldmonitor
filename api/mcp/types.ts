@@ -44,6 +44,15 @@ export type McpInboundHostClass =
   | 'vercel_preview'
   | 'other';
 
+export type ConflictSourceObservation = {
+  ucdp: {
+    fetchedAt?: number;
+    candidateVersion?: string | null;
+    candidateComplete?: boolean;
+    annualFailedPages?: number;
+  };
+};
+
 export interface McpToolExecutionContext {
   readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;

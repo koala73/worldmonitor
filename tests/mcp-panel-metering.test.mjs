@@ -1026,3 +1026,262 @@ describe('forecast panel transport through production cache reads', () => {
   });
 
 });
+
+describe('paid prediction panel through the MCP handler', () => {
+  let handler;
+  let fetched;
+  let stale;
+  let malformed;
+  let missingMeta;
+  let seedFailure;
+  let oversized;
+  let bootstrapOverride;
+  const payload = () => ({
+    geopolitical: [{ title: oversized ? 'US Election ' + 'x'.repeat(140000) : 'US Election', source: 'kalshi', yesPrice: 50 }, { title: 'World vote', source: 'polymarket', yesPrice: 30 }],
+    tech: [{ title: 'AI launch', source: 'polymarket', yesPrice: 70 }, { title: 'AI research', source: 'polymarket', yesPrice: 20 }],
+    finance: [{ title: 'US interest rate', source: 'kalshi', yesPrice: 40 }],
+  });
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_prediction_markets', args)), deps);
+    return { response, body: await response.json() };
+  };
+  const data = result => result.body.result.structuredContent.data['markets-bootstrap'];
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://prediction-seed.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
+    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false; oversized = false; bootstrapOverride = undefined;
+    globalThis.fetch = async url => {
+      const key = decodeURIComponent(new URL(String(url)).pathname.slice(5));
+      assert.ok(['prediction:markets-bootstrap:v1', 'seed-meta:prediction:markets'].includes(key), key);
+      fetched.push(key);
+      if (seedFailure) throw new Error('controlled outage');
+      return Response.json({ result: key.startsWith('seed-meta:')
+        ? missingMeta ? null : JSON.stringify({ fetchedAt: Date.now() - (stale ? 100 * 60000 : 0) })
+        : JSON.stringify(bootstrapOverride ?? (malformed ? { tech: [] } : payload())) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('opens once, narrows exact contracts and replays normalized filters with two fixed reads per uncached filter', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest?.token;
+    assert.equal(first.body.result.structuredContent.panelRequest?.panel, 'predictions');
+    assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
+    assert.equal(fetched.length, 2);
+    const filtered = await invoke(deps, { category: ' GEOPOLITICAL ', query: ' US ELECTION ', source: 'KALSHI' });
+    assert.deepEqual(data(filtered).geopolitical.map(row => row.title), ['US Election']);
+    assert.deepEqual(data(filtered).tech, []);
+    assert.equal(filtered.body.result.structuredContent.panelRequest.token, token);
+    await invoke(deps, { source: ' kalshi ', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
+    assert.equal(fetched.length, 4);
+    assert.equal(pipe.count, 1);
+    await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
+    const empty = await invoke(deps, { category: 'TECH', source: 'KALSHI', panel_request: token });
+    assert.deepEqual(data(empty), { geopolitical: [], tech: [], finance: [] });
+    assert.equal(fetched.length, 6);
+    for (const [limit, expected] of [[0, 2], [-1, 2], [1.9, 1], [0.5, 0]]) {
+      assert.equal(data(await invoke(deps, { category: 'tech', limit, panel_request: token })).tech.length, expected);
+    }
+    assert.equal(pipe.count, 1);
+  });
+  it('preserves originals before summary and whole-envelope projection', async () => {
+    const { deps, pipe } = makeProDeps();
+    const summary = await invoke(deps, { summary: true });
+    assert.equal(summary.body.result.structuredContent.projection.data['markets-bootstrap'].tech.count, 2);
+    const raw = await invoke(deps);
+    assert.equal(data(raw).tech.length, 2);
+    const projected = await invoke(deps, { jmespath: '@', panel_request: raw.body.result.structuredContent.panelRequest.token });
+    assert.equal(projected.body.result.structuredContent.projection.data['markets-bootstrap'].tech.length, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+  });
+  it('charges explicit refresh once across UUID case and retries, while denying invalid paid controls before work', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ category: 'invalid' }, { source: 1 }, { query: [] }, { limit: '2' }, { extra: 1 }, { refresh: true }, { request_id: 'bad' }]) {
+      assert.equal((await invoke(deps, args)).body.error?.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const first = await invoke(deps, { refresh: true, request_id });
+    const second = await invoke(deps, { refresh: true, request_id: request_id.toLowerCase() });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(second.body.result.structuredContent.panelRequest.token, receipt.token);
+    assert.equal(second.body.result.structuredContent.panelRequest.expiresAt, receipt.expiresAt);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+    assert.equal((await invoke(deps, { panel_request: receipt.token, refresh: true, request_id })).body.error?.code, -32602);
+    await invoke(deps, { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(pipe.count, 2);
+  });
+  it('rejects cross-family, owner, revoked and expired receipts and bounds uncached work to 64', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_data', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'open_news_dashboard', {}, token));
+    await assert.rejects(readPanel({ ...context, userId: 'foreign' }, pipe.pipeline, 'get_prediction_markets', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_prediction_markets', {}, token, Date.parse(first.body.result.structuredContent.panelRequest.expiresAt)));
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const foreign = await admitMarketPanel(context, budget, pipe.pipeline, {});
+    assert.equal((await invoke(deps, { panel_request: foreign.token })).body.error?.code, -32602);
+    for (let i = 1; i < 64; i++) assert.equal((await invoke(deps, { query: `case${i}`, panel_request: token })).body.error, undefined);
+    const denied = await invoke(deps, { query: 'last', panel_request: token });
+    assert.equal(denied.response.status, 429);
+    assert.equal(fetched.length, 128);
+    assert.equal((await invoke(deps, { panel_request: token })).body.error, undefined);
+    deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
+    assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
+  });
+  for (const [pool, invalid, category, title, filters] of [
+    ['geopolitical', undefined, 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1.9 }],
+    ['tech', undefined, 'geopolitical', 'US Election', { query: 'Election', source: 'kalshi', limit: 1 }],
+    ['finance', undefined, 'tech', 'AI launch', {}],
+    ['geopolitical', null, 'tech', 'AI launch', {}],
+    ['tech', {}, 'geopolitical', 'US Election', {}],
+    ['finance', 'unknown', 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1 }],
+  ]) {
+    it(`recovers ${invalid === undefined ? 'missing' : 'malformed'} original ${pool} before selected ${category} normalization`, async () => {
+      const { deps, pipe } = makeProDeps();
+      bootstrapOverride = payload();
+      bootstrapOverride[category] = [];
+      if (invalid === undefined) delete bootstrapOverride[pool];
+      else bootstrapOverride[pool] = invalid;
+      const args = { category, ...filters };
+      const first = await invoke(deps, args);
+      const token = first.body.result.structuredContent.panelRequest.token;
+      bootstrapOverride = undefined;
+      const recovered = await invoke(deps, { ...args, panel_request: token });
+      assert.equal(data(recovered)[category][0]?.title, title, 'repaired original source must rerun selected-category filters');
+      assert.equal(fetched.length, 4, 'recovery reads the original bootstrap and metadata');
+      assert.equal(pipe.count, 1, 'recovery reuses the opening allocation');
+      await invoke(deps, { ...args, panel_request: token });
+      assert.equal(fetched.length, 4, 'healthy recovered result replays');
+    });
+  }
+  it('does not turn the original selected-category malformed seed into a cacheable empty', async () => {
+    const { deps, pipe } = makeProDeps();
+    malformed = true;
+    const first = await invoke(deps, { category: 'tech' });
+    const token = first.body.result.structuredContent.panelRequest.token;
+    assert.equal(data(first).tech.length, 0);
+    malformed = false;
+    const recovered = await invoke(deps, { category: 'tech', panel_request: token });
+    assert.deepEqual(data(recovered).tech.map(row => row.title), ['AI launch', 'AI research']);
+    assert.equal(fetched.length, 4);
+    assert.equal(pipe.count, 1);
+  });
+  it('retries stale, malformed, missing-freshness and failed sources without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    stale = true;
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 4);
+    stale = false; malformed = true;
+    await invoke(deps, { panel_request: token });
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 8);
+    malformed = false; missingMeta = true;
+    await invoke(deps, { panel_request: token });
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 12);
+    missingMeta = false; seedFailure = true;
+    assert.equal((await invoke(deps, { panel_request: token })).body.error?.code, -32003);
+    seedFailure = false;
+    assert.equal(data(await invoke(deps, { panel_request: token })).tech.length, 2);
+    const reads = fetched.length;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, reads);
+    assert.equal(pipe.count, 1);
+  });
+  it('reads current allowance only after receipt authorization and omits unknown counter notices', async () => {
+    const { deps, pipe } = makeProDeps();
+    const token = (await invoke(deps)).body.result.structuredContent.panelRequest.token;
+    const key = dailyCounterKey(context.userId);
+    const original = deps.redisPipeline;
+    let reads = 0;
+    let counter = '2';
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) { reads++; return [{ result: counter }]; }
+      return original(commands, ...options);
+    };
+    const current = await invoke(deps, { panel_request: token });
+    assert.equal(current.body.result._meta['worldmonitor/usage'].remaining, 48);
+    counter = null;
+    const unknown = await invoke(deps, { panel_request: token });
+    assert.equal(unknown.body.result._meta?.['worldmonitor/usage'], undefined);
+    assert.equal(data(unknown).tech.length, 2);
+    assert.equal((await invoke(deps, { panel_request: 'forged' })).body.error?.code, -32602);
+    assert.equal(reads, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+  });
+  it('narrows an oversized original under the same paid allocation without raising the output budget', async () => {
+    const { deps, pipe } = makeProDeps();
+    oversized = true;
+    const first = await invoke(deps);
+    assert.equal(first.body.result.structuredContent._budget_exceeded, true);
+    assert.equal(first.body.result.structuredContent.budget_bytes, 131072);
+    const narrow = await invoke(deps, { category: 'tech' });
+    assert.equal(data(narrow).tech.length, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 4);
+  });
+  it('keeps structured unavailable and unknown prediction data recoverable', async () => {
+    const { pipe } = makeProDeps();
+    const { admitPredictionPanel } = await import('../api/mcp/panel-requests.ts');
+    const grant = await admitPredictionPanel(context, budget, pipe.pipeline, {});
+    const reader = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token);
+    for (const value of [null, false, 0, 'unknown', []]) {
+      await reader.save(value);
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
+    for (const bootstrap of [null, { tech: [] }, { geopolitical: [], tech: [], finance: [], unavailable: true }, { geopolitical: [], tech: [], finance: [], upstreamUnavailable: true }, { geopolitical: [], tech: [], finance: [], rateLimited: true }, { geopolitical: [], tech: [], finance: [], error: 'unavailable' }]) {
+      await reader.save({ cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': bootstrap } });
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
+    const ready = { cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': { geopolitical: [], tech: [], finance: [] } } };
+    await reader.save(ready);
+    assert.deepEqual((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, ready);
+    assert.equal(pipe.count, 1);
+  });
+  it('preserves ordinary API/free coercion and per-call charging but rejects paid controls before charge', async () => {
+    for (const entitlement of [
+      { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 },
+      { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
+    ]) {
+      const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
+      const first = await invoke(deps, { source: 12, category: 'invalid', query: null, limit: -1, extra: true });
+      assert.equal(first.body.error, undefined);
+      assert.equal(first.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(data(first).tech.length, 2);
+      await invoke(deps, { category: 'TECH', limit: 1.9 });
+      assert.equal(pipe.count, 2);
+      for (const args of [{ refresh: false }, { refresh: true, request_id: crypto.randomUUID() }, { request_id: crypto.randomUUID() }, { panel_request: 'forged' }]) {
+        assert.equal((await invoke(deps, args)).body.error?.code, -32602);
+      }
+      assert.equal(pipe.count, 2);
+    }
+  });
+  it('preserves malformed original pools without filter normalization on ordinary API and free connections', async () => {
+    for (const entitlement of [
+      { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 },
+      { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
+    ]) {
+      const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
+      bootstrapOverride = { tech: payload().tech };
+      const result = await invoke(deps, { category: 'finance', query: 'absent', source: 'kalshi', limit: 0.5 });
+      assert.deepEqual(data(result), bootstrapOverride);
+      assert.equal(result.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(pipe.count, 1);
+    }
+  });
+});
