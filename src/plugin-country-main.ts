@@ -1,5 +1,5 @@
 import './bootstrap/zod-csp';
-import { loadHostCountryMilitaryActivity, isCountryActivityCoordinate, COUNTRY_ACTIVITY_BOUNDS, type CountryMilitarySignalCounts } from '@/services/country-military-activity';
+import { loadHostCountryMilitaryActivity, type CountryMilitarySignalCounts } from '@/services/country-military-activity';
 import { countrySignalsFromMilitary, recoverCountrySignals, recoverRawSignals, composeCountrySignals, type CountryRawSignalSlot } from '@/services/country-signals';
 import './styles/base-layer.css';
 import './styles/plugin-country.css';
@@ -16,7 +16,7 @@ import { briefSectionState } from '@/components/country-brief-presentation';
 import { createHostCountryBriefSource } from '@/services/country-brief-source';
 import { CountrySectionError } from '@/services/country-brief-error';
 import { preloadInfrastructureTables } from '@/services/related-assets';
-import { getCountryNameByCode, preloadCountryGeometry, hasCountryGeometry } from '@/services/country-geometry';
+import { getCountryNameByCode, preloadCountryGeometry, hasCountryGeometry, isCoordinateInCountry } from '@/services/country-geometry';
 import { toCachedCII } from '@/services/cached-risk-scores';
 import { initI18n } from '@/services/i18n';
 import { combineAbortSignals } from '@/services/timeout-signal';
@@ -226,7 +226,7 @@ async function mountPlugin(): Promise<void> {
     const publishSignals = () => {
       if (!current()) return;
       const composed = composeCountrySignals(ownedSignalSlots.base, code, name, ownedSignalSlots.military, ownedSignalSlots.militaryNotes, ownedSignalSlots.raw,
-        hasCountryGeometry(code) || !!COUNTRY_ACTIVITY_BOUNDS[code], (lat, lon) => isCountryActivityCoordinate(lat, lon, code));
+        hasCountryGeometry(code), (lat, lon) => isCoordinateInCountry(lat, lon, code) === true);
       signalCoverage = composed.coverage;
       panel.updateSignals(composed.signals, composed.notes);
       scheduleContext();

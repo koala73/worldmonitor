@@ -220,6 +220,17 @@ describe('country view MCP boundary', () => {
       assert.equal(requests.length, 8); assert.equal(pipe.count, 1);
     }
   });
+  it('preserves source denial when another family overflows the assembled envelope', async () => {
+    const bodies = rawBodies();
+    const quake = bodies['/api/seismology/v1/list-earthquakes'].earthquakes[0];
+    bodies['/api/seismology/v1/list-earthquakes'].earthquakes = Array.from({ length: 200 }, (_, index) => ({ ...quake, id: String(index), place: '\"\\測'.repeat(200) }));
+    globalThis.fetch = async url => new URL(url).pathname.includes('list-internet-outages')
+      ? new Response('Denied', { status: 403 }) : Response.json(bodies[new URL(url).pathname]);
+    const result = (await invoke('get_country_brief_section', { section: 'signalsRaw', arguments: { country_code: 'US' } })).body.result.structuredContent;
+    assert.equal(result.value.sources.outages.state, 'locked');
+    assert.equal(result.value.sources.outages.records, null);
+    assert.equal(result.value.sources.earthquakes.state, 'unavailable');
+  });
   for (const stall of ['fetch', 'body']) it(`uses one shared deadline for a stalled ${stall} and never starts the queued fourth after expiry`, async t => {
     const deadline = new AbortController(); const timeout = AbortSignal.timeout; let deadlines = 0; let cancelledBodies = 0;
     let started; const threeStarted = new Promise(resolve => { started = resolve; });

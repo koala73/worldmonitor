@@ -6,6 +6,38 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(async () => { await initTestI18n(); });
 
+it('renders normal travel advice without escalating it to caution', () => {
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  Reflect.set(panel, 'signalsBody', body);
+  panel.updateSignals(countrySignalsFromMilitary('US', undefined, { earthquakes: null, outages: null, travelAdvisories: 1, travelAdvisoryMaxLevel: 'normal', thermalEscalations: null }));
+  expect(body.textContent).toContain('Normal Precautions');
+  expect(body.textContent).not.toContain('Exercise Caution');
+  panel.hide();
+});
+
+it('carries selected-country advisory publishers into portable coverage and rendered notes', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, validateRawSignal } = await import('../../shared/country-raw-signals');
+  const time = '2026-10-01T12:00:00Z';
+  const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', time, 'No data')])) as Parameters<typeof assembleRawSignals>[1];
+  const row = { title: 'Advice', link: 'https://example.com/advice', source: 'US State Dept', sourceCountry: 'US', pubDate: time, level: 'normal', country: 'US' };
+  sources.advisories = validateRawSignal('advisories', { advisories: [row, { ...row, source: 'UK FCDO' }, { ...row, source: 'Other publisher', country: 'CN' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'normal'])) }, time) as typeof sources.advisories;
+  expect(sources.advisories.state).toBe('observed');
+  const raw = recoverRawSignals(assembleRawSignals('US', sources, time).value, null);
+  const composed = composeCountrySignals(countrySignalsFromMilitary('US'), 'US', 'United States', undefined, [], raw, false, () => false);
+  expect(composed.notes.join(' ')).toContain('US State Dept');
+  expect(composed.notes.join(' ')).toContain('UK FCDO');
+  expect(composed.notes.join(' ')).not.toContain('Other publisher');
+  expect(composed.coverage?.advisories?.observation?.publishers).toEqual(['US State Dept', 'UK FCDO']);
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  Reflect.set(panel, 'signalsBody', body);
+  panel.updateSignals(composed.signals, composed.notes);
+  expect(body.textContent).toContain('US State Dept');
+  expect(Reflect.get(panel, 'signalCoverageNotes').join(' ')).toContain('UK FCDO');
+  panel.hide();
+});
+
 it('renders partial observed counts and unknown sources without fabricating aggregate severity', () => {
   const panel = new CountryDeepDivePanel();
   const body = document.createElement('div');

@@ -60,7 +60,9 @@ async function collectRawSignals(countryCode: string, base: string, context: Par
   const result = assembleRawSignals(countryCode, sources, retrievedAt);
   if (new TextEncoder().encode(JSON.stringify(result)).length <= RAW_SIGNAL_ENVELOPE_BYTES) return result;
   // No positive original can be saved when attribution-bearing evidence overflows.
-  for (const family of RAW_SIGNAL_FAMILIES) sources[family] = failedRawSignal(family, 'unavailable', retrievedAt, 'The assembled source evidence exceeds the country section limit.') as never;
+  for (const family of RAW_SIGNAL_FAMILIES) {
+    if (sources[family].state !== 'locked') sources[family] = failedRawSignal(family, 'unavailable', retrievedAt, 'The assembled source evidence exceeds the country section limit.') as never;
+  }
   return assembleRawSignals(countryCode, sources, retrievedAt);
 }
 

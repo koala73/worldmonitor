@@ -10,7 +10,7 @@ const root = process.cwd();
 test.use({ serviceWorkers: 'block' });
 
 type HostCall = { name: string; arguments: Record<string, unknown> };
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first') {
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false) {
   const calls: HostCall[] = [];
   const requestNames = new Map<number, string>();
   const cancelled: string[] = [];
@@ -55,7 +55,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     const file = join(root, 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!);
     await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
   });
-  await page.route('**/data/*.geojson', async route => route.fulfill({ path: join(root, 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
+  await page.route('**/data/*.geojson', async route => geometryUnavailable ? route.fulfill({ status: 503, body: 'Controlled geometry failure', headers: { 'Access-Control-Allow-Origin': '*' } }) : route.fulfill({ path: join(root, 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/country-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Country plugin acceptance — controlled fixtures</title><h1>Country plugin acceptance — controlled fixtures</h1><p>Tests the built iframe and host transport. Does not test live OAuth or source freshness.</p><iframe title="WorldMonitor country view" sandbox="allow-scripts allow-downloads" style="width:100%;height:950px;border:0"></iframe>' }));
   await page.exposeFunction('countryHost', async (method: string, params: HostCall & { content?: Array<{ text: string }>; url?: string; requestId?: number }, id?: number) => {
     if (method === 'notifications/cancelled') { cancelled.push(requestNames.get(params.requestId!) ?? 'unknown'); return {}; }
@@ -89,8 +89,8 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, rawMode === 'denied' ? 'locked' : 'unavailable', time, 'Controlled raw source failure')])) as RawSignalsValue['sources'];
       if (rawMode === 'observed' || rawMode === 'zero') {
         sources.earthquakes = validateRawSignal('earthquakes', { earthquakes: [{ id: 'fixture-eq', place: 'United States', magnitude: 4.5, location: { latitude: 38, longitude: -77 }, occurredAt: 1791000000000, source: 'USGS', category: 'earthquake', sourceUrl: 'https://example.com/quake' }] }, time) as typeof sources.earthquakes;
-        sources.outages = validateRawSignal('outages', { outages: rawMode === 'zero' ? [] : [{ id: 'fixture-outage', title: 'Controlled outage', country: 'United States', location: { latitude: 38, longitude: -77 }, detectedAt: 1791000000000, endedAt: 1791000300000, link: 'https://example.com/outage' }] }, time) as typeof sources.outages;
-        sources.advisories = validateRawSignal('advisories', { advisories: [{ title: 'Controlled advisory', link: 'https://example.com/advisory', source: 'US State Dept', sourceCountry: 'US', pubDate: '2026-10-01T12:00:00Z', level: 'caution', country: 'US' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'caution'])) }, time) as typeof sources.advisories;
+        sources.outages = validateRawSignal('outages', { outages: rawMode === 'zero' ? [] : [{ id: 'fixture-outage', title: 'Controlled outage', country: geometryUnavailable ? 'Canada' : 'United States', location: geometryUnavailable ? { latitude: 45.4215, longitude: -75.6972 } : { latitude: 38, longitude: -77 }, detectedAt: 1791000000000, endedAt: 1791000300000, link: 'https://example.com/outage' }] }, time) as typeof sources.outages;
+        sources.advisories = validateRawSignal('advisories', { advisories: [{ title: 'Controlled advisory', link: 'https://example.com/advisory', source: 'US State Dept', sourceCountry: 'US', pubDate: '2026-10-01T12:00:00Z', level: 'normal', country: 'US' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'normal'])) }, time) as typeof sources.advisories;
         sources.thermal = validateRawSignal('thermal', { clusters: [{ id: 'fixture-hot', countryCode: 'US', status: 'THERMAL_STATUS_SPIKE', firstDetectedAt: '2026-10-01T12:00:00Z', lastDetectedAt: '2026-10-01T14:00:00Z' }], fetchedAt: time, observationWindowHours: 24, sourceVersion: 'thermal-escalation-v1' }, time) as typeof sources.thermal;
       }
       return { structuredContent: assembleRawSignals(selectedCountry, sources, time) };
@@ -316,6 +316,16 @@ test('country Signals reuse loaded military observations and keep missing source
   expect(host.admissions).toBe(4);
 });
 
+test('raw Signals exclude foreign outages when precise country geometry is unavailable', async ({ page }, info) => {
+  const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first', true);
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.outages).toBe(0);
+  await expect(frame.locator('[data-brief-section=signals]')).not.toContainText('1 Outages');
+  await frame.locator('[data-brief-section=signals]').screenshot({ path: info.outputPath('geometry-unavailable-signals.png') });
+  host.releaseOrder();
+});
+
 for (const order of ['military-first', 'raw-first'] as const) test(`observed raw Signals preserve independent completion slots, scope and recovery: ${order}`, async ({ page }, info) => {
   const host = await installCountryHost(page, true, undefined, false, {}, undefined, order);
   const frame = page.frameLocator('iframe');
@@ -324,10 +334,13 @@ for (const order of ['military-first', 'raw-first'] as const) test(`observed raw
   if (order === 'military-first') { await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1); expect(host.contexts.at(-1)?.signals?.earthquakes).toBeNull(); }
   else { await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBe(1); expect(host.contexts.at(-1)?.signals?.militaryFlights).toBeNull(); }
   host.releaseOrder();
-  await expect.poll(() => host.contexts.at(-1)?.signals).toMatchObject({ militaryFlights: 1, militaryVessels: 1, earthquakes: 1, outages: 1, travelAdvisories: 1, travelAdvisoryMaxLevel: 'caution', thermalEscalations: 1, isTier1: true });
+  await expect.poll(() => host.contexts.at(-1)?.signals).toMatchObject({ militaryFlights: 1, militaryVessels: 1, earthquakes: 1, outages: 1, travelAdvisories: 1, travelAdvisoryMaxLevel: 'normal', thermalEscalations: 1, isTier1: true });
+  await expect(signals).toContainText('Normal Precautions');
+  await expect(signals).not.toContainText('Exercise Caution');
   await expect(signals).toContainText('1 Thermal escalations');
   await expect(signals).toContainText('Snapshot time unknown');
   await expect(signals).toContainText('Original returned-sample dates');
+  await expect(signals).toContainText('US State Dept');
   await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
   const initialCalls = host.calls.length;
   expect(host.calls.filter(call => call.arguments.section === 'signalsRaw')).toHaveLength(1);
@@ -357,6 +370,7 @@ for (const order of ['military-first', 'raw-first'] as const) test(`observed raw
   expect(exported).toContain('these counts are not fresh');
   expect(exported).toContain('Snapshot time unknown');
   expect(exported).toContain('USGS and Natural Resources Canada');
+  expect(exported).toContain('US State Dept');
   host.rawZero();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.signals?.outages).toBe(0);

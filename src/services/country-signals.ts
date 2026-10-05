@@ -72,15 +72,17 @@ export function composeCountrySignals(base: CountrySignalCounts, code: string, n
     const display = families[family];
     const observation = display.observation;
     const source = observation ?? display.latest;
+    const publishers = family === 'advisories' ? [...new Set(displayed.sources.advisories.records?.filter(row => row.country === code).map(row => row.source) ?? [])] : [];
+    const publisherNote = family === 'advisories' ? ` Returned selected-country publishers: ${publishers.slice(0, 6).join('; ') || 'none'}${publishers.length > 6 ? `; ${publishers.length - 6} additional publishers in coverage metadata` : ''}.` : '';
     const dates = observationDates(source);
     const sortedDates = dates.map(value => typeof value === 'number' ? new Date(value).toISOString() : value).sort();
     const originalDateRange = sortedDates.length ? [sortedDates[0], sortedDates[sortedDates.length - 1]] : [];
-    notes.push(`${family}:${display.retained ? ' Showing previously loaded observations for this country; these counts are not fresh.' : ''}${source.partial ? ' Partial evidence; exact country count is unknown.' : ''}${display.latest.reason ? ` Latest attempt: ${display.latest.reason}` : ''} Snapshot time ${source.snapshotAt ?? 'unknown'}; retrieved ${source.retrievedAt}.${source.computationAt ? ` Watch computed ${source.computationAt}; this is not upstream capture time. Reported window ${source.observationWindow}; source version ${source.sourceVersion}.` : ''}${originalDateRange.length ? ` Original returned-sample dates ${originalDateRange.join(' to ')}.` : ''} ${source.attribution} ${source.scope}`);
+    notes.push(`${family}:${display.retained ? ' Showing previously loaded observations for this country; these counts are not fresh.' : ''}${source.partial ? ' Partial evidence; exact country count is unknown.' : ''}${publisherNote}${display.latest.reason ? ` Latest attempt: ${display.latest.reason}` : ''} Snapshot time ${source.snapshotAt ?? 'unknown'}; retrieved ${source.retrievedAt}.${source.computationAt ? ` Watch computed ${source.computationAt}; this is not upstream capture time. Reported window ${source.observationWindow}; source version ${source.sourceVersion}.` : ''}${originalDateRange.length ? ` Original returned-sample dates ${originalDateRange.join(' to ')}.` : ''} ${source.attribution} ${source.scope}`);
     return [family, { state: display.latest.state, partial: display.latest.partial, retained: display.retained,
       latestRetrievedAt: display.latest.retrievedAt, latestReason: display.latest.reason,
       observation: observation ? { scope: observation.scope, attribution: observation.attribution, retrievedAt: observation.retrievedAt,
         snapshotAt: observation.snapshotAt, computationAt: observation.computationAt, observationWindow: observation.observationWindow,
-        sourceVersion: observation.sourceVersion, originalDateRange, partial: observation.partial } : null }];
+        sourceVersion: observation.sourceVersion, originalDateRange, partial: observation.partial, ...(family === 'advisories' ? { publishers } : {}) } : null }];
   }));
   return { signals: { ...base, ...military, ...projectRawSignals(displayed, name, hasGeography, contains) }, notes, coverage };
 }
