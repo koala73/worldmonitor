@@ -117,13 +117,13 @@ const NOTAM_PREV_CLOSED_KEY     = 'notam:prev-closed-state:v1';
 const PREV_STATE_TTL            = 86_400; // 24h — longer than any realistic cron cadence
 
 // ─── Unified airport registry ────────────────────────────────────────────────
-// Each row declares: iata, icao, name, city, country, region, lat, lon (where
-// known), and which data sources cover it:
+// Each row declares: iata, icao, name, city, country, region, lat, lon, and
+// which data sources cover it:
 //   'aviationstack' — AviationStack /v1/flights?dep_iata={iata}
 //   'faa'           — FAA ASWS XML filter matches this IATA
 //   'notam'         — ICAO NOTAM list includes this ICAO
-// lat/lon/city are only required for rows with 'aviationstack' (feed the
-// AirportDelayAlert envelope).
+// Every row needs real lat/lon: each one becomes a map marker, and a missing
+// position used to publish at 0,0 (tests/aviation-airport-coordinates.test.mjs).
 
 // Keep this provider contract narrow and evidence-backed: these are individual
 // hubs AviationStack is expected to return, not a claim that every airport in
@@ -157,29 +157,29 @@ export const AIRPORTS = [
   { iata: 'LAX', icao: 'KLAX', name: 'Los Angeles International',             city: 'Los Angeles',   country: 'USA', lat: 33.9416, lon: -118.4085, region: 'americas', sources: ['faa', 'notam'] },
   { iata: 'JFK', icao: 'KJFK', name: 'John F. Kennedy International',         city: 'New York',      country: 'USA', lat: 40.6413, lon: -73.7781, region: 'americas', sources: ['faa', 'notam'] },
   { iata: 'SFO', icao: 'KSFO', name: 'San Francisco International',           city: 'San Francisco', country: 'USA', lat: 37.6213, lon: -122.3790, region: 'americas', sources: ['faa', 'notam'] },
-  { iata: 'SEA', icao: 'KSEA', name: 'Seattle–Tacoma International',          city: 'Seattle',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'LAS', icao: 'KLAS', name: 'Harry Reid International',              city: 'Las Vegas',     country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'MCO', icao: 'KMCO', name: 'Orlando International',                 city: 'Orlando',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'EWR', icao: 'KEWR', name: 'Newark Liberty International',          city: 'Newark',        country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'CLT', icao: 'KCLT', name: 'Charlotte Douglas International',       city: 'Charlotte',     country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'PHX', icao: 'KPHX', name: 'Phoenix Sky Harbor International',      city: 'Phoenix',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'IAH', icao: 'KIAH', name: 'George Bush Intercontinental',          city: 'Houston',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'MIA', icao: 'KMIA', name: 'Miami International',                   city: 'Miami',         country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'BOS', icao: 'KBOS', name: 'Logan International',                   city: 'Boston',        country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'MSP', icao: 'KMSP', name: 'Minneapolis–Saint Paul International',  city: 'Minneapolis',   country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'DTW', icao: 'KDTW', name: 'Detroit Metropolitan',                  city: 'Detroit',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'FLL', icao: 'KFLL', name: 'Fort Lauderdale–Hollywood',             city: 'Fort Lauderdale', country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'PHL', icao: 'KPHL', name: 'Philadelphia International',            city: 'Philadelphia',  country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'LGA', icao: 'KLGA', name: 'LaGuardia',                             city: 'New York',      country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'BWI', icao: 'KBWI', name: 'Baltimore/Washington International',    city: 'Baltimore',     country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'SLC', icao: 'KSLC', name: 'Salt Lake City International',          city: 'Salt Lake City', country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'SAN', icao: 'KSAN', name: 'San Diego International',               city: 'San Diego',     country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'IAD', icao: 'KIAD', name: 'Washington Dulles International',       city: 'Washington',    country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'DCA', icao: 'KDCA', name: 'Ronald Reagan Washington National',     city: 'Washington',    country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'MDW', icao: 'KMDW', name: 'Chicago Midway International',          city: 'Chicago',       country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'TPA', icao: 'KTPA', name: 'Tampa International',                   city: 'Tampa',         country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'HNL', icao: 'PHNL', name: 'Daniel K. Inouye International',        city: 'Honolulu',      country: 'USA', region: 'americas', sources: ['faa'] },
-  { iata: 'PDX', icao: 'KPDX', name: 'Portland International',                city: 'Portland',      country: 'USA', region: 'americas', sources: ['faa'] },
+  { iata: 'SEA', icao: 'KSEA', name: 'Seattle–Tacoma International',          city: 'Seattle',       country: 'USA', lat: 47.4502, lon: -122.3088, region: 'americas', sources: ['faa'] },
+  { iata: 'LAS', icao: 'KLAS', name: 'Harry Reid International',              city: 'Las Vegas',     country: 'USA', lat: 36.0840, lon: -115.1537, region: 'americas', sources: ['faa'] },
+  { iata: 'MCO', icao: 'KMCO', name: 'Orlando International',                 city: 'Orlando',       country: 'USA', lat: 28.4312, lon: -81.3081, region: 'americas', sources: ['faa'] },
+  { iata: 'EWR', icao: 'KEWR', name: 'Newark Liberty International',          city: 'Newark',        country: 'USA', lat: 40.6895, lon: -74.1745, region: 'americas', sources: ['faa'] },
+  { iata: 'CLT', icao: 'KCLT', name: 'Charlotte Douglas International',       city: 'Charlotte',     country: 'USA', lat: 35.2140, lon: -80.9431, region: 'americas', sources: ['faa'] },
+  { iata: 'PHX', icao: 'KPHX', name: 'Phoenix Sky Harbor International',      city: 'Phoenix',       country: 'USA', lat: 33.4373, lon: -112.0078, region: 'americas', sources: ['faa'] },
+  { iata: 'IAH', icao: 'KIAH', name: 'George Bush Intercontinental',          city: 'Houston',       country: 'USA', lat: 29.9902, lon: -95.3368, region: 'americas', sources: ['faa'] },
+  { iata: 'MIA', icao: 'KMIA', name: 'Miami International',                   city: 'Miami',         country: 'USA', lat: 25.7959, lon: -80.2870, region: 'americas', sources: ['faa'] },
+  { iata: 'BOS', icao: 'KBOS', name: 'Logan International',                   city: 'Boston',        country: 'USA', lat: 42.3656, lon: -71.0096, region: 'americas', sources: ['faa'] },
+  { iata: 'MSP', icao: 'KMSP', name: 'Minneapolis–Saint Paul International',  city: 'Minneapolis',   country: 'USA', lat: 44.8848, lon: -93.2223, region: 'americas', sources: ['faa'] },
+  { iata: 'DTW', icao: 'KDTW', name: 'Detroit Metropolitan',                  city: 'Detroit',       country: 'USA', lat: 42.2162, lon: -83.3554, region: 'americas', sources: ['faa'] },
+  { iata: 'FLL', icao: 'KFLL', name: 'Fort Lauderdale–Hollywood',             city: 'Fort Lauderdale', country: 'USA', lat: 26.0742, lon: -80.1506, region: 'americas', sources: ['faa'] },
+  { iata: 'PHL', icao: 'KPHL', name: 'Philadelphia International',            city: 'Philadelphia',  country: 'USA', lat: 39.8744, lon: -75.2424, region: 'americas', sources: ['faa'] },
+  { iata: 'LGA', icao: 'KLGA', name: 'LaGuardia',                             city: 'New York',      country: 'USA', lat: 40.7769, lon: -73.8740, region: 'americas', sources: ['faa'] },
+  { iata: 'BWI', icao: 'KBWI', name: 'Baltimore/Washington International',    city: 'Baltimore',     country: 'USA', lat: 39.1774, lon: -76.6684, region: 'americas', sources: ['faa'] },
+  { iata: 'SLC', icao: 'KSLC', name: 'Salt Lake City International',          city: 'Salt Lake City', country: 'USA', lat: 40.7899, lon: -111.9791, region: 'americas', sources: ['faa'] },
+  { iata: 'SAN', icao: 'KSAN', name: 'San Diego International',               city: 'San Diego',     country: 'USA', lat: 32.7338, lon: -117.1933, region: 'americas', sources: ['faa'] },
+  { iata: 'IAD', icao: 'KIAD', name: 'Washington Dulles International',       city: 'Washington',    country: 'USA', lat: 38.9531, lon: -77.4565, region: 'americas', sources: ['faa'] },
+  { iata: 'DCA', icao: 'KDCA', name: 'Ronald Reagan Washington National',     city: 'Washington',    country: 'USA', lat: 38.8512, lon: -77.0402, region: 'americas', sources: ['faa'] },
+  { iata: 'MDW', icao: 'KMDW', name: 'Chicago Midway International',          city: 'Chicago',       country: 'USA', lat: 41.7868, lon: -87.7522, region: 'americas', sources: ['faa'] },
+  { iata: 'TPA', icao: 'KTPA', name: 'Tampa International',                   city: 'Tampa',         country: 'USA', lat: 27.9755, lon: -82.5332, region: 'americas', sources: ['faa'] },
+  { iata: 'HNL', icao: 'PHNL', name: 'Daniel K. Inouye International',        city: 'Honolulu',      country: 'USA', lat: 21.3187, lon: -157.9225, region: 'americas', sources: ['faa'] },
+  { iata: 'PDX', icao: 'KPDX', name: 'Portland International',                city: 'Portland',      country: 'USA', lat: 45.5898, lon: -122.5951, region: 'americas', sources: ['faa'] },
 
   // ── Europe — AviationStack + NOTAM ──
   { iata: 'LHR', icao: 'EGLL', name: 'London Heathrow',               city: 'London',     country: 'UK',      lat: 51.4700, lon: -0.4543, region: 'europe', sources: ['aviationstack', 'notam'] },
@@ -262,8 +262,7 @@ const NOTAM_LIST         = AIRPORTS.filter(a => a.sources.includes('notam')).map
 const AVIATIONSTACK_IATAS = new Set(AVIATIONSTACK_LIST.map(a => a.iata));
 const FAA_IATAS = new Set(FAA_LIST);
 
-// iata → aviationstack-enriched meta (for building AirportDelayAlert envelopes
-// with coordinates — aviationstack rows are the only ones with lat/lon).
+// iata → aviationstack-enriched meta (for building AirportDelayAlert envelopes).
 const AIRPORT_META = Object.fromEntries(AVIATIONSTACK_LIST.map(a => [a.iata, a]));
 
 // iata → FAA-row meta (icao/name/city/country for alert envelopes). NOTAM-
@@ -665,16 +664,7 @@ function parseFaaXml(text) {
   return delays;
 }
 
-async function seedFaaDelays() {
-  const t0 = Date.now();
-  const resp = await fetch(FAA_URL, {
-    headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`FAA HTTP ${resp.status}`);
-  const xml = await resp.text();
-  const faaDelays = parseFaaXml(xml);
-
+export function buildFaaAlerts(faaDelays) {
   const alerts = [];
   for (const iata of FAA_LIST) {
     const d = faaDelays.get(iata);
@@ -687,7 +677,7 @@ async function seedFaaDelays() {
       name: meta?.name ?? iata,
       city: meta?.city ?? '',
       country: meta?.country ?? 'USA',
-      location: { latitude: 0, longitude: 0 }, // FAA rows have no lat/lon in the registry
+      location: { latitude: meta.lat, longitude: meta.lon },
       region: 'AIRPORT_REGION_AMERICAS',
       delayType: `FLIGHT_DELAY_TYPE_${d.type.toUpperCase()}`,
       severity: `FLIGHT_DELAY_SEVERITY_${faaSeverityFromAvg(d.avgDelay).toUpperCase()}`,
@@ -700,6 +690,18 @@ async function seedFaaDelays() {
       updatedAt: Date.now(),
     });
   }
+  return alerts;
+}
+
+async function seedFaaDelays() {
+  const t0 = Date.now();
+  const resp = await fetch(FAA_URL, {
+    headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`FAA HTTP ${resp.status}`);
+  const xml = await resp.text();
+  const alerts = buildFaaAlerts(parseFaaXml(xml));
   console.log(`[FAA] ${alerts.length} alerts in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return { alerts };
 }

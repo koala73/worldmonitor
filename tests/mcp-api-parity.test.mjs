@@ -287,8 +287,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes energy:oil-stocks-analysis:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/list-grocery-basket-prices",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:grocery-basket:v1 yet — bundle into a future expanded-domain tool"],
-  ["GET /api/forecast/v1/get-simulation-outcome",
-    "deferred-to-future-tool: pure-read but no MCP tool exposes forecast:simulation-outcome:latest yet — bundle into a future expanded-domain tool"],
   ["GET /api/forecast/v1/get-simulation-package",
     "deferred-to-future-tool: pure-read but no MCP tool exposes forecast:simulation-package:latest yet — bundle into a future expanded-domain tool"],
   ["GET /api/intelligence/v1/get-gdelt-topic-timeline",

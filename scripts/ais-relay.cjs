@@ -91,6 +91,7 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
+const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
@@ -8355,7 +8356,11 @@ async function seedPizzint() {
       console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
       raw = null;
     }
-    const hasPrimaryReading = raw?.data.some(d => Number.isFinite(d.current_popularity) && d.current_popularity >= 0);
+    // Stale numbers and open zero/zero rows cannot supply a usable primary signal.
+    // Keep fresh closed zeros valid, as in the existing scorer/publication contract.
+    const hasPrimaryReading = raw?.data.some(d => d.data_freshness === 'fresh'
+      && Number.isFinite(d.current_popularity) && d.current_popularity >= 0
+      && (d.current_popularity > 0 || d.is_closed_now));
     const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
     if (!raw && !fallback) return;
@@ -8375,8 +8380,7 @@ async function seedPizzint() {
       recordedAt: d.recorded_at || '',
       dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
       isClosedNow: !!d.is_closed_now,
-      lat: d.lat ?? 0,
-      lng: d.lng ?? 0,
+      ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
     }));
 
     const previous = await envelopeRead(PIZZINT_REDIS_KEY);
@@ -11257,7 +11261,8 @@ function handleWorldBankRequest(req, res) {
       'GB.XPD.RSDV.GD.ZS': 'R&D Expenditure (% of GDP)',
       'IP.PAT.RESD': 'Patent Applications (residents)',
       'IP.PAT.NRES': 'Patent Applications (non-residents)',
-      'IP.TMK.TOTL': 'Trademark Applications',
+      'IP.TMK.RSCT': 'Trademark Applications (resident, by count)',
+      'IP.TMK.NRCT': 'Trademark Applications (nonresident, by count)',
       'TX.VAL.TECH.MF.ZS': 'High-Tech Exports (% of manufactured exports)',
       'BX.GSR.CCIS.ZS': 'ICT Service Exports (% of service exports)',
       'TM.VAL.ICTG.ZS.UN': 'ICT Goods Imports (% of total goods imports)',
@@ -11297,7 +11302,8 @@ function handleWorldBankRequest(req, res) {
     'GB.XPD.RSDV.GD.ZS': 'R&D Expenditure (% of GDP)',
     'IP.PAT.RESD': 'Patent Applications (residents)',
     'IP.PAT.NRES': 'Patent Applications (non-residents)',
-    'IP.TMK.TOTL': 'Trademark Applications',
+    'IP.TMK.RSCT': 'Trademark Applications (resident, by count)',
+    'IP.TMK.NRCT': 'Trademark Applications (nonresident, by count)',
     'TX.VAL.TECH.MF.ZS': 'High-Tech Exports (% of manufactured exports)',
     'BX.GSR.CCIS.ZS': 'ICT Service Exports (% of service exports)',
     'TM.VAL.ICTG.ZS.UN': 'ICT Goods Imports (% of total goods imports)',
