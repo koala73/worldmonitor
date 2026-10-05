@@ -26,6 +26,7 @@ import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 import { publishedRankedCountries } from './build-ai-search.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
@@ -344,6 +345,11 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     /get_market_data → market-radar(?:-v\d+)?\.html/,
     'get_market_data → market-radar-v3.html',
   );
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
+    'get_forecast_predictions → forecasts-v3.html',
+  );
+  card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
   card.tools = TOOL_REGISTRY.map((tool) => ({
     name: tool.name,
     description: tool.description,

@@ -1495,6 +1495,9 @@
           "path": "scripts/seed-service-statuses.mjs"
         },
         {
+          "path": "scripts/validate-rss-feeds.mjs"
+        },
+        {
           "path": "scripts/validate-seed-migration.mjs"
         },
         {
