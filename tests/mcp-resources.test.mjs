@@ -397,6 +397,23 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // -------------------------------------------------------------------------
   // resources/list shape
   // -------------------------------------------------------------------------
+  it('keeps the old conflict resource readable without advertising it', async () => {
+    const oldUri = 'ui://worldmonitor/conflict-events.html';
+    const newUri = 'ui://worldmonitor/conflict-events-v2.html';
+    const listed = await (await handler(anonReq({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }))).json();
+    assert.ok(listed.result.resources.some(resource => resource.uri === newUri));
+    assert.ok(!listed.result.resources.some(resource => resource.uri === oldUri));
+    const oldRead = await (await handler(anonReq(readBody(oldUri)))).json();
+    const newRead = await (await handler(anonReq(readBody(newUri)))).json();
+    assert.equal(oldRead.result.contents[0].uri, oldUri);
+    assert.equal(newRead.result.contents[0].uri, newUri);
+    assert.equal(oldRead.result.contents[0].text, newRead.result.contents[0].text);
+    const card = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf8'));
+    assert.ok(card.metadata.mcpApps.uiResources.includes(newUri));
+    assert.ok(!card.metadata.mcpApps.uiResources.includes(oldUri));
+    assert.match(card.metadata.mcpApps.note, /get_conflict_events → conflict-events-v2\.html/);
+  });
+
   it('resources/list returns only concrete anon-readable resources: DATA freshness probe + ui:// shell, no {template} URIs', async () => {
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }));
     assert.equal(res.status, 200);
@@ -415,7 +432,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/market-radar-v3.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
-      'ui://worldmonitor/conflict-events.html',
+      'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
       'ui://worldmonitor/forecasts-v3.html',
@@ -660,7 +677,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
-      'ui://worldmonitor/conflict-events.html',
+      'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
       'ui://worldmonitor/forecasts-v3.html',
@@ -713,7 +730,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html',
+        uri: 'ui://worldmonitor/conflict-events-v2.html',
         hostId: 'list',
         raw: { data: { 'ucdp-events': { events: [{
           sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan',
@@ -987,7 +1004,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   });
 
   it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
-    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events.html')));
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events-v2.html')));
     const html = (await res.json()).result.contents[0].text;
     const payload = {
       data: {
@@ -1018,7 +1035,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         payload: { data: { insights: { topStories: [{ primaryTitle: hostile, primarySource: hostile }] } } },
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
         payload: { data: { 'ucdp-events': { events: [{ sideA: hostile, sideB: 'Other side' }] } } },
       },
       {
@@ -1058,7 +1075,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         emptyCopy: /No news stories available\./,
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
         missing: { data: { acled: {} } },
         empty: { data: { 'ucdp-events': { events: [] } } },
         emptyCopy: /No conflict events available\./,

@@ -346,6 +346,10 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_market_data → market-radar-v3.html',
   );
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_conflict_events → conflict-events(?:-v\d+)?\.html/,
+    'get_conflict_events → conflict-events-v2.html',
+  );
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
     /get_prediction_markets → prediction-markets(?:-v\d+)?\.html/,
     'get_prediction_markets → prediction-markets-v3.html',
   );
