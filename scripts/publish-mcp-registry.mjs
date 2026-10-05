@@ -3,12 +3,19 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const MCP_REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io';
 export const MCP_REGISTRY_USER_AGENT =
   'WorldMonitor-MCP-Registry-Publish/1.0 (+https://worldmonitor.app)';
 export const MCP_REGISTRY_LOOKUP_TIMEOUT_MS = 15_000;
+const LOOKUP_MAX_ATTEMPTS = 3;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const RETRYABLE_TRANSPORT_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+]);
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -98,12 +105,21 @@ export function isDuplicateVersionPublishError(text) {
   return /invalid[-\s]version/i.test(text) || /cannot publish duplicate version/i.test(text);
 }
 
+function isRetryableLookupError(error) {
+  if (error?.status) return RETRYABLE_HTTP_STATUSES.has(error.status);
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return true;
+  const code = error?.cause?.code ?? error?.code;
+  if (code) return RETRYABLE_TRANSPORT_CODES.has(code);
+  return error instanceof TypeError && error.message === 'fetch failed';
+}
+
 export async function fetchPublishedMcpRegistryVersion({
   name,
   version,
   baseUrl = MCP_REGISTRY_BASE_URL,
   fetchImpl = (...args) => globalThis.fetch(...args),
   timeoutMs = MCP_REGISTRY_LOOKUP_TIMEOUT_MS,
+  sleepImpl = sleep,
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('fetchImpl must be a function');
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
@@ -111,32 +127,47 @@ export async function fetchPublishedMcpRegistryVersion({
   }
 
   const url = registryVersionUrl(name, version, baseUrl);
-  const response = await fetchImpl(url, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': MCP_REGISTRY_USER_AGENT,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': MCP_REGISTRY_USER_AGENT,
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
 
-  if (response.status === 404) return { found: false, url };
-  if (!response.ok) {
-    const detail = typeof response.text === 'function' ? (await response.text()).slice(0, 500) : '';
-    const error = new Error(`registry lookup failed: HTTP ${response.status}${detail ? ` ${detail}` : ''}`);
-    error.code = 'registry_lookup_failed';
-    error.status = response.status;
-    throw error;
+      if (response.status === 404) {
+        await response.body?.cancel();
+        return { found: false, url };
+      }
+      if (!response.ok) {
+        const detail = typeof response.text === 'function'
+          ? (await response.text().catch(() => '')).slice(0, 500) : '';
+        const error = new Error(`HTTP ${response.status}${detail ? ` ${detail}` : ''}`);
+        error.code = 'registry_lookup_failed';
+        error.status = response.status;
+        throw error;
+      }
+
+      const payload = await response.json();
+      const server = extractPublishedServer(payload);
+      return { found: true, url, payload, server, status: extractPublishedStatus(payload) };
+    } catch (error) {
+      const retryable = isRetryableLookupError(error);
+      const context = `registry lookup GET ${url}, attempt ${attempt}/${LOOKUP_MAX_ATTEMPTS}, timeout ${timeoutMs}ms: ${error.message}`;
+      if (!retryable || attempt === LOOKUP_MAX_ATTEMPTS) {
+        if (!retryable && error?.code !== 'registry_lookup_failed') throw error;
+        const failure = new Error(context, { cause: error });
+        failure.code = 'registry_lookup_failed';
+        failure.status = error.status;
+        throw failure;
+      }
+      const delayMs = attempt * 1000;
+      console.warn(`${context}; retrying in ${delayMs}ms`);
+      await sleepImpl(delayMs);
+    }
   }
-
-  const payload = await response.json();
-  const server = extractPublishedServer(payload);
-  return {
-    found: true,
-    url,
-    payload,
-    server,
-    status: extractPublishedStatus(payload),
-  };
 }
 
 function failClosedOnExisting(desired, published, { status = null } = {}) {
@@ -203,6 +234,7 @@ export async function publishMcpRegistryIdempotent({
   cwd = process.cwd(),
   baseUrl = MCP_REGISTRY_BASE_URL,
   timeoutMs = MCP_REGISTRY_LOOKUP_TIMEOUT_MS,
+  sleepImpl = sleep,
 } = {}) {
   const desired = loadDesiredMcpRegistryManifest(manifestPath);
   const command = Array.isArray(publishCommand) && publishCommand.length > 0
@@ -217,6 +249,7 @@ export async function publishMcpRegistryIdempotent({
       baseUrl,
       fetchImpl,
       timeoutMs,
+      sleepImpl,
     });
   } catch (error) {
     const lookupFailed = error?.code === 'registry_lookup_failed'
@@ -260,6 +293,7 @@ export async function publishMcpRegistryIdempotent({
     baseUrl,
     fetchImpl,
     timeoutMs,
+    sleepImpl,
   });
   if (existing.found !== true) {
     throw new Error(

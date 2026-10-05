@@ -24,9 +24,11 @@ message DiseaseOutbreakItem {
   int64 published_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Source name (e.g., "WHO", "ProMED", "HealthMap").
   string source_name = 9;
-  // Precise latitude from source (overrides country centroid on map when non-zero).
+  // Latitude: the source's point when it gives one, otherwise the centroid of country_code.
+  // 0 with lng 0 means the item has no known location.
   double lat = 10;
-  // Precise longitude from source (overrides country centroid on map when non-zero).
+  // Longitude: the source's point when it gives one, otherwise the centroid of country_code.
+  // 0 with lat 0 means the item has no known location.
   double lng = 11;
   // Case count if reported by source (0 = unknown).
   int32 cases = 12;
