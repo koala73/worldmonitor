@@ -43,7 +43,10 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
-    var d = data.data && typeof data.data === "object" ? data.data : data;
+    var value = Object.prototype.hasOwnProperty.call(data, "projection") ? data.projection : data;
+    var envelope = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var d = envelope.data && typeof envelope.data === "object" && !Array.isArray(envelope.data)
+      ? envelope.data : envelope;
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
@@ -72,11 +75,17 @@ const RENDER = `
     var host = q("rows");
     host.textContent = "";
     var count = 0;
-    if (summaries && typeof summaries === "object") {
+    var keySummary = summaries && typeof summaries === "object" && Array.isArray(summaries.sample_keys);
+    if (keySummary) {
+      var reported = summaries.count;
+      var knownCount = typeof reported === "number" && Number.isFinite(reported) && Number.isInteger(reported) && reported >= summaries.sample_keys.length;
+      host.appendChild(el("div", "empty", (knownCount ? "Summary reports " + reported + " chokepoints." : "Summary count is unavailable.") +
+        " Transit records are not loaded."));
+    } else if (summaries && typeof summaries === "object" && !Array.isArray(summaries)) {
       var keys = Object.keys(summaries);
       for (var i = 0; i < keys.length && count < 20; i++) {
         var s = summaries[keys[i]];
-        if (!s || typeof s !== "object") continue;
+        if (!s || typeof s !== "object" || Array.isArray(s)) continue;
         var historyMissing = s.dataAvailable === false;
         var row = el("div", "crow");
         var head = el("div", "crow-head");
@@ -105,10 +114,10 @@ const RENDER = `
         count++;
       }
     }
-    if (!count) host.appendChild(el("div", "empty", "No chokepoint transit data available."));
+    if (!count && !keySummary) host.appendChild(el("div", "empty", "No chokepoint transit data available."));
 
-    q("foot").textContent = data.cached_at
-      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
+    q("foot").textContent = envelope.cached_at
+      ? "Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : "")
       : "";
 `;
 

@@ -210,7 +210,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     bump records it in the audit trail; rollback is git revert.
 // Bumped 1.10.0 → 1.11.0 (2026-07-04) reflecting:
 //   - MCP Apps support (extension `io.modelcontextprotocol/ui`, spec
-//     2026-01-26). Adds a `ui://worldmonitor/country-risk.html` app-shell
+//     2026-01-26). Adds a country-risk app-shell (current `ui://worldmonitor/country-risk-v2.html`)
 //     resource (mimeType `text/html;profile=mcp-app`, served via
 //     resources/list + resources/read) and links it from the
 //     `get_country_risk` tool via `_meta.ui.resourceUri` (+ the deprecated
@@ -268,8 +268,8 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.13.0 → 1.14.0 (2026-07-08) reflecting:
 //   - MCP Apps interactive-dashboard fleet: four new ui:// app-shell resources
 //     joining the v1.11.0 country-risk widget —
-//       * ui://worldmonitor/world-brief.html      (get_world_brief)
-//       * ui://worldmonitor/country-brief.html    (get_country_brief)
+//       * ui://worldmonitor/world-brief-v2.html      (get_world_brief)
+//       * ui://worldmonitor/country-brief-v2.html (get_country_brief)
 //       * ui://worldmonitor/market-radar.html      (get_market_data)
 //       * ui://worldmonitor/chokepoint-monitor.html (get_chokepoint_status)
 //     Each is linked from its backing tool via `_meta.ui.resourceUri` (+ the

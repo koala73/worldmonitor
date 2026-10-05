@@ -98,7 +98,7 @@ describe('paid country workflow through the MCP handler', () => {
     assert.equal(pipe.count, 1);
     for (const name of ['get_country_brief', 'get_country_coverage']) {
       const read = await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token);
-      await read.save({ countryCode: 'US', brief: 'Controlled assessment', headlines: [] });
+      await read.save({ countryCode: 'US', countryName: 'United States', brief: 'Controlled assessment', model: 'fixture', generatedAt: Date.now(), sources: [], groundingStories: [], digestCoverage: { state: 'complete', servedStale: false } });
       assert.equal((await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token)).cached.countryCode, 'US');
     }
     assert.equal(pipe.count, 1);
@@ -257,6 +257,7 @@ describe('paid country workflow through the MCP handler', () => {
     const grant = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' });
     const read = (ctx, name, args, token = grant.token) => readPanel(ctx, pipe.pipeline, name, args, token);
     await assert.rejects(read({ ...context, userId: 'other' }, 'get_country_brief_section', energy));
+    await read(context, 'get_country_brief', { country_code: 'US', framework: 'Custom', allow_stale: true });
     for (const [name, args] of [
       ['get_country_brief_section', { section: 'energy', arguments: { country_code: 'UA' } }],
       ['get_country_brief_section', { section: 'flows', arguments: { reporter_code: '156' } }],
@@ -264,7 +265,6 @@ describe('paid country workflow through the MCP handler', () => {
       ['get_country_brief_section', { section: 'production', arguments: { commodity: 'copper', iso2: 'CN' } }],
       ['get_country_brief_section', { section: 'markets', arguments: { category: 'country:UA', page_size: 5 } }],
       ['get_country_brief_section', { section: 'china', arguments: {} }],
-      ['get_country_brief', { country_code: 'US', framework: 'Custom' }],
       ['get_country_brief', { country_code: 'UA' }],
       ['get_country_coverage', { country_code: 'UA' }],
       ['get_market_data', {}],

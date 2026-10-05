@@ -62,7 +62,8 @@ const BODY = `
 `;
 
 const RENDER = `
-    if (!data || typeof data !== "object") return;
+    if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, "projection")) data = data.projection;
+    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     q("empty").style.display = "none";
     q("card").style.display = "block";
 

@@ -349,6 +349,9 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     /get_market_data → market-radar(?:-v\d+)?\.html/,
     'get_market_data → market-radar-v3.html',
   ).replace(
+    /get_country_brief → country-brief(?:-v\d+)?\.html/,
+    'get_country_brief → country-brief-v2.html',
+  ).replace(
     /get_natural_disasters → natural-disasters(?:-v\d+)?\.html/,
     `get_natural_disasters → ${disasterFilename}`,
   ).replace(
@@ -363,6 +366,15 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   ).replace(
     /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
     'get_forecast_predictions → forecasts-v3.html',
+  ).replace(
+    /get_chokepoint_status → chokepoint-monitor(?:-v\d+)?\.html/,
+    'get_chokepoint_status → chokepoint-monitor-v2.html',
+  ).replace(
+    /get_world_brief → world-brief(?:-v\d+)?\.html/,
+    'get_world_brief → world-brief-v2.html',
+  ).replace(
+    /get_country_risk → country-risk(?:-v\d+)?\.html/,
+    'get_country_risk → country-risk-v2.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
   card.tools = TOOL_REGISTRY.map((tool) => ({
