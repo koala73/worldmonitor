@@ -37,7 +37,7 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 |---|---|---|---|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | 国家风险（交互式） | 综合不稳定指数评分、组成部分细分、旅行建议和制裁风险敞口。 |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
-| `ui://worldmonitor/country-brief-v2.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
+| `ui://worldmonitor/country-brief-v3.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
@@ -46,7 +46,7 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。 |
 | `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
 
-精简国家简报视图支持原始响应和受支持的对象投影。替换结果会清除之前的段落、证据、来源链接和生成时间。宿主声明 `country-brief-v2.html`；原始 `country-brief.html` 作为旧版已安装元数据的私有读取别名保留，直到这些宿主刷新资源发现。普通国家请求仍打开完整国家视图。
+精简国家简报视图支持原始响应和受支持的对象投影。保留的新闻摘要覆盖信息会显示中性提示，不声称评估使用了保留的支撑材料。仅在响应提供时显示报告的快照年龄和有效的 UTC 刷新尝试时间。缺失或格式错误的覆盖信息不作新鲜度声明。替换结果会清除之前的段落、证据、来源链接、生成时间和保留摘要提示。宿主声明 `country-brief-v3.html`；`country-brief-v2.html` 和原始 `country-brief.html` 作为私有读取别名保留，直到旧版已安装元数据退役。普通国家请求仍打开完整国家视图。
 
 原始的 `ui://worldmonitor/prediction-markets.html` 仍作为未列出的读取别名。刷新已安装连接的元数据并打开新卡片后才能加载 v2；已有的缓存卡片仍使用旧 HTML。省略合约数据的投影无法恢复被省略的详情。
 

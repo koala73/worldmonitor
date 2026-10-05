@@ -511,7 +511,7 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 |-----------------|-------------|---------|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | The precomputed, citation-grounded global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
-| `ui://worldmonitor/country-brief-v2.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
+| `ui://worldmonitor/country-brief-v3.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Fear & Greed plus all loaded equity, commodity, crypto, Gulf and sector quotes, asset names and expandable intraday charts. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and source. |
@@ -526,7 +526,7 @@ All UI resources share `mimeType: text/html;profile=mcp-app`.
 
 `resources/read` on a `ui://` URI returns an HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream data call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. Statically bundled widgets are self-contained. The news, country and market views load their current JavaScript and CSS from `https://www.worldmonitor.app`, as permitted by their resource metadata. All views communicate with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
-The compact Country Brief view accepts the original response and supported object projections. Replacing a result clears prior paragraphs, evidence, source links and generation time. Hosts advertise `country-brief-v2.html`; the original `country-brief.html` remains a private read alias for older installed metadata until those hosts refresh their resource discovery. Ordinary country asks still open the full country view.
+The compact Country Brief view accepts the original response and supported object projections. Retained news digest coverage shows a neutral notice without claiming that the assessment used retained grounding. Reported snapshot age and a valid UTC refresh-attempt time appear only when supplied. Missing or malformed coverage makes no freshness claim. Replacing a result clears prior paragraphs, evidence, source links, generation time and retained notice. Hosts advertise `country-brief-v3.html`; `country-brief-v2.html` and the original `country-brief.html` remain private read aliases until older installed metadata is retired. Ordinary country asks still open the full country view.
 
 For the full MCP Apps contract — host flow, security posture, per-widget inventory, source files, and docs-stat drift checks — see [MCP Apps](/mcp-apps).
 

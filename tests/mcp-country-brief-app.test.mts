@@ -200,7 +200,7 @@ describe('Country Brief retained digest disclosure', () => {
         const notice = win.document.getElementById('grounding-notice');
         assert.equal(notice.style.display, 'none');
         assert.equal(notice.textContent, '');
-        assert.doesNotMatch(win.document.body.textContent, /feed_timeout|Reported snapshot age|Last refresh attempt|digest is live/i);
+        assert.doesNotMatch(win.document.getElementById('card').textContent, /feed_timeout|Reported snapshot age|Last refresh attempt|digest is live/i);
         send(win, retainedBrief, true);
         assert.match(notice.textContent, /digest is retained/);
         assertOriginalBrief(win);

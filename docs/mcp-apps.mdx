@@ -37,7 +37,7 @@ Three discovery signals must stay aligned:
 |---|---|---|---|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
 | `ui://worldmonitor/world-brief.html` | `get_world_brief` | World Brief (interactive) | Precomputed citation-grounded global brief, grounding headlines, and source feed articles. |
-| `ui://worldmonitor/country-brief-v2.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
+| `ui://worldmonitor/country-brief-v3.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed plus all loaded quote rows, asset names and expandable intraday charts from the same snapshot. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, and source. |
@@ -48,7 +48,7 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
 
-The compact Country Brief view accepts the original response and supported object projections. Replacing a result clears prior paragraphs, evidence, source links and generation time. Hosts advertise `country-brief-v2.html`; the original `country-brief.html` remains a private read alias for older installed metadata until those hosts refresh their resource discovery. Ordinary country asks still open the full country view.
+The compact Country Brief view accepts the original response and supported object projections. Retained news digest coverage shows a neutral notice without claiming that the assessment used retained grounding. Reported snapshot age and a valid UTC refresh-attempt time appear only when supplied. Missing or malformed coverage makes no freshness claim. Replacing a result clears prior paragraphs, evidence, source links, generation time and retained notice. Hosts advertise `country-brief-v3.html`; `country-brief-v2.html` and the original `country-brief.html` remain private read aliases until older installed metadata is retired. Ordinary country asks still open the full country view.
 
 The original `ui://worldmonitor/prediction-markets.html` remains a private read alias. Refresh installed connection metadata and open a new card to load v2; an existing cached card keeps its old HTML. Projections that omit the contract data cannot restore omitted details.
 
