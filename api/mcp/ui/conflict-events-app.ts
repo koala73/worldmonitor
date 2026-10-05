@@ -43,7 +43,9 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
-    var d = data.data && typeof data.data === "object" ? data.data : data;
+    var envelope = Object.prototype.hasOwnProperty.call(data, "projection") ? data.projection : data;
+    var d = envelope && typeof envelope === "object"
+      ? (envelope.data && typeof envelope.data === "object" ? envelope.data : envelope) : {};
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
@@ -100,8 +102,8 @@ const RENDER = `
           + originalCount.toLocaleString() + " events (output limit).");
       }
     }
-    if (data.cached_at) {
-      footParts.push("Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : ""));
+    if (envelope && envelope.cached_at) {
+      footParts.push("Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : ""));
     }
     q("foot").textContent = footParts.join(" ");
 `;

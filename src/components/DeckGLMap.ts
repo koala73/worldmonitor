@@ -16,6 +16,7 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
+  NewsLocationMarker,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -640,7 +641,7 @@ export class DeckGLMap {
   private aircraftPositions: PositionSample[] = [];
   private aircraftFetchTimer: ReturnType<typeof setInterval> | null = null;
   private news: NewsItem[] = [];
-  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
+  private newsLocations: NewsLocationMarker[] = [];
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
@@ -710,6 +711,7 @@ export class DeckGLMap {
   private hoveredCountryName: string | null = null;
 
   // Callbacks
+  private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
@@ -1954,6 +1956,7 @@ export class DeckGLMap {
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
+    const filteredCyberThreats = mapLayers.cyberThreats ? this.filterByTimeCached(this.cyberThreats, (threat) => threat.lastSeen ?? threat.firstSeen) : [];
     const filteredMilitaryFlights = mapLayers.military ? this.filterByTimeCached(this.militaryFlights, (flight) => flight.lastSeen) : [];
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTimeCached(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTimeCached(this.militaryFlightClusters) : [];
@@ -2156,8 +2159,8 @@ export class DeckGLMap {
     layers.push(this.createEmptyGhost('ddos-locations-layer'));
 
     // Cyber threat IOC layer
-    if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
-      layers.push(this.createCyberThreatsLayer());
+    if (mapLayers.cyberThreats && filteredCyberThreats.length > 0) {
+      layers.push(this.createCyberThreatsLayer(filteredCyberThreats));
     }
     layers.push(this.createEmptyGhost('cyber-threats-layer'));
 
@@ -3606,10 +3609,10 @@ export class DeckGLMap {
     });
   }
 
-  private createCyberThreatsLayer(): ScatterplotLayer<CyberThreat> {
+  private createCyberThreatsLayer(threats: CyberThreat[]): ScatterplotLayer<CyberThreat> {
     return new ScatterplotLayer<CyberThreat>({
       id: 'cyber-threats-layer',
-      data: this.cyberThreats,
+      data: threats,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => {
         switch (d.severity) {
@@ -5309,6 +5312,11 @@ export class DeckGLMap {
 
     const rawClickLayerId = info.layer?.id || '';
     const layerId = rawClickLayerId.endsWith('-ghost') ? rawClickLayerId.slice(0, -6) : rawClickLayerId;
+
+    if (layerId === 'news-locations-layer') {
+      this.onNewsClick?.(info.object as NewsLocationMarker);
+      return;
+    }
 
     // Hotspots show popup with related news
     if (layerId === 'hotspots-layer') {
@@ -7353,7 +7361,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationMarker[]): void {
     const now = Date.now();
     for (const d of data) {
       if (!this.newsLocationFirstSeen.has(d.title)) {
@@ -7610,6 +7618,10 @@ export class DeckGLMap {
     }
 
     this.render(); // Debounced
+  }
+
+  public setOnNewsClick(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
+    this.onNewsClick = callback;
   }
 
   public setOnHotspotClick(callback: (hotspot: Hotspot) => void): void {
