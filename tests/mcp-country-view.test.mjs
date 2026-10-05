@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PANEL_REQUEST_READ_SCRIPT } from '../shared/panel-request-scripts.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq, PRO_USER_ID } from './helpers/mcp-pro-deps.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
+const evidenceDirectory = mkdtempSync(join(tmpdir(), 'worldmonitor-country-view-'));
 describe('country view MCP boundary', () => {
   let handler;
   let requests;
@@ -30,6 +33,10 @@ describe('country view MCP boundary', () => {
   });
   const invoke = async (name, args) => {
     const deps = makeProDeps();
+    if (name === 'get_country_brief_section' && args.section === 'signalsRaw') {
+      const opened = await (await handler(proReq('POST', callBody('open_country_brief', { country_code: args.arguments.country_code })), deps.deps)).json();
+      args = { ...args, panel_request: opened.result.structuredContent.panelRequest.token };
+    }
     const response = await handler(proReq('POST', callBody(name, args)), deps.deps);
     return { response, body: await response.json(), deps };
   };
@@ -44,6 +51,38 @@ describe('country view MCP boundary', () => {
     assert.equal(requests.length, 0);
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
+  });
+  it('rejects raw Signals outside verified paid country reads before fetch or allowance reservation', async () => {
+    const args = { section: 'signalsRaw', arguments: { country_code: 'US' } };
+    const { deps: paidDeps, pipe: paidPipe } = makeProDeps();
+    const opened = await (await handler(proReq('POST', callBody('open_country_brief', { country_code: 'US' })), paidDeps)).json();
+    const token = opened.result.structuredContent.panelRequest.token;
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_test_key_raw_operator';
+    const cases = [
+      { name: 'paid-no-receipt', fixture: makeProDeps(), args },
+      { name: 'api-no-receipt', fixture: makeProDeps({ getEntitlements: async () => ({ planKey: 'api_starter', features: { tier: 2, mcpAccess: true, planLimits: { apiRequestsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) }), args },
+      { name: 'api-paid-receipt', fixture: makeProDeps({ getEntitlements: async () => ({ planKey: 'api_starter', features: { tier: 2, mcpAccess: true, planLimits: { apiRequestsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) }), args: { ...args, panel_request: token } },
+      { name: 'operator-no-receipt', fixture: makeProDeps(), args, headers: { Authorization: '', 'X-WorldMonitor-Key': 'wm_test_key_raw_operator' } },
+      { name: 'operator-paid-receipt', fixture: makeProDeps(), args: { ...args, panel_request: token }, headers: { Authorization: '', 'X-WorldMonitor-Key': 'wm_test_key_raw_operator' } },
+    ];
+    for (const item of cases) {
+      const reply = await (await handler(proReq('POST', callBody('get_country_brief_section', item.args), item.headers), item.fixture.deps)).json();
+      assert.equal(reply.error?.code, -32602, item.name);
+      assert.equal(item.fixture.pipe.count, 0, item.name);
+      assert.equal(item.fixture.pipe.ops.flat().filter(command => command[0] === 'EVAL').length, 0, item.name);
+    }
+    assert.equal(requests.length, 0); assert.equal(paidPipe.count, 1);
+    const { COUNTRY_VIEW_TOOLS } = await import('../api/mcp/registry/country-view.ts');
+    const tool = COUNTRY_VIEW_TOOLS.find(tool => tool.name === 'get_country_brief_section');
+    await assert.rejects(tool._execute(args, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' }), error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request' && /paid country panel/i.test(value.description)));
+    await assert.rejects(tool._execute(args, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' }, { countryPanelCode: 'CN' }), error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request'));
+    assert.equal(requests.length, 0);
+  });
+  it('preserves ordinary country reader API weight while paid raw fan-out is a separate four-read proof', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api_starter', features: { tier: 2, mcpAccess: true, planLimits: { apiRequestsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    const reply = await (await handler(proReq('POST', callBody('get_country_brief_section', { section: 'energy', arguments: { country_code: 'US' } })), deps)).json();
+    assert.equal(reply.result.structuredContent.state, 'ready');
+    assert.equal(requests.length, 1); assert.equal(pipe.count, 2);
   });
   it('delivers closed raw Signals with all failed family outcomes and no extra allocation', async () => {
     globalThis.fetch = async (url, init) => { requests.push({ url: String(url), init }); return new Response('unavailable', { status: 503 }); };
@@ -100,21 +139,22 @@ describe('country view MCP boundary', () => {
     const projected = JSON.parse(new TextDecoder().decode(projectedBytes)).result.structuredContent;
     assert.ok(projected._attribution.sources.some(source => source.attribution.includes('USGS')));
     assert.ok(projected._attribution.sources.some(source => source.attribution.includes('CWFIS')));
-    writeFileSync('/private/tmp/wm-mcp-metering-evidence/signals-observed-implementation-worker/dispatch-byte-proof.json', JSON.stringify({ domainEnvelopeBytes: Buffer.byteLength(JSON.stringify(result)), completeHttpResponseBytes: bytes.length, projectedCompleteHttpResponseBytes: projectedBytes.length, fixture: 'Actual MCP dispatch; quotes, backslash, multibyte place, attribution and duplicated text/structuredContent', maximumActive: maximum, downstreamGETs: requests.length, dailyAllocations: pipe.count }, null, 2));
+    writeFileSync(join(evidenceDirectory, 'dispatch-byte-proof.json'), JSON.stringify({ domainEnvelopeBytes: Buffer.byteLength(JSON.stringify(result)), completeHttpResponseBytes: bytes.length, projectedCompleteHttpResponseBytes: projectedBytes.length, fixture: 'Actual MCP dispatch; quotes, backslash, multibyte place, attribution and duplicated text/structuredContent', maximumActive: maximum, downstreamGETs: requests.length, dailyAllocations: pipe.count }, null, 2));
   });
   it('measures the dense valid wrapped response separately from the domain-envelope cap', async () => {
     const bodies = rawBodies(); const quake = bodies['/api/seismology/v1/list-earthquakes'].earthquakes[0];
     bodies['/api/seismology/v1/list-earthquakes'].earthquakes = Array.from({ length: 400 }, (_, index) => ({ ...quake, id: String(index), place: '\"\\測 United States' }));
     globalThis.fetch = async (url, init) => { requests.push({ url: String(url), init }); return Response.json(bodies[new URL(url).pathname]); };
     const { deps } = makeProDeps();
-    const response = await handler(proReq('POST', callBody('get_country_brief_section', { section: 'signalsRaw', arguments: { country_code: 'US' } })), deps);
+    const opened = await (await handler(proReq('POST', callBody('open_country_brief', { country_code: 'US' })), deps)).json();
+    const response = await handler(proReq('POST', callBody('get_country_brief_section', { section: 'signalsRaw', arguments: { country_code: 'US' }, panel_request: opened.result.structuredContent.panelRequest.token })), deps);
     const bytes = new Uint8Array(await response.arrayBuffer()); const dispatched = JSON.parse(new TextDecoder().decode(bytes)).result; const result = dispatched.structuredContent;
     assert.equal(result.state, 'ready'); assert.equal(result.value.sources.earthquakes.records.length, 400);
     const toolTextBytes = Buffer.byteLength(dispatched.content.find(item => item.type === 'text').text);
     assert.ok(toolTextBytes <= 524288); assert.equal(result._budget_exceeded, undefined);
     const envelopeBytes = Buffer.byteLength(JSON.stringify(result));
     assert.ok(envelopeBytes <= 131072); assert.ok(bytes.length <= 524288);
-    writeFileSync('/private/tmp/wm-mcp-metering-evidence/signals-observed-implementation-worker/dense-dispatch-byte-proof.json', JSON.stringify({ domainEnvelopeBytes: envelopeBytes, toolTextBytes, unchangedToolTextBudgetBytes: 524288, completeHttpResponseBytes: bytes.length, returnedGlobalQuakeRows: 400, fullHttpFits128KiB: bytes.length <= 131072, scope: 'Actual dense valid MCP dispatch with multibyte/quote/backslash strings; no universal128KiB complete HTTP guarantee' }, null, 2));
+    writeFileSync(join(evidenceDirectory, 'dense-dispatch-byte-proof.json'), JSON.stringify({ domainEnvelopeBytes: envelopeBytes, toolTextBytes, unchangedToolTextBudgetBytes: 524288, completeHttpResponseBytes: bytes.length, returnedGlobalQuakeRows: 400, fullHttpFits128KiB: bytes.length <= 131072, scope: 'Actual dense valid MCP dispatch with multibyte/quote/backslash strings; no universal128KiB complete HTTP guarantee' }, null, 2));
   });
   it('rejects closed argument and receipt violations before downstream work', async () => {
     const { deps, pipe } = makeProDeps();

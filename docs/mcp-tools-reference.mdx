@@ -1281,11 +1281,11 @@ Open the embedded country view. It reuses the website country panel, topics, evi
 | `country_code` | string | **yes** | Country name or ISO2 code; resolved to a recognized country. |
 | `topic` | string | no | `overview`, `all`, `resilience`, `security`, `economy`, `resources`, `society` or `sources`. Defaults to overview. |
 
-The result identifies the country and topic and links `ui://worldmonitor/country-view-v3.html`. Data loads progressively through server tools. Availability and native observation dates remain visible. Dashboard-only signals and live military activity currently show unavailable. Follow/notification settings use a website handoff.
+The result identifies the country and topic and links `ui://worldmonitor/country-view-v3.html`. Data loads progressively through server tools. The Signals section can show authorized military observations, static country classification and five additional values from bounded returned samples. Missing source evidence remains unknown. Sample scope, original dates, unknown snapshot clocks and retained observations stay visible. Follow/notification settings use a website handoff.
 
 ### `get_country_brief_section`
 
-Read one fixed dataset for the country view. Requires a Pro connection. Each request maps to one reviewed downstream reader, uses existing authorization and quota enforcement, and accepts no arbitrary URL, header, method or RPC path.
+Read one fixed dataset for the country view. Requires a Pro connection. Each section selects reviewed bounded readers with existing authorization and quota enforcement. It accepts no arbitrary URL, header, method or RPC path.
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
@@ -1293,6 +1293,12 @@ Read one fixed dataset for the country view. Requires a Pro connection. Each req
 | `arguments` | object | no | Section-specific bounded arguments; see the schema branches. Country readers accept the corresponding ISO2 parameter. Housing and IMF readers accept only their fixed bootstrap keys. |
 
 Ready results carry `value` and `retrievedAt`; retrieval time does not replace observation time. Access failures return a locked state. Billing and backoff errors preserve the transport's existing error policy. The tool has weight 2 and a 512 KiB output ceiling. The host country adapter limits active reads to three.
+
+`signalsRaw` accepts only `arguments: {"country_code":"US"}`. A verified dedicated paid country receipt is required, and the country must match that receipt. Ordinary API or operator calls cannot execute this composite read. It returns four fixed source outcomes and can supply earthquake count, Internet outage count, sampled travel advisory count, maximum native advisory level and thermal escalation count. Earthquakes use the returned global weekly USGS/NRCan sample, capped at 500. Internet outages use the curated 28-day, 50-annotation profile and include ended outages. Advisories use the returned recency-sorted sample, capped at 15 rows per publisher; the full country index is not counted. Thermal counts filter the first 12 global clusters by country and preserve reported computation time and window. Attribution includes USGS/NRCan, Cloudflare Radar, each advisory publisher, and the combined FIRMS/CWFIS/BC thermal inputs.
+
+These are returned-sample observations. Unknown snapshot clocks and complete provider coverage are not replaced by retrieval time. Global empty earthquake or thermal samples remain unknown; a valid nonempty sample with no country match is zero for that sample. Valid returned empty outages or advisories are returned-list zero, without claiming a successful complete producer run. Malformed or missing evidence makes that family's exact count unknown. Same-country transient failures can retain earlier validated observations with an explicit not-fresh notice; access denial clears those observations, observed zero replaces them, and changing country clears dynamic state.
+
+On a dedicated paid country admission, a raw read is one uncached country-section execution within the existing 64-execution admission and daily opening allocation. Ordinary API and operator readers retain their existing access and billing rules. It performs four fixed signed GET attempts with at most three active and one shared 15-second deadline. Per-source bodies are capped at 512 KiB, and the assembled domain envelope at 128 KiB; these are not a universal 128 KiB bound on the complete JSON-RPC response. Complete accepted samples may replay. Missing, denied or partial results remain retryable and are not positive originals. The remaining dynamic Signals and severity/recent evidence are still unavailable.
 
 ### `get_country_brief`
 

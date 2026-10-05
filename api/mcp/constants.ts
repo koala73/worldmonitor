@@ -337,8 +337,8 @@ export const SERVER_NAME = 'worldmonitor';
 //     byte-identical to before. See api/mcp/structured-content.ts.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-// Bumped 1.28.0 → 1.29.0 for the protected, quota-exempt account allowance tool.
-export const SERVER_VERSION = '1.29.0';
+// Bumped 1.29.0 → 1.30.0 for bounded observed country Signals.
+export const SERVER_VERSION = '1.30.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

@@ -35,9 +35,9 @@ async function collectRawSignals(countryCode: string, base: string, context: Par
         const url = `${base}${RAW_SIGNAL_READS[family]}`;
         const headers = await beforeSignalsDeadline(buildAuthHeaders(context, 'GET', url, null), deadline);
         deadline.throwIfAborted();
-        const fetch = fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: deadline }, execution);
-        void fetch.then(response => { if (deadline.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
-        const response = await beforeSignalsDeadline(fetch, deadline);
+        const responsePromise = fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: deadline }, execution);
+        void responsePromise.then(response => { if (deadline.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
+        const response = await beforeSignalsDeadline(responsePromise, deadline);
         throwIfBillingDenial(response, family);
         if (response.status === 401 || response.status === 403) {
           void response.body?.cancel().catch(() => {});
@@ -97,7 +97,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'get_country_brief_section',
-  description: 'Read one fixed country-view dataset for the embedded country brief. The section chooses a reviewed reader and its bounded arguments, including geographic flight observations, the bounded global AIS candidate snapshot, the reported fleet roster and country Atlas assets and details. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native observation dates remain in value; retrievedAt only records retrieval. Does not accept URLs, headers or arbitrary RPC paths.',
+  description: 'Read a fixed country-view dataset for the embedded country brief. Reviewed readers include military flights, AIS, fleet reports and Atlas assets. signalsRaw requires a verified same-country paid panel receipt and returns attributed earthquake, Internet outage, travel advisory and thermal samples through four fixed authorized GETs. Unavailable evidence is unknown, not zero; sample scope and unknown clocks remain explicit. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native dates remain in value; retrievedAt records retrieval. Does not accept URLs, headers or arbitrary RPC paths.',
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
@@ -107,7 +107,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     type: 'object',
     properties: {
       panel_request: { type: 'string', maxLength: 160, description: 'Server-issued paid country-panel request token. Only the embedded country view supplies this.' },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS) },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Closed country reader name. signalsRaw requires a verified paid country-panel receipt and matching arguments.country_code.' },
       arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] } },
     },
     required: ['section'],
@@ -123,6 +123,34 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       value: { type: 'object' }, retrievedAt: { type: 'string' }, reason: { type: 'string' },
     },
     required: ['state', 'section'],
+    allOf: [{
+      if: { properties: { section: { const: 'signalsRaw' } }, required: ['section'] },
+      then: { properties: { value: {
+        type: 'object',
+        properties: {
+          countryCode: { type: 'string', pattern: '^[A-Z]{2}$' },
+          sources: {
+            type: 'object',
+            propertyNames: { enum: [...RAW_SIGNAL_FAMILIES] },
+            additionalProperties: {
+              type: 'object',
+              properties: {
+                state: { type: 'string', enum: ['observed', 'locked', 'unavailable'] },
+                records: { type: ['array', 'null'], items: { type: 'object' } },
+                partial: { type: 'boolean' }, scope: { type: 'string' }, attribution: { type: 'string' },
+                snapshotAt: { type: ['string', 'null'] }, computationAt: { type: ['string', 'null'] },
+                observationWindow: { type: ['string', 'null'] }, sourceVersion: { type: ['string', 'null'] },
+                retrievedAt: { type: 'string' }, reason: { type: 'string' },
+              },
+              required: ['state', 'records', 'partial', 'scope', 'attribution', 'snapshotAt', 'computationAt', 'observationWindow', 'sourceVersion', 'retrievedAt'],
+            },
+            required: [...RAW_SIGNAL_FAMILIES],
+          },
+          missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4 },
+        },
+        required: ['countryCode', 'sources', 'missing'],
+      } } },
+    }],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
@@ -132,7 +160,11 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     const reader = COUNTRY_READERS[section];
     const args = reader.args.safeParse(parsed.data.arguments);
     if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
-    if (section === 'signalsRaw') return collectRawSignals((args.data as { country_code: string }).country_code, base, context, execution);
+    if (section === 'signalsRaw') {
+      const countryCode = (args.data as { country_code: string }).country_code;
+      if (execution?.countryPanelCode !== countryCode) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Raw Signals require a verified paid country panel read.' }]);
+      return collectRawSignals(countryCode, base, context, execution);
+    }
     const bootstrapKeys = reader.path === '/api/bootstrap' && 'keys' in args.data ? args.data.keys.split(',') : undefined;
     const queries = bootstrapKeys
       ? bootstrapKeys.map(key => new URLSearchParams({ keys: key, public: '1' }))

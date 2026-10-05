@@ -407,6 +407,16 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.deepEqual(Object.keys(fromList).sort(), Object.keys(fromDescribe).sort());
     });
 
+    it('describe_tool returns the complete country section definition within its existing budget', async () => {
+      const tools = await getToolsList();
+      const listed = tools.find(tool => tool.name === 'get_country_brief_section');
+      const definition = await callDescribeTool('get_country_brief_section');
+      const registered = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section');
+      assert.equal(definition._budget_exceeded, undefined);
+      assert.equal(definition.description, registered.description);
+      assert.deepEqual({ ...definition, description: listed.description }, listed);
+    });
+
     it('describe_tool result has inputSchema.properties.jmespath structurally equal to JMESPATH_SCHEMA (R7)', async () => {
       const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
       const full = await callDescribeTool('get_market_data');
