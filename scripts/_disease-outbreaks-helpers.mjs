@@ -18,6 +18,7 @@
 
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { countryCentroid } from './lib/country-centroid.mjs';
 
 // WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
 // These override extractCountryCode for exact substring matches (checked first, case-insensitive).
@@ -257,8 +258,10 @@ export function mapItem(item) {
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
     sourceName: item.sourceName,
-    lat: item._lat ?? 0,
-    lng: item._lng ?? 0,
+    // No source point: the country's centroid. 0,0 only when the country is unknown.
+    ...(item._lat != null && item._lng != null
+      ? { lat: item._lat, lng: item._lng }
+      : countryCentroid(countryCode) ?? { lat: 0, lng: 0 }),
     cases: item._cases || 0,
     // PRE-PUBLISH HELPERS — see header comment.
     _publishedAtIsSynthetic: item._publishedAtIsSynthetic === true,
