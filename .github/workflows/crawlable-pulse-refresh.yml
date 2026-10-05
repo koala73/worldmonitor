@@ -145,7 +145,7 @@ jobs:
           # last week's Brier after /accuracy/ had already moved.
           npm run build:llms-full
       - name: Prune superseded pulse snapshots
-        if: steps.reconcile.outputs.skip != 'true'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           # Verify the same snapshot set that the PR will publish.
           ls -1 docs/snapshots/crawlable-live-pulse-*.json \
@@ -171,6 +171,7 @@ jobs:
             tests/crawlable-live-tools.test.mjs \
             tests/country-mention.test.mjs \
             tests/brief-relevance.test.mjs \
+            tests/ci-workflow-coverage.test.mts \
             tests/freeze-crawlable-live-pulse.test.mjs \
             tests/welcome-teasers.test.mjs \
             tests/sitemap-generation.test.mjs \

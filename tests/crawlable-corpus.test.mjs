@@ -1964,21 +1964,6 @@ describe('crawlable corpus generator', () => {
     );
   });
 
-  it('verifies brief relevance after pruning superseded pulse snapshots', () => {
-    const workflow = readFileSync(
-      resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
-      'utf8',
-    );
-    const buildIndex = workflow.indexOf('- name: Rebuild published artifacts');
-    const pruneIndex = workflow.indexOf('- name: Prune superseded pulse snapshots');
-    const verifyIndex = workflow.indexOf('- name: Verify published artifacts');
-    const publishIndex = workflow.indexOf('- name: Open the weekly pulse PR');
-    assert.ok(buildIndex >= 0 && pruneIndex > buildIndex, 'prune only after a successful build');
-    assert.ok(verifyIndex > pruneIndex, 'verify the pruned tree that the PR will publish');
-    assert.ok(publishIndex > verifyIndex, 'verify before opening the PR');
-    assert.match(workflow.slice(verifyIndex, publishIndex), /tests\/brief-relevance\.test\.mjs/);
-  });
-
   it('requires the API key before freezing the crawlable pulse', () => {
     const workflow = readFileSync(
       resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
