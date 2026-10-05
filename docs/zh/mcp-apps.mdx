@@ -36,15 +36,17 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | UI 资源 URI | 关联工具 | 应用 | 渲染内容 |
 |---|---|---|---|
 | `ui://worldmonitor/country-risk-v2.html` | `get_country_risk` | 国家风险（交互式） | 综合不稳定指数评分、组成部分细分、旅行建议和制裁风险敞口。 |
-| `ui://worldmonitor/world-brief.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
+| `ui://worldmonitor/world-brief-v2.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
-| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
-| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
-| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
-| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 自然灾害（交互式） | 近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan：震级、地点、时间、来源）和活跃野火（NASA FIRMS），分组展示。 |
-| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。 |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
+| `ui://worldmonitor/chokepoint-monitor-v2.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
+| `ui://worldmonitor/news-intelligence-v2.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家、来源背景、快照状态，以及明确的已加载或样本数量。 |
+| `ui://worldmonitor/conflict-events-v2.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
+| `ui://worldmonitor/natural-disasters-v2.html` | `get_natural_disasters` | 自然灾害（交互式） | 近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan：震级、地点、时间、来源）和活跃野火（NASA FIRMS），分组展示。 |
+| `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。缺失或无效的类别会明确标记为不可用或未包含；未知的新鲜度也会明确显示。 |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
+
+原始的 `ui://worldmonitor/prediction-markets.html` 和之前的 `ui://worldmonitor/prediction-markets-v2.html` 仍作为未列出的读取别名。刷新已安装连接的元数据并打开新卡片后才能加载 v3。已有的缓存卡片仍使用旧 HTML。省略合约数据的投影无法恢复被省略的详情。返回的空类别不能证明上游交易平台的完整覆盖。
 
 国家风险 v2 保留原始对象和投影对象中的字段，包括嵌套的 CII 组成部分和上游可用状态。缺失或格式错误的旅行警示值仍为未知；原生响应中的空字符串仍表示无旅行警示。替换结果会清除之前的风险详情。原来的 `ui://worldmonitor/country-risk.html` 保留为已安装元数据的私有读取别名，在旧元数据退役后即可移除。
 
@@ -68,6 +70,12 @@ View -> Host: ui/notifications/size-changed
 
 视图本身从不获取实时的 WorldMonitor 数据。实时数据始终在正常的工具调用之后通过宿主到达应用。
 
+## 原始活跃战区
+
+**Load active theaters** 操作通过宿主调用 `get_forecast_theaters`，使用同一个签名的预测 `panel_request`。它只读取最新的原始模拟摘要。战区来源的运行 ID 和时间独立于预测列表的生成版本；来源时间本身不能证明新鲜度。本地展开保留已发布的所有路径、参与者、可选角色、反应、稳定因素和失效条件。
+
+读取共享打开面板时的每日分配以及 64 次未缓存读取上限。完整且通过验证的快照，以及明确无符合条件战区的空结果，会被复用。部分、失败、缺失、处理中和未知结果保持区别，并可使用同一准入手动重试。重试失败时保留原始证据。此操作不会选择任意运行、触发模拟或访问私有产物；格式无效或超出大小上限的摘要会报告不可用，不会截断证据。部署后刷新工具元数据以发现 `forecasts-v3.html`。保存的 `forecasts-v2.html` 和 `forecasts.html` 仍作为私有读取别名。
+
 ## 资源读取与配额
 
 `resources/list` 暴露具体的公开资源，包括所有 `ui://` 模板。`resources/templates/list` 暴露参数化的数据资源。
@@ -80,6 +88,20 @@ View -> Host: ui/notifications/size-changed
 | 工具数据 | `tools/call` `get_market_data` | 是 | 在 OAuth/Pro 上下文中为是 | 获取实时或缓存数据。 |
 
 所有方法仍计入每密钥、每用户或匿名 IP 每分钟 60 次的速率限制器。
+
+## 冲突事件计量
+
+在 Pro 与 Pro Business 上，`get_conflict_events` 的首次打开扣一次冲突事件面板额度。国家、死亡人数和数量筛选及重复打开在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需设置 `refresh: true`，提供 UUID 格式的 `request_id`，并省略 `panel_request`；刷新扣一次新额度，同一 UUID 的重试复用该分配。API 和免费账户调用保留普通按工具计费，不接受这些付费控制。
+
+每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。每次未缓存执行读取五个固定 Redis 键，启用伊朗事件时为六个；各键读取不会分别扣面板额度。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。授权凭据读取在使用量已确认时返回当前通知，使用量未知时省略数字通知。
+
+可选的 `conflict_source.ucdp` 仅复制已读取 UCDP 元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据不作为成功缓存，可使用原凭据重试。其他来源降级时，可用列表仍按请求筛选。该观察不能证明原子发布、所有动荡提供方的完整覆盖或 CII/伊朗数据的独立新鲜度。
+
+## 自然灾害计量
+
+在 Pro 与 Pro Business 上，`get_natural_disasters` 首次打开扣一次自然灾害面板额度。重复打开及数据集、震级、活动状态和数量筛选在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需提供 `refresh: true` 和 UUID 格式的 `request_id`，且不携带读取凭据；同一 UUID 的重试复用刷新额度。API 与免费账户调用保留普通按工具计费及现有参数转换，不接受付费刷新控制。
+
+每次未缓存执行读取三个固定数据键及已存在的地震元数据键，作为 64 次读取预算中的一次工具执行。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放，但不得超过最早可观察的来源时效或 EONET 保留期限。新筛选或不可用、格式错误、已知降级、时间未知的数据可在同一分配内重新读取。区域来源的阻止决策保持可读但不缓存，包括未发出请求的预检决策。该策略不证明所有提供方覆盖完整。已有新闻凭据仍仅允许其固定灾害数据集列表及数量 100、20 或 1，不能使用独立面板的震级或活动筛选。内部来源时间和复用期限不会添加公开元数据字段。授权读取返回已确认的当前使用量；计数未知时省略数字通知。
 
 ## 视图安全
 
@@ -122,3 +144,25 @@ docs-stat 门禁从 `api/mcp/ui/registry.ts` 和工具注册表派生应用清�
 | `api/mcp/handler.ts` | 公开 `ui://` 读取提升、`resources/list`、`resources/read` 以及 `initialize` 能力声明。 |
 | `public/.well-known/mcp/server-card.json` | 供扫描器和智能体使用的静态预连接发现元数据。 |
 | `scripts/docs-stats.mjs` | 针对文档、服务器卡片元数据、导航和应用清单的漂移守护。 |
+
+### News Intelligence 面板额度
+
+在 Pro 和 Pro Business 中，`get_news_intelligence` 打开一次 News Intelligence 面板只消耗一个额度。重复打开、筛选、`summary` 和 JMESPath 视图在授权窗口内复用同一完整原始快照。返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具；新闻和国家面板凭据不能授权它。显式刷新需设置 `refresh: true`，提供 UUID `request_id`，并省略读取凭据。重试同一 UUID 复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+复用仍使用现有四个数据 GET 和三个元数据 GET。有效期取 30/45/60 分钟元数据期限、共享的 60 分钟 Insights 生成期限、已评估的 GDELT 内容年龄期限及面板授权期限的最早值。公告发布时间会验证，但此读取图没有独立的公告新鲜度评估。缺失、降级、格式错误、过期、未来或未评估的来源可以重试。付费读取通过 `stale` 表示已证实的生成时间过期，通过 `freshnessUnknown` 表示未评估的时钟；原始来源值保持不变。跨源生产程序允许已观察的空信号列表；空 Insights 和公告引导列表不可复用。64 次读取上限计算未缓存的工具执行次数，不是单个 Redis GET 次数。这不证明所有提供方的完整覆盖。
+
+### 咽喉要道面板额度
+
+在 Pro 和 Pro Business 中，`get_chokepoint_status` 打开一次签名的 `chokepoints` 面板只消耗一个额度。重复筛选、`summary` 和 JMESPath 视图共享该额度。实际请求的来源子集完整时复用未截断的原始数据；规范化数据集子集或咽喉筛选变化时，可在同一额度内重新获取来源。仅含未知名称的数据集选择器使用完整数据包。键控筛选未匹配时保留原映射，不能制造完整空覆盖。稀疏 AIS、不可用的今日计数和部分建模流量保持可见且可重试。
+
+返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具。显式 `refresh: true` 需要 UUID `request_id`，并省略读取凭据；同一 UUID 的重试复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+每次未缓存执行仍使用六个数据 GET、六个元数据 GET 和一个激活 EXISTS 命令。64 次读取限制按工具执行计数，不按这 13 个 Redis 命令计数。复用在缓存查询后和保存前验证所选来源形状、可用性、发布时间以及 CN/HK 关键内容时效。部分、格式错误、未经评估或过期的原始数据不会作为完整数据缓存。基准参考年份和建模流量发布时间不能证明当前实测油流或底层历史的新鲜度。私有封装缓存仍为 512 KiB，工具输出仍为 128 KiB。此额度修改不增加网站详情、历史、警告或提供商读取。
+
+### 世界简报面板额度
+
+在 Pro 和 Pro Business 中，`get_world_brief` 打开一次签名的 `world-brief` 面板只消耗一个额度。重复提问、兼容参数 `geo_context` 的变化和 JMESPath 视图共享该额度。RPC 忽略 `summary`，不会据此压缩简报。复用保留展示处理前的已接受原文、证据和引用顺序。复用期限取面板授权期限与 `generatedAt` 加 60 分钟的最早值，读取时重新计算内容年龄。这表示保留已接受的生成版本，不证明生产程序的最新尝试成功。
+
+返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具。显式 `refresh: true` 需要 UUID `request_id`，并省略读取凭据；同一 UUID 的重试复用该额度。已授权凭据读取查询当前用量，不再分配额度；用量未知时不显示数字。API 保持逐工具计费，免费账户保持现有订阅拒绝行为。
+
+有效内容生成后 60 分钟至不足三小时仍可返回，并标记 `stale: true`，但不会作为新鲜快照缓存复用。失败、缺失、格式错误或过期的原始数据可在同一额度内重试。64 次读取限制按未缓存工具执行计数。获取仍使用现有已认证 bootstrap 网关路径，不增加提供商调用或生产健康状态传输。私有封装缓存仍为 512 KiB，工具输出仍为 64 KiB。

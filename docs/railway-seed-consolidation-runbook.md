@@ -1362,6 +1362,12 @@ Recovery is accepted only when:
 | **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (hourly), UCDP Events (6h), WB Indicators (daily) |
 | **Note** | Existing members are backups for ais-relay inline loops/child spawns; Global Tenders is hosted directly in this bundle. Each seed's freshness gate skips when the canonical data is already fresh. |
 
+The World Bank catalogue uses `IP.TMK.RSCT` and `IP.TMK.NRCT` for resident
+and nonresident trademark application counts. `IP.TMK.TOTL` is archived and
+the standard indicator endpoint rejects it. The two current series keep their
+own codes and observation years. They are not aliases for the archived total.
+Both snapshots must pass the same coverage check as the other catalogue entries.
+
 ### Bundle 12: seed-bundle-yield-curves
 
 | Setting | Value |
