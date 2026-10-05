@@ -88,7 +88,7 @@ describe('direct country paid original reuse', () => {
     ['partial coverage', () => { digest.coverage.state = 'partial'; }], ['retained coverage', () => { digest.coverage.servedStale = true; }],
     ['failed coverage', () => { digest.coverage.state = 'error'; }], ['future generation', () => { brief.generatedAt = now + 1; }],
     ['invalid generation', () => { brief.generatedAt = 'bad'; }], ['wrong identity', () => { brief.countryCode = 'CN'; }],
-    ['malformed evidence', () => { brief.evidence = [7]; }], ['missing evidence fields', () => { brief.evidence = [{}]; }], ['failed gateway', () => { briefStatus = 503; }],
+    ['malformed evidence', () => { brief.evidence = [7]; }], ['explicit error', () => { brief.error = { message: 'failed' }; }], ['missing evidence fields', () => { brief.evidence = [{}]; }], ['failed gateway', () => { briefStatus = 503; }],
   ]) it(`retries ${label} without a second allocation and preserves healthy recovery`, async () => {
     const bundle = makeProDeps(); mutate(); await invoke(bundle); assert.equal(cache(bundle).length, 0);
     brief = nativeBrief(); digest = nativeDigest(); briefStatus = 200; await invoke(bundle); await invoke(bundle);
@@ -128,12 +128,12 @@ describe('direct country paid original reuse', () => {
     const reader = await authorizePanelRead(context, bundle.pipe.pipeline, 'get_country_brief', { country_code: 'US' }, token);
     await reader.save({ ...nativeBrief(), sources: [], groundingStories: [], digestCoverage: { state: 'complete', servedStale: false } });
     const [key, raw] = cache(bundle)[0];
-    for (const mutate of [x => { x.brief = ''; }, x => { x.digestCoverage.servedStale = true; }, x => { delete x.digestCoverage; }, x => { x.countryCode = 'CN'; }, x => { x.evidence = [false]; }, x => { x.groundingStories = [{ title: 'US story', source: 'Reuters', corroborationCount: 1, corroboration: { state: 'single-publisher', publishers: 1 }, publishers: [false] }]; }]) {
+    for (const mutate of [x => { x.brief = ''; }, x => { x.digestCoverage.servedStale = true; }, x => { delete x.digestCoverage; }, x => { x.countryCode = 'CN'; }, x => { x.evidence = [false]; }, x => { x.panelRequest = { token: 'old-token' }; }, x => { x.usage = { remaining: 50 }; }, x => { x.groundingStories = [{ title: 'US story', source: 'Reuters', corroborationCount: 1, corroboration: { state: 'single-publisher', publishers: 1 }, publishers: [false] }]; }]) {
       const invalid = JSON.parse(raw); mutate(invalid); bundle.pipe.store.set(key, JSON.stringify(invalid));
       await invoke(bundle, 'get_country_brief', { country_code: 'USA', panel_request: token });
     }
     bundle.pipe.store.set(key, 'bad-json'); await invoke(bundle, 'get_country_brief', { country_code: 'US', panel_request: token });
-    assert.equal(calls.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(calls.length, 18); assert.equal(bundle.pipe.count, 1);
   });
   it('retries outage risk but reuses genuine untracked identity and native negative movement', async () => {
     const bundle = makeProDeps(); risk.upstreamUnavailable = true; delete risk.cii; risk.fetchedAt = 0;

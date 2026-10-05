@@ -39,6 +39,7 @@ const riskSchema = z.object({
 }).passthrough();
 
 export function isCountryDirectOriginalReusable(name: 'get_country_brief' | 'get_country_risk', value: unknown, country: string, now: number): boolean {
+  if (value && typeof value === 'object' && ('panelRequest' in value || 'usage' in value)) return false;
   if (name === 'get_country_brief') {
     const parsed = briefSchema.safeParse(value);
     if (!parsed.success) return false;
@@ -46,8 +47,8 @@ export function isCountryDirectOriginalReusable(name: 'get_country_brief' | 'get
     const generated = typeof original.generatedAt === 'number' ? original.generatedAt : Date.parse(original.generatedAt);
     return original.countryCode === country && Number.isFinite(generated) && generated >= 0 && generated <= now
       && !original.digestCoverage.staleReason
-      && !['stale', 'degraded', 'upstreamUnavailable', 'unavailable', 'partial'].some(flag => original[flag] === true)
-      && !(typeof original.error === 'string' && original.error !== '');
+      && !['stale', 'degraded', 'upstreamUnavailable', 'unavailable', 'partial', 'rateLimited'].some(flag => original[flag] === true)
+      && !original.error && !['error', 'partial', 'stale', 'unavailable'].some(status => original.status === status);
   }
   const parsed = riskSchema.safeParse(value);
   return parsed.success && parsed.data.countryCode === country
