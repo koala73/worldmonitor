@@ -74,6 +74,7 @@ describe('World Brief exported HTML projections', () => {
       assert.equal(doc.querySelectorAll('#sources .src-row').length, 0);
       assert.equal(doc.getElementById('foot').textContent, '');
       assert.equal(doc.getElementById('stale-note').style.display, 'none');
+      assert.equal(doc.getElementById('stale-note').textContent, '');
       assert.match(doc.getElementById('brief').textContent, /No brief text available/);
     });
   }
