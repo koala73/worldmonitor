@@ -426,7 +426,7 @@ for (const mobile of [false, true]) {
     await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
     await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('');
     await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
-    await expect(frame.getByRole('checkbox', { name: 'Fire Hotspots' })).not.toBeChecked();
+    await expect(frame.getByRole('checkbox', { name: 'Fires', exact: true })).not.toBeChecked();
     await expect(frame.locator('.search-modal')).toBeHidden();
     await expect(frame.locator('.news-location-marker')).toHaveCount(1);
     await expect(frame.locator('#pluginCategoryNotice')).toContainText('not loaded');
@@ -460,7 +460,7 @@ test('pending category surviving refresh applies after hazard loading', async ({
   await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
   await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('politics');
   await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
-  await expect(frame.getByRole('checkbox', { name: 'Fire Hotspots' })).toBeChecked();
+  await expect(frame.getByRole('checkbox', { name: 'Fires', exact: true })).toBeChecked();
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard', 'get_natural_disasters']);
   expect(host.calls[3]?.arguments.panel_request).toBe('news.controlled-2');
   expect(host.units).toBe(2);
