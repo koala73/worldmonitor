@@ -9,6 +9,7 @@
 // Usage: node scripts/build-country-centroids.mjs [--check]
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const SOURCE = new URL('../public/data/countries.geojson', import.meta.url);
 const FIFTY_M = new URL('../public/data/countries-50m.json', import.meta.url);
@@ -93,33 +94,61 @@ const MANUAL = {
   GI: [36.14, -5.35], TV: [-8.52, 179.2], UM: [19.28, 166.65],
 };
 
-const round = ([lon, lat]) => [Math.round(lat * 100) / 100, Math.round(lon * 100) / 100];
+// Two decimals (~1 km) unless rounding pushes the point out of a small or
+// narrow country; then keep as many decimals as it takes to stay inside.
+function roundInside(point, polygon) {
+  for (let digits = 2; digits <= 6; digits++) {
+    const f = 10 ** digits;
+    const rounded = [Math.round(point[0] * f) / f, Math.round(point[1] * f) / f];
+    if (inPolygon(rounded, polygon)) return [rounded[1], rounded[0]];
+  }
+  return [point[1], point[0]];
+}
 
-export function buildCentroids(geojson, fiftyM) {
-  const out = {};
+// code -> the polygon its centroid is taken from; null for MANUAL entries.
+export function countryPolygons(geojson, fiftyM) {
+  const out = new Map();
   const missing = [];
   for (const f of geojson.features) {
     const code = f.properties?.['ISO3166-1-Alpha-2'];
-    if (!/^[A-Z]{2}$/.test(code ?? '') || out[code]) continue;
-    if (f.geometry) out[code] = round(interiorPoint(mainPolygon(f.geometry, code)));
+    if (!/^[A-Z]{2}$/.test(code ?? '') || out.has(code)) continue;
+    if (f.geometry) out.set(code, mainPolygon(f.geometry, code));
     else missing.push({ code, name: f.properties.name });
   }
   const byName = new Map(fiftyM.features.filter((f) => f.geometry).map((f) => [f.properties.name, f.geometry]));
   for (const { code, name } of missing) {
     const geometry = byName.get(FIFTY_M_NAMES[code] ?? name);
-    if (geometry) out[code] = round(interiorPoint(mainPolygon(geometry, code)));
-    else if (MANUAL[code]) out[code] = MANUAL[code];
+    if (geometry) out.set(code, mainPolygon(geometry, code));
+    else if (MANUAL[code]) out.set(code, null);
     else throw new Error(`no geometry for ${code} (${name}) — add it to FIFTY_M_NAMES or MANUAL`);
+  }
+  return out;
+}
+
+export function buildCentroids(geojson, fiftyM) {
+  const out = {};
+  for (const [code, polygon] of countryPolygons(geojson, fiftyM)) {
+    out[code] = polygon ? roundInside(interiorPoint(polygon), polygon) : MANUAL[code];
   }
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
-if (isMain) {
+async function loadSources() {
   const { feature } = await import('topojson-client');
   const topo = JSON.parse(readFileSync(FIFTY_M, 'utf8'));
-  const fiftyM = feature(topo, Object.values(topo.objects)[0]);
-  const next = `${JSON.stringify(buildCentroids(JSON.parse(readFileSync(SOURCE, 'utf8')), fiftyM))}\n`;
+  return [JSON.parse(readFileSync(SOURCE, 'utf8')), feature(topo, Object.values(topo.objects)[0])];
+}
+
+let polygonsCache = null;
+/** The polygon a committed centroid must lie in; null when it is a MANUAL entry. */
+export async function mainPolygonFor(code) {
+  polygonsCache ??= countryPolygons(...(await loadSources()));
+  return polygonsCache.get(code) ?? null;
+}
+
+const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  const next = `${JSON.stringify(buildCentroids(...(await loadSources())))}\n`;
   if (process.argv.includes('--check')) {
     if (readFileSync(TARGET, 'utf8') !== next) {
       console.error('scripts/data/country-centroids.json is stale — run: node scripts/build-country-centroids.mjs');

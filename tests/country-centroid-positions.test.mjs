@@ -31,6 +31,16 @@ describe('country centroid table', () => {
     }
   });
 
+  it('keeps every published (rounded) point inside its country polygon', async () => {
+    const { inPolygon, mainPolygonFor } = await import('../scripts/build-country-centroids.mjs');
+    const outside = [];
+    for (const [code, [lat, lon]] of Object.entries(centroids)) {
+      const polygon = await mainPolygonFor(code);
+      if (polygon && !inPolygon([lon, lat], polygon)) outside.push(code);
+    }
+    assert.deepEqual(outside, []);
+  });
+
   it('covers small states the bounding-box table lacks', () => {
     for (const code of ['CV', 'SG', 'MT', 'BH', 'MV', 'HK']) {
       const point = countryCentroid(code);

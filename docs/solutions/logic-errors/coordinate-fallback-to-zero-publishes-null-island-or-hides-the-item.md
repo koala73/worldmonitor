@@ -58,7 +58,7 @@ lat: item._lat ?? 0,
 
 ## Why This Works
 
-These placeholders were never about missing data. The country or exact pin was in the payload, just not where the mapper looked (an FAA registry row, `asnDetails.location`, `countryCode`, the Maps URL). Resolving the position at write time means the map, the API and MCP all see the same real point, instead of each consumer guessing (or not) its own fallback.
+Most of these placeholders were not caused by missing data. The country or exact pin was in the payload, just not where the mapper looked (an FAA registry row, `asnDetails.location`, `countryCode`, the Maps URL). The rest genuinely had no location: 17 disease items with no country (WHO "Global" items, US CDC statements) still publish 0,0, which the proto now documents as "no known location". Resolving the position at write time means the map, the API and MCP all see the same real point, instead of each consumer guessing (or not) its own fallback.
 
 ## Prevention
 

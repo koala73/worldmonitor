@@ -26,6 +26,12 @@ describe('pizzintVenuePoint', () => {
     assert.deepEqual(pizzintVenuePoint({ ...EXTREME_PIZZA, lat: 38.1, lng: -77.1 }), { lat: 38.1, lng: -77.1 });
   });
 
+  it('ignores an explicit pair with a missing or impossible value', () => {
+    assert.deepEqual(pizzintVenuePoint({ ...EXTREME_PIZZA, lat: null, lng: -77 }), { lat: 38.8602396, lng: -77.0559854 });
+    assert.deepEqual(pizzintVenuePoint({ ...EXTREME_PIZZA, lat: 91, lng: -77 }), { lat: 38.8602396, lng: -77.0559854 });
+    assert.equal(pizzintVenuePoint({ lat: null, lng: -77 }), null);
+  });
+
   it('returns null for a street address', () => {
     assert.equal(pizzintVenuePoint({ address: '1 Main St, Arlington VA' }), null);
   });
