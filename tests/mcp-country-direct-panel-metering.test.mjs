@@ -186,8 +186,15 @@ describe('direct country paid original reuse', () => {
       const getEntitlements = async () => plan === 'api' ? { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 } : { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 };
       const bundle = makeProDeps({ getEntitlements }); process.env.WORLDMONITOR_VALID_KEYS = 'country-fixture-operator';
       for (const args of [{ country_code: 'USA' }, { country_code: 'United States', summary: true, framework: 42, allow_stale: 'true', ignored: 'legacy' }, { country_code: 'US', jmespath: name === 'get_country_brief' ? 'evidence' : 'cii' }]) {
-        const request = plan === 'operator' ? proReq('POST', callBody(name, args), { Authorization: 'Bearer country-fixture-operator' }) : undefined;
-        const result = await invoke(bundle, name, args, request); rows.push({ plan, name, args, status: result.response.status, body: result.body, count: bundle.pipe.count });
+        const request = plan === 'operator' ? proReq('POST', callBody(name, args), { 'X-WorldMonitor-Key': 'country-fixture-operator' }) : undefined;
+        if (request) request.headers.delete('Authorization');
+        const result = await invoke(bundle, name, args, request);
+        if (plan === 'operator') {
+          assert.equal(result.response.status, 200);
+          assert.equal(result.body.result.isError, undefined);
+          assert.equal(bundle.pipe.count, 0);
+        }
+        rows.push({ plan, name, args, status: result.response.status, body: result.body, count: bundle.pipe.count });
       }
     }
     assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-country-direct-api-free-parent.json', import.meta.url), 'utf8'));
