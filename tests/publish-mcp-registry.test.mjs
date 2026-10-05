@@ -281,6 +281,33 @@ describe('publishMcpRegistryIdempotent', () => {
     assert.equal(lookups, 2);
   });
 
+  it('recovers a timeout while confirming a duplicate without publishing again', async () => {
+    let lookups = 0;
+    let publishes = 0;
+    const signals = [];
+    const delays = [];
+    const result = await publishMcpRegistryIdempotent({
+      manifestPath: writeManifest(),
+      fetchImpl: async (_url, { signal }) => {
+        lookups += 1;
+        signals.push(signal);
+        if (lookups === 1) return jsonResponse(404, {});
+        if (lookups === 2) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+        return jsonResponse(200, registryEnvelope());
+      },
+      sleepImpl: async (ms) => { delays.push(ms); },
+      spawnSyncImpl: () => {
+        publishes += 1;
+        return { status: 1, stderr: 'invalid version: cannot publish duplicate version' };
+      },
+    });
+    assert.equal(result.outcome, 'already-published-after-conflict');
+    assert.equal(lookups, 3);
+    assert.equal(publishes, 1);
+    assert.equal(new Set(signals).size, 3);
+    assert.deepEqual(delays, [1000]);
+  });
+
   it('fails closed when an invalid-version error cannot be confirmed in the registry', async () => {
     await assert.rejects(
       () => publishMcpRegistryIdempotent({
