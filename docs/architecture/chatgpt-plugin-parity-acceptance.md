@@ -251,7 +251,6 @@ This unit depends on the signed forecast admission in PR #8827. The website read
 
 Focused transport, original handler, metering, resource and exported-HTML checks pass locally. Eight inspected desktop/mobile fixtures show before, partial evidence, failed retry and completed recovery. Local proof is not CI readiness, deployment or native acceptance. Overall acceptance remains incomplete.
 
-
 ### Bounded observed Signals checkpoint
 
 One closed country-section execution composes earthquake, Internet outage, sampled travel advisory count, native advisory level and thermal escalation values from four fixed authorized source reads. Counts describe returned samples; unknown clocks, partial coverage and retained observations stay explicit in the UI, model context and evidence export. Independent military results preserve their own four fields and static classification. The other 18 typed Signals and aggregate severity/recent evidence remain unknown. Current-main local proof, remote CI, deployment and native acceptance must be recorded separately; these source changes alone establish none of the latter claims.
