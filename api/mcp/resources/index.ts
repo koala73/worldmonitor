@@ -50,7 +50,7 @@ import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
 import type { McpBudget } from '../quota';
-import { readAccountAllowance } from '../account-allowance';
+import { readAccountAllowance } from '../_account-allowance';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';

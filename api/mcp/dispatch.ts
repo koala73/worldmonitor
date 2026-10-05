@@ -4,7 +4,7 @@ import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
-import { readAccountAllowance } from './account-allowance';
+import { readAccountAllowance } from './_account-allowance';
 import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
 import {
