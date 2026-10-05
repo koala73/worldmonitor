@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,6 +10,7 @@ import {
   describeManifestDiff,
   extractPublishedServer,
   extractPublishedStatus,
+  fetchPublishedMcpRegistryVersion,
   isDuplicateVersionPublishError,
   loadDesiredMcpRegistryManifest,
   manifestsAreEquivalent,
@@ -185,6 +187,68 @@ describe('publish-mcp-registry helpers', () => {
   });
 });
 
+describe('registry lookup recovery', () => {
+  const lookupOptions = { name: DESIRED.name, version: DESIRED.version, sleepImpl: async () => {} };
+
+  it('retries transient HTTP responses and transport errors', async () => {
+    const failures = [
+      ...[408, 429, 500, 502, 503, 504].map((status) => () => jsonResponse(status, 'unavailable')),
+      ...['ECONNRESET', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']
+        .map((code) => () => { throw new TypeError('fetch failed', { cause: { code } }); }),
+      () => { throw new DOMException('aborted', 'AbortError'); },
+    ];
+    for (const fail of failures) {
+      let calls = 0;
+      const result = await fetchPublishedMcpRegistryVersion({
+        ...lookupOptions,
+        fetchImpl: async () => ++calls === 1 ? fail() : jsonResponse(200, registryEnvelope()),
+      });
+      assert.equal(result.found, true);
+      assert.equal(calls, 2);
+    }
+  });
+
+  it('stops after three attempts and preserves the cause and lookup context', async () => {
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const delays = [];
+    const signals = [];
+    await assert.rejects(fetchPublishedMcpRegistryVersion({
+      ...lookupOptions,
+      fetchImpl: async (_url, { signal }) => { signals.push(signal); throw timeout; },
+      sleepImpl: async (ms) => { delays.push(ms); },
+    }), (error) => {
+      assert.equal(error.cause, timeout);
+      assert.match(error.message, /GET https:\/\/registry\.modelcontextprotocol\.io\/.*attempt 3\/3, timeout 15000ms/);
+      return true;
+    });
+    assert.equal(new Set(signals).size, 3);
+    assert.deepEqual(delays, [1000, 2000]);
+  });
+
+  it('does not retry absence, permanent HTTP failures, TLS failures, or invalid payloads', async () => {
+    const responses = [
+      ...[400, 401, 403, 404, 422, 501].map((status) => () => jsonResponse(status, 'not retryable')),
+      () => { throw new TypeError('fetch failed', { cause: { code: 'CERT_HAS_EXPIRED' } }); },
+      () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('invalid JSON'); } }),
+      () => jsonResponse(200, { missing: 'server' }),
+    ];
+    for (const response of responses) {
+      let calls = 0;
+      const result = fetchPublishedMcpRegistryVersion({
+        ...lookupOptions,
+        fetchImpl: async () => { calls += 1; return response(); },
+        sleepImpl: async () => assert.fail('must not retry'),
+      });
+      try {
+        assert.equal((await result).found, false);
+      } catch (error) {
+        assert.match(error.message, /HTTP (400|401|403|422|501)|fetch failed|invalid JSON|missing a server object/);
+      }
+      assert.equal(calls, 1);
+    }
+  });
+});
+
 describe('publishMcpRegistryIdempotent', () => {
   it('skips publish when the registry already has the equivalent version', async () => {
     let publishes = 0;
@@ -214,6 +278,18 @@ describe('publishMcpRegistryIdempotent', () => {
     });
     assert.equal(result.outcome, 'published');
     assert.equal(publishes, 1);
+  });
+
+  it('avoids publication when a retried initial lookup finds the equivalent version', async () => {
+    let lookups = 0;
+    const result = await publishMcpRegistryIdempotent({
+      manifestPath: writeManifest(),
+      fetchImpl: async () => ++lookups === 1 ? jsonResponse(503, 'unavailable') : jsonResponse(200, registryEnvelope()),
+      sleepImpl: async () => {},
+      spawnSyncImpl: () => assert.fail('must not publish an equivalent version'),
+    });
+    assert.equal(result.outcome, 'already-published');
+    assert.equal(lookups, 2);
   });
 
   it('fails closed when an existing version has a different payload', async () => {
@@ -308,6 +384,60 @@ describe('publishMcpRegistryIdempotent', () => {
     assert.deepEqual(delays, [1000]);
   });
 
+  it('recovers an actual HTTP body timeout during conflict verification', async (t) => {
+    let lookups = 0;
+    let publishes = 0;
+    const server = createServer((_request, response) => {
+      lookups += 1;
+      if (lookups === 1) { response.writeHead(404).end(); return; }
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      if (lookups === 2) { response.write('{"server":'); return; }
+      response.end(JSON.stringify(registryEnvelope()));
+    });
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const result = await publishMcpRegistryIdempotent({
+      manifestPath: writeManifest(),
+      baseUrl: `http://127.0.0.1:${server.address().port}`,
+      timeoutMs: 500,
+      sleepImpl: async () => {},
+      spawnSyncImpl: () => {
+        publishes += 1;
+        return { status: 1, stderr: 'cannot publish duplicate version' };
+      },
+    });
+    assert.equal(result.outcome, 'already-published-after-conflict');
+    assert.equal(lookups, 3);
+    assert.equal(publishes, 1);
+  });
+
+  it('fails closed after retry exhaustion, payload drift, or inactive conflict records', async () => {
+    for (const [recovery, expectedLookups, expectedError] of [
+      [() => { throw new DOMException('timed out', 'TimeoutError'); }, 4, /attempt 3\/3/],
+      [() => jsonResponse(200, registryEnvelope({ ...DESIRED, description: 'different' })), 3, /payload differs/],
+      [() => jsonResponse(200, registryEnvelope(DESIRED, 'deleted')), 3, /status deleted/],
+    ]) {
+      let lookups = 0;
+      let publishes = 0;
+      await assert.rejects(publishMcpRegistryIdempotent({
+        manifestPath: writeManifest(),
+        fetchImpl: async () => {
+          lookups += 1;
+          if (lookups === 1) return jsonResponse(404, {});
+          if (lookups === 2) throw new DOMException('timed out', 'TimeoutError');
+          return recovery();
+        },
+        sleepImpl: async () => {},
+        spawnSyncImpl: () => { publishes += 1; return { status: 1, stderr: 'invalid-version' }; },
+      }), expectedError);
+      assert.equal(publishes, 1);
+      assert.equal(lookups, expectedLookups);
+    }
+  });
+
   it('fails closed when an invalid-version error cannot be confirmed in the registry', async () => {
     await assert.rejects(
       () => publishMcpRegistryIdempotent({
@@ -345,6 +475,7 @@ describe('publishMcpRegistryIdempotent', () => {
       manifestPath: writeManifest(),
       publishCommand: ['./mcp-publisher', 'publish', 'registry-server.json'],
       fetchImpl: async () => jsonResponse(503, 'unavailable'),
+      sleepImpl: async () => {},
       spawnSyncImpl: () => ({ status: 0, stdout: 'ok', stderr: '' }),
     });
     assert.equal(result.outcome, 'published-after-lookup-failure');
