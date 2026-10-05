@@ -23,7 +23,7 @@ Use the apex server URL for all product MCP clients. Product-host aliases return
 
 ## Tools
 
-The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
+The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. General data tools accept an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath). The closed signed `get_forecast_case` and `get_forecast_theaters` readers preserve original evidence and reject projection arguments.
 
 ## MCP Apps
 
@@ -35,10 +35,10 @@ World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive 
 - `ui://worldmonitor/market-radar-v3.html`
 - `ui://worldmonitor/chokepoint-monitor.html`
 - `ui://worldmonitor/news-intelligence.html`
-- `ui://worldmonitor/conflict-events.html`
+- `ui://worldmonitor/conflict-events-v2.html`
 - `ui://worldmonitor/natural-disasters-v2.html`
-- `ui://worldmonitor/prediction-markets.html`
-- `ui://worldmonitor/forecasts.html`
+- `ui://worldmonitor/prediction-markets-v2.html`
+- `ui://worldmonitor/forecasts-v3.html`
 - `ui://worldmonitor/news-dashboard-v3.html`
 - `ui://worldmonitor/country-view-v3.html`
 
@@ -53,7 +53,7 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
   - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://www.worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
-  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro is 50 quota-consuming `tools/call` / `resources/read` calls per UTC day and Pro Business is 250, one unit per call on a dedicated MCP counter. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
+  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro has 50 units per UTC day and Pro Business has 250 on a dedicated MCP counter. A standalone data call costs one unit. Country, news, curated market, and prediction panels each cost one unit including authorized internal reads. Prediction filters and repeated opens share the prediction admission within five minutes. A new refresh UUID costs one new allocation, and the same UUID retries it. An explicit authorized prediction receipt read queries current usage without another allocation. Unknown usage omits the numeric notice. API and free-account calls reject paid prediction refresh controls. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
 
 Full agent walkthrough: [auth.md](https://www.worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 

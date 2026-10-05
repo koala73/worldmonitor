@@ -46,6 +46,7 @@ export type McpInboundHostClass =
 
 export interface McpToolExecutionContext {
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
+  panelScope?: 'forecasts';
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;
@@ -237,7 +238,7 @@ export interface CacheToolDef extends BaseToolDef {
   // are no-ops, never errors. Every property a `_postFilter` reads MUST be
   // declared in the same tool's `inputSchema.properties` (schema and behaviour
   // co-located so the advertised contract can never drift from what runs).
-  _postFilter?: (data: Record<string, unknown>, params: Record<string, unknown>) => Record<string, unknown>;
+  _postFilter?: (data: Record<string, unknown>, params: Record<string, unknown>, execution?: McpToolExecutionContext) => Record<string, unknown>;
   // Optional tool-specific summary transform. Most cache tools use the shared
   // `summarizeData`; tools with tighter output invariants can preserve the
   // shared count/sample shape while additionally bounding optional samples.

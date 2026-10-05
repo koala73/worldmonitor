@@ -32,12 +32,30 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
-import { UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE, UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const VALID_KEY = 'wm_test_key_resources';
+
+describe('prediction projection UI resource discovery', () => {
+  it('advertises v2 while retaining the original inline URI as a data-free read alias', async () => {
+    const current = 'ui://worldmonitor/prediction-markets-v2.html';
+    const legacy = 'ui://worldmonitor/prediction-markets.html';
+    assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === current));
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacy));
+    assert.equal(isUiResourceUri(current), true);
+    assert.equal(isUiResourceUri(legacy), true);
+    const read = async uri => (await (await buildUiResourceRead(1, uri, {})).json()).result.contents[0];
+    const advertised = await read(current);
+    const alias = await read(legacy);
+    assert.equal(alias.text, advertised.text);
+    assert.equal(alias.uri, current);
+    assert.equal(advertised.mimeType, 'text/html;profile=mcp-app');
+    assert.match(advertised.text, /Prediction Markets/);
+  });
+});
 
 function envKeyReq(body, headers = {}) {
   return new Request(BASE_URL, {
@@ -374,6 +392,23 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // -------------------------------------------------------------------------
   // resources/list shape
   // -------------------------------------------------------------------------
+  it('keeps the old conflict resource readable without advertising it', async () => {
+    const oldUri = 'ui://worldmonitor/conflict-events.html';
+    const newUri = 'ui://worldmonitor/conflict-events-v2.html';
+    const listed = await (await handler(anonReq({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }))).json();
+    assert.ok(listed.result.resources.some(resource => resource.uri === newUri));
+    assert.ok(!listed.result.resources.some(resource => resource.uri === oldUri));
+    const oldRead = await (await handler(anonReq(readBody(oldUri)))).json();
+    const newRead = await (await handler(anonReq(readBody(newUri)))).json();
+    assert.equal(oldRead.result.contents[0].uri, oldUri);
+    assert.equal(newRead.result.contents[0].uri, newUri);
+    assert.equal(oldRead.result.contents[0].text, newRead.result.contents[0].text);
+    const card = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf8'));
+    assert.ok(card.metadata.mcpApps.uiResources.includes(newUri));
+    assert.ok(!card.metadata.mcpApps.uiResources.includes(oldUri));
+    assert.match(card.metadata.mcpApps.note, /get_conflict_events → conflict-events-v2\.html/);
+  });
+
   it('resources/list returns only concrete anon-readable resources: DATA freshness probe + ui:// shell, no {template} URIs', async () => {
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }));
     assert.equal(res.status, 200);
@@ -392,10 +427,10 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/market-radar-v3.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
-      'ui://worldmonitor/conflict-events.html',
+      'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters-v2.html',
-      'ui://worldmonitor/prediction-markets.html',
-      'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
+      'ui://worldmonitor/forecasts-v3.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
@@ -546,6 +581,27 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // CSP / dark-mode / bridge contract. Generalises the single-widget check to
   // the whole ui:// registry read back off the wire.
   // -------------------------------------------------------------------------
+  it('FORECAST: advertises one versioned shell and preserves the saved original URI as a public read alias', async () => {
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const resources = (await listRes.json()).result.resources;
+    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts-v3.html').length, 1);
+    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts.html').length, 0, 'saved alias must not create another advertised resource');
+    const currentRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v3.html')));
+    const current = (await currentRes.json()).result.contents[0];
+    const legacyRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts.html')));
+    const legacy = (await legacyRes.json()).result.contents[0];
+    assert.equal(current.uri, 'ui://worldmonitor/forecasts-v3.html');
+    assert.equal(legacy.uri, 'ui://worldmonitor/forecasts.html', 'read responses must preserve the requested URI');
+    assert.equal(legacy.text, current.text, 'saved alias must serve the current forecast renderer');
+    assert.equal(legacy.mimeType, current.mimeType);
+    const previousRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v2.html')));
+    const previous = (await previousRes.json()).result.contents[0];
+    assert.equal(previous.uri, 'ui://worldmonitor/forecasts-v2.html');
+    assert.equal(previous.text, current.text);
+    assert.equal(resources.filter(resource => resource.uri === previous.uri).length, 0);
+    assert.deepEqual(legacy._meta, current._meta);
+    assert.match(resources.find(resource => resource.uri === current.uri).description, /original case/);
+  });
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
@@ -616,10 +672,10 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',
-      'ui://worldmonitor/conflict-events.html',
+      'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
-      'ui://worldmonitor/prediction-markets.html',
-      'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
+      'ui://worldmonitor/forecasts-v3.html',
     ];
     for (const uri of shellWidgets) {
       const res = await handler(envKeyReq(readBody(uri)));
@@ -669,7 +725,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html',
+        uri: 'ui://worldmonitor/conflict-events-v2.html',
         hostId: 'list',
         raw: { data: { 'ucdp-events': { events: [{
           sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan',
@@ -702,7 +758,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html',
         hostId: 'groups',
         raw: { data: { 'markets-bootstrap': {
           geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }],
@@ -716,7 +772,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html',
+        uri: 'ui://worldmonitor/forecasts-v3.html',
         hostId: 'list',
         raw: { data: { predictions: { predictions: [{
           title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
@@ -812,7 +868,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('EXPANSION WIDGETS: probability nulls remain unknown and visual ranges clamp safely', async () => {
     const payloads = [
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [
           { title: 'Unknown market', yesPrice: null },
           { title: 'Low outlier', yesPrice: -5 },
@@ -820,7 +876,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         ] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [
           { title: 'Unknown forecast', probability: null },
           { title: 'Fraction forecast', probability: 0.25 },
@@ -1008,7 +1064,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   });
 
   it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
-    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events.html')));
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events-v2.html')));
     const html = (await res.json()).result.contents[0].text;
     const payload = {
       data: {
@@ -1039,7 +1095,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         payload: { data: { insights: { topStories: [{ primaryTitle: hostile, primarySource: hostile }] } } },
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
         payload: { data: { 'ucdp-events': { events: [{ sideA: hostile, sideB: 'Other side' }] } } },
       },
       {
@@ -1050,11 +1106,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         } },
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
       },
     ];
@@ -1079,7 +1135,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         emptyCopy: /No news stories available\./,
       },
       {
-        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
         missing: { data: { acled: {} } },
         empty: { data: { 'ucdp-events': { events: [] } } },
         emptyCopy: /No conflict events available\./,
