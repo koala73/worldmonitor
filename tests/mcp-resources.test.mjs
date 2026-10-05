@@ -386,7 +386,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const actualUris = body.result.resources.map((r) => r.uri);
     assert.deepEqual(actualUris, [
       'worldmonitor://seed-meta/freshness',
-      'ui://worldmonitor/country-risk.html',
+      'ui://worldmonitor/country-risk-v2.html',
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/market-radar-v3.html',
@@ -441,6 +441,24 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.match(c.text, /^<!doctype html>/i, 'ui:// resource must return self-contained HTML');
     assert.match(c.text, /ui\/initialize/, 'app shell must implement the MCP Apps postMessage handshake');
     assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
+  });
+
+  it('advertises Country Risk v2 while preserving the original private read URI', async () => {
+    const current = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v2.html')));
+    const legacy = await handler(anonReq(readBody('ui://worldmonitor/country-risk.html')));
+    const currentContent = (await current.json()).result.contents[0];
+    const legacyContent = (await legacy.json()).result.contents[0];
+    assert.equal(currentContent.uri, 'ui://worldmonitor/country-risk-v2.html');
+    assert.equal(legacyContent.uri, 'ui://worldmonitor/country-risk.html');
+    assert.equal(currentContent.text, legacyContent.text);
+    assert.deepEqual(currentContent._meta, legacyContent._meta);
+    const listed = await handler(anonReq({ jsonrpc: '2.0', id: 102, method: 'resources/list', params: {} }));
+    const uris = (await listed.json()).result.resources.map(resource => resource.uri);
+    assert.ok(uris.includes(currentContent.uri));
+    assert.ok(!uris.includes(legacyContent.uri));
+    const tools = await handler(envKeyReq({ jsonrpc: '2.0', id: 103, method: 'tools/list', params: {} }));
+    const riskTool = (await tools.json()).result.tools.find(tool => tool.name === 'get_country_risk');
+    assert.equal(riskTool._meta.ui.resourceUri, currentContent.uri);
   });
 
   it('ui:// app-shell HTML carries the orank view-quality + view-csp signals (uppercase DOCTYPE, color-scheme, scoped CSP)', async () => {
