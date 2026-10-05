@@ -1464,9 +1464,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `panel_request` | string | 仅授权此工具的付费用户读取凭据；显式刷新时省略。 |
-| `refresh` | boolean | 显式分配新付费额度；需要 UUID `request_id`。 |
-| `request_id` | string | 付费刷新 UUID；同一 UUID 重试复用该额度。 |
+| `panel_request` | string | 来自付费面板的签名用户绑定咽喉读取凭据。仅授权此工具及其现有筛选；不能与刷新同时使用。 |
+| `refresh` | boolean | 仅适用于付费额度：显式请求一次新面板分配。提供 request_id UUID。 |
+| `request_id` | string | 显式付费刷新的 UUID；重试同一 UUID 会复用该分配。 |
 | `chokepoint` | string | 筛选为一个咽喉要道 — 在各数据集使用的不同标识符间按不区分大小写的子串匹配（例如 "hormuz" 匹配 "hormuz_strait"、"Strait of Hormuz"）。 |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `limit` | number | 将 chokepoint-baselines 列表和 _countries ISO2 索引限制为最多这么多项（默认 30，传 0 表示不限）。键控对象映射（transit-summaries、chokepoint_transits、ref、chokepoint-flows）有意不做限制 — 请改用 `chokepoint` 筛选。 |

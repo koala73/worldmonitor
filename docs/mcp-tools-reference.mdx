@@ -1954,9 +1954,9 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 
 | Name | Type | Description |
 |------|------|-------------|
-| `panel_request` | string | Paid owner-bound reader token for this tool only; omit on explicit refresh. |
-| `refresh` | boolean | Paid explicit new allocation; requires UUID `request_id`. |
-| `request_id` | string | Paid refresh UUID; retry the same UUID to reuse its allocation. |
+| `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
+| `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
+| `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
 | `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
