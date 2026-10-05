@@ -144,6 +144,14 @@ jobs:
           # snapshot (#8070). Skipping the rebuild would leave the corpus quoting
           # last week's Brier after /accuracy/ had already moved.
           npm run build:llms-full
+      - name: Prune superseded pulse snapshots
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          # Verify the same snapshot set that the PR will publish.
+          ls -1 docs/snapshots/crawlable-live-pulse-*.json \
+            | sort -r \
+            | tail -n +2 \
+            | xargs -r git rm --quiet
       - name: Verify published artifacts
         id: verify
         # Every refresh from 2026-09-02 to 2026-09-14 failed here, each time on
@@ -162,20 +170,11 @@ jobs:
             tests/crawlable-developments.test.mjs \
             tests/crawlable-live-tools.test.mjs \
             tests/country-mention.test.mjs \
+            tests/brief-relevance.test.mjs \
             tests/freeze-crawlable-live-pulse.test.mjs \
             tests/welcome-teasers.test.mjs \
             tests/sitemap-generation.test.mjs \
             tests/country-corpus-slugs-freshness.test.mjs
-      - name: Prune superseded pulse snapshots
-        # Runs after a failed verification, never after a rejected build.
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          # Keep only the newest snapshot: resolveLatestLivePulseSnapshotPath
-          # reads the highest-dated file, so older ones are dead weight.
-          ls -1 docs/snapshots/crawlable-live-pulse-*.json \
-            | sort -r \
-            | tail -n +2 \
-            | xargs -r git rm --quiet
       - name: Open the weekly pulse PR
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
