@@ -403,6 +403,70 @@ test('refresh keeps newer human category and discloses removal before rendering 
   expect(host.units).toBe(3);
 });
 
+for (const mobile of [false, true]) {
+  test(`pending category removed during hazard loading refuses before view effects on ${mobile ? 'mobile' : 'desktop'}`, async ({ page }, info) => {
+    if (mobile) await page.setViewportSize({ width: 430, height: 1500 });
+    await useSvgNewsMap(page);
+    const host = await installNewsHost(page, false, true, ['politics', 'fixture'], true, false, {});
+    const frame = page.frameLocator('iframe');
+    await expect(frame.locator('.news-location-marker')).toHaveCount(1);
+    const before = (await newsAction(page, 'apply_news_view', {})).structuredContent!;
+    host.delayHazards();
+    const pending = newsAction(page, 'apply_news_view', { category: ' World News ', source: 'Unapplied publisher', country: 'BR', time_range: '1h', map_layers: ['fires'], map_latitude: -20, map_longitude: 50, map_zoom: 8, query: 'Unapplied search' });
+    await expect.poll(() => host.calls.filter(call => call.name === 'get_natural_disasters').length).toBe(1);
+    host.setCategories(['fixture']);
+    await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+    await expect(frame.locator('#pluginUsage')).toContainText('48 of 50 requests remaining');
+    await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option[value="politics"]')).toHaveCount(0);
+    await expect(frame.locator('[data-panel="fixture"]')).toContainText('Controlled earthquake report in Japan');
+    host.releaseHazards();
+    const receipt = (await pending).structuredContent!;
+    await writeFile(info.outputPath('category-pending-removal-receipts.json'), JSON.stringify({ before, receipt, calls: host.calls }, null, 2));
+    expect(receipt).toMatchObject({ applied: false, reason: 'unknown_category', view: before.view, categoryLabel: 'All news panels', center: before.center, map: before.map });
+    await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
+    await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('');
+    await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
+    await expect(frame.getByRole('checkbox', { name: 'Fire Hotspots' })).not.toBeChecked();
+    await expect(frame.locator('.search-modal')).toBeHidden();
+    await expect(frame.locator('.news-location-marker')).toHaveCount(1);
+    await expect(frame.locator('#pluginCategoryNotice')).toContainText('not loaded');
+    await expect(frame.locator('path.country').first()).toBeAttached();
+    await page.screenshot({ path: info.outputPath('category-pending-removal-refusal.png'), fullPage: true });
+    await frame.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
+    await expect(frame.locator('[data-panel="fixture"]')).toBeVisible();
+    await page.screenshot({ path: info.outputPath('category-pending-removal-recovered.png'), fullPage: true });
+    expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard']);
+    expect(host.calls[1]?.arguments.panel_request).toBe('news.controlled-1');
+    expect(host.units).toBe(2);
+  });
+}
+
+test('pending category surviving refresh applies after hazard loading', async ({ page }, info) => {
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page, false, true, ['politics', 'fixture'], true, false, {});
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('.news-location-marker')).toHaveCount(1);
+  host.delayHazards();
+  const pending = newsAction(page, 'apply_news_view', { category: ' World News ', source: 'Fixture publisher', time_range: '24h', map_layers: ['fires'], map_latitude: -20, map_longitude: 50, map_zoom: 2 });
+  await expect.poll(() => host.calls.filter(call => call.name === 'get_natural_disasters').length).toBe(1);
+  host.setCategories(['politics']);
+  await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
+  await expect(frame.locator('#pluginUsage')).toContainText('48 of 50 requests remaining');
+  await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option[value="fixture"]')).toHaveCount(0);
+  host.releaseHazards();
+  const receipt = (await pending).structuredContent!;
+  expect(receipt).toMatchObject({ applied: true, view: { category: 'politics', source: 'Fixture publisher', time_range: '24h', map_layers: ['fires'] }, categoryLabel: 'World News', center: { lat: -20, lon: 50 }, map: { zoom: 2 } });
+  await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
+  await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('politics');
+  await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
+  await expect(frame.getByRole('checkbox', { name: 'Fire Hotspots' })).toBeChecked();
+  expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard', 'get_natural_disasters']);
+  expect(host.calls[3]?.arguments.panel_request).toBe('news.controlled-2');
+  expect(host.units).toBe(2);
+  await writeFile(info.outputPath('category-pending-survival-receipts.json'), JSON.stringify({ receipt, calls: host.calls }, null, 2));
+});
+
 test('news category receipts retain the visible label without loading data', async ({ page }, info) => {
   const host = await installNewsHost(page, false, true, ['politics', 'fixture']);
   const frame = page.frameLocator('iframe');
