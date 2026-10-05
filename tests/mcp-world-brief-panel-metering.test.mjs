@@ -3,13 +3,11 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch, OriginalDate = Date, originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const start = Date.UTC(2026, 9, 5, 10, 1, 0, 250), budget = { allowance: 'mcp', limit: 50 };
-const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_world_brief');
 
 describe('World Brief closed paid admission', () => {
   let handler, now, seed, calls, status, advance;
@@ -47,6 +45,7 @@ describe('World Brief closed paid admission', () => {
   it('opens once and reuses ignored global context and projection with the bare original intact', async () => {
     const bundle = makeProDeps(); const first = value(await invoke(bundle));
     const repeat = value(await invoke(bundle, { geo_context: 'different region' }));
+    for (const summary of [true, false]) assert.equal(value(await invoke(bundle, { summary })).brief, seed.worldBrief);
     const projected = value(await invoke(bundle, { jmespath: 'headlines' }));
     assert.equal(bundle.pipe.count, 1); assert.equal(calls.length, 1); assert.deepEqual(projected, first.headlines);
     assert.equal(first.panelRequest.panel, 'world-brief'); assert.equal(repeat.brief, seed.worldBrief);
@@ -105,6 +104,22 @@ describe('World Brief closed paid admission', () => {
     failed.deps.redisPipeline = async (rows, ...args) => { if (rows.some(row => row[0] === 'SET')) throw new Error('optional cache unavailable'); return pipeline(rows, ...args); };
     assert.equal((await invoke(failed)).body.error, undefined); assert.equal(cache(failed).length, 0);
   });
+  it('rechecks save time, caps retained originals at admission expiry and resets across UTC midnight', async () => {
+    const bundle = makeProDeps(); const first = value(await invoke(bundle));
+    const [key, raw] = cache(bundle)[0], wrapper = JSON.parse(raw);
+    assert.equal(wrapper.reuseUntil, Date.parse(first.panelRequest.expiresAt));
+    const reader = await authorizePanelRead(context, bundle.pipe.pipeline, 'get_world_brief', {}, first.panelRequest.token);
+    bundle.pipe.store.delete(key); now = wrapper.reuseUntil;
+    await reader.saveWorldBrief(wrapper.value); assert.equal(cache(bundle).length, 0);
+    now = Date.UTC(2026, 9, 5, 23, 59, 59, 250); seed = payload();
+    const late = makeProDeps(); const last = value(await invoke(late));
+    assert.equal(Date.parse(last.panelRequest.expiresAt), Date.UTC(2026, 9, 6)); assert.equal(cache(late).length, 0);
+    now = Date.UTC(2026, 9, 6); seed = payload();
+    assert.equal((await invoke(late, { panel_request: last.panelRequest.token })).body.error.code, -32602);
+    await invoke(late); assert.equal(late.pipe.count, 2);
+    const wrapper2 = JSON.parse(cache(late)[0][1]); wrapper2.reuseUntil = Date.parse(value(await invoke(late)).panelRequest.expiresAt) + 1;
+    late.pipe.store.set(cache(late)[0][0], JSON.stringify(wrapper2)); await invoke(late); assert.equal(calls.length, 4);
+  });
   it('rejects malformed persisted wire fields without changing the accepted semantic evidence', async () => {
     const bundle = makeProDeps(); await invoke(bundle); const [key, raw] = cache(bundle)[0];
     for (const mutation of [
@@ -122,14 +137,13 @@ describe('World Brief closed paid admission', () => {
     await invoke(huge, { jmespath: 'headlines' }); await invoke(huge, { jmespath: 'headlines' }); assert.equal(cache(huge).length, 0); assert.equal(calls.length, 3); assert.equal(huge.pipe.count, 1);
   });
   it('bounds uncached work and denies revoked, locked or exhausted admissions before acquisition', async () => {
-    const bundle = makeProDeps(); seed.status = 'error'; const first = await invoke(bundle); const token = first.body.result?._meta?.['worldmonitor/panelRequest']?.token;
+    const bundle = makeProDeps(); seed.status = 'error'; await invoke(bundle);
     for (let i = 1; i < 64; i++) await invoke(bundle);
     assert.equal((await invoke(bundle)).response.status, 429); assert.equal(calls.length, 64); assert.equal(bundle.pipe.count, 1);
     bundle.deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } }); assert.equal((await invoke(bundle)).response.status, 403);
     bundle.deps.validateProMcpToken = async () => null; assert.equal((await invoke(bundle)).response.status, 401);
     assert.equal((await invoke(makeProDeps({ pipelineOpts: { initialCount: 50 } }))).response.status, 429);
     assert.equal((await invoke(makeProDeps({ pipelineOpts: { throwOnEval: true } }))).response.status, 503); assert.equal(calls.length, 64);
-    assert.equal(token, undefined);
   });
   it('reads explicit receipt current usage without reservation and omits unknown counters', async () => {
     const bundle = makeProDeps(), token = value(await invoke(bundle)).panelRequest.token;
@@ -150,13 +164,25 @@ describe('World Brief closed paid admission', () => {
     }
     assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-world-brief-api-free-parent.json', import.meta.url), 'utf8'));
   });
-  it('denies API/free paid controls without reservation or gateway work', async () => {
-    for (const plan of ['api', 'free']) {
-      const getEntitlements = async () => plan === 'api' ? { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 } : { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 };
+  it('denies API paid controls and preserves free upgrade denial without gateway work', async () => {
+    {
+      const getEntitlements = async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 });
       const bundle = makeProDeps({ getEntitlements });
       for (const args of [{ refresh: true, request_id: '550e8400-e29b-41d4-a716-446655440000' }, { request_id: '550e8400-e29b-41d4-a716-446655440000' }, { panel_request: 'forged' }]) assert.equal((await invoke(bundle, args)).body.error.code, -32602);
       assert.equal(bundle.pipe.count, 0);
     }
+    const free = makeProDeps({ getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 }) });
+    assert.equal((await invoke(free, { refresh: true })).response.status, 403); assert.equal(free.pipe.count, 0);
     assert.equal(calls.length, 0);
+  });
+  it('keeps the ordinary operator route outside paid admission', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'world-brief-fixture-operator';
+    const bundle = makeProDeps();
+    for (const args of [{}, { geo_context: 17 }]) {
+      const request = new Request('https://worldmonitor.app/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': process.env.WORLDMONITOR_VALID_KEYS }, body: JSON.stringify(callBody('get_world_brief', args)) });
+      const body = await (await handler(request, bundle.deps)).json(); assert.equal(body.error, undefined);
+      assert.equal(body.result.structuredContent.panelRequest, undefined);
+    }
+    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 0); assert.equal(cache(bundle).length, 0);
   });
 });

@@ -21,9 +21,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitChokepointPanel, admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitWorldBriefPanel, admitChokepointPanel, admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { chokepointPanelViewSchema, newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { worldBriefPanelViewSchema, chokepointPanelViewSchema, newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -461,6 +461,22 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_world_brief') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('World Brief refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = worldBriefPanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid World Brief arguments and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        sourceArguments = filters;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the World Brief without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitWorldBriefPanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_chokepoint_status') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Chokepoint refresh controls require a paid panel allowance.', 'invalid');
       if (dedicatedPanel) {
@@ -571,7 +587,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_world_brief' || tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -705,7 +721,8 @@ export async function dispatchToolsCall(
       result = await executeTool(sourceTool, sourceArguments);
     }
     if (panelRead && panelRead.cached === undefined) {
-      if (chokepointRead) await panelRead.saveChokepoints(chokepointRead);
+      if (tool.name === 'get_world_brief') await panelRead.saveWorldBrief(result);
+      else if (chokepointRead) await panelRead.saveChokepoints(chokepointRead);
       else if (intelligenceRead) await panelRead.saveNewsIntelligence(intelligenceRead);
       else if (disasterRead) await panelRead.saveNaturalDisasters(disasterRead);
       else if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
@@ -713,6 +730,7 @@ export async function dispatchToolsCall(
         await panelRead.save(snapshot);
       } else await panelRead.save(result);
     }
+    if (tool.name === 'get_world_brief' && panelRequest && result && typeof result === 'object') result = { ...result, panelRequest };
     if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };

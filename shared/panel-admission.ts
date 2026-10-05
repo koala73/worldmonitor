@@ -81,3 +81,10 @@ export const chokepointPanelReadSchema = z.object({
 export const chokepointPanelViewSchema = chokepointPanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
+
+export const worldBriefPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('world-brief') });
+export type WorldBriefPanelAdmission = z.infer<typeof worldBriefPanelAdmissionSchema>;
+export const worldBriefPanelReadSchema = z.object({ geo_context: z.string().optional() }).strict();
+export const worldBriefPanelViewSchema = worldBriefPanelReadSchema.extend({
+  refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
