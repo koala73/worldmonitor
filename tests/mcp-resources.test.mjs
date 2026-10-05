@@ -32,12 +32,30 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
-import { UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE, UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const VALID_KEY = 'wm_test_key_resources';
+
+describe('prediction projection UI resource discovery', () => {
+  it('advertises v2 while retaining the original inline URI as a data-free read alias', async () => {
+    const current = 'ui://worldmonitor/prediction-markets-v2.html';
+    const legacy = 'ui://worldmonitor/prediction-markets.html';
+    assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === current));
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacy));
+    assert.equal(isUiResourceUri(current), true);
+    assert.equal(isUiResourceUri(legacy), true);
+    const read = async uri => (await (await buildUiResourceRead(1, uri, {})).json()).result.contents[0];
+    const advertised = await read(current);
+    const alias = await read(legacy);
+    assert.equal(alias.text, advertised.text);
+    assert.equal(alias.uri, current);
+    assert.equal(advertised.mimeType, 'text/html;profile=mcp-app');
+    assert.match(advertised.text, /Prediction Markets/);
+  });
+});
 
 function envKeyReq(body, headers = {}) {
   return new Request(BASE_URL, {
@@ -394,7 +412,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
-      'ui://worldmonitor/prediction-markets.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
       'ui://worldmonitor/forecasts-v3.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
@@ -670,7 +688,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/news-intelligence.html',
       'ui://worldmonitor/conflict-events.html',
       'ui://worldmonitor/natural-disasters.html',
-      'ui://worldmonitor/prediction-markets.html',
+      'ui://worldmonitor/prediction-markets-v2.html',
       'ui://worldmonitor/forecasts-v3.html',
     ];
     for (const uri of shellWidgets) {
@@ -754,7 +772,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html',
         hostId: 'groups',
         raw: { data: { 'markets-bootstrap': {
           geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }],
@@ -799,7 +817,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('EXPANSION WIDGETS: probability nulls remain unknown and visual ranges clamp safely', async () => {
     const payloads = [
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [
           { title: 'Unknown market', yesPrice: null },
           { title: 'Low outlier', yesPrice: -5 },
@@ -1037,7 +1055,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         } },
       },
       {
-        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        uri: 'ui://worldmonitor/prediction-markets-v2.html', hostId: 'groups',
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {

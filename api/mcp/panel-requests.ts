@@ -2,7 +2,7 @@ import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmission } from '../../shared/country-brief-host';
 import { resolveCountryCode } from '../../shared/country-code-resolve';
-import { forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, type ForecastPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
+import { forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, marketPanelReadSchema, marketPanelViewSchema, type ForecastPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { forecastTheaterReadSchema, reusableForecastTheaterResult } from '../../shared/forecast-theaters';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
@@ -17,7 +17,7 @@ const MAX_CACHED_BYTES = 524288;
 const encoder = new TextEncoder();
 
 type PanelScope = { panel: string; window: string; expires: number };
-export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | ForecastPanelAdmission;
+export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | ForecastPanelAdmission | MarketPanelAdmission;
 export class PanelRequestError extends Error {
   constructor(message: string, public code: 'invalid' | 'quota' | 'reads' | 'backend', public limit?: number, public retryAfter?: number) {
     super(message);
@@ -29,8 +29,8 @@ function userId(context: McpAuthContext): string {
   if (context.kind !== 'pro' && context.kind !== 'user_key') throw new PanelRequestError('A paid user-bound connection is required.', 'invalid');
   return context.userId;
 }
-function panelFamily(panel: string): 'country' | 'news' | 'forecasts' {
-  return panel === 'news' || panel === 'forecasts' ? panel : 'country';
+function panelFamily(panel: string): 'country' | 'news' | 'forecasts' | 'markets' {
+  return panel === 'news' || panel === 'forecasts' || panel === 'markets' ? panel : 'country';
 }
 function panelKey(owner: string, scope: PanelScope): string {
   return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope.panel)}:${scope.panel}:${scope.window}`;
@@ -63,6 +63,12 @@ export async function admitNewsPanel(context: McpAuthContext, budget: McpBudget 
   return { ...await admitPanel(context, budget, pipeline, 'news', parsed.data, now), panel: 'news' };
 }
 
+export async function admitMarketPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<MarketPanelAdmission> {
+  const parsed = marketPanelViewSchema.safeParse(args);
+  if (!parsed.success) throw new PanelRequestError('Supply valid curated market filters and a request_id for refresh.', 'invalid');
+  return { ...await admitPanel(context, budget, pipeline, 'markets', parsed.data, now), panel: 'markets' };
+}
+
 export async function admitForecastPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<ForecastPanelAdmission> {
   const parsed = forecastPanelViewSchema.safeParse(args);
   if (!parsed.success) throw new PanelRequestError('Supply valid forecast filters and refresh arguments.', 'invalid');
@@ -77,7 +83,7 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
   const midnight = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1);
   const bucket = Math.floor(now / PANEL_REUSE_MS);
   let scope: PanelScope = {
-    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(/-/g, '')}` : `b${bucket}`,
+    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(/-/g, '').toLowerCase()}` : `b${bucket}`,
     expires: Math.min(midnight, request.refresh ? now + PANEL_REUSE_MS : (bucket + 2) * PANEL_REUSE_MS),
   };
   const previous: PanelScope = { panel: country, window: `b${bucket - 1}`, expires: Math.min(midnight, (bucket + 1) * PANEL_REUSE_MS) };
@@ -101,6 +107,10 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
 }
 
 function checkReadScope(name: string, args: Record<string, unknown>, country: string): void {
+  if (country === 'markets') {
+    if (name !== 'get_market_data' || !marketPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers curated market data.', 'invalid');
+    return;
+  }
   if (country === 'forecasts') {
     if (name === 'get_forecast_predictions' && forecastPanelReadSchema.safeParse(args).success) return;
     if (name === 'get_forecast_case' && forecastCaseReadSchema.safeParse(args).success) return;
@@ -148,7 +158,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(news|forecasts|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = /^(news|markets|forecasts|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');
@@ -158,7 +168,11 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   if (mismatch) throw new PanelRequestError('Invalid panel request.', 'invalid');
   checkReadScope(name, args, scope.panel);
   const key = panelKey(owner, scope);
-  const cacheArguments = scope.panel === 'forecasts' && name === 'get_forecast_predictions' ? forecastPanelReadSchema.parse(args) : args;
+  const cacheArguments = scope.panel === 'markets'
+    ? marketPanelReadSchema.parse(args)
+    : scope.panel === 'forecasts' && name === 'get_forecast_predictions'
+      ? forecastPanelReadSchema.parse(args)
+      : args;
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(cacheArguments)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
@@ -202,6 +216,18 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (name === 'open_news_dashboard' && (!value || typeof value !== 'object'
         || !('categories' in value) || !value.categories || typeof value.categories !== 'object' || Array.isArray(value.categories))) return;
       if (value && typeof value === 'object') {
+        if (scope.panel === 'markets') {
+          if ('unreadable' in value && Array.isArray(value.unreadable) && value.unreadable.length) return;
+          if ('data' in value && value.data && typeof value.data === 'object'
+            && Object.values(value.data).some(bucket => bucket && typeof bucket === 'object'
+              && ('rateLimited' in bucket && bucket.rateLimited === true
+                || 'unavailable' in bucket && bucket.unavailable === true
+                || 'upstreamUnavailable' in bucket && bucket.upstreamUnavailable === true
+                || 'skipReason' in bucket && typeof bucket.skipReason === 'string' && bucket.skipReason !== ''
+                || 'valuationCoverage' in bucket && bucket.valuationCoverage && typeof bucket.valuationCoverage === 'object'
+                  && ('stale' in bucket.valuationCoverage && bucket.valuationCoverage.stale === true
+                    || 'sourceStatus' in bucket.valuationCoverage && bucket.valuationCoverage.sourceStatus !== 'ok')))) return;
+        }
         if ('stale' in value && value.stale === true) return;
         if ('degraded' in value && value.degraded === true) return;
         if ('coverage' in value && value.coverage && typeof value.coverage === 'object'

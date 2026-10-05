@@ -350,6 +350,10 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_country_brief → country-brief-v2.html',
   );
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_prediction_markets → prediction-markets(?:-v\d+)?\.html/,
+    'get_prediction_markets → prediction-markets-v2.html',
+  );
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
     /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
     'get_forecast_predictions → forecasts-v3.html',
   );

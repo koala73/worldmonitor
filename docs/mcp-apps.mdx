@@ -43,12 +43,14 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, and source. |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Conflict Events (interactive) | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from UCDP. |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
-| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
+| `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples retain the loaded contracts and snapshot metadata. |
 | `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | Forecasts (interactive) | Forecast cards, local domain/region filters and original case analysis, evidence and scenario branches loaded under the opening admission. |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
 
 The compact Country Brief view accepts the original response and supported object projections. Replacing a result clears prior paragraphs, evidence, source links and generation time. Hosts advertise `country-brief-v2.html`; the original `country-brief.html` remains a private read alias for older installed metadata until those hosts refresh their resource discovery. Ordinary country asks still open the full country view.
+
+The original `ui://worldmonitor/prediction-markets.html` remains a private read alias. Refresh installed connection metadata and open a new card to load v2; an existing cached card keeps its old HTML. Projections that omit the contract data cannot restore omitted details.
 
 ## Runtime Flow
 
