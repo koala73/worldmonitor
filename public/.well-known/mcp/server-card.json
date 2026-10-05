@@ -57,7 +57,7 @@
     },
     {
       "name": "get_conflict_events",
-      "description": "Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.",
+      "description": "Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. Authorized panel_request reads include current usage when confirmed; unknown usage omits the numeric notice. API and free allowances retain per-tool billing and reject paid controls.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -71,14 +71,14 @@
     },
     {
       "name": "get_news_intelligence",
-      "description": "AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor's intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher's declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy.",
+      "description": "AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor's intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher's declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Paid News Intelligence panels charge one opening allocation; repeat and filters reuse a closed source-bounded admission.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
     },
     {
       "name": "get_natural_disasters",
-      "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.",
+      "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -134,7 +134,7 @@
     },
     {
       "name": "get_prediction_markets",
-      "description": "Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.",
+      "description": "Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -211,7 +211,7 @@
     },
     {
       "name": "get_chokepoint_status",
-      "description": "Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.",
+      "description": "Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. Paid openings use one signed chokepoint panel allocation; repeated views reuse complete requested source subsets while partial sources remain retryable. Different source subsets may reacquire data under the same allocation. Explicit refresh requires a request_id UUID and spends one new allocation; same-UUID retry is idempotent. API/free accounts retain per-tool accounting.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -309,21 +309,21 @@
     },
     {
       "name": "get_world_brief",
-      "description": "Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, the outlet names themselves, corroboration, and the publishers roster with each publisher's declared tier, both derived from those outlet names; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. Serving is capped at 3h old; past that, and for a snapshot that is absent or broken rather than merely old, the source is reported unavailable.",
+      "description": "Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, the outlet names themselves, corroboration, and the publishers roster with each publisher's declared tier, both derived from those outlet names; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. Serving is capped at 3h old; past that, and for a snapshot that is absent or broken rather than merely old, the source is reported unavailable. Paid MCP openings consume one request allocation; healthy loaded reuse and ignored geo_context changes reuse it. API allowances retain ordinary per-tool billing.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "get_country_brief",
-      "description": "Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.",
+      "description": "Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was. A paid opening shares the existing country allocation with brief, risk and full-panel reads. Healthy originals replay before presentation; incomplete or retained sources remain retryable under the same allocation.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "get_country_risk",
-      "description": "Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer \"how risky is X right now?\" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.",
+      "description": "Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer \"how risky is X right now?\" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm. A paid opening shares the existing country allocation with brief and full-panel reads. Healthy route-specific loaded originals replay before presentation; upstream failures remain retryable. Loaded reuse does not attest current advisory or sanctions freshness.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -738,20 +738,20 @@
       "specVersion": "2026-01-26",
       "uiResourceMimeType": "text/html;profile=mcp-app",
       "uiResources": [
-        "ui://worldmonitor/country-risk.html",
-        "ui://worldmonitor/world-brief.html",
+        "ui://worldmonitor/country-risk-v2.html",
+        "ui://worldmonitor/world-brief-v2.html",
         "ui://worldmonitor/country-brief-v2.html",
         "ui://worldmonitor/market-radar-v3.html",
-        "ui://worldmonitor/chokepoint-monitor.html",
-        "ui://worldmonitor/news-intelligence.html",
-        "ui://worldmonitor/conflict-events.html",
-        "ui://worldmonitor/natural-disasters.html",
-        "ui://worldmonitor/prediction-markets-v2.html",
+        "ui://worldmonitor/chokepoint-monitor-v2.html",
+        "ui://worldmonitor/news-intelligence-v2.html",
+        "ui://worldmonitor/conflict-events-v2.html",
+        "ui://worldmonitor/natural-disasters-v2.html",
+        "ui://worldmonitor/prediction-markets-v3.html",
         "ui://worldmonitor/forecasts-v3.html",
         "ui://worldmonitor/news-dashboard-v3.html",
         "ui://worldmonitor/country-view-v3.html"
       ],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief-v2.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor.html, get_news_intelligence → news-intelligence.html, get_conflict_events → conflict-events.html, get_natural_disasters → natural-disasters.html, get_prediction_markets → prediction-markets-v2.html, get_forecast_predictions → forecasts-v3.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk-v2.html, get_world_brief → world-brief-v2.html, get_country_brief → country-brief-v2.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor-v2.html, get_news_intelligence → news-intelligence-v2.html, get_conflict_events → conflict-events-v2.html, get_natural_disasters → natural-disasters-v2.html, get_prediction_markets → prediction-markets-v3.html, get_forecast_predictions → forecasts-v3.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {

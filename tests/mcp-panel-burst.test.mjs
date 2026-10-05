@@ -1,8 +1,9 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
+import { hashKeySync } from '../server/_shared/usage-identity.ts';
 import { HMAC_SECRET, PRO_USER_ID, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
-import { admitCountryPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
+import { admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -52,6 +53,50 @@ async function open(deps) {
 const energy = token => ({ section: 'energy', arguments: { country_code: 'US' }, panel_request: token });
 
 describe('bounded panel reads with an enabled minute limiter', () => {
+  it('bounds conflict replay and actual reads separately without charging rejected reads', async () => {
+    const { deps, pipe } = makeProDeps();
+    const context = { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: 'k57mcptokenid' };
+    const receipt = await admitConflictPanel(context, { allowance: 'mcp', limit: 50 }, pipe.pipeline, {});
+    const read = await authorizePanelRead(context, pipe.pipeline, 'get_conflict_events', {}, receipt.token);
+    await read.save({
+      cached_at: new Date().toISOString(), stale: false,
+      conflict_source: { ucdp: { fetchedAt: Date.now(), candidateVersion: '26.0.9', candidateComplete: true, annualFailedPages: 0 } },
+      data: { 'ucdp-events': { candidateVersion: '26.0.9', events: [] }, events: { events: [] }, scores: { ciiScores: [] },
+        ...(process.env.IRAN_EVENTS_ENABLED === 'true' ? { 'iran-events': { events: [] } } : {}) },
+    });
+    for (let i = 0; i < 64; i++) assert.equal((await invoke(deps, 'get_conflict_events', { panel_request: receipt.token })).body.error, undefined);
+    const denied = await invoke(deps, 'get_conflict_events', { panel_request: receipt.token });
+    assert.equal(denied.body.error?.code, -32029);
+    assert.equal(denied.response.headers.get('X-RateLimit-Limit'), '64');
+    assert.equal(fetched.length, 0);
+    assert.equal(counts.get(userBucket), undefined);
+    const miss = await authorizePanelRead(context, pipe.pipeline, 'get_conflict_events', { country: 'new filter' }, receipt.token);
+    counts.set(`rl:mcp:pro-min:pro-panel:${hashKeySync(miss.rateLimitKey)}`, 64);
+    const before = pipe.ops.filter(batch => batch.some(command => command[0] === 'EVAL' && Number(command[2]) === 2)).length;
+    assert.equal((await invoke(deps, 'get_conflict_events', { country: 'new filter', panel_request: receipt.token })).body.error?.code, -32029);
+    assert.equal(pipe.ops.filter(batch => batch.some(command => command[0] === 'EVAL' && Number(command[2]) === 2)).length, before);
+    assert.equal(pipe.count, 1);
+  });
+  it('bounds prediction replays independently and denied uncached reads do not reserve slots', async () => {
+    const { deps, pipe } = makeProDeps();
+    const context = { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: 'k57mcptokenid' };
+    const receipt = await admitPredictionPanel(context, { allowance: 'mcp', limit: 50 }, pipe.pipeline, {});
+    const read = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, receipt.token);
+    await read.save({ cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': { geopolitical: [], tech: [], finance: [] } } });
+    for (let i = 0; i < 64; i++) assert.equal((await invoke(deps, 'get_prediction_markets', { panel_request: receipt.token })).body.error, undefined);
+    const deniedReplay = await invoke(deps, 'get_prediction_markets', { panel_request: receipt.token });
+    assert.equal(deniedReplay.body.error?.code, -32029);
+    assert.equal(deniedReplay.response.headers.get('X-RateLimit-Limit'), '64');
+    assert.equal(counts.get(userBucket), undefined);
+    assert.equal(fetched.length, 0);
+    const miss = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', { query: 'not loaded' }, receipt.token);
+    counts.set(`rl:mcp:pro-min:pro-panel:${hashKeySync(miss.rateLimitKey)}`, 64);
+    const before = pipe.ops.filter(batch => batch.some(command => command[0] === 'EVAL' && Number(command[2]) === 2)).length;
+    const deniedRead = await invoke(deps, 'get_prediction_markets', { query: 'not loaded', panel_request: receipt.token });
+    assert.equal(deniedRead.body.error?.code, -32029);
+    assert.equal(pipe.ops.filter(batch => batch.some(command => command[0] === 'EVAL' && Number(command[2]) === 2)).length, before);
+    assert.equal(pipe.count, 1);
+  });
   it('bounds market receipt replays separately from ordinary account calls', async () => {
     const { deps, pipe } = makeProDeps();
     const context = { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: 'k57mcptokenid' };
