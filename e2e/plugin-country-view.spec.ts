@@ -316,6 +316,23 @@ test('country Signals reuse loaded military observations and keep missing source
   expect(host.admissions).toBe(4);
 });
 
+test.describe('localized normal travel advice', () => {
+  test.use({ locale: 'fr-FR' });
+  test('renders normal advice in French without English fallback or caution escalation', async ({ page }, info) => {
+    const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first');
+    const frame = page.frameLocator('iframe');
+    await frame.getByRole('button', { name: 'Security', exact: true }).click();
+    const signals = frame.locator('[data-brief-section=signals]');
+    await expect(signals).toContainText('Précautions habituelles');
+    await expect(signals).not.toContainText('Normal Precautions');
+    await expect(signals).not.toContainText('Faire preuve de prudence');
+    await signals.screenshot({ path: info.outputPath('normal-advice-fr-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signals.screenshot({ path: info.outputPath('normal-advice-fr-mobile.png') });
+    host.releaseOrder();
+  });
+});
+
 test('raw Signals exclude foreign outages when precise country geometry is unavailable', async ({ page }, info) => {
   const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first', true);
   const frame = page.frameLocator('iframe');
