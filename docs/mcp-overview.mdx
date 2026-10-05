@@ -271,7 +271,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | Tool | Description |
 |------|-------------|
 | `get_conflict_events` | Active UCDP/Iran conflicts, unrest w/ geo-coords, country risk scores. |
-| `get_country_risk` | CII score 0-100, component breakdown, travel advisory, OFAC exposure per country. Fast, no LLM. |
+| `get_country_risk` | CII score 0-100, component breakdown, travel advisory and OFAC exposure. Paid reads share the country's panel allocation and replay accepted originals. No LLM. |
 | `get_military_posture` | Theater posture + military risk scores. |
 | `get_cyber_threats` | URLhaus/Feodotracker malware IOCs, CISA KEV catalog, active C2 infra. |
 | `get_sanctions_data` | OFAC SDN entities + sanctions pressure scores by country. |
@@ -352,7 +352,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 | Tool | Description | Cost |
 |------|-------------|------|
 | `get_world_brief` | Precomputed citation-grounded world intel brief from the same `news:insights:v1` snapshot used by the dashboard. `geo_context` is retained for compatibility and does not refocus the seeded snapshot. | Cache |
-| `get_country_brief` | Per-country geopolitical + economic assessment with structured source links. Supports analytical frameworks. | LLM |
+| `get_country_brief` | Per-country assessment with source links and analytical frameworks. Paid variants share the country's panel allocation; incomplete grounding remains retryable. | LLM |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |

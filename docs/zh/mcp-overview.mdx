@@ -267,7 +267,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 工具 | 描述 |
 |------|-------------|
 | `get_conflict_events` | 活跃的 UCDP/伊朗冲突、带地理坐标的动荡、各国风险评分。 |
-| `get_country_risk` | CII 评分 0-100、组成部分分解、旅行警示、各国 OFAC 敞口。快速，无需 LLM。 |
+| `get_country_risk` | CII 评分 0-100、组成部分分解、旅行警示和 OFAC 敞口。付费读取共享该国家的面板额度并复用已接受的原始结果。无需 LLM。 |
 | `get_military_posture` | 战区姿态 + 军事风险评分。 |
 | `get_cyber_threats` | URLhaus/Feodotracker 恶意软件 IOC、CISA KEV 目录、活跃 C2 基础设施。 |
 | `get_sanctions_data` | OFAC SDN 实体 + 各国制裁压力评分。 |
@@ -334,7 +334,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 工具 | 描述 | 成本 |
 |------|-------------|------|
 | `get_world_brief` | 来自仪表板使用的 `news:insights:v1` 快照的预计算、有引用依据的世界情报简报。`geo_context` 为兼容性保留，不会重新聚焦种子快照。 | 缓存 |
-| `get_country_brief` | 带结构化来源链接的各国地缘 + 经济评估。支持分析框架。 | LLM |
+| `get_country_brief` | 带来源链接和分析框架的各国评估。付费分析变体共享该国家的面板额度；不完整依据可重试。 | LLM |
 | `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
 | `get_forecast_predictions` | 预计算的缓存预测。快速。 | 缓存 |
