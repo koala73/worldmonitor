@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { EmbedKeyUnavailableError } from '../server/_shared/embed-key';
+import { EmbedKeyUnavailableError, embedCredentialFromHeaders } from '../server/_shared/embed-key';
 import { evaluateEmbedSession, type EmbedSessionDeps } from '../server/_shared/embed-session';
 import type { CachedEntitlements } from '../server/_shared/entitlement-check';
 
@@ -322,11 +322,41 @@ describe('embed grant exchange', () => {
     assert.equal(source.includes('getCookie'), false);
   });
 
-  it('falls back to X-Api-Key when X-WorldMonitor-Key is empty in embed handlers', () => {
-    const sessionSource = readFileSync(resolve(__dirname, '../api/embed/session.ts'), 'utf-8');
-    assert.doesNotMatch(sessionSource, /X-WorldMonitor-Key'\)\s*\?\?\s*headers\.get\('X-Api-Key/);
-    const entitlementSource = readFileSync(resolve(__dirname, '../api/embed/entitlement.ts'), 'utf-8');
-    assert.doesNotMatch(entitlementSource, /X-WorldMonitor-Key'\)\s*\?\?\s*headers\.get\('X-Api-Key/);
+  describe('credential header resolution', () => {
+    it('falls back to X-Api-Key when X-WorldMonitor-Key is empty', () => {
+      const headers = new Headers({ 'X-WorldMonitor-Key': '', 'X-Api-Key': 'wme_real' });
+      assert.equal(embedCredentialFromHeaders(headers), 'wme_real');
+    });
+
+    it('falls back to X-Api-Key when X-WorldMonitor-Key is whitespace', () => {
+      const headers = new Headers({ 'X-WorldMonitor-Key': '   ', 'X-Api-Key': ' wme_real ' });
+      assert.equal(embedCredentialFromHeaders(headers), 'wme_real');
+    });
+
+    it('prefers a nonblank X-WorldMonitor-Key over X-Api-Key', () => {
+      const headers = new Headers({ 'X-WorldMonitor-Key': 'wme_primary', 'X-Api-Key': 'wme_other' });
+      assert.equal(embedCredentialFromHeaders(headers), 'wme_primary');
+    });
+
+    it('reads X-Api-Key alone', () => {
+      assert.equal(embedCredentialFromHeaders(new Headers({ 'X-Api-Key': 'wme_real' })), 'wme_real');
+    });
+
+    it('returns null when neither header carries a key', () => {
+      assert.equal(embedCredentialFromHeaders(new Headers()), null);
+      assert.equal(
+        embedCredentialFromHeaders(new Headers({ 'X-WorldMonitor-Key': ' ', 'X-Api-Key': '' })),
+        null,
+      );
+    });
+
+    it('is the resolver both embed handlers use', () => {
+      for (const path of ['../api/embed/session.ts', '../api/embed/entitlement.ts']) {
+        const source = readFileSync(resolve(__dirname, path), 'utf-8');
+        assert.match(source, /embedCredentialFromHeaders\(stripped\.headers\)/, path);
+        assert.equal(source.includes("headers.get('X-Api-Key')"), false, path);
+      }
+    });
   });
 
   it('declares a fail-closed per-IP rate policy for the mint path', async () => {
