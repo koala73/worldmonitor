@@ -2170,7 +2170,10 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `domain` | string | 筛选为一个预测领域（精确、不区分大小写 — 例如 "shipping"、"energy"、"macro"）。 |
 | `region` | string | 筛选为一个地区/战区（不区分大小写的子串）。 |
-| `limit` | number | 将预测列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | 付费面板接受 1–30 的整数。普通 API 调用保留现有的上限规则。 |
+| `refresh` | boolean | 付费面板打开请求：设为 `true` 时启动新的准入，需要新的 `request_id`。 |
+| `request_id` | string | 可选 UUID，用于复用显式的付费面板打开请求。 |
+| `panel_request` | string | 签名的预测准入凭证，用于有界的已加载列表重放。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
@@ -2190,6 +2193,39 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+读取已加载列表中指定 ID 和 generation 对应的原始预测案例，保留案例内容。此操作需要有效的付费预测面板准入。现有的 64 次读取额度包含此内部读取，不会额外扣减每日面板配额。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `forecast_id` | string | 已加载列表中的精确原始预测 ID。 |
+| `generated_at` | string | 已加载列表中的精确 `String(generatedAt)` 值。 |
+| `panel_request` | string | 签名的预测面板凭证。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-forecasts`
+- **访问权限：** `subscription` — 需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入。
+- **类型：** 读取固定规范预测数据集的缓存；不会访问任意缓存键，也不会运行模型生成。
+- **输出上限：** 单个完整原始案例为 128 KB；不会静默截断案例内容。
+- **新鲜度预算：** 1.5 小时；原始案例的数据源通知与打开面板时的快照分开处理。
+
+### `get_forecast_theaters`
+
+使用有效的付费预测准入读取最新原始模拟战区摘要。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。不接受其他参数。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-simulation-outcome`，只读取最新摘要。
+- **访问权限：** `subscription`，检查所有者、范围、有效期和权益。
+- **配额：** 共享打开面板时的每日分配和 64 次未缓存读取上限。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
+- **输出上限：** 原始证据为 128 KB。无效或过大的来源报告不可用，不会静默截断，不支持任意运行选择、模拟触发或私有产物读取。
 
 ### `get_forecast_scorecard`
 
@@ -2217,6 +2253,19 @@ curl -s https://worldmonitor.app/mcp \
 </CodeGroup>
 
 ## 元工具
+
+### `get_mcp_allowance`
+
+读取当前已验证账户的现有额度快照。客户端不支持 `worldmonitor://account/mcp-allowance` 资源读取时，请调用此工具。
+
+**工具专用参数：** 无。只接受通用可选的 `jmespath` 投影，在分配前拒绝账户选择器、`summary` 及 `panel_request`。
+
+**响应：** `{ access, used, limit, remaining, resetsAt, requestWindows, sharedWithRestApi }`。免费账户还获得请求窗口的使用量、上限、剩余数、空闲间隔、活动状态和到期时间。无限额度的 `limit` 与 `remaining` 为 `null`。计数器不可读取或格式错误时返回错误，而不是成功的零使用量快照。文本和 `structuredContent` 沿用普通工具的投影协议。
+
+- **访问：** `free-account`。要求已验证、绑定用户的 OAuth 或 `wm_…` 凭据，并保留现有权益检查。匿名和运营方凭据无法读取账户快照。
+- **配额：** 不预留每日额度、免费账户调用或窗口、面板分配或内部读取次数。每日额度耗尽后仍可读取；两种凭据共享账户每分钟 192 次的协议限流。
+- **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
+- **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
 
 ### `describe_tool`
 

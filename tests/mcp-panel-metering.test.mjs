@@ -753,3 +753,276 @@ describe('paid curated market panel through the MCP handler', () => {
     assert.equal(fetched.length, 0);
   });
 });
+
+describe('paid forecast panel admission', () => {
+  let handler;
+  let forecastTool;
+  let previousExecute;
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+    forecastTool = (await import('../api/mcp/registry/index.ts')).TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
+    previousExecute = forecastTool._execute;
+    forecastTool._execute = async (_args, _origin, _context, execution) => ({ data: { predictions: { generatedAt: '1720000000000', predictions: [{ id: 'controlled', title: 'Controlled forecast' }] } }, panelRequest: execution.panelRequest });
+  });
+  afterEach(() => {
+    forecastTool._execute = previousExecute;
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  const invoke = async (deps, name, args = {}) => {
+    const response = await handler(proReq('POST', callBody(name, args)), deps);
+    return { response, body: await response.json() };
+  };
+  it('opens and replays compact forecasts under one signed allocation and charges explicit refresh once', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const grant = first.body.result.structuredContent.panelRequest;
+    assert.equal(grant?.panel, 'forecasts');
+    assert.equal(grant.usage.remaining, 49);
+    const second = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
+    assert.equal(pipe.count, 1);
+    const request_id = crypto.randomUUID();
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    assert.equal(pipe.count, 2);
+  });
+  it('rejects invalid opening arguments before reservation', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ limit: 0 }, { limit: 31 }, { unexpected: true }, { refresh: true }]) {
+      const denied = await invoke(deps, 'get_forecast_predictions', args);
+      assert.equal(denied.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+    }
+  });
+  it('allows only fixed forecast list and exact case reads within the forecast scope', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    assert.equal(typeof admitForecastPanel, 'function');
+    const { pipe } = makeProDeps();
+    const grant = await admitForecastPanel(context, budget, pipe.pipeline, {});
+    const read = await readPanel(context, pipe.pipeline, 'get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000' }, grant.token);
+    await read.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    assert.deepEqual((await readPanel(context, pipe.pipeline, 'get_forecast_case', { generated_at: '1720000000000', forecast_id: 'controlled' }, grant.token)).cached, { data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    await readPanel(context, pipe.pipeline, 'get_forecast_predictions', { domain: 'energy', region: 'Europe', limit: 30 }, grant.token);
+    for (const [name, args] of [
+      ['get_forecast_predictions', { jmespath: 'data' }], ['get_forecast_predictions', { summary: true }],
+      ['get_forecast_predictions', { limit: 0 }], ['get_forecast_predictions', { refresh: true }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000', domain: 'energy' }],
+      ['get_forecast_case', { forecast_id: '', generated_at: '1720000000000' }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: '' }],
+      ['get_market_data', {}], ['get_country_brief', { country_code: 'US' }],
+    ]) await assert.rejects(readPanel(context, pipe.pipeline, name, args, grant.token));
+    assert.equal(pipe.count, 1);
+  });
+  it('keeps forecast namespace distinct and enforces owner, expiry and the durable read limit', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    const { pipe } = makeProDeps();
+    const now = Date.UTC(2026, 9, 4, 12);
+    const grant = await admitForecastPanel(context, budget, pipe.pipeline, {}, now);
+    assert.match(grant.token, /^forecasts\.b\d+\.\d{13}\.[a-f0-9]{64}$/);
+    assert.ok(pipe.ops.flat().some(command => command[0] === 'EVAL' && String(command[5]).includes(':forecasts:forecasts:')));
+    const args = { forecast_id: 'controlled', generated_at: '1720000000000' };
+    await assert.rejects(readPanel({ ...context, userId: 'other' }, pipe.pipeline, 'get_forecast_case', args, grant.token, now));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, Date.parse(grant.expiresAt)));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token.slice(0, -1) + (grant.token.endsWith('a') ? 'b' : 'a'), now));
+    const country = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' }, now);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, country.token, now));
+    const cached = await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now);
+    await cached.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    for (let i = 1; i < PANEL_READ_LIMIT; i++) await readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: `case-${i}` }, grant.token, now);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: 'new' }, grant.token, now), error => error.code === 'reads');
+    assert.equal((await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now)).cached.data.forecastCase.forecast.id, 'controlled');
+    assert.equal(pipe.count, 2);
+  });
+  it('does not grant forecast panels against API per-tool budgets', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    const { pipe } = makeProDeps();
+    await assert.rejects(admitForecastPanel(context, { allowance: 'api', limit: 1000 }, pipe.pipeline, {}));
+    assert.equal(pipe.count, 0);
+    const { deps, pipe: apiPipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const second = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(first.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(second.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(apiPipe.count, 2 * (await import('../api/mcp/registry/index.ts')).toolWeight(forecastTool));
+  });
+  it('refreshes opening notices while never storing receipts inside the replay snapshot', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const grant = first.body.result.structuredContent.panelRequest;
+    const cached = await authorizePanelRead(context, pipe.pipeline, 'get_forecast_predictions', {}, grant.token);
+    assert.equal(cached.cached.panelRequest, undefined);
+    await invoke(deps, 'open_country_brief', { country_code: 'US' });
+    const reopened = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(reopened.body.result.structuredContent.panelRequest.usage.remaining, 48);
+    assert.equal(reopened.body.result._meta['worldmonitor/usage'].remaining, 48);
+    assert.equal(pipe.count, 2);
+    const replayed = await invoke(deps, 'get_forecast_predictions', { panel_request: grant.token });
+    assert.equal(replayed.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(pipe.count, 2);
+    for (const args of [{ summary: true }, { jmespath: 'data' }, { refresh: true }]) {
+      assert.equal((await invoke(deps, 'get_forecast_predictions', { ...args, panel_request: grant.token })).body.error?.code, -32602);
+      assert.equal(pipe.count, 2);
+    }
+  });
+
+});
+
+describe('forecast panel transport through production cache reads', () => {
+  let handler;
+  let canonical;
+  let sourceReads;
+  const invoke = async (deps, name, args = {}) => {
+    const response = await handler(proReq('POST', callBody(name, args)), deps);
+    return { response, body: await response.json() };
+  };
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://forecast-fixture.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-fixture-token';
+    canonical = {
+      generatedAt: Date.now(),
+      predictions: Array.from({ length: 14 }, (_, i) => ({
+        id: `original-${i}`, title: `Original forecast ${i}`, domain: 'energy', region: 'Europe', probability: 0.4,
+        scenario: 'Original scenario', caseFile: { baseCase: `${i}:` + 'original prose '.repeat(1200), actors: [{ name: `Original actor ${i}` }] },
+      })),
+    };
+    sourceReads = [];
+    globalThis.fetch = async url => {
+      const parsed = new URL(url);
+      assert.equal(parsed.hostname, 'forecast-fixture.test', 'controlled fixture must never fetch a real service');
+      if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+      const key = decodeURIComponent(parsed.pathname.slice('/get/'.length));
+      sourceReads.push(key);
+      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+      return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2' ? canonical : { fetchedAt: Date.now() }) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('opens every compact row within the fixed serialized output budget and reads one unchanged original case', async t => {
+    assert.ok(Buffer.byteLength(JSON.stringify(canonical)) > 131072);
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const result = first.body.result;
+    const openingBytes = Buffer.byteLength(JSON.stringify(result));
+    assert.ok(openingBytes <= 131072);
+    t.diagnostic(JSON.stringify({ originalBytes: Buffer.byteLength(JSON.stringify(canonical)), openingEnvelopeBytes: openingBytes, budgetBytes: 131072 }));
+    assert.ok(Buffer.byteLength(result.content[0].text) <= 131072);
+    assert.equal(result.structuredContent.data.predictions.predictions.length, 14);
+    assert.ok(result.structuredContent.data.predictions.predictions.every(row => row.hasCaseFile && !('caseFile' in row)));
+    const panel_request = result.structuredContent.panelRequest.token;
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request };
+    const detail = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(detail.body.result?.structuredContent?.data?.forecastCase?.status, 'ready');
+    assert.deepEqual(detail.body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal('predictions' in detail.body.result.structuredContent.data, false);
+    const reads = sourceReads.length;
+    assert.deepEqual((await invoke(deps, 'get_forecast_case', args)).body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal(sourceReads.length, reads);
+    assert.equal(pipe.count, 1);
+    const priorGeneration = String(canonical.generatedAt);
+    canonical.generatedAt++;
+    const changed = await invoke(deps, 'get_forecast_case', { forecast_id: 'original-1', generated_at: priorGeneration, panel_request });
+    assert.equal(changed.body.result.structuredContent.data.forecastCase.status, 'generation_changed');
+    assert.equal(changed.body.result.structuredContent.data.forecastCase.forecast, null);
+    assert.equal(pipe.count, 1);
+  });
+  it('never lets a summary-first or JMESPath opening poison canonical compact reopening', async () => {
+    for (const transform of [{ summary: true }, { jmespath: 'data.predictions.predictions[0]' }]) {
+      const { deps, pipe } = makeProDeps();
+      const transformed = await invoke(deps, 'get_forecast_predictions', transform);
+      assert.ok('projection' in transformed.body.result.structuredContent);
+      const reads = sourceReads.length;
+      const ordinary = await invoke(deps, 'get_forecast_predictions');
+      assert.equal(ordinary.body.result.structuredContent.data.predictions.predictions.length, 14);
+      assert.ok(ordinary.body.result.structuredContent.data.predictions.predictions.every(row => row.hasCaseFile));
+      assert.equal(sourceReads.length, reads);
+      assert.equal(pipe.count, 1);
+    }
+  });
+  it('retains one allocation when an original single case exceeds the response budget', async () => {
+    canonical.predictions[0].caseFile.baseCase = 'oversized-original'.repeat(10000);
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const panel_request = first.body.result.structuredContent.panelRequest.token;
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request };
+    const detail = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(detail.body.result?.structuredContent?._budget_exceeded, true);
+    assert.equal(detail.body.result.structuredContent.budget_bytes, 131072);
+    assert.ok(detail.body.result.structuredContent.actual_bytes > 131072);
+    assert.equal(pipe.count, 1);
+    const reads = sourceReads.length;
+    assert.equal((await invoke(deps, 'get_forecast_case', args)).body.result.structuredContent._budget_exceeded, true);
+    assert.equal(sourceReads.length, reads);
+    assert.equal(pipe.count, 1);
+    assert.equal(pipe.ops.flat().some(command => command[0] === 'DECR'), false);
+  });
+  it('preserves the original full forecast shape and weighted per-tool accounting for API plans', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    const result = await invoke(deps, 'get_forecast_predictions', { limit: 1 });
+    assert.deepEqual(result.body.result.structuredContent.data.predictions.predictions, [canonical.predictions[0]]);
+    assert.equal(result.body.result.structuredContent.panelRequest, undefined);
+    await invoke(deps, 'get_forecast_predictions', { limit: 1 });
+    const { TOOL_REGISTRY, toolWeight } = await import('../api/mcp/registry/index.ts');
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+    const beforeDenied = sourceReads.length;
+    assert.equal((await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) })).body.error.code, -32602);
+    assert.equal(sourceReads.length, beforeDenied);
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+  });
+  it('recovers an unavailable opening under the same allocation and caches observed empty lists', async () => {
+    const { deps, pipe } = makeProDeps();
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const unavailable = await invoke(deps, 'get_forecast_predictions');
+    const panel_request = unavailable.body.result.structuredContent.panelRequest.token;
+    assert.equal(unavailable.body.result.structuredContent.data.predictions.predictions, null);
+    const failedReads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(recovered.body.result.structuredContent.data.predictions.predictions.length, original.length);
+    assert.ok(sourceReads.length > failedReads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(sourceReads.length, recoveredReads);
+    const emptyAccount = makeProDeps();
+    canonical.predictions = [];
+    const empty = await invoke(emptyAccount.deps, 'get_forecast_predictions');
+    assert.deepEqual(empty.body.result.structuredContent.data.predictions.predictions, []);
+    const emptyReads = sourceReads.length;
+    await invoke(emptyAccount.deps, 'get_forecast_predictions', { panel_request: empty.body.result.structuredContent.panelRequest.token });
+    assert.equal(sourceReads.length, emptyReads);
+    assert.equal(emptyAccount.pipe.count, 1);
+  });
+  it('recovers an unavailable original case on same-generation retry without another daily allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const opened = await invoke(deps, 'get_forecast_predictions');
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request: opened.body.result.structuredContent.panelRequest.token };
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const failed = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(failed.body.result.structuredContent.data.forecastCase.status, 'unavailable');
+    const reads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(recovered.body.result.structuredContent.data.forecastCase.status, 'ready');
+    assert.deepEqual(recovered.body.result.structuredContent.data.forecastCase.forecast, original[0]);
+    assert.ok(sourceReads.length > reads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_case', args);
+    assert.equal(sourceReads.length, recoveredReads);
+    assert.equal(pipe.count, 1);
+  });
+
+});
