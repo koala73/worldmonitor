@@ -1956,6 +1956,7 @@ export class DeckGLMap {
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
+    const filteredCyberThreats = mapLayers.cyberThreats ? this.filterByTimeCached(this.cyberThreats, (threat) => threat.lastSeen ?? threat.firstSeen) : [];
     const filteredMilitaryFlights = mapLayers.military ? this.filterByTimeCached(this.militaryFlights, (flight) => flight.lastSeen) : [];
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTimeCached(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTimeCached(this.militaryFlightClusters) : [];
@@ -2158,8 +2159,8 @@ export class DeckGLMap {
     layers.push(this.createEmptyGhost('ddos-locations-layer'));
 
     // Cyber threat IOC layer
-    if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
-      layers.push(this.createCyberThreatsLayer());
+    if (mapLayers.cyberThreats && filteredCyberThreats.length > 0) {
+      layers.push(this.createCyberThreatsLayer(filteredCyberThreats));
     }
     layers.push(this.createEmptyGhost('cyber-threats-layer'));
 
@@ -3608,10 +3609,10 @@ export class DeckGLMap {
     });
   }
 
-  private createCyberThreatsLayer(): ScatterplotLayer<CyberThreat> {
+  private createCyberThreatsLayer(threats: CyberThreat[]): ScatterplotLayer<CyberThreat> {
     return new ScatterplotLayer<CyberThreat>({
       id: 'cyber-threats-layer',
-      data: this.cyberThreats,
+      data: threats,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => {
         switch (d.severity) {
