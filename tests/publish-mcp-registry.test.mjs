@@ -225,25 +225,31 @@ describe('registry lookup recovery', () => {
     assert.deepEqual(delays, [1000, 2000]);
   });
 
-  it('does not retry absence, permanent HTTP failures, TLS failures, or invalid payloads', async () => {
+  it('returns absence without retrying HTTP 404', async () => {
+    let calls = 0;
+    const result = await fetchPublishedMcpRegistryVersion({
+      ...lookupOptions,
+      fetchImpl: async () => { calls += 1; return jsonResponse(404, 'not found'); },
+      sleepImpl: async () => assert.fail('must not retry'),
+    });
+    assert.equal(result.found, false);
+    assert.equal(calls, 1);
+  });
+
+  it('rejects permanent HTTP failures, TLS failures, and invalid payloads without retrying', async () => {
     const responses = [
-      ...[400, 401, 403, 404, 422, 501].map((status) => () => jsonResponse(status, 'not retryable')),
-      () => { throw new TypeError('fetch failed', { cause: { code: 'CERT_HAS_EXPIRED' } }); },
-      () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('invalid JSON'); } }),
-      () => jsonResponse(200, { missing: 'server' }),
+      ...[400, 401, 403, 422, 501].map((status) => [() => jsonResponse(status, 'not retryable'), new RegExp(`HTTP ${status}`)]),
+      [() => { throw new TypeError('fetch failed', { cause: { code: 'CERT_HAS_EXPIRED' } }); }, /fetch failed/],
+      [() => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('invalid JSON'); } }), /invalid JSON/],
+      [() => jsonResponse(200, { missing: 'server' }), /missing a server object/],
     ];
-    for (const response of responses) {
+    for (const [response, expectedError] of responses) {
       let calls = 0;
-      const result = fetchPublishedMcpRegistryVersion({
+      await assert.rejects(fetchPublishedMcpRegistryVersion({
         ...lookupOptions,
         fetchImpl: async () => { calls += 1; return response(); },
         sleepImpl: async () => assert.fail('must not retry'),
-      });
-      try {
-        assert.equal((await result).found, false);
-      } catch (error) {
-        assert.match(error.message, /HTTP (400|401|403|422|501)|fetch failed|invalid JSON|missing a server object/);
-      }
+      }), expectedError);
       assert.equal(calls, 1);
     }
   });
