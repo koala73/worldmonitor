@@ -1,4 +1,5 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
 import { projectNaturalEventsRetention } from '../../_natural-events-dashboard.js';
 import { CHINA_MACRO_REQUIRED_SERIES } from '../../../shared/china-macro-contract.js';
@@ -59,6 +60,7 @@ import {
 import { resolveCountryFilter } from '../_country-args';
 import { RpcValidationError } from '../billing-denial';
 import type { ToolDef } from '../types';
+import { forecastCaseReadSchema, forecastPanelAdmissionSchema } from '../../../shared/panel-admission';
 
 import { utf8ByteLength } from '../utils';
 import {
@@ -494,7 +496,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
+    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers. Dedicated paid plans open or reuse one market panel allocation across curated filters. Explicit refresh requires request_id and charges one new allocation; API plans retain per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -505,10 +507,13 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         asset_class: {
           type: 'array',
-          items: { type: 'string', enum: ['equity', 'commodity', 'crypto', 'sectors', 'etf', 'gulf', 'sentiment'] },
+          items: { type: 'string', enum: MARKET_ASSET_CLASSES },
           description: 'Restrict the response to one or more asset classes. Omit for all.',
         },
         limit: { type: 'number', description: 'Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap).' },
+        refresh: { type: 'boolean', description: 'Reload the curated snapshot with one new paid panel allocation. Default false reuses the current market panel. Requires request_id; omit panel_request when refreshing.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Stable refresh ID. Retries with the same ID reuse one paid allocation and its original expiry.' },
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued market-panel receipt token for bounded curated reads. API allowances do not accept receipts.' },
       },
       required: [],
     },
@@ -2977,17 +2982,21 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_forecast_predictions',
     _uiResourceUri: FORECASTS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-generated geopolitical and economic forecasts from WorldMonitor\'s predictive models. Covers upcoming risk events and probability assessments.',
+    description: 'Open WorldMonitor’s interactive forecasts with local domain/region filters and original case analysis. Paid ChatGPT openings return the compact list and a signed panelRequest; expand Analysis to read an original case using get_forecast_case under the same allocation. Repeated openings reuse the five-minute admission; explicit refresh requires a fresh request_id. API callers retain the full published forecast result. AI assessments are not guarantees.',
     inputSchema: {
       type: 'object',
       properties: {
         domain: { type: 'string', description: 'Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro").' },
         region: { type: 'string', description: 'Filter to one region/theater (case-insensitive substring).' },
-        limit: { type: 'number', description: 'Cap the forecast list to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap.' },
+        refresh: { type: 'boolean', description: 'Request a new paid panel snapshot; requires a fresh request_id.' },
+        request_id: { type: 'string', description: 'Unique idempotency identifier for an explicit refresh.' },
+        panel_request: { type: 'string', description: 'Signed forecast panel receipt for a bounded internal list replay.' },
       },
       required: [],
     },
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       predictions: {
         type: ['object', 'null'],
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
@@ -2995,14 +3004,37 @@ export const CACHE_TOOLS: ToolDef[] = [
           probability: { type: ['number', 'null'] }, title: { type: 'string' },
         } } } },
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, panelRequest: forecastPanelAdmissionSchema.toJSONSchema() } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
+    _postFilter: (data, params, execution) => {
       const domain = argStr(params.domain);
       const region = argStr(params.region);
       if (domain) narrowNested(data, 'predictions', 'predictions', (p) => argStr(p.domain) === domain);
       if (region) narrowNested(data, 'predictions', 'predictions', (p) => ciIncludes(p.region, region));
       capNested(data, 'predictions', 'predictions', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
+        const source = data.predictions;
+        if (source && typeof source === 'object' && !Array.isArray(source)) {
+          const node = source as Record<string, unknown>;
+          if (Array.isArray(node.predictions)) {
+            let detailStripped = 0;
+            const predictions = node.predictions.map(value => {
+              if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+              const { caseFile, ...row } = value as Record<string, unknown>;
+              if (caseFile !== undefined) { detailStripped++; return { ...row, hasCaseFile: true }; }
+              return row;
+            });
+            data.predictions = {
+              generatedAt: node.generatedAt, predictions, detailStripped,
+              ...(typeof node.degraded === 'boolean' ? { degraded: node.degraded } : {}),
+              ...(typeof node.stale === 'boolean' ? { stale: node.stale } : {}),
+              ...(typeof node.error === 'string' ? { error: node.error.slice(0, 1200) } : {}),
+            };
+          }
+        }
+      }
       return data;
     },
     _cacheKeys: ['forecast:predictions:v2'],
@@ -3010,6 +3042,43 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [
       "GET /api/forecast/v1/get-forecasts",
     ],
+  },
+  {
+    name: 'get_forecast_case',
+    _subscriptionOnly: true,
+    _outputBudgetBytes: 131072,
+    description: 'Read exactly one original published forecast case after expanding Analysis in the interactive forecasts panel. Requires its signed panel_request and exact list generated_at; no additional daily allocation. Changed generation requires reopening the forecast list. A single case exceeding the fixed response budget remains explicitly unavailable.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        forecast_id: { type: 'string', minLength: 1, maxLength: 160, description: 'Exact original forecast ID from the loaded list.' },
+        generated_at: { type: 'string', minLength: 1, maxLength: 64, description: 'Exact String(generatedAt) from the loaded list.' },
+        panel_request: { type: 'string', minLength: 1, maxLength: 160, description: 'Signed forecast panel receipt.' },
+      },
+      required: ['forecast_id', 'generated_at', 'panel_request'],
+    },
+    outputSchema: cacheEnvelope({ forecastCase: { type: 'object', properties: {
+      status: { type: 'string', enum: ['ready', 'missing', 'unavailable', 'generation_changed'] },
+      generatedAt: { type: ['number', 'string', 'null'] },
+      forecast: { type: ['object', 'null'] },
+    }, required: ['status', 'generatedAt', 'forecast'] } }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params, execution) => {
+      if (execution?.panelScope !== 'forecasts') throw new RpcValidationError('get_forecast_case', [{ field: 'panel_request', description: 'A verified forecast panel admission is required.' }]);
+      const parsed = forecastCaseReadSchema.safeParse(params);
+      if (!parsed.success) throw new RpcValidationError('get_forecast_case', [{ field: 'forecast_id', description: 'Provide an exact forecast ID and list generation.' }]);
+      const source = data.predictions;
+      if (!source || typeof source !== 'object' || Array.isArray(source)) return { forecastCase: { status: 'unavailable', generatedAt: null, forecast: null } };
+      const node = source as Record<string, unknown>;
+      const generatedAt = typeof node.generatedAt === 'number' || typeof node.generatedAt === 'string' ? node.generatedAt : null;
+      if (!Array.isArray(node.predictions) || generatedAt === null) return { forecastCase: { status: 'unavailable', generatedAt, forecast: null } };
+      if (String(generatedAt) !== params.generated_at) return { forecastCase: { status: 'generation_changed', generatedAt, forecast: null } };
+      const forecast = node.predictions.find(row => row && typeof row === 'object' && !Array.isArray(row) && row.id === params.forecast_id) ?? null;
+      return { forecastCase: { status: forecast ? 'ready' : 'missing', generatedAt, forecast } };
+    },
+    _cacheKeys: ['forecast:predictions:v2'],
+    _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }],
+    _apiPaths: ['GET /api/forecast/v1/get-forecasts'],
   },
   {
     name: 'get_forecast_scorecard',

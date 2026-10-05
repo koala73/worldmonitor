@@ -224,9 +224,14 @@ Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver
 | `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
+| `refresh` | boolean | Reload the curated snapshot with one new paid panel allocation. Default false reuses the current market panel. Requires request_id; omit panel_request when refreshing. |
+| `request_id` | string | Stable refresh ID. Retries with the same ID reuse one paid allocation and its original expiry. |
+| `panel_request` | string | Server-issued market-panel receipt token for bounded curated reads. API allowances do not accept receipts. |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for the initial market panel. Subsequent curated filters and repeated opens reuse that admission within its five-minute window. The result's `panelRequest.token` can be passed as `panel_request` for authorized reads until expiry. A new refresh UUID spends one new allocation. API plans retain weighted per-tool billing. Free-account calls retain their daily free allowance.
+- **Source scope:** filters select already-seeded quotes. Neither a receipt nor refresh fetches an arbitrary symbol, an account watchlist, or new provider data. Unavailable or stale results remain eligible for retry under the same valid receipt. An upstream failure does not refund the initial allocation.
 - **Note on the physical datasets:** the two REST routes behind `physicalPremium` and `physicalDivergence` are Pro-only (tier 1) when called directly — see [Pro Intelligence Suite](/pro-intelligence-suite). This bundled cache read is the one path on which a signed-in free account can reach them, within its allowance. That is deliberate; do not infer from it that the REST routes are open.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily `physicalPremiums` and `physicalDivergence` datasets are monitored on `/api/health` instead. Read their timestamps and the divergence state when age matters. The divergence method is documented in [Physical Precious-Metals Divergence Index](/methodology/physical-divergence-index).
@@ -2714,7 +2719,10 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 |------|------|-------------|
 | `domain` | string | Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro"). |
 | `region` | string | Filter to one region/theater (case-insensitive substring). |
-| `limit` | number | Cap the forecast list to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
+| `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
+| `request_id` | string | Unique idempotency identifier for an explicit refresh. |
+| `panel_request` | string | Signed forecast panel receipt for a bounded internal list replay. |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -2735,6 +2743,39 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+Read one unchanged original forecast case for an exact loaded ID and generation. Requires a valid paid forecast panel admission. The existing 64-read allowance includes this internal read; it does not charge a new daily panel allocation. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `forecast_id` | string | Exact original forecast ID from the loaded list. |
+| `generated_at` | string | Exact String(generatedAt) from the loaded list. |
+| `panel_request` | string | Signed forecast panel receipt. |
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `subscription` — requires a valid paid forecast admission, including owner, scope, expiry and entitlement checks.
+- **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
+- **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
+- **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
+
+### `get_forecast_theaters`
+
+Read the latest original simulation theater summaries with a valid paid forecast admission. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. No other arguments are accepted. |
+
+- **API endpoint:** `GET /api/forecast/v1/get-simulation-outcome`, latest-only.
+- **Access:** `subscription` with owner, scope, expiry and entitlement checks.
+- **Allocation:** shares the opening's daily allocation and 64 uncached-read budget. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
+- **Output budget:** 128 KB for unchanged original evidence. Invalid or oversized source reports unavailable; no silent truncation, run selector, simulation trigger or private artifact read.
 
 ### `get_forecast_scorecard`
 

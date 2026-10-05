@@ -44,7 +44,7 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Conflict Events (interactive) | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from UCDP. |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples retain the loaded contracts and snapshot metadata. |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | Forecasts (interactive) | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | Forecasts (interactive) | Forecast cards, local domain/region filters and original case analysis, evidence and scenario branches loaded under the opening admission. |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
 
@@ -69,6 +69,20 @@ View -> Host: ui/notifications/size-changed
 ```
 
 The view never fetches live WorldMonitor data itself. Live data always reaches the app through the host after a normal tool call.
+
+## Forecast List And Original Cases
+
+For paid OAuth users, `get_forecast_predictions` opens a compact list and returns one signed `panelRequest`. The opening consumes one daily panel allocation. The list retains original IDs, generation, source notices and unknown odds. Domain and region filters use the loaded list.
+
+Opening a case analysis calls `get_forecast_case` through the originating host with `forecast_id`, the exact list `generated_at`, and the same `panel_request` token. The read returns one unchanged original case from that generation. It uses the existing bounded panel read allowance and consumes no additional daily allocation. Successful details are reused when filtering or reopening. The host must support server tool calls; unavailable capability or source, a changed generation, and an oversized individual case are shown explicitly. Retry is manual and source recovery is not cached as a successful case.
+
+Ordinary API-key calls to `get_forecast_predictions` retain their full-result contract and accounting. The case reader requires a valid forecast admission; it is not an arbitrary cache reader. `forecasts.html` remains a read alias for saved connections. The saved `forecasts-v2.html` resource also remains a private read alias. Refresh tool metadata to discover `forecasts-v3.html` after deployment.
+
+## Original Active Theaters
+
+The **Load active theaters** action calls `get_forecast_theaters` through the host with the same signed forecast `panel_request`. It reads only the latest original simulation summary. The source run and time are independent of the forecast list generation; the time does not establish freshness. Local expansion preserves every published path, actor, optional actor role, reaction, stabilizer and invalidator.
+
+The reader shares the opening allocation and its 64 uncached-read budget. Complete validated snapshots and explicit no-eligible empty outcomes are reused. Partial, failed, missing, processing and unknown outcomes remain distinct and can be retried manually under the same admission. Original evidence is retained during a failed retry. No run selector, simulation trigger or private artifact is exposed. Malformed or oversized summaries report unavailable instead of truncating evidence.
 
 ## Resource Reads And Quota
 

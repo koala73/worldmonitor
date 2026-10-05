@@ -15,10 +15,10 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitCountryPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitCountryPanel, admitForecastPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import type { PanelUsage } from '../../shared/panel-admission';
-import { isSharedRestCounter, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
+import { forecastPanelReadSchema, marketPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
@@ -52,6 +52,7 @@ export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
   now?: number,
+  execution?: McpToolExecutionContext,
 ): Promise<{
   cached_at: string | null;
   stale: boolean;
@@ -202,14 +203,14 @@ export async function executeTool(
   let result: Record<string, unknown> = data;
   if (tool._postFilter) {
     try {
-      result = tool._postFilter(structuredClone(data), params);
+      result = tool._postFilter(structuredClone(data), params, execution);
     } catch (err) {
       // Input validation must reach the caller instead of serving unfiltered data.
       // A stored-contract violation must NOT fall through to `data`: that path serves the
       // raw, unvalidated blob the filter just refused, which is the opposite of failing
       // closed (#6448 — an unknown state "must surface as an error, never silently map to
       // normal"). Let it out so the tool call errors instead.
-      if (isMcpStoredContractError(err) || err instanceof RpcValidationError) throw err;
+      if (isMcpStoredContractError(err) || err instanceof RpcValidationError || execution?.panelScope === 'forecasts') throw err;
       // Same minified-frame over-grouping guard as the tool-execution catch
       // below — key on step + tool + error type so a post-filter bug in one
       // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).
@@ -406,8 +407,29 @@ export async function dispatchToolsCall(
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  let sourceArguments = callArguments;
   try {
-    if (dedicatedPanel && tool.name === 'open_country_brief') {
+    if (tool.name === 'get_market_data') {
+      const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+      const parsed = marketPanelViewSchema.safeParse(view);
+      if (!parsed.success) throw new PanelRequestError('Supply valid curated market filters and a request_id for refresh.', 'invalid');
+      const { refresh, request_id: _requestId, ...filters } = parsed.data;
+      sourceArguments = filters;
+      if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the market panel without a reader token.', 'invalid');
+      if (dedicatedPanel && suppliedPanel === undefined) {
+        panelRequest = await admitMarketPanel(context, budget, deps.redisPipeline, parsed.data);
+        panelUsage = panelRequest.usage;
+        panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+      }
+    }
+    if ((tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters') && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading original evidence.', 'invalid');
+    if (dedicatedPanel && tool.name === 'get_forecast_predictions' && suppliedPanel === undefined) {
+      const admissionArgs = Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath' && key !== 'summary'));
+      panelRequest = await admitForecastPanel(context, budget, deps.redisPipeline, admissionArgs);
+      panelUsage = panelRequest.usage;
+      const readArgs = forecastPanelReadSchema.parse(Object.fromEntries(Object.entries(admissionArgs).filter(([key]) => key !== 'refresh' && key !== 'request_id')));
+      panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, readArgs, panelRequest.token);
+    } else if (dedicatedPanel && tool.name === 'open_country_brief') {
       panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')));
     } else if (dedicatedPanel && tool.name === 'open_news_dashboard') {
       if (suppliedPanel !== undefined) throw new PanelRequestError('Open or refresh the dashboard without a reader token.', 'invalid');
@@ -416,13 +438,20 @@ export async function dispatchToolsCall(
     } else if (suppliedPanel !== undefined) {
       if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
-        Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
+        tool.name === 'get_forecast_predictions' || tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters'
+          ? callArguments
+          : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
+    if (tool.name === 'get_market_data' && suppliedPanel !== undefined && panelRead
+      && (context.kind === 'pro' || context.kind === 'user_key')) {
+      const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
+      if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
+    }
   } catch (error) {
     if (!(error instanceof PanelRequestError)) throw error;
     if (deferredBurst && !panelRead) {
@@ -524,27 +553,40 @@ export async function dispatchToolsCall(
     let result: unknown;
     if (panelRead?.cached !== undefined) {
       result = panelRead.cached;
-    } else if (tool._execute) {
+    } else {
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
-      result = await tool._execute(
+      if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
+      if (tool._execute) result = await tool._execute(
         callArguments,
         execution.downstreamOrigin,
         context,
         execution,
       );
-    } else {
-      result = await executeTool(tool, callArguments);
+      else result = await executeTool(tool, execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
     }
     if (panelRead && panelRead.cached === undefined) {
       if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
         const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
         await panelRead.save(snapshot);
+      } else if (tool.name === 'get_forecast_predictions' && result && typeof result === 'object') {
+        const { panelRequest: _receipt, ...snapshot } = result as Record<string, unknown>;
+        await panelRead.save(snapshot);
       } else await panelRead.save(result);
     }
+    if (tool.name === 'get_forecast_predictions' && panelRead?.panel === 'forecasts' && tool._execute === undefined && argBool(callArguments.summary) && result && typeof result === 'object' && 'data' in result) {
+      const data = (result as { data: Record<string, unknown> }).data;
+      result = { ...result, data: tool._summarize ? tool._summarize(data) : summarizeData(data) };
+    }
+    if (tool.name === 'get_forecast_predictions' && panelRequest && result && typeof result === 'object') result = { ...result, panelRequest };
     if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
+    }
+    if (tool.name === 'get_market_data' && tool._execute === undefined && result && typeof result === 'object') {
+      const snapshot = result as Awaited<ReturnType<typeof executeTool>>;
+      if (argBool(callArguments.summary)) result = { ...snapshot, data: tool._summarize ? tool._summarize(snapshot.data) : summarizeData(snapshot.data) };
+      if (panelRequest) result = { ...result as Record<string, unknown>, panelRequest };
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.

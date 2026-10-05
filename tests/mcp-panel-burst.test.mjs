@@ -2,7 +2,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, PRO_USER_ID, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
-import { admitCountryPanel, admitNewsPanel } from '../api/mcp/panel-requests.ts';
+import { admitCountryPanel, admitMarketPanel, admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -52,6 +52,21 @@ async function open(deps) {
 const energy = token => ({ section: 'energy', arguments: { country_code: 'US' }, panel_request: token });
 
 describe('bounded panel reads with an enabled minute limiter', () => {
+  it('bounds market receipt replays separately from ordinary account calls', async () => {
+    const { deps, pipe } = makeProDeps();
+    const context = { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: 'k57mcptokenid' };
+    const receipt = await admitMarketPanel(context, { allowance: 'mcp', limit: 50 }, pipe.pipeline, {});
+    const read = await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token);
+    await read.save({ cached_at: new Date().toISOString(), stale: false, data: { 'stocks-bootstrap': { quotes: [] } } });
+    for (let i = 0; i < 64; i++) assert.equal((await invoke(deps, 'get_market_data', { panel_request: receipt.token })).body.error, undefined);
+    const denied = await invoke(deps, 'get_market_data', { panel_request: receipt.token });
+    assert.equal(denied.body.error?.code, -32029);
+    assert.equal(denied.response.headers.get('X-RateLimit-Limit'), '64');
+    assert.equal(denied.response.headers.get('X-RateLimit-Remaining'), '0');
+    assert.equal(fetched.length, 0);
+    assert.equal(counts.get(userBucket), undefined);
+    assert.equal(pipe.count, 1);
+  });
   it('completes a full panel when the host reconnects before each internal read', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);

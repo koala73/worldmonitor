@@ -5,12 +5,12 @@
   "description": "Live markets, conflicts, country risk, chokepoints, energy, and China decision signals.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.26.0",
+  "version": "1.28.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.26.0",
+    "version": "1.28.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -50,7 +50,7 @@
     },
     {
       "name": "get_market_data",
-      "description": "Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.",
+      "description": "Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers. Dedicated paid plans open or reuse one market panel allocation across curated filters. Explicit refresh requires request_id and charges one new allocation; API plans retain per-tool billing.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -239,9 +239,16 @@
     },
     {
       "name": "get_forecast_predictions",
-      "description": "AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments.",
+      "description": "Open WorldMonitor’s interactive forecasts with local domain/region filters and original case analysis. Paid ChatGPT openings return the compact list and a signed panelRequest; expand Analysis to read an original case using get_forecast_case under the same allocation. Repeated openings reuse the five-minute admission; explicit refresh requires a fresh request_id. API callers retain the full published forecast result. AI assessments are not guarantees.",
       "_meta": {
         "worldmonitor/access": "free-account"
+      }
+    },
+    {
+      "name": "get_forecast_case",
+      "description": "Read exactly one original published forecast case after expanding Analysis in the interactive forecasts panel. Requires its signed panel_request and exact list generated_at; no additional daily allocation. Changed generation requires reopening the forecast list. A single case exceeding the fixed response budget remains explicitly unavailable.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
       }
     },
     {
@@ -394,6 +401,13 @@
     {
       "name": "analyze_situation",
       "description": "AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_forecast_theaters",
+      "description": "Read the latest original forecast simulation theater summaries using a signed forecasts panel_request. Shares the panel allocation and its 64 uncached-read limit. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, source run/time and completion counts. No run selector or simulation trigger. Partial, unknown and unavailable results can be retried manually; source time is separate from forecast generation and does not establish freshness.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -733,11 +747,11 @@
         "ui://worldmonitor/conflict-events.html",
         "ui://worldmonitor/natural-disasters.html",
         "ui://worldmonitor/prediction-markets-v2.html",
-        "ui://worldmonitor/forecasts.html",
+        "ui://worldmonitor/forecasts-v3.html",
         "ui://worldmonitor/news-dashboard-v3.html",
         "ui://worldmonitor/country-view-v3.html"
       ],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor.html, get_news_intelligence → news-intelligence.html, get_conflict_events → conflict-events.html, get_natural_disasters → natural-disasters.html, get_prediction_markets → prediction-markets-v2.html, get_forecast_predictions → forecasts.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor.html, get_news_intelligence → news-intelligence.html, get_conflict_events → conflict-events.html, get_natural_disasters → natural-disasters.html, get_prediction_markets → prediction-markets-v2.html, get_forecast_predictions → forecasts-v3.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {

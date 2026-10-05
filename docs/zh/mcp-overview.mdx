@@ -19,7 +19,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
+所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 请求使用专属的每日计数器，每个 UTC 日分别为 **50** 个和 **250** 个单位。独立数据调用扣一个单位。国家简报、新闻地图或精选市场面板各扣一个单位，包含其授权内部读取。市场筛选和重复打开在五分钟内复用市场分配。附带新 UUID 的显式刷新扣一个新单位。详见[付费内嵌面板请求](/zh/usage-rate-limits#付费内嵌面板请求)。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-登录流程)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -337,7 +337,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_country_brief` | 带结构化来源链接的各国地缘 + 经济评估。支持分析框架。 | LLM |
 | `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
-| `get_forecast_predictions` | 预计算的缓存预测。快速。 | 缓存 |
+| `get_forecast_predictions` | 缓存预测；付费交互面板返回紧凑列表和签名的案例读取授权。 | 缓存 |
+| `get_forecast_case` | 使用预测面板授权读取指定 ID 和版本的原始案例。 | 缓存 |
+| `get_forecast_theaters` | 通过同一预测准入读取最新原始模拟战区，保留独立来源时间和部分覆盖状态。 | RPC |
 | `get_forecast_scorecard` | 缓存的预测结算校准与记分卡。 | 缓存 |
 
 ## API 覆盖
@@ -397,6 +399,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_research_signals` | `GET /api/research/v1/list-tech-events` |
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_case` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_theaters` | `GET /api/forecast/v1/get-simulation-outcome` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
@@ -488,7 +492,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
 | `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。 |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 以概率卡片（标题、领域、区域）呈现的 AI 生成地缘政治和经济预测。 |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 已加载的预测卡片支持按领域和区域进行本地筛选；原始案例证据可通过同一签名的面板准入读取。 |
 
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
 
