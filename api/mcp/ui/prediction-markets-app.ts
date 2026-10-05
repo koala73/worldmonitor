@@ -39,7 +39,9 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
-    var d = data.data && typeof data.data === "object" ? data.data : data;
+    var value = Object.prototype.hasOwnProperty.call(data, "projection") ? data.projection : data;
+    var envelope = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var d = envelope.data && typeof envelope.data === "object" ? envelope.data : envelope;
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
@@ -86,14 +88,21 @@ const RENDER = `
       if (bar) mkt.appendChild(bar);
       sec.appendChild(mkt);
     }
+    var unavailable = [];
+    var unsampled = [];
     for (let g = 0; g < buckets.length; g++) {
       let cfg = buckets[g];
       let raw = mb && mb[cfg.key];
-      let list = listState(raw).items;
-      if (!list.length) continue;
+      let state = listState(raw);
+      let list = state.items;
+      let reported = raw && !Array.isArray(raw) ? num(raw.count) : null;
+      if (!state.available) unavailable.push(cfg.label);
+      if (!list.length) {
+        if (reported != null && reported > 0) unsampled.push(cfg.label + " summary reports " + Math.floor(reported) + " contracts but supplied no display sample.");
+        continue;
+      }
       let sec = el("div", "mgroup");
       let label = el("div", "sec-label", cfg.label);
-      let reported = raw && !Array.isArray(raw) ? num(raw.count) : null;
       let total = reported == null ? list.length : Math.max(list.length, Math.floor(reported));
       let count = el("span", "mkt-count", Math.min(6, list.length) + " of " + total + " markets");
       label.appendChild(count);
@@ -115,11 +124,20 @@ const RENDER = `
       }
       host.appendChild(sec);
     }
-    if (!host.childNodes.length) host.appendChild(el("div", "empty", "No prediction markets available."));
+    if (!host.childNodes.length && !unsampled.length) host.appendChild(el("div", "empty",
+      unavailable.length === buckets.length ? "Prediction data unavailable."
+        : unavailable.length ? "No contracts in the available returned categories."
+        : "No prediction contracts in this returned snapshot."));
+    if (unavailable.length) host.appendChild(el("div", "empty mkt-coverage", "Unavailable or omitted categories: " + unavailable.join(", ") + "."));
+    unsampled.forEach(function (notice) { host.appendChild(el("div", "empty mkt-coverage", notice)); });
 
-    q("foot").textContent = data.cached_at
-      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
-      : "";
+    var notices = [envelope.cached_at ? "Snapshot: " + collapseWs(envelope.cached_at) : "Snapshot time unavailable"];
+    if (envelope.stale) notices[0] += " (stale)";
+    if (envelope.freshnessUnknown) notices.push("Freshness could not be verified");
+    if (envelope.degraded || mb && mb.degraded) notices.push("Source degraded");
+    var sourceError = collapseWs(envelope.error || mb && mb.error);
+    if (sourceError) notices.push(sourceError.slice(0, 256));
+    q("foot").textContent = notices.join(" · ");
 `;
 
 export const PREDICTION_MARKETS_APP_HTML = buildAppHtml({

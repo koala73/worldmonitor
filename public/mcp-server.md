@@ -23,7 +23,7 @@ Use the apex server URL for all product MCP clients. Product-host aliases return
 
 ## Tools
 
-The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
+The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. General data tools accept an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath). The closed signed `get_forecast_case` and `get_forecast_theaters` readers preserve original evidence and reject projection arguments.
 
 ## MCP Apps
 
@@ -34,11 +34,11 @@ World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive 
 - `ui://worldmonitor/country-brief.html`
 - `ui://worldmonitor/market-radar-v3.html`
 - `ui://worldmonitor/chokepoint-monitor-v2.html`
-- `ui://worldmonitor/news-intelligence.html`
-- `ui://worldmonitor/conflict-events.html`
-- `ui://worldmonitor/natural-disasters.html`
-- `ui://worldmonitor/prediction-markets.html`
-- `ui://worldmonitor/forecasts.html`
+- `ui://worldmonitor/news-intelligence-v2.html`
+- `ui://worldmonitor/conflict-events-v2.html`
+- `ui://worldmonitor/natural-disasters-v2.html`
+- `ui://worldmonitor/prediction-markets-v3.html`
+- `ui://worldmonitor/forecasts-v3.html`
 - `ui://worldmonitor/news-dashboard-v3.html`
 - `ui://worldmonitor/country-view-v3.html`
 
@@ -53,7 +53,7 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
   - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://www.worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
-  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro is 50 quota-consuming `tools/call` / `resources/read` calls per UTC day and Pro Business is 250, one unit per call on a dedicated MCP counter. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
+  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro has 50 units per UTC day and Pro Business has 250 on a dedicated MCP counter. A standalone data call costs one unit. Country, news, curated market, prediction and Conflict Events panels each cost one unit including authorized internal reads. Prediction and Conflict Events filters and repeated opens share their respective admissions within five minutes. A new refresh UUID costs one new allocation, and the same UUID retries it. An explicit authorized prediction or Conflict Events receipt read queries current usage without another allocation. Unknown usage omits the numeric notice. API and free-account calls reject paid prediction and Conflict Events receipt/refresh controls. Optional `conflict_source.ucdp` preserves correctly typed observations from already-read UCDP metadata; missing fields remain absent. Known partial, missing, malformed, stale or incompatible source observations do not replay as successful conflict snapshots. This metadata does not prove atomic publication or completeness of every unrest provider. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
 
 Full agent walkthrough: [auth.md](https://www.worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 
@@ -81,3 +81,15 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 - Connect Claude to World Monitor
 - Real-time geopolitical intelligence MCP server
 - MCP server for markets, conflicts, and global risk data
+
+## Natural Disasters Panel Requests
+
+On Pro and Pro Business, `get_natural_disasters` opens one Natural Disasters allocation. Repeated opens and dataset, magnitude, activity and limit filters reuse that admission within five minutes. Use its returned `panelRequest.token` as `panel_request` for bounded reads. Explicit refresh needs `refresh: true`, a UUID `request_id`, and no reader token; the same UUID retries the refresh allocation. API and free-account callers keep ordinary per-tool charging and existing filter coercions, and reject the paid refresh controls.
+
+Each uncached execution reads three fixed data keys and the existing seismology metadata key as one logical read within the 64-read admission. Exact successful filtered originals replay before summary or JMESPath only until the earliest observable source or EONET retention deadline. A new filter or unavailable, malformed, known degraded or unknown-clock observation can reread under the same allocation. Blocked regional source decisions remain readable but uncached, including zero-request preflight decisions. This does not establish complete provider coverage. The existing news token still permits only its exact hazard dataset list and limits 100, 20 or 1; it cannot use standalone magnitude or activity filters. Source data and internal deadlines do not add public metadata fields. Confirmed current usage accompanies authorized reads; an unknown counter omits the numeric notice.
+
+### News Intelligence panel admission
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.

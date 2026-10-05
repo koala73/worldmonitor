@@ -19,7 +19,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
+所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 请求使用专属的每日计数器，每个 UTC 日分别为 **50** 个和 **250** 个单位。独立数据调用扣一个单位。国家简报、新闻地图、精选市场、预测或冲突事件面板各扣一个单位，包含其授权内部读取。市场、预测和冲突事件筛选及重复打开在五分钟内复用各自的分配。附带新 UUID 的显式刷新扣一个新单位；同一 UUID 的重试复用该分配。授权的冲突事件凭据读取还会查询当前使用量，不再扣额度；使用量未知时省略数字通知。详见[付费内嵌面板请求](/zh/usage-rate-limits#付费内嵌面板请求)。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-登录流程)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -337,7 +337,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_country_brief` | 带结构化来源链接的各国地缘 + 经济评估。支持分析框架。 | LLM |
 | `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
-| `get_forecast_predictions` | 预计算的缓存预测。快速。 | 缓存 |
+| `get_forecast_predictions` | 缓存预测；付费交互面板返回紧凑列表和签名的案例读取授权。 | 缓存 |
+| `get_forecast_case` | 使用预测面板授权读取指定 ID 和版本的原始案例。 | 缓存 |
+| `get_forecast_theaters` | 通过同一预测准入读取最新原始模拟战区，保留独立来源时间和部分覆盖状态。 | RPC |
 | `get_forecast_scorecard` | 缓存的预测结算校准与记分卡。 | 缓存 |
 
 ## API 覆盖
@@ -397,6 +399,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_research_signals` | `GET /api/research/v1/list-tech-events` |
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_case` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_theaters` | `GET /api/forecast/v1/get-simulation-outcome` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
@@ -484,11 +488,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | 以段落呈现的 AI 合成各国简报，附带分析框架视角和支撑来源。 |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Fear & Greed 综合指标，外加各资产类别的报价表（股票、大宗商品、加密货币、海湾、板块），带有带符号、色彩编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor-v2.html` | `get_chokepoint_status` | 各咽喉要道的滚动过境摘要（今日计数、周环比变化、油轮占比），并带有风险级别标记。 |
-| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI 分类的热门报道，带有类别、警报标记、国家和来源。 |
-| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
-| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
-| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。 |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 以概率卡片（标题、领域、区域）呈现的 AI 生成地缘政治和经济预测。 |
+| `ui://worldmonitor/news-intelligence-v2.html` | `get_news_intelligence` | AI 分类的热门报道，带有类别、警报标记、国家和来源。 |
+| `ui://worldmonitor/conflict-events-v2.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
+| `ui://worldmonitor/natural-disasters-v2.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
+| `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。缺失或无效的类别会明确标记为不可用或未包含；未知的新鲜度也会明确显示。 |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 已加载的预测卡片支持按领域和区域进行本地筛选；原始案例证据可通过同一签名的面板准入读取。 |
 
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
 
@@ -583,3 +587,16 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 - [认证概览](/zh/authentication) —— 浏览器 vs bearer vs OAuth
 - [API 参考](/zh/api-reference) —— 通过 REST 获取同样的数据
 - [Pro 功能](https://www.worldmonitor.app/pro)
+
+
+## 自然灾害面板请求
+
+在 Pro 与 Pro Business 上，`get_natural_disasters` 首次打开扣一次自然灾害面板额度。重复打开及数据集、震级、活动状态和数量筛选在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需提供 `refresh: true` 和 UUID 格式的 `request_id`，且不携带读取凭据；同一 UUID 的重试复用刷新额度。API 与免费账户调用保留普通按工具计费及现有参数转换，不接受付费刷新控制。
+
+每次未缓存执行读取三个固定数据键及已存在的地震元数据键，作为 64 次读取预算中的一次工具执行。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放，但不得超过最早可观察的来源时效或 EONET 保留期限。新筛选或不可用、格式错误、已知降级、时间未知的数据可在同一分配内重新读取。区域来源的阻止决策保持可读但不缓存，包括未发出请求的预检决策。该策略不证明所有提供方覆盖完整。已有新闻凭据仍仅允许其固定灾害数据集列表及数量 100、20 或 1，不能使用独立面板的震级或活动筛选。内部来源时间和复用期限不会添加公开元数据字段。授权读取返回已确认的当前使用量；计数未知时省略数字通知。
+
+### News Intelligence 面板额度
+
+在 Pro 和 Pro Business 中，`get_news_intelligence` 打开一次 News Intelligence 面板只消耗一个额度。重复打开、筛选、`summary` 和 JMESPath 视图在授权窗口内复用同一完整原始快照。返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具；新闻和国家面板凭据不能授权它。显式刷新需设置 `refresh: true`，提供 UUID `request_id`，并省略读取凭据。重试同一 UUID 复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+复用仍使用现有四个数据 GET 和三个元数据 GET。有效期取 30/45/60 分钟元数据期限、共享的 60 分钟 Insights 生成期限、已评估的 GDELT 内容年龄期限及面板授权期限的最早值。公告发布时间会验证，但此读取图没有独立的公告新鲜度评估。缺失、降级、格式错误、过期、未来或未评估的来源可以重试。付费读取通过 `stale` 表示已证实的生成时间过期，通过 `freshnessUnknown` 表示未评估的时钟；原始来源值保持不变。跨源生产程序允许已观察的空信号列表；空 Insights 和公告引导列表不可复用。64 次读取上限计算未缓存的工具执行次数，不是单个 Redis GET 次数。这不证明所有提供方的完整覆盖。

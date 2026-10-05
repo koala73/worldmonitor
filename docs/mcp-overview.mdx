@@ -21,7 +21,7 @@ Looking for tools that operate the dashboard already open in a Chrome tab? See [
 OAuth is not needed for `get_sources`: it is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10 requests/minute/IP. Other data tools require a user-bound credential. Tools marked `free-account` (direct cache reads) can use the small confirmed-free allowance; tools marked `subscription` (everything with server-side execute logic — live fetches, plus a few local-compute tools) require Pro.
 </Info>
 
-All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP calls use a dedicated daily counter of **50** and **250** quota-consuming `tools/call` / `resources/read` calls per UTC day, one unit per call. **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, 3 for `get_country_brief`, and 5 for `get_airspace` (up to four downstream requests across the dateline). Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise OAuth can be unlimited, and only legacy operator keys explicitly allowlisted by the deployment skip the daily reservation. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. `get_sources` and the metadata helper `describe_tool` are exempt from the daily quota. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
+All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP requests use a dedicated daily counter of **50** and **250** units per UTC day. A standalone data call costs one unit. A country brief, news dashboard, curated market panel, prediction panel, or Conflict Events panel costs one unit including its authorized internal reads. Curated market, prediction and Conflict Events filters and repeated opens reuse their respective admissions within five minutes. An explicit refresh with a new UUID costs one new unit; the same UUID retries that allocation. An authorized Conflict Events receipt read also queries current usage without another allocation, and unknown usage omits the numeric notice. See [Paid embedded-panel requests](/usage-rate-limits#paid-embedded-panel-requests). **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, 3 for `get_country_brief`, and 5 for `get_airspace` (up to four downstream requests across the dateline). Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise OAuth can be unlimited, and only legacy operator keys explicitly allowlisted by the deployment skip the daily reservation. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. `get_sources` and the metadata helper `describe_tool` are exempt from the daily quota. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -355,7 +355,9 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 | `get_country_brief` | Per-country geopolitical + economic assessment with structured source links. Supports analytical frameworks. | LLM |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
-| `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
+| `get_forecast_predictions` | Cached forecasts; paid interactive openings return a compact list and signed case admission. | Cache |
+| `get_forecast_case` | One original case for an exact loaded ID and generation under the forecast admission. | Cache |
+| `get_forecast_theaters` | Latest original simulation theaters under the same forecast admission; source run/time and partial coverage remain explicit. | RPC |
 | `get_forecast_scorecard` | Cached forecast-resolution calibration and scorecard. | Cache |
 
 ### Meta
@@ -422,6 +424,8 @@ Reverse lookup workflow:
 | `get_research_signals` | `GET /api/research/v1/list-tech-events` |
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_case` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_theaters` | `GET /api/forecast/v1/get-simulation-outcome` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
@@ -510,11 +514,11 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Fear & Greed plus all loaded equity, commodity, crypto, Gulf and sector quotes, asset names and expandable intraday charts. |
 | `ui://worldmonitor/chokepoint-monitor-v2.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
-| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and source. |
-| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
-| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
-| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
+| `ui://worldmonitor/news-intelligence-v2.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and source. |
+| `ui://worldmonitor/conflict-events-v2.html` | `get_conflict_events` | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
+| `ui://worldmonitor/natural-disasters-v2.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
+| `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples preserve loaded contracts and snapshot metadata. Missing or malformed categories and unknown freshness remain explicit. |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | Loaded forecast cards and local filters, with original case evidence read under the same signed opening allocation. |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
 
@@ -610,3 +614,16 @@ Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The
 - [Authentication overview](/authentication) — browser vs bearer vs OAuth
 - [API Reference](/api-reference) — the same data via REST
 - [Pro features](https://www.worldmonitor.app/pro)
+
+
+## Natural Disasters Panel Requests
+
+On Pro and Pro Business, `get_natural_disasters` opens one Natural Disasters allocation. Repeated opens and dataset, magnitude, activity and limit filters reuse that admission within five minutes. Use its returned `panelRequest.token` as `panel_request` for bounded reads. Explicit refresh needs `refresh: true`, a UUID `request_id`, and no reader token; the same UUID retries the refresh allocation. API and free-account callers keep ordinary per-tool charging and existing filter coercions, and reject the paid refresh controls.
+
+Each uncached execution reads three fixed data keys and the existing seismology metadata key as one logical read within the 64-read admission. Exact successful filtered originals replay before summary or JMESPath only until the earliest observable source or EONET retention deadline. A new filter or unavailable, malformed, known degraded or unknown-clock observation can reread under the same allocation. Blocked regional source decisions remain readable but uncached, including zero-request preflight decisions. This does not establish complete provider coverage. The existing news token still permits only its exact hazard dataset list and limits 100, 20 or 1; it cannot use standalone magnitude or activity filters. Source data and internal deadlines do not add public metadata fields. Confirmed current usage accompanies authorized reads; an unknown counter omits the numeric notice.
+
+### News Intelligence panel admission
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.

@@ -116,7 +116,8 @@
       "shared/x-account-source-tiers.json",
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
-      "shared/stocks.json"
+      "shared/stocks.json",
+      "scripts/shared/pizzint-location.cjs"
     ],
     "documentedAt": "Dockerfile.relay"
   },
@@ -509,7 +510,9 @@
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-bboxes.json",
       "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
+      "shared/iso3-to-iso2.json",
+      "scripts/data/country-centroids.json",
+      "scripts/lib/country-centroid.mjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-6-seed-bundle-climate"
   },
@@ -681,6 +684,8 @@
       "scripts/_upstash-rest.mjs",
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
+      "scripts/data/country-centroids.json",
+      "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
       "scripts/nixpacks.toml",
@@ -1323,6 +1328,7 @@
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/pizzint-location.cjs",
       "shared/country-names.json",
       "shared/crawlable-crises.json",
       "shared/hapi-app-identifier.json",

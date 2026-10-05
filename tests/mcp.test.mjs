@@ -3716,7 +3716,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
     globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    const reqs = Array.from({ length: 100 }, () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
+    const reqs = Array.from({ length: 100 }, () => mcpHandler(proReq('POST', callBody('get_country_macro')), deps));
     const results = await Promise.all(reqs);
     const ok = results.filter((r) => r.status === 200).length;
     const rejected = results.filter((r) => r.status === 429).length;
@@ -4113,7 +4113,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
 
   it('error: Redis pipeline throws on INCR → -32603 + 503 + Retry-After', async () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { throwOnIncr: true } });
-    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    const res = await mcpHandler(proReq('POST', callBody('get_country_macro')), deps);
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('Retry-After'), '5');
     const body = await res.json();
@@ -4141,7 +4141,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
     globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    const res = await mcpHandler(proReq('POST', callBody('get_country_macro')), deps);
     assert.equal(res.status, 429, 'over-cap request 429s as expected');
     // The clamp logic INCRs+DECRs to probe, then DECR-sweeps. The exact
     // resulting count depends on the probe path; the contract is "post-

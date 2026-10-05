@@ -436,11 +436,15 @@ components:
                 lat:
                     type: number
                     format: double
-                    description: Precise latitude from source (overrides country centroid on map when non-zero).
+                    description: |-
+                        Latitude: the source's point when it gives one, otherwise the centroid of country_code.
+                         0 with lng 0 means the item has no known location.
                 lng:
                     type: number
                     format: double
-                    description: Precise longitude from source (overrides country centroid on map when non-zero).
+                    description: |-
+                        Longitude: the source's point when it gives one, otherwise the centroid of country_code.
+                         0 with lat 0 means the item has no known location.
                 cases:
                     type: integer
                     format: int32
