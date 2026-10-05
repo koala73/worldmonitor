@@ -431,7 +431,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/market-radar-v3.html',
       'ui://worldmonitor/chokepoint-monitor.html',
-      'ui://worldmonitor/news-intelligence.html',
+      'ui://worldmonitor/news-intelligence-v2.html',
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters-v2.html',
       'ui://worldmonitor/prediction-markets-v3.html',
@@ -676,7 +676,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/world-brief.html',
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/chokepoint-monitor.html',
-      'ui://worldmonitor/news-intelligence.html',
+      'ui://worldmonitor/news-intelligence-v2.html',
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
@@ -705,7 +705,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('EXPANSION WIDGETS: execute authoritative payloads and summary samples for all five renderers', async () => {
     const cases = [
       {
-        uri: 'ui://worldmonitor/news-intelligence.html',
+        uri: 'ui://worldmonitor/news-intelligence-v2.html',
         hostId: 'list',
         raw: { data: { insights: { topStories: [{
           primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)',
@@ -1096,7 +1096,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const hostile = '<img src=x onerror="globalThis.pwned=true">';
     const cases = [
       {
-        uri: 'ui://worldmonitor/news-intelligence.html', hostId: 'list',
+        uri: 'ui://worldmonitor/news-intelligence-v2.html', hostId: 'list',
         payload: { data: { insights: { topStories: [{ primaryTitle: hostile, primarySource: hostile }] } } },
       },
       {
@@ -1134,7 +1134,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('MULTI-CACHE WIDGETS: missing labels show unavailable while present empty lists show genuine empty copy', async () => {
     const cases = [
       {
-        uri: 'ui://worldmonitor/news-intelligence.html', hostId: 'list',
+        uri: 'ui://worldmonitor/news-intelligence-v2.html', hostId: 'list',
         missing: { data: { 'gdelt-intel': {} } },
         empty: { data: { insights: { topStories: [] } } },
         emptyCopy: /No news stories available\./,
