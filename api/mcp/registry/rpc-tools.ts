@@ -1507,11 +1507,13 @@ export const RPC_TOOLS: ToolDef[] = [
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
+    description: 'Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was. A paid opening shares the existing country allocation with brief, risk and full-panel reads. Healthy originals replay before presentation; incomplete or retained sources remain retryable under the same allocation.',
     inputSchema: {
       type: 'object',
       properties: {
         panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
+        refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
@@ -1748,10 +1750,13 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_risk',
     _outputBudgetBytes: 262144,
-    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.',
+    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm. A paid opening shares the existing country allocation with brief and full-panel reads. Healthy route-specific loaded originals replay before presentation; upstream failures remain retryable. Loaded reuse does not attest current advisory or sanctions freshness.',
     inputSchema: {
       type: 'object',
       properties: {
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued same-country panel request token for loaded reads.' },
+        refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
       },
       required: ['country_code'],

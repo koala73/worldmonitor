@@ -1,3 +1,4 @@
+import { countryBriefDirectViewSchema, countryRiskDirectViewSchema, normalizeCountryDirectRead } from '../../shared/country-brief-host';
 import { buildAttributionRider, mergeAttributionRider } from '../../shared/attribution-rider';
 import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — Edge-safe JS envelope mirror.
@@ -461,6 +462,24 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Country refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = (tool.name === 'get_country_brief' ? countryBriefDirectViewSchema : countryRiskDirectViewSchema).safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid country arguments and a request_id for refresh.', 'invalid');
+        const { refresh, request_id, ...filters } = parsed.data;
+        const normalized = normalizeCountryDirectRead(tool.name, filters);
+        if (!normalized) throw new PanelRequestError('Supply a recognized country and analysis.', 'invalid');
+        sourceArguments = normalized;
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the country without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, { country_code: normalized.country_code, refresh, ...(request_id ? { request_id } : {}) });
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, normalized, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_world_brief') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('World Brief refresh controls require a paid panel allowance.', 'invalid');
       if (dedicatedPanel) {
@@ -587,7 +606,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if ((tool.name === 'get_world_brief' || tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_country_brief' || tool.name === 'get_country_risk' || tool.name === 'get_world_brief' || tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters' || tool.name === 'get_news_intelligence' || tool.name === 'get_chokepoint_status') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -709,7 +728,7 @@ export async function dispatchToolsCall(
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
       result = await tool._execute(
-        callArguments,
+        dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : callArguments,
         execution.downstreamOrigin,
         context,
         execution,
@@ -730,7 +749,7 @@ export async function dispatchToolsCall(
         await panelRead.save(snapshot);
       } else await panelRead.save(result);
     }
-    if (tool.name === 'get_world_brief' && panelRequest && result && typeof result === 'object') result = { ...result, panelRequest };
+    if ((tool.name === 'get_world_brief' || tool.name === 'get_country_brief' || tool.name === 'get_country_risk') && panelRequest && result && typeof result === 'object') result = { ...result, panelRequest };
     if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
+import { resolveCountryCode } from './country-code-resolve';
 
 export const panelAdmissionSchema = panelReceiptSchema.extend({ countryCode: z.string().regex(/^[A-Z]{2}$/) });
 export type PanelAdmission = z.infer<typeof panelAdmissionSchema>;
@@ -11,6 +12,32 @@ export const countryViewSchema = z.object({
   request_id: z.string().uuid().optional(),
   topic: z.enum(Object.keys(BRIEF_TOPICS) as [keyof typeof BRIEF_TOPICS, ...Array<keyof typeof BRIEF_TOPICS>]).default('overview'),
 }).strict();
+
+const countryDirectControls = {
+  country_code: z.string().min(2).max(100),
+  refresh: z.boolean().default(false),
+  request_id: z.string().uuid().optional(),
+};
+export const countryBriefDirectViewSchema = z.object({
+  ...countryDirectControls, framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
+}).strict().refine(value => !value.refresh || value.request_id !== undefined);
+export const countryRiskDirectViewSchema = z.object(countryDirectControls).strict()
+  .refine(value => !value.refresh || value.request_id !== undefined);
+const countryBriefDirectReadSchema = z.object({
+  country_code: z.string().min(2).max(100), framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
+}).strict();
+const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100) }).strict();
+
+export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_country_risk', args: Record<string, unknown>): Record<string, unknown> | null {
+  const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);
+  if (!parsed.success) return null;
+  const country = resolveCountryCode(parsed.data.country_code);
+  if (!country) return null;
+  const original = parsed.data as { framework?: unknown; allow_stale?: unknown };
+  let framework = '';
+  try { if (name === 'get_country_brief') framework = String(original.framework ?? '').slice(0, 2000); } catch { return null; }
+  return { country_code: country, ...(framework ? { framework } : {}), ...(original.allow_stale === true ? { allow_stale: true } : {}) };
+}
 
 const activityBoundsSchema = {
   ne_lat: z.coerce.number().min(-90).max(90).default(0),

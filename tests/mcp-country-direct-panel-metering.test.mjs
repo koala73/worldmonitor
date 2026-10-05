@@ -15,7 +15,7 @@ describe('direct country paid original reuse', () => {
   const nativeBrief = () => ({ countryCode: 'US', countryName: 'United States', brief: 'Controlled assessment [1].', model: 'fixture-model', generatedAt: now - 60000, sources: [{ title: 'US trade evidence', source: 'Reuters', url: 'https://example.com/evidence', publishedAt: '2026-10-05T09:59:00Z' }], evidence: [{ id: 'macro', kind: 'macro', label: 'GDP', value: '2.3%', factText: 'Observed growth', asOf: '2026 Q2', url: 'https://example.com/macro' }] });
   const nativeDigest = () => ({ categories: { politics: { items: [{ title: 'United States trade talks', source: 'Reuters', link: 'https://example.com/grounding', publishedAt: '2026-10-05T09:58:00Z', corroborationCount: 2 }] } }, coverage: { state: 'complete', servedStale: false, attemptedAt: '2026-10-05T10:00:00Z' } });
   const nativeRisk = () => ({ countryCode: 'US', countryName: 'United States', advisoryLevel: '', sanctionsActive: false, sanctionsCount: 0, fetchedAt: now - 120000, upstreamUnavailable: false, cii: { region: 'US', combinedScore: 17, staticBaseline: 14, dynamicScore: -3, trend: 'TREND_DIRECTION_FALLING', components: { ciiContribution: 1, geoConvergence: 2, militaryActivity: 3, newsActivity: 4 }, computedAt: now - 120000, methodologyVersion: 'fixture-v1', eventMultiplier: 1, advisoryLevel: '', advisoryProvenance: 'live' } });
-  const invoke = async (bundle, name = 'get_country_brief', args = { country_code: 'US' }, request) => {
+  const invoke = async (bundle, name = 'get_country_brief', args = { country_code: 'US' }, request = undefined) => {
     const response = await handler(request ?? proReq('POST', callBody(name, args)), bundle.deps);
     return { response, body: await response.json() };
   };
@@ -88,11 +88,35 @@ describe('direct country paid original reuse', () => {
     ['partial coverage', () => { digest.coverage.state = 'partial'; }], ['retained coverage', () => { digest.coverage.servedStale = true; }],
     ['failed coverage', () => { digest.coverage.state = 'error'; }], ['future generation', () => { brief.generatedAt = now + 1; }],
     ['invalid generation', () => { brief.generatedAt = 'bad'; }], ['wrong identity', () => { brief.countryCode = 'CN'; }],
-    ['malformed evidence', () => { brief.evidence = [7]; }], ['failed gateway', () => { briefStatus = 503; }],
+    ['malformed evidence', () => { brief.evidence = [7]; }], ['missing evidence fields', () => { brief.evidence = [{}]; }], ['failed gateway', () => { briefStatus = 503; }],
   ]) it(`retries ${label} without a second allocation and preserves healthy recovery`, async () => {
     const bundle = makeProDeps(); mutate(); await invoke(bundle); assert.equal(cache(bundle).length, 0);
     brief = nativeBrief(); digest = nativeDigest(); briefStatus = 200; await invoke(bundle); await invoke(bundle);
     assert.equal(bundle.pipe.count, 1); assert.equal(calls.length, 4);
+  });
+  it('keeps true stale grounding retryable and preserves it without a readiness claim', async () => {
+    const bundle = makeProDeps(); digest.coverage.servedStale = true;
+    const retained = value(await invoke(bundle, 'get_country_brief', { country_code: 'US', allow_stale: true }));
+    assert.equal(retained.digestCoverage.servedStale, true); assert.equal(retained.groundingStories.length, 1); assert.equal(cache(bundle).length, 0);
+    digest = nativeDigest(); await invoke(bundle, 'get_country_brief', { country_code: 'US', allow_stale: true });
+    await invoke(bundle, 'get_country_brief', { country_code: 'US', allow_stale: true });
+    assert.equal(calls.length, 4); assert.equal(bundle.pipe.count, 1);
+  });
+  it('bounds independent effective variants and allows known loaded replay after the read cap', async () => {
+    const bundle = makeProDeps();
+    for (let i = 0; i < 64; i++) await invoke(bundle, 'get_country_brief', { country_code: 'US', framework: `lens-${i}` });
+    assert.equal((await invoke(bundle, 'get_country_brief', { country_code: 'US', framework: 'lens-65' })).response.status, 429);
+    assert.equal(value(await invoke(bundle, 'get_country_brief', { country_code: 'US', framework: 'lens-0' })).brief, brief.brief);
+    assert.equal(calls.length, 128); assert.equal(bundle.pipe.count, 1); assert.equal(cache(bundle).length, 64);
+  });
+  it('rejects malformed native risk cache identities and field types without losing original compatible fields', async () => {
+    const bundle = makeProDeps(); risk.nativeExtra = { source: 'preserved' }; await invoke(bundle, 'get_country_risk');
+    const [key, raw] = cache(bundle)[0];
+    for (const mutate of [x => { x.countryCode = 'CN'; }, x => { x.cii.region = 'CN'; }, x => { delete x.advisoryLevel; }, x => { x.sanctionsCount = 'unknown'; }, x => { x.upstreamUnavailable = true; }, x => { x.cii.components.newsActivity = false; }]) {
+      const invalid = JSON.parse(raw); mutate(invalid); bundle.pipe.store.set(key, JSON.stringify(invalid));
+      assert.deepEqual(value(await invoke(bundle, 'get_country_risk')).nativeExtra, risk.nativeExtra);
+    }
+    assert.equal(calls.length, 7); assert.equal(bundle.pipe.count, 1);
   });
   it('does not require matching country news in a complete digest', async () => {
     const bundle = makeProDeps(); digest.categories = {};
@@ -104,12 +128,12 @@ describe('direct country paid original reuse', () => {
     const reader = await authorizePanelRead(context, bundle.pipe.pipeline, 'get_country_brief', { country_code: 'US' }, token);
     await reader.save({ ...nativeBrief(), sources: [], groundingStories: [], digestCoverage: { state: 'complete', servedStale: false } });
     const [key, raw] = cache(bundle)[0];
-    for (const mutate of [x => { x.brief = ''; }, x => { x.digestCoverage.servedStale = true; }, x => { delete x.digestCoverage; }, x => { x.countryCode = 'CN'; }, x => { x.evidence = [false]; }]) {
+    for (const mutate of [x => { x.brief = ''; }, x => { x.digestCoverage.servedStale = true; }, x => { delete x.digestCoverage; }, x => { x.countryCode = 'CN'; }, x => { x.evidence = [false]; }, x => { x.groundingStories = [{ title: 'US story', source: 'Reuters', corroborationCount: 1, corroboration: { state: 'single-publisher', publishers: 1 }, publishers: [false] }]; }]) {
       const invalid = JSON.parse(raw); mutate(invalid); bundle.pipe.store.set(key, JSON.stringify(invalid));
       await invoke(bundle, 'get_country_brief', { country_code: 'USA', panel_request: token });
     }
     bundle.pipe.store.set(key, 'bad-json'); await invoke(bundle, 'get_country_brief', { country_code: 'US', panel_request: token });
-    assert.equal(calls.length, 12); assert.equal(bundle.pipe.count, 1);
+    assert.equal(calls.length, 14); assert.equal(bundle.pipe.count, 1);
   });
   it('retries outage risk but reuses genuine untracked identity and native negative movement', async () => {
     const bundle = makeProDeps(); risk.upstreamUnavailable = true; delete risk.cii; risk.fetchedAt = 0;
