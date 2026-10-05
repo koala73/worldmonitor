@@ -9,6 +9,7 @@ const envelopeWriter = relay.slice(relay.indexOf('function buildEnvelope('), rel
 const envelopeReader = relay.slice(relay.indexOf('async function envelopeRead('), relay.indexOf('function notifySimpleHash('));
 const producer = relay.slice(relay.indexOf('const PIZZINT_SEED_INTERVAL_MS'), relay.indexOf('function startPizzintSeedLoop()'));
 const history = await import('../scripts/shared/pizzint-history.cjs');
+const { pizzintVenuePoint } = await import('../scripts/shared/pizzint-location.cjs');
 const emptyResponse = {
   success: true, data: [], events: [], overall_index: 0, defcon_level: 5,
   active_spikes: 0, has_active_spikes: false, timestamp: '2026-09-25T12:09:33.653Z',
@@ -30,6 +31,7 @@ function harness() {
   const context = vm.createContext({
     Date: Clock, AbortSignal: { timeout: (ms) => { state.timeouts.push(ms); return AbortSignal.timeout(ms); } }, CHROME_UA: 'test', console: { log: (...args) => state.logs.push(args), warn: (...args) => state.warnings.push(args) },
     process: { env: state.env },
+    pizzintVenuePoint,
     upstashGet: async (key) => {
       const cached = state.cache.get(key);
       return cached && cached.expiresAt > state.now ? structuredClone(cached.data) : null;
@@ -69,6 +71,17 @@ test('archives the normalized poll through the real helper', async () => {
   assert.equal(state.historyCalls.length, 1);
   assert.equal(state.historyCalls[0].provider, 'pizzint');
   assert.equal(state.historyCalls[0].locations[0].placeId, 'test-location');
+});
+
+test('publishes each venue at the pin in its Google Maps address', async () => {
+  const { state, seed } = harness();
+  state.source = { success: true, data: [{
+    ...validResponse.data[0],
+    address: 'https://www.google.com/maps/place/Extreme+Pizza/@38.8602396,-77.0585603,17z/data=!8m2!3d38.8602396!4d-77.0559854',
+  }] };
+  await seed();
+  const [venue] = state.historyCalls[0].locations;
+  assert.deepEqual({ lat: venue.lat, lng: venue.lng }, { lat: 38.8602396, lng: -77.0559854 });
 });
 
 test('an archive failure logs a fixed category and does not block publication', async () => {
