@@ -109,3 +109,24 @@ it('counts observed zero as live coverage while excluding static classification'
   expect(panel.getSignalCounts()?.isTier1).toBeNull();
   panel.hide();
 });
+
+
+it.each(['military-first', 'raw-first'])('keeps independent observed slots in the compiled panel: %s', (order) => {
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  Reflect.set(panel, 'signalsBody', body);
+  const observed = { earthquakes: 2, outages: 1, travelAdvisories: 3, travelAdvisoryMaxLevel: 'caution', thermalEscalations: 1 };
+  const military = { militaryFlights: 3, militaryFlightsInCountry: 1, militaryVessels: 2, militaryVesselsInCountry: 1 };
+  let militarySlot: typeof military | undefined;
+  let rawSlot: typeof observed | undefined;
+  const complete = (kind: string) => {
+    if (kind === 'military') militarySlot = military; else rawSlot = observed;
+    panel.updateSignals(countrySignalsFromMilitary('US', militarySlot, rawSlot));
+  };
+  for (const kind of order === 'military-first' ? ['military', 'raw'] : ['raw', 'military']) complete(kind);
+  expect(panel.getSignalCounts()).toMatchObject({ ...military, ...observed, isTier1: true });
+  expect(body.textContent).toContain('2 Earthquakes');
+  expect(body.textContent).toContain('3 Military Air');
+  expect(body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable');
+  panel.hide();
+});

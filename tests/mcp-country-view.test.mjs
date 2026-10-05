@@ -44,6 +44,19 @@ describe('country view MCP boundary', () => {
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
   });
+  it('delivers closed raw Signals with all failed family outcomes and no extra allocation', async () => {
+    globalThis.fetch = async (url, init) => { requests.push({ url: String(url), init }); return new Response('unavailable', { status: 503 }); };
+    const { deps, pipe } = makeProDeps();
+    const paid = async (name, args) => (await handler(proReq('POST', callBody(name, args)), deps)).json();
+    const opened = await paid('open_country_brief', { country_code: 'US' });
+    const panel_request = opened.result.structuredContent.panelRequest.token;
+    const reply = await paid('get_country_brief_section', { section: 'signalsRaw', arguments: { country_code: 'US' }, panel_request });
+    assert.equal(reply.result?.structuredContent?.state, 'unavailable');
+    assert.deepEqual(Object.keys(reply.result.structuredContent.value.sources), ['earthquakes', 'outages', 'advisories', 'thermal']);
+    assert.equal(reply.result.structuredContent.value.countryCode, 'US');
+    assert.equal(requests.length, 4);
+    assert.equal(pipe.count, 1);
+  });
   it('uses a fixed signed reader, charges its weight and retains native availability and dates', async () => {
     const { body, deps } = await invoke('get_country_brief_section', { section: 'energy', arguments: { country_code: 'US' } });
     const result = body.result.structuredContent;
