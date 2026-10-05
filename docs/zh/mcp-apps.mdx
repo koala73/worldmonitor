@@ -43,8 +43,10 @@ MCP Apps 在托管工具调用后，把 WorldMonitor UI 渲染到 MCP 宿主内�
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 自然灾害（交互式） | 近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan：震级、地点、时间、来源）和活跃野火（NASA FIRMS），分组展示。 |
-| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。 |
-| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
+| `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。 |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
+
+原始的 `ui://worldmonitor/prediction-markets.html` 仍作为未列出的读取别名。刷新已安装连接的元数据并打开新卡片后才能加载 v2；已有的缓存卡片仍使用旧 HTML。省略合约数据的投影无法恢复被省略的详情。
 
 ## 运行时流程
 
@@ -65,6 +67,12 @@ View -> Host: ui/notifications/size-changed
 ```
 
 视图本身从不获取实时的 WorldMonitor 数据。实时数据始终在正常的工具调用之后通过宿主到达应用。
+
+## 原始活跃战区
+
+**Load active theaters** 操作通过宿主调用 `get_forecast_theaters`，使用同一个签名的预测 `panel_request`。它只读取最新的原始模拟摘要。战区来源的运行 ID 和时间独立于预测列表的生成版本；来源时间本身不能证明新鲜度。本地展开保留已发布的所有路径、参与者、可选角色、反应、稳定因素和失效条件。
+
+读取共享打开面板时的每日分配以及 64 次未缓存读取上限。完整且通过验证的快照，以及明确无符合条件战区的空结果，会被复用。部分、失败、缺失、处理中和未知结果保持区别，并可使用同一准入手动重试。重试失败时保留原始证据。此操作不会选择任意运行、触发模拟或访问私有产物；格式无效或超出大小上限的摘要会报告不可用，不会截断证据。部署后刷新工具元数据以发现 `forecasts-v3.html`。保存的 `forecasts-v2.html` 和 `forecasts.html` 仍作为私有读取别名。
 
 ## 资源读取与配额
 
