@@ -130,7 +130,7 @@ async function newsAction(page: Page, name: string, args: object) {
 async function useSvgNewsMap(page: Page) {
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: unknown[]) {
       if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
       return Reflect.apply(original, this, [type, ...args]);
     } as typeof original;
@@ -423,9 +423,11 @@ for (const mobile of [false, true]) {
     const receipt = (await pending).structuredContent!;
     await writeFile(info.outputPath('category-pending-removal-receipts.json'), JSON.stringify({ before, receipt, calls: host.calls }, null, 2));
     expect(receipt).toMatchObject({ applied: false, reason: 'unknown_category', view: before.view, categoryLabel: 'All news panels', center: before.center, map: before.map });
+    expect(receipt.view).toEqual(before.view);
     await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
     await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('');
     await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
+    await expect(frame.getByRole('button', { name: 'Select a country for its brief', exact: true })).toBeDisabled();
     await expect(frame.getByRole('checkbox', { name: 'Fires', exact: true })).not.toBeChecked();
     await expect(frame.locator('.search-modal')).toBeHidden();
     await expect(frame.locator('.news-location-marker')).toHaveCount(1);

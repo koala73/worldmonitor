@@ -218,6 +218,16 @@ function mountPlugin(): void {
     select.value = value;
   }
 
+  function refuseNewsCategory(requestedCategory: string, reason: 'unknown_category' | 'ambiguous_category'): object {
+    categoryNotice.textContent = reason === 'ambiguous_category'
+      ? `The news category "${requestedCategory}" matches more than one loaded panel. Select a news category from the list. The current view has been kept.`
+      : `The news category "${requestedCategory}" is not loaded. Select a news category from the list. The current view has been kept.`;
+    categoryNotice.hidden = false;
+    const receipt = { applied: false, reason, requestedCategory, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() };
+    publishContext(receipt);
+    return receipt;
+  }
+
   async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
@@ -232,17 +242,10 @@ function mountPlugin(): void {
   async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
-    if (next.category) {
-      const resolution = resolveNewsCategory(next.category, loadedCategoryKeys());
-      if ('reason' in resolution) {
-        categoryNotice.textContent = resolution.reason === 'ambiguous_category'
-          ? `The news category "${next.category}" matches more than one loaded panel. Select a news category from the list. The current view has been kept.`
-          : `The news category "${next.category}" is not loaded. Select a news category from the list. The current view has been kept.`;
-        categoryNotice.hidden = false;
-        const receipt = { applied: false, reason: resolution.reason, requestedCategory: next.category, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() };
-        publishContext(receipt);
-        return receipt;
-      }
+    const requestedCategory = next.category;
+    if (requestedCategory) {
+      const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
       next = { ...next, category: resolution.category };
     }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
@@ -260,6 +263,11 @@ function mountPlugin(): void {
       }
       snapshot = await loaded;
       if (superseded()) return { applied: false, superseded: true };
+      if (requestedCategory) {
+        const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
+        intended.category = resolution.category;
+      }
     }
     let renderer: object | undefined;
     if (next.renderer) {
