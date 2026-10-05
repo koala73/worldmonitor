@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, admitCountryPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -185,8 +185,7 @@ describe('Chokepoint closed paid admission', () => {
       assert.equal(bundle.pipe.count, 3);
 
     }
-    if (process.env.CHOKEPOINT_CAPTURE) writeFileSync(process.env.CHOKEPOINT_CAPTURE, JSON.stringify(rows));
-    if (process.env.CHOKEPOINT_COMPARE) assert.equal(JSON.stringify(rows), readFileSync(process.env.CHOKEPOINT_COMPARE, 'utf8'));
+    assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-chokepoint-api-free-parent.json', import.meta.url), 'utf8'));
   });
   it('denies API/free paid controls before source reads or reservation', async () => {
     for (const plan of ['api', 'free']) {
