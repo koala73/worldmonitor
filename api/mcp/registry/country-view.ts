@@ -125,9 +125,9 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       value: { type: 'object' }, retrievedAt: { type: 'string' }, reason: { type: 'string' },
     },
     required: ['state', 'section'],
-    allOf: [{
-      if: { properties: { section: { const: 'signalsRaw' } }, required: ['section'] },
-      then: { properties: { value: {
+    anyOf: [
+      { properties: { section: { not: { const: 'signalsRaw' } } } },
+      { properties: { value: {
         type: 'object',
         properties: {
           countryCode: { type: 'string', pattern: '^[A-Z]{2}$' },
@@ -152,7 +152,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
         },
         required: ['countryCode', 'sources', 'missing'],
       } } },
-    }],
+    ],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
