@@ -339,6 +339,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
 | `get_forecast_predictions` | 缓存预测；付费交互面板返回紧凑列表和签名的案例读取授权。 | 缓存 |
 | `get_forecast_case` | 使用预测面板授权读取指定 ID 和版本的原始案例。 | 缓存 |
+| `get_forecast_theaters` | 通过同一预测准入读取最新原始模拟战区，保留独立来源时间和部分覆盖状态。 | RPC |
 | `get_forecast_scorecard` | 缓存的预测结算校准与记分卡。 | 缓存 |
 
 ## API 覆盖
@@ -399,6 +400,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
 | `get_forecast_case` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_theaters` | `GET /api/forecast/v1/get-simulation-outcome` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
@@ -490,7 +492,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
 | `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
 | `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。 |
-| `ui://worldmonitor/forecasts-v2.html` | `get_forecast_predictions` | 已加载的预测卡片支持按领域和区域进行本地筛选；原始案例证据可通过同一签名的面板准入读取。 |
+| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 已加载的预测卡片支持按领域和区域进行本地筛选；原始案例证据可通过同一签名的面板准入读取。 |
 
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
 

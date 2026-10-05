@@ -408,7 +408,7 @@ export async function dispatchToolsCall(
   const suppliedPanel = p.arguments?.panel_request;
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   try {
-    if (tool.name === 'get_forecast_case' && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading an original case.', 'invalid');
+    if ((tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters') && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading original evidence.', 'invalid');
     if (dedicatedPanel && tool.name === 'get_forecast_predictions' && suppliedPanel === undefined) {
       const admissionArgs = Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath' && key !== 'summary'));
       panelRequest = await admitForecastPanel(context, budget, deps.redisPipeline, admissionArgs);
@@ -424,7 +424,7 @@ export async function dispatchToolsCall(
     } else if (suppliedPanel !== undefined) {
       if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
-        tool.name === 'get_forecast_predictions' || tool.name === 'get_forecast_case' ? callArguments : Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
+        tool.name === 'get_forecast_predictions' || tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters' ? callArguments : Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });

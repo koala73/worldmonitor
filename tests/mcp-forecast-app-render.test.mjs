@@ -39,6 +39,115 @@ async function mount(data = payload([forecast])) {
 }
 afterEach(async () => { await Promise.all(windows.splice(0).map(win => win.happyDOM.close())); });
 
+const originalTheater = { theaterId: 'T1', theaterLabel: 'Controlled original theater', stateKind: 'pressure', topPaths: [
+  { pathId: 'P1', label: 'Original path', summary: 'Original theater assessment', confidence: null, keyActors: ['Original actor'], keyActorRoles: ['Original mediator'] },
+  { pathId: 'P2', label: 'Alternate path', summary: 'Alternative assessment', confidence: 0.6, keyActors: ['Alternate actor'] },
+], dominantReactions: ['Original reaction'], stabilizers: ['Original stabilizer'], invalidators: ['Original invalidator'] };
+const theaterResponse = { status: 'ready', found: true, runId: '1791113000000-controlled', schemaVersion: 'v1', theaterCount: 1,
+  generatedAt: 1791113000000, note: '', error: '', theaterSummariesJson: JSON.stringify([originalTheater]), processing: false,
+  eligibleTheaterCount: 1, failedTheaterCount: 0, allTheatersFailed: false, completionStatus: 'completed' };
+const signedForecasts = () => ({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: false }]), panelRequest: { panel: 'forecasts', token: 'controlled-forecast-receipt' } });
+function hostReply(win, id, result, source = win.eval('window.parent')) {
+  win.dispatchEvent(new win.MessageEvent('message', { source, data: { jsonrpc: '2.0', id, result } }));
+}
+function enableTools(win) { hostReply(win, 1, { hostCapabilities: { serverTools: {} } }); }
+function theaterReply(win, request, source = theaterResponse) { hostReply(win, request.id, { structuredContent: { data: { forecastTheaters: source } } }); }
+
+describe('original forecast theater UI', () => {
+  it('loads one closed signed request on demand and expands every original evidence field locally', async () => {
+    const { doc, win, messages } = await mount(signedForecasts());
+    enableTools(win);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 0);
+    const load = doc.getElementById('load-theaters');
+    assert.ok(load);
+    load.click(); load.click();
+    const requests = messages.filter(m => m.method === 'tools/call');
+    assert.equal(requests.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].params)), { name: 'get_forecast_theaters', arguments: { panel_request: 'controlled-forecast-receipt' } });
+    theaterReply(win, requests[0]);
+    const text = doc.getElementById('theaters').textContent;
+    for (const phrase of ['Controlled original theater', 'Original path', 'Original theater assessment', 'Original actor', 'Original mediator', 'Original reaction', 'Original stabilizer', 'Original invalidator', 'Alternate path', 'Alternative assessment', '60%', 'Confidence unknown', theaterResponse.runId, 'completed', '1 of 1', '2026-10-04T11:23:20.000Z']) assert.ok(text.includes(phrase), phrase);
+    assert.ok(!text.includes('Confidence: 0%'), 'unknown confidence must not become zero');
+    for (const details of doc.getElementById('theaters').querySelectorAll('details')) { details.open = true; details.dispatchEvent(new win.Event('toggle')); }
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+  });
+  it('keeps partial evidence while exposing a manual retry and rejects stale replies after replacement', async () => {
+    const { doc, win, messages, send } = await mount(signedForecasts());
+    enableTools(win);
+    doc.getElementById('load-theaters').click();
+    const first = messages.find(m => m.method === 'tools/call');
+    theaterReply(win, first, { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1 });
+    assert.match(doc.getElementById('theaters').textContent, /1 of 2.*1 failed/);
+    assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+    doc.getElementById('load-theaters').click();
+    const retry = messages.filter(m => m.method === 'tools/call')[1];
+    send({ ...signedForecasts(), panelRequest: { panel: 'forecasts', token: 'replacement-receipt' } });
+    theaterReply(win, retry);
+    assert.ok(!doc.getElementById('theaters').textContent.includes('Original theater assessment'));
+    assert.match(doc.getElementById('theaters').textContent, /Load active theaters/);
+  });
+  it('shows missing capabilities, unavailable data and unknown completion without automatic retries', async () => {
+    const { doc, win, messages } = await mount(signedForecasts());
+    doc.getElementById('load-theaters').click();
+    assert.match(doc.getElementById('theaters').textContent, /host does not support/);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 0);
+    enableTools(win);
+    doc.getElementById('load-theaters').click();
+    const first = messages.find(m => m.method === 'tools/call');
+    theaterReply(win, first, { ...theaterResponse, status: 'unknown', completionStatus: '' });
+    assert.match(doc.getElementById('theaters').textContent, /Completion unknown/);
+    assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    doc.getElementById('load-theaters').click();
+    const second = messages.filter(m => m.method === 'tools/call')[1];
+    theaterReply(win, second, { ...theaterResponse, theaterSummariesJson: '[{"topPaths":null}]' });
+    assert.match(doc.getElementById('theaters').textContent, /invalid/);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 2);
+  });
+  it('retains partial evidence on unavailable retries, then replaces it with an authoritative empty result', async () => {
+    const { doc, win, messages } = await mount(signedForecasts());
+    enableTools(win);
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.find(m => m.method === 'tools/call'), { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1 });
+    const empty = { ...theaterResponse, theaterCount: 0, theaterSummariesJson: '', eligibleTheaterCount: 0, completionStatus: '' };
+    const missing = { ...empty, found: false, runId: '', generatedAt: 0 };
+    for (const source of [
+      { ...missing, status: 'unavailable', error: 'redis_unavailable' },
+      { ...missing, status: 'missing' },
+      { ...missing, status: 'processing', processing: true },
+      { ...empty, status: 'failed', eligibleTheaterCount: 2, failedTheaterCount: 2, allTheatersFailed: true, completionStatus: 'all_theaters_failed' },
+    ]) {
+      doc.getElementById('load-theaters').click();
+      theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), source);
+      assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+      assert.match(doc.getElementById('theaters').textContent, /Previously loaded evidence remains visible/);
+      assert.ok(doc.getElementById('theaters').textContent.includes(source.status));
+    }
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), { ...empty, status: 'empty', completionStatus: 'no_eligible_theaters' });
+    assert.doesNotMatch(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    assert.match(doc.getElementById('theaters').textContent, /No eligible theaters/);
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 6);
+  });
+  it('bounds a stalled theater read and ignores a response from outside the host', async () => {
+    const { doc, win, messages } = await mount(signedForecasts());
+    enableTools(win);
+    let expire;
+    const nativeTimeout = win.setTimeout.bind(win);
+    win.setTimeout = (callback, delay, ...args) => { if (delay === 15000) expire = callback; return nativeTimeout(callback, delay, ...args); };
+    doc.getElementById('load-theaters').click();
+    const request = messages.find(m => m.method === 'tools/call');
+    hostReply(win, request.id, { structuredContent: { data: { forecastTheaters: theaterResponse } } }, null);
+    assert.match(doc.getElementById('theaters').textContent, /Loading/);
+    assert.equal(typeof expire, 'function');
+    expire();
+    assert.match(doc.getElementById('theaters').textContent, /timed out/);
+    theaterReply(win, request);
+    assert.ok(!doc.getElementById('theaters').textContent.includes('Original theater assessment'));
+    assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+  });
+});
+
 describe('forecast MCP analysis parity', () => {
   it('exposes loaded website case sections and forecast context', async () => {
     const { doc } = await mount();

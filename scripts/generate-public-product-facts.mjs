@@ -351,7 +351,7 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   );
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
     /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
-    'get_forecast_predictions → forecasts-v2.html',
+    'get_forecast_predictions → forecasts-v3.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
   card.tools = TOOL_REGISTRY.map((tool) => ({

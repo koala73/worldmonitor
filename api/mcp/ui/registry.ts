@@ -49,7 +49,8 @@ export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.htm
 export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
 export const NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.html';
 export const PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets.html';
-export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v2.html';
+export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v3.html';
+const PREVIOUS_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v2.html';
 const LEGACY_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts.html';
 
 // Per-resource `_meta.ui` (ext-apps `UIResourceMeta`) is built by the shared
@@ -160,7 +161,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: FORECASTS_UI_URI,
     name: 'Forecasts (interactive)',
     description:
-      'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated forecasts with local domain/region filters and original case analysis. Analysis expansion loads original case details under the signed forecast panel allocation; provided full cases render without extra reads. Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated forecasts with local domain/region filters and original case analysis. Analysis expansion loads original cases; Active theaters loads latest original theater summaries under the same signed forecast panel allocation, with independent run/time and completion coverage. Provided full cases and loaded theater details expand locally. Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: FORECASTS_APP_HTML,
@@ -171,7 +172,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
-  return uri === LEGACY_COUNTRY_BRIEF_UI_URI || uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
+  return uri === LEGACY_COUNTRY_BRIEF_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
 // resources/list public shape — {uri, name, description, mimeType} plus the
@@ -205,7 +206,7 @@ export async function buildUiResourceRead(
   if (uri === MARKET_RADAR_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI) return readMarketRadar(id, corsHeaders, uri);
   if (uri === COUNTRY_VIEW_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders, uri);
   if (uri === NEWS_DASHBOARD_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders, uri);
-  const def = UI_RESOURCE_BY_URI.get(uri === LEGACY_COUNTRY_BRIEF_UI_URI ? COUNTRY_BRIEF_UI_URI : uri === LEGACY_FORECASTS_UI_URI ? FORECASTS_UI_URI : uri);
+  const def = UI_RESOURCE_BY_URI.get(uri === LEGACY_COUNTRY_BRIEF_UI_URI ? COUNTRY_BRIEF_UI_URI : uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_UI_URI ? FORECASTS_UI_URI : uri);
   if (!def) {
     // Unreachable in practice — the handler only routes here after
     // isUiResourceUri(uri) is true — but fail closed with a spec -32602.

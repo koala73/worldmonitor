@@ -237,3 +237,16 @@ The human merged the injected-document repair as `da33e7a0196006a5608ca268dd45f1
 | World News follow-up uses displayed label | Separate PR #8826 adds World News label alongside stable politics ID; compiled receipt tests and CI pass | PR remains unmerged; native follow-up remains unaccepted |
 
 The controlled actual dispatcher fixture measures a 254,903-byte canonical feed and a 5,782-byte serialized opening result including receipts and usage. These are synthetic transport measurements, not production costs. A single case that exceeds the unchanged output budget reports an explicit error; no allowance refund or budget increase is used. API-key full-result contracts remain unchanged. Local proof, remote CI, merge, deployment and native acceptance remain separate. Overall acceptance remains incomplete.
+
+## Original forecast theaters: controlled transport and interface proof
+
+This unit depends on the signed forecast admission in PR #8827. The website reads latest simulation theaters separately from the prediction list. The plugin now exposes a closed `get_forecast_theaters` reader and a **Load active theaters** action. Both use the original forecast admission, one daily opening allocation and the existing 64 uncached-read budget. Source run/time remains independent of the forecast generation.
+
+| Website expectation | Controlled proof | Remaining acceptance |
+|---|---|---|
+| Original active theater evidence | All published paths, actors, optional roles, reactions, stabilizers and invalidators are transported unchanged and expand locally | Merge, exact production deployment, installed metadata refresh and matching native observation |
+| Genuine partial, missing and failed coverage | Distinct source states; partial evidence survives failed retry, then manual recovery succeeds | Native source recovery and same-tier source comparison |
+| One allocation includes internal evidence | Actual dispatcher fixture verifies opening plus latest theater read and successful replay under one daily allocation and the shared 64-read bound | Independent native ledger and explicit refresh accounting |
+| Current renderer discovers the reader | Forecasts v3 resource; v2 and original URI remain private read aliases | Native host capability and metadata refresh after deployment |
+
+Focused transport, original handler, metering, resource and exported-HTML checks pass locally. Eight inspected desktop/mobile fixtures show before, partial evidence, failed retry and completed recovery. Local proof is not CI readiness, deployment or native acceptance. Overall acceptance remains incomplete.
