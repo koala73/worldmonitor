@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { admitCountryPanel, authorizePanelRead, PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { countryActivityQueries } from '../shared/country-activity-query.ts';
-import { envPrefix } from '../server/_shared/pro-mcp-token.ts';
+import { dailyCounterKey, envPrefix } from '../server/_shared/pro-mcp-token.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -368,7 +368,12 @@ describe('one allocation per embedded panel', () => {
     assert.deepEqual(second.body.result.structuredContent.requestedView, { country: 'US', query: 'trade' });
     assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
     const snapshot = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
-    await snapshot.save({ data: { earthquakes: { earthquakes: [] }, events: { events: [] } } });
+    await snapshot.saveNaturalDisasters({
+      value: { cached_at: new Date().toISOString(), stale: false, data: { earthquakes: { earthquakes: [] }, events: { events: [] } } },
+      reuseUntil: Math.min(Date.now() + 60_000, Date.parse(grant.expiresAt)),
+    });
+    const loaded = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
+    assert.deepEqual(loaded.cached.data.earthquakes.earthquakes, []);
     const result = await invoke(deps, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100, panel_request: grant.token });
     assert.deepEqual(result.body.result.structuredContent.data.earthquakes.earthquakes, []);
     assert.equal(pipe.count, 1);
@@ -443,5 +448,845 @@ describe('one allocation per embedded panel', () => {
     assert.equal(pipe.count, 3);
     assert.equal((await invoke(deps, 'get_natural_disasters', { dataset: ['earthquakes'], limit: 20, panel_request: 'forged' })).body.error.code, -32602);
     assert.equal(pipe.count, 3);
+  });
+});
+
+describe('paid curated market panel through the MCP handler', () => {
+  let handler;
+  let fetched;
+  let degraded;
+  let sourceFailure;
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_market_data', args)), deps);
+    return { response, body: await response.json() };
+  };
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://market-seed.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
+    fetched = [];
+    degraded = false;
+    sourceFailure = false;
+    globalThis.fetch = async url => {
+      assert.ok(String(url).startsWith('https://market-seed.invalid/get/'), 'curated cache only');
+      if (!decodeURIComponent(String(url)).includes('market:')) return Response.json({ result: null });
+      fetched.push(String(url));
+      if (sourceFailure) throw new Error('controlled seed outage');
+      if (decodeURIComponent(String(url)).includes('seed-meta:')) return Response.json({ result: JSON.stringify({ fetchedAt: Date.now() }) });
+      return Response.json({ result: JSON.stringify({
+        quotes: [{ symbol: 'AAPL', price: 100, change: 1 }, { symbol: 'MSFT', price: 200, change: 2 }],
+        seededAt: new Date().toISOString(), rateLimited: degraded,
+      }) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('shares one allocation across opens and filters, while refresh retries share their original allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(receipt?.panel, 'markets');
+    assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
+    assert.equal(pipe.count, 1);
+    const next = await invoke(deps, { symbols: ['MSFT'], asset_class: ['equity'] });
+    assert.equal(next.body.result.structuredContent.panelRequest.token, receipt.token);
+    assert.equal(pipe.count, 1);
+    assert.equal(next.body.result.structuredContent.data['stocks-bootstrap'].quotes[0].symbol, 'MSFT');
+    const reads = fetched.length;
+    await invoke(deps, { symbols: [' aapl ', 'AAPL'], asset_class: ['equity'], panel_request: receipt.token });
+    assert.equal(fetched.length, reads);
+    const request_id = crypto.randomUUID();
+    const refreshed = await invoke(deps, { refresh: true, request_id, symbols: ['AAPL'], asset_class: ['equity'] });
+    const replay = await invoke(deps, { refresh: true, request_id, symbols: ['AAPL'], asset_class: ['equity'] });
+    assert.equal(pipe.count, 2);
+    assert.equal(refreshed.body.result.structuredContent.panelRequest.token, replay.body.result.structuredContent.panelRequest.token);
+    assert.equal(fetched.length, reads + 11);
+  });
+  it('caches the canonical result before summary and JMESPath presentation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const summarized = await invoke(deps, { asset_class: ['equity'], summary: true });
+    assert.equal(summarized.body.result.structuredContent.projection.data['stocks-bootstrap'].quotes.count, 2);
+    const raw = await invoke(deps, { asset_class: ['equity'] });
+    const token = raw.body.result.structuredContent.panelRequest.token;
+    assert.equal(raw.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    const projected = await invoke(deps, { asset_class: ['equity'], panel_request: token, jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+    assert.deepEqual(projected.body.result.structuredContent, { projection: ['AAPL', 'MSFT'] });
+    assert.equal(fetched.length, 11);
+    assert.equal(pipe.count, 1);
+  });
+  it('reports current server allowance on authorized market receipt results without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const key = dailyCounterKey(context.userId);
+    const pipeline = deps.redisPipeline;
+    let allowanceReads = 0;
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+        allowanceReads++;
+        return [{ result: String(pipe.count) }];
+      }
+      return pipeline(commands, ...options);
+    };
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const reads = fetched.length;
+    const reused = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(reused.body.result._meta?.['worldmonitor/usage']?.remaining, 49);
+    assert.equal(allowanceReads, 1);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, reads);
+    await pipe.pipeline([['INCR', key]]);
+    const projected = await invoke(deps, { asset_class: ['equity'], panel_request: token, jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+    assert.deepEqual(projected.body.result.structuredContent, { projection: ['AAPL', 'MSFT'] });
+    assert.deepEqual(projected.body.result._meta['worldmonitor/usage'], {
+      used: 2, limit: 50, remaining: 48,
+      resetsAt: opened.body.result._meta['worldmonitor/usage'].resetsAt, unit: 'requests',
+    });
+    assert.equal(pipe.count, 2);
+    assert.equal(fetched.length, reads);
+    assert.equal(allowanceReads, 2);
+    const resourceResponse = await handler(proReq('POST', {
+      jsonrpc: '2.0', id: 987, method: 'resources/read', params: { uri: 'worldmonitor://account/mcp-allowance' },
+    }), deps);
+    const resource = await resourceResponse.json();
+    const status = JSON.parse(resource.result.contents[0].text);
+    assert.deepEqual(projected.body.result._meta['worldmonitor/usage'], {
+      used: status.used, limit: status.limit, remaining: status.remaining, resetsAt: status.resetsAt, unit: 'requests',
+    });
+    assert.equal(allowanceReads, 3);
+    assert.equal(pipe.count, 2);
+  });
+  it('omits unverified market receipt usage on missing or invalid counter replies without charging or repeating source work', async () => {
+    const { deps, pipe } = makeProDeps();
+    const key = dailyCounterKey(context.userId);
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const pipeline = deps.redisPipeline;
+    const reads = fetched.length;
+    for (const [label, result] of [
+      ['missing', [{ result: null }]], ['zero', [{ result: '0' }]], ['undefined', [{ result: undefined }]],
+      ['negative', [{ result: '-1' }]], ['fractional', [{ result: '1.5' }]], ['blank', [{ result: ' ' }]],
+      ['boolean', [{ result: true }]], ['unsafe integer', [{ result: '9007199254740992' }]],
+      ['absent result', [{}]], ['empty pipeline', []], ['errored', [{ result: '1', error: 'outage' }]],
+      ['transport unavailable', null],
+    ]) {
+      let allowanceReads = 0;
+      deps.redisPipeline = async (commands, ...options) => {
+        if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+          allowanceReads++;
+          if (result === null) throw new Error('controlled outage');
+          return result;
+        }
+        return pipeline(commands, ...options);
+      };
+      const response = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+      assert.equal(response.body.error, undefined, label);
+      assert.equal(response.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2, label);
+      assert.equal(response.body.result._meta?.['worldmonitor/usage'], undefined, label);
+      assert.equal(allowanceReads, 1, label);
+      assert.equal(pipe.count, 1, label);
+      assert.equal(fetched.length, reads, label);
+    }
+    let allowanceReads = 0;
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) allowanceReads++;
+      return pipeline(commands, ...options);
+    };
+    assert.equal((await invoke(deps, { asset_class: ['equity'], panel_request: 'forged' })).body.error?.code, -32602);
+    assert.equal(allowanceReads, 0);
+    assert.equal(pipe.count, 1);
+  });
+  it('accepts an uppercase refresh UUID and replays its lowercase spelling without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const first = await invoke(deps, { refresh: true, request_id, asset_class: ['equity'] });
+    assert.equal(first.body.error, undefined);
+    const second = await invoke(deps, { refresh: true, request_id: request_id.toLowerCase(), asset_class: ['equity'] });
+    assert.equal(second.body.error, undefined);
+    assert.equal(first.body.result.structuredContent.panelRequest.token, second.body.result.structuredContent.panelRequest.token);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 11);
+  });
+  it('canonicalizes refresh UUID identity for existing country and news admissions', async () => {
+    const { pipe } = makeProDeps();
+    const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const now = Date.UTC(2026, 9, 4, 12);
+    for (const [admit, name, args, readArgs] of [
+      [admitCountryPanel, 'get_country_brief_section', { country_code: 'US' }, energy],
+      [admitNewsPanel, 'open_news_dashboard', {}, {}],
+    ]) {
+      const first = await admit(context, budget, pipe.pipeline, { ...args, refresh: true, request_id }, now);
+      await readPanel(context, pipe.pipeline, name, readArgs, first.token, now);
+      const replay = await admit(context, budget, pipe.pipeline, { ...args, refresh: true, request_id: request_id.toLowerCase() }, now + 60000);
+      assert.equal(first.token, replay.token);
+      assert.equal(first.expiresAt, replay.expiresAt);
+    }
+    assert.equal(pipe.count, 2);
+    assert.equal(fetched.length, 0);
+  });
+  it('retains existing empty-symbol and numeric-limit filtering with canonical default reuse', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, { asset_class: ['equity'] });
+    const token = first.body.result.structuredContent.panelRequest.token;
+    for (const args of [{}, { limit: 30 }, { symbols: [] }, { symbols: [' ', ''] }]) {
+      const result = await invoke(deps, { ...args, asset_class: ['equity'], panel_request: token });
+      assert.equal(result.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    }
+    assert.equal(fetched.length, 11);
+    for (const [limit, expected] of [[-1, 2], [0, 2], [1.5, 1], [0.5, 0]]) {
+      const result = await invoke(deps, { asset_class: ['equity'], limit, panel_request: token });
+      assert.equal(result.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, expected);
+    }
+    assert.equal(pipe.count, 1);
+  });
+  it('rejects invalid filters, refresh controls and foreign receipts before quota or source work', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ unknown: true }, { symbols: 'AAPL' }, { symbols: [1] }, { asset_class: ['forex'] }, { limit: '1' }, { refresh: true }, { refresh: true, request_id: 'bad' }]) {
+      assert.equal((await invoke(deps, args)).body.error?.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    const reads = fetched.length;
+    assert.equal((await invoke(deps, { panel_request: token, refresh: true, request_id: crypto.randomUUID() })).body.error?.code, -32602);
+    const news = (await import('../api/mcp/panel-requests.ts')).admitNewsPanel;
+    const grant = await news(context, budget, pipe.pipeline, {});
+    assert.equal((await invoke(deps, { panel_request: grant.token })).body.error?.code, -32602);
+    await assert.rejects(readPanel({ ...context, userId: 'other' }, pipe.pipeline, 'get_market_data', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'open_news_dashboard', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_quotes', { symbols: ['AAPL'] }, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_data', {}, token, Date.parse(first.body.result.structuredContent.panelRequest.expiresAt)));
+    await assert.rejects(readPanel(context, async () => { throw new Error('outage'); }, 'get_market_data', {}, token), error => error.code === 'backend');
+    assert.equal(fetched.length, reads);
+    assert.equal(pipe.count, 2);
+  });
+  it('rechecks current rights on cache replay and preserves per-tool API billing', async () => {
+    let revoked = false;
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: !revoked }, validUntil: Date.now() + 86400000 }) });
+    const opened = await invoke(deps);
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    revoked = true;
+    assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
+    assert.equal(fetched.length, 11);
+    assert.equal(pipe.count, 1);
+    const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    assert.equal((await invoke(api.deps)).body.result.structuredContent.panelRequest, undefined);
+    await invoke(api.deps, { symbols: ['AAPL'] });
+    assert.equal(api.pipe.count, 2);
+    assert.equal((await invoke(api.deps, { panel_request: token })).body.error?.code, -32602);
+    assert.equal((await invoke(api.deps, { unknown: true })).body.error?.code, -32602);
+    assert.equal(api.pipe.count, 2);
+  });
+  it('retries degraded seed results within the same allocation and stops at the existing 64-read ceiling', async () => {
+    const { deps, pipe } = makeProDeps();
+    degraded = true;
+    const opened = await invoke(deps, { asset_class: ['equity'] });
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(fetched.length, 22);
+    degraded = false;
+    const recovered = await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(recovered.body.result.structuredContent.data['stocks-bootstrap'].rateLimited, false);
+    await invoke(deps, { asset_class: ['equity'], panel_request: token });
+    assert.equal(fetched.length, 33);
+    for (let i = 0; i < PANEL_READ_LIMIT - 3; i++) await readPanel(context, pipe.pipeline, 'get_market_data', { symbols: [`MISS${i}`] }, token);
+    const denied = await invoke(deps, { symbols: ['LAST'], panel_request: token });
+    assert.equal(denied.response.status, 429);
+    assert.ok(denied.response.headers.get('Retry-After'));
+    assert.equal(fetched.length, 33);
+    assert.equal(pipe.count, 1);
+  });
+  it('keeps paid reads available at the daily cap and denies a new refresh before seed work', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(receipt.usage.remaining, 0);
+    const next = await invoke(deps, { symbols: ['MSFT'], asset_class: ['equity'] });
+    assert.equal(next.body.result.structuredContent.panelRequest.token, receipt.token);
+    const count = fetched.length;
+    const denied = await invoke(deps, { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(denied.response.status, 429);
+    assert.ok(denied.response.headers.get('Retry-After'));
+    assert.equal(pipe.count, 50);
+    assert.equal(fetched.length, count);
+  });
+  it('does not cache an execution error and can recover with the original paid receipt', async () => {
+    const { deps, pipe } = makeProDeps();
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const grant = await admitMarketPanel(context, budget, pipe.pipeline, {});
+    sourceFailure = true;
+    const failed = await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(failed.body.error.code, -32003);
+    sourceFailure = false;
+    const recovered = await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(recovered.body.result.structuredContent.data['stocks-bootstrap'].quotes.length, 2);
+    await invoke(deps, { asset_class: ['equity'], panel_request: grant.token });
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 22);
+  });
+  it('keeps incomplete and stale market seeds recoverable without changing refresh expiry on replay', async () => {
+    const { pipe } = makeProDeps();
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const now = Date.UTC(2026, 9, 4, 12);
+    const args = { refresh: true, request_id: crypto.randomUUID() };
+    const receipt = await admitMarketPanel(context, budget, pipe.pipeline, args, now);
+    const replay = await admitMarketPanel(context, budget, pipe.pipeline, args, now + 60000);
+    assert.equal(receipt.token, replay.token);
+    assert.equal(receipt.expiresAt, replay.expiresAt);
+    const read = await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now);
+    for (const value of [
+      { stale: true, data: { crypto: { quotes: [] } } },
+      { stale: false, unreadable: ['crypto'], data: { crypto: { quotes: [] } } },
+      { stale: false, data: { crypto: null } },
+      { stale: false, data: { crypto: { unavailable: true } } },
+      { stale: false, data: { 'stocks-bootstrap': { skipReason: 'SEED_UNAVAILABLE' } } },
+      { stale: false, data: { sectors: { valuationCoverage: { sourceStatus: 'degraded' } } } },
+    ]) {
+      await read.save(value);
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now)).cached, undefined);
+    }
+    const ready = { stale: false, data: { crypto: { quotes: [] } } };
+    await read.save(ready);
+    assert.deepEqual((await authorizePanelRead(context, pipe.pipeline, 'get_market_data', {}, receipt.token, now)).cached, ready);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 0);
+  });
+});
+
+describe('paid forecast panel admission', () => {
+  let handler;
+  let forecastTool;
+  let previousExecute;
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+    forecastTool = (await import('../api/mcp/registry/index.ts')).TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
+    previousExecute = forecastTool._execute;
+    forecastTool._execute = async (_args, _origin, _context, execution) => ({ data: { predictions: { generatedAt: '1720000000000', predictions: [{ id: 'controlled', title: 'Controlled forecast' }] } }, panelRequest: execution.panelRequest });
+  });
+  afterEach(() => {
+    forecastTool._execute = previousExecute;
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  const invoke = async (deps, name, args = {}) => {
+    const response = await handler(proReq('POST', callBody(name, args)), deps);
+    return { response, body: await response.json() };
+  };
+  it('opens and replays compact forecasts under one signed allocation and charges explicit refresh once', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const grant = first.body.result.structuredContent.panelRequest;
+    assert.equal(grant?.panel, 'forecasts');
+    assert.equal(grant.usage.remaining, 49);
+    const second = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
+    assert.equal(pipe.count, 1);
+    const request_id = crypto.randomUUID();
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    await invoke(deps, 'get_forecast_predictions', { refresh: true, request_id });
+    assert.equal(pipe.count, 2);
+  });
+  it('rejects invalid opening arguments before reservation', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ limit: 0 }, { limit: 31 }, { unexpected: true }, { refresh: true }]) {
+      const denied = await invoke(deps, 'get_forecast_predictions', args);
+      assert.equal(denied.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+    }
+  });
+  it('allows only fixed forecast list and exact case reads within the forecast scope', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    assert.equal(typeof admitForecastPanel, 'function');
+    const { pipe } = makeProDeps();
+    const grant = await admitForecastPanel(context, budget, pipe.pipeline, {});
+    const read = await readPanel(context, pipe.pipeline, 'get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000' }, grant.token);
+    await read.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    assert.deepEqual((await readPanel(context, pipe.pipeline, 'get_forecast_case', { generated_at: '1720000000000', forecast_id: 'controlled' }, grant.token)).cached, { data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    await readPanel(context, pipe.pipeline, 'get_forecast_predictions', { domain: 'energy', region: 'Europe', limit: 30 }, grant.token);
+    for (const [name, args] of [
+      ['get_forecast_predictions', { jmespath: 'data' }], ['get_forecast_predictions', { summary: true }],
+      ['get_forecast_predictions', { limit: 0 }], ['get_forecast_predictions', { refresh: true }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: '1720000000000', domain: 'energy' }],
+      ['get_forecast_case', { forecast_id: '', generated_at: '1720000000000' }],
+      ['get_forecast_case', { forecast_id: 'controlled', generated_at: '' }],
+      ['get_market_data', {}], ['get_country_brief', { country_code: 'US' }],
+    ]) await assert.rejects(readPanel(context, pipe.pipeline, name, args, grant.token));
+    assert.equal(pipe.count, 1);
+  });
+  it('keeps forecast namespace distinct and enforces owner, expiry and the durable read limit', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    const { pipe } = makeProDeps();
+    const now = Date.UTC(2026, 9, 4, 12);
+    const grant = await admitForecastPanel(context, budget, pipe.pipeline, {}, now);
+    assert.match(grant.token, /^forecasts\.b\d+\.\d{13}\.[a-f0-9]{64}$/);
+    assert.ok(pipe.ops.flat().some(command => command[0] === 'EVAL' && String(command[5]).includes(':forecasts:forecasts:')));
+    const args = { forecast_id: 'controlled', generated_at: '1720000000000' };
+    await assert.rejects(readPanel({ ...context, userId: 'other' }, pipe.pipeline, 'get_forecast_case', args, grant.token, now));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, Date.parse(grant.expiresAt)));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token.slice(0, -1) + (grant.token.endsWith('a') ? 'b' : 'a'), now));
+    const country = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' }, now);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', args, country.token, now));
+    const cached = await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now);
+    await cached.save({ data: { forecastCase: { status: 'ready', generatedAt: '1720000000000', forecast: { id: 'controlled' } } } });
+    for (let i = 1; i < PANEL_READ_LIMIT; i++) await readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: `case-${i}` }, grant.token, now);
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_forecast_case', { ...args, forecast_id: 'new' }, grant.token, now), error => error.code === 'reads');
+    assert.equal((await readPanel(context, pipe.pipeline, 'get_forecast_case', args, grant.token, now)).cached.data.forecastCase.forecast.id, 'controlled');
+    assert.equal(pipe.count, 2);
+  });
+  it('does not grant forecast panels against API per-tool budgets', async () => {
+    const { admitForecastPanel } = await import('../api/mcp/panel-requests.ts');
+    const { pipe } = makeProDeps();
+    await assert.rejects(admitForecastPanel(context, { allowance: 'api', limit: 1000 }, pipe.pipeline, {}));
+    assert.equal(pipe.count, 0);
+    const { deps, pipe: apiPipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const second = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(first.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(second.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(apiPipe.count, 2 * (await import('../api/mcp/registry/index.ts')).toolWeight(forecastTool));
+  });
+  it('refreshes opening notices while never storing receipts inside the replay snapshot', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const grant = first.body.result.structuredContent.panelRequest;
+    const cached = await authorizePanelRead(context, pipe.pipeline, 'get_forecast_predictions', {}, grant.token);
+    assert.equal(cached.cached.panelRequest, undefined);
+    await invoke(deps, 'open_country_brief', { country_code: 'US' });
+    const reopened = await invoke(deps, 'get_forecast_predictions');
+    assert.equal(reopened.body.result.structuredContent.panelRequest.usage.remaining, 48);
+    assert.equal(reopened.body.result._meta['worldmonitor/usage'].remaining, 48);
+    assert.equal(pipe.count, 2);
+    const replayed = await invoke(deps, 'get_forecast_predictions', { panel_request: grant.token });
+    assert.equal(replayed.body.result.structuredContent.panelRequest, undefined);
+    assert.equal(pipe.count, 2);
+    for (const args of [{ summary: true }, { jmespath: 'data' }, { refresh: true }]) {
+      assert.equal((await invoke(deps, 'get_forecast_predictions', { ...args, panel_request: grant.token })).body.error?.code, -32602);
+      assert.equal(pipe.count, 2);
+    }
+  });
+
+});
+
+describe('forecast panel transport through production cache reads', () => {
+  let handler;
+  let canonical;
+  let sourceReads;
+  const invoke = async (deps, name, args = {}) => {
+    const response = await handler(proReq('POST', callBody(name, args)), deps);
+    return { response, body: await response.json() };
+  };
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://forecast-fixture.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-fixture-token';
+    canonical = {
+      generatedAt: Date.now(),
+      predictions: Array.from({ length: 14 }, (_, i) => ({
+        id: `original-${i}`, title: `Original forecast ${i}`, domain: 'energy', region: 'Europe', probability: 0.4,
+        scenario: 'Original scenario', caseFile: { baseCase: `${i}:` + 'original prose '.repeat(1200), actors: [{ name: `Original actor ${i}` }] },
+      })),
+    };
+    sourceReads = [];
+    globalThis.fetch = async url => {
+      const parsed = new URL(url);
+      assert.equal(parsed.hostname, 'forecast-fixture.test', 'controlled fixture must never fetch a real service');
+      if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+      const key = decodeURIComponent(parsed.pathname.slice('/get/'.length));
+      sourceReads.push(key);
+      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+      return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2' ? canonical : { fetchedAt: Date.now() }) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('opens every compact row within the fixed serialized output budget and reads one unchanged original case', async t => {
+    assert.ok(Buffer.byteLength(JSON.stringify(canonical)) > 131072);
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const result = first.body.result;
+    const openingBytes = Buffer.byteLength(JSON.stringify(result));
+    assert.ok(openingBytes <= 131072);
+    t.diagnostic(JSON.stringify({ originalBytes: Buffer.byteLength(JSON.stringify(canonical)), openingEnvelopeBytes: openingBytes, budgetBytes: 131072 }));
+    assert.ok(Buffer.byteLength(result.content[0].text) <= 131072);
+    assert.equal(result.structuredContent.data.predictions.predictions.length, 14);
+    assert.ok(result.structuredContent.data.predictions.predictions.every(row => row.hasCaseFile && !('caseFile' in row)));
+    const panel_request = result.structuredContent.panelRequest.token;
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request };
+    const detail = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(detail.body.result?.structuredContent?.data?.forecastCase?.status, 'ready');
+    assert.deepEqual(detail.body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal('predictions' in detail.body.result.structuredContent.data, false);
+    const reads = sourceReads.length;
+    assert.deepEqual((await invoke(deps, 'get_forecast_case', args)).body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal(sourceReads.length, reads);
+    assert.equal(pipe.count, 1);
+    const priorGeneration = String(canonical.generatedAt);
+    canonical.generatedAt++;
+    const changed = await invoke(deps, 'get_forecast_case', { forecast_id: 'original-1', generated_at: priorGeneration, panel_request });
+    assert.equal(changed.body.result.structuredContent.data.forecastCase.status, 'generation_changed');
+    assert.equal(changed.body.result.structuredContent.data.forecastCase.forecast, null);
+    assert.equal(pipe.count, 1);
+  });
+  it('never lets a summary-first or JMESPath opening poison canonical compact reopening', async () => {
+    for (const transform of [{ summary: true }, { jmespath: 'data.predictions.predictions[0]' }]) {
+      const { deps, pipe } = makeProDeps();
+      const transformed = await invoke(deps, 'get_forecast_predictions', transform);
+      assert.ok('projection' in transformed.body.result.structuredContent);
+      const reads = sourceReads.length;
+      const ordinary = await invoke(deps, 'get_forecast_predictions');
+      assert.equal(ordinary.body.result.structuredContent.data.predictions.predictions.length, 14);
+      assert.ok(ordinary.body.result.structuredContent.data.predictions.predictions.every(row => row.hasCaseFile));
+      assert.equal(sourceReads.length, reads);
+      assert.equal(pipe.count, 1);
+    }
+  });
+  it('retains one allocation when an original single case exceeds the response budget', async () => {
+    canonical.predictions[0].caseFile.baseCase = 'oversized-original'.repeat(10000);
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps, 'get_forecast_predictions');
+    const panel_request = first.body.result.structuredContent.panelRequest.token;
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request };
+    const detail = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(detail.body.result?.structuredContent?._budget_exceeded, true);
+    assert.equal(detail.body.result.structuredContent.budget_bytes, 131072);
+    assert.ok(detail.body.result.structuredContent.actual_bytes > 131072);
+    assert.equal(pipe.count, 1);
+    const reads = sourceReads.length;
+    assert.equal((await invoke(deps, 'get_forecast_case', args)).body.result.structuredContent._budget_exceeded, true);
+    assert.equal(sourceReads.length, reads);
+    assert.equal(pipe.count, 1);
+    assert.equal(pipe.ops.flat().some(command => command[0] === 'DECR'), false);
+  });
+  it('preserves the original full forecast shape and weighted per-tool accounting for API plans', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
+    const result = await invoke(deps, 'get_forecast_predictions', { limit: 1 });
+    assert.deepEqual(result.body.result.structuredContent.data.predictions.predictions, [canonical.predictions[0]]);
+    assert.equal(result.body.result.structuredContent.panelRequest, undefined);
+    await invoke(deps, 'get_forecast_predictions', { limit: 1 });
+    const { TOOL_REGISTRY, toolWeight } = await import('../api/mcp/registry/index.ts');
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+    const beforeDenied = sourceReads.length;
+    assert.equal((await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) })).body.error.code, -32602);
+    assert.equal(sourceReads.length, beforeDenied);
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+  });
+  it('recovers an unavailable opening under the same allocation and caches observed empty lists', async () => {
+    const { deps, pipe } = makeProDeps();
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const unavailable = await invoke(deps, 'get_forecast_predictions');
+    const panel_request = unavailable.body.result.structuredContent.panelRequest.token;
+    assert.equal(unavailable.body.result.structuredContent.data.predictions.predictions, null);
+    const failedReads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(recovered.body.result.structuredContent.data.predictions.predictions.length, original.length);
+    assert.ok(sourceReads.length > failedReads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_predictions', { panel_request });
+    assert.equal(sourceReads.length, recoveredReads);
+    const emptyAccount = makeProDeps();
+    canonical.predictions = [];
+    const empty = await invoke(emptyAccount.deps, 'get_forecast_predictions');
+    assert.deepEqual(empty.body.result.structuredContent.data.predictions.predictions, []);
+    const emptyReads = sourceReads.length;
+    await invoke(emptyAccount.deps, 'get_forecast_predictions', { panel_request: empty.body.result.structuredContent.panelRequest.token });
+    assert.equal(sourceReads.length, emptyReads);
+    assert.equal(emptyAccount.pipe.count, 1);
+  });
+  it('recovers an unavailable original case on same-generation retry without another daily allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    const opened = await invoke(deps, 'get_forecast_predictions');
+    const args = { forecast_id: 'original-0', generated_at: String(canonical.generatedAt), panel_request: opened.body.result.structuredContent.panelRequest.token };
+    const original = canonical.predictions;
+    canonical.predictions = null;
+    const failed = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(failed.body.result.structuredContent.data.forecastCase.status, 'unavailable');
+    const reads = sourceReads.length;
+    canonical.predictions = original;
+    const recovered = await invoke(deps, 'get_forecast_case', args);
+    assert.equal(recovered.body.result.structuredContent.data.forecastCase.status, 'ready');
+    assert.deepEqual(recovered.body.result.structuredContent.data.forecastCase.forecast, original[0]);
+    assert.ok(sourceReads.length > reads);
+    assert.equal(pipe.count, 1);
+    const recoveredReads = sourceReads.length;
+    await invoke(deps, 'get_forecast_case', args);
+    assert.equal(sourceReads.length, recoveredReads);
+    assert.equal(pipe.count, 1);
+  });
+
+});
+
+describe('paid prediction panel through the MCP handler', () => {
+  let handler;
+  let fetched;
+  let stale;
+  let malformed;
+  let missingMeta;
+  let seedFailure;
+  let oversized;
+  let bootstrapOverride;
+  const payload = () => ({
+    geopolitical: [{ title: oversized ? 'US Election ' + 'x'.repeat(140000) : 'US Election', source: 'kalshi', yesPrice: 50 }, { title: 'World vote', source: 'polymarket', yesPrice: 30 }],
+    tech: [{ title: 'AI launch', source: 'polymarket', yesPrice: 70 }, { title: 'AI research', source: 'polymarket', yesPrice: 20 }],
+    finance: [{ title: 'US interest rate', source: 'kalshi', yesPrice: 40 }],
+  });
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_prediction_markets', args)), deps);
+    return { response, body: await response.json() };
+  };
+  const data = result => result.body.result.structuredContent.data['markets-bootstrap'];
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://prediction-seed.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'controlled-token';
+    fetched = []; stale = false; malformed = false; missingMeta = false; seedFailure = false; oversized = false; bootstrapOverride = undefined;
+    globalThis.fetch = async url => {
+      const key = decodeURIComponent(new URL(String(url)).pathname.slice(5));
+      assert.ok(['prediction:markets-bootstrap:v1', 'seed-meta:prediction:markets'].includes(key), key);
+      fetched.push(key);
+      if (seedFailure) throw new Error('controlled outage');
+      return Response.json({ result: key.startsWith('seed-meta:')
+        ? missingMeta ? null : JSON.stringify({ fetchedAt: Date.now() - (stale ? 100 * 60000 : 0) })
+        : JSON.stringify(bootstrapOverride ?? (malformed ? { tech: [] } : payload())) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('opens once, narrows exact contracts and replays normalized filters with two fixed reads per uncached filter', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest?.token;
+    assert.equal(first.body.result.structuredContent.panelRequest?.panel, 'predictions');
+    assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
+    assert.equal(fetched.length, 2);
+    const filtered = await invoke(deps, { category: ' GEOPOLITICAL ', query: ' US ELECTION ', source: 'KALSHI' });
+    assert.deepEqual(data(filtered).geopolitical.map(row => row.title), ['US Election']);
+    assert.deepEqual(data(filtered).tech, []);
+    assert.equal(filtered.body.result.structuredContent.panelRequest.token, token);
+    await invoke(deps, { source: ' kalshi ', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
+    assert.equal(fetched.length, 4);
+    assert.equal(pipe.count, 1);
+    await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
+    const empty = await invoke(deps, { category: 'TECH', source: 'KALSHI', panel_request: token });
+    assert.deepEqual(data(empty), { geopolitical: [], tech: [], finance: [] });
+    assert.equal(fetched.length, 6);
+    for (const [limit, expected] of [[0, 2], [-1, 2], [1.9, 1], [0.5, 0]]) {
+      assert.equal(data(await invoke(deps, { category: 'tech', limit, panel_request: token })).tech.length, expected);
+    }
+    assert.equal(pipe.count, 1);
+  });
+  it('preserves originals before summary and whole-envelope projection', async () => {
+    const { deps, pipe } = makeProDeps();
+    const summary = await invoke(deps, { summary: true });
+    assert.equal(summary.body.result.structuredContent.projection.data['markets-bootstrap'].tech.count, 2);
+    const raw = await invoke(deps);
+    assert.equal(data(raw).tech.length, 2);
+    const projected = await invoke(deps, { jmespath: '@', panel_request: raw.body.result.structuredContent.panelRequest.token });
+    assert.equal(projected.body.result.structuredContent.projection.data['markets-bootstrap'].tech.length, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+  });
+  it('charges explicit refresh once across UUID case and retries, while denying invalid paid controls before work', async () => {
+    const { deps, pipe } = makeProDeps();
+    for (const args of [{ category: 'invalid' }, { source: 1 }, { query: [] }, { limit: '2' }, { extra: 1 }, { refresh: true }, { request_id: 'bad' }]) {
+      assert.equal((await invoke(deps, args)).body.error?.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(pipe.count, 0);
+    assert.equal(fetched.length, 0);
+    const request_id = '550E8400-E29B-41D4-A716-446655440000';
+    const first = await invoke(deps, { refresh: true, request_id });
+    const second = await invoke(deps, { refresh: true, request_id: request_id.toLowerCase() });
+    const receipt = first.body.result.structuredContent.panelRequest;
+    assert.equal(second.body.result.structuredContent.panelRequest.token, receipt.token);
+    assert.equal(second.body.result.structuredContent.panelRequest.expiresAt, receipt.expiresAt);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+    assert.equal((await invoke(deps, { panel_request: receipt.token, refresh: true, request_id })).body.error?.code, -32602);
+    await invoke(deps, { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(pipe.count, 2);
+  });
+  it('rejects cross-family, owner, revoked and expired receipts and bounds uncached work to 64', async () => {
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_market_data', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'open_news_dashboard', {}, token));
+    await assert.rejects(readPanel({ ...context, userId: 'foreign' }, pipe.pipeline, 'get_prediction_markets', {}, token));
+    await assert.rejects(readPanel(context, pipe.pipeline, 'get_prediction_markets', {}, token, Date.parse(first.body.result.structuredContent.panelRequest.expiresAt)));
+    const { admitMarketPanel } = await import('../api/mcp/panel-requests.ts');
+    const foreign = await admitMarketPanel(context, budget, pipe.pipeline, {});
+    assert.equal((await invoke(deps, { panel_request: foreign.token })).body.error?.code, -32602);
+    for (let i = 1; i < 64; i++) assert.equal((await invoke(deps, { query: `case${i}`, panel_request: token })).body.error, undefined);
+    const denied = await invoke(deps, { query: 'last', panel_request: token });
+    assert.equal(denied.response.status, 429);
+    assert.equal(fetched.length, 128);
+    assert.equal((await invoke(deps, { panel_request: token })).body.error, undefined);
+    deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
+    assert.equal((await invoke(deps, { panel_request: token })).response.status, 403);
+  });
+  for (const [pool, invalid, category, title, filters] of [
+    ['geopolitical', undefined, 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1.9 }],
+    ['tech', undefined, 'geopolitical', 'US Election', { query: 'Election', source: 'kalshi', limit: 1 }],
+    ['finance', undefined, 'tech', 'AI launch', {}],
+    ['geopolitical', null, 'tech', 'AI launch', {}],
+    ['tech', {}, 'geopolitical', 'US Election', {}],
+    ['finance', 'unknown', 'tech', 'AI launch', { query: 'AI', source: 'polymarket', limit: 1 }],
+  ]) {
+    it(`recovers ${invalid === undefined ? 'missing' : 'malformed'} original ${pool} before selected ${category} normalization`, async () => {
+      const { deps, pipe } = makeProDeps();
+      bootstrapOverride = payload();
+      bootstrapOverride[category] = [];
+      if (invalid === undefined) delete bootstrapOverride[pool];
+      else bootstrapOverride[pool] = invalid;
+      const args = { category, ...filters };
+      const first = await invoke(deps, args);
+      const token = first.body.result.structuredContent.panelRequest.token;
+      bootstrapOverride = undefined;
+      const recovered = await invoke(deps, { ...args, panel_request: token });
+      assert.equal(data(recovered)[category][0]?.title, title, 'repaired original source must rerun selected-category filters');
+      assert.equal(fetched.length, 4, 'recovery reads the original bootstrap and metadata');
+      assert.equal(pipe.count, 1, 'recovery reuses the opening allocation');
+      await invoke(deps, { ...args, panel_request: token });
+      assert.equal(fetched.length, 4, 'healthy recovered result replays');
+    });
+  }
+  it('does not turn the original selected-category malformed seed into a cacheable empty', async () => {
+    const { deps, pipe } = makeProDeps();
+    malformed = true;
+    const first = await invoke(deps, { category: 'tech' });
+    const token = first.body.result.structuredContent.panelRequest.token;
+    assert.equal(data(first).tech.length, 0);
+    malformed = false;
+    const recovered = await invoke(deps, { category: 'tech', panel_request: token });
+    assert.deepEqual(data(recovered).tech.map(row => row.title), ['AI launch', 'AI research']);
+    assert.equal(fetched.length, 4);
+    assert.equal(pipe.count, 1);
+  });
+  it('retries stale, malformed, missing-freshness and failed sources without another allocation', async () => {
+    const { deps, pipe } = makeProDeps();
+    stale = true;
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 4);
+    stale = false; malformed = true;
+    await invoke(deps, { panel_request: token });
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 8);
+    malformed = false; missingMeta = true;
+    await invoke(deps, { panel_request: token });
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, 12);
+    missingMeta = false; seedFailure = true;
+    assert.equal((await invoke(deps, { panel_request: token })).body.error?.code, -32003);
+    seedFailure = false;
+    assert.equal(data(await invoke(deps, { panel_request: token })).tech.length, 2);
+    const reads = fetched.length;
+    await invoke(deps, { panel_request: token });
+    assert.equal(fetched.length, reads);
+    assert.equal(pipe.count, 1);
+  });
+  it('reads current allowance only after receipt authorization and omits unknown counter notices', async () => {
+    const { deps, pipe } = makeProDeps();
+    const token = (await invoke(deps)).body.result.structuredContent.panelRequest.token;
+    const key = dailyCounterKey(context.userId);
+    const original = deps.redisPipeline;
+    let reads = 0;
+    let counter = '2';
+    deps.redisPipeline = async (commands, ...options) => {
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) { reads++; return [{ result: counter }]; }
+      return original(commands, ...options);
+    };
+    const current = await invoke(deps, { panel_request: token });
+    assert.equal(current.body.result._meta['worldmonitor/usage'].remaining, 48);
+    counter = null;
+    const unknown = await invoke(deps, { panel_request: token });
+    assert.equal(unknown.body.result._meta?.['worldmonitor/usage'], undefined);
+    assert.equal(data(unknown).tech.length, 2);
+    assert.equal((await invoke(deps, { panel_request: 'forged' })).body.error?.code, -32602);
+    assert.equal(reads, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 2);
+  });
+  it('narrows an oversized original under the same paid allocation without raising the output budget', async () => {
+    const { deps, pipe } = makeProDeps();
+    oversized = true;
+    const first = await invoke(deps);
+    assert.equal(first.body.result.structuredContent._budget_exceeded, true);
+    assert.equal(first.body.result.structuredContent.budget_bytes, 131072);
+    const narrow = await invoke(deps, { category: 'tech' });
+    assert.equal(data(narrow).tech.length, 2);
+    assert.equal(pipe.count, 1);
+    assert.equal(fetched.length, 4);
+  });
+  it('keeps structured unavailable and unknown prediction data recoverable', async () => {
+    const { pipe } = makeProDeps();
+    const { admitPredictionPanel } = await import('../api/mcp/panel-requests.ts');
+    const grant = await admitPredictionPanel(context, budget, pipe.pipeline, {});
+    const reader = await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token);
+    for (const value of [null, false, 0, 'unknown', []]) {
+      await reader.save(value);
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
+    for (const bootstrap of [null, { tech: [] }, { geopolitical: [], tech: [], finance: [], unavailable: true }, { geopolitical: [], tech: [], finance: [], upstreamUnavailable: true }, { geopolitical: [], tech: [], finance: [], rateLimited: true }, { geopolitical: [], tech: [], finance: [], error: 'unavailable' }]) {
+      await reader.save({ cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': bootstrap } });
+      assert.equal((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, undefined);
+    }
+    const ready = { cached_at: new Date().toISOString(), stale: false, data: { 'markets-bootstrap': { geopolitical: [], tech: [], finance: [] } } };
+    await reader.save(ready);
+    assert.deepEqual((await authorizePanelRead(context, pipe.pipeline, 'get_prediction_markets', {}, grant.token)).cached, ready);
+    assert.equal(pipe.count, 1);
+  });
+  it('preserves ordinary API/free coercion and per-call charging but rejects paid controls before charge', async () => {
+    for (const entitlement of [
+      { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 },
+      { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
+    ]) {
+      const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
+      const first = await invoke(deps, { source: 12, category: 'invalid', query: null, limit: -1, extra: true });
+      assert.equal(first.body.error, undefined);
+      assert.equal(first.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(data(first).tech.length, 2);
+      await invoke(deps, { category: 'TECH', limit: 1.9 });
+      assert.equal(pipe.count, 2);
+      for (const args of [{ refresh: false }, { refresh: true, request_id: crypto.randomUUID() }, { request_id: crypto.randomUUID() }, { panel_request: 'forged' }]) {
+        assert.equal((await invoke(deps, args)).body.error?.code, -32602);
+      }
+      assert.equal(pipe.count, 2);
+    }
+  });
+  it('preserves malformed original pools without filter normalization on ordinary API and free connections', async () => {
+    for (const entitlement of [
+      { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 },
+      { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
+    ]) {
+      const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
+      bootstrapOverride = { tech: payload().tech };
+      const result = await invoke(deps, { category: 'finance', query: 'absent', source: 'kalshi', limit: 0.5 });
+      assert.deepEqual(data(result), bootstrapOverride);
+      assert.equal(result.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(pipe.count, 1);
+    }
   });
 });

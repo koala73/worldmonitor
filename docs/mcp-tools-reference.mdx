@@ -224,9 +224,14 @@ Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver
 | `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
+| `refresh` | boolean | Reload the curated snapshot with one new paid panel allocation. Default false reuses the current market panel. Requires request_id; omit panel_request when refreshing. |
+| `request_id` | string | Stable refresh ID. Retries with the same ID reuse one paid allocation and its original expiry. |
+| `panel_request` | string | Server-issued market-panel receipt token for bounded curated reads. API allowances do not accept receipts. |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for the initial market panel. Subsequent curated filters and repeated opens reuse that admission within its five-minute window. The result's `panelRequest.token` can be passed as `panel_request` for authorized reads until expiry. A new refresh UUID spends one new allocation. API plans retain weighted per-tool billing. Free-account calls retain their daily free allowance.
+- **Source scope:** filters select already-seeded quotes. Neither a receipt nor refresh fetches an arbitrary symbol, an account watchlist, or new provider data. Unavailable or stale results remain eligible for retry under the same valid receipt. An upstream failure does not refund the initial allocation.
 - **Note on the physical datasets:** the two REST routes behind `physicalPremium` and `physicalDivergence` are Pro-only (tier 1) when called directly — see [Pro Intelligence Suite](/pro-intelligence-suite). This bundled cache read is the one path on which a signed-in free account can reach them, within its allowance. That is deliberate; do not infer from it that the REST routes are open.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily `physicalPremiums` and `physicalDivergence` datasets are monitored on `/api/health` instead. Read their timestamps and the divergence state when age matters. The divergence method is documented in [Physical Precious-Metals Divergence Index](/methodology/physical-divergence-index).
@@ -822,7 +827,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.
+Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.
 
 **Parameters (tool-specific):**
 
@@ -832,10 +837,18 @@ Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), fin
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
 | `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation. |
+| `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
+| `request_id` | string | Paid refresh identifier. Required when refresh is true. |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.
+- **Limits and refresh:** The default limit is 30 per category. Zero or negative values apply no cap; positive fractions use the integer part. Default `refresh: false` reuses the prediction admission. Set `refresh: true` with a UUID `request_id` and omit `panel_request` to start a new allocation. Retries with the same UUID, including different letter case, reuse the allocation and its original expiry.
+- **Paid argument validation:** Category and source trim whitespace and ignore letter case. Query matching ignores letter case and surrounding whitespace. Paid calls reject unknown arguments, invalid categories or sources, and non-finite or non-numeric limits before reservation. Ordinary API and free calls retain their existing filter coercion. Refresh controls and paid receipts are unavailable to API and free calls.
+- **Reuse and recovery:** Identical canonical filters replay successful original results before summary or JMESPath projection. A new uncached filter reads the existing bootstrap and freshness metadata. A fresh, valid filtered-empty result can replay. Stale, unavailable, malformed, and unknown observations remain retryable under the receipt. Upstream failures do not refund the opening.
+- **Usage notices:** An explicit authorized receipt read also reads the current daily allowance without reserving another unit. If the counter is unavailable or unconfirmed, contracts remain available without a numeric notice. A previous opening notice does not prove later accounting.
+- **Kind:** cache read from the Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
 <CodeGroup>
@@ -1029,9 +1042,15 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `country` | string | Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive). |
 | `min_fatalities` | number | Drop events below this fatality count (UCDP deathsBest / unrest fatalities). |
 | `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
+| `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
+| `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the Conflict Events admission within five minutes. Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and successful cached-replay limits. Each execution reads five fixed Redis keys, or six with Iran enabled; these reads do not each spend an allocation.
+- **Reuse and refresh:** Successful filtered originals replay before summary or JMESPath presentation. Explicit refresh with a new UUID spends one new allocation; the same UUID retries it. An authorized receipt read queries current usage without reserving another unit. Unknown counters preserve data and omit the numeric notice. Paid calls reject unknown arguments and non-finite numeric filters before reservation. Ordinary API and free calls retain existing filter coercion and reject paid receipts or refresh controls.
+- **Source observation and recovery:** Optional `conflict_source.ucdp` preserves only correctly typed `fetchedAt`, `candidateVersion`, `candidateComplete` and `annualFailedPages` from already-read metadata. Missing fields stay absent. Known partial, missing, malformed, stale or incompatible observations remain retryable. Usable collections still honor their filters. Data and metadata are not an atomic snapshot; the observation does not prove complete unrest-provider coverage or independent CII/Iran freshness.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** per slice — UCDP conflict events **30 min**, unrest events **2 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
 
@@ -1312,6 +1331,9 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 
 | Name | Type | Description |
 |------|------|-------------|
+| `panel_request` | string | Server-issued closed News Intelligence panel token. Omit for a paid opening; repeat and filters reuse its original source snapshot. |
+| `refresh` | boolean | Paid panel only. Explicitly open a new allocation without panel_request and with a UUID request_id. |
+| `request_id` | string | Refresh identity. Retrying the same UUID reuses that allocation. |
 | `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | Filter GDELT intelligence to a single topic. |
 | `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
 | `country` | string | Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
@@ -1325,6 +1347,10 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, `effectiveImportanceScore`, and `credibilityScore` (0-100 source reliability, distinct from importance; state-controlled media is capped at 40).
 - **Freshness budget:** per slice — news insights **30 min**, GDELT intel **45 min**, cross-source signals **60 min**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.
 
 <CodeGroup>
 
@@ -1928,6 +1954,9 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 
 | Name | Type | Description |
 |------|------|-------------|
+| `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
+| `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
+| `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
 | `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
@@ -1952,6 +1981,14 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+**Chokepoint panel admission.**
+
+On Pro and Pro Business, `get_chokepoint_status` opens one signed `chokepoints` allocation. Repeated filters, `summary` and JMESPath views share that allocation. Complete effective requested source subsets reuse their uncapped originals; changing the normalized dataset subset or chokepoint selector can reacquire sources under the same allocation. Unknown-only dataset selectors use the full bundle. A keyed filter with no match retains the original map, so it cannot manufacture complete empty coverage. Sparse AIS, unavailable today counts and partial modeled flows remain visible and retryable.
+
+Use the returned `panelRequest.token` as `panel_request` only for this tool. Explicit `refresh: true` requires a UUID `request_id` and no reader token; the same UUID retries that allocation. Authorized receipt reads report current usage without reserving another allocation; unknown usage omits the numeric notice. API and free-account calls retain per-tool accounting and reject these paid controls.
+
+An uncached execution uses the existing six dataset GETs, six metadata GETs and one activation EXISTS command. The 64-read admission bound counts tool executions, not those 13 Redis commands. Reuse checks selected source shapes, availability, publication clocks and CN/HK critical content age, both after lookup and before cache storage. Partial, malformed, unassessed or expired originals are not cached as complete. Reference-year baselines and modeled flow publication dates do not prove current metered oil or fresh underlying history. The private wrapped cache remains 512 KiB; tool output remains 128 KiB. This admission change does not add website details, histories, warnings or provider reads.
 
 ### `get_supply_vulnerabilities`
 
@@ -2451,7 +2488,9 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 
 | Name | Type | Description |
 |------|------|-------------|
-| `panel_request` | string | Server-issued news dashboard request token for its bounded internal map snapshots. |
+| `panel_request` | string | Server-issued Natural Disasters panel token, or the existing news token for its exact bounded map reads. Omit for an ordinary paid opening; a news token cannot widen its map scope. |
+| `refresh` | boolean | Paid standalone panel only. Explicitly open one new allocation. Omit panel_request and supply a UUID request_id. |
+| `request_id` | string | Paid standalone refresh identity. Retrying the same UUID reuses that allocation. |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
 | `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
@@ -2476,6 +2515,10 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+On Pro and Pro Business, `get_natural_disasters` opens one Natural Disasters allocation. Repeated opens and dataset, magnitude, activity and limit filters reuse that admission within five minutes. Use its returned `panelRequest.token` as `panel_request` for bounded reads. Explicit refresh needs `refresh: true`, a UUID `request_id`, and no reader token; the same UUID retries the refresh allocation. API and free-account callers keep ordinary per-tool charging and existing filter coercions, and reject the paid refresh controls.
+
+Each uncached execution reads three fixed data keys and the existing seismology metadata key as one logical read within the 64-read admission. Exact successful filtered originals replay before summary or JMESPath only until the earliest observable source or EONET retention deadline. A new filter or unavailable, malformed, known degraded or unknown-clock observation can reread under the same allocation. Blocked regional source decisions remain readable but uncached, including zero-request preflight decisions. This does not establish complete provider coverage. The existing news token still permits only its exact hazard dataset list and limits 100, 20 or 1; it cannot use standalone magnitude or activity filters. Source data and internal deadlines do not add public metadata fields. Confirmed current usage accompanies authorized reads; an unknown counter omits the numeric notice.
 
 ### `get_radiation_data`
 
@@ -2714,7 +2757,10 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 |------|------|-------------|
 | `domain` | string | Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro"). |
 | `region` | string | Filter to one region/theater (case-insensitive substring). |
-| `limit` | number | Cap the forecast list to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
+| `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
+| `request_id` | string | Unique idempotency identifier for an explicit refresh. |
+| `panel_request` | string | Signed forecast panel receipt for a bounded internal list replay. |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -2735,6 +2781,39 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+Read one unchanged original forecast case for an exact loaded ID and generation. Requires a valid paid forecast panel admission. The existing 64-read allowance includes this internal read; it does not charge a new daily panel allocation. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `forecast_id` | string | Exact original forecast ID from the loaded list. |
+| `generated_at` | string | Exact String(generatedAt) from the loaded list. |
+| `panel_request` | string | Signed forecast panel receipt. |
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `subscription` — requires a valid paid forecast admission, including owner, scope, expiry and entitlement checks.
+- **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
+- **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
+- **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
+
+### `get_forecast_theaters`
+
+Read the latest original simulation theater summaries with a valid paid forecast admission. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. No other arguments are accepted. |
+
+- **API endpoint:** `GET /api/forecast/v1/get-simulation-outcome`, latest-only.
+- **Access:** `subscription` with owner, scope, expiry and entitlement checks.
+- **Allocation:** shares the opening's daily allocation and 64 uncached-read budget. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
+- **Output budget:** 128 KB for unchanged original evidence. Invalid or oversized source reports unavailable; no silent truncation, run selector, simulation trigger or private artifact read.
 
 ### `get_forecast_scorecard`
 
