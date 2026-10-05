@@ -62,3 +62,16 @@ export const conflictPanelViewSchema = conflictPanelReadSchema.extend({
   refresh: z.boolean().default(false),
   request_id: z.string().uuid().optional(),
 }).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');
+
+export const disasterPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('disasters') });
+export type DisasterPanelAdmission = z.infer<typeof disasterPanelAdmissionSchema>;
+export const disasterPanelReadSchema = z.object({
+  dataset: z.array(z.enum(['earthquakes', 'wildfires', 'other'])).optional().transform(values => values?.length ? [...new Set(values)].sort() : undefined),
+  min_magnitude: z.number().finite().optional(),
+  active_only: z.boolean().optional(),
+  limit: z.number().finite().default(30),
+}).strict();
+export const disasterPanelViewSchema = disasterPanelReadSchema.extend({
+  refresh: z.boolean().default(false),
+  request_id: z.string().uuid().optional(),
+}).refine(value => !value.refresh || value.request_id !== undefined, 'Refresh requires a request_id');

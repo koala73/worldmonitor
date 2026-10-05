@@ -78,7 +78,7 @@
     },
     {
       "name": "get_natural_disasters",
-      "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.",
+      "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

@@ -1,5 +1,8 @@
 import { buildAttributionRider, mergeAttributionRider } from '../../shared/attribution-rider';
-import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
+import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
+// @ts-expect-error — Edge-safe JS envelope mirror.
+import { unwrapEnvelope } from '../_seed-envelope.js';
+import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
@@ -16,9 +19,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitConflictPanel, admitCountryPanel, admitForecastPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitConflictPanel, admitCountryPanel, admitDisasterPanel, admitForecastPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { conflictPanelViewSchema, forecastPanelReadSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { conflictPanelViewSchema, disasterPanelViewSchema, forecastPanelReadSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -47,6 +50,17 @@ import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '.
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
 // ---------------------------------------------------------------------------
+type CacheToolValue = {
+  conflict_source?: ConflictSourceObservation;
+  cached_at: string | null;
+  stale: boolean;
+  activationUnknown?: true;
+  freshnessUnknown?: true;
+  unreadable?: string[];
+  contentFreshnessPendingUntil?: string;
+  data: Record<string, unknown>;
+};
+
 // Exported as a test seam (like `evaluateFreshness`) so the `_postFilter`
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler for unexpected programming errors. Country
@@ -56,16 +70,22 @@ export async function executeTool(
   params: Record<string, unknown> = {},
   now?: number,
   execution?: McpToolExecutionContext,
-): Promise<{
-  conflict_source?: ConflictSourceObservation;
-  cached_at: string | null;
-  stale: boolean;
-  activationUnknown?: true;
-  freshnessUnknown?: true;
-  unreadable?: string[];
-  contentFreshnessPendingUntil?: string;
-  data: Record<string, unknown>;
-}> {
+): Promise<CacheToolValue> {
+  return (await executeCacheTool(tool, params, now, undefined, execution)).value;
+}
+
+export async function executeNaturalDisastersPanelRead(params: Record<string, unknown>): Promise<NaturalDisastersPanelRead> {
+  const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_natural_disasters')! as CacheToolDef;
+  return executeCacheTool(tool, params, undefined, 'natural-disasters');
+}
+
+async function executeCacheTool(
+  tool: CacheToolDef,
+  params: Record<string, unknown>,
+  now?: number,
+  panel?: 'natural-disasters',
+  execution?: McpToolExecutionContext,
+): Promise<{ value: CacheToolValue; reuseUntil: number | null }> {
   // Per-key namespace decision (#7674): most _cacheKeys / freshness keys are
   // written by the Railway seeder fleet and are read raw; the route-owned
   // exceptions (temporal anomalies snapshot + its stamp) ride the deployment
@@ -78,7 +98,7 @@ export async function executeTool(
   // key failed the whole tool as a raw TimeoutError (WORLDMONITOR-176/ZM/137),
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
-  const reads = tool._cacheKeys.map((k) => settleRead(readJsonFromUpstash(k, 3_000, !isAppOwnedRedisKey(k))));
+  const reads = tool._cacheKeys.map((k) => settleRead((panel === 'natural-disasters' ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
   const freshnessChecks = tool._freshnessChecks;
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
@@ -106,7 +126,8 @@ export async function executeTool(
     Promise.all(metaReads),
     activationRead,
   ]);
-  const results = dataReads.map((r) => (r.ok ? r.value : null));
+  const unwrapped: Array<{ _seed: unknown; data: unknown }> = dataReads.map(r => unwrapEnvelope(r.ok ? r.value : null));
+  const results = dataReads.map((r, index) => (r.ok ? panel === 'natural-disasters' ? unwrapped[index]!.data : r.value : null));
   // An unreadable seed-meta enters evaluateFreshness as null, so `stale` fails
   // closed exactly as for an unreadable activation marker; `freshnessUnknown`
   // is what tells the caller the verdict rests on a read that failed.
@@ -192,6 +213,10 @@ export async function executeTool(
   const data: Record<string, unknown> = {};
   labels.forEach((label, i) => { data[label] = results[i]; });
 
+  const reuseUntil = panel === 'natural-disasters'
+    ? naturalDisastersReuseUntil(data, Object.fromEntries(labels.map((label, index) => [label, unwrapped[index]!._seed])), metas[0], params, evaluatedAt)
+    : null;
+
   // Optional in-memory post-filter (declared per-tool, mirrors that tool's
   // inputSchema.properties). A filter bug must NEVER break the tool — on throw
   // we fall back to the unfiltered data and report to Sentry, because a
@@ -207,7 +232,9 @@ export async function executeTool(
   let result: Record<string, unknown> = data;
   if (tool._postFilter) {
     try {
-      result = tool._postFilter(structuredClone(data), params, execution);
+      result = panel === 'natural-disasters'
+        ? filterNaturalDisastersPanelData(structuredClone(data), params)
+        : tool._postFilter(structuredClone(data), params, execution);
     } catch (err) {
       // Input validation must reach the caller instead of serving unfiltered data.
       // A stored-contract violation must NOT fall through to `data`: that path serves the
@@ -232,7 +259,7 @@ export async function executeTool(
   // summarises.
   if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
-  return {
+  return { reuseUntil, value: {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
     stale,
@@ -241,7 +268,7 @@ export async function executeTool(
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     data: result,
-  };
+  } };
 }
 
 type SettledRead = { ok: true; value: unknown } | { ok: false };
@@ -424,6 +451,22 @@ export async function dispatchToolsCall(
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
   try {
+    if (tool.name === 'get_natural_disasters') {
+      if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Disaster refresh controls require a paid panel allowance.', 'invalid');
+      if (dedicatedPanel) {
+        const { summary: _summary, jmespath: _projection, ...view } = callArguments;
+        const parsed = disasterPanelViewSchema.safeParse(view);
+        if (!parsed.success) throw new PanelRequestError('Supply valid disaster filters and a request_id for refresh.', 'invalid');
+        const { refresh, request_id: _requestId, ...filters } = parsed.data;
+        sourceArguments = suppliedPanel === undefined ? filters : Object.fromEntries(Object.entries(view).filter(([key]) => key !== 'refresh' && key !== 'request_id'));
+        if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the disaster panel without a reader token.', 'invalid');
+        if (suppliedPanel === undefined) {
+          panelRequest = await admitDisasterPanel(context, budget, deps.redisPipeline, parsed.data);
+          panelUsage = panelRequest.usage;
+          panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
+        }
+      }
+    }
     if (tool.name === 'get_conflict_events') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Conflict refresh controls require a paid panel allowance.', 'invalid');
       if (dedicatedPanel) {
@@ -494,7 +537,7 @@ export async function dispatchToolsCall(
       if (limited) return limited;
     }
     await panelRead?.reserveUncachedRead();
-    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events') && suppliedPanel !== undefined && panelRead
+    if ((tool.name === 'get_market_data' || tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters') && suppliedPanel !== undefined && panelRead
       && (context.kind === 'pro' || context.kind === 'user_key')) {
       const allowance = await readDailyAllowance(context.userId, deps.redisPipeline, budget);
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
@@ -598,8 +641,12 @@ export async function dispatchToolsCall(
   let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
+    let disasterRead: NaturalDisastersPanelRead | undefined;
     if (panelRead?.cached !== undefined) {
       result = panelRead.cached;
+    } else if (tool.name === 'get_natural_disasters' && panelRead) {
+      disasterRead = await executeNaturalDisastersPanelRead(sourceArguments);
+      result = disasterRead.value;
     } else {
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
@@ -625,7 +672,8 @@ export async function dispatchToolsCall(
       }
     }
     if (panelRead && panelRead.cached === undefined) {
-      if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
+      if (disasterRead) await panelRead.saveNaturalDisasters(disasterRead);
+      else if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
         const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
         await panelRead.save(snapshot);
       } else if (tool.name === 'get_forecast_predictions' && result && typeof result === 'object') {
@@ -642,7 +690,7 @@ export async function dispatchToolsCall(
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };
     }
-    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
+    if ((tool.name === 'get_market_data' || (tool.name === 'get_prediction_markets' || tool.name === 'get_conflict_events' || tool.name === 'get_natural_disasters') && dedicatedPanel) && tool._execute === undefined && result && typeof result === 'object') {
       const original = result as Awaited<ReturnType<typeof executeTool>>;
       const snapshot = tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
       result = snapshot;

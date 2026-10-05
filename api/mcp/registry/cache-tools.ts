@@ -1282,11 +1282,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_natural_disasters',
     _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.',
+    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage.',
     inputSchema: {
       type: 'object',
       properties: {
-        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued news dashboard request token for its bounded internal map snapshots.' },
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued Natural Disasters panel token, or the existing news token for its exact bounded map reads. Omit for an ordinary paid opening; a news token cannot widen its map scope.' },
+        refresh: { type: 'boolean', description: 'Paid standalone panel only. Explicitly open one new allocation. Omit panel_request and supply a UUID request_id.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Paid standalone refresh identity. Retrying the same UUID reuses that allocation.' },
         dataset: {
           type: 'array',
           items: { type: 'string', enum: ['earthquakes', 'wildfires', 'other'] },

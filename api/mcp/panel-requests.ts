@@ -2,12 +2,13 @@ import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, type PanelAdmission } from '../../shared/country-brief-host';
 import { resolveCountryCode } from '../../shared/country-code-resolve';
-import { conflictPanelReadSchema, conflictPanelViewSchema, type ConflictPanelAdmission, forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type ForecastPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission, type PredictionPanelAdmission } from '../../shared/panel-admission';
+import { conflictPanelReadSchema, conflictPanelViewSchema, disasterPanelReadSchema, disasterPanelViewSchema, forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, marketPanelReadSchema, marketPanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, type ConflictPanelAdmission, type DisasterPanelAdmission, type ForecastPanelAdmission, type MarketPanelAdmission, type NewsPanelAdmission, type PredictionPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { forecastTheaterReadSchema, reusableForecastTheaterResult } from '../../shared/forecast-theaters';
 import { iso2ToComtradeReporterCode, iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
 import { dailyCounterKey, dailyQuotaFloorKey, envPrefix, PRO_DAILY_QUOTA_TTL_SECONDS } from '../../server/_shared/pro-mcp-token';
+import type { NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { conflictPanelReuseUntil, isConflictPanelSnapshotCacheable } from './registry/cache-tools';
 import { resolveDailyLimit, type McpBudget } from './quota';
 import type { McpAuthContext, PipelineFn } from './types';
@@ -18,7 +19,7 @@ const MAX_CACHED_BYTES = 524288;
 const encoder = new TextEncoder();
 
 type PanelScope = { panel: string; window: string; expires: number };
-export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | ForecastPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission | ConflictPanelAdmission;
+export type PaidPanelAdmission = PanelAdmission | NewsPanelAdmission | ForecastPanelAdmission | MarketPanelAdmission | PredictionPanelAdmission | ConflictPanelAdmission | DisasterPanelAdmission;
 export class PanelRequestError extends Error {
   constructor(message: string, public code: 'invalid' | 'quota' | 'reads' | 'backend', public limit?: number, public retryAfter?: number) {
     super(message);
@@ -30,8 +31,8 @@ function userId(context: McpAuthContext): string {
   if (context.kind !== 'pro' && context.kind !== 'user_key') throw new PanelRequestError('A paid user-bound connection is required.', 'invalid');
   return context.userId;
 }
-function panelFamily(panel: string): 'country' | 'news' | 'forecasts' | 'markets' | 'predictions' | 'conflicts' {
-  return panel === 'news' || panel === 'forecasts' || panel === 'markets' || panel === 'predictions' || panel === 'conflicts' ? panel : 'country';
+function panelFamily(panel: string): 'country' | 'news' | 'forecasts' | 'markets' | 'predictions' | 'conflicts' | 'disasters' {
+  return panel === 'news' || panel === 'forecasts' || panel === 'markets' || panel === 'predictions' || panel === 'conflicts' || panel === 'disasters' ? panel : 'country';
 }
 function panelKey(owner: string, scope: PanelScope): string {
   return `${dailyCounterKey(owner, new Date(scope.expires - 1))}:${panelFamily(scope.panel)}:${scope.panel}:${scope.window}`;
@@ -88,6 +89,12 @@ export async function admitConflictPanel(context: McpAuthContext, budget: McpBud
   return { ...await admitPanel(context, budget, pipeline, 'conflicts', parsed.data, now), panel: 'conflicts' };
 }
 
+export async function admitDisasterPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<DisasterPanelAdmission> {
+  const parsed = disasterPanelViewSchema.safeParse(args);
+  if (!parsed.success) throw new PanelRequestError('Supply valid disaster filters and a request_id for refresh.', 'invalid');
+  return { ...await admitPanel(context, budget, pipeline, 'disasters', parsed.data, now), panel: 'disasters' };
+}
+
 async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, country: string, request: { refresh: boolean; request_id?: string }, now: number) {
   if (budget?.allowance === 'api') throw new PanelRequestError('API allowances use per-tool billing.', 'invalid');
   const owner = userId(context);
@@ -120,6 +127,10 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
 }
 
 function checkReadScope(name: string, args: Record<string, unknown>, country: string): void {
+  if (country === 'disasters') {
+    if (name !== 'get_natural_disasters' || !disasterPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers natural disasters.', 'invalid');
+    return;
+  }
   if (country === 'conflicts') {
     if (name !== 'get_conflict_events' || !conflictPanelReadSchema.safeParse(args).success) throw new PanelRequestError('Panel request only covers conflict events.', 'invalid');
     return;
@@ -179,7 +190,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(news|markets|predictions|forecasts|conflicts|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = /^(news|markets|predictions|forecasts|conflicts|disasters|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');
@@ -195,9 +206,11 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       ? predictionPanelReadSchema.parse(args)
       : scope.panel === 'conflicts'
         ? conflictPanelReadSchema.parse(args)
-        : scope.panel === 'forecasts' && name === 'get_forecast_predictions'
-          ? forecastPanelReadSchema.parse(args)
-          : args;
+        : scope.panel === 'disasters'
+          ? disasterPanelReadSchema.parse(args)
+          : scope.panel === 'forecasts' && name === 'get_forecast_predictions'
+            ? forecastPanelReadSchema.parse(args)
+            : args;
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(cacheArguments)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
@@ -208,8 +221,11 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
     if (!results || results.length !== 2 || results.some(item => item.error) || results[0]?.result !== String(scope.expires)) throw new Error('Missing paid admission');
     const raw = results[1]?.result;
     if (typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) {
-      const value = JSON.parse(raw);
-      if (scope.panel !== 'conflicts' || conflictPanelReuseUntil(value) !== null) cached = value;
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch (error) { if (name !== 'get_natural_disasters') throw error; }
+      if (name === 'get_natural_disasters') {
+        if (validDisasterCache(parsed, Date.now(), scope.expires)) cached = parsed.value;
+      } else if (scope.panel !== 'conflicts' || conflictPanelReuseUntil(parsed) !== null) cached = parsed;
     }
   } catch { throw new PanelRequestError('Panel cache is temporarily unavailable.', 'backend'); }
   const ttl = Math.max(1, Math.ceil((scope.expires - now) / 1000));
@@ -223,7 +239,18 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (status === 0) throw new PanelRequestError('This panel reached its read budget. Refresh to start another request.', 'reads', undefined, ttl);
       if (status !== 1) throw new PanelRequestError('Panel admission is unavailable.', 'backend');
     },
+    saveNaturalDisasters: async (read: NaturalDisastersPanelRead) => {
+      if (name !== 'get_natural_disasters' || read.reuseUntil === null) return;
+      const wrapper = { value: read.value, reuseUntil: Math.min(scope.expires, read.reuseUntil) };
+      if (!validDisasterCache(wrapper, Date.now(), scope.expires)) return;
+      const raw = JSON.stringify(wrapper);
+      if (encoder.encode(raw).length > cacheBudget) return;
+      const remaining = Math.floor((wrapper.reuseUntil - Date.now()) / 1000);
+      if (remaining < 1) return;
+      try { await pipeline([['SET', cacheKey, raw, 'EX', remaining]], 5_000, true); } catch { /* Optional reuse must not turn a valid read into an error. */ }
+    },
     save: async (value: unknown) => {
+      if (name === 'get_natural_disasters') return;
       if (scope.panel === 'conflicts' && !isConflictPanelSnapshotCacheable(value)) return;
       if (scope.panel === 'predictions' && (!value || typeof value !== 'object' || Array.isArray(value))) return;
       if (name === 'get_forecast_theaters') {
@@ -292,4 +319,22 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       try { await pipeline([['SET', cacheKey, raw, 'EX', cacheTtl]], 5_000, true); } catch { /* Reads remain valid when optional response reuse is unavailable. */ }
     },
   };
+}
+
+function validDisasterCache(value: unknown, now: number, expires: number): value is { value: unknown; reuseUntil: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const wrapper = value as Record<string, unknown>;
+  if (Object.keys(wrapper).sort().join(',') !== 'reuseUntil,value'
+    || typeof wrapper.reuseUntil !== 'number' || !Number.isSafeInteger(wrapper.reuseUntil)
+    || wrapper.reuseUntil <= now || wrapper.reuseUntil > expires
+    || !wrapper.value || typeof wrapper.value !== 'object' || Array.isArray(wrapper.value)) return false;
+  const envelope = wrapper.value as Record<string, unknown>;
+  return typeof envelope.cached_at === 'string' && Number.isFinite(Date.parse(envelope.cached_at))
+    && envelope.stale === false && !!envelope.data && typeof envelope.data === 'object' && !Array.isArray(envelope.data)
+    && Object.entries(envelope.data).length > 0 && Object.entries(envelope.data).every(([label, bucket]) => {
+      const list = label === 'earthquakes' ? 'earthquakes' : label === 'fires' ? 'fireDetections' : label === 'events' ? 'events' : null;
+      if (!list || !bucket || typeof bucket !== 'object' || Array.isArray(bucket)) return false;
+      const rows = (bucket as Record<string, unknown>)[list];
+      return Array.isArray(rows) && rows.every(row => row && typeof row === 'object' && !Array.isArray(row));
+    });
 }

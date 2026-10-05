@@ -368,7 +368,12 @@ describe('one allocation per embedded panel', () => {
     assert.deepEqual(second.body.result.structuredContent.requestedView, { country: 'US', query: 'trade' });
     assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
     const snapshot = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
-    await snapshot.save({ data: { earthquakes: { earthquakes: [] }, events: { events: [] } } });
+    await snapshot.saveNaturalDisasters({
+      value: { cached_at: new Date().toISOString(), stale: false, data: { earthquakes: { earthquakes: [] }, events: { events: [] } } },
+      reuseUntil: Math.min(Date.now() + 60_000, Date.parse(grant.expiresAt)),
+    });
+    const loaded = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
+    assert.deepEqual(loaded.cached.data.earthquakes.earthquakes, []);
     const result = await invoke(deps, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100, panel_request: grant.token });
     assert.deepEqual(result.body.result.structuredContent.data.earthquakes.earthquakes, []);
     assert.equal(pipe.count, 1);
