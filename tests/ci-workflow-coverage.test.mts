@@ -886,10 +886,19 @@ describe('CI workflow coverage', () => {
       assert.match(
         workflowStepBlock(pulseWorkflow, stepName),
         /^\s+if: \$\{\{ !cancelled\(\) && steps\.build\.outcome == 'success' \}\}$/m,
-        `${stepName} must run after a failed verification but never after a rejected build`,
+        `${stepName} requires a successful build and must not run after cancellation`,
       );
     }
     const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
+    const pruneStep = workflowStepBlock(pulseWorkflow, 'Prune superseded pulse snapshots');
+    assert.ok(pulseWorkflow.indexOf(pruneStep) > pulseWorkflow.indexOf(buildStep));
+    assert.ok(
+      pulseWorkflow.indexOf(verifyStep) > pulseWorkflow.indexOf(pruneStep),
+      'verify the pruned snapshot set that the PR will publish',
+    );
+    assert.ok(pulseWorkflow.indexOf(openPrStep) > pulseWorkflow.indexOf(verifyStep));
+    assert.match(verifyStep, /tests\/brief-relevance\.test\.mjs/);
+    assert.match(verifyStep, /tests\/ci-workflow-coverage\.test\.mts/);
     assert.match(openPrStep, /VERIFY_OUTCOME: \$\{\{ steps\.verify\.outcome \}\}/);
     assert.match(openPrStep, /if \[ "\$VERIFY_OUTCOME" != "success" \]; then\n\s+draft=\(--draft\)/);
     assert.match(openPrStep, /gh pr create[\s\S]*"\$\{draft\[@\]\}"/);

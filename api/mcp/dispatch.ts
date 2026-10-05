@@ -20,9 +20,9 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { admitNewsIntelligencePanel, admitDisasterPanel, admitConflictPanel, admitCountryPanel, admitMarketPanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
+import { admitConflictPanel, admitCountryPanel, admitDisasterPanel, admitForecastPanel, admitMarketPanel, admitNewsIntelligencePanel, admitNewsPanel, admitPredictionPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { newsIntelligencePanelViewSchema, disasterPanelViewSchema, conflictPanelViewSchema, marketPanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { conflictPanelViewSchema, disasterPanelViewSchema, forecastPanelReadSchema, marketPanelViewSchema, newsIntelligencePanelViewSchema, predictionPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -66,8 +66,13 @@ type CacheToolValue = {
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler for unexpected programming errors. Country
 // validation errors are tested through dispatch and must propagate.
-export async function executeTool(tool: CacheToolDef, params: Record<string, unknown> = {}, now?: number): Promise<CacheToolValue> {
-  return (await executeCacheTool(tool, params, now)).value;
+export async function executeTool(
+  tool: CacheToolDef,
+  params: Record<string, unknown> = {},
+  now?: number,
+  execution?: McpToolExecutionContext,
+): Promise<CacheToolValue> {
+  return (await executeCacheTool(tool, params, now, undefined, execution)).value;
 }
 
 export async function executeNaturalDisastersPanelRead(params: Record<string, unknown>): Promise<NaturalDisastersPanelRead> {
@@ -83,7 +88,11 @@ export async function executeNewsIntelligencePanelRead(): Promise<NewsIntelligen
 type CachePanelDomain = 'natural-disasters' | 'news-intelligence';
 
 async function executeCacheTool(
-  tool: CacheToolDef, params: Record<string, unknown>, now?: number, panel?: CachePanelDomain,
+  tool: CacheToolDef,
+  params: Record<string, unknown>,
+  now?: number,
+  panel?: CachePanelDomain,
+  execution?: McpToolExecutionContext,
 ): Promise<{ value: CacheToolValue; reuseUntil: number | null }> {
   // Per-key namespace decision (#7674): most _cacheKeys / freshness keys are
   // written by the Railway seeder fleet and are read raw; the route-owned
@@ -229,7 +238,28 @@ async function executeCacheTool(
   // Redis output is JSON-safe and the data map is small (tens of KB), so the
   // clone is cheap.
   let result: Record<string, unknown> = data;
-  if (panel !== 'news-intelligence') result = filterCacheToolData(tool, data, params, panel);
+  if (panel !== 'news-intelligence' && tool._postFilter) {
+    try {
+      result = panel === 'natural-disasters'
+        ? filterNaturalDisastersPanelData(structuredClone(data), params)
+        : tool._postFilter(structuredClone(data), params, execution);
+    } catch (err) {
+      // Input validation must reach the caller instead of serving unfiltered data.
+      // A stored-contract violation must NOT fall through to `data`: that path serves the
+      // raw, unvalidated blob the filter just refused, which is the opposite of failing
+      // closed (#6448 — an unknown state "must surface as an error, never silently map to
+      // normal"). Let it out so the tool call errors instead.
+      if (isMcpStoredContractError(err) || err instanceof RpcValidationError || execution?.panelScope === 'forecasts') throw err;
+      // Same minified-frame over-grouping guard as the tool-execution catch
+      // below — key on step + tool + error type so a post-filter bug in one
+      // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).
+      captureSilentError(err, {
+        tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name },
+        fingerprint: mcpErrorFingerprint('post-filter', tool.name, err),
+      });
+      result = data;
+    }
+  }
 
   // Summary mode (issue #3678) — collapse to counts + samples. Applied AFTER
   // the filter so it composes (`country: "DE", summary: true` → counts/samples
@@ -252,24 +282,16 @@ async function executeCacheTool(
 
 function filterCacheToolData(tool: CacheToolDef, data: Record<string, unknown>, params: Record<string, unknown>, panel?: CachePanelDomain): Record<string, unknown> {
   if (!tool._postFilter) return data;
-    try {
-      return panel === 'natural-disasters' ? filterNaturalDisastersPanelData(structuredClone(data), params) : tool._postFilter(structuredClone(data), params);
-    } catch (err) {
-      // Input validation must reach the caller instead of serving unfiltered data.
-      // A stored-contract violation must NOT fall through to `data`: that path serves the
-      // raw, unvalidated blob the filter just refused, which is the opposite of failing
-      // closed (#6448 — an unknown state "must surface as an error, never silently map to
-      // normal"). Let it out so the tool call errors instead.
-      if (isMcpStoredContractError(err) || err instanceof RpcValidationError) throw err;
-      // Same minified-frame over-grouping guard as the tool-execution catch
-      // below — key on step + tool + error type so a post-filter bug in one
-      // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).
-      captureSilentError(err, {
-        tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name },
-        fingerprint: mcpErrorFingerprint('post-filter', tool.name, err),
-      });
-      return data;
-    }
+  try {
+    return panel === 'natural-disasters' ? filterNaturalDisastersPanelData(structuredClone(data), params) : tool._postFilter(structuredClone(data), params);
+  } catch (err) {
+    if (isMcpStoredContractError(err) || err instanceof RpcValidationError) throw err;
+    captureSilentError(err, {
+      tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name },
+      fingerprint: mcpErrorFingerprint('post-filter', tool.name, err),
+    });
+    return data;
+  }
 }
 
 type SettledRead = { ok: true; value: unknown } | { ok: false };
@@ -520,7 +542,14 @@ export async function dispatchToolsCall(
         panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
       }
     }
-    if (dedicatedPanel && tool.name === 'open_country_brief') {
+    if ((tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters') && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading original evidence.', 'invalid');
+    if (dedicatedPanel && tool.name === 'get_forecast_predictions' && suppliedPanel === undefined) {
+      const admissionArgs = Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath' && key !== 'summary'));
+      panelRequest = await admitForecastPanel(context, budget, deps.redisPipeline, admissionArgs);
+      panelUsage = panelRequest.usage;
+      const readArgs = forecastPanelReadSchema.parse(Object.fromEntries(Object.entries(admissionArgs).filter(([key]) => key !== 'refresh' && key !== 'request_id')));
+      panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, readArgs, panelRequest.token);
+    } else if (dedicatedPanel && tool.name === 'open_country_brief') {
       panelRequest = await admitCountryPanel(context, budget, deps.redisPipeline, Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')));
     } else if (dedicatedPanel && tool.name === 'open_news_dashboard') {
       if (suppliedPanel !== undefined) throw new PanelRequestError('Open or refresh the dashboard without a reader token.', 'invalid');
@@ -529,7 +558,9 @@ export async function dispatchToolsCall(
     } else if (suppliedPanel !== undefined) {
       if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
-        Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
+        tool.name === 'get_forecast_predictions' || tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters'
+          ? callArguments
+          : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
@@ -650,20 +681,22 @@ export async function dispatchToolsCall(
     } else if (tool.name === 'get_natural_disasters' && panelRead) {
       disasterRead = await executeNaturalDisastersPanelRead(sourceArguments);
       result = disasterRead.value;
-    } else if (tool._execute) {
+    } else {
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
-      result = await tool._execute(
+      if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
+      if (tool._execute) result = await tool._execute(
         callArguments,
         execution.downstreamOrigin,
         context,
         execution,
       );
-    } else {
-      const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
-        ? { ...tool, _postFilter: filterConflictPanelEvents }
-        : tool;
-      result = await executeTool(sourceTool, sourceArguments);
+      else {
+        const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
+          ? { ...tool, _postFilter: filterConflictPanelEvents }
+          : tool;
+        result = await executeTool(sourceTool, execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+      }
     }
     if (panelRead && panelRead.cached === undefined) {
       if (intelligenceRead) await panelRead.saveNewsIntelligence(intelligenceRead);
@@ -671,8 +704,16 @@ export async function dispatchToolsCall(
       else if (tool.name === 'open_news_dashboard' && result && typeof result === 'object') {
         const { requestedView: _view, ...snapshot } = result as Record<string, unknown>;
         await panelRead.save(snapshot);
+      } else if (tool.name === 'get_forecast_predictions' && result && typeof result === 'object') {
+        const { panelRequest: _receipt, ...snapshot } = result as Record<string, unknown>;
+        await panelRead.save(snapshot);
       } else await panelRead.save(result);
     }
+    if (tool.name === 'get_forecast_predictions' && panelRead?.panel === 'forecasts' && tool._execute === undefined && argBool(callArguments.summary) && result && typeof result === 'object' && 'data' in result) {
+      const data = (result as { data: Record<string, unknown> }).data;
+      result = { ...result, data: tool._summarize ? tool._summarize(data) : summarizeData(data) };
+    }
+    if (tool.name === 'get_forecast_predictions' && panelRequest && result && typeof result === 'object') result = { ...result, panelRequest };
     if (tool.name === 'open_news_dashboard' && panelRequest && result && typeof result === 'object') {
       const parsed = parseNewsDashboardRequest(callArguments);
       result = { ...result, requestedView: parsed.success ? parsed.data.view : {}, panelRequest };

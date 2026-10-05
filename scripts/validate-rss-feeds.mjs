@@ -37,13 +37,13 @@ const CONFIG_DRIFT_REASONS = Object.freeze({
 // because PR contributors can rewrite feeds.ts to make GitHub runners hit
 // arbitrary URLs (SSRF surface). In CI mode:
 //   1. Reject non-https schemes (no plaintext, no file:// etc.)
-//   2. Reject hosts that don't pass api/_rss-allowed-domain-match.js
-//      isAllowedDomain (same www-normalized check the Edge proxy enforces)
+//   2. Require the RSS host allowlist or the exact fixed-source MIIT adapter URL.
+//      The adapter exception does not authorize its host for general proxying.
 //   3. Refuse to follow cross-host redirects (manual redirect handling per
 //      hop with allowlist re-check)
 const CI_MODE = process.argv.includes('--ci');
 
-function extractFeeds() {
+export function extractFeeds() {
   const src = readFileSync(FEEDS_PATH, 'utf8');
   const feeds = [];
   const seen = new Set();
@@ -156,14 +156,17 @@ function assertCiAllowed(rawUrl) {
   if (parsed.protocol !== 'https:') {
     throw new Error(`${CONFIG_DRIFT_REASONS.NON_HTTPS} ${parsed.protocol}`);
   }
-  if (!isAllowedDomain(parsed.hostname)) {
+  // This fixed-source adapter is a catalog feed, not a general RSS proxy.
+  // Keep the exception URL-exact so other API paths and query targets stay blocked.
+  const isMiitAdapter = parsed.href === 'https://api.worldmonitor.app/api/miit-news';
+  if (!isMiitAdapter && !isAllowedDomain(parsed.hostname)) {
     throw new Error(`${CONFIG_DRIFT_REASONS.HOST_NOT_ALLOWED} ${parsed.hostname}`);
   }
   return parsed;
 }
 
-async function fetchFeed(url) {
-  if (CI_MODE) {
+export async function fetchFeed(url, { ci = CI_MODE } = {}) {
+  if (ci) {
     // Manual per-hop redirect handling: every hop must satisfy the same
     // https + allowlist gates. Mirrors api/rss-proxy.js redirect re-check.
     // Per-hop timer (NOT a shared budget across hops) — each hop gets the
