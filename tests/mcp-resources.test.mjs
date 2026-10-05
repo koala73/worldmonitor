@@ -387,7 +387,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.deepEqual(actualUris, [
       'worldmonitor://seed-meta/freshness',
       'ui://worldmonitor/country-risk.html',
-      'ui://worldmonitor/world-brief.html',
+      'ui://worldmonitor/world-brief-v2.html',
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/market-radar-v3.html',
       'ui://worldmonitor/chokepoint-monitor.html',
@@ -505,6 +505,26 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
   });
 
+  it('World Brief advertises only v2 while the private original alias retains its requested URI', async () => {
+    const current = 'ui://worldmonitor/world-brief-v2.html';
+    const legacy = 'ui://worldmonitor/world-brief.html';
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 8, method: 'resources/list', params: {} }));
+    const listed = (await listRes.json()).result.resources.map(resource => resource.uri);
+    assert.ok(listed.includes(current));
+    assert.ok(!listed.includes(legacy));
+    const responses = [];
+    for (const uri of [current, legacy]) {
+      const res = await handler(anonReq(readBody(uri)));
+      const body = await res.json();
+      assert.equal(body.error, undefined);
+      assert.equal(body.result.contents[0].uri, uri);
+      assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+      responses.push(body.result.contents[0]);
+    }
+    assert.equal(responses[0].text, responses[1].text);
+    assert.deepEqual(responses[0]._meta, responses[1]._meta);
+  });
+
   it('every tool _uiResourceUri resolves to a listed ui:// resource, and every ui:// resource is reachable (bidirectional integrity)', async () => {
     // Enumerate the ui:// URIs the server actually advertises via resources/list.
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 9, method: 'resources/list', params: {} }));
@@ -612,7 +632,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // -------------------------------------------------------------------------
   it('FLEET: shared-shell widgets surface soft-error envelopes (_budget_exceeded / _jmespath_error) instead of rendering blank success', async () => {
     const shellWidgets = [
-      'ui://worldmonitor/world-brief.html',
+      'ui://worldmonitor/world-brief-v2.html',
       'ui://worldmonitor/country-brief.html',
       'ui://worldmonitor/chokepoint-monitor.html',
       'ui://worldmonitor/news-intelligence.html',

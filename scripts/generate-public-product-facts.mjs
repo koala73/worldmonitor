@@ -30,7 +30,7 @@ import { publishedRankedCountries } from './build-ai-search.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
 import { lngFacilityCount } from './_storage-facility-registry.mjs';
-import { computeStats } from './docs-stats.mjs';
+import { computeStats, parseMcpAppsInventory } from './docs-stats.mjs';
 import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -340,9 +340,14 @@ transform('public/.well-known/agent-card.json', (source) => {
 // so adding tools cannot leave a syntactically valid but incomplete card.
 transform('public/.well-known/mcp/server-card.json', (source) => {
   const card = JSON.parse(source);
+  card.metadata.mcpApps.uiResources = parseMcpAppsInventory().uiResources;
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
     /get_market_data → market-radar(?:-v\d+)?\.html/,
     'get_market_data → market-radar-v3.html',
+  );
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_world_brief → world-brief(?:-v\d+)?\.html/,
+    'get_world_brief → world-brief-v2.html',
   );
   card.tools = TOOL_REGISTRY.map((tool) => ({
     name: tool.name,

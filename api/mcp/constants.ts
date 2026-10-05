@@ -268,7 +268,7 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.13.0 → 1.14.0 (2026-07-08) reflecting:
 //   - MCP Apps interactive-dashboard fleet: four new ui:// app-shell resources
 //     joining the v1.11.0 country-risk widget —
-//       * ui://worldmonitor/world-brief.html      (get_world_brief)
+//       * ui://worldmonitor/world-brief-v2.html      (get_world_brief)
 //       * ui://worldmonitor/country-brief.html    (get_country_brief)
 //       * ui://worldmonitor/market-radar.html      (get_market_data)
 //       * ui://worldmonitor/chokepoint-monitor.html (get_chokepoint_status)
