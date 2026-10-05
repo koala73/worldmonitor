@@ -39,7 +39,9 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
-    var d = data.data && typeof data.data === "object" ? data.data : data;
+    var value = Object.prototype.hasOwnProperty.call(data, "projection") ? data.projection : data;
+    var envelope = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var d = envelope.data && typeof envelope.data === "object" ? envelope.data : envelope;
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
@@ -117,8 +119,8 @@ const RENDER = `
     }
     if (!host.childNodes.length) host.appendChild(el("div", "empty", "No prediction markets available."));
 
-    q("foot").textContent = data.cached_at
-      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
+    q("foot").textContent = envelope.cached_at
+      ? "Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : "")
       : "";
 `;
 
