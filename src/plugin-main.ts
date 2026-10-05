@@ -98,7 +98,7 @@ function mountPlugin(): void {
     digest = data;
     latestInteraction = null;
     renderDigest();
-    publishContext({ view, latestInteraction, center: map.getCenter(), map: map.getState() });
+    publishContext({ view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() });
     if (keepCurrentView || admissionChanged || requestedView) {
       await applyView(requestedView ?? {}, { keepCurrentView, reloadLayers: admissionChanged, generation }).catch(error => {
         if (generation !== renderGeneration) return;
@@ -287,9 +287,13 @@ function mountPlugin(): void {
     if (next.query !== undefined) { search.open(); search.applyQuery(next.query); }
     countryBriefButton.disabled = !view.country;
     countryBriefButton.textContent = view.country ? `${view.country} country brief` : 'Select a country for its brief';
-    const receipt = { applied: true, view, latestInteraction, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
+    const receipt = { applied: true, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
     publishContext(receipt);
     return receipt;
+  }
+
+  function visibleCategoryLabel(): string {
+    return view.category ? DEFAULT_PANELS[view.category]?.name ?? view.category : 'All news panels';
   }
 
   function publishContext(receipt: object): void {
@@ -313,7 +317,7 @@ function mountPlugin(): void {
     if (generation !== renderGeneration) throw new Error('The news snapshot changed. Select the article again.');
     if (!recordNewsInteraction(item, item.title)) throw new Error('This article is no longer in the current news view.');
     for (const panel of panels.values()) if (panel.hasNewsItem(item.link)) panel.scrollToNewsItem(item.link);
-    const receipt = { applied: true, link, title: item.title, source: item.source, mapFocused, center: map.getCenter(), view, latestInteraction };
+    const receipt = { applied: true, link, title: item.title, source: item.source, mapFocused, center: map.getCenter(), view, categoryLabel: visibleCategoryLabel(), latestInteraction };
     publishContext(receipt);
     return receipt;
   }
@@ -380,7 +384,7 @@ function mountPlugin(): void {
     map.onNewsClicked(item => {
       const article = item.article;
       if (!article || !visibleMarkers.some(marker => marker.title === item.title && marker.article?.link === article.link && marker.article.title === article.title && marker.article.source === article.source) || !recordNewsInteraction(article, item.title)) return;
-      publishContext({ view, latestInteraction, center: map.getCenter(), map: map.getState() });
+      publishContext({ view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() });
     });
     map.onTimeRangeChanged(time_range => {
       if (applyingTimeRange) return;

@@ -161,6 +161,94 @@ describe('NASA FIRMS Area API sequence', () => {
     }
   });
 
+  it('classifies nested request failures without exposing arbitrary error fields', async () => {
+    const secret = 'private-map-key';
+    const detail = `https://provider.invalid/${secret} address=192.0.2.1`;
+    const reset = Object.assign(new Error(detail), { code: 'ECONNRESET' });
+    const unknown = Object.assign(new Error(detail), { code: 'PRIVATE_MAP_KEY' });
+    const dns = Object.assign(new Error(detail), { code: 'EAI_AGAIN' });
+    const beyondLimit = Object.assign(new Error(detail), { code: 'EPIPE' });
+    const aggregate = new AggregateError([reset, unknown, reset, dns, null, null, null, null, beyondLimit], detail);
+    aggregate.cause = aggregate;
+    const failure = new TypeError(detail, { cause: aggregate });
+    const { logger, messages } = captureLogger();
+    const sleeps = [];
+    let attempts = 0;
+    await assert.rejects(fetchFirmsRegionSource(secret, 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => { attempts++; throw failure; },
+      sleepFn: async (ms) => sleeps.push(ms),
+      logger,
+    }), (error) => {
+      assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [ECONNRESET, EAI_AGAIN], primary retry request error [ECONNRESET, EAI_AGAIN])');
+      assert.doesNotMatch(JSON.stringify([error.message, messages]), /private-map-key|PRIVATE_MAP_KEY|provider|192\.0\.2\.1|TypeError/);
+      return true;
+    });
+    assert.equal(attempts, 2);
+    assert.deepEqual(sleeps, [6_000]);
+    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary request error [ECONNRESET, EAI_AGAIN]; trying primary retry');
+  });
+
+  it('distinguishes a failed response body from a failed request', async () => {
+    const { logger, messages } = captureLogger();
+    let attempts = 0;
+    const rows = await fetchFirmsRegionSource('private-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => {
+        attempts++;
+        if (attempts === 2) return response(200);
+        return { ok: true, text: async () => { throw new TypeError('private-map-key', {
+          cause: Object.assign(new Error('private body'), { code: 'UND_ERR_SOCKET' }),
+        }); } };
+      },
+      sleepFn: async () => {},
+      logger,
+    });
+    assert.deepEqual(rows, []);
+    assert.equal(attempts, 2);
+    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary body error [UND_ERR_SOCKET]; trying primary retry');
+    assert.doesNotMatch(JSON.stringify(messages), /private/);
+  });
+
+  it('preserves allowlisted DNS, connect-timeout and TLS codes in terminal coverage diagnostics', async () => {
+    for (const code of ['EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'ERR_TLS_CERT_ALTNAME_INVALID']) {
+      const { logger, messages } = captureLogger();
+      const failedPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Ukraine}/`;
+      const result = await fetchAllFirmsRegions('private-map-key', {
+        fetchFn: async (url) => {
+          if (new URL(url).pathname.includes(failedPath)) {
+            throw new TypeError(`private-map-key ${url}`, { cause: { code } });
+          }
+          return response(200);
+        },
+        sleepFn: async () => {},
+        logger,
+      });
+      assert.equal(result._firmsFulfilledCalls, 26);
+      assert.equal(result._firmsFailedCalls, 1);
+      assert.equal(messages.error[0], `  [FIRMS] VIIRS_SNPP_NRT/Ukraine: FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [${code}], primary retry request error [${code}])`);
+      assert.doesNotMatch(JSON.stringify(messages), /private-map-key|https:/);
+    }
+  });
+
+  it('bounds diagnostic traversal and preserves unknown-error redaction', async () => {
+    const cycle = { code: 'PRIVATE_MAP_KEY', message: 'private-map-key' };
+    cycle.cause = cycle;
+    const deep = Array.from({ length: 20 }, () => new Error('private-map-key'));
+    deep.forEach((error, index) => { error.cause = deep[index + 1]; });
+    deep.at(-1).code = 'ECONNRESET';
+    for (const failure of [cycle, deep[0], null, 'private-map-key']) {
+      const { logger, messages } = captureLogger();
+      await assert.rejects(fetchFirmsRegionSource('private-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+        fetchFn: async () => { throw failure; },
+        sleepFn: async () => {},
+        logger,
+      }), (error) => {
+        assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error, primary retry request error)');
+        assert.doesNotMatch(JSON.stringify(messages), /private|PRIVATE/);
+        return true;
+      });
+    }
+  });
+
   it('keeps the source-major 27-call worldwide sequence and six-second cadence', async () => {
     const urls = [];
     const sleeps = [];

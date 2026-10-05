@@ -7,8 +7,10 @@ import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
 test.use({ serviceWorkers: 'block' });
 type HostCall = { name: string; arguments: Record<string, unknown> };
 type NewsInteraction = { kind: string; link: string; title: string; source: string; displayLabel: string };
-type NewsContext = { latestInteraction?: NewsInteraction | null; view: Record<string, unknown> };
-async function installNewsHost(page: Page, deniedInitially = false, serverTools = true, selectionFixture = false, modelContext = true) {
+type NewsContext = { latestInteraction?: NewsInteraction | null; view: Record<string, unknown>; categoryLabel?: string };
+async function installNewsHost(page: Page, deniedInitially = false, serverTools = true, fixture: boolean | string[] = false, modelContext = true) {
+  const selectionFixture = fixture === true;
+  const categoryIds = Array.isArray(fixture) ? fixture : ['world'];
   const calls: HostCall[] = [];
   const contexts: NewsContext[] = [];
   const methods: string[] = [];
@@ -46,7 +48,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
       const id = String(params.arguments.request_id ?? 'initial');
       if (!successfulRefreshes.has(id)) { units++; successfulRefreshes.add(id); }
       const { refresh: _refresh, request_id: _id, ...requestedView } = params.arguments;
-      snapshot = { categories: { world: { items: articles } }, coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } };
+      snapshot = { categories: Object.fromEntries(categoryIds.map((category, index) => [category, { items: index === 0 ? articles : [] }])), coverage: { state: 'complete', servedStale: false }, requestedView, panelRequest: { panel: 'news', token: `news.controlled-${units}`, expiresAt: new Date(Date.now() + 300000).toISOString(), reused: false, usage: { used: units, limit: 50, remaining: 50 - units, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } };
       return { structuredContent: snapshot };
     }
     if (params.name === 'get_natural_disasters') {
@@ -245,6 +247,52 @@ test('an older failed hydration cannot clear a newer loaded article interaction'
   await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
   expect(host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard', 'get_natural_disasters']);
+});
+
+test('news category receipts retain the visible label without loading data', async ({ page }, info) => {
+  const host = await installNewsHost(page, false, true, ['politics', 'fixture']);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#pluginUsage')).toContainText('49 of 50 requests remaining');
+  await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
+  const initialCalls = host.calls.length;
+  await page.evaluate(() => {
+    const output = document.createElement('pre');
+    output.id = 'categoryContext';
+    output.style.whiteSpace = 'pre-wrap';
+    document.querySelector('iframe')!.before(output);
+    window.addEventListener('message', event => {
+      if (event.source !== document.querySelector('iframe')!.contentWindow || event.data.method !== 'ui/update-model-context') return;
+      const receipt = JSON.parse(event.data.params.content[0].text);
+      output.textContent = `Controlled host receipt: category=${receipt.view.category ?? '(all)'}, categoryLabel=${receipt.categoryLabel}`;
+    });
+  });
+  await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
+  await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option:checked')).toHaveText('World News');
+  await expect(frame.locator('[data-panel="politics"]')).toContainText('Controlled earthquake report in Japan');
+  await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
+  await page.screenshot({ path: info.outputPath('news-category-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 430, height: 1500 });
+  await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
+  await page.screenshot({ path: info.outputPath('news-category-mobile.png'), fullPage: true });
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
+  await page.evaluate(() => {
+    const frame = document.querySelector('iframe')!;
+    window.addEventListener('message', event => {
+      if (event.source === frame.contentWindow && event.data.id === 'category-receipt') {
+        (window as unknown as { categoryReceipt: object }).categoryReceipt = event.data.result.structuredContent;
+      }
+    });
+    frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'category-receipt', method: 'tools/call', params: { name: 'apply_news_view', arguments: { category: 'politics' } } }, '*');
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { categoryReceipt: object }).categoryReceipt)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
+  await frame.getByRole('combobox', { name: 'News category' }).selectOption('fixture');
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'fixture' }, categoryLabel: 'fixture' });
+  await frame.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)).toMatchObject({ categoryLabel: 'All news panels' });
+  expect(host.contexts.at(-1)?.view.category).toBeUndefined();
+  expect(host.calls).toHaveLength(initialCalls);
+  expect(host.units).toBe(1);
+  await writeFile(info.outputPath('news-category-receipts.json'), JSON.stringify(host.contexts, null, 2));
 });
 
 test('news and map hydration share one request, toggles reuse data and refresh charges once', async ({ page }, info) => {

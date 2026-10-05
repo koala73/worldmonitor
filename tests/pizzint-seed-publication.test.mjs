@@ -417,6 +417,37 @@ test('missing primary values and failed fallback preserve the expired live obser
   assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
 });
 
+for (const withMissingFreshRow of [false, true]) {
+  test(`stale primary readings${withMissingFreshRow ? ' beside a fresh no-signal row' : ''} do not suppress live fallback`, async () => {
+    const run = await besttimeHarness([[40, 45]]);
+    const stale = { ...validResponse.data[0], data_freshness: 'stale',
+      recorded_at: new Date(run.state.now - 90 * 60_000).toISOString() };
+    run.state.source = { success: true, data: [stale, ...(withMissingFreshRow ? [{
+      ...validResponse.data[0], place_id: 'no-signal', current_popularity: 0,
+      percentage_of_usual: 0, data_source: 'none',
+    }] : [])] };
+    await run.seed();
+    assert.equal(run.state.besttimeCalls.length, 12);
+    assert.equal(run.state.cache.get(payloadKey).data._seed.sourceVersion, 'besttime-live');
+    assert.equal(run.status().locations[0].currentPopularity, 40);
+    assert.equal(run.status().locations[0].noLiveSignal, false);
+    assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now);
+  });
+}
+
+test('failed fallback beside stale primary data does not renew the live clock', async () => {
+  const run = await besttimeHarness([[40, 45]]);
+  await run.seed();
+  const lastLiveAt = run.state.cache.get(metaKey).data.lastLiveAt;
+  run.state.now += 60 * 60_000;
+  run.state.source = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
+  for (const id of run.ids) run.state.besttime.set(id, { ok: false, status: 503 });
+  await run.seed();
+  assert.equal(run.state.besttimeCalls.length, 18);
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveAt);
+  assert.equal(run.status().locations[0].dataFreshness, 'DATA_FRESHNESS_STALE');
+});
+
 test('a valid primary reading beside a null reading does not poll BestTime', async () => {
   const run = harness();
   run.state.source = { success: true, data: [validResponse.data[0], {
@@ -429,6 +460,18 @@ test('a valid primary reading beside a null reading does not poll BestTime', asy
   assert.equal(locations[0].currentPopularity, 75);
   assert.equal(locations[0].dataSource, '');
   assert.equal(locations[1].noLiveSignal, true);
+});
+
+test('fresh primary readings retain priority beside stale rows, including closed zero readings', async () => {
+  for (const reading of [validResponse.data[0], { ...validResponse.data[0], current_popularity: 0, is_closed_now: true }]) {
+    const run = harness();
+    run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+    run.state.source = { success: true, data: [reading, { ...validResponse.data[0],
+      place_id: 'stale', data_freshness: 'stale' }] };
+    await run.seed();
+    assert.equal(run.state.besttimeCalls.length, 0);
+    assert.equal(run.state.cache.get(payloadKey).data._seed.sourceVersion, 'pizzint');
+  }
 });
 
 test('normal Sunday lunch publishes DEFCON 5 even when a venue is 100% busy', async () => {

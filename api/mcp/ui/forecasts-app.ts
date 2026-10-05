@@ -43,6 +43,7 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
+    if (Object.prototype.hasOwnProperty.call(data, "projection")) data = object(data.projection);
     var d = data.data && typeof data.data === "object" ? data.data : data;
     q("empty").style.display = "none";
     q("card").style.display = "block";
@@ -52,6 +53,87 @@ const RENDER = `
     var reported = number(object(node.predictions).count);
     var total = reported == null ? preds.length : Math.max(preds.length, reported);
     var host = q("list");
+    var generation = node.generatedAt == null ? "" : String(node.generatedAt);
+    var cases = renderData.forecastCases || (renderData.forecastCases = { generation: "", cache: new Map(), pending: new Map(), targets: new Map(), serial: 0 });
+    cases.pending.forEach(function (cancel) { cancel(); });
+    cases.pending.clear();
+    if (cases.generation !== generation) { cases.cache.clear(); cases.generation = generation; }
+    var panel = object(data.panelRequest);
+
+    function caseContent(parent, value) {
+      parent.textContent = "";
+      analysis(parent, value.forecast);
+      var coverage = [];
+      if (text(value.cached_at)) coverage.push("Original case snapshot: " + text(value.cached_at));
+      if (value.stale) coverage.push("Original case uses stale cache");
+      if (value.freshnessUnknown) coverage.push("Original case freshness unknown");
+      if (value.unreadable) coverage.push("Original case source coverage unavailable");
+      if (coverage.length) parent.appendChild(el("p", "empty", coverage.join(" · ")));
+    }
+    function caseNotice(parent, message, retry) {
+      parent.textContent = "";
+      parent.appendChild(el("p", "empty", message));
+      if (retry) {
+        var button = el("button", "", "Retry case details");
+        button.type = "button";
+        button.onclick = retry;
+        parent.appendChild(button);
+      }
+      reportSize();
+    }
+    function loadCase(parent, p) {
+      if (!hostCapabilities.serverTools || typeof hostCapabilities.serverTools !== "object") {
+        caseNotice(parent, "This host does not support original case tool calls."); return;
+      }
+      if (panel.panel !== "forecasts" || typeof panel.token !== "string" || !panel.token) {
+        caseNotice(parent, "Original case details require a signed panel request. Open a new forecasts panel."); return;
+      }
+      if (typeof p.id !== "string" || !p.id || p.id.length > 160 || !generation || generation.length > 64) {
+        caseNotice(parent, "Original case identity or generation is unavailable."); return;
+      }
+      var cached = cases.cache.get(p.id);
+      if (cached) { caseContent(parent, cached); return; }
+      caseNotice(parent, "Loading original case details…");
+      if (cases.pending.has(p.id)) return;
+      var requestId = "forecast-case-" + ++cases.serial;
+      var timer;
+      function cancel() { clearTimeout(timer); window.removeEventListener("message", receive); cases.pending.delete(p.id); }
+      function failure(message) { cancel(); caseNotice(cases.targets.get(p.id) || parent, message, function () { loadCase(cases.targets.get(p.id) || parent, p); }); }
+      function receive(event) {
+        if (event.source !== parentWin) return;
+        var message = event.data;
+        if (!message || message.jsonrpc !== "2.0" || message.id !== requestId) return;
+        if (message.error) { failure("Original case request failed."); return; }
+        var result = message.result;
+        var payload = extractToolData(result);
+        var error = softError(payload);
+        if (result && result.isError) { failure("Original case request failed."); return; }
+        if (error) { failure(error); return; }
+        var envelope = object(payload);
+        if (Object.prototype.hasOwnProperty.call(envelope, "projection")) envelope = object(envelope.projection);
+        var detail = object(object(envelope.data).forecastCase);
+        if (detail.status === "generation_changed" || (detail.generatedAt != null && String(detail.generatedAt) !== generation)) {
+          cancel(); caseNotice(cases.targets.get(p.id) || parent, "Forecast generation changed. Ask to refresh forecasts for current original evidence. Refreshing uses 1 new panel allocation."); return;
+        }
+        if (detail.status === "missing") { failure("Original case is no longer available."); return; }
+        if (detail.status === "unavailable") { failure("Original case source unavailable."); return; }
+        var original = object(detail.forecast);
+        if (detail.status !== "ready" || String(detail.generatedAt) !== generation || original.id !== p.id) {
+          failure("Original case response does not match this forecast."); return;
+        }
+        cancel();
+        var value = { forecast: original, cached_at: envelope.cached_at, stale: envelope.stale === true, freshnessUnknown: envelope.freshnessUnknown === true, unreadable: Array.isArray(envelope.unreadable) && envelope.unreadable.length > 0 };
+        cases.cache.set(p.id, value);
+        caseContent(cases.targets.get(p.id) || parent, value);
+        reportSize();
+      }
+      cases.pending.set(p.id, cancel);
+      window.addEventListener("message", receive);
+      timer = setTimeout(function () { failure("Original case request timed out."); }, 15000);
+      post({ jsonrpc: "2.0", id: requestId, method: "tools/call", params: { name: "get_forecast_case", arguments: {
+        forecast_id: p.id, generated_at: generation, panel_request: panel.token
+      } } });
+    }
 
     function object(v) { return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
     function text(v) { return typeof v === "string" ? collapseWs(v) : ""; }
@@ -186,8 +268,18 @@ const RENDER = `
       if (bar) fc.appendChild(bar);
       var details = el("details");
       details.appendChild(el("summary", "", "Analysis"));
-      analysis(details, p);
-      details.ontoggle = reportSize;
+      var content = el("div");
+      details.appendChild(content);
+      if (typeof p.id === "string") cases.targets.set(p.id, content);
+      var loadedCase = Object.keys(object(p.caseFile)).length > 0;
+      if (loadedCase) analysis(content, p);
+      else if (p.hasCaseFile === false) caseNotice(content, "No case evidence is available for this forecast.");
+      else if (p.hasCaseFile === true && typeof p.id === "string" && cases.cache.has(p.id)) caseContent(content, cases.cache.get(p.id));
+      else analysis(content, p);
+      details.ontoggle = function () {
+        if (details.open && !loadedCase && p.hasCaseFile === true) loadCase(content, p);
+        reportSize();
+      };
       fc.appendChild(details);
       host.appendChild(fc);
     }
@@ -205,6 +297,7 @@ const RENDER = `
       select.onchange = renderList;
     }
     function renderList() {
+      cases.targets.clear();
       host.textContent = "";
       var visible = preds.filter(function (p) {
         return (!q("domain").value || text(p.domain) === q("domain").value) && (!q("region").value || text(p.region) === q("region").value);
