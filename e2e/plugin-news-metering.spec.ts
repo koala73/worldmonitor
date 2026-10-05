@@ -314,6 +314,7 @@ for (const mobile of [false, true]) {
     await expect(frame.locator('[data-panel]').filter({ visible: true })).toHaveCount(2);
     await expect(frame.locator('.news-location-marker')).toHaveCount(1);
     await expect(frame.locator('#pluginCategoryNotice')).toContainText('world');
+    await expect(frame.locator('path.country').first()).toBeAttached();
     await page.screenshot({ path: info.outputPath('category-initial-refusal.png'), fullPage: true });
     await newsAction(page, 'apply_news_view', { source: 'Fixture publisher' });
     await expect(frame.locator('#pluginCategoryNotice')).toBeVisible();
@@ -334,6 +335,7 @@ test('unknown loaded category refuses the whole patch and preserves human camera
   await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
   await frame.locator('.news-location-marker').click();
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction?.link).toBe('https://example.com/news');
+  const beforeDrag = (await newsAction(page, 'apply_news_view', {})).structuredContent!;
   const mapBox = await frame.locator('.map-svg').boundingBox();
   expect(mapBox).not.toBeNull();
   await page.mouse.move(mapBox!.x + mapBox!.width / 2, mapBox!.y + mapBox!.height / 2);
@@ -341,12 +343,14 @@ test('unknown loaded category refuses the whole patch and preserves human camera
   await page.mouse.move(mapBox!.x + mapBox!.width / 2 + 80, mapBox!.y + mapBox!.height / 2 + 30, { steps: 8 });
   await page.mouse.up();
   const before = (await newsAction(page, 'apply_news_view', {})).structuredContent!;
+  expect(Math.abs(before.center!.lon - beforeDrag.center!.lon)).toBeGreaterThan(1);
+  const popupsBefore = await frame.locator('.map-popup').count();
   const receipt = (await newsAction(page, 'apply_news_view', { category: 'missing', source: 'Unapplied publisher', country: 'BR', time_range: '1h', map_layers: ['fires'], renderer: 'globe', map_latitude: -20, map_longitude: 50, map_zoom: 8, query: 'Unapplied search' })).structuredContent!;
   expect(receipt).toMatchObject({ applied: false, reason: 'unknown_category', view: before.view, categoryLabel: 'World News', latestInteraction: before.latestInteraction, center: before.center, map: before.map });
   await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('politics');
   await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
   await expect(frame.locator('.search-modal')).toBeHidden();
-  await expect(frame.locator('.map-popup')).toBeVisible();
+  await expect(frame.locator('.map-popup')).toHaveCount(popupsBefore);
   await expect(frame.locator('.news-location-marker')).toHaveCount(1);
   await expect(frame.locator('#pluginCategoryNotice')).toContainText('missing');
   await page.screenshot({ path: info.outputPath('category-followup-refusal.png'), fullPage: true });
