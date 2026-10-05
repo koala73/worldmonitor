@@ -98,7 +98,7 @@ describe('paid country workflow through the MCP handler', () => {
     assert.equal(pipe.count, 1);
     for (const name of ['get_country_brief', 'get_country_coverage']) {
       const read = await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token);
-      await read.save({ countryCode: 'US', brief: 'Controlled assessment', headlines: [] });
+      await read.save({ countryCode: 'US', countryName: 'United States', brief: 'Controlled assessment', model: 'fixture', generatedAt: Date.now(), sources: [], groundingStories: [], digestCoverage: { state: 'complete', servedStale: false } });
       assert.equal((await readPanel(context, pipe.pipeline, name, { country_code: 'US' }, token)).cached.countryCode, 'US');
     }
     assert.equal(pipe.count, 1);
@@ -257,6 +257,7 @@ describe('paid country workflow through the MCP handler', () => {
     const grant = await admitCountryPanel(context, budget, pipe.pipeline, { country_code: 'US' });
     const read = (ctx, name, args, token = grant.token) => readPanel(ctx, pipe.pipeline, name, args, token);
     await assert.rejects(read({ ...context, userId: 'other' }, 'get_country_brief_section', energy));
+    await read(context, 'get_country_brief', { country_code: 'US', framework: 'Custom', allow_stale: true });
     for (const [name, args] of [
       ['get_country_brief_section', { section: 'energy', arguments: { country_code: 'UA' } }],
       ['get_country_brief_section', { section: 'flows', arguments: { reporter_code: '156' } }],
@@ -264,7 +265,6 @@ describe('paid country workflow through the MCP handler', () => {
       ['get_country_brief_section', { section: 'production', arguments: { commodity: 'copper', iso2: 'CN' } }],
       ['get_country_brief_section', { section: 'markets', arguments: { category: 'country:UA', page_size: 5 } }],
       ['get_country_brief_section', { section: 'china', arguments: {} }],
-      ['get_country_brief', { country_code: 'US', framework: 'Custom' }],
       ['get_country_brief', { country_code: 'UA' }],
       ['get_country_coverage', { country_code: 'UA' }],
       ['get_market_data', {}],
@@ -368,7 +368,12 @@ describe('one allocation per embedded panel', () => {
     assert.deepEqual(second.body.result.structuredContent.requestedView, { country: 'US', query: 'trade' });
     assert.equal(second.body.result.structuredContent.panelRequest.token, grant.token);
     const snapshot = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
-    await snapshot.save({ data: { earthquakes: { earthquakes: [] }, events: { events: [] } } });
+    await snapshot.saveNaturalDisasters({
+      value: { cached_at: new Date().toISOString(), stale: false, data: { earthquakes: { earthquakes: [] }, events: { events: [] } } },
+      reuseUntil: Math.min(Date.now() + 60_000, Date.parse(grant.expiresAt)),
+    });
+    const loaded = await readPanel(context, pipe.pipeline, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100 }, grant.token);
+    assert.deepEqual(loaded.cached.data.earthquakes.earthquakes, []);
     const result = await invoke(deps, 'get_natural_disasters', { dataset: ['earthquakes', 'other'], limit: 100, panel_request: grant.token });
     assert.deepEqual(result.body.result.structuredContent.data.earthquakes.earthquakes, []);
     assert.equal(pipe.count, 1);

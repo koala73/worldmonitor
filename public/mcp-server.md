@@ -25,16 +25,18 @@ Use the apex server URL for all product MCP clients. Product-host aliases return
 
 The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. General data tools accept an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath). The closed signed `get_forecast_case` and `get_forecast_theaters` readers preserve original evidence and reject projection arguments.
 
+Call `get_mcp_allowance({})` to read the current verified account allowance when the host cannot read `worldmonitor://account/mcp-allowance`. It requires user-bound OAuth or `wm_…` credentials, accepts only optional `jmespath`, and rejects account selectors and `panel_request`. Status spends no daily allowance, remains available at the daily cap, and uses the shared 192/minute protocol bucket. Unreadable counters return an error rather than a zero snapshot. Check `sharedWithRestApi` before interpreting `used`; account totals may include REST traffic and do not identify individual callers.
+
 ## MCP Apps
 
 World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:
 
-- `ui://worldmonitor/country-risk.html`
-- `ui://worldmonitor/world-brief.html`
-- `ui://worldmonitor/country-brief.html`
+- `ui://worldmonitor/country-risk-v2.html`
+- `ui://worldmonitor/world-brief-v2.html`
+- `ui://worldmonitor/country-brief-v3.html`
 - `ui://worldmonitor/market-radar-v3.html`
-- `ui://worldmonitor/chokepoint-monitor.html`
-- `ui://worldmonitor/news-intelligence.html`
+- `ui://worldmonitor/chokepoint-monitor-v2.html`
+- `ui://worldmonitor/news-intelligence-v2.html`
 - `ui://worldmonitor/conflict-events-v2.html`
 - `ui://worldmonitor/natural-disasters-v2.html`
 - `ui://worldmonitor/prediction-markets-v3.html`
@@ -81,3 +83,23 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 - Connect Claude to World Monitor
 - Real-time geopolitical intelligence MCP server
 - MCP server for markets, conflicts, and global risk data
+
+## Natural Disasters Panel Requests
+
+On Pro and Pro Business, `get_natural_disasters` opens one Natural Disasters allocation. Repeated opens and dataset, magnitude, activity and limit filters reuse that admission within five minutes. Use its returned `panelRequest.token` as `panel_request` for bounded reads. Explicit refresh needs `refresh: true`, a UUID `request_id`, and no reader token; the same UUID retries the refresh allocation. API and free-account callers keep ordinary per-tool charging and existing filter coercions, and reject the paid refresh controls.
+
+Each uncached execution reads three fixed data keys and the existing seismology metadata key as one logical read within the 64-read admission. Exact successful filtered originals replay before summary or JMESPath only until the earliest observable source or EONET retention deadline. A new filter or unavailable, malformed, known degraded or unknown-clock observation can reread under the same allocation. Blocked regional source decisions remain readable but uncached, including zero-request preflight decisions. This does not establish complete provider coverage. The existing news token still permits only its exact hazard dataset list and limits 100, 20 or 1; it cannot use standalone magnitude or activity filters. Source data and internal deadlines do not add public metadata fields. Confirmed current usage accompanies authorized reads; an unknown counter omits the numeric notice.
+
+### News Intelligence panel admission
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.
+
+### Chokepoint panel admission
+
+On Pro and Pro Business, `get_chokepoint_status` opens one signed `chokepoints` allocation. Repeated filters, `summary` and JMESPath views share that allocation. Complete effective requested source subsets reuse their uncapped originals; changing the normalized dataset subset or chokepoint selector can reacquire sources under the same allocation. Unknown-only dataset selectors use the full bundle. A keyed filter with no match retains the original map, so it cannot manufacture complete empty coverage. Sparse AIS, unavailable today counts and partial modeled flows remain visible and retryable.
+
+Use the returned `panelRequest.token` as `panel_request` only for this tool. Explicit `refresh: true` requires a UUID `request_id` and no reader token; the same UUID retries that allocation. Authorized receipt reads report current usage without reserving another allocation; unknown usage omits the numeric notice. API and free-account calls retain per-tool accounting and reject these paid controls.
+
+An uncached execution uses the existing six dataset GETs, six metadata GETs and one activation EXISTS command. The 64-read admission bound counts tool executions, not those 13 Redis commands. Reuse checks selected source shapes, availability, publication clocks and CN/HK critical content age, both after lookup and before cache storage. Partial, malformed, unassessed or expired originals are not cached as complete. Reference-year baselines and modeled flow publication dates do not prove current metered oil or fresh underlying history. The private wrapped cache remains 512 KiB; tool output remains 128 KiB. This admission change does not add website details, histories, warnings or provider reads.

@@ -22,9 +22,22 @@ import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 
+function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
+  if (keys.includes(requested)) return { category: requested };
+  const normalized = requested.trim().toLowerCase();
+  const matches = keys.filter(key => key.trim().toLowerCase() === normalized || (DEFAULT_PANELS[key]?.name ?? key).trim().toLowerCase() === normalized);
+  return matches.length === 1 ? { category: matches[0]! } : { reason: matches.length ? 'ambiguous_category' : 'unknown_category' };
+}
+
 function mountPlugin(): void {
   const panels = new Map<string, NewsPanel>();
   const status = document.getElementById('pluginStatus')!;
+  const categoryNotice = document.createElement('div');
+  categoryNotice.id = 'pluginCategoryNotice';
+  categoryNotice.setAttribute('role', 'status');
+  categoryNotice.style.padding = '8px';
+  categoryNotice.hidden = true;
+  status.after(categoryNotice);
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
   let hostView: unknown;
@@ -128,10 +141,20 @@ function mountPlugin(): void {
     return refreshing;
   }
 
+  function loadedCategoryKeys(): string[] {
+    return Object.entries(digest?.categories ?? {}).filter(([, bucket]) => bucket && Array.isArray(bucket.items)).map(([key]) => key);
+  }
+
   function renderDigest(): void {
     if (!digest) return;
+    const categories = loadedCategoryKeys();
+    if (view.category && !categories.includes(view.category)) {
+      categoryNotice.textContent = `The selected news category "${visibleCategoryLabel()}" is no longer loaded. Showing All news panels.`;
+      categoryNotice.hidden = false;
+      view = { ...view, category: undefined };
+    }
     for (const [category, panel] of panels) {
-      if (!(category in digest.categories)) { panel.destroy(); panel.getElement().remove(); panels.delete(category); }
+      if (!categories.includes(category)) { panel.destroy(); panel.getElement().remove(); panels.delete(category); }
     }
     const locations: Parameters<MapContainer['setNewsLocations']>[0] = [];
     news = [];
@@ -185,7 +208,7 @@ function mountPlugin(): void {
     visibleMarkers = locations;
     map.setNewsLocations(locations);
     updateSelect(sourceSelect, [...new Set(news.map(item => item.source))].sort(), view.source ?? '', 'All sources');
-    updateSelect(categorySelect, Object.keys(digest.categories), view.category ?? '', 'All news panels');
+    updateSelect(categorySelect, categories, view.category ?? '', 'All news panels');
     search.registerSource('news', news.map(item => ({ id: item.link, title: item.title, subtitle: item.source, data: item })));
     status.textContent = !Object.keys(digest.categories).length ? 'No news is available.' : digest.coverage?.servedStale ? 'Showing cached news.' : digest.coverage?.state === 'partial' ? 'Some news sources are unavailable.' : '';
   }
@@ -195,20 +218,36 @@ function mountPlugin(): void {
     select.value = value;
   }
 
+  function refuseNewsCategory(requestedCategory: string, reason: 'unknown_category' | 'ambiguous_category'): object {
+    categoryNotice.textContent = reason === 'ambiguous_category'
+      ? `The news category "${requestedCategory}" matches more than one loaded panel. Select a news category from the list. The current view has been kept.`
+      : `The news category "${requestedCategory}" is not loaded. Select a news category from the list. The current view has been kept.`;
+    categoryNotice.hidden = false;
+    const receipt = { applied: false, reason, requestedCategory, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() };
+    publishContext(receipt);
+    return receipt;
+  }
+
   async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
       const desired = options.keepCurrentView ? { ...view } : { ...next };
       if (options.reloadLayers && desired.map_layers === undefined) desired.map_layers = view.map_layers ?? [];
-      return updateView(desired, options.reset ?? false, options.generation);
+      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)));
     });
     viewQueue = operation.catch(() => {});
     return operation;
   }
 
-  async function updateView(next: PluginNewsView, reset: boolean, generation?: number): Promise<object> {
+  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
+    const requestedCategory = next.category;
+    if (requestedCategory) {
+      const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
+      next = { ...next, category: resolution.category };
+    }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
     const selectedLayers = intended.map_layers ?? [];
     let snapshot: PluginHazardSnapshot | undefined;
@@ -224,6 +263,11 @@ function mountPlugin(): void {
       }
       snapshot = await loaded;
       if (superseded()) return { applied: false, superseded: true };
+      if (requestedCategory) {
+        const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
+        intended.category = resolution.category;
+      }
     }
     let renderer: object | undefined;
     if (next.renderer) {
@@ -304,6 +348,7 @@ function mountPlugin(): void {
       ? `Global hazard snapshot (up to ${hazardSnapshot?.limitPerSource ?? 100}/source): ${Object.entries(coverage).map(([key, value]) => `${key}: ${value.accepted} valid, ${value.skipped} skipped`).join('; ')}. Country filters apply to news; time controls apply to the map.`
       : effectiveLayers.length ? 'Landmarks from WorldMonitor reference data; these do not show live activity.' : '';
     if (reset && !next.country) map.clearCountryHighlight();
+    if (clearCategoryNotice) { categoryNotice.hidden = true; categoryNotice.textContent = ''; }
     renderDigest();
     if (next.query !== undefined) { search.open(); search.applyQuery(next.query); }
     countryBriefButton.disabled = !view.country;

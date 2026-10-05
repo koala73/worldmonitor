@@ -178,6 +178,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   // GetCountryRiskResponse.advisory_level is a plain string ("do-not-travel",
   // "reconsider", "caution", …), empty when no advisory applies.
   function describeAdvisory(level) {
+    if (typeof level !== "string") return "—";
     var text = cleanText(level, 64).replace(/[-_]+/g, " ");
     return text === "" ? "None" : text;
   }
@@ -222,7 +223,8 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   ];
 
   function render(data) {
-    if (!data || typeof data !== "object") return;
+    if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, "projection")) data = data.projection;
+    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     document.getElementById("empty").style.display = "none";
     document.getElementById("card").style.display = "block";
 
@@ -360,7 +362,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
         var result = msg.params && msg.params.result ? msg.params.result : msg.params;
         showPanelUsage(result);
         var data = extractToolData(result);
-        if (data) render(data);
+        render(data);
         break;
       }
       case "ui/notifications/tool-input":

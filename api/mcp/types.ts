@@ -54,6 +54,7 @@ export type ConflictSourceObservation = {
 };
 
 export interface McpToolExecutionContext {
+  readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
   inboundHostClass: McpInboundHostClass;
