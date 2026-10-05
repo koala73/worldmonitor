@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
@@ -10,6 +11,58 @@ import type { ToolDef } from '../types';
 import { COUNTRY_VIEW_UI_URI } from '../ui/news-dashboard-app';
 
 const COUNTRY_SECTION_BUDGET_BYTES = 524288;
+
+// One shared deadline covers signing, waiting for a slot, fetch and body reads.
+async function beforeSignalsDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function collectRawSignals(countryCode: string, base: string, context: Parameters<typeof buildAuthHeaders>[0], execution: Parameters<typeof fetchMcpDownstream>[2]) {
+  const cancellation = new AbortController();
+  const deadline = AbortSignal.any([cancellation.signal, AbortSignal.timeout(15_000)]);
+  const sources = {} as RawSignalsValue['sources'];
+  let next = 0;
+  const worker = async () => {
+    while (next < RAW_SIGNAL_FAMILIES.length) {
+      const family = RAW_SIGNAL_FAMILIES[next++]!;
+      try {
+        deadline.throwIfAborted();
+        const url = `${base}${RAW_SIGNAL_READS[family]}`;
+        const headers = await beforeSignalsDeadline(buildAuthHeaders(context, 'GET', url, null), deadline);
+        deadline.throwIfAborted();
+        const fetch = fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: deadline }, execution);
+        void fetch.then(response => { if (deadline.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
+        const response = await beforeSignalsDeadline(fetch, deadline);
+        throwIfBillingDenial(response, family);
+        if (response.status === 401 || response.status === 403) {
+          void response.body?.cancel().catch(() => {});
+          sources[family] = failedRawSignal(family, 'locked', new Date().toISOString(), 'This connection is not authorized for this source.') as never;
+          continue;
+        }
+        const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal: deadline });
+        await beforeSignalsDeadline(assertToolFetchOk({ ok: response.ok, status: response.status, headers: response.headers, body }, family, { preserveBackoff: true }), deadline);
+        const bytes = await beforeSignalsDeadline(readBoundedResponseBody({ headers: response.headers, body }, RAW_SIGNAL_BODY_BYTES), deadline);
+        deadline.throwIfAborted();
+        sources[family] = validateRawSignal(family, JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)), new Date().toISOString()) as never;
+      } catch (error) {
+        if (error instanceof BillingDenialError) { cancellation.abort(error); throw error; }
+        sources[family] = failedRawSignal(family, 'unavailable', new Date().toISOString(), deadline.aborted ? 'The shared source deadline expired. Retry or refresh to recover.' : 'Source observations are unavailable or malformed. Retry or refresh to recover.') as never;
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const retrievedAt = new Date().toISOString();
+  const result = assembleRawSignals(countryCode, sources, retrievedAt);
+  if (new TextEncoder().encode(JSON.stringify(result)).length <= RAW_SIGNAL_ENVELOPE_BYTES) return result;
+  // No positive original can be saved when attribution-bearing evidence overflows.
+  for (const family of RAW_SIGNAL_FAMILIES) sources[family] = failedRawSignal(family, 'unavailable', retrievedAt, 'The assembled source evidence exceeds the country section limit.') as never;
+  return assembleRawSignals(countryCode, sources, retrievedAt);
+}
 
 export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   name: 'open_country_brief',
@@ -48,7 +101,8 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
-  _apiPaths: [...new Set(Object.values(COUNTRY_READERS).filter(reader => reader.path !== '/api/bootstrap').map(reader => `GET ${reader.path}`))],
+  _apiPaths: [...new Set([...Object.entries(COUNTRY_READERS).filter(([section, reader]) => section !== 'signalsRaw' && reader.path !== '/api/bootstrap').map(([, reader]) => `GET ${reader.path}`), ...Object.values(RAW_SIGNAL_READS).map(path => `GET ${path.split('?')[0]}`)])],
+  _attribution: 'value.sources.*.{attribution: attribution}',
   inputSchema: {
     type: 'object',
     properties: {
@@ -78,6 +132,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     const reader = COUNTRY_READERS[section];
     const args = reader.args.safeParse(parsed.data.arguments);
     if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+    if (section === 'signalsRaw') return collectRawSignals((args.data as { country_code: string }).country_code, base, context, execution);
     const bootstrapKeys = reader.path === '/api/bootstrap' && 'keys' in args.data ? args.data.keys.split(',') : undefined;
     const queries = bootstrapKeys
       ? bootstrapKeys.map(key => new URLSearchParams({ keys: key, public: '1' }))

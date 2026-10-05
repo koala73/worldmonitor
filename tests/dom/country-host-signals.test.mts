@@ -1,7 +1,7 @@
 import { beforeAll, expect, it } from 'vitest';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { briefSectionState } from '@/components/country-brief-presentation';
-import { countrySignalsFromMilitary, recoverCountrySignals } from '@/services/country-signals';
+import { countrySignalsFromMilitary, recoverCountrySignals, recoverRawSignals, composeCountrySignals } from '@/services/country-signals';
 import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(async () => { await initTestI18n(); });
@@ -129,4 +129,63 @@ it.each(['military-first', 'raw-first'])('keeps independent observed slots in th
   expect(body.textContent).toContain('3 Military Air');
   expect(body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable');
   panel.hide();
+});
+
+
+it('retains each raw family observation with its original dates, clears denial, and replaces observed zero', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, validateRawSignal } = await import('../../shared/country-raw-signals');
+  const time = '2026-10-01T12:00:00Z'; const latestTime = '2026-10-05T12:00:00Z';
+  const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', time, 'Not observed')])) as Parameters<typeof assembleRawSignals>[1];
+  sources.outages = validateRawSignal('outages', { outages: [{ id: 'out', title: 'Observed outage', country: 'United States', location: { latitude: 38, longitude: -77 }, detectedAt: 1791000000000, endedAt: 0, link: 'https://example.com/out' }] }, time) as typeof sources.outages;
+  const prior = recoverRawSignals(assembleRawSignals('US', sources, time).value, null);
+  const failed = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', latestTime, 'Transient failure')])) as typeof sources;
+  const recovered = recoverRawSignals(assembleRawSignals('US', failed, latestTime).value, prior);
+  const composed = composeCountrySignals(countrySignalsFromMilitary('US'), 'US', 'United States', { militaryFlights: 3, militaryFlightsInCountry: 1, militaryVessels: 2, militaryVesselsInCountry: 1 }, ['Military source note'], recovered, true, () => true);
+  expect(composed.signals).toMatchObject({ outages: 1, militaryFlights: 3, isTier1: true });
+  expect(composed.coverage?.outages?.observation?.retrievedAt).toBe(time);
+  expect(composed.coverage?.outages?.latestRetrievedAt).toBe(latestTime);
+  expect(composed.notes.join(' ')).toContain('these counts are not fresh');
+  expect(composed.notes.join(' ')).toContain('Original returned-sample dates');
+  failed.outages = failedRawSignal('outages', 'locked', latestTime, 'Denied') as typeof failed.outages;
+  const denied = recoverRawSignals(assembleRawSignals('US', failed, latestTime).value, recovered);
+  expect(composeCountrySignals(countrySignalsFromMilitary('US'), 'US', 'United States', undefined, [], denied, true, () => true).signals.outages).toBeNull();
+  expect(denied.families.outages.observation).toBeNull();
+  failed.outages = validateRawSignal('outages', { outages: [] }, latestTime) as typeof failed.outages;
+  const zero = recoverRawSignals(assembleRawSignals('US', failed, latestTime).value, recovered);
+  expect(composeCountrySignals(countrySignalsFromMilitary('US'), 'US', 'United States', undefined, [], zero, true, () => true).signals.outages).toBe(0);
+  expect(zero.families.outages.retained).toBe(false);
+  expect(recoverRawSignals(assembleRawSignals('CN', failed, latestTime).value, prior).families.earthquakes.observation).toBeNull();
+});
+
+it('keeps portable Signals notices bounded and resets them when the country is replaced', () => {
+  const panel = new CountryDeepDivePanel();
+  Reflect.set(panel, 'signalsBody', document.createElement('div'));
+  panel.updateSignals(countrySignalsFromMilitary('US'), ['Returned sample; snapshot unknown; these counts are not fresh.']);
+  expect(Reflect.get(panel, 'signalCoverageNotes')).toEqual(['Returned sample; snapshot unknown; these counts are not fresh.']);
+  panel.show('China', 'CN', null, countrySignalsFromMilitary('CN'));
+  expect(Reflect.get(panel, 'signalCoverageNotes')).toEqual([]);
+  panel.hide();
+});
+
+
+it('keeps not-fresh disclosure at the start of exported notes even with maximum accepted metadata', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, validateRawSignal } = await import('../../shared/country-raw-signals');
+  const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', '2026-10-01T12:00:00Z', 'No data')])) as Parameters<typeof assembleRawSignals>[1];
+  sources.thermal = validateRawSignal('thermal', { clusters: [{ id: 'hot', countryCode: 'US', status: 'THERMAL_STATUS_SPIKE', firstDetectedAt: '2026-10-01T12:00:00Z', lastDetectedAt: '2026-10-01T14:00:00Z' }], fetchedAt: '2026-10-01T15:00:00Z', observationWindowHours: 24, sourceVersion: 's'.repeat(100) }, '2026-10-01T15:00:00Z') as typeof sources.thermal;
+  sources.thermal.scope = 's'.repeat(500); sources.thermal.attribution = 'a'.repeat(500); sources.thermal.observationWindow = 'w'.repeat(200);
+  const prior = recoverRawSignals(assembleRawSignals('US', sources, '2026-10-01T15:00:00Z').value, null);
+  const failed = { ...sources, thermal: failedRawSignal('thermal', 'unavailable', '2026-10-05T12:00:00Z', 'f'.repeat(400)) } as typeof sources;
+  const composed = composeCountrySignals(countrySignalsFromMilitary('US'), 'US', 'United States', undefined, [], recoverRawSignals(assembleRawSignals('US', failed, '2026-10-05T12:00:00Z').value, prior), true, () => true);
+  const panel = new CountryDeepDivePanel(); Reflect.set(panel, 'signalsBody', document.createElement('div'));
+  panel.updateSignals(composed.signals, composed.notes);
+  const portable = Reflect.get(panel, 'signalCoverageNotes') as string[];
+  expect(portable.find(note => note.startsWith('thermal:'))).toContain('these counts are not fresh');
+  expect(portable.every(note => note.length <= 1600)).toBe(true); panel.hide();
+});
+
+
+it('shows sampled information advisories even when the independent native maximum is unknown', () => {
+  const panel = new CountryDeepDivePanel(); const body = document.createElement('div'); Reflect.set(panel, 'signalsBody', body);
+  panel.updateSignals(countrySignalsFromMilitary('US', undefined, { earthquakes: null, outages: null, travelAdvisories: 1, travelAdvisoryMaxLevel: null, thermalEscalations: 2 }));
+  expect(body.textContent).toContain('1 Advisory'); expect(body.textContent).toContain('2 Thermal escalations'); panel.hide();
 });

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
+import { resolveCountryCode } from './country-code-resolve';
+import { RAW_SIGNAL_PATH } from './country-raw-signals';
+
+const signalCountryNames = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
+// Intl includes named organizations, statistical regions and test locales as well as countries/territories.
+const nonCountrySignalRegions = new Set(['EU', 'UN', 'EZ', 'QO', 'XA', 'XB', 'XX', 'ZZ']);
+const signalCountryCode = z.string().regex(/^[A-Z]{2}$/).refine(code => resolveCountryCode(code) === code && !nonCountrySignalRegions.has(code) && signalCountryNames.of(code) !== undefined, 'Unrecognized country');
 
 export const panelAdmissionSchema = panelReceiptSchema.extend({ countryCode: z.string().regex(/^[A-Z]{2}$/) });
 export type PanelAdmission = z.infer<typeof panelAdmissionSchema>;
@@ -20,6 +27,7 @@ const activityBoundsSchema = {
 };
 
 export const COUNTRY_READERS = {
+  signalsRaw: { path: RAW_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode }).strict() },
   flights: { path: '/api/military/v1/list-military-flights', args: z.object({ ...activityBoundsSchema, page_size: z.coerce.number().int().min(100).max(100).default(100), operator: z.literal('MILITARY_OPERATOR_UNSPECIFIED').default('MILITARY_OPERATOR_UNSPECIFIED'), aircraft_type: z.literal('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED').default('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED'), cursor: z.string().max(200).default('') }).strict() },
   vessels: { path: '/api/maritime/v1/get-vessel-snapshot', args: z.object({ ne_lat: z.coerce.number().pipe(z.literal(0)).default(0), ne_lon: z.coerce.number().pipe(z.literal(0)).default(0), sw_lat: z.coerce.number().pipe(z.literal(0)).default(0), sw_lon: z.coerce.number().pipe(z.literal(0)).default(0), include_candidates: z.literal('true').default('true') }).strict() },
   fleet: { path: '/api/military/v1/get-usni-fleet-report', args: z.object({ }).strict() },

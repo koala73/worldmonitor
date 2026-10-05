@@ -300,6 +300,7 @@ export interface CountryEvidenceBundleInput {
   trend?: string;
   components?: CountryBriefExport['components'];
   signals?: Record<string, unknown>;
+  signalCoverageNotes?: readonly string[];
   brief?: string;
   headlines?: CountryEvidenceSourceInput[];
   generatedAt?: string;
@@ -560,6 +561,10 @@ function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: stri
   }
   if (!input.headlines || input.headlines.length === 0) {
     notes.push('No headline source list was available for this export.');
+  }
+  for (const note of input.signalCoverageNotes?.slice(0, 12) ?? []) {
+    const clean = sanitizeEvidenceText(note).slice(0, 1600).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (clean) notes.push(clean);
   }
   return notes;
 }
