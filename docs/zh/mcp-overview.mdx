@@ -491,7 +491,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI 分类的热门报道，带有类别、警报标记、国家和来源。 |
 | `ui://worldmonitor/conflict-events-v2.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
 | `ui://worldmonitor/natural-disasters-v2.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
-| `ui://worldmonitor/prediction-markets-v2.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。 |
+| `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。完整响应投影和摘要样本保留已加载的合约及快照信息。缺失或无效的类别会明确标记为不可用或未包含；未知的新鲜度也会明确显示。 |
 | `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | 已加载的预测卡片支持按领域和区域进行本地筛选；原始案例证据可通过同一签名的面板准入读取。 |
 
 所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
