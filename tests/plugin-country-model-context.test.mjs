@@ -175,7 +175,10 @@ test('oversized Unicode and URLs keep six descriptors, complete links, and a bou
   const first = view.publish();
   assert.ok(first.bytes <= 32768, 'Actual nested JSON-RPC envelope must fit the local limit');
   assert.deepEqual(first.snapshot.china.groups.map(group => group.id), ids);
-  assert.equal(JSON.stringify(first.snapshot).includes('https://example.test/'), false);
+  const oversizedLink = first.snapshot.china.groups[0].links[0];
+  assert.equal(oversizedLink.url, undefined);
+  assert.equal(oversizedLink.urlOmittedReason, 'url-size');
+  assert.ok(oversizedLink.urlOriginalByteCount > 2048);
   assert.equal(JSON.stringify(first.snapshot).includes('\\ud83d"'), false);
   const second = view.publish();
   assert.deepEqual(second.snapshot, first.snapshot);
