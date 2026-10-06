@@ -3334,8 +3334,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "預測市場通常在訊息成為新聞之前就已定價——交易者可能提前獲知事態發展。",
-        "actionableInsight": "關注未來1-6小時內可能出現的突發新聞，以解釋市場變動。",
+        "whyItMatters": "預測市場出現波動，但該話題的新聞報道仍處於低位——市場可能在對尚未報道的資訊做出反應。",
+        "actionableInsight": "監控可能解釋市場波動的突發新聞。",
         "confidenceNote": "如果多個預測市場同向變動，置信度更高。"
       },
       "news_leads_markets": {

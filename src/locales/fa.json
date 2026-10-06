@@ -3423,8 +3423,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Prediction markets often price in information before it becomes news—traders may have early access to developments.",
-        "actionableInsight": "Monitor for breaking news in the next 1-6 hours that could explain the market move.",
+        "whyItMatters": "بازار پیش‌بینی تغییر کرد در حالی‌که پوشش خبری موضوع در سطح پایینی باقی مانده است—بازار ممکن است به اطلاعاتی واکنش نشان دهد که هنوز گزارش نشده است.",
+        "actionableInsight": "اخبار فوری‌ای را که می‌تواند حرکت بازار را توضیح دهد زیر نظر بگیرید.",
         "confidenceNote": "Higher confidence if multiple prediction markets move in same direction."
       },
       "news_leads_markets": {

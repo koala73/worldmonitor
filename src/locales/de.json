@@ -3354,8 +3354,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Prognosemärkte preisen Informationen oft ein, bevor sie zur Nachricht werden — Händler haben möglicherweise frühzeitigen Zugang zu Entwicklungen.",
-        "actionableInsight": "In den nächsten 1-6 Stunden auf Breaking News achten, die die Marktbewegung erklären könnten.",
+        "whyItMatters": "Ein Vorhersagemarkt hat sich bewegt, während die Berichterstattung zum Thema gering blieb – der Markt könnte auf Informationen reagieren, über die noch nicht berichtet wurde.",
+        "actionableInsight": "Achten Sie auf aktuelle Meldungen, die die Marktbewegung erklären könnten.",
         "confidenceNote": "Höheres Vertrauen, wenn sich mehrere Prognosemärkte in die gleiche Richtung bewegen."
       },
       "news_leads_markets": {

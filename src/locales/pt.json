@@ -2991,8 +2991,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Mercados de previsão frequentemente precificam informações antes de se tornarem notícias — traders podem ter acesso antecipado a desenvolvimentos.",
-        "actionableInsight": "Monitore notícias de última hora nas próximas 1-6 horas que possam explicar o movimento do mercado.",
+        "whyItMatters": "Um mercado de previsão se moveu enquanto a cobertura de notícias sobre o tema permaneceu baixa — o mercado pode estar reagindo a informações que ainda não foram reportadas.",
+        "actionableInsight": "Monitore notícias em desenvolvimento que possam explicar o movimento do mercado.",
         "confidenceNote": "Maior confiança se múltiplos mercados de previsão se moverem na mesma direção."
       },
       "news_leads_markets": {

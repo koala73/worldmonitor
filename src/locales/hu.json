@@ -3423,8 +3423,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Az előrejelzési piacok gyakran áraznak be információkat, mielőtt azok hírekké válnának – a kereskedőknek lehet korai hozzáférésük a fejleményekhez.",
-        "actionableInsight": "Figyeljen a következő 1-6 órában jelentkező hírekre, amelyek magyarázatot adhatnak a piaci mozgásra.",
+        "whyItMatters": "Egy előrejelzési piac elmozdult, miközben a téma hírekben való megjelenése alacsony maradt – a piac olyan információra reagálhat, amelyről még nem számoltak be.",
+        "actionableInsight": "Kövesse a friss híreket, amelyek magyarázatot adhatnak a piaci mozgásra.",
         "confidenceNote": "Magasabb megbízhatóság, ha több előrejelzési piac azonos irányba mozdul."
       },
       "news_leads_markets": {

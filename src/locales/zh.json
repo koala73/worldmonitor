@@ -3334,8 +3334,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "预测市场通常在消息成为新闻之前就已定价——交易者可能提前获知事态发展。",
-        "actionableInsight": "关注未来1-6小时内可能出现的突发新闻，以解释市场变动。",
+        "whyItMatters": "预测市场出现波动，但该话题的新闻报道仍处于低位——市场可能在对尚未报道的信息做出反应。",
+        "actionableInsight": "监控可能解释市场波动的突发新闻。",
         "confidenceNote": "如果多个预测市场同向变动，置信度更高。"
       },
       "news_leads_markets": {

@@ -3354,8 +3354,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Tahmin piyasalari genellikle bilgiyi haber olmadan once fiyatlar — yatirimcilar gelismelere erken erisime sahip olabilir.",
-        "actionableInsight": "Onumuzdeki 1-6 saat icinde piyasa hareketini aciklayabilecek son dakika haberlerini izleyin.",
+        "whyItMatters": "Bir tahmin piyasası hareket etti, ancak konuyla ilgili haber kapsamı düşük kaldı—piyasa henüz haberlere yansımamış bilgilere tepki veriyor olabilir.",
+        "actionableInsight": "Piyasa hareketini açıklayabilecek son dakika haberlerini takip edin.",
         "confidenceNote": "Birden fazla tahmin piyasasi ayni yonde hareket ediyorsa guvenilirlik artar."
       },
       "news_leads_markets": {

@@ -3374,8 +3374,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Piețele de predicții prețuiesc adesea informații înainte de a deveni știri – comercianții pot avea acces din timp la evoluții.",
-        "actionableInsight": "Monitorizați știrile de ultimă oră în următoarele 1-6 ore care ar putea explica mișcarea pieței.",
+        "whyItMatters": "O piață de predicții s-a mișcat în timp ce acoperirea mediatică a subiectului a rămas redusă — piața poate reacționa la informații care nu au fost încă raportate.",
+        "actionableInsight": "Urmăriți știrile de ultimă oră care ar putea explica mișcarea pieței.",
         "confidenceNote": "Încredere mai mare dacă mai multe piețe de predicție se mișcă în aceeași direcție."
       },
       "news_leads_markets": {

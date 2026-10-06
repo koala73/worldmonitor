@@ -3374,8 +3374,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Los mercados de predicción a menudo descuentan información antes de que se convierta en noticia: los operadores pueden tener acceso anticipado a los acontecimientos.",
-        "actionableInsight": "Monitorear noticias de última hora en las próximas 1-6 horas que puedan explicar el movimiento del mercado.",
+        "whyItMatters": "Un mercado de predicción se movió mientras que la cobertura de noticias sobre el tema se mantuvo baja—el mercado podría estar reaccionando a información que aún no ha sido reportada.",
+        "actionableInsight": "Monitorea noticias de última hora que podrían explicar el movimiento del mercado.",
         "confidenceNote": "Mayor confianza si múltiples mercados de predicción se mueven en la misma dirección."
       },
       "news_leads_markets": {

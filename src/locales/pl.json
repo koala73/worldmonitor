@@ -3394,8 +3394,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Rynki prognostyczne często wyceniają informacje, zanim staną się wiadomościami — traderzy mogą mieć wczesny dostęp do wydarzeń.",
-        "actionableInsight": "Monitoruj pojawianie się wiadomości w ciągu najbliższych 1-6 godzin, które mogą wyjaśnić ruch rynkowy.",
+        "whyItMatters": "Rynek predykcyjny się poruszył, podczas gdy temat był słabo relacjonowany w mediach — rynek może reagować na informacje, które nie zostały jeszcze opublikowane.",
+        "actionableInsight": "Śledź najnowsze wiadomości, które mogą wyjaśnić ruch na rynku.",
         "confidenceNote": "Wyższe zaufanie, gdy wiele rynków prognostycznych porusza się w tym samym kierunku."
       },
       "news_leads_markets": {

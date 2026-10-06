@@ -2973,8 +2973,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Voorspellingsmarkten prijzen informatie vaak in voordat het nieuws wordt -- handelaren hebben mogelijk vroege toegang tot ontwikkelingen.",
-        "actionableInsight": "Monitor op breaking news in de komende 1-6 uur die de marktbeweging kan verklaren.",
+        "whyItMatters": "Een voorspellingsmarkt bewoog terwijl de nieuwsberichtgeving over het onderwerp laag bleef — de markt reageert mogelijk op informatie die nog niet is gerapporteerd.",
+        "actionableInsight": "Let op actueel nieuws dat de marktbeweging kan verklaren.",
         "confidenceNote": "Hogere betrouwbaarheid als meerdere voorspellingsmarkten in dezelfde richting bewegen."
       },
       "news_leads_markets": {

@@ -3334,8 +3334,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "予測市場はしばしばニュースより先に情報を織り込む — トレーダーが早期に情報を入手している可能性。",
-        "actionableInsight": "今後1-6時間以内に市場の動きを説明するニュースが出ないか監視。",
+        "whyItMatters": "予測市場が動いたのに、そのトピックのニュース報道が少ないままです。市場がまだ報道されていない情報に反応している可能性があります。",
+        "actionableInsight": "市場の動きを説明する速報ニュースを監視してください。",
         "confidenceNote": "複数の予測市場が同方向に動いている場合、信頼度が高い。"
       },
       "news_leads_markets": {

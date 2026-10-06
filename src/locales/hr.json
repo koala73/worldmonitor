@@ -3454,8 +3454,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Tržišta predviđanja često uključe informacije prije nego što postanu vijest—trgovci mogu imati rani pristup razvoju događaja.",
-        "actionableInsight": "Pratite novosti koje bi mogla objasniti kretanje na tržištu u sljedećih 1-6 sati.",
+        "whyItMatters": "Tržište predviđanja se pomaknulo dok je pokrivanje vijesti o toj temi ostalo nisko — tržište može reagirati na informacije koje još nisu objavljene.",
+        "actionableInsight": "Pratite najnovije vijesti koje bi mogle objasniti kretanje na tržištu.",
         "confidenceNote": "Viša pouzdanost ako se više tržišta predviđanja kreće u istom smjeru."
       },
       "news_leads_markets": {

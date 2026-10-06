@@ -3394,8 +3394,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Predikční trhy často zohledňují informace v ceně dříve, než se stanou zprávami—obchodníci mohou mít brzký přístup k vývoji.",
-        "actionableInsight": "Sledujte bleskové zprávy v následujících 1-6 hodinách, které by mohly vysvětlit pohyb na trhu.",
+        "whyItMatters": "Predikční trh se pohnul, zatímco mediální pokrytí tématu zůstalo nízké – trh může reagovat na informace, které dosud nebyly zveřejněny.",
+        "actionableInsight": "Sledujte zpravodajství, které by mohlo vysvětlit pohyb na trhu.",
         "confidenceNote": "Vyšší spolehlivost, pokud se více predikčních trhů pohybuje stejným směrem."
       },
       "news_leads_markets": {

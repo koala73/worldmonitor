@@ -3374,8 +3374,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "I mercati predittivi spesso scontano le informazioni prima che diventino notizia: i trader possono avere accesso anticipato agli sviluppi.",
-        "actionableInsight": "Monitorare le notizie dell'ultima ora nelle prossime 1-6 ore che potrebbero spiegare il movimento del mercato.",
+        "whyItMatters": "Un mercato di previsione si è mosso mentre la copertura stampa dell'argomento è rimasta bassa—il mercato potrebbe reagire a informazioni non ancora riportate.",
+        "actionableInsight": "Monitora le ultime notizie che potrebbero spiegare il movimento del mercato.",
         "confidenceNote": "Maggiore fiducia se più mercati predittivi si muovono nella stessa direzione."
       },
       "news_leads_markets": {

@@ -3463,8 +3463,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Prediction markets often price in information before it becomes news—traders may have early access to developments.",
-        "actionableInsight": "Monitor for breaking news in the next 1-6 hours that could explain the market move.",
+        "whyItMatters": "Ринок прогнозів змінився, тоді як висвітлення цієї теми в новинах залишалося низьким — ринок може реагувати на інформацію, яка ще не була висвітлена.",
+        "actionableInsight": "Стежте за терміновими новинами, які можуть пояснити рух ринку.",
         "confidenceNote": "Higher confidence if multiple prediction markets move in same direction."
       },
       "news_leads_markets": {

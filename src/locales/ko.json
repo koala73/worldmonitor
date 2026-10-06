@@ -3334,8 +3334,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "예측 시장은 뉴스보다 먼저 정보를 반영하는 경우가 많습니다—트레이더들이 사태 전개에 대한 조기 정보를 보유하고 있을 수 있습니다.",
-        "actionableInsight": "향후 1~6시간 내에 시장 움직임을 설명할 수 있는 속보가 나오는지 모니터링하십시오.",
+        "whyItMatters": "예측 시장이 움직였지만 해당 주제의 뉴스 보도는 적었습니다. 시장이 아직 보도되지 않은 정보에 반응하고 있을 수 있습니다.",
+        "actionableInsight": "시장 움직임을 설명할 수 있는 긴급 뉴스를 모니터링하세요.",
         "confidenceNote": "여러 예측 시장이 같은 방향으로 움직일 경우 신뢰도가 높아집니다."
       },
       "news_leads_markets": {

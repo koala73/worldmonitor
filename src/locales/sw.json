@@ -3423,8 +3423,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Masoko ya utabiri mara nyingi huweka bei ya habari kabla ya kuwa habari-wafanyabiashara wanaweza kupata maendeleo mapema.",
-        "actionableInsight": "Fuatilia habari muhimu zinazochipuka katika saa 1-6 zijazo ambazo zinaweza kuelezea harakati za soko.",
+        "whyItMatters": "Soko la utabiri limebadilika huku habari kuhusu mada hiyo zikibaki chache—huenda soko linaitikia taarifa ambazo bado hazijaripotiwa.",
+        "actionableInsight": "Fuatilia habari za haraka zinazoweza kueleza mabadiliko ya soko.",
         "confidenceNote": "Kujiamini zaidi ikiwa masoko mengi ya utabiri yanaenda katika mwelekeo mmoja."
       },
       "news_leads_markets": {

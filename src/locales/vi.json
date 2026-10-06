@@ -3334,8 +3334,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Thị trường dự đoán thường định giá thông tin trước khi trở thành tin tức — các nhà giao dịch có thể tiếp cận sớm các diễn biến.",
-        "actionableInsight": "Giám sát tin nóng trong 1-6 giờ tới có thể giải thích biến động thị trường.",
+        "whyItMatters": "Một thị trường dự đoán đã biến động trong khi mức độ đưa tin về chủ đề này vẫn thấp—thị trường có thể đang phản ứng với thông tin chưa được công bố.",
+        "actionableInsight": "Giám sát các tin tức mới nhất có thể giải thích được chuyển động thị trường.",
         "confidenceNote": "Độ tin cậy cao hơn nếu nhiều thị trường dự đoán di chuyển cùng hướng."
       },
       "news_leads_markets": {

@@ -3374,8 +3374,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Les marchés prédictifs intègrent souvent l'information avant qu'elle ne devienne une actualité — les traders peuvent avoir un accès anticipé aux développements.",
-        "actionableInsight": "Surveiller les breaking news dans les 1 à 6 heures qui pourraient expliquer le mouvement de marché.",
+        "whyItMatters": "Un marché de prédiction a bougé alors que la couverture médiatique du sujet restait faible — le marché réagit peut-être à des informations qui n'ont pas encore été rapportées.",
+        "actionableInsight": "Surveillez les informations de dernière minute qui pourraient expliquer le mouvement du marché.",
         "confidenceNote": "Confiance plus élevée si plusieurs marchés prédictifs évoluent dans la même direction."
       },
       "news_leads_markets": {
