@@ -64,7 +64,7 @@ The lead/lag line shows the lag in hours, its coefficient, and its sample size. 
 ## Refresh cadence
 
 - **Market series**: re-seeded every 15 minutes as a member of the `seed-bundle-market-backup` bundle. Health flags it stale after 45 minutes.
-- **News series**: the `seed-gdelt-intel` Railway service runs `scripts/seed-gdelt-bulk-materializer.mjs` every 15 minutes and updates every topic's volume series on each run.
+- **News series**: the `seed-gdelt-intel` Railway service runs `scripts/seed-gdelt-bulk-materializer.mjs` every 15 minutes. A topic gets new volume points and a fresh timestamp only when a batch contains matching records; otherwise its series and timestamp carry over from the previous run.
 - **Panel**: fetches when it is near the viewport and refreshes every 15 minutes while it stays near the viewport (`REFRESH_INTERVALS.newsMarketCorrelation`).
 
 ## Tier & gating
