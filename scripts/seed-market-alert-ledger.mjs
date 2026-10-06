@@ -255,7 +255,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   return {
     ledger,
     scorecard: buildScorecard(ledger, nowMs, { archive: archiveStatus }),
-    snapshot: digest || !previousSnapshot ? observed(ingested.emitted) : previousSnapshot,
+    snapshot: digest ? observed(ingested.emitted) : (previousSnapshot ?? observed(null)),
     summary: {
       inputs: {
         stocks: stocks?.data.quotes?.length ?? 0,

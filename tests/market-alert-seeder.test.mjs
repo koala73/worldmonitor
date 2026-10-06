@@ -210,10 +210,14 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.emitted.held, 0);
   });
 
-  it('a first tick without a digest records the observed prices as the baseline', async () => {
+  it('a first tick without a digest records the observed prices but no emitted baseline', async () => {
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.ledger, {});
-    assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, emitted: [] });
+    assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, emitted: null });
+    const next = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(tick.snapshot, NOW) }), { nowMs: NOW + 5 * MIN, archive: EMPTY_ARCHIVE });
+    assert.equal(byType(next.ledger, 'silent_divergence').length, 0, 'a tick that never ran the detector cannot vouch that the move was new');
+    assert.equal(next.summary.emitted.held, next.summary.emitted.total);
+    assert.deepEqual(next.snapshot.emitted, CRUDE_ALERTS);
   });
 
   it('discards a market payload whose fetchedAt is 45 minutes old', async () => {
