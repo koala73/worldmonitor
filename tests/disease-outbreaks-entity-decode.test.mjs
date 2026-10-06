@@ -82,6 +82,18 @@ describe('cleanRssDescription: one pass must decode exactly one level', () => {
     assert.equal(cleanRssDescription('x'.repeat(400)).length, 300);
   });
 
+  // CIDRAP and UN Geneva escape the HTML body once more, so its typographic
+  // entities reach the text as `&amp;nbsp;`. After the tag strip only those are
+  // decoded; markup-significant entities keep the single-pass contract.
+  it('decodes typographic entities left by a double-escaped body', () => {
+    assert.equal(
+      cleanRssDescription('&lt;p&gt;&amp;nbsp;There have been 20 H9N2 cases &amp;ndash; Russia&amp;rsquo;s first.&amp;nbsp;&amp;nbsp;&lt;/p&gt;&#13;\n&lt;p&gt;Next.&lt;/p&gt;'),
+      'There have been 20 H9N2 cases – Russia’s first. Next.',
+    );
+    assert.equal(cleanRssDescription('&amp;ldquo;quoted&amp;rdquo; &amp;mdash; more&amp;hellip;'), '“quoted” — more…');
+    assert.equal(cleanRssDescription('He said &amp;quot;no&amp;quot;'), 'He said &quot;no&quot;');
+  });
+
   it('keeps double-escaped markup as text through the tag strip', () => {
     const raw = 'Acme patched an XSS triggered by &amp;lt;script&amp;gt; tags in bios.';
     const desc = cleanRssDescription(raw);

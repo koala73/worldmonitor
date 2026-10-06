@@ -44,6 +44,7 @@ import {
   detectDisease,
   HEADLINE_LOOKBACK_DAYS,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
+import { countryCentroid } from '../scripts/lib/country-centroid.mjs';
 
 const WHO_RESPONSE = {
   value: [{
@@ -368,9 +369,119 @@ test('fetchDiseaseOutbreaks publishes ECDC news on unexplained pneumonia', async
 });
 
 // New Mexico is the main US plague focus; it must not geocode to Mexico.
+// Headline sources name a city or region but carry no coordinates; the
+// country centroid put the 2026-10 Irkutsk death ~1,000 km away.
+test('headline sources pin a named city or region inside the detected country', () => {
+  const ecdc = mapItem(rssNormalizeItem({
+    title: 'ECDC closely monitoring situation following case of pneumonia of unknown origin in Russia',
+    link: 'https://www.ecdc.europa.eu/en/x',
+    desc: 'Following the reported death of a laboratory worker in Irkutsk, Russia, ECDC is monitoring the situation.',
+    pubDate: 'Tue, 06 Oct 2026 10:00:00 +0200',
+    sourceName: 'ECDC',
+  }));
+  assert.equal(ecdc.countryCode, 'RU');
+  assert.equal(ecdc.location, 'Irkutsk');
+  assert.deepEqual([ecdc.lat, ecdc.lng], [52.3, 104.29]);
+
+  // "Siberia" is not a city or first-level region: centroid fallback.
+  const cidrap = headline('Suspected plague incident leaves 1 dead, 200 under quarantine in Siberia, Russia');
+  assert.equal(cidrap.location, 'Russia');
+  assert.deepEqual({ lat: cidrap.lat, lng: cidrap.lng }, countryCentroid('RU'));
+
+  // A region name resolves to its administrative seat.
+  const ituri = headline('Ebola outbreak in Ituri province, DR Congo, tops 200 cases');
+  assert.equal(ituri.location, 'Ituri');
+  assert.deepEqual([ituri.lat, ituri.lng], [1.56, 30.25]);
+  // The longest name wins: "North Kivu", not a shorter overlapping name.
+  assert.equal(headline('Cholera spreads in North Kivu, DR Congo').location, 'North Kivu');
+});
+
+test('place lookup stays inside the detected country and skips place names used as words', () => {
+  // Reading is an English town; a sentence starting with "Reading" is not.
+  assert.equal(headline('Reading the data: measles outbreak in the United Kingdom grows').location, 'United Kingdom');
+  // "Delta" (variant) is also a Nigerian state.
+  assert.equal(headline('Delta variant drives COVID wave in Nigeria').location, 'Nigeria');
+  // Kinshasa is in CD; a Russia story naming it keeps the Russia centroid.
+  const ru = headline('Russia sends plague experts after Kinshasa talks');
+  assert.equal(ru.countryCode, 'RU');
+  assert.deepEqual({ lat: ru.lat, lng: ru.lng }, countryCentroid('RU'));
+  // WHO DON titles keep their own location and are not looked up.
+  const who = mapItem(whoNormalizeItem({ Title: 'Cholera - Democratic Republic of the Congo', ItemDefaultUrl: '/x', PublicationDateAndTime: '2026-09-10T08:16:08Z' }));
+  assert.equal(who.location, 'Democratic Republic of the Congo');
+});
+
+// The 2026-10-06 WHO risk assessment for the Irkutsk case came from a Geneva
+// press briefing, not a Disease Outbreak News post. UN Geneva's newsroom Atom
+// feed carries WHO briefings with a " - WHO" title suffix among other UN items.
+const UNOG_ATOM = `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>UN Geneva</title>
+<entry><title>Irkutsk suspected plague death - WHO</title><link href="https://www.unognewsroom.org/story/en/3289/irkutsk-suspected-plague-death-who"/><id>x</id><updated>RECENT</updated><summary>&lt;p&gt;&lt;strong&gt;In suspected Russia plague death, testing and monitoring underway &amp;ndash; WHO&amp;nbsp;&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;&#13;
+&lt;p&gt;The death of a lab worker in Russia&amp;rsquo;s Siberia region has sparked concerns about plague.&amp;nbsp;&lt;/p&gt;</summary></entry>
+<entry><title>UN Human Rights Chief oral update on Ukraine</title><link href="https://www.unognewsroom.org/story/en/1/ukraine"/><id>y</id><updated>RECENT</updated><summary>Update.</summary></entry>
+<entry><title>Cholera outbreak update - UNICEF</title><link href="https://www.unognewsroom.org/story/en/2/cholera"/><id>z</id><updated>RECENT</updated><summary>Cholera in Sudan.</summary></entry>
+</feed>`;
+
+test('WHO briefings come from the UN Geneva newsroom feed', async (t) => {
+  const feed = DISEASE_RSS_FEEDS.find(({ sourceName }) => sourceName === 'WHO briefing');
+  assert.ok(feed, 'UN Geneva WHO briefing feed missing');
+  // https answers 301 to http; fetch the final URL directly.
+  assert.equal(feed.url, 'http://www.unognewsroom.org/feed');
+  const recent = new Date(Date.now() - 3_600_000).toISOString();
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url === feed.url) return new Response(UNOG_ATOM.replaceAll('RECENT', recent), { status: 200 });
+    if (url.endsWith('.js')) return new Response('not found', { status: 404 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const briefings = outbreaks.filter((o) => o.sourceName === 'WHO briefing');
+  assert.equal(briefings.length, 1, 'only " - WHO" entries are kept');
+  const [who] = briefings;
+  assert.equal(who.sourceUrl, 'https://www.unognewsroom.org/story/en/3289/irkutsk-suspected-plague-death-who');
+  assert.equal(who.disease, 'Plague');
+  assert.equal(who.countryCode, 'RU');
+  assert.equal(who.publishedAt, Date.parse(recent));
+  assert.equal(who.summary, 'Irkutsk suspected plague death. In suspected Russia plague death, testing and monitoring underway – WHO The death of a lab worker in Russia’s Siberia region has sparked concerns about plague.');
+  assert.equal(who.location, 'Irkutsk');
+});
+
+// The CDC newsroom feed mixes outbreak notices with obituaries, conference
+// notes and surveillance reports; only items naming a known disease count.
+test('CDC items without a known disease are dropped', () => {
+  const cdc = (title) => mapItem(rssNormalizeItem({ title, link: 'https://www.cdc.gov/x', desc: '', pubDate: 'Wed, 10 Sep 2026 12:00:00 GMT', sourceName: 'CDC' }));
+  assert.equal(isReportableHeadline(cdc('We extend our deepest condolences to Suzy’s family'), NOW), false);
+  assert.equal(isReportableHeadline(cdc('CDC’s Epidemic Intelligence Service officers are gathering this week'), NOW), false);
+  assert.equal(isReportableHeadline(cdc('CDC warns of Listeria outbreak linked to soft cheese'), NOW), true);
+  assert.equal(isReportableHeadline(cdc('CDC Provides Update on Hantavirus Outbreak Linked to Cruise Ship'), NOW), true);
+  assert.equal(isReportableHeadline(cdc('Cyclospora outbreak linked to iceberg lettuce expanded to four new states'), NOW), true);
+});
+
+// The CDC newsroom feed returns its whole archive (2017 yellow fever notices
+// included); it gets the headline lookback. WHO DON posts are rare and stay
+// current for months, so WHO keeps no window.
+test('CDC items older than the lookback or undated are dropped', () => {
+  const cdc = (pubDate) => mapItem(rssNormalizeItem({ title: 'CDC Update on Outbreak of Yellow Fever in Brazil', link: 'https://www.cdc.gov/x', desc: '', pubDate, sourceName: 'CDC' }));
+  const inside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS - 1) * 86_400_000).toUTCString();
+  const outside = new Date(NOW - (HEADLINE_LOOKBACK_DAYS + 1) * 86_400_000).toUTCString();
+  assert.equal(isReportableHeadline(cdc(inside), NOW), true);
+  assert.equal(isReportableHeadline(cdc(outside), NOW), false);
+  assert.equal(isReportableHeadline(cdc(''), NOW), false);
+  const who = mapItem(whoNormalizeItem({ Title: 'Yellow fever - Brazil', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
+  assert.equal(isReportableHeadline(who, NOW), true);
+});
+
+test('MERS and hantavirus are detected as whole words', () => {
+  assert.equal(detectDisease('MERS-CoV worldwide overview'), 'MERS');
+  assert.equal(detectDisease('Two MERS cases reported in Saudi Arabia'), 'MERS');
+  assert.equal(detectDisease('Hantavirus case reported in New Mexico county'), 'Hantavirus');
+  assert.equal(detectDisease('Cyclospora outbreak linked to lettuce'), 'Cyclospora');
+  assert.equal(detectDisease('Farmers and customers face summers of heat'), 'Unknown Disease');
+});
+
 test('New Mexico geocodes to the United States, not Mexico', () => {
   assert.equal(headline('Plague infects man from New Mexico').countryCode, 'US');
-  assert.equal(headline('Hantavirus case reported in New Mexico county').location, 'United States');
+  assert.equal(headline('Hantavirus case reported in New Mexico county').location, 'New Mexico');
   assert.equal(headline('Dengue outbreak spreads in Mexico').countryCode, 'MX');
 });
 

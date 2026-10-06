@@ -691,6 +691,7 @@
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
       "scripts/data/country-centroids.json",
+      "scripts/data/outbreak-places.json",
       "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",

@@ -394,6 +394,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.stats.gov.cn', 'National Bureau of Statistics of China'],
   ['www.szse.cn', 'Shenzhen Stock Exchange'],
   ['www.unep.org', 'UN Environment Programme (UNEP)'],
+  ['www.unognewsroom.org', 'UN Geneva Newsroom'],
   ['www.war.gov', 'Pentagon'],
   ['www.weather.gov.hk', 'Hong Kong Observatory'],
   ['www.whitehouse.gov', 'The White House'],
