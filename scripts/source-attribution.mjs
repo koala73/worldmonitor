@@ -988,7 +988,6 @@ const LOGICAL_ENTRIES = [
 // hard-fails the whole scan the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
   { host: 'webcams.windy.com', kind: 'structured', path: 'shared/pinned-webcams.ts' },
-  { host: 'api.groq.com', kind: 'structured', path: 'shared/llm-health-providers.js' },
   { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs' },
@@ -1012,7 +1011,6 @@ const EXCLUDED_HOSTS = new Set([
   't.me',
   'reddit.com',
   'openrouter.ai',
-  'api.groq.com',
   'api.typesafe.ai',
   'tts.baidu.com',
   'api.indexnow.org',

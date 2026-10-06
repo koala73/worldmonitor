@@ -343,7 +343,7 @@ describe('summarization outcome classification (#5605 truth table)', () => {
     },
     {
       name: 'a provider actually ran and failed',
-      build: () => { const s = createSummarizationAttemptState(); markSummarizationAttempt(s, 'groq'); return s; },
+      build: () => { const s = createSummarizationAttemptState(); markSummarizationAttempt(s, 'openrouter'); return s; },
       outcome: 'provider-failure',
       level: 'warn',
     },
