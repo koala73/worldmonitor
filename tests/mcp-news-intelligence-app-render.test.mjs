@@ -189,3 +189,108 @@ describe('News Intelligence current and private legacy static resource', () => {
     }
   });
 });
+
+
+describe('News Intelligence supplied story details', () => {
+  const detailed = () => ({ ...story(0), primaryLink: 'https://example.com/original', pubDate: '2026-10-02T12:34:56.000Z', threatLevel: 'high', publishers: [{ name: 'Literal Wire', tier: 1 }, { name: 'Undeclared Publisher', tier: null }], publishersUnlisted: 2 });
+
+  it('keeps the safe original link, supplied publication time, threat level and contributing publishers', async () => {
+    await mount(result(envelope([detailed()])), document => {
+      const row = rows(document)[0];
+      const anchor = row.querySelector('a.story-title');
+      assert.equal(anchor?.href, 'https://example.com/original');
+      assert.equal(anchor?.target, '_blank');
+      assert.equal(anchor?.rel, 'noopener noreferrer');
+      assert.equal(anchor?.textContent, 'Controlled headline 1');
+      assert.equal(row.querySelector('time')?.dateTime, '2026-10-02T12:34:56.000Z');
+      assert.match(row.textContent, /Published: 2026-10-02T12:34:56.000Z/);
+      assert.match(row.textContent, /Threat: high/);
+      assert.match(row.textContent, /conflict/);
+      assert.match(row.textContent, /Alert/);
+      assert.match(row.textContent, /Literal Wire \(declared tier 1\)/);
+      assert.match(row.textContent, /Undeclared Publisher \(tier undeclared\)/);
+      assert.match(row.textContent, /2 counted publishers not listed/);
+      assert.match(row.textContent, /Provenance not yet reviewed/);
+      assert.match(foot(document), /Snapshot: 2026-10-04T12:00:00.000Z/);
+    });
+  });
+
+  it('keeps unsafe or missing original URLs as literal plain headlines', async () => {
+    for (const primaryLink of ['javascript:alert(1)', 'data:text/html,unsafe', '//example.com/original', '', null]) {
+      await mount(result(envelope([{...detailed(), primaryLink, primaryTitle: '<img src=x onerror=alert(1)>'}])), document => {
+        assert.equal(rows(document)[0].querySelector('a'), null);
+        assert.match(rows(document)[0].textContent, /<img src=x onerror=alert\(1\)>/);
+        assert.equal(rows(document)[0].querySelector('img'), null);
+      });
+    }
+  });
+
+  it('distinguishes unavailable publication and roster fields and clears details on replacement', async () => {
+    await mount(result(envelope([detailed()])), async (document,send) => {
+      for (const pubDate of [null, '', 'invalid-date']) {
+        send(result(envelope([{...story(0), pubDate}]),true));
+        await new Promise(resolve => setTimeout(resolve,0));
+        const row=rows(document)[0];
+        assert.equal(row.querySelector('a'),null);
+        assert.equal(row.querySelector('time'),null);
+        assert.match(row.textContent,/Publication time unavailable/);
+        assert.match(row.textContent,/Publisher roster unavailable/);
+        assert.doesNotMatch(row.textContent,/Threat: high|Literal Wire|2026-10-02/);
+      }
+      send(result(envelope([{...story(0),publishers:[],publishersUnlisted:0}])));
+      await new Promise(resolve=>setTimeout(resolve,0));
+      assert.match(rows(document)[0].textContent,/No contributing publishers listed/);
+      assert.doesNotMatch(rows(document)[0].textContent,/Publisher roster unavailable/);
+      send(result(envelope([detailed()]))); await new Promise(resolve=>setTimeout(resolve,0));
+      assert.equal(rows(document)[0].querySelector('a')?.href,'https://example.com/original');
+    });
+  });
+
+  it('discloses the local publisher cap and unknown unlisted counts without inventing a tier', async () => {
+    const publishers=Array.from({length:14},(_,index)=>({name:'Publisher '+index,tier:index===0?0:1}));
+    await mount(result(envelope([{...detailed(),publishers,publishersUnlisted:null}])),document=>{
+      const row=rows(document)[0];
+      assert.match(row.textContent,/Publisher 0 \(tier undeclared\)/);
+      assert.match(row.textContent,/Publisher 11/);
+      assert.doesNotMatch(row.textContent,/Publisher 12|Publisher 13/);
+      assert.match(row.textContent,/Showing 12 of 14 supplied publishers/);
+      assert.match(row.textContent,/Unlisted publisher count unavailable/);
+      assert.doesNotMatch(row.textContent,/declared tier 0/);
+    });
+  });
+
+  it('fills the publisher cap with valid names after invalid roster entries', async () => {
+    const invalid=Array.from({length:12},(_,index)=>index%2?{name:'   '}:null);
+    const valid=Array.from({length:14},(_,index)=>({name:'Valid Publisher '+index,tier:1}));
+    await mount(result(envelope([{...detailed(),publishers:[...invalid,...valid],publishersUnlisted:0}])),document=>{
+      const row=rows(document)[0];
+      assert.match(row.textContent,/Valid Publisher 0 \(declared tier 1\)/);
+      assert.match(row.textContent,/Valid Publisher 11 \(declared tier 1\)/);
+      assert.doesNotMatch(row.textContent,/Valid Publisher 12|Valid Publisher 13|No contributing publishers listed/);
+      assert.match(row.textContent,/Showing 12 of 26 supplied publishers/);
+    });
+  });
+});
+
+
+describe('News Intelligence publication timestamp wire types', () => {
+  it('renders finite epoch milliseconds, including zero, separately from the cache snapshot', async () => {
+    for (const [pubDate,expected] of [[1791279480000,'2026-10-06T09:38:00.000Z'],[0,'1970-01-01T00:00:00.000Z'],['2026-10-06T09:38:00.000Z','2026-10-06T09:38:00.000Z']]) {
+      await mount(result(envelope([{...story(0),pubDate}])),document=>{
+        assert.equal(rows(document)[0].querySelector('time')?.dateTime,expected);
+        assert.ok(rows(document)[0].textContent.includes('Published: '+expected));
+        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+      });
+    }
+  });
+
+  it('keeps invalid, missing, boolean, nonfinite and out-of-range times unavailable', async () => {
+    for (const pubDate of [undefined,null,'','   ','invalid-date',true,false,NaN,Infinity,-Infinity,8640000000000001,-8640000000000001]) {
+      await mount(result(envelope([{...story(0),pubDate}])),document=>{
+        assert.equal(rows(document)[0].querySelector('time'),null);
+        assert.match(rows(document)[0].textContent,/Publication time unavailable/);
+        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+      });
+    }
+  });
+});
