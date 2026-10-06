@@ -68,7 +68,7 @@ function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR, truncated = false
   };
 }
 
-const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null };
+const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null, readAt: null };
 
 describe('ingestSignals', () => {
   it('creates an id@deadline entry with the whitelisted fields', () => {
@@ -364,27 +364,36 @@ describe('resolveDueEntries', () => {
     assert.equal(result.miss, 1);
   });
 
-  it('leaves every due entry pending when the story read fails', async () => {
+  it('leaves every due entry pending and unproven when the story read fails', async () => {
     const archive = { readStories: async () => null, readSourceTiers: async () => new Map() };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
-    assert.deepEqual({ readFailed: result.readFailed, truncated: result.truncated, coveredFromMs: result.coveredFromMs }, { readFailed: true, truncated: false, coveredFromMs: null });
+    assert.deepEqual(
+      { read: result.read, readAt: result.readAt, readFailed: result.readFailed, truncated: result.truncated, coveredFromMs: result.coveredFromMs, unproven: result.unproven },
+      { read: true, readAt: dueAt + 1, readFailed: true, truncated: false, coveredFromMs: null, unproven: 1 },
+    );
     assert.equal(result.hit + result.miss + result.void, 0);
     assert.equal(Object.values(result.ledger)[0].status, 'pending');
   });
 
-  it('leaves every due entry pending when the source read fails', async () => {
+  it('leaves every due entry pending and unproven when the source read fails', async () => {
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + HOUR };
     const archive = { readStories: async () => ({ coveredFromMs: NOW - HOUR, truncated: false, stories: [story] }), readSourceTiers: async () => null };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
-    assert.equal(result.readFailed, true);
+    assert.deepEqual({ read: result.read, readFailed: result.readFailed, unproven: result.unproven }, { read: true, readFailed: true, unproven: 1 });
     assert.equal(Object.values(result.ledger)[0].status, 'pending');
   });
 
-  it('reports the archive coverage and truncation of the pass', async () => {
+  it('reports the archive coverage and truncation of the pass, and whether it read at all', async () => {
     const nothingDue = await resolveDueEntries(pendingLedger(), { nowMs: dueAt - 1, archive: archiveOf([], {}, NOW - 2 * HOUR, true) });
-    assert.deepEqual({ truncated: nothingDue.truncated, coveredFromMs: nothingDue.coveredFromMs }, { truncated: false, coveredFromMs: null });
+    assert.deepEqual(
+      { read: nothingDue.read, readAt: nothingDue.readAt, truncated: nothingDue.truncated, coveredFromMs: nothingDue.coveredFromMs },
+      { read: false, readAt: null, truncated: false, coveredFromMs: null },
+    );
     const truncated = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([], {}, NOW - 2 * HOUR, true) });
-    assert.deepEqual({ miss: truncated.miss, truncated: truncated.truncated, coveredFromMs: truncated.coveredFromMs }, { miss: 1, truncated: true, coveredFromMs: NOW - 2 * HOUR });
+    assert.deepEqual(
+      { read: truncated.read, readAt: truncated.readAt, miss: truncated.miss, truncated: truncated.truncated, coveredFromMs: truncated.coveredFromMs },
+      { read: true, readAt: dueAt + 1, miss: 1, truncated: true, coveredFromMs: NOW - 2 * HOUR },
+    );
   });
 
   it('leaves an entry pending when the archive cannot prove coverage of its window', async () => {
@@ -506,7 +515,7 @@ describe('resolveDueEntries', () => {
       const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
       const byEmission = Object.fromEntries(Object.values(result.ledger).map((entry) => [entry.emittedAt, entry]));
       assert.deepEqual(byEmission[NOW].control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
-      assert.deepEqual(byEmission[NOW - 23 * HOUR].control, { start: NOW - 47 * HOUR, end: NOW - 41 * HOUR, outcome: 'skipped', reason: 'uncovered' });
+      assert.deepEqual(byEmission[NOW - 23 * HOUR].control, { start: NOW - 47 * HOUR, end: NOW - 41 * HOUR, outcome: 'skipped', reason: 'weekend' }, 'the Monday emission\'s control falls on Sunday');
     });
 
     it('a resolved row for another entity does not count as overlap', async () => {
@@ -550,6 +559,21 @@ describe('resolveDueEntries', () => {
       assert.equal(crude.control.outcome, 'HIT');
     });
 
+    it('skips the control as weekend when the emission and its control start fall on different sides of a weekend in UTC', async () => {
+      const controlFor = async (emittedAt) => {
+        const story = { hash: 'c1', title: controlStory.title, firstSeen: emittedAt - 23 * HOUR };
+        const ledger = ingest({}, [marketSignal('silent_divergence', CRUDE)], emittedAt).ledger;
+        const result = await resolveDueEntries(ledger, { nowMs: emittedAt + MARKET_ALERT_WINDOW_MS + 1, archive: archiveOf([story], { c1: { tier: 1, source: 'Reuters' } }, emittedAt - 25 * HOUR) });
+        return Object.values(result.ledger)[0].control;
+      };
+      const monday = Date.UTC(2026, 9, 5, 14);
+      assert.deepEqual(await controlFor(monday), { start: monday - 24 * HOUR, end: monday - 18 * HOUR, outcome: 'skipped', reason: 'weekend' });
+      const sunday = Date.UTC(2026, 9, 4, 14);
+      assert.equal((await controlFor(sunday)).outcome, 'HIT', 'a Sunday emission and its Saturday control are both weekend');
+      const wednesday = Date.UTC(2026, 9, 7, 14);
+      assert.equal((await controlFor(wednesday)).outcome, 'HIT');
+    });
+
     it('skips the control as expired once its start is older than the evidence expiry, even with coverage claimed', async () => {
       const archive = () => archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED);
       const stale = await resolveDueEntries(pendingLedger(), { nowMs: CONTROL.start + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 60 * 1000, archive: archive() });
@@ -589,14 +613,27 @@ describe('buildScorecard', () => {
     assert.deepEqual(card.archive, NO_ARCHIVE_PASS);
     assert.deepEqual(card.byType.map((row) => row.type), [...MARKET_ALERT_TYPES]);
     for (const row of card.byType) {
-      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null });
+      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedN: 0, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null });
     }
   });
 
   it('pre-registers the base-rate rule next to the resolution rule', () => {
     assert.equal(
       MARKET_ALERT_BASE_RATE_RULE,
-      'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window and no alert for that entity was open during it.',
+      'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window, no alert for that entity was open during it, and the emission and the control fall on the same side of a weekend in UTC.',
+    );
+  });
+
+  it('reports the paired hit rate over the rows whose control scored, beside the base rate', async () => {
+    const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
+    const two = ingest(ingest({}, [marketSignal('silent_divergence', WHEAT)], NOW - 2 * HOUR).ledger, [marketSignal('silent_divergence', CRUDE)]).ledger;
+    const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + 2 * HOUR };
+    const { ledger } = await resolveDueEntries(two, { nowMs: dueAt + 1, archive: archiveOf([story], { h1: { tier: 1, source: 'Reuters' } }, NOW - 25 * HOUR) });
+    assert.deepEqual(Object.values(ledger).map((entry) => [entry.outcome, entry.control.outcome]), [['HIT', 'MISS'], ['MISS', 'skipped']]);
+    const row = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS }).byType.find((r) => r.type === 'silent_divergence');
+    assert.deepEqual(
+      { n: row.n, hitRate: row.hitRate, pairedN: row.pairedN, pairedHitRate: row.pairedHitRate, baseN: row.baseN, baseHitRate: row.baseHitRate },
+      { n: 2, hitRate: 0.5, pairedN: 1, pairedHitRate: 1, baseN: 1, baseHitRate: 0 },
     );
   });
 
@@ -609,9 +646,9 @@ describe('buildScorecard', () => {
     assert.deepEqual({ n: row.n, hitRate: row.hitRate, baseN: row.baseN, baseHitRate: row.baseHitRate }, { n: 2, hitRate: 0, baseN: 2, baseHitRate: 0.5 });
   });
 
-  it('carries the resolution pass archive status', () => {
-    const archive = { readFailed: true, truncated: true, unproven: 3, coveredFromMs: NOW - HOUR };
-    assert.deepEqual(buildScorecard({}, NOW, { archive }).archive, archive);
+  it('carries the resolution pass archive status and nothing else from it', () => {
+    const archive = { readFailed: true, truncated: true, unproven: 3, coveredFromMs: NOW - HOUR, readAt: NOW - 5 * MIN };
+    assert.deepEqual(buildScorecard({}, NOW, { archive: { ...archive, read: true, hit: 2 } }).archive, archive);
   });
 
   it('computes hitRate = hit / (hit + miss) and the median lead time over HITs', async () => {
@@ -622,7 +659,7 @@ describe('buildScorecard', () => {
     const card = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS });
     assert.deepEqual(card.totals, { entries: 2, pending: 0, resolved: 2, hit: 1, miss: 1, void: 0 });
     const row = card.byType.find((r) => r.type === 'silent_divergence');
-    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, baseN: 0, baseHitRate: null, medianLeadTimeMs: 90 * 60 * 1000 });
+    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, pairedN: 0, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: 90 * 60 * 1000 });
   });
 
   it('excludes a VOID from n and counts resolutions only inside the rolling window', async () => {

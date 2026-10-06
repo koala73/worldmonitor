@@ -52,7 +52,7 @@ export const DIGEST_KEY = 'news:digest:v1:full:en';
 export const ACCUMULATOR_KEY = 'digest:accumulator:v1:full:en';
 export const READ_KEYS = [
   STOCKS_KEY, COMMODITIES_KEY, CRYPTO_KEY, PREDICTIONS_KEY, DIGEST_KEY,
-  CORRELATION_RUNTIME_MODE_KEY, MARKET_ALERT_LEDGER_KEY, MARKET_ALERT_SNAPSHOT_KEY,
+  CORRELATION_RUNTIME_MODE_KEY, MARKET_ALERT_LEDGER_KEY, MARKET_ALERT_SNAPSHOT_KEY, MARKET_ALERT_SCORECARD_KEY,
 ];
 
 const MIN_MS = 60 * 1000;
@@ -69,6 +69,9 @@ const SNAPSHOT_MAX_AGE_MS = 15 * MIN_MS;
 // and is rewritten every emitting tick.
 const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 const SNAPSHOT_TTL_SECONDS = 24 * 60 * 60;
+// A tick with nothing due reads no archive; the scorecard keeps the block of
+// the last tick that did, and starts from this one when none is on record.
+const UNREAD_ARCHIVE = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null, readAt: null };
 export const MAX_ARCHIVE_HASHES = 20_000;
 const SMEMBERS_BATCH = 500;
 const PREDICTION_POOLS = ['geopolitical', 'tech', 'finance'];
@@ -176,6 +179,11 @@ function parseLedger(value) {
   return data;
 }
 
+function parsePreviousArchive(value) {
+  const { data } = unwrapEnvelope(value);
+  return isPlainObject(data) && isPlainObject(data.archive) ? data.archive : null;
+}
+
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
   if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted)) return null;
@@ -250,7 +258,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
   for (const signal of signals) byType[signal.type] = (byType[signal.type] ?? 0) + 1;
-  const archiveStatus = { readFailed: resolved.readFailed, truncated: resolved.truncated, unproven: resolved.unproven, coveredFromMs: resolved.coveredFromMs };
+  const archiveStatus = resolved.read ? resolved : (parsePreviousArchive(raw[MARKET_ALERT_SCORECARD_KEY]) ?? UNREAD_ARCHIVE);
 
   return {
     ledger,

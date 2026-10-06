@@ -37,7 +37,7 @@ export const MARKET_ALERT_LEDGER_SOURCE_VERSION = 'market-alert-ledger-v1';
 export const MARKET_ALERT_LEDGER_SCHEMA_VERSION = 1;
 
 export const MARKET_ALERT_RESOLUTION_RULE = 'An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol\'s registry entity or a whole-word match of the market name of four or more characters; for a prediction market, a topic keyword that appears in the question itself. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story\'s first tracking.';
-export const MARKET_ALERT_BASE_RATE_RULE = 'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window and no alert for that entity was open during it.';
+export const MARKET_ALERT_BASE_RATE_RULE = 'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window, no alert for that entity was open during it, and the emission and the control fall on the same side of a weekend in UTC.';
 
 const ALERT_TYPES = new Set(MARKET_ALERT_TYPES);
 
@@ -205,10 +205,15 @@ function countPending(ledger) {
   return Object.values(ledger).filter((entry) => entry.status === 'pending').length;
 }
 
-const NO_ARCHIVE_READ = { readFailed: false, truncated: false, coveredFromMs: null };
+const NO_ARCHIVE_READ = { read: false, readFailed: false, truncated: false, coveredFromMs: null, readAt: null };
 
 function resolution(ledger, counts, archiveStatus) {
   return { ledger: sortLedger(ledger), ...counts, pending: countPending(ledger), ...archiveStatus };
+}
+
+function isWeekend(ms) {
+  const day = new Date(ms).getUTCDay();
+  return day === 0 || day === 6;
 }
 
 /**
@@ -224,9 +229,14 @@ function resolution(ledger, counts, archiveStatus) {
  * Each HIT or MISS also scores a control window of the same length that
  * starts 24 hours before the emission, under the same matching and tier
  * rule, so the scorecard can publish a base rate beside the hit rate. The
- * control is skipped when the archive does not cover its start, when its
- * start is older than the evidence expiry, or when any alert for the same
- * entity was open, or still re-emitting while held, during it.
+ * control is skipped when its start is older than the evidence expiry, when
+ * the emission and the control start fall on different sides of a weekend
+ * in UTC, when the archive does not cover its start, or when any alert for
+ * the same entity was open, or still re-emitting while held, during it.
+ *
+ * `read` says whether the archive was read this pass (a tick with nothing
+ * due reads nothing) and `readAt` is when; a failed read leaves every
+ * resolvable entry unproven.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
@@ -243,10 +253,12 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
   }
   if (resolvable.length === 0) return resolution(ledger, counts, NO_ARCHIVE_READ);
 
+  const readStatus = { ...NO_ARCHIVE_READ, read: true, readAt: nowMs };
+  const failedRead = (status) => resolution(ledger, { ...counts, unproven: resolvable.length }, { ...status, readFailed: true });
   const archived = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)) - MARKET_ALERT_CONTROL_OFFSET_MS);
-  if (!Array.isArray(archived?.stories)) return resolution(ledger, counts, { ...NO_ARCHIVE_READ, readFailed: true });
+  if (!Array.isArray(archived?.stories)) return failedRead(readStatus);
   const { coveredFromMs, truncated, stories } = archived;
-  const archiveStatus = { readFailed: false, truncated, coveredFromMs };
+  const archiveStatus = { ...readStatus, truncated, coveredFromMs };
   const proven = resolvable.filter((entry) => coveredFromMs != null && entry.emittedAt >= coveredFromMs);
   counts.unproven = resolvable.length - proven.length;
 
@@ -269,6 +281,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     // A story:track row outlives its first sighting by seven days, so a start
     // older than six days can be claimed covered after its stories are gone.
     if (start < nowMs - MARKET_ALERT_EVIDENCE_EXPIRY_MS) return { start, end, outcome: 'skipped', reason: 'expired' };
+    if (isWeekend(entry.emittedAt) !== isWeekend(start)) return { start, end, outcome: 'skipped', reason: 'weekend' };
     if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
     const entityKey = entityKeyOf(entry.id);
     const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey
@@ -280,7 +293,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
 
   const hashes = [...new Set(windows.flatMap(({ live, control }) => [...live, ...(control.candidates ?? [])].map((story) => story.hash)))];
   const sourceTierByHash = hashes.length > 0 ? await archive.readSourceTiers(hashes) : new Map();
-  if (!(sourceTierByHash instanceof Map)) return resolution(ledger, counts, { ...archiveStatus, readFailed: true });
+  if (!(sourceTierByHash instanceof Map)) return failedRead(archiveStatus);
 
   const qualifying = (candidates) => candidates.find((story) => (sourceTierByHash.get(story.hash)?.tier ?? 4) <= MARKET_ALERT_HIT_MAX_TIER);
   for (const { entry, live, control } of windows) {
@@ -317,7 +330,13 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-/** `archive` is the status of this tick's resolution pass, from resolveDueEntries. */
+/**
+ * `archive` is the status of the latest resolution pass that read the
+ * archive, from resolveDueEntries or carried over from the previous
+ * scorecard; only its published fields are copied. `pairedHitRate` is the
+ * live hit rate over the rows whose control scored, so it is the like-for-like
+ * comparison with `baseHitRate`.
+ */
 export function buildScorecard(ledger, nowMs, { archive }) {
   const entries = Object.values(ledger);
   const since = nowMs - MARKET_ALERT_LEDGER_RETENTION_MS;
@@ -328,8 +347,9 @@ export function buildScorecard(ledger, nowMs, { archive }) {
     const count = (outcome) => resolved.filter((entry) => entry.outcome === outcome).length;
     const hit = count('HIT');
     const miss = count('MISS');
-    const controls = resolved.filter((entry) => entry.control?.outcome === 'HIT' || entry.control?.outcome === 'MISS');
-    const baseHit = controls.filter((entry) => entry.control.outcome === 'HIT').length;
+    const paired = resolved.filter((entry) => entry.control?.outcome === 'HIT' || entry.control?.outcome === 'MISS');
+    const pairedHit = paired.filter((entry) => entry.outcome === 'HIT').length;
+    const baseHit = paired.filter((entry) => entry.control.outcome === 'HIT').length;
     return {
       pending,
       resolved: resolved.length,
@@ -338,8 +358,10 @@ export function buildScorecard(ledger, nowMs, { archive }) {
       void: count('VOID'),
       n: hit + miss,
       hitRate: hit + miss > 0 ? hit / (hit + miss) : null,
-      baseN: controls.length,
-      baseHitRate: controls.length > 0 ? baseHit / controls.length : null,
+      pairedN: paired.length,
+      pairedHitRate: paired.length > 0 ? pairedHit / paired.length : null,
+      baseN: paired.length,
+      baseHitRate: paired.length > 0 ? baseHit / paired.length : null,
       medianLeadTimeMs: median(resolved.filter((entry) => entry.outcome === 'HIT').map((entry) => entry.evidence.leadTimeMs)),
     };
   };
@@ -351,7 +373,7 @@ export function buildScorecard(ledger, nowMs, { archive }) {
     rollingWindowDays: MARKET_ALERT_ROLLING_WINDOW_DAYS,
     methodology: `${MARKET_ALERT_RESOLUTION_RULE} ${MARKET_ALERT_BASE_RATE_RULE}`,
     totals: { entries: entries.length, pending: totals.pending, resolved: totals.resolved, hit: totals.hit, miss: totals.miss, void: totals.void },
-    archive: { readFailed: archive.readFailed, truncated: archive.truncated, unproven: archive.unproven, coveredFromMs: archive.coveredFromMs },
+    archive: { readFailed: archive.readFailed, truncated: archive.truncated, unproven: archive.unproven, coveredFromMs: archive.coveredFromMs, readAt: archive.readAt ?? null },
     byType: MARKET_ALERT_TYPES.map((type) => ({ type, ...rowFor(type) })),
   };
 }

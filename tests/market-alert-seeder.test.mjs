@@ -15,6 +15,7 @@ import {
   formatSummary,
   readRawInputs,
 } from '../scripts/seed-market-alert-ledger.mjs';
+import { MARKET_ALERT_SCORECARD_KEY } from '../scripts/_market-alert-ledger.mjs';
 
 const NOW = Date.UTC(2026, 9, 6, 12, 0, 0);
 const MIN = 60 * 1000;
@@ -78,7 +79,7 @@ function rawInputs(overrides = {}) {
 }
 
 const EMPTY_ARCHIVE = { readStories: async () => ({ coveredFromMs: NOW - 24 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
-const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null };
+const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null, readAt: null };
 
 function byType(ledger, type) {
   return Object.values(ledger).filter((entry) => entry.type === type);
@@ -325,7 +326,25 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.emitted.total, 0);
     assert.deepEqual(tick.snapshot, LIVE_SNAPSHOT);
     assert.equal(tick.scorecard.totals.hit, 1);
-    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 0, coveredFromMs: emittedAt - HOUR });
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 0, coveredFromMs: emittedAt - HOUR, readAt: NOW });
+  });
+
+  it('an idle tick carries the archive block of the last tick that read, not a blank one', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
+    const archive = {
+      readStories: async () => ({ coveredFromMs: emittedAt - HOUR, truncated: true, stories: [] }),
+      readSourceTiers: async () => new Map(),
+    };
+    const read = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pendingCrude(emittedAt)) }), { nowMs: NOW, archive });
+    assert.deepEqual(read.scorecard.archive, { readFailed: false, truncated: true, unproven: 0, coveredFromMs: emittedAt - HOUR, readAt: NOW });
+    const idle = await buildTick(
+      rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(read.ledger), [MARKET_ALERT_SCORECARD_KEY]: envelope(read.scorecard, NOW) }),
+      { nowMs: NOW + 5 * MIN, archive: { readStories: async () => { throw new Error('nothing is due'); }, readSourceTiers: async () => new Map() } },
+    );
+    assert.deepEqual(idle.scorecard.archive, read.scorecard.archive);
+    assert.equal(idle.scorecard.generatedAt, NOW + 5 * MIN);
+    const blank = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(read.ledger), [MARKET_ALERT_SCORECARD_KEY]: 'not-json' }), { nowMs: NOW + 5 * MIN, archive });
+    assert.deepEqual(blank.scorecard.archive, NO_ARCHIVE_PASS, 'a malformed previous scorecard carries nothing forward');
   });
 
   it('keeps a due entry pending and reports it unproven when the archive starts after its window opened', async () => {
@@ -343,7 +362,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.readFailed, false);
     assert.equal(tick.summary.truncated, false);
     assert.match(formatSummary(tick.summary), / void=0 unproven=1 \| /);
-    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 1, coveredFromMs: emittedAt + 1 });
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 1, coveredFromMs: emittedAt + 1, readAt: NOW });
   });
 
   it('a truncated archive read scores the rows it covers and says so in the summary and scorecard', async () => {
@@ -358,15 +377,16 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.ledger[key].outcome, 'MISS');
     assert.equal(tick.summary.truncated, true);
     assert.match(formatSummary(tick.summary), / unproven=0 archive-truncated \| /);
-    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: true, unproven: 0, coveredFromMs: emittedAt - HOUR });
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: true, unproven: 0, coveredFromMs: emittedAt - HOUR, readAt: NOW });
   });
 
-  it('a failed archive read is on the scorecard', async () => {
-    const pending = pendingCrude(NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN);
+  it('a failed archive read is on the scorecard with every due row unproven', async () => {
+    const pending = { ...pendingCrude(NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN), ...pendingCrude(NOW - MARKET_ALERT_WINDOW_MS - 40 * MIN) };
     const archive = { readStories: async () => null, readSourceTiers: async () => new Map() };
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
-    assert.deepEqual(tick.scorecard.archive, { ...NO_ARCHIVE_PASS, readFailed: true });
-    assert.match(formatSummary(tick.summary), / archive-read-failed \| /);
+    assert.deepEqual(tick.scorecard.archive, { readFailed: true, truncated: false, unproven: 2, coveredFromMs: null, readAt: NOW });
+    assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 2 });
+    assert.match(formatSummary(tick.summary), / unproven=2 archive-read-failed \| /);
   });
 
   it('refuses a malformed ledger instead of starting an empty one', async () => {
