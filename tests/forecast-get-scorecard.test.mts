@@ -111,6 +111,7 @@ describe('getForecastScorecard backend status', () => {
       calibration: [{ bucket: '80-90', minProbability: 0.8, maxProbability: 0.9, count: 1, predictedMean: 0.8, realizedRate: 1, brier: 0.04 }],
       vsMarketSkill: { count: 1, forecastBrier: 0.04, marketBrier: 0.09, brierDelta: 0.05 },
       skill: { count: 1, brier: 0.04, logScore: 0.22, excludedScored: 1, excludedOrigins: ['bet_engine'] },
+      publishedByDomain: [{ domain: 'market', count: 1, brier: 0.04, yesCount: 1 }],
       degraded: false, stale: false, error: '',
     };
     const { fetchImpl } = createRedisFetch({});

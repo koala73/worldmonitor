@@ -1985,6 +1985,12 @@
         "stale": "Verouderd",
         "staleHint": "Laatst beoordeeld op {{date}}. De beoordelaar heeft sindsdien niet gedraaid, dus deze cijfers zijn ouder dan ze zouden moeten zijn.",
         "fullRecord": "Volledige staat van dienst"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} vs basispercentage {{base}} (n={{n}})",
+        "measuredHint": "Hoe gepubliceerde {{domain}}-prognoses hebben gescoord over {{n}} geclassificeerde prognoses in de afgelopen {{days}} dagen. Het basispercentage is wat je zou scoren door altijd het waargenomen ja-percentage van het domein te antwoorden. Lager is beter. Dit is het record van het domein, niet van deze prognose.",
+        "unmeasured": "Nog niet gemeten",
+        "unmeasuredHint": "{{domain}} voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. Een domein heeft minimaal {{min}} nodig voordat de nauwkeurigheid wordt weergegeven."
       }
     },
     "escalationCorrelation": {

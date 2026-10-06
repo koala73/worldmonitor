@@ -2388,6 +2388,12 @@
         "stale": "Neaktuální",
         "staleHint": "Naposledy hodnoceno {{date}}. Hodnocení od té doby neproběhlo, takže tato čísla jsou starší, než by měla být.",
         "fullRecord": "Úplné výsledky"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} vs základní sazba {{base}} (n={{n}})",
+        "measuredHint": "Jak dosáhly publikované {{domain}} předpovědi ve {{n}} ohodnocených předpovědích za poslední {{days}} dní. Základní sazba je to, co by získala vždy odpověď na základě pozorované frekvence „ano\" v dané doméně. Nižší je lepší. Toto je záznam domény, ne této předpovědi.",
+        "unmeasured": "Zatím neměřeno",
+        "unmeasuredHint": "Předpovědi {{domain}} mají {{n}} vyhodnocených výsledků za poslední {{days}} dní. Doména potřebuje {{min}}, než se zobrazí její přesnost."
       }
     },
     "escalationCorrelation": {

@@ -139,6 +139,28 @@ describe('computeScorecard', () => {
     assert.equal(unknownRow.scored, 2);
   });
 
+  it('breaks the published-origin cohort down by domain, holding out shadow, synthetic and unattributed entries', () => {
+    const absent = resolved({ probability: 0.9, outcome: 'NO', domain: 'market' });
+    delete absent.generationOrigin;
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.8, outcome: 'YES', domain: 'market', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.4, outcome: 'NO', domain: 'market', generationOrigin: 'detector' }),
+      c: resolved({ probability: 0.3, outcome: 'NO', domain: 'conflict', generationOrigin: 'detector' }),
+      d: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'bet_engine' }),
+      e: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'state_derived' }),
+      f: absent,
+      g: resolved({ probability: 0.5, outcome: 'VOID', domain: 'market', generationOrigin: 'detector' }),
+      h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine' }),
+    }, NOW, { promoteBetEngine: true });
+
+    assert.equal(scorecard.schemaVersion, 2, 'schema 2 marks a seed that carries publishedByDomain');
+    assert.deepEqual(scorecard.publishedByDomain, [
+      { domain: 'conflict', count: 1, brier: 0.09, yesCount: 0 },
+      { domain: 'market', count: 2, brier: 0.1, yesCount: 1 },
+    ]);
+    assert.equal(scorecard.byDomain.find((row) => row.domain === 'market').scored, 5, 'byDomain still pools every origin');
+  });
+
   it('reports skill.yesCount as 0, not absent, when nothing real in the cohort came true', () => {
     const scorecard = computeScorecard({
       a: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),
