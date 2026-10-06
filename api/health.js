@@ -2042,6 +2042,7 @@ const ON_DEMAND_KEYS = new Set([
   // first publish, missing data/meta is EMPTY/STALE_SEED like any other key.
   'newsFeedHealth',
   'imdCycloneMarine',
+  'forecastCalibrationMap',
   'newsRecallBenchmark',
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
@@ -2120,6 +2121,7 @@ const ACTIVATION_MARKERS = {
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
+  forecastCalibrationMap: SEED_META.forecastCalibrationMap.activationKey,
   supplyVulnerability: SEED_META.supplyVulnerability.activationKey,
   supplyChokepointDependencies: SEED_META.supplyChokepointDependencies.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
