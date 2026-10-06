@@ -2610,7 +2610,7 @@ describe('judged lane health (#8877)', () => {
   };
 
   async function assess(ledger, previous, coverage = marker) {
-    const { publishJudgedLaneHealth } = await import('../scripts/seed-forecast-resolutions.mjs');
+    const { buildJudgedLaneHealthPatch } = await import('../scripts/seed-forecast-resolutions.mjs');
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     const writes = [];
@@ -2622,11 +2622,9 @@ describe('judged lane health (#8877)', () => {
       const value = String(url).includes(encodeURIComponent('forecast:evidence:coverage:v1')) ? coverage : previous;
       return { ok: true, json: async () => ({ result: value ? JSON.stringify(value) : null }) };
     };
-    const health = await publishJudgedLaneHealth(ledger, now);
-    assert.equal(writes.length, 2, 'publish data and seed-meta together');
-    const meta = JSON.parse(writes[1][2]);
-    assert.equal(meta.status, health.status);
-    assert.equal(meta.fetchedAt, now);
+    const health = await buildJudgedLaneHealthPatch(ledger, now);
+    assert.equal(writes.length, 0, 'runSeed owns the metadata publication');
+    assert.equal(health.evaluatedAt, now);
     return health;
   }
 
@@ -2662,7 +2660,7 @@ describe('judged lane health (#8877)', () => {
   });
 
   it('does not publish healthy state when a health-state read fails', async () => {
-    const { publishJudgedLaneHealth } = await import('../scripts/seed-forecast-resolutions.mjs');
+    const { buildJudgedLaneHealthPatch } = await import('../scripts/seed-forecast-resolutions.mjs');
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     let writes = 0;
@@ -2670,7 +2668,7 @@ describe('judged lane health (#8877)', () => {
       if (String(url).endsWith('/multi-exec')) writes += 1;
       return { ok: true, json: async () => ({ error: 'ERR unavailable' }) };
     };
-    await assert.rejects(publishJudgedLaneHealth({ pending }, now), /Redis GET/);
+    await assert.rejects(buildJudgedLaneHealthPatch({ pending }, now), /Redis GET/);
     assert.equal(writes, 0);
   });
 

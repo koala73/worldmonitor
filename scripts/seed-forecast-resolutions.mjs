@@ -14,7 +14,7 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { CHROME_UA, loadEnvFile, runSeed, writeExtraKeyWithMetaAtomically } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
@@ -51,7 +51,7 @@ export const MIGRATION_DIVERGENCE_SAMPLE_HASHES = 500;
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
-export const JUDGED_LANE_HEALTH_KEY = 'forecast:judged-lane:health:v1';
+export const RESOLUTIONS_META_KEY = 'seed-meta:forecast:resolutions';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
@@ -2197,9 +2197,9 @@ export function reportJudgedLaneObservability(ledger, nowMs, options = {}, logge
   return { attemptClasses, alerts };
 }
 
-export async function publishJudgedLaneHealth(ledger, nowMs = Date.now()) {
+export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now()) {
   const [previous, rawCoverage] = await Promise.all([
-    readRedisJson(JUDGED_LANE_HEALTH_KEY),
+    readRedisJson(RESOLUTIONS_META_KEY),
     readRedisJson(FORECAST_EVIDENCE_COVERAGE_KEY),
   ]);
   const since = Number.isSafeInteger(previous?.evaluatedAt) && previous.evaluatedAt <= nowMs
@@ -2223,11 +2223,6 @@ export async function publishJudgedLaneHealth(ledger, nowMs = Date.now()) {
     stalledRuns, scoredWithinSla: lane.scoredWithinSla,
     pendingJudgePastDeadline: lane.pendingJudgePastDeadline, coverageVerified,
   };
-  await writeExtraKeyWithMetaAtomically({
-    key: JUDGED_LANE_HEALTH_KEY, data: health, ttlSeconds: SCORECARD_TTL_SECONDS,
-    recordCount: 1, fetchedAt: nowMs,
-    extra: { status: health.status, reasons, sourceVersion: 'judged-lane-health:v1' },
-  });
   if (reasons.length) console.warn(`  [forecast-resolutions] judged lane health: ${reasons.join(', ')}`);
   return health;
 }
@@ -2309,7 +2304,10 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     maxStaleMin: 2160,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
-    afterPublish: async (ledger) => { await publishJudgedLaneHealth(ledger); },
+    afterPublish: async (ledger) => {
+      const health = await buildJudgedLaneHealthPatch(ledger);
+      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
+    },
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,

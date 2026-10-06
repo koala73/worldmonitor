@@ -923,9 +923,10 @@ For physical divergence, initial recovery does not complete the separate 48-hour
 
 ### Forecast judged lane
 
-`forecastJudgedLane` monitors `forecast:judged-lane:health:v1` and its companion
-seed metadata. The daily resolution worker publishes both atomically after the
-ledger and scorecard. Missing publication becomes stale after 36 hours.
+`forecastResolutions` monitors the resolution ledger and its existing
+`seed-meta:forecast:resolutions` metadata. After publishing the ledger and
+scorecard, the daily worker records judged-lane health through the shared
+seed-metadata writer. Missing publication becomes stale after 36 hours.
 
 The producer sets `status: error` when coverage is unverified while judged
 entries are overdue, or after three consecutive eligible runs without a new

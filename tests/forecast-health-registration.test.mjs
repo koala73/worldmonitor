@@ -170,15 +170,16 @@ describe('funnel-diversity guardrail health classification', () => {
 });
 
 describe('judged lane health classification (#8877)', () => {
-  const key = 'forecast:judged-lane:health:v1';
+  const key = 'forecast:resolutions:v1';
+  const metaKey = 'seed-meta:forecast:resolutions';
   const now = 1_790_000_000_000;
   for (const [producerStatus, expected] of [['error', 'SEED_ERROR'], ['ok', 'OK']]) {
     it(`classifies a ${producerStatus} lane through the normal health monitor`, () => {
-      assert.equal(__testing__.STANDALONE_KEYS.forecastJudgedLane, key);
-      assert.equal(__testing__.SEED_META.forecastJudgedLane.key, `seed-meta:${key}`);
-      const entry = __testing__.classifyKey('forecastJudgedLane', key, { allowOnDemand: true }, {
+      assert.equal(__testing__.STANDALONE_KEYS.forecastResolutions, key);
+      assert.equal(__testing__.SEED_META.forecastResolutions.key, metaKey);
+      const entry = __testing__.classifyKey('forecastResolutions', key, { allowOnDemand: true }, {
         keyStrens: new Map([[key, 200]]), keyErrors: new Map(), keyMetaErrors: new Map(), now,
-        keyMetaValues: new Map([[`seed-meta:${key}`, JSON.stringify({
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
           fetchedAt: now, recordCount: 1, status: producerStatus,
           reasons: producerStatus === 'error' ? ['coverage_unverified_with_overdue_entries'] : [],
         })]]),

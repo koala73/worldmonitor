@@ -680,7 +680,6 @@ const STANDALONE_KEYS = {
   forecastScorecard:             'forecast:scorecard:v1',
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
-  forecastJudgedLane:            'forecast:judged-lane:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
   techEventsSeeder:              'research:tech-events:v1',
   // #5736 — historical-intelligence ingest health, one record per collector.
@@ -1216,7 +1215,6 @@ const SEED_META = {
   forecastsBootstrap: { key: 'seed-meta:forecast:predictions-bootstrap', maxStaleMin: 90 }, // Same cron. Monitored separately: the fast tier now hydrates from the dashboard list, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
   forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
-  forecastJudgedLane:  { key: 'seed-meta:forecast:judged-lane:health:v1', maxStaleMin: 2160 },
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
   forecastMarketsResolution: { key: 'seed-meta:prediction:markets-resolution', maxStaleMin: 2160 }, // #5525 market settlement feed; written every resolver run (even zero-due), so it shares the resolver's 36h window
   forecastFunnel:      { key: 'seed-meta:forecast:funnel:health:v1', maxStaleMin: 180 }, // funnel-diversity guardrail (#5233); written by seed-forecasts afterPublish each hourly run (3× cadence). status:'error' → SEED_ERROR when the published funnel collapses (too few domains / mostly synthetic)
