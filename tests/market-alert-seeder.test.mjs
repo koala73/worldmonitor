@@ -312,3 +312,17 @@ describe('createRedisArchive', () => {
     }
   });
 });
+
+describe('derived-signals bundle section', () => {
+  it('names the ledger and completion keys as literals that match the module constants', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { MARKET_ALERT_COMPLETION_META_KEY } = await import('../scripts/_market-alert-ledger.mjs');
+    const line = readFileSync(new URL('../scripts/seed-bundle-derived-signals.mjs', import.meta.url), 'utf8')
+      .split('\n')
+      .find((text) => text.includes("label: 'Market-Alert-Ledger'"));
+    assert.ok(line, 'the derived-signals bundle must keep a Market-Alert-Ledger section');
+    assert.match(line, new RegExp(`canonicalKey: '${MARKET_ALERT_LEDGER_KEY}'`));
+    assert.match(line, new RegExp(`completionMetaKey: '${MARKET_ALERT_COMPLETION_META_KEY}'`));
+    assert.doesNotMatch(line, /MARKET_ALERT_[A-Z_]+,/, 'tests/cross-strait-activity-shipping evaluates this array with only MIN, HOUR and CHINA_DECISION_SIGNALS_KEY in scope');
+  });
+});
