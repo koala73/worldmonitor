@@ -396,6 +396,27 @@ test('headline sources pin a named city or region inside the detected country', 
   assert.equal(headline('Cholera spreads in North Kivu, DR Congo').location, 'North Kivu');
 });
 
+// A story naming several places in one country is not about any one of them;
+// pinning the longest name would put a national story in one state.
+test('place lookup falls back to the centroid when a story names several places', () => {
+  const multi = headline('Measles cases rise in Texas and New Mexico, United States');
+  assert.equal(multi.location, 'United States');
+  assert.deepEqual({ lat: multi.lat, lng: multi.lng }, countryCentroid('US'));
+  // A name inside a longer match is the same place, not a second one.
+  assert.equal(headline('Measles case confirmed in West Virginia, United States').location, 'West Virginia');
+  // A region and its seat city share coordinates: one place.
+  assert.equal(headline('Plague suspected in Irkutsk, Irkutsk Oblast, Russia').location, 'Irkutsk Oblast');
+});
+
+test('place names that mean two places resolve to the common one or not at all', () => {
+  // GeoNames names the city "New York City"; "New York" alone means the city.
+  const ny = headline('Measles outbreak in New York grows, United States');
+  assert.equal(ny.location, 'New York');
+  assert.deepEqual([ny.lat, ny.lng], [40.71, -74.01]);
+  // "Washington" is the US capital, the federal government and a state.
+  assert.equal(headline('Washington state reports measles case, United States').location, 'United States');
+});
+
 test('place lookup stays inside the detected country and skips place names used as words', () => {
   // Reading is an English town; a sentence starting with "Reading" is not.
   assert.equal(headline('Reading the data: measles outbreak in the United Kingdom grows').location, 'United Kingdom');

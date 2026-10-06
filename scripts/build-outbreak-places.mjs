@@ -23,6 +23,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const TARGET = new URL('./data/outbreak-places.json', import.meta.url);
 const MIN_POPULATION = 100_000;
+// A region outranks a smaller city of the same name (Irkutsk Oblast's seat is
+// Irkutsk anyway); a city this large outranks a region named like it.
+const MAJOR_CITY_POPULATION = 1_000_000;
 const MIN_NAME_LENGTH = 4;
 const REGION_SUFFIX_RE = /\s+(?:Oblast|Krai|Kray|Province|Region|Governorate|State|Prefecture|Department|District|County|Territory|Republic|Autonomous Okrug|Okrug)$/;
 const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -35,6 +38,8 @@ const EXCLUDED_NAMES = new Set([
   'Concord', 'Phoenix', 'Aurora', 'Nice', 'Split', 'Batman', 'Ogre', 'Sale', 'Mesa', 'Vista', 'Centennial',
   'Warren', 'Garland', 'Chandler', 'Gilbert', 'Newton', 'Nelson', 'Dudley', 'Harrow', 'Barking', 'Archway',
   'Falcon', 'Lander', 'Flores', 'Bolivar', 'Hidalgo', 'Mantilla', 'Lafayette', 'Davenport', 'Kitchener',
+  // The US capital, its government, and a state 3,700 km away.
+  'Washington',
 ]);
 
 const [citiesPath, admin1Path] = process.argv.slice(2);
@@ -59,6 +64,7 @@ function add(country, name, lat, lng, rank) {
 }
 
 const seats = new Map(); // "CC.admin1" -> { lat, lng }
+const majorCities = new Map(); // "CC.name" -> { lat, lng } for cities of MAJOR_CITY_POPULATION or more
 for (const line of readFileSync(citiesPath, 'utf8').split('\n')) {
   const f = line.split('\t');
   if (f.length < 15) continue;
@@ -67,6 +73,7 @@ for (const line of readFileSync(citiesPath, 'utf8').split('\n')) {
   const featureCode = f[7], country = f[8], admin1 = f[10], population = Number(f[14]);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !/^[A-Z]{2}$/.test(country)) continue;
   if (featureCode === 'PPLA') seats.set(`${country}.${admin1}`, { lat, lng });
+  if (population >= MAJOR_CITY_POPULATION) majorCities.set(`${country}.${name}`, { lat, lng });
   if (population >= MIN_POPULATION) {
     add(country, name, lat, lng, population);
     add(country, asciiName, lat, lng, population);
@@ -78,9 +85,12 @@ for (const line of readFileSync(admin1Path, 'utf8').split('\n')) {
   const seat = seats.get(code);
   if (!seat || !name) continue;
   const country = code.slice(0, 2);
-  // Regions rank above cities so "Irkutsk Oblast" and the bare "Irkutsk" agree.
   for (const variant of new Set([name, asciiName, name.replace(REGION_SUFFIX_RE, ''), asciiName?.replace(REGION_SUFFIX_RE, '')])) {
-    if (variant) add(country, variant, seat.lat, seat.lng, Number.MAX_SAFE_INTEGER);
+    if (!variant) continue;
+    // GeoNames names the city "New York City"; headlines say "New York".
+    const city = majorCities.get(`${country}.${variant} City`);
+    if (city) add(country, variant, city.lat, city.lng, MAJOR_CITY_POPULATION);
+    else add(country, variant, seat.lat, seat.lng, MAJOR_CITY_POPULATION);
   }
 }
 

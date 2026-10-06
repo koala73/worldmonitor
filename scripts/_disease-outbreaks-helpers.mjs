@@ -268,22 +268,32 @@ function headlineSummary(title, desc) {
 // Headline sources name a city or region ("a laboratory worker in Irkutsk")
 // without coordinates. Names come from scripts/data/outbreak-places.json
 // (GeoNames, see scripts/build-outbreak-places.mjs), longest first, and are
-// searched only within the detected country.
+// searched only within the detected country. A story naming several distinct
+// places is about none of them in particular, so it keeps the centroid; a
+// name inside a longer match ("Virginia" in "West Virginia") is not counted.
 const placeRes = new Map();
 
 export function namedPlace(countryCode, text) {
+  let found = null;
+  const spans = [];
   for (const [name, lat, lng] of outbreakPlaces[countryCode] ?? []) {
     // Matching is case-sensitive, so a substring miss rules the name out
     // without compiling its word-boundary regex.
     if (!text.includes(name)) continue;
     let re = placeRes.get(name);
     if (!re) {
-      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
       placeRes.set(name, re);
     }
-    if (re.test(text)) return { name, lat, lng };
+    for (const { index } of text.matchAll(re)) {
+      const end = index + name.length;
+      if (spans.some(([s, e]) => index >= s && end <= e)) continue;
+      spans.push([index, end]);
+      if (!found) found = { name, lat, lng };
+      else if (found.lat !== lat || found.lng !== lng) return null;
+    }
   }
-  return null;
+  return found;
 }
 
 export function mapItem(item) {
