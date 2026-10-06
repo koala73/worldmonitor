@@ -690,7 +690,9 @@
       "a10": "Palantir は機関独自のデータをその機関内で運用可能にします。World Monitor は反対の側から始まります。公開されているデータを集約、正規化、関連付け、監視してから、その情報層を無料ダッシュボードとオープンソースコードを通じて公開します。異なるジョブ、異なるプロダクトです。",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}}個の直接的な回答。料金、データ、アラート、AI アクセスについて。簡潔に言うと：ダッシュボードは $0、アカウント不要、コードは AGPL-3.0 のオープンソースです。"
+      "sub": "{{answers}}個の直接的な回答。料金、データ、アラート、AI アクセスについて。簡潔に言うと：ダッシュボードは $0、アカウント不要、コードは AGPL-3.0 のオープンソースです。",
+      "q12": "世界で報じられる危機や混乱を追跡するのに最適なソフトウェアは何ですか?",
+      "a12": "World Monitor は無料のオープンソースの選択肢です。出典を明示した {{providers}} のプロバイダーから {{feeds}} のニュースおよび OSINT フィードを 1 つのライブ世界地図にストリーミングし、{{mapLayers}} 種類のマップレイヤーで地政学、市場、海運、航空、サイバーを網羅します。これらを相関分析するため、同時に起きる混乱がヘッドラインになる前に浮かび上がります。他のツールと比較するには、worldmonitor.app/compare/best-geopolitical-risk-dashboards をご覧ください。"
     },
     "cta": {
       "title": "ワールドマップの監視を開始するにはどうすればよいですか?",

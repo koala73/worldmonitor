@@ -687,6 +687,42 @@ describe('crawlable live intelligence view models', () => {
     assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
+  it('includes a registry measurement limitation only when supplied', () => {
+    const reason = 'Not measured here in this snapshot. A count requires matched AIS entry and exit reports.';
+    assert.equal(withheldTransitCountSentence('Strait of Hormuz', reason),
+      `World Monitor is not currently publishing a transit count for Strait of Hormuz for this period. ${reason}`);
+  });
+
+  it('keeps the registry explanation on live absence and removes it on recovery', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    window.document.body.innerHTML = `<section data-live-chokepoint data-chokepoint-id="hormuz_strait"
+      data-chokepoint-name="Strait of Hormuz" data-transit-measurement-note="A count requires matched AIS entry and exit reports.">
+      <strong data-chokepoint-transits></strong><p data-chokepoint-transits-note></p></section>`;
+    const tool = window.document.querySelector('section');
+    const originalFetch = globalThis.fetch;
+    let available = false;
+    globalThis.fetch = async url => String(url).includes('get-chokepoint-status')
+      ? { ok: true, status: 200, json: async () => ({
+        fetchedAt: new Date().toISOString(), upstreamUnavailable: false,
+        chokepoints: [{ id: 'hormuz_strait', disruptionScore: 70, status: 'red',
+          transitSummary: { todayTotal: available ? 2 : 0, todayCountsAvailable: available, dataAvailable: true } }],
+      }) }
+      : anonymousSessionResponse();
+    try {
+      await loadChokepoint(tool);
+      assert.match(tool.querySelector('[data-chokepoint-transits-note]').textContent, /matched AIS entry and exit/);
+      assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
+      available = true;
+      await loadChokepoint(tool);
+      assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '2');
+      assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
+      assert.equal(tool.querySelector('[data-chokepoint-transits-note]').textContent, '');
+    } finally {
+      globalThis.fetch = originalFetch;
+      window.close();
+    }
+  });
+
   it('keeps maximum AIS congestion severity as a score input and AIS event count as context', () => {
     const narrative = chokepointEvidenceNarrative({
       displayName: 'Suez Canal',

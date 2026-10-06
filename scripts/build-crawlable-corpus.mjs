@@ -1363,6 +1363,7 @@ function normalizeChokepoints(entries) {
     .map((entry) => ({
       id: entry.id,
       displayName: entry.displayName,
+      transitMeasurementNote: entry.transitMeasurementNote,
       baselineId: entry.baselineId,
       shockModelSupported: Boolean(entry.shockModelSupported),
       routeIds: Array.isArray(entry.routeIds) ? [...entry.routeIds] : [],
@@ -4471,7 +4472,7 @@ function renderChokepointPage({
     ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const transitsNote = transitsWithheld
-    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
+    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName, chokepoint.transitMeasurementNote))}</p>`
     : '        <p data-chokepoint-transits-note hidden></p>';
   const narrative = hasPulse
     ? chokepointEvidenceNarrative({
@@ -4521,7 +4522,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-transit-measurement-note="${escapeHtml(chokepoint.transitMeasurementNote || '')}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
 ${openStatusSection}
         <div class="tool-head">
           <div>
@@ -4530,7 +4531,7 @@ ${openStatusSection}
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">Transit metrics appear only when the current vessel snapshot has coverage.</p>
+        <p class="tool-note">Transit counts require observed AIS crossings in the preceding 24 hours. Missing counts do not mean zero traffic.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({
