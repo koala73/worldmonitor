@@ -99,7 +99,7 @@ export const JUDGE_ATTEMPT_CLASSES = Object.freeze([
   'archive_unavailable', 'archive_incomplete', 'archive_empty',
   'judge_unavailable', 'provider_error', 'json_parse_fail', 'invalid_outcome',
   'missing_citations', 'invalid_citations', 'citation_mismatch', 'insufficient_subject_items',
-  'absence_selection_truncated', 'absence_coverage_unbounded',
+  'absence_selection_truncated', 'absence_coverage_unbounded', 'absence_citation_off_subject',
   'judge_disagreement', 'all_judges_void', 'beyond_archive_horizon',
 ]);
 const JUDGE_ATTEMPT_CLASS_SET = new Set(JUDGE_ATTEMPT_CLASSES);
@@ -604,7 +604,7 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
     };
   }
 
-  const absenceBlock = absenceBlockReason(entry, archiveInput, archiveItems, nowMs);
+  const absence = assessAbsenceEligibility(entry, archiveInput, archiveItems, nowMs);
   const settled = await Promise.allSettled(judgeModels.map((judge) => judge(entry, archiveItems, nowMs)));
   const judgments = [];
   for (let index = 0; index < settled.length; index += 1) {
@@ -618,7 +618,7 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
         detail: 'judge_call_rejected', ...attemptContext,
       };
     }
-    const normalized = normalizeJudgment(result.value, archiveItems, absenceBlock);
+    const normalized = normalizeJudgment(result.value, archiveItems, absence);
     if (normalized.error) {
       return {
         status: 'pending',
@@ -693,6 +693,7 @@ function selectNormalizedJudgedArchiveItems(entry, archiveItems, options = {}) {
       severity: item.severity,
       relevance: item.relevance,
       contentRelevance: item.contentRelevance,
+      subjectTokenHits: item.subjectTokenHits,
     }));
 }
 
@@ -714,26 +715,40 @@ function rankJudgedArchiveItems(entry, archiveItems, options = {}) {
       id: item.id || `N${index + 1}`,
       relevance: scoreArchiveItem(item, tokenPatterns),
       contentRelevance: scoreArchiveItem({ title: item.title, description: item.description }, tokenPatterns),
+      subjectTokenHits: countSubjectTokenHits(item, tokenPatterns),
     }))
     .filter((item) => item.relevance > 0)
     .sort((a, b) => b.relevance - a.relevance || Number(b.publishedAt || 0) - Number(a.publishedAt || 0));
 }
 
+function countSubjectTokenHits(item, tokenPatterns) {
+  const text = `${item.title || ''} ${item.description || ''}`.toLowerCase();
+  return tokenPatterns.filter((pattern) => textHasToken(text, pattern)).length;
+}
+
 /**
- * An absence-based NO claims the judges read everything on the subject (#8896).
- * Returns the reason that claim cannot hold for this archive, or null.
- * Source-name-only matches do not count as on-subject, and a selection the item
- * cap truncated may have dropped the very report that confirms the event.
+ * An absence-based NO claims the judges read the subject's coverage up to the
+ * deadline and found no event (#8896). Returns why that claim cannot hold for
+ * this archive (or null) and the ids of the items that count as coverage.
+ *
+ * Coverage means at least two forecast terms in the title or description (one
+ * shared region word is not the subject) published by the deadline. The cap
+ * check stays wider, any content match, because a dropped item of any strength
+ * could be the report that confirms the event.
  */
-function absenceBlockReason(entry, archiveInput, archiveItems, nowMs) {
+function assessAbsenceEligibility(entry, archiveInput, archiveItems, nowMs) {
+  const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+  const qualifies = (item) => item.subjectTokenHits >= 2
+    && (!Number.isFinite(deadline) || Number(item.publishedAt) <= deadline);
+  const qualifyingIds = new Set(archiveItems.filter(qualifies).map((item) => item.id));
   if (!Number.isFinite(Number(archiveInput.coverageStartMs)) || !Number.isFinite(Number(archiveInput.coverageEndMs))) {
-    return 'absence_coverage_unbounded';
+    return { block: 'absence_coverage_unbounded', qualifyingIds };
   }
-  const shown = archiveItems.filter((item) => item.contentRelevance > 0).length;
-  if (shown < JUDGED_ABSENCE_MIN_ARCHIVE_ITEMS) return 'insufficient_subject_items';
-  const onSubject = rankJudgedArchiveItems(entry, archiveInput.items, { nowMs })
+  if (qualifyingIds.size < JUDGED_ABSENCE_MIN_ARCHIVE_ITEMS) return { block: 'insufficient_subject_items', qualifyingIds };
+  const shownMatches = archiveItems.filter((item) => item.contentRelevance > 0).length;
+  const allMatches = rankJudgedArchiveItems(entry, archiveInput.items, { nowMs })
     .filter((item) => item.contentRelevance > 0).length;
-  return onSubject > shown ? 'absence_selection_truncated' : null;
+  return { block: allMatches > shownMatches ? 'absence_selection_truncated' : null, qualifyingIds };
 }
 
 function normalizeJudgedArchiveInput(newsArchive) {
@@ -1005,7 +1020,7 @@ function sanitizeUntrustedArchiveText(value) {
  * is present but unreadable (`json_parse_fail`), and a readable response
  * naming an outcome outside the contract (`invalid_outcome`).
  */
-function normalizeJudgment(value, archiveItems, absenceBlock = null) {
+function normalizeJudgment(value, archiveItems, absence = null) {
   if (!judgeResponseHasPayload(value)) {
     return { error: 'judge_unavailable', detail: 'judge_returned_empty' };
   }
@@ -1039,8 +1054,10 @@ function normalizeJudgment(value, archiveItems, absenceBlock = null) {
     // uncitable YES/NO is downgraded to VOID with the class that explains why.
     return { ...base, outcome: 'VOID', basis: undefined, reason: citationRows.length ? rejection : 'missing_citations' };
   }
-  if (base.basis === 'absence' && absenceBlock) {
-    return { ...base, outcome: 'VOID', basis: undefined, reason: absenceBlock };
+  if (base.basis === 'absence') {
+    const block = absence?.block
+      ?? (citations.some((citation) => absence?.qualifyingIds?.has(citation.id)) ? null : 'absence_citation_off_subject');
+    if (block) return { ...base, outcome: 'VOID', basis: undefined, reason: block };
   }
   return base;
 }

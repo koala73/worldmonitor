@@ -1927,7 +1927,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
       'archive_unavailable', 'archive_incomplete', 'archive_empty',
       'judge_unavailable', 'provider_error', 'json_parse_fail', 'invalid_outcome',
       'missing_citations', 'invalid_citations', 'citation_mismatch', 'insufficient_subject_items',
-      'absence_selection_truncated', 'absence_coverage_unbounded',
+      'absence_selection_truncated', 'absence_coverage_unbounded', 'absence_citation_off_subject',
       'judge_disagreement', 'all_judges_void', 'beyond_archive_horizon',
     ]);
   });
@@ -2668,6 +2668,32 @@ describe('absence-based NO (#8896)', () => {
     const { row } = await run(archiveWith(items), [absenceNo('openrouter'), absenceNo('groq')]);
     assert.equal(row.outcome, 'VOID');
     assert.equal(row.evidence.judgments[0].reason, 'insufficient_subject_items');
+  });
+
+  it('does not count items that share only one forecast term as subject coverage', async () => {
+    const items = [1, 2, 3].map((n) => ({ id: `N${n}`, title: `Freedonia weather update ${n}`, description: 'Rain expected this weekend.', publishedAt: T_DEADLINE - n }));
+    const weatherNo = (provider) => async () => ({ provider, model: `${provider}-model`, outcome: 'NO', basis: 'absence', citations: [{ id: 'N1', quote: 'Freedonia weather update 1' }], rationale: 'nothing reported' });
+    const { row } = await run(archiveWith(items), [weatherNo('openrouter'), weatherNo('groq')]);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.judgments[0].reason, 'insufficient_subject_items');
+  });
+
+  it('does not count reports published after the deadline as coverage through it', async () => {
+    const items = onSubjectItems().map((item, index) => ({ ...item, publishedAt: T_DEADLINE + 1 + index }));
+    const { row } = await run(archiveWith(items, { coverageEndMs: T_DEADLINE + 10 }), [absenceNo('openrouter'), absenceNo('groq')], T_DEADLINE + 10);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.judgments[0].reason, 'insufficient_subject_items');
+  });
+
+  it('voids an absence-based NO that cites no on-subject item', async () => {
+    const items = [
+      ...onSubjectItems(),
+      { id: 'N4', title: 'Freedonia weather update', description: 'Rain expected this weekend.', publishedAt: T_DEADLINE - 20 },
+    ];
+    const offSubject = (provider) => async () => ({ provider, model: `${provider}-model`, outcome: 'NO', basis: 'absence', citations: [{ id: 'N4', quote: 'Freedonia weather update' }], rationale: 'nothing reported' });
+    const { row } = await run(archiveWith(items), [offSubject('openrouter'), offSubject('groq')]);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.judgments[0].reason, 'absence_citation_off_subject');
   });
 
   it('voids an absence-based NO on an archive without coverage bounds', async () => {
