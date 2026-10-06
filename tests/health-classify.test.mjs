@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
-import { isOnDemandProblem } from '../scripts/check-seed-freshness.mjs';
+import { isOnDemandProblem, findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
 import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
@@ -47,6 +47,11 @@ test('transit coverage alerts below five measured canonical waterways despite a 
       metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
     }));
     assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
+    const problems = findOperationalProblems({
+      status: status === 'OK' ? 'HEALTHY' : 'UNHEALTHY',
+      problems: status === 'OK' ? {} : { chokepointTransits: result },
+    });
+    assert.equal(problems.length, recordCount < 5 ? 1 : 0, 'the scheduled monitor must report the coverage fault');
   }
 });
 
