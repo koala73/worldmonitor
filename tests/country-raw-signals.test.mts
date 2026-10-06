@@ -9,6 +9,34 @@ const advisory = { title: 'Publisher observation', link: 'https://example.com/ad
 const thermal = { id: 'hot', countryCode: 'US', status: 'THERMAL_STATUS_SPIKE', firstDetectedAt: '2026-10-01T12:00:00Z', lastDetectedAt: '2026-10-01T15:00:00Z' };
 const byCountry = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'caution']));
 const watch = (clusters: unknown[]) => ({ clusters, fetchedAt: '2026-10-01T16:00:00Z', observationWindowHours: 24, sourceVersion: 'thermal-escalation-v1' });
+
+it('accepts actual USGS producer events without an NRCan-only category and preserves their observations', async () => {
+  const { parseUsgsGeojson } = await import('../scripts/seismology/nrcan-atom.mjs');
+  const { earthquakes } = parseUsgsGeojson({ features: [{ id: quake.id, properties: { place: quake.place, mag: quake.magnitude, time: quake.occurredAt, url: quake.sourceUrl }, geometry: { coordinates: [quake.location.longitude, quake.location.latitude, 10] } }] });
+  assert.equal(Object.hasOwn(earthquakes[0], 'category'), false);
+  for (const category of [undefined, '', 'known earthquake']) {
+    const row = category === undefined ? earthquakes[0] : { ...earthquakes[0], category };
+    const sources = { earthquakes: validateRawSignal('earthquakes', JSON.parse(JSON.stringify({ earthquakes: [row] })), retrievedAt), outages: failedRawSignal('outages', 'unavailable', retrievedAt, 'Not requested'), advisories: failedRawSignal('advisories', 'unavailable', retrievedAt, 'Not requested'), thermal: failedRawSignal('thermal', 'unavailable', retrievedAt, 'Not requested') };
+    const result = assembleRawSignals('US', sources, retrievedAt);
+    assert.equal(sources.earthquakes.state, 'observed');
+    assert.equal(sources.earthquakes.partial, false);
+    assert.equal(rawSignalsResultSchema.safeParse(result).success, true);
+    assert.equal(projectRawSignals(result.value, 'United States', true, () => true).earthquakes, 1);
+    assert.equal(sources.earthquakes.records![0]!.occurredAt, quake.occurredAt);
+    assert.equal(sources.earthquakes.records![0]!.source, 'usgs');
+    assert.equal(sources.earthquakes.records![0]!.category, category ?? '');
+  }
+});
+
+it('rejects invalid earthquake category types and keeps mixed exact counts unknown', () => {
+  for (const category of [null, 1, {}, 'x'.repeat(201)]) {
+    const invalid = { ...quake, category };
+    assert.equal(validateRawSignal('earthquakes', { earthquakes: [invalid] }, retrievedAt).state, 'unavailable');
+    const mixed = sample({ earthquakes: { earthquakes: [quake, invalid] } });
+    assert.equal(mixed.value.sources.earthquakes.partial, true);
+    assert.equal(projectRawSignals(mixed.value, 'United States', true, () => true).earthquakes, null);
+  }
+});
 function sample(overrides: Partial<Record<keyof RawSignalsValue['sources'], unknown>> = {}) {
   const bodies = { earthquakes: { earthquakes: [quake] }, outages: { outages: [outage] }, advisories: { advisories: [advisory], byCountry }, thermal: watch([thermal]), ...overrides };
   const sources = Object.fromEntries(Object.entries(bodies).map(([family, body]) => [family, validateRawSignal(family as keyof typeof bodies, body, retrievedAt)])) as RawSignalsValue['sources'];
