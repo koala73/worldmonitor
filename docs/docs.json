@@ -210,7 +210,8 @@
                   "panels/oref-sirens",
                   "panels/telegram-intel",
                   "panels/x-intel",
-                  "panels/fsi"
+                  "panels/fsi",
+                  "panels/news-market-correlation"
                 ]
               },
               {

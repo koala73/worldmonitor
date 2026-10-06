@@ -345,6 +345,8 @@ Beyond aggregating signals by geography, the system detects meaningful correlati
 
 `news_leads_markets`, `sector_cascade` and `hotspot_escalation` are declared in the `SignalType` union, but no code path constructs a signal with those types: they are never evaluated, never deduplicated and never surfaced. Their reserved names in the union — and the labels, emoji and locale strings that exist for them — do not make them active producers. `hotspot_escalation` has a complete decision function, `shouldEmitSignal()` in `src/services/hotspot-escalation.ts`, that nothing calls; its two-hour cooldown is never armed because `markSignalEmitted()` is never called either.
 
+The news-versus-markets lead/lag question is answered outside this engine by the [News ↔ Markets panel](/panels/news-market-correlation). It computes an in-browser Pearson coefficient, a 95% interval, and a ±6-hour lag scan between global GDELT topic volume and hourly returns for six assets. It emits no signal and persists nothing.
+
 Each signal carries a severity (low/medium/high), geographic coordinates, a human-readable summary, and the raw data that triggered it. Signals are deduplicated per-type with configurable cooldown windows (30 minutes to 6 hours) to prevent alert fatigue. The correlation output feeds into the AI Insights panel, where the narrative synthesis engine weaves detected correlations into a structured intelligence brief.
 
 The Escalation Monitor correlation adapter clusters by country over a 48-hour
