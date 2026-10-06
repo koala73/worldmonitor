@@ -44,11 +44,13 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   const allEntries = normalizeLedger(ledger);
-  const entries = allEntries.filter((entry) => {
+  const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
     return !Number.isFinite(resolvedAt) || resolvedAt >= minResolvedAt;
-  });
+  };
+  const entries = allEntries.filter((entry) => !isHorizonEntry(entry) && inWindow(entry));
+  const horizonEntries = allEntries.filter((entry) => isHorizonEntry(entry) && inWindow(entry));
 
   const resolved = entries.filter((entry) => entry?.status === 'resolved');
   const scored = resolved.filter(isScoredEntry);
@@ -76,6 +78,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
     funnel: summarizeFunnel(entries, nowMs),
+    projections: summarizeProjectionHorizons(horizonEntries, nowMs),
   };
 
   const overall = summarizeScored(scored);
@@ -187,6 +190,13 @@ export function isScoredEntry(entry) {
   return entry?.status === 'resolved'
     && (entry.outcome === 'YES' || entry.outcome === 'NO')
     && Number.isFinite(Number(entry.probability));
+}
+
+// Projection horizon windows (#7075) share the ledger with forecast windows
+// under `<parentKey>@<horizon>` keys. Every forecast-window reader partitions
+// on this so a projection never enters a forecast metric, fit, or cohort.
+export function isHorizonEntry(entry) {
+  return typeof entry?.spec?.horizon === 'string';
 }
 
 function outcomeNumber(entry) {
@@ -502,6 +512,45 @@ function marketProbability(entry) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return NaN;
   return clampProbability(n > 1 ? n / 100 : n);
+}
+
+// Pinned to PROJECTION_HORIZONS (_forecast-resolution.mjs) by the scorecard test.
+const PROJECTION_HORIZON_ORDER = ['h24', 'd7', 'd30'];
+
+// Per-horizon projection lane (#7075). Reported beside the forecast scorecard,
+// never pooled into it: a Brier appears for a horizon only once that horizon
+// alone reaches the interval sample floor, so an early read cannot be mistaken
+// for measured skill.
+function summarizeProjectionHorizons(entries, nowMs) {
+  const byHorizon = PROJECTION_HORIZON_ORDER.map((horizon) => {
+    const group = entries.filter((entry) => entry?.spec?.horizon === horizon);
+    const resolved = group.filter((entry) => entry?.status === 'resolved');
+    const scored = resolved.filter(isScoredEntry);
+    const maturedPending = group.filter((entry) => {
+      if (entry?.status === 'resolved') return false;
+      const deadline = entryDeadline(entry);
+      return Number.isFinite(deadline) && deadline <= nowMs;
+    });
+    return {
+      horizon,
+      registered: group.length,
+      matured: resolved.length + maturedPending.length,
+      resolved: resolved.length,
+      scored: scored.length,
+      yes: scored.filter((entry) => entry.outcome === 'YES').length,
+      no: scored.filter((entry) => entry.outcome === 'NO').length,
+      unobserved: resolved.filter((entry) => entry?.outcome === 'UNOBSERVED').length,
+      void: resolved.filter((entry) => entry?.outcome === 'VOID').length,
+      brier: scored.length >= INTERVAL_MIN_SAMPLE ? brierInterval(scored, `projection:${horizon}`) : null,
+      insufficientSample: scored.length < INTERVAL_MIN_SAMPLE,
+    };
+  });
+  return {
+    semantics: 'point_in_time',
+    minSample: INTERVAL_MIN_SAMPLE,
+    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only at or above ${INTERVAL_MIN_SAMPLE} scored windows and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID.`,
+    byHorizon,
+  };
 }
 
 // ---------------------------------------------------------------------------

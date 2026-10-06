@@ -12,6 +12,7 @@ import {
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   evaluateActivationGate,
   generationOriginOf,
+  isHorizonEntry,
   isPublishedOriginEntry,
   isScoredEntry,
   summarizeCalibrationShadow,
@@ -88,9 +89,9 @@ function domainOf(entry) {
 
 function ledgerEntries(ledger) {
   if (!ledger) return [];
-  if (Array.isArray(ledger)) return ledger.filter(Boolean);
+  if (Array.isArray(ledger)) return ledger.filter((entry) => entry && !isHorizonEntry(entry));
   if (ledger.data && typeof ledger.data === 'object') return ledgerEntries(ledger.data);
-  if (typeof ledger === 'object') return Object.values(ledger).filter(Boolean);
+  if (typeof ledger === 'object') return Object.values(ledger).filter((entry) => entry && !isHorizonEntry(entry));
   return [];
 }
 

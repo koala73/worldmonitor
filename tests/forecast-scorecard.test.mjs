@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { INTERVAL_MIN_SAMPLE, computeScorecard, wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
+import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -353,5 +354,76 @@ describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
     const on = computeScorecard(ledger, NOW, { promoteBetEngine: true });
     assert.equal(on.skill.count, 2); // promoted
     assert.deepEqual(on.skill.excludedOrigins, []);
+  });
+});
+
+describe('projection horizon lane (#7075)', () => {
+  function horizonRow(horizon, overrides = {}) {
+    const deadline = overrides.deadline ?? NOW - 2 * DAY_MS;
+    return resolved({
+      id: 'fc-h',
+      key: `fc-h@1@${horizon}`,
+      parentKey: 'fc-h@1',
+      timeHorizon: PROJECTION_HORIZONS[horizon],
+      domain: 'supply_chain',
+      deadline,
+      spec: { kind: 'hard', horizon, semantics: 'point_in_time', window: 'at-deadline', deadline },
+      ...overrides,
+    });
+  }
+  const pendingRow = (horizon, deadline) => horizonRow(horizon, { status: 'pending', outcome: undefined, resolvedAt: undefined, deadline });
+
+  it('keeps horizon rows out of every forecast metric and reports them in their own section', () => {
+    const ledger = {
+      a: resolved({ probability: 0.8, outcome: 'YES' }),
+      b: resolved({ probability: 0.4, outcome: 'NO' }),
+      h1: horizonRow('d7', { probability: 0.9, outcome: 'YES' }),
+      h2: horizonRow('d7', { probability: 0.2, outcome: 'NO' }),
+      h3: horizonRow('d7', { probability: 0.5, outcome: 'UNOBSERVED' }),
+      h4: horizonRow('d7', { probability: 0.5, outcome: 'VOID' }),
+      h5: pendingRow('h24', NOW + DAY_MS),
+      h6: pendingRow('d30', NOW - DAY_MS),
+    };
+    const scorecard = computeScorecard(ledger, NOW);
+    assert.equal(scorecard.totals.entries, 2);
+    assert.equal(scorecard.totals.scored, 2);
+    assert.equal(scorecard.overall.brier, 0.1);
+    assert.equal(scorecard.skill.count, 2);
+    assert.equal(scorecard.funnel.matured, 2);
+    assert.equal(scorecard.uncertainty.overallBrier.count, 2);
+    assert.deepEqual(scorecard.byDomain.map((row) => row.domain), ['market']);
+
+    assert.equal(scorecard.projections.semantics, 'point_in_time');
+    assert.equal(scorecard.projections.minSample, INTERVAL_MIN_SAMPLE);
+    assert.deepEqual(scorecard.projections.byHorizon, [
+      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
+      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, yes: 1, no: 1, unobserved: 1, void: 1, brier: null, insufficientSample: true },
+      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
+    ]);
+  });
+
+  it('reports the section with zero rows on an empty ledger, in the builder order', () => {
+    const { byHorizon } = computeScorecard({}, NOW).projections;
+    assert.deepEqual(byHorizon.map((row) => row.horizon), Object.keys(PROJECTION_HORIZONS));
+    assert.ok(byHorizon.every((row) => row.registered === 0 && row.brier === null));
+  });
+
+  it('reports a horizon Brier only once that horizon reaches the minimum sample', () => {
+    const rows = (count) => Object.fromEntries(Array.from({ length: count }, (_, i) => [
+      `h${i}`,
+      horizonRow('d7', { id: `fc-${i}`, key: `fc-${i}@1@d7`, probability: 0.5, outcome: i % 2 ? 'YES' : 'NO' }),
+    ]));
+    const d7 = (count) => computeScorecard(rows(count), NOW).projections.byHorizon.find((row) => row.horizon === 'd7');
+
+    const below = d7(INTERVAL_MIN_SAMPLE - 1);
+    assert.equal(below.scored, INTERVAL_MIN_SAMPLE - 1);
+    assert.equal(below.brier, null);
+    assert.equal(below.insufficientSample, true);
+
+    const at = d7(INTERVAL_MIN_SAMPLE);
+    assert.equal(at.insufficientSample, false);
+    assert.equal(at.brier.count, INTERVAL_MIN_SAMPLE);
+    assert.equal(at.brier.mean, 0.25);
+    assert.ok(at.brier.ci95);
   });
 });

@@ -206,6 +206,60 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   return voidResult('unsupported_window', entry, spec, parsed, nowMs);
 }
 
+// Point-in-time projection contract (#7075): the metric is read from the
+// nearest finite sample within the contract's stored tolerance of its horizon
+// deadline, on either side. UNOBSERVED is terminal and distinct from NO (the
+// state was never read, not read absent) and from VOID (the contract itself
+// was complete). The live feed is never consulted here: a sample the sampler
+// did not store inside the tolerance does not exist for this contract.
+export function resolveHorizonSpec(entry, nowMs) {
+  const spec = entry?.spec;
+  const parsed = parseMetricKey(spec?.metricKey);
+  const deadline = Number(spec?.deadline ?? entry?.deadline);
+  const toleranceMs = Number(spec?.sampleToleranceMs);
+  if (spec?.kind !== 'hard' || !parsed || !Number.isFinite(deadline) || !Number.isFinite(Number(spec.threshold)) || !Number.isFinite(toleranceMs)) {
+    return voidResult('incomplete_horizon_contract', entry, spec, parsed, nowMs);
+  }
+  if (nowMs < deadline) {
+    return { status: 'pending', evidence: { reason: 'deadline_not_reached', deadline } };
+  }
+  const nearest = nearestFiniteSample(entry.samples, deadline);
+  if (nearest && Math.abs(nearest.ts - deadline) <= toleranceMs) {
+    return compareResult(nearest.value, spec, entry, parsed, nowMs, {
+      readTs: nearest.ts,
+      offsetMs: nearest.ts - deadline,
+      sampleToleranceMs: toleranceMs,
+    });
+  }
+  if (nowMs < deadline + toleranceMs) {
+    return { status: 'pending', evidence: { reason: 'awaiting_sample_in_tolerance', deadline, sampleToleranceMs: toleranceMs } };
+  }
+  return {
+    status: 'resolved',
+    outcome: 'UNOBSERVED',
+    evidence: {
+      reason: 'no_sample_in_tolerance',
+      metricKey: spec.metricKey,
+      deadline,
+      sampleToleranceMs: toleranceMs,
+      nearestSampleTs: nearest?.ts,
+      nearestOffsetMs: nearest ? nearest.ts - deadline : undefined,
+      resolvedAt: nowMs,
+    },
+  };
+}
+
+function nearestFiniteSample(samples, deadline) {
+  let nearest = null;
+  for (const sample of samples?.recent || []) {
+    const ts = Number(sample?.ts);
+    const value = Number(sample?.value);
+    if (!Number.isFinite(ts) || !Number.isFinite(value)) continue;
+    if (!nearest || Math.abs(ts - deadline) < Math.abs(nearest.ts - deadline)) nearest = { ts, value };
+  }
+  return nearest;
+}
+
 // Freshness gate for a scalar `value` read: is the matched record dated on or
 // after the deadline day? Returns null when settled (or when the record carries
 // no usable timestamp, so we can't gate — fall through to normal resolution),
