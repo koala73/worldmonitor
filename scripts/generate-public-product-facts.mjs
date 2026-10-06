@@ -374,7 +374,7 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_world_brief → world-brief-v2.html',
   ).replace(
     /get_country_risk → country-risk(?:-v\d+)?\.html/,
-    'get_country_risk → country-risk-v2.html',
+    'get_country_risk → country-risk-v3.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
   card.tools = TOOL_REGISTRY.map((tool) => ({
