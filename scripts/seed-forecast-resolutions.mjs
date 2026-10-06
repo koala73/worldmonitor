@@ -17,8 +17,7 @@
 import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
-import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
-import { finiteObservations } from './_bet-templates-macro.mjs';
+import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
@@ -1420,7 +1419,7 @@ export function samplePendingEntries(ledger, feedsByKey, nowMs) {
     const isPointWindow = entry.spec?.window === 'at-deadline' || entry.spec?.window === 'at-endDate';
     if (!isPointWindow && nowMs > deadline) continue;
     if (isPointWindow && nowMs > deadline && hasSampleAtOrAfterDeadline(entry.samples, deadline)) continue;
-    const feedData = feedsByKey?.[entry.spec.sourceFeed] ?? feedsByKey?.[parsed.feedKey];
+    const feedData = selectResolutionFeed(feedsByKey, entry.spec, parsed);
     if (feedData == null) {
       entry.samples = appendSample(entry.samples, { ts: nowMs, error: `missing_feed:${entry.spec.sourceFeed || parsed.feedKey}` });
       continue;
@@ -1443,7 +1442,7 @@ export function resolveDueEntries(ledger, feedsByKey, nowMs) {
   for (const [key, entry] of Object.entries(ledger)) {
     if (entry.status !== 'pending') continue;
     const parsed = parseMetricKey(entry.spec?.metricKey);
-    const feedData = feedsByKey?.[entry.spec?.sourceFeed] ?? feedsByKey?.[parsed?.feedKey];
+    const feedData = selectResolutionFeed(feedsByKey, entry.spec, parsed);
     const result = resolveHardSpec(entry, feedData, entry.samples, nowMs);
     if (result.status !== 'resolved') continue;
 
@@ -1678,79 +1677,22 @@ async function readBetsHistory(limit = 200) {
     .filter(Boolean);
 }
 
-// Feed loaders shape a raw feed snapshot into the record collection the eval's
-// metricKey path expression reads. energy:eia-petroleum:v1 stores a flat
-// {wti,brent,production,inventory} each {current,...}; bets read it as
-// `value(metric==<name>)`, so expose one record per metric carrying `value`.
-export function shapeResolutionFeed(key, data) {
-  if (key === 'energy:eia-petroleum:v1') {
-    const d = data?.data ?? data;
-    if (!d || typeof d !== 'object') return data;
-    const records = [];
-    for (const metric of ['wti', 'brent', 'production', 'inventory']) {
-      const m = d[metric];
-      const value = Number(m?.current);
-      if (Number.isFinite(value)) records.push({ metric, value, unit: m?.unit, asOf: m?.date });
-    }
-    return records;
-  }
-  if (key === 'market:commodities-bootstrap:v1') {
-    // Enveloped as {_seed, data:{quotes:[...]}}. The eval's iterateRecords only
-    // descends into ARRAY children, so the doubly-nested quotes array is
-    // invisible as-is — expose it directly so `price(symbol==<SYM>)` resolves.
-    // (Also unblocks the pre-existing market commodity-price forecast path.)
-    // Quotes carry no per-symbol timestamp; stamp each with the envelope's
-    // `_seed.fetchedAt` as `asOf` so the settlement gate can refuse to resolve a
-    // stale kept-warm quote (extendExistingTtl preserves the old fetchedAt) as
-    // if it were the deadline-time price.
-    const fetchedAt = Number(data?._seed?.fetchedAt);
-    const d = data?.data ?? data;
-    if (Array.isArray(d?.quotes)) {
-      return d.quotes.map((q) => (q && typeof q === 'object' && Number.isFinite(fetchedAt) ? { ...q, asOf: fetchedAt } : q));
-    }
-    return d;
-  }
-  if (key.startsWith('economic:fred:v1:')) {
-    // FRED (#5525): stored as {series:{observations:[{date,value},...]}} per
-    // #5098; FRED marks missing values with '.'. Expose one record carrying the
-    // latest finite observation — `value(metric==<SERIES>)` reads it, and the
-    // observation date is the settlement `asOf` the calendar-derived grace
-    // gates on (KTD4). SERIES is the 4th key segment (exact `:0`-suffixed keys).
-    const series = key.split(':')[3];
-    const d = data?.data ?? data;
-    // Shared filter with the bet generator (finiteObservations in
-    // _bet-templates-macro.mjs) — the '.'-sentinel handling must not drift
-    // between generation and resolution.
-    const finite = finiteObservations(d);
-    const latest = finite[finite.length - 1];
-    return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
-  }
-  if (key === MARKET_SETTLEMENT_FEED_KEY) {
-    // Settlement feed (#5525 KTD2): records already carry {market, slug,
-    // yesPrice, asOf} — expose the array directly.
-    const d = data?.data ?? data;
-    return Array.isArray(d?.records) ? d.records : (Array.isArray(d) ? d : []);
-  }
-  return data;
-}
-
 async function readResolutionFeeds(ledger) {
   const keys = [...new Set(Object.values(ledger)
     .filter((entry) => entry.status === 'pending')
     .map((entry) => entry.spec?.sourceFeed)
     .filter(Boolean))];
-  const results = await Promise.allSettled(keys.map(async (key) => [key, await readRedisJson(key)]));
-  const pairs = [];
+  const results = await Promise.allSettled(keys.map((key) => readRedisJson(key)));
+  const rawByKey = {};
   for (let index = 0; index < results.length; index += 1) {
     const result = results[index];
     if (result.status === 'fulfilled') {
-      const [key, data] = result.value;
-      pairs.push([key, shapeResolutionFeed(key, data)]);
+      rawByKey[keys[index]] = result.value;
     } else {
       console.warn(`  [forecast-resolutions] feed ${keys[index]} unavailable: ${result.reason?.message || result.reason}`);
     }
   }
-  return Object.fromEntries(pairs);
+  return shapeResolutionFeeds(rawByKey);
 }
 
 export async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {

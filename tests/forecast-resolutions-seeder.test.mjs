@@ -36,10 +36,13 @@ import {
   judgedArchiveWindowForEntry,
   judgedRetryBackoffMs,
   selectJudgedArchiveItems,
+  ingestHistory,
+  samplePendingEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { __setForecastLlmCallOverrideForTests } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
+import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
+import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-07-07T00:00:00Z');
@@ -2838,5 +2841,113 @@ describe('live judge panel independence', () => {
   it('still judges when the overrides keep the families apart', async () => {
     const { calls } = await runWithEnv({ FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B: 'google/gemini-3.8-flash' });
     assert.deepEqual(calls, ['deepseek/deepseek-v4-flash', 'google/gemini-3.8-flash']);
+  });
+});
+
+describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const COMMODITY_FEED = 'market:commodities-bootstrap:v1';
+  const RAW_FEEDS = {
+    [GPS_FEED]: { hexes: [{ region: 'Persian Gulf', hexCount: 14 }] },
+    [COMMODITY_FEED]: { _seed: { fetchedAt: T0 }, data: { quotes: [{ symbol: 'CL=F', price: 71.5 }] } },
+  };
+
+  function shadowForecasts() {
+    const forecast = (overrides) => ({
+      domain: 'supply_chain',
+      probability: 0.6,
+      confidence: 0.5,
+      timeHorizon: '7d',
+      generationOrigin: 'legacy_detector',
+      generatedAt: T0,
+      ...overrides,
+    });
+    return attachResolutionSpecs([
+      forecast({ id: 'fc-gps-gulf', region: 'Persian Gulf', title: 'GPS jamming: Persian Gulf', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Persian Gulf', weight: 0.5 }] }),
+      forecast({ id: 'fc-gps-baltic', region: 'Baltic Sea', title: 'GPS jamming: Baltic Sea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Baltic Sea', weight: 0.5 }] }),
+      forecast({
+        id: 'fc-oil',
+        domain: 'market',
+        region: 'Middle East',
+        title: 'Oil price impact from Strait of Hormuz disruption',
+        signals: [
+          { type: 'chokepoint', value: 'Strait of Hormuz risk: critical', weight: 0.5 },
+          { type: 'commodity', value: 'Oil sensitivity: 0.8', weight: 0.3 },
+        ],
+      }),
+    ], { commodityQuotes: { quotes: [{ symbol: 'CL=F', name: 'WTI Crude', price: 68.92 }] } }, T0);
+  }
+
+  it('the resolver shapes feeds through the shared seam, not a local copy', () => {
+    assert.doesNotMatch(SEEDER_SOURCE, /function shapeResolutionFeed\(/);
+    assert.match(SEEDER_SOURCE, /shapeResolutionFeeds\(/);
+  });
+
+  it('emission extracts exactly what the resolver samples from the same raw feed', () => {
+    const forecasts = shadowForecasts();
+    const verdicts = evaluateExtractionShadow(forecasts, RAW_FEEDS);
+    const ledger = ingestHistory({}, [{ generatedAt: T0, predictions: forecasts }], T0);
+    samplePendingEntries(ledger, shapeResolutionFeeds(RAW_FEEDS), T0 + 1);
+    const sampledById = Object.fromEntries(Object.values(ledger).map((entry) => [entry.id, entry.samples.last]));
+    assert.equal(verdicts.length, 3);
+    for (const verdict of verdicts) {
+      const sample = sampledById[verdict.id];
+      if (verdict.outcome === 'pass') assert.equal(sample.value, verdict.value, verdict.id);
+      else assert.equal(sample.error, verdict.reason, verdict.id);
+    }
+    assert.deepEqual(verdicts.map((v) => v.outcome), ['pass', 'fail', 'pass']);
+  });
+
+  it('runExtractionGateShadow reads the resolver keys raw and logs counters plus the would-downgrade cohort', async () => {
+    const forecasts = shadowForecasts();
+    const before = JSON.stringify(forecasts);
+    const reads = [];
+    const store = {
+      get [GPS_FEED]() { reads.push(GPS_FEED); throw new Error('upstash 503'); },
+      get [COMMODITY_FEED]() {
+        reads.push(COMMODITY_FEED);
+        return { _seed: { fetchedAt: T0 }, data: { quotes: [{ symbol: 'BZ=F', price: 74.2 }] } };
+      },
+    };
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    __setRedisStoreForTests(store);
+    let result;
+    try {
+      result = await runExtractionGateShadow(forecasts);
+    } finally {
+      __setRedisStoreForTests(null);
+      console.log = originalLog;
+    }
+    assert.deepEqual(reads.sort(), [COMMODITY_FEED, GPS_FEED].sort());
+    assert.deepEqual(result.summary.byOutcome, { feed_unavailable: 2, fail: 1 });
+    assert.equal(JSON.stringify(forecasts), before);
+    const summaryLine = logs.find((line) => line.includes('[ExtractionGate] shadow'));
+    assert.match(summaryLine, /hard=3 pass=0 fail=1 feed_unavailable=2 skipped=0/);
+    assert.match(summaryLine, /byFamily=\{"gps":\{"feed_unavailable":2\},"market":\{"fail":1\}\}/);
+    assert.match(summaryLine, /byDomain=\{"supply_chain":\{"feed_unavailable":2\},"market":\{"fail":1\}\}/);
+    const cohort = logs.filter((line) => line.includes('[ExtractionGate] would_downgrade'));
+    assert.deepEqual(cohort.map((line) => line.trim()), [
+      '[ExtractionGate] would_downgrade id="fc-oil" family=market domain=market metricKey="market:commodities-bootstrap:v1|price(symbol==CL=F)" reason=metric_not_found',
+    ]);
+  });
+
+  it('runExtractionGateShadow keeps a newline in an externally sourced metricKey on one log line', async () => {
+    const title = 'Will X happen?\n[ExtractionGate] shadow hard=999';
+    const forecast = { id: 'fc-pm', domain: 'political', signals: [], resolution: { kind: 'hard', sourceFeed: 'prediction:markets-bootstrap:v1', metricKey: `prediction:markets-bootstrap:v1|yesPrice(market==${title})` } };
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    __setRedisStoreForTests({ 'prediction:markets-bootstrap:v1': { geopolitical: [] } });
+    try {
+      await runExtractionGateShadow([forecast]);
+    } finally {
+      __setRedisStoreForTests(null);
+      console.log = originalLog;
+    }
+    const cohort = logs.filter((line) => line.includes('would_downgrade'));
+    assert.equal(cohort.length, 1);
+    assert.ok(!cohort[0].includes('\n'), 'the logged line carries no raw newline');
   });
 });

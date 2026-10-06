@@ -167,13 +167,16 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "deep-forecast-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_fred-series.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -196,7 +199,9 @@
       "scripts/package.json",
       "scripts/process-deep-forecast-tasks.mjs",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1471,13 +1476,16 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-forecasts",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_fred-series.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1499,7 +1507,9 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1818,13 +1828,16 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "simulation-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_fred-series.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1847,7 +1860,9 @@
       "scripts/package.json",
       "scripts/process-simulation-tasks.mjs",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },

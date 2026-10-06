@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 // Cadence-keyed FRED sets derive from the shared series registry so the
 // settlement grace can never disagree with the template's declared cadence.
 import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
+import { finiteObservations } from './_bet-templates-macro.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
@@ -292,6 +293,73 @@ export function extractMetricObservation(parsed, feedData) {
   if (!record) return { value: NaN, asOf: null };
   const asOf = parseAsOfMs(record.asOf ?? record.date);
   return { value: valueFromRecord(parsed.fn, record), asOf: Number.isFinite(asOf) ? asOf : null };
+}
+
+// Feed loaders shape a raw feed snapshot into the record collection the eval's
+// metricKey path expression reads. energy:eia-petroleum:v1 stores a flat
+// {wti,brent,production,inventory} each {current,...}; bets read it as
+// `value(metric==<name>)`, so expose one record per metric carrying `value`.
+export function shapeResolutionFeed(key, data) {
+  if (key === 'energy:eia-petroleum:v1') {
+    const d = data?.data ?? data;
+    if (!d || typeof d !== 'object') return data;
+    const records = [];
+    for (const metric of ['wti', 'brent', 'production', 'inventory']) {
+      const m = d[metric];
+      const value = Number(m?.current);
+      if (Number.isFinite(value)) records.push({ metric, value, unit: m?.unit, asOf: m?.date });
+    }
+    return records;
+  }
+  if (key === 'market:commodities-bootstrap:v1') {
+    // Enveloped as {_seed, data:{quotes:[...]}}. The eval's iterateRecords only
+    // descends into ARRAY children, so the doubly-nested quotes array is
+    // invisible as-is — expose it directly so `price(symbol==<SYM>)` resolves.
+    // (Also unblocks the pre-existing market commodity-price forecast path.)
+    // Quotes carry no per-symbol timestamp; stamp each with the envelope's
+    // `_seed.fetchedAt` as `asOf` so the settlement gate can refuse to resolve a
+    // stale kept-warm quote (extendExistingTtl preserves the old fetchedAt) as
+    // if it were the deadline-time price.
+    const fetchedAt = Number(data?._seed?.fetchedAt);
+    const d = data?.data ?? data;
+    if (Array.isArray(d?.quotes)) {
+      return d.quotes.map((q) => (q && typeof q === 'object' && Number.isFinite(fetchedAt) ? { ...q, asOf: fetchedAt } : q));
+    }
+    return d;
+  }
+  if (key.startsWith('economic:fred:v1:')) {
+    // FRED (#5525): stored as {series:{observations:[{date,value},...]}} per
+    // #5098; FRED marks missing values with '.'. Expose one record carrying the
+    // latest finite observation — `value(metric==<SERIES>)` reads it, and the
+    // observation date is the settlement `asOf` the calendar-derived grace
+    // gates on (KTD4). SERIES is the 4th key segment (exact `:0`-suffixed keys).
+    const series = key.split(':')[3];
+    const d = data?.data ?? data;
+    // Shared filter with the bet generator (finiteObservations in
+    // _bet-templates-macro.mjs) — the '.'-sentinel handling must not drift
+    // between generation and resolution.
+    const finite = finiteObservations(d);
+    const latest = finite[finite.length - 1];
+    return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
+  }
+  if (key === MARKET_SETTLEMENT_FEED_KEY) {
+    // Settlement feed (#5525 KTD2): records already carry {market, slug,
+    // yesPrice, asOf} — expose the array directly.
+    const d = data?.data ?? data;
+    return Array.isArray(d?.records) ? d.records : (Array.isArray(d) ? d : []);
+  }
+  return data;
+}
+
+// The resolver's keyed feed view: each successfully read key mapped to its
+// shaped snapshot. Emission-time shadow checks build the same view so the
+// extractor sees identical input at emission and at resolution (#7067).
+export function shapeResolutionFeeds(rawByKey) {
+  return Object.fromEntries(Object.entries(rawByKey || {}).map(([key, data]) => [key, shapeResolutionFeed(key, data)]));
+}
+
+export function selectResolutionFeed(feedsByKey, spec, parsed) {
+  return feedsByKey?.[spec?.sourceFeed] ?? feedsByKey?.[parsed?.feedKey];
 }
 
 function compareResult(value, spec, entry, parsed, nowMs, extraEvidence = {}) {

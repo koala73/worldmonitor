@@ -4,11 +4,11 @@ import { describe, it } from 'node:test';
 import { generateBets } from '../scripts/_bet-templates.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS, FRED_SERIES } from '../scripts/_bet-templates-macro.mjs';
 import {
-  parseMetricKey, resolveHardSpec,
+  parseMetricKey, resolveHardSpec, shapeResolutionFeed,
   FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS, FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS, VALUE_SETTLEMENT_MAX_LAG_MS,
 } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
-import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
 
 const NOW = Date.parse('2026-07-23T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;

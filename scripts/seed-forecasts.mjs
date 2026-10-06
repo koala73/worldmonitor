@@ -9,7 +9,7 @@ import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs, HORIZON_MS } from './_forecast-resolution.mjs';
+import { attachResolutionSpecs, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -16662,6 +16662,8 @@ async function fetchForecasts() {
   const initiallyPublishedSituationClusters = publishArtifacts.filteredSituationClusters;
   const initiallyPublishedSituationFamilies = publishArtifacts.filteredSituationFamilies;
   const publishedPredictions = publishArtifacts.publishedPredictions;
+  // Only published forecasts reach the resolution ledger, so only they are measured.
+  await runExtractionGateShadow(publishedPredictions);
   const publishTelemetry = summarizePublishFiltering(predictions, finalSelectionPool, publishedPredictions);
   const publishedSituationClusters = publishArtifacts.publishedSituationClusters;
   const publishedSituationFamilies = publishArtifacts.publishedSituationFamilies;
@@ -16695,6 +16697,38 @@ async function fetchForecasts() {
     priorWorldState,
     priorWorldStates,
   };
+}
+
+// Extraction gate shadow (#7067): reads each hard spec's sourceFeed raw, as
+// seed-forecast-resolutions does (no envelope unwrap; the shared shaper needs
+// `_seed`), and logs per-family/per-domain counters plus the would-downgrade
+// cohort. Never changes a spec and never fails the run.
+async function runExtractionGateShadow(predictions) {
+  try {
+    const keys = extractionShadowFeedKeys(predictions);
+    const { url, token } = getRedisCredentials();
+    const reads = await Promise.allSettled(keys.map(async (key) => {
+      if (_testRedisStore) return _testRedisStore[key] ?? null;
+      const raw = await redisCommand(url, token, ['GET', key]);
+      return raw?.result == null ? null : JSON.parse(raw.result);
+    }));
+    const rawByKey = {};
+    reads.forEach((read, index) => {
+      if (read.status === 'fulfilled') rawByKey[keys[index]] = read.value;
+      else console.warn(`  [ExtractionGate] feed ${keys[index]} unavailable: ${read.reason?.message || read.reason}`);
+    });
+    const verdicts = evaluateExtractionShadow(predictions, rawByKey);
+    const summary = summarizeExtractionShadow(verdicts);
+    const count = (outcome) => summary.byOutcome[outcome] || 0;
+    console.log(`  [ExtractionGate] shadow hard=${summary.total} pass=${count('pass')} fail=${count('fail')} feed_unavailable=${count('feed_unavailable')} skipped=${count('skipped')} byFamily=${JSON.stringify(summary.byFamily)} byDomain=${JSON.stringify(summary.byDomain)}`);
+    for (const v of verdicts) {
+      if (v.outcome === 'fail') console.log(`  [ExtractionGate] would_downgrade id=${JSON.stringify(v.id)} family=${v.family} domain=${v.domain} metricKey=${JSON.stringify(v.metricKey)} reason=${v.reason}`);
+    }
+    return { verdicts, summary };
+  } catch (err) {
+    console.warn(`  [ExtractionGate] shadow skipped: ${err?.message || err}`);
+    return null;
+  }
 }
 
 async function readForecastRefreshRequest() {
@@ -19780,6 +19814,7 @@ export {
   callForecastLLM,
   __setForecastLlmRunDeadlineForTests,
   __setRedisStoreForTests,
+  runExtractionGateShadow,
   buildMarketImplicationsFingerprint,
   buildAndSeedMarketImplications,
 };
