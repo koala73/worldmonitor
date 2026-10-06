@@ -206,6 +206,14 @@ To prevent alert fatigue, signals use **type-specific TTL (time-to-live)** value
 
 Market signals use **symbol-only keys** (e.g., `silent_divergence:AVGO`) rather than including the price change. This means a stock moving +2.5% then +3.0% won't trigger duplicate alerts—the first alert covers the story.
 
+### Market Alert Ledger
+
+The same market-alert detectors also run server-side every 5 minutes in `seed-market-alert-ledger`, a section of the `seed-bundle-derived-signals` Railway service. The server scores the union of the seeded stock, commodity and crypto quotes, while the dashboard scores only its watchlist, so the alerted symbols can differ between the surfaces. Each emission opens a 6-hour window in the persistent ledger `correlation:market-alerts:ledger:v1`, keyed by signal type, entity and deadline. A repeat emission inside the window increments that window's sample count and opens no second row.
+
+The rolling 30-day scorecard at `correlation:market-alerts:scorecard:v1` reports the hit rate and median lead time per signal type. It carries the resolution rule verbatim as `methodology`:
+
+> An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol's registry entity or a whole-word match of the market name of four or more characters; for a prediction market, any topic keyword derived from the question at emission. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story's first tracking.
+
 ---
 
 ## Source Intelligence
