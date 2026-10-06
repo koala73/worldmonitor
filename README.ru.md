@@ -109,7 +109,7 @@ npm run dev:energy     # energy.worldmonitor.app
 |----------|-------------|
 | **Фронтенд** | Vanilla TypeScript, Vite, globe.gl + Three.js, deck.gl + MapLibre GL |
 | **Десктоп** | Tauri 2 (Rust) с Node.js sidecar |
-| **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
+| **AI/ML** | Ollama / OpenRouter, Transformers.js (browser-side) |
 | **API-контракты** | Protocol Buffers и sebuf HTTP-аннотации |
 | **Развёртывание** | Vercel Edge Functions, Railway relay, Tauri, PWA |
 | **Кэширование** | Redis (Upstash), 3-уровневый кэш, CDN, service worker |

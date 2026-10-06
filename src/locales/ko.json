@@ -16,7 +16,7 @@
     "predictionMarkets": "예측 시장",
     "loadingMarkets": "예측 시장 불러오는 중...",
     "infrastructure": "인프라 노출",
-    "briefUnavailable": "AI 브리핑 불가 — 설정에서 GROQ_API_KEY를 구성하세요.",
+    "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
     "cached": "캐시됨",
     "fresh": "최신",
     "noMarkets": "예측 시장을 찾을 수 없습니다",
@@ -796,7 +796,7 @@
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",
       "predictionMarkets": "예측 시장",
-      "unavailable": "AI 브리핑 불가 — 설정에서 GROQ_API_KEY를 구성하세요."
+      "unavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요."
     },
     "countryBrief": {
       "identifying": "국가 식별 중...",
@@ -812,7 +812,7 @@
       "predictionMarkets": "예측 시장",
       "loadingMarkets": "예측 시장 불러오는 중...",
       "infrastructure": "인프라 노출",
-      "briefUnavailable": "AI 브리핑 불가 — 설정에서 GROQ_API_KEY를 구성하세요.",
+      "briefUnavailable": "AI 브리핑 불가 — 설정에서 OPENROUTER_API_KEY를 구성하세요.",
       "cached": "캐시됨",
       "fresh": "최신",
       "noMarkets": "예측 시장을 찾을 수 없습니다",
@@ -1427,7 +1427,7 @@
       "rankingStories": "주요 기사 순위 선정 중...",
       "analyzingSentiment": "감성 분석 중...",
       "generatingBrief": "세계 브리핑 생성 중...",
-      "infoTooltip": "<strong>AI 기반 분석</strong><br>• <strong>세계 브리핑</strong>: AI 요약 (Groq/OpenRouter)<br>• <strong>감성</strong>: 뉴스 논조 분석<br>• <strong>속도</strong>: 빠르게 전개되는 기사<br>• <strong>핵심 지점</strong>: 뉴스 개체와 지도 신호 상관 분석 (군사, 시위, 장애)<br><em>데스크톱 전용 • Llama 3.3 + 핵심 지점 감지 기반</em>",
+      "infoTooltip": "<strong>AI 기반 분석</strong><br>• <strong>세계 브리핑</strong>: AI 요약 (OpenRouter)<br>• <strong>감성</strong>: 뉴스 논조 분석<br>• <strong>속도</strong>: 빠르게 전개되는 기사<br>• <strong>핵심 지점</strong>: 뉴스 개체와 지도 신호 상관 분석 (군사, 시위, 장애)<br><em>데스크톱 전용 • Llama 3.3 + 핵심 지점 감지 기반</em>",
       "streamQualityLabel": "영상 품질",
       "streamQualityDesc": "모든 라이브 스트림의 품질 설정 (낮추면 대역폭 절약)",
       "globeRenderScaleOptions": {
@@ -1439,7 +1439,7 @@
       },
       "mapFlashLabel": "실시간 이벤트 펄스",
       "mapFlashDesc": "속보 수신 시 지도에서 해당 위치를 깜박임",
-      "aiFlowCloudLabel": "클라우드 AI (Groq 및 OpenRouter)",
+      "aiFlowCloudLabel": "클라우드 AI (OpenRouter)",
       "aiFlowCloudDesc": "헤드라인을 클라우드로 전송하여 AI 요약 (권장)",
       "aiFlowBrowserLabel": "브라우저 로컬 모델",
       "aiFlowBrowserDesc": "브라우저에서 AI를 로컬로 실행",

@@ -856,8 +856,8 @@ function escapeRegExp(value) {
 }
 
 // Judge B must come from a different model family than judge A so dual-model
-// agreement is two independent reads. It was Groq until every Groq judge call
-// returned an empty body from 2026-08-29 (175/175 attempts), which stalled the
+// agreement is two independent reads. The previous judge B provider returned
+// an empty body on every call from 2026-08-29 (175/175 attempts), which stalled the
 // whole judged lane; no judged forecast resolved after 2026-08-23.
 const JUDGE_B_DEFAULT_MODEL = 'openai/gpt-6-luna';
 

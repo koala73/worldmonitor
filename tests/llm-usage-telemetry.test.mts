@@ -10,7 +10,7 @@ import { afterEach, describe, it } from 'node:test';
 import { callLlm } from '../server/_shared/llm.ts';
 
 const ENV_KEYS = [
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_API_URL', 'LLM_API_URL', 'LLM_API_KEY',
+  'OPENROUTER_API_KEY', 'OLLAMA_API_URL', 'LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL',
   'USAGE_TELEMETRY', 'AXIOM_API_TOKEN',
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -43,10 +43,10 @@ function installFetchMock(opts: {
       opts.captured.events.push(...JSON.parse(String(init?.body || '[]')));
       return new Response('{}', { status: 200 });
     }
-    if (url.includes('api.groq.com')) {
+    if (url.includes('llm.example.test')) {
       return new Response(JSON.stringify({
-        choices: [{ message: { content: 'groq answer' } }],
-        model: 'openai/gpt-oss-20b',
+        choices: [{ message: { content: 'generic answer' } }],
+        model: 'generic-test-model',
         usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 },
       }), { status: 200 });
     }
@@ -68,13 +68,13 @@ function installFetchMock(opts: {
 }
 
 function baseEnv() {
-  process.env.GROQ_API_KEY = 'groq-test-key';
   process.env.OPENROUTER_API_KEY = 'or-test-key';
+  process.env.LLM_API_URL = 'https://llm.example.test/v1/chat/completions';
+  process.env.LLM_API_KEY = 'generic-test-key';
+  process.env.LLM_MODEL = 'generic-test-model';
   process.env.USAGE_TELEMETRY = '1';
   process.env.AXIOM_API_TOKEN = 'axiom-test-token';
   delete process.env.OLLAMA_API_URL;
-  delete process.env.LLM_API_URL;
-  delete process.env.LLM_API_KEY;
 }
 
 describe('llm usage telemetry', () => {
@@ -117,7 +117,7 @@ describe('llm usage telemetry', () => {
       stage: 'test-stage',
     });
 
-    assert.equal(result?.content, 'groq answer');
+    assert.equal(result?.content, 'generic answer');
     assert.equal(captured.events.length, 4, 'paid failure, two fixed free failures, and fallback success must be visible');
     const [fail, freeFail, freeBackupFail, ok] = captured.events;
     assert.equal(fail.provider, 'openrouter');
@@ -128,7 +128,7 @@ describe('llm usage telemetry', () => {
     assert.equal(freeFail.ok, false);
     assert.equal(freeBackupFail.provider, 'openrouter-free-backup');
     assert.equal(freeBackupFail.ok, false);
-    assert.equal(ok.provider, 'groq');
+    assert.equal(ok.provider, 'generic');
     assert.equal(ok.ok, true);
     assert.equal(ok.fallback_index, 3);
     assert.equal(ok.tokens_total, 160);
@@ -145,7 +145,7 @@ describe('llm usage telemetry', () => {
       retryOnLengthLimit: true,
     });
 
-    assert.equal(result?.content, 'groq answer');
+    assert.equal(result?.content, 'generic answer');
     assert.equal(captured.events.length, 4);
     const [lengthReject, freeLengthReject, freeBackupLengthReject, fallbackSuccess] = captured.events;
     assert.equal(lengthReject.provider, 'openrouter');
@@ -156,7 +156,7 @@ describe('llm usage telemetry', () => {
     assert.equal(freeLengthReject.reason, 'length');
     assert.equal(freeBackupLengthReject.provider, 'openrouter-free-backup');
     assert.equal(freeBackupLengthReject.reason, 'length');
-    assert.equal(fallbackSuccess.provider, 'groq');
+    assert.equal(fallbackSuccess.provider, 'generic');
     assert.equal(fallbackSuccess.ok, true);
   });
 
