@@ -73,6 +73,19 @@ export interface PredictionMarketCore {
   title: string;
   yesPrice: number;
   volume?: number;
+  url?: string;
+}
+
+/**
+ * Snapshot key for one prediction market (#8868). A title prefix is not an
+ * identity: dated variants of one question ("... by March 31?" / "... by June
+ * 30?") share long prefixes, and Polymarket rows drawn from one event share the
+ * event URL, so neither the prefix nor the URL alone tells two markets apart.
+ * The URL plus the full title does.
+ */
+export function predictionMarketKey(market: Pick<PredictionMarketCore, 'title' | 'url'>): string {
+  const url = market.url?.trim();
+  return url ? `${url}|${market.title}` : market.title;
 }
 
 export interface MarketDataCore {
@@ -123,6 +136,7 @@ export interface CorrelationSignalCore {
   data: {
     newsVelocity?: number;
     marketChange?: number;
+    /** Signed change in YES probability, in points: negative when the market fell. */
     predictionShift?: number;
     relatedTopics?: string[];
     correlatedEntities?: string[];
@@ -369,7 +383,7 @@ export function analyzeCorrelationsCore(
   const currentSnapshot: StreamSnapshot = {
     newsVelocity: newsTopics,
     marketChanges: new Map(markets.map(m => [m.symbol, m.change ?? 0])),
-    predictionChanges: new Map(predictions.map(p => [p.title.slice(0, 50), p.yesPrice])),
+    predictionChanges: new Map(predictions.map(p => [predictionMarketKey(p), p.yesPrice])),
     topicVelocityHistory: currentHistory,
     timestamp: now,
   };
@@ -380,11 +394,14 @@ export function analyzeCorrelationsCore(
 
   // Detect prediction shifts
   for (const pred of predictions) {
-    const key = pred.title.slice(0, 50);
+    const key = predictionMarketKey(pred);
     const prev = previousSnapshot.predictionChanges.get(key);
     if (prev !== undefined) {
-      const shift = Math.abs(pred.yesPrice - prev);
-      if (shift >= PREDICTION_SHIFT_THRESHOLD) {
+      // Keep the sign (#8868): a fall must read as a fall. Only the threshold
+      // and the confidence work on the magnitude.
+      const shift = pred.yesPrice - prev;
+      const magnitude = Math.abs(shift);
+      if (magnitude >= PREDICTION_SHIFT_THRESHOLD) {
         const related = findRelatedTopics(pred.title);
         const newsActivity = related.reduce((sum, t) => sum + (newsTopics.get(t) ?? 0), 0);
 
@@ -396,7 +413,7 @@ export function analyzeCorrelationsCore(
             type: 'prediction_leads_news',
             title: 'Prediction Market Shift',
             description: `"${pred.title.slice(0, 60)}..." moved ${shift > 0 ? '+' : ''}${shift.toFixed(1)}% with low news coverage`,
-            confidence: Math.min(0.9, 0.5 + shift / 20),
+            confidence: Math.min(0.9, 0.5 + magnitude / 20),
             timestamp: new Date(),
             data: {
               predictionShift: shift,
