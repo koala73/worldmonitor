@@ -294,9 +294,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const t = tools.find(t => t.name === 'get_country_risk');
       assert.ok(t, 'get_country_risk must be registered');
       assert.ok(t._meta && typeof t._meta === 'object', 'UI-linked tool must carry a _meta object');
-      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk-v2.html',
+      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk-v3.html',
         'nested _meta.ui.resourceUri must point at the registered ui:// resource');
-      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk-v2.html',
+      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk-v3.html',
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
@@ -321,8 +321,8 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       }));
       const body = await res.json();
       const full = JSON.parse(body.result.content[0].text);
-      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk-v2.html');
-      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk-v2.html');
+      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk-v3.html');
+      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk-v3.html');
     });
   });
 
