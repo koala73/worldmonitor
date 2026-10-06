@@ -12,7 +12,7 @@ import { issueSessionToken } from '../api/_session.js';
 const route = createDisplacementServiceRoutes(displacementHandler, serverOptions).find(r => r.path.endsWith('/get-displacement-summary'))!;
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
-const year = new Date().getFullYear();
+const year = new Date().getUTCFullYear();
 const seedKey = `displacement:summary:v1:${year}`;
 const metaKey = 'seed-meta:displacement:summary';
 const fetchedAt = Date.now() - 60_000;
@@ -68,6 +68,34 @@ test('default and matching actual year reuse raw current-year seed and preserve 
   assert.deepEqual([...redis.redis.keys()].sort(), [seedKey, metaKey].sort());
   assert.deepEqual(JSON.parse(redis.redis.get(seedKey)!).data, snapshot);
   assert.deepEqual(upstream, []);
+});
+
+test('default RPC selects the UTC publication year across both local year boundaries', async () => {
+  const NativeDate = Date;
+  const originalTimezone = process.env.TZ;
+  try {
+    for (const [timezone, instant, expectedYear] of [
+      ['America/Los_Angeles', '2027-01-01T00:30:00Z', 2027],
+      ['Pacific/Kiritimati', '2026-12-31T23:30:00Z', 2026],
+    ] as const) {
+      process.env.TZ = timezone;
+      globalThis.Date = class extends NativeDate {
+        constructor(value?: string | number) { super(value ?? instant); }
+      } as DateConstructor;
+      keys = [];
+      const expectedKey = `displacement:summary:v1:${expectedYear}`;
+      install({ [expectedKey]: snapshot, [metaKey]: { fetchedAt } });
+      const result = await getDisplacementSummary({} as never, { year: 0, countryLimit: 0, flowLimit: 0 });
+      assert.equal(result.dataAvailable, true);
+      assert.ok(keys.includes(expectedKey));
+      assert.ok(keys.every(key => key === expectedKey || key === metaKey));
+      assert.deepEqual(upstream, []);
+    }
+  } finally {
+    globalThis.Date = NativeDate;
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
 });
 
 test('nonmatching explicit years return unavailable without reading caller-selected data keys', async () => {

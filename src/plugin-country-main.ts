@@ -20,6 +20,7 @@ import { getCountryNameByCode, preloadCountryGeometry, hasCountryGeometry, isCoo
 import { toCachedCII } from '@/services/cached-risk-scores';
 import { initI18n } from '@/services/i18n';
 import { combineAbortSignals } from '@/services/timeout-signal';
+import { createHostCountryDownload, CountryDownloadRequestError, COUNTRY_EXPORT_REQUEST_BYTES } from '@/utils/country-text-download';
 import type { CountryIntelData } from '@/components/CountryBriefPanel';
 
 async function mountPlugin(): Promise<void> {
@@ -29,7 +30,7 @@ async function mountPlugin(): Promise<void> {
   const status = document.getElementById('countryStatus')!;
   const form = document.getElementById('countryControls') as HTMLFormElement;
   const input = form.elements.namedItem('country') as HTMLInputElement;
-  const pending = new Map<number, { resolve: (result: unknown) => void; reject: (error: unknown) => void; cleanup: () => void }>();
+  const pending = new Map<number, { method: string; resolve: (result: unknown) => void; reject: (error: unknown) => void; cleanup: () => void }>();
   let nextId = 1;
   let revision = 0;
   let hydratedAt = 0;
@@ -49,15 +50,16 @@ async function mountPlugin(): Promise<void> {
   function request(method: string, params: object, signal?: AbortSignal): Promise<unknown> {
     signal?.throwIfAborted();
     const id = nextId++;
+    if (method === 'ui/download-file' && new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id, method, params })).length > COUNTRY_EXPORT_REQUEST_BYTES) return Promise.reject(new CountryDownloadRequestError('size'));
     return new Promise((resolve, reject) => {
       const finish = (error: unknown) => { pending.get(id)?.cleanup(); pending.delete(id); reject(error); };
       const abort = () => {
         send({ method: 'notifications/cancelled', params: { requestId: id, reason: 'Country view changed' } });
         finish(signal?.reason);
       };
-      const timeout = setTimeout(() => finish(new Error('WorldMonitor host request timed out.')), 30_000);
+      const timeout = setTimeout(() => finish(method === 'ui/download-file' ? new CountryDownloadRequestError('timeout') : new Error('WorldMonitor host request timed out.')), 30_000);
       const cleanup = () => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); };
-      pending.set(id, { resolve, reject, cleanup });
+      pending.set(id, { method, resolve, reject, cleanup });
       signal?.addEventListener('abort', abort, { once: true });
       send({ id, method, params });
     });
@@ -78,7 +80,8 @@ async function mountPlugin(): Promise<void> {
   }
 
   const source = await createHostCountryBriefSource(call);
-  const panel = new CountryDeepDivePanel(null, source);
+  let initialization: unknown;
+  const panel = new CountryDeepDivePanel(null, source, createHostCountryDownload(() => initialization, request));
   const controller = new CountryBriefController(source, panel, () => scheduleContext());
 
   function snapshot() {
@@ -334,6 +337,7 @@ async function mountPlugin(): Promise<void> {
       const call = pending.get(message.id)!;
       call.cleanup(); pending.delete(message.id);
       if (message.error) {
+        if (call.method === 'ui/download-file') { call.reject(new CountryDownloadRequestError('rpc')); return; }
         const denied = [-32001, -32002].includes(message.error.code) || /subscription|billing|entitlement|scope|unauthoriz|forbidden/i.test(JSON.stringify(message.error));
         call.reject(new CountrySectionError(denied ? 'locked' : 'unavailable', denied ? 'This connection is not authorized for this section.' : String(message.error.message ?? 'The host rejected this request.')));
       }
@@ -410,7 +414,7 @@ async function mountPlugin(): Promise<void> {
   panel.onClose(() => { signalSlots = undefined; signalCoverage = null; revision++; openRequest?.abort(); controller.dispose(); timeline?.destroy(); timeline = undefined; scheduleContext(); });
   window.addEventListener('pagehide', () => {
     clearTimeout(contextTimer); mutation.disconnect(); panel.hide();
-    for (const call of pending.values()) { call.cleanup(); call.reject(new Error('Country view closed')); }
+    for (const call of pending.values()) { call.cleanup(); call.reject(call.method === 'ui/download-file' ? new CountryDownloadRequestError('closed') : new Error('Country view closed')); }
     pending.clear(); source.clearLoadedData(); admissions.clear(); assessments.clear(); assessmentTimes.clear(); coverages.clear();
   });
 
@@ -418,6 +422,7 @@ async function mountPlugin(): Promise<void> {
     await initI18n({ waitForFullTranslation: true });
     document.getElementById('deep-dive-close')!.setAttribute('aria-label', 'Close country brief');
     const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {} }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object }; hostContext?: { theme?: string } };
+    initialization = initialized;
     toolsAvailable = Boolean(initialized.hostCapabilities?.serverTools);
     linksAvailable = Boolean(initialized.hostCapabilities?.openLinks);
     modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
