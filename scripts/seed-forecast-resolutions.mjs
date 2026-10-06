@@ -19,7 +19,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
-import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry } from './_forecast-scorecard.mjs';
+import { buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -171,6 +171,7 @@ export function buildScorecard(ledger, nowMs, calibrationMap = null) {
   return {
     ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() }),
     calibrationShadow: evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
+    receipts: buildPublicReceipts(ledger, nowMs),
   };
 }
 

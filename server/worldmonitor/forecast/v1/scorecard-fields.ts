@@ -19,6 +19,7 @@ export const SCORECARD_DATA_FIELDS = [
   'publishedByDomain',
   'uncertainty',
   'funnel',
+  'receipts',
 ] as const satisfies readonly (keyof GetForecastScorecardResponse)[];
 
 export type ScorecardData = Pick<GetForecastScorecardResponse, typeof SCORECARD_DATA_FIELDS[number]>;

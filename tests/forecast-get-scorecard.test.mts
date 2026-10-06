@@ -122,6 +122,7 @@ describe('getForecastScorecard backend status', () => {
         resolvedOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
         scoredOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
       },
+      receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
       degraded: false, stale: false, error: '',
     };
     const { fetchImpl } = createRedisFetch({});

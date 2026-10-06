@@ -804,6 +804,159 @@ export function evaluateActivationGate(shadow, modeByDomain, context = {}, optio
   };
 }
 
+// Public receipts (#5092): the newest resolved entries, reduced to members a
+// signed-out reader may see. Each receipt is built member by member, never
+// spread from the ledger, so judge rationale, archive contents, ledger keys and
+// metric paths have no route to the page.
+export const PUBLIC_RECEIPT_LIMIT = 20;
+export const PUBLIC_RECEIPT_FIELDS = Object.freeze([
+  'question', 'forecastAt', 'probability', 'outcome', 'resolvedAt',
+  'voidReason', 'sourceFeed', 'observedValue', 'citationTitle', 'citationUrl',
+]);
+const QUESTION_MAX_CHARS = 240;
+const CITATION_TITLE_MAX_CHARS = 160;
+const CITATION_URL_MAX_CHARS = 500;
+// Archive links were not gated to publisher domains until #8408 merged
+// (2026-09-21T16:39:21Z). Evidence lives 15 days (FORECAST_EVIDENCE_TTL_S), so
+// a citation on an entry resolved before this instant may carry an ungated
+// link; those receipts keep the title and drop the link.
+export const PUBLIC_RECEIPT_LINKS_SINCE_MS = Date.parse('2026-09-21T16:39:21Z') + 15 * DAY_MS;
+
+// Feed keys are internal Redis names, so a receipt carries a public code.
+export const RECEIPT_SOURCE_FEEDS = Object.freeze({
+  'conflict:ucdp-events:v1': 'ucdp-events',
+  'conflict:acled-resolution:v1:all:0:0': 'acled-events',
+  'unrest:events-resolution:v1': 'unrest-events',
+  'cyber:threats-bootstrap:v2': 'cyber-threats',
+  'supply_chain:chokepoints:v4': 'chokepoints',
+  'supply_chain:shipping:v2': 'shipping-rates',
+  'prediction:markets-bootstrap:v1': 'prediction-markets',
+  'prediction:markets-resolution:v1': 'prediction-market-settlements',
+  'intelligence:gpsjam:v2': 'gps-jamming',
+  'infra:outages:v1': 'internet-outages',
+  'market:stocks-bootstrap:v1': 'stock-prices',
+  'market:commodities-bootstrap:v1': 'commodity-prices',
+  'market:sectors:v2': 'sector-performance',
+  'market:gulf-quotes:v1': 'gulf-markets',
+  'market:etf-flows:v1': 'etf-flows',
+  'market:crypto:v1': 'crypto-prices',
+  'market:stablecoins:v1': 'stablecoins',
+  'economic:bis:eer:v1': 'bis-exchange-rates',
+  'economic:bis:policy:v1': 'bis-policy-rates',
+  'correlation:cards-bootstrap:v1': 'correlation-cards',
+  'energy:eia-petroleum:v1': 'eia-petroleum',
+  'economic:fred:v1:FEDFUNDS:0': 'fred',
+  'economic:fred:v1:UNRATE:0': 'fred',
+  'economic:fred:v1:CPIAUCSL:0': 'fred',
+  'economic:fred:v1:DGS10:0': 'fred',
+});
+export const RECEIPT_SOURCE_LABELS = Object.freeze({
+  'ucdp-events': 'UCDP conflict events',
+  'acled-events': 'ACLED conflict events',
+  'unrest-events': 'Protest and unrest events',
+  'cyber-threats': 'Cyber threat reports',
+  chokepoints: 'Shipping chokepoint status',
+  'shipping-rates': 'Shipping rates',
+  'prediction-markets': 'Prediction-market prices',
+  'prediction-market-settlements': 'Prediction-market settlements',
+  'gps-jamming': 'GPS jamming reports',
+  'internet-outages': 'Internet outage reports',
+  'stock-prices': 'Stock prices',
+  'commodity-prices': 'Commodity prices',
+  'sector-performance': 'Sector performance',
+  'gulf-markets': 'Gulf market quotes',
+  'etf-flows': 'ETF flows',
+  'crypto-prices': 'Crypto prices',
+  stablecoins: 'Stablecoin data',
+  'bis-exchange-rates': 'BIS exchange rates',
+  'bis-policy-rates': 'BIS policy rates',
+  'correlation-cards': 'Market correlation signals',
+  'eia-petroleum': 'EIA petroleum data',
+  fred: 'FRED economic data',
+  other: 'A World Monitor data feed',
+});
+export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
+  no_establishable_metric: 'The feed had no reading for this question',
+  value_source_never_settled: 'The feed never published a settled value',
+  count_source_window_not_retained: 'The feed no longer held the question window',
+  unsupported_window: 'The question could not be checked against its feed',
+  unsupported_metric_key: 'The question could not be checked against its feed',
+  not_hard_spec: 'The question could not be checked against its feed',
+  missing_threshold: 'The question was missing a threshold',
+  missing_deadline: 'The question was missing a deadline',
+  missing_generated_at: 'The forecast was missing its start date',
+  beyond_archive_horizon: 'The news archive no longer covered the question window',
+  no_archive_evidence: 'The news archive had nothing on the subject',
+  all_judges_void: 'Both judges found the evidence insufficient',
+  judge_disagreement: 'The judges disagreed',
+  judge_retry_exhausted: 'The judges returned no verdict',
+  other: 'Could not be resolved',
+});
+const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);
+
+function publicText(value, maxChars) {
+  const text = String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text;
+}
+
+function publicHttpsUrl(value) {
+  if (typeof value !== 'string' || value.length > CITATION_URL_MAX_CHARS) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function publicReceipt(entry) {
+  const forecastAt = Number(entry.generatedAt ?? entry.firstSeenAt);
+  const probability = Number(entry.probability);
+  const resolvedAt = Number(entry.resolvedAt);
+  const question = publicText(entry.spec?.question || entry.title, QUESTION_MAX_CHARS);
+  if (!RECEIPT_OUTCOMES.has(entry.outcome) || !question) return null;
+  if (![forecastAt, probability, resolvedAt].every(Number.isFinite)) return null;
+  const receipt = {
+    question,
+    forecastAt,
+    probability: Math.round(probability * 1000) / 1000,
+    outcome: entry.outcome,
+    resolvedAt,
+  };
+  const evidence = entry.evidence ?? {};
+  if (entry.outcome === 'VOID') {
+    receipt.voidReason = Object.hasOwn(RECEIPT_VOID_REASON_LABELS, evidence.reason) ? evidence.reason : 'other';
+  }
+  if (entry.spec?.kind === 'hard') {
+    receipt.sourceFeed = RECEIPT_SOURCE_FEEDS[entry.spec.sourceFeed] ?? 'other';
+    if (entry.outcome !== 'VOID' && typeof evidence.metricValue === 'number' && Number.isFinite(evidence.metricValue)) {
+      receipt.observedValue = evidence.metricValue;
+    }
+  } else if (entry.outcome !== 'VOID') {
+    const citation = (Array.isArray(evidence.citations) ? evidence.citations : [])
+      .find((row) => publicText(row?.title, CITATION_TITLE_MAX_CHARS));
+    if (citation) {
+      receipt.citationTitle = publicText(citation.title, CITATION_TITLE_MAX_CHARS);
+      const url = resolvedAt >= PUBLIC_RECEIPT_LINKS_SINCE_MS ? publicHttpsUrl(citation.url) : undefined;
+      if (url) receipt.citationUrl = url;
+    }
+  }
+  return receipt;
+}
+
+// Published-origin forecast windows inside the rolling window: shadow,
+// synthetic and unattributed origins never become receipts.
+export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMIT } = {}) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  return normalizeLedger(ledger)
+    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && isPublishedOriginEntry(entry)
+      && Number(entry.resolvedAt) >= minResolvedAt)
+    .map(publicReceipt)
+    .filter(Boolean)
+    .sort((a, b) => b.resolvedAt - a.resolvedAt || a.question.localeCompare(b.question))
+    .slice(0, limit);
+}
+
 function mean(values) {
   if (!values.length) return NaN;
   return values.reduce((sum, value) => sum + value, 0) / values.length;

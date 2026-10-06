@@ -1,7 +1,20 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { INTERVAL_MIN_SAMPLE, computeScorecard, wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
+import {
+  DEFAULT_ROLLING_WINDOW_DAYS,
+  DEFAULT_SKILL_EXCLUDED_ORIGINS,
+  INTERVAL_MIN_SAMPLE,
+  PUBLIC_RECEIPT_FIELDS,
+  PUBLIC_RECEIPT_LINKS_SINCE_MS,
+  PUBLIC_RECEIPT_LIMIT,
+  RECEIPT_SOURCE_FEEDS,
+  RECEIPT_SOURCE_LABELS,
+  RECEIPT_VOID_REASON_LABELS,
+  buildPublicReceipts,
+  computeScorecard,
+  wilsonInterval,
+} from '../scripts/_forecast-scorecard.mjs';
 import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
@@ -447,5 +460,203 @@ describe('projection horizon lane (#7075)', () => {
     assert.equal(at.brier.count, INTERVAL_MIN_SAMPLE);
     assert.equal(at.brier.mean, 0.25);
     assert.ok(at.brier.ci95);
+  });
+});
+
+describe('public forecast receipts (#5092)', () => {
+  // After the publisher-link cutoff, so judged citations may carry a link.
+  const NOW = Date.parse('2026-11-01T00:00:00Z');
+  const SECRET = 'SECRET-SENTINEL';
+  const hardEntry = (overrides = {}) => ({
+    id: `commodity:${SECRET}`,
+    key: `commodity:${SECRET}@1`,
+    status: 'resolved',
+    outcome: 'NO',
+    domain: 'market',
+    title: 'The Brent crude oil price: rise to 104.89 USD/bbl?',
+    generationOrigin: 'legacy_detector',
+    probability: 0.35,
+    generatedAt: NOW - 5 * DAY_MS,
+    firstSeenAt: NOW - 5 * DAY_MS,
+    resolvedAt: NOW - DAY_MS,
+    spec: {
+      kind: 'hard',
+      metricKey: `market:commodities-bootstrap:v1|price(symbol==${SECRET})`,
+      sourceFeed: 'market:commodities-bootstrap:v1',
+      question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-10-06?',
+    },
+    passes: [{ name: 'ensemble_inside_view', probability: 0.35, rationale: SECRET }],
+    samples: { count: 1, recent: [{ ts: 1, value: 100.75 }] },
+    evidence: { metricValue: 100.75, comparison: SECRET, metricKey: SECRET, resolvedAt: NOW - DAY_MS },
+    receiptArchiveKey: `seed-data/${SECRET}.json`,
+    receiptArchivedAt: NOW,
+    ...overrides,
+  });
+  const judgedEntry = (overrides = {}) => ({
+    id: `fc-conflict-${SECRET}`,
+    key: `fc-conflict-${SECRET}@2`,
+    status: 'resolved',
+    outcome: 'YES',
+    domain: 'conflict',
+    title: 'Active armed conflict: Nigeria',
+    generationOrigin: 'legacy_detector',
+    probability: 0.7,
+    generatedAt: NOW - 30 * DAY_MS,
+    resolvedAt: NOW - 2 * DAY_MS,
+    spec: { kind: 'judged', question: 'Within the 30d horizon, did Nigeria see escalated armed conflict?' },
+    judgeAttemptLog: [{ attempt: 1, reason: SECRET }],
+    evidence: {
+      kind: 'judged',
+      reason: 'dual_model_agreement',
+      judgedBy: [{ provider: SECRET, model: SECRET, outcome: 'YES' }],
+      judgments: [{ provider: SECRET, rationale: SECRET, citations: [] }],
+      citations: [{
+        id: 'N510',
+        title: 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC',
+        url: 'https://www.bbc.co.uk/news/world-africa-1',
+        publishedAt: NOW - 3 * DAY_MS,
+        quote: SECRET,
+      }],
+      archive: [{ id: 'N1', title: SECRET, url: `https://example.org/${SECRET}` }],
+    },
+    ...overrides,
+  });
+
+  const build = (ledger, ...rest) => buildPublicReceipts(ledger, NOW, ...rest);
+
+  it('publishes only whitelisted members, never rationale, archive, keys or metric paths', () => {
+    const receipts = build({ a: hardEntry(), b: judgedEntry() });
+    assert.equal(receipts.length, 2);
+    for (const receipt of receipts) {
+      for (const field of Object.keys(receipt)) {
+        assert.ok(PUBLIC_RECEIPT_FIELDS.includes(field), `unlisted receipt field ${field}`);
+      }
+    }
+    assert.doesNotMatch(JSON.stringify(receipts), new RegExp(SECRET));
+  });
+
+  it('lists resolved entries newest first, bounded, and skips open ones', () => {
+    const ledger = {};
+    for (let i = 0; i < PUBLIC_RECEIPT_LIMIT + 5; i++) {
+      ledger[`r${i}`] = hardEntry({ resolvedAt: NOW - i * 1000 });
+    }
+    ledger.open = hardEntry({ status: 'pending', outcome: undefined, resolvedAt: NOW + 1000 });
+    const receipts = build(ledger);
+    assert.equal(receipts.length, PUBLIC_RECEIPT_LIMIT);
+    assert.equal(receipts[0].resolvedAt, NOW);
+    for (let i = 1; i < receipts.length; i++) {
+      assert.ok(receipts[i - 1].resolvedAt >= receipts[i].resolvedAt, 'newest first');
+    }
+  });
+
+  it('shapes a hard receipt from the feed vocabulary and the observed value', () => {
+    const [receipt] = build([hardEntry()]);
+    assert.deepEqual(receipt, {
+      question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-10-06?',
+      forecastAt: NOW - 5 * DAY_MS,
+      probability: 0.35,
+      outcome: 'NO',
+      resolvedAt: NOW - DAY_MS,
+      sourceFeed: 'commodity-prices',
+      observedValue: 100.75,
+    });
+  });
+
+  it('shapes a judged receipt from the agreed citation, https links only', () => {
+    const [receipt] = build([judgedEntry()]);
+    assert.equal(receipt.sourceFeed, undefined);
+    assert.equal(receipt.citationTitle, 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC');
+    assert.equal(receipt.citationUrl, 'https://www.bbc.co.uk/news/world-africa-1');
+    for (const url of ['javascript:alert(1)', 'http://plain.example/a', 'https://user:pw@host.example/a', 'not a url']) {
+      const [unsafe] = build([judgedEntry({
+        evidence: { ...judgedEntry().evidence, citations: [{ title: 'Headline', url }] },
+      })]);
+      assert.equal(unsafe.citationTitle, 'Headline', 'the cited item title survives without a link');
+      assert.equal(unsafe.citationUrl, undefined, `${url} must not be published as a link`);
+    }
+  });
+
+  it('keeps VOIDs with a fixed-vocabulary reason and no citation', () => {
+    const receipts = build([
+      judgedEntry({ outcome: 'VOID', evidence: { ...judgedEntry().evidence, reason: 'beyond_archive_horizon' } }),
+      hardEntry({ outcome: 'VOID', evidence: { reason: 'no_establishable_metric', metricKey: SECRET } }),
+      hardEntry({ outcome: 'VOID', resolvedAt: NOW - 3 * DAY_MS, evidence: { reason: `${SECRET} free text` } }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.voidReason), ['no_establishable_metric', 'beyond_archive_horizon', 'other']);
+    assert.equal(receipts[1].citationTitle, undefined, 'a VOID was not settled by any cited item');
+    assert.equal(receipts[0].observedValue, undefined);
+    for (const receipt of receipts) assert.ok(Object.hasOwn(RECEIPT_VOID_REASON_LABELS, receipt.voidReason));
+  });
+
+  it('maps every resolution feed to a public source code, and anything else to other', async () => {
+    const { RESOLUTION_FEED_KEYS } = await import('../scripts/_forecast-resolution.mjs');
+    for (const feed of RESOLUTION_FEED_KEYS) {
+      const code = RECEIPT_SOURCE_FEEDS[feed];
+      assert.ok(code && Object.hasOwn(RECEIPT_SOURCE_LABELS, code), `${feed} needs a public source code`);
+    }
+    const [receipt] = build([hardEntry({ spec: { ...hardEntry().spec, sourceFeed: `internal:${SECRET}:v9` } })]);
+    assert.equal(receipt.sourceFeed, 'other');
+  });
+
+  it('lists only the headline cohort, never shadow, synthetic or unattributed entries', () => {
+    const receipts = build([
+      hardEntry({ generationOrigin: 'bet_engine', resolvedAt: NOW - 1 }),
+      hardEntry({ generationOrigin: 'state_derived', resolvedAt: NOW - 2 }),
+      hardEntry({ generationOrigin: undefined, resolvedAt: NOW - 3 }),
+      hardEntry({ resolvedAt: NOW - 4 }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - 4]);
+  });
+
+  it('leaves projection horizon windows out, as every forecast-window reader does', () => {
+    const receipts = build([
+      hardEntry({ spec: { ...hardEntry().spec, horizon: '7d' }, resolvedAt: NOW - 1 }),
+      hardEntry({ resolvedAt: NOW - 2 }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - 2]);
+  });
+
+  it('keeps shadow bet-engine entries out even when the headline promotes them', () => {
+    assert.equal(build([hardEntry({ generationOrigin: 'bet_engine' })], { promoteBetEngine: true }).length, 0);
+    for (const origin of DEFAULT_SKILL_EXCLUDED_ORIGINS) {
+      assert.equal(build([hardEntry({ generationOrigin: origin })]).length, 0, `${origin} must not be a receipt`);
+    }
+  });
+
+  it('lists only entries resolved inside the rolling window', () => {
+    const receipts = build([
+      hardEntry({ resolvedAt: NOW - 400 * DAY_MS }),
+      hardEntry({ resolvedAt: NOW - (DEFAULT_ROLLING_WINDOW_DAYS - 1) * DAY_MS }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - (DEFAULT_ROLLING_WINDOW_DAYS - 1) * DAY_MS]);
+  });
+
+  it('drops citation links that could predate the publisher-link gate, keeping the title', async () => {
+    const { FORECAST_EVIDENCE_TTL_S } = await import('../scripts/_forecast-evidence-archive.mjs');
+    assert.equal(
+      PUBLIC_RECEIPT_LINKS_SINCE_MS,
+      Date.parse('2026-09-21T16:39:21Z') + FORECAST_EVIDENCE_TTL_S * 1000,
+      'the cutoff is the #8408 merge plus the evidence archive retention',
+    );
+    const [early, late] = [PUBLIC_RECEIPT_LINKS_SINCE_MS - 1, PUBLIC_RECEIPT_LINKS_SINCE_MS]
+      .map((resolvedAt) => buildPublicReceipts([judgedEntry({ resolvedAt })], NOW)[0]);
+    assert.equal(early.citationUrl, undefined);
+    assert.equal(early.citationTitle, 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC');
+    assert.equal(late.citationUrl, 'https://www.bbc.co.uk/news/world-africa-1');
+  });
+
+  it('stays bounded when every text field is at its worst', () => {
+    const long = `<script>${'x'.repeat(5000)}`;
+    const ledger = Array.from({ length: 500 }, (_, i) => judgedEntry({
+      resolvedAt: NOW - i,
+      spec: { kind: 'judged', question: long },
+      evidence: { ...judgedEntry().evidence, citations: [{ title: long, url: `https://example.org/${'y'.repeat(5000)}` }] },
+    }));
+    const receipts = build(ledger);
+    assert.equal(receipts.length, PUBLIC_RECEIPT_LIMIT);
+    assert.ok(receipts[0].question.length <= 240);
+    assert.ok(receipts[0].citationTitle.length <= 160);
+    assert.equal(receipts[0].citationUrl, undefined, 'an over-long URL is dropped, not truncated into a different link');
+    assert.ok(Buffer.byteLength(JSON.stringify(receipts)) <= 16_000);
   });
 });

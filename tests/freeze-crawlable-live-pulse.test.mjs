@@ -218,6 +218,9 @@ function countryPayload() {
         resolvedOfMatured: { count: 820, successes: 772, rate: 0.941463, ci95: [0.923243, 0.955567] },
         scoredOfMatured: { count: 820, successes: 490, rate: 0.597561, ci95: [0.563617, 0.630595] },
       },
+      receipts: [
+        { question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75, key: 'internal-ledger-key' },
+      ],
       degraded: false,
       stale: false,
       error: '',
@@ -734,7 +737,8 @@ describe('freeze crawlable live pulse coverage gates', () => {
       [...SCORECARD_DECLARED_FIELDS].sort(),
       'the committed snapshot must carry the declared surface and nothing else',
     );
-    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane/);
+    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane|internal-ledger-key/);
+    assert.equal(section.scorecard.receipts[0].observedValue, 100.75);
     const state = classifyAccuracyState(section);
     assert.equal(state.availability, 'ok');
     assert.equal(state.coverage, 'measurable');

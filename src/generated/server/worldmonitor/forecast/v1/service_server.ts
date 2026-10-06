@@ -162,6 +162,7 @@ export interface GetForecastScorecardResponse {
   publishedByDomain: ScorecardPublishedDomain[];
   uncertainty?: ScorecardUncertainty;
   funnel?: ScorecardFunnel;
+  receipts: ScorecardReceipt[];
 }
 
 export interface ScorecardTotals {
@@ -264,6 +265,19 @@ export interface ScorecardProportion {
   successes: number;
   rate: number;
   ci95: number[];
+}
+
+export interface ScorecardReceipt {
+  question: string;
+  forecastAt: number;
+  probability: number;
+  outcome: string;
+  resolvedAt: number;
+  voidReason: string;
+  sourceFeed: string;
+  observedValue?: number;
+  citationTitle: string;
+  citationUrl: string;
 }
 
 export interface GetSimulationPackageRequest {

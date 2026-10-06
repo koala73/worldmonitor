@@ -119,7 +119,14 @@ const FUNNEL = Object.freeze({
   resolvedOfMatured: { count: 820, successes: 772, rate: 0.941463, ci95: [0.923243, 0.955567] },
   scoredOfMatured: { count: 820, successes: 490, rate: 0.597561, ci95: [0.563617, 0.630595] },
 });
-const WITH_INTERVALS = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL });
+// Issue #5092: the newest resolved forecasts, as the seeder publishes them.
+const RECEIPTS = Object.freeze([
+  { question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-09-09?', forecastAt: Date.parse('2026-09-05T12:00:00Z'), probability: 0.35, outcome: 'NO', resolvedAt: Date.parse('2026-09-10T03:00:00Z'), sourceFeed: 'commodity-prices', observedValue: 100.75 },
+  { question: 'Within the 30d horizon, did Nigeria see escalated armed conflict?', forecastAt: Date.parse('2026-08-10T00:00:00Z'), probability: 0.7, outcome: 'YES', resolvedAt: Date.parse('2026-09-09T22:00:00Z'), citationTitle: 'Dozens abducted in attacks on villages in Nigeria - BBC', citationUrl: 'https://www.bbc.co.uk/news/world-africa-1' },
+  { question: 'Within the 30d horizon, did Syria see escalated armed conflict?', forecastAt: Date.parse('2026-08-09T00:00:00Z'), probability: 0.697, outcome: 'VOID', resolvedAt: Date.parse('2026-09-09T21:00:00Z'), voidReason: 'beyond_archive_horizon' },
+  { question: 'Will cyber threat reports rise <img src=x onerror=alert(1)>?', forecastAt: Date.parse('2026-09-01T00:00:00Z'), probability: 0.6, outcome: 'YES', resolvedAt: Date.parse('2026-09-08T00:00:00Z'), sourceFeed: 'cyber-threats', observedValue: 41 },
+]);
+const WITH_INTERVALS = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL, receipts: RECEIPTS });
 
 describe('forecast scorecard field whitelist', () => {
   it('declares exactly the fields proto GetForecastScorecardResponse declares', () => {
@@ -763,10 +770,10 @@ describe('accuracy page honesty rules', () => {
     assert.match(html, /<caption>/, 'every data table needs a caption');
   });
 
-  it('publishes aggregates only, with no receipt, evidence or judge-input surface', () => {
-    const { html } = renderState(LIVE_SECTION);
-    const download = downloadFor(LIVE_SECTION);
-    for (const forbidden of [/betEngine/, /judgedLane/, /r2:\/\//, /forecastId/, /evidenceKey/, /receipt/i]) {
+  it('publishes no evidence store, judge input or internal key surface', () => {
+    const { html } = renderState(WITH_INTERVALS);
+    const download = downloadFor(WITH_INTERVALS);
+    for (const forbidden of [/betEngine/, /judgedLane/, /r2:\/\//, /forecastId/, /evidenceKey/, /rationale/, /judgments/, /metricKey/, /seed-data\//]) {
       assert.doesNotMatch(html, forbidden, `the page must not publish ${forbidden}`);
       assert.doesNotMatch(JSON.stringify(download), forbidden, `the distribution must not publish ${forbidden}`);
     }
@@ -865,6 +872,96 @@ describe('accuracy page proportion intervals', () => {
     assert.deepEqual(intervals.calibration['0-10'], { successes: 0, count: 40, ci95: [0, 0.087622] });
     assert.deepEqual(intervals.byDomain.political, { successes: 6, count: 6, ci95: [0.609666, 1] });
     assert.equal(Object.hasOwn(intervals.calibration, '70-80'), false, 'an empty bucket has no estimate');
+  });
+});
+
+describe('accuracy page forecast receipts (#5092)', () => {
+  const receiptsOf = (html) => {
+    const table = html.match(/<table data-forecast-receipts>[\s\S]*?<\/table>/);
+    return table ? table[0] : null;
+  };
+
+  it('whitelists receipt rows down to their declared members', () => {
+    const selected = selectDeclaredScorecardFields({
+      ...WITH_INTERVALS.scorecard,
+      receipts: [{ ...RECEIPTS[0], key: 'commodity:BZ=F@1', rationale: 'judge text', evidence: { metricKey: 'x' } }],
+    });
+    assert.deepEqual(selected.receipts, [RECEIPTS[0]]);
+  });
+
+  it('renders the receipts newest first with what was forecast, when, the chance, the outcome and the source', () => {
+    const table = receiptsOf(renderState(WITH_INTERVALS).html);
+    assert.ok(table, 'the receipts must be a real table');
+    assert.match(table, /<caption>[^<]*published forecasts[^<]*experimental, synthetic and unattributed origins[^<]*<\/caption>/);
+    const head = stripTags(table.match(/<thead>[\s\S]*?<\/thead>/)[0]);
+    assert.match(head, /Forecast Made Chance given Outcome Resolved How it was settled/);
+    const rows = [...table.matchAll(/<tr data-receipt-outcome="([A-Z]+)">([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual(rows.map(([, outcome]) => outcome), ['NO', 'YES', 'VOID', 'YES']);
+    const text = rows.map(([, , cells]) => stripTags(cells).trim());
+    assert.match(text[0], /Brent crude .* 2026-09-05 35% Did not happen 2026-09-10 Commodity prices read 100\.75/);
+    assert.match(text[1], /Nigeria .* 2026-08-10 70% Happened 2026-09-09 Judged against archived news: Dozens abducted in attacks on villages in Nigeria - BBC/);
+    assert.match(text[2], /Syria .* 69\.7% Void 2026-09-09 The news archive no longer covered the question window/);
+  });
+
+  it('escapes attacker-controllable text and links only https citations', () => {
+    const hostile = sectionWith({
+      receipts: [
+        RECEIPTS[3],
+        { ...RECEIPTS[1], citationTitle: 'Headline "><script>x</script>', citationUrl: 'javascript:alert(1)' },
+      ],
+    });
+    const table = receiptsOf(renderState(hostile).html);
+    assert.doesNotMatch(table, /<img|<script|javascript:/);
+    assert.match(table, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.equal((table.match(/<a /g) || []).length, 0, 'a non-https citation is printed without a link');
+    const linked = receiptsOf(renderState(WITH_INTERVALS).html);
+    assert.match(linked, /<a href="https:\/\/www\.bbc\.co\.uk\/news\/world-africa-1" rel="nofollow noopener">/);
+  });
+
+  it('reads unknown codes in plain words and drops rows with an unknown outcome', () => {
+    const odd = sectionWith({
+      receipts: [
+        { ...RECEIPTS[0], sourceFeed: 'internal-feed' },
+        { ...RECEIPTS[2], voidReason: 'something_new' },
+        { ...RECEIPTS[0], outcome: 'MAYBE' },
+        { ...RECEIPTS[0], sourceFeed: 'toString' },
+        { ...RECEIPTS[2], voidReason: 'constructor' },
+      ],
+    });
+    const text = stripTags(receiptsOf(renderState(odd).html));
+    assert.match(text, /A World Monitor data feed read 100\.75/);
+    assert.match(text, /Void 2026-09-09 Could not be resolved/);
+    assert.doesNotMatch(text, /internal-feed|something_new|MAYBE|function|native code/);
+    assert.equal(text.match(/A World Monitor data feed read 100\.75/g).length, 2, 'an inherited key is not a label');
+    assert.equal(text.match(/Could not be resolved/g).length, 2);
+  });
+
+  it('shows an empty state when the capture carries no resolved forecasts', () => {
+    const { html } = renderState(sectionWith({ receipts: [], totals: { ...LIVE_SCORECARD.totals, resolved: 0 } }));
+    assert.equal(receiptsOf(html), null);
+    assert.match(stripTags(html), /No forecast has resolved in this window yet/);
+  });
+
+  it('says the receipts are not carried rather than implying none resolved for an older capture', () => {
+    // The API defaults the repeated field to [], so an empty list beside
+    // resolved forecasts is a seed that predates receipts, not an empty record.
+    for (const section of [LIVE_SECTION, sectionWith({ receipts: [] })]) {
+      const { html } = renderState(section);
+      assert.equal(receiptsOf(html), null);
+      assert.match(stripTags(html), /This capture does not carry per-forecast receipts\./);
+      assert.doesNotMatch(stripTags(html), /No forecast has resolved|refresh adds/);
+    }
+  });
+
+  it('prints an out-of-range receipt date as not recorded instead of failing the build', () => {
+    const damaged = sectionWith({ receipts: [{ ...RECEIPTS[0], forecastAt: 1e20, resolvedAt: -1e20 }] });
+    const text = stripTags(receiptsOf(renderState(damaged).html));
+    assert.match(text, /35% Did not happen Not recorded/);
+    assert.match(text, /Brent crude .* Not recorded 35%/);
+  });
+
+  it('publishes the receipts in the distribution as captured', () => {
+    assert.deepEqual(downloadFor(WITH_INTERVALS).scorecard.receipts, RECEIPTS);
   });
 });
 
