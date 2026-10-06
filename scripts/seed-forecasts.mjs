@@ -9,7 +9,7 @@ import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs } from './_forecast-resolution.mjs';
+import { attachResolutionSpecs, HORIZON_MS } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -2262,6 +2262,28 @@ const MARKET_ANCHOR_EVENT_CLASSES = {
   },
 };
 
+// A market is the same question only if it settles near the forecast's own
+// deadline. A 7d forecast priced off a market that settles in 2027 borrows
+// risk the forecast never claims (#7071). The market may settle up to one
+// extra horizon (at least a week) past the deadline, never before emission.
+const MARKET_ANCHOR_MIN_SETTLEMENT_SLACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function resolveMarketAnchorSettlementWindow(pred) {
+  const horizonMs = HORIZON_MS[pred.timeHorizon];
+  const emittedAt = Number(pred.createdAt);
+  if (!Number.isFinite(horizonMs) || !Number.isFinite(emittedAt)) return null;
+  return {
+    earliest: emittedAt,
+    latest: emittedAt + horizonMs + Math.max(MARKET_ANCHOR_MIN_SETTLEMENT_SLACK_MS, horizonMs),
+  };
+}
+
+function marketSettlesWithinWindow(market, window) {
+  if (!window) return false;
+  const settlesAt = Date.parse(market?.endDate || '');
+  return Number.isFinite(settlesAt) && settlesAt >= window.earliest && settlesAt <= window.latest;
+}
+
 function resolveMarketAnchorEventPatterns(pred, predictionDeEscalatoryOutcome) {
   const entry = MARKET_ANCHOR_EVENT_CLASSES[pred.domain];
   if (!entry) return null;
@@ -2709,6 +2731,7 @@ function calibrateWithMarkets(predictions, markets) {
     region: 0,
     semantic: 0,
     eventClass: 0,
+    horizon: 0,
     capNoop: 0,
     noClass: 0,
   };
@@ -2726,6 +2749,7 @@ function calibrateWithMarkets(predictions, markets) {
       continue;
     }
     const requireTitleOverlap = MARKET_ANCHOR_EVENT_CLASSES[pred.domain].requireTitleOverlap === true;
+    const settlementWindow = resolveMarketAnchorSettlementWindow(pred);
     const candidates = marketUniverse
       .map(m => {
         const mRegions = tagRegions(m.title);
@@ -2762,6 +2786,10 @@ function calibrateWithMarkets(predictions, markets) {
           stats.eventClass++;
           return false;
         }
+        if (!marketSettlesWithinWindow(item.market, settlementWindow)) {
+          stats.horizon++;
+          return false;
+        }
         return true;
       })
       .sort((a, b) => {
@@ -2792,9 +2820,9 @@ function calibrateWithMarkets(predictions, markets) {
       stats.applied++;
     }
   }
-  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.eventClass + stats.capNoop;
+  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.eventClass + stats.horizon + stats.capNoop;
   if (stats.applied > 0 || dropped > 0 || stats.noClass > 0) {
-    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} event_class=${stats.eventClass} cap_noop=${stats.capNoop} no_class_forecasts=${stats.noClass}`);
+    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} event_class=${stats.eventClass} horizon=${stats.horizon} cap_noop=${stats.capNoop} no_class_forecasts=${stats.noClass}`);
   }
 }
 

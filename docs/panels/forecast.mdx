@@ -71,10 +71,11 @@ Published forecasts are capped and deduplicated before they reach the panel:
 | Infrastructure probability ceiling | 0.85 |
 | Cyber probability ceiling | 0.72 |
 
-A market anchors a forecast only when both of these hold:
+A market anchors a forecast only when all of these hold:
 
 - The market title names the forecast's own region: the region name or its country keywords. A shared macro-region tag or a neighbouring country from the entity graph does not count, so a Syria forecast does not anchor to a market about Iran.
 - The market title resolves on the event class that `MARKET_ANCHOR_EVENT_CLASSES` in `scripts/seed-forecasts.mjs` declares for the forecast's domain. Conflict and military escalation forecasts need a strike, attack, invasion, offensive, clash, or war market. De-escalation forecasts need a ceasefire, truce, or peace-deal market. Cyber forecasts need a cyberattack, hack, or ransomware market. Political instability forecasts need a resignation, ouster, impeachment, coup, snap election, or unrest market; a market that only asks who will hold an office does not qualify. Supply-chain forecasts need a strait, canal, blockade, shipping, or transit market. Infrastructure forecasts need an outage, blackout, grid, or pipeline market. Market forecasts need a commodity or macro price market that also shares a title term with the forecast.
+- The market settles inside the forecast's own window. The forecast deadline is emission time plus its horizon (`24h`, `7d`, or `30d`). The market's `endDate` must fall between emission and the deadline plus the larger of 7 days and the horizon (`MARKET_ANCHOR_MIN_SETTLEMENT_SLACK_MS`). A 7-day forecast therefore accepts a market settling within 14 days of emission, and a 30-day forecast accepts one settling within 60 days. A market that settles much later prices risk over a longer period than the forecast claims, so its price is not an estimate of the same event. A market with no settlement date does not anchor. On the 2026-10-06 market universe every same-subject, same-event-class market settled at the end of 2026 or later, so no forecast was market-calibrated.
 
 A domain or title family without a registry entry gets no anchor. GPS interference forecasts are excluded this way. The existing price, liquidity (`volume >= 5,000`), YES-direction, and region-tag filters still apply. This rule exists because region overlap alone let unrelated long-dated markets, such as a Taiwan invasion market or a presidential succession market, calibrate cyber-concentration forecasts (issue #7071).
 
