@@ -113,7 +113,6 @@ const mockNewsXml = `<?xml version="1.0" encoding="UTF-8"?>
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete process.env.GROQ_API_KEY;
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OLLAMA_API_URL;
   delete process.env.OLLAMA_MODEL;

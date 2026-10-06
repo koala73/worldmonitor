@@ -41,7 +41,7 @@ const META_KEY = 'seed-meta:intelligence:market-implications';
 const CARDS_KEY = 'intelligence:market-implications:v1';
 
 const ENV_KEYS = [
-  'OPENROUTER_API_KEY', 'GROQ_API_KEY',
+  'OPENROUTER_API_KEY',
   'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER', 'FORECAST_LLM_PROVIDER_ORDER',
   'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
 ];

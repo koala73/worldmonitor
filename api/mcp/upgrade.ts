@@ -70,9 +70,13 @@ export type McpStructuredDenial =
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
     message: 'Authentication required to call this tool.',
+    // The first denial a cold agent reads. Name both free paths before Pro;
+    // pointing only at the upgrade URL sent agents to checkout when a free
+    // account and the credential-free get_sources tool were available.
     nextStep:
-      'Sign in at the upgrade URL, connect WorldMonitor MCP with your account, '
-      + 'or subscribe to Pro for the full daily allowance.',
+      'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, '
+      + 'or call get_sources, which needs no credential. '
+      + 'Subscribe to Pro at the upgrade URL for the full daily allowance.',
   },
   'allowance-exhausted': {
     message: 'Free-account MCP allowance exhausted for today.',

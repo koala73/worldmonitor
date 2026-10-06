@@ -7,7 +7,7 @@ description: "深入解析驱动 World Monitor AI 分析栈的核心技术组件
 
 ### AI 摘要链
 
-世界简报由一个 4 层提供商链生成，该链优先使用本地算力，在云端 API 之间逐级回退，并以浏览器端推理作为最后手段：
+世界简报由一个分层提供商链生成，该链优先使用本地算力，回退到云端 API，并以浏览器端推理作为最后手段：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -23,24 +23,18 @@ description: "深入解析驱动 World Monitor AI 分析栈的核心技术组件
 └─────────────────────────────────┘               │
                                                   ▼
                                    ┌─────────────────────────────┐    timeout/error
-                                   │  Tier 2: Groq               │──────────────┐
-                                   │  Llama 3.1 8B, temp 0.3     │               │
-                                   │  Fast cloud inference        │               │
+                                   │  Tier 2: OpenRouter         │──────────────┐
+                                   │  DeepSeek V4 Flash, temp 0.3│               │
                                    └─────────────────────────────┘               │
-                                                                                   ▼
-                                                                  ┌─────────────────────────────┐    timeout/error
-                                                                  │  Tier 3: OpenRouter          │──────────────┐
-                                                                  │  Multi-model fallback        │               │
-                                                                  └─────────────────────────────┘               │
-                                                                                                                ▼
-                                                                                                 ┌──────────────────────────┐
-                                                                                                 │  Tier 4: Browser T5      │
-                                                                                                 │  Transformers.js (ONNX)  │
-                                                                                                 │  No network required     │
-                                                                                                 └──────────────────────────┘
+                                                                                 ▼
+                                                                  ┌──────────────────────────┐
+                                                                  │  Tier 3: Browser T5      │
+                                                                  │  Transformers.js (ONNX)  │
+                                                                  │  No network required     │
+                                                                  └──────────────────────────┘
 ```
 
-所有三个 API 层级（Ollama、Groq、OpenRouter）共享同一个处理器工厂（`_summarize-handler.js`），行为完全一致：
+Ollama 和 OpenRouter 层级共享同一个处理器工厂（`_summarize-handler.js`），行为完全一致：
 
 - **标题去重** —— 在发送给任何 LLM 之前，标题会使用词重叠相似度进行两两比较。近乎重复的标题（重叠度 > 60%）会被合并，从而将提示词缩减 20–40%，避免 LLM 在重复报道上浪费 token
 - **变体感知提示** —— 系统提示会根据当前激活的仪表盘变体自适应调整。地缘政治摘要强调冲突升级与外交动向；科技摘要聚焦融资轮次与 AI 突破；金融摘要突出市场走势与央行信号
@@ -57,7 +51,7 @@ Ollama 层通过 OpenAI 兼容的 `/v1/chat/completions` 端点通信，因此�
 **左栏**：
 
 - **动荡指数** —— 动画 SVG 评分环（0–100），含四个组成分项条（动荡、冲突、安全、信息）、严重度徽章和趋势指示器
-- **情报简报** —— AI 生成的分析（Ollama 本地 / Groq / OpenRouter，取决于已配置的提供商），含内联引用锚点 `[1]`–`[8]`，点击可滚动至对应新闻来源
+- **情报简报** —— AI 生成的分析（Ollama 本地 / OpenRouter，取决于已配置的提供商），含内联引用锚点 `[1]`–`[8]`，点击可滚动至对应新闻来源
 - **头条新闻** —— 该国 8 条最相关标题，按威胁等级着色，附带来源与"多久前"元数据
 
 **右栏**：
@@ -91,7 +85,7 @@ Ollama 层通过 OpenAI 兼容的 `/v1/chat/completions` 端点通信，因此�
 
 1. 分析师输入自由文本查询（例如"未来 24 小时中东会发生什么？"）以及可选的地理上下文字段
 2. 提交前，`buildNewsContext()` 从实时信息流中拉取最近的 15 条 `NewsItem` 标题，并将它们作为结构化上下文前置（`"Recent News:\n- Headline (Source)"`）—— 确保 LLM 始终具备当前态势感知
-3. 查询被发送至 `deductSituation` RPC 端点，该端点调用 `callLlm()` 并使用提供商回退链（Groq、OpenRouter，或任何通过 `LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` 环境变量配置的 OpenAI 兼容端点），系统提示要求其扮演"资深地缘政治情报分析师与预测员"
+3. 查询被发送至 `deductSituation` RPC 端点，该端点调用 `callLlmReasoning()` 并使用提供商回退链（先用付费 OpenRouter，然后依次为 Ollama、免费 OpenRouter Gemma 模型，以及任何通过 `LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` 环境变量配置的 OpenAI 兼容端点），系统提示要求其扮演"资深地缘政治情报分析师与预测员"
 4. 温度为 0.3（偏低，以保证分析一致性），最多 1,500 tokens。思维链 `think` 标签会作为纵深防御被剥离
 5. 结果按 `deduct:situation:v1:{hash(query|geoContext)}` 在 Redis 中缓存 1 小时 —— 相同查询直接从缓存返回
 
@@ -194,7 +188,7 @@ Intelligence service 现在提供一套以 SEC 权威身份为基础的公司解
 
 2. **浏览器端 ML**（异步，`source: 'ml'`）—— Transformers.js 在浏览器内直接运行 NER、情感分析与主题分类，无需任何服务器依赖。在不发起任何 API 调用的前提下提供第二分类意见。
 
-3. **LLM 分类器**（批处理异步，`source: 'llm'`）—— 标题被收集进批处理队列，通过 sebuf proto 客户端以并行 `classifyEvent` RPC 发出。每个 RPC 调用已配置的 LLM 提供商（温度 0 的 Groq Llama 3.1 8B，或用于本地推理的 Ollama）。结果按标题哈希在 Redis 中缓存（24h TTL）。当发生 500 系错误时，LLM 分类器会自动暂停队列以避免浪费 API 配额，并在指数退避延时后恢复。当 LLM 结果到达时，仅在其置信度更高时才会覆盖关键词结果。
+3. **LLM 分类器**（批处理异步，`source: 'llm'`）—— 标题被收集进批处理队列，通过 sebuf proto 客户端以并行 `classifyEvent` RPC 发出。每个 RPC 以温度 0 调用共享的 LLM 提供商链：先用 Ollama 进行本地推理，然后是 OpenRouter DeepSeek V4.1 Flash，最后是固定的免费 OpenRouter 模型。结果按标题哈希在 Redis 中缓存（24h TTL）。当发生 500 系错误时，LLM 分类器会自动暂停队列以避免浪费 API 配额，并在指数退避延时后恢复。当 LLM 结果到达时，仅在其置信度更高时才会覆盖关键词结果。
 
 此混合方法意味着 UI 永远不会因等待 AI 而阻塞 —— 用户即时看到关键词结果，ML 与 LLM 精修在数秒内到达，并持久化供所有后续访客使用。每次分类都携带其 `source` 标签（`keyword`、`ml` 或 `llm`），下游消费者可据此加权置信度。
 
@@ -243,7 +237,7 @@ Intelligence service 现在提供一套以 SEC 权威身份为基础的公司解
 | --------------------------- | ------------------ | ------------------------------------------------- |
 | **文本嵌入**                | sentence-similarity | 新闻标题的语义聚类                                 |
 | **序列分类**                | threat-classifier   | 威胁严重度与类别检测                               |
-| **摘要**                    | T5-small            | Ollama、Groq、OpenRouter 全部不可用时的最后回退     |
+| **摘要**                    | T5-small            | Ollama 和 OpenRouter 均不可用时的最后回退     |
 | **命名实体识别**            | NER pipeline        | 国家、组织与领导人抽取                             |
 
 **混合聚类** 结合了快速的 Jaccard 相似度（n-gram 重叠，阈值 0.4）与 ML 精修的语义相似度（余弦相似度，阈值 0.78）。Jaccard 在每次刷新时即时运行；语义精修在 ML Worker 加载后运行，合并文本不同但语义相同的聚类（例如"NATO expands missile shield"与"Alliance deploys new air defense systems"）。
@@ -270,10 +264,10 @@ Intelligence service 现在提供一套以 SEC 权威身份为基础的公司解
 ```
 User requests summary
     ↓
-1. Try Groq API (fast, free tier)
-    ↓ (rate limited or error)
-2. Try OpenRouter API (fallback provider)
-    ↓ (unavailable)
+1. Try Ollama (local endpoint, when configured)
+    ↓ (unavailable or error)
+2. Try OpenRouter API (cloud provider)
+    ↓ (rate limited or unavailable)
 3. Use Browser T5 (offline, always available)
 ```
 
@@ -297,9 +291,9 @@ User requests summary
 
 相比云端模型，浏览器 ML 有以下约束：
 
-| 方面 | 云端 (Llama 3.3) | 浏览器 (T5) |
+| 方面 | 云端 (OpenRouter) | 浏览器 (T5) |
 |--------|-------------------|--------------|
-| 上下文窗口 | 128K tokens | 512 tokens |
+| 上下文窗口 | 取决于模型 | 512 tokens |
 | 输出质量 | 高 | 中等 |
 | 推理速度 | 2-3 秒 | 5-10 秒 |
 | 离线支持 | 否 | 是 |
@@ -316,11 +310,12 @@ User requests summary
 
 每 2 分钟（含限流），系统使用多提供商回退链生成一份精炼态势简报：
 
-| 优先级 | 提供商 | 模型 | 延迟 | 用例 |
-|----------|----------|-------|---------|----------|
-| 1 | Groq | Llama 3.3 70B | ~2s | 主提供商（快速推理） |
-| 2 | OpenRouter | Llama 3.3 70B | ~3s | Groq 被限流时的回退 |
-| 3 | Browser | T5 (ONNX) | ~5s | 离线回退（本地 ML） |
+| 优先级 | 提供商 | 模型 | 用例 |
+|----------|----------|-------|----------|
+| 1 | Ollama | 已配置的本地模型 | 设置 `OLLAMA_API_URL` 时的自托管推理 |
+| 2 | OpenRouter | `deepseek/deepseek-v4-flash` | 主云端提供商 |
+| 3 | OpenRouter（免费） | `google/gemma-4-26b-a4b-it:free`，然后 `nvidia/nemotron-3-super-120b-a12b:free` | 付费模型失败时的回退 |
+| 4 | Browser | T5 (ONNX) | 离线回退（本地 ML） |
 
 **缓存策略**：Redis 服务端缓存防止冗余 API 调用。当相同标题集近期已被摘要时，缓存结果会立即返回。
 
