@@ -25,6 +25,7 @@ import {
   HORIZON_SAMPLE_TOLERANCE_MS,
   PROJECTION_HORIZONS,
   buildHorizonResolutionSpecs,
+  horizonSampleToleranceMs,
 } from '../scripts/_forecast-resolution.mjs';
 
 // Emission-time commodities feed shape (inputs.commodityQuotes) — mirrors the
@@ -1212,10 +1213,22 @@ describe('projection horizon contracts (#7075)', () => {
         window: 'at-deadline',
         sourceFeed: parent.sourceFeed,
         deadline: GENERATED_AT + HORIZON_MS[timeHorizon],
-        sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
+        sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
       });
     }
     assert.notEqual(specs.h24.deadline, specs.d30.deadline);
+  });
+
+  it('caps the sample tolerance at one resolver cycle and at half the horizon', () => {
+    assert.equal(HORIZON_SAMPLE_TOLERANCE_MS, 24 * 60 * 60 * 1000);
+    assert.equal(horizonSampleToleranceMs('24h'), 12 * 60 * 60 * 1000);
+    assert.equal(horizonSampleToleranceMs('7d'), HORIZON_SAMPLE_TOLERANCE_MS);
+    assert.equal(horizonSampleToleranceMs('30d'), HORIZON_SAMPLE_TOLERANCE_MS);
+  });
+
+  it('an excluded origin is unscored as excluded_origin on every horizon', () => {
+    const specs = buildHorizonResolutionSpecs({ ...pointInTime(), generationOrigin: 'state_derived' }, {}, GENERATED_AT);
+    assert.deepEqual(reasons(specs), new Set(['unscored:excluded_origin']));
   });
 
   it('the horizon equal to the forecast\'s own horizon is unscored as parent_horizon', () => {

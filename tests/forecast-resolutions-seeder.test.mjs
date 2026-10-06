@@ -42,7 +42,7 @@ import {
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, HORIZON_SAMPLE_TOLERANCE_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -3180,7 +3180,7 @@ describe('projection horizon windows (#7075)', () => {
       window: 'at-deadline',
       sourceFeed: 'supply_chain:chokepoints:v4',
       deadline: generatedAt + HORIZON_MS[timeHorizon],
-      sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
+      sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
     };
   }
   // Mirrors the builder: the horizon equal to the parent's own horizon carries
@@ -3260,7 +3260,25 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(row.spec, contract(T0, 'h24', '24h'));
     assert.equal(row.deadline, T0 + DAY_MS);
     assert.equal(row.lastSeenAt, later);
-    assert.equal(ledger[`${PARENT}@d30`].probability, 0.3);
+    for (const [horizon, first] of [['h24', 0.1], ['d7', 0.2], ['d30', 0.3]]) {
+      assert.equal(ledger[`${PARENT}@${horizon}`].probability, first, `${horizon} keeps its first projection`);
+      assert.equal(ledger[`${PARENT}@${horizon}`].firstSeenProbability, first);
+    }
+  });
+
+  it('h24 never grades on the emission-time reading: the tolerance is capped at half the horizon', () => {
+    const key = `${PARENT}@h24`;
+    const deadline = T0 + DAY_MS;
+    assert.equal(horizonSampleToleranceMs('24h'), 12 * H);
+    const registered = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(61), T0);
+    assert.equal(registered.ledger[key].samples.recent[0].value, 61);
+
+    const missedRun = processResolutionCycle(registered.ledger, [], HORMUZ(40), deadline + 25 * H);
+    assert.equal(missedRun.ledger[key].outcome, 'UNOBSERVED', 'the only readings are 24h early and 25h late');
+
+    const onTime = processResolutionCycle(registered.ledger, [], HORMUZ(40), deadline + 8 * H);
+    assert.equal(onTime.ledger[key].outcome, 'NO', 'the 8h-late reading grades the window, not the 61 read at emission');
+    assert.equal(onTime.ledger[key].evidence.readTs, deadline + 8 * H);
   });
 
   it('horizon windows outlive the parent, finalize at their own deadlines, and never adopt the parent outcome', () => {
@@ -3316,7 +3334,7 @@ describe('projection horizon windows (#7075)', () => {
     ({ ledger } = processResolutionCycle(ledger, [], NO_FEED, deadline + 12 * H));
     assert.equal(ledger[key].status, 'pending', 'still inside the tolerance: a sample may yet arrive');
 
-    const lateRead = deadline + HORIZON_SAMPLE_TOLERANCE_MS + H;
+    const lateRead = deadline + horizonSampleToleranceMs('7d') + H;
     const { ledger: final, receipts } = processResolutionCycle(ledger, [], HORMUZ(61), lateRead);
     assert.equal(final[parentKey].outcome, 'YES', 'the parent window reads the late live feed');
     const row = final[key];
