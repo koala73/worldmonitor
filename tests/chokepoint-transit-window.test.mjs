@@ -41,6 +41,16 @@ test('durable read failure does not become an empty or local-only window', async
   await assert.rejects(readTransitWindow(new Map(), now, async () => ['invalid']), /transit window/i);
 });
 
+test('shifted duplicates cannot revive a crossing after its original expiry', async () => {
+  const evaluate = store();
+  await readTransitWindow(new Map([['Dover Strait', [crossing(now)]]]), now, evaluate);
+  const duplicate = new Map([['Dover Strait', [crossing(now + 29 * 60_000)]]]);
+  await readTransitWindow(duplicate, now + 29 * 60_000, evaluate);
+  for (const minutes of [0, 1, 28, 29, 30]) {
+    assert.equal((await readTransitWindow(duplicate, now + TRANSIT_WINDOW_MS + minutes * 60_000, evaluate)).size, 0);
+  }
+});
+
 test('a later crossing survives the cooldown and other waterways stay independent', async () => {
   const evaluate = store();
   const input = new Map([

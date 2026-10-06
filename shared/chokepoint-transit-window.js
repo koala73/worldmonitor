@@ -1,5 +1,6 @@
 export const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const COOLDOWN_MS = 30 * 60 * 1000;
+const RETENTION_MS = TRANSIT_WINDOW_MS + COOLDOWN_MS;
 const WINDOW_KEY = 'supply_chain:chokepoint-crossings:v1';
 
 // Merge observations atomically so retries and overlapping deployments cannot
@@ -23,11 +24,11 @@ export async function readTransitWindow(crossings, now, evaluate) {
   const batch = [];
   for (const [name, events] of crossings) {
     for (const { mmsi, type, ts } of events) {
-      if (ts > now - TRANSIT_WINDOW_MS && ts <= now) batch.push([name, mmsi, type, ts]);
+      if (ts > now - RETENTION_MS && ts <= now) batch.push([name, mmsi, type, ts]);
     }
   }
   const rows = await evaluate(MERGE_TRANSIT_WINDOW, [WINDOW_KEY], [
-    now, TRANSIT_WINDOW_MS, 25 * 60 * 60, JSON.stringify(batch),
+    now, RETENTION_MS, 25 * 60 * 60, JSON.stringify(batch),
   ]);
   if (!Array.isArray(rows)) throw new Error('Durable transit window unavailable');
   const result = new Map();
@@ -41,10 +42,13 @@ export async function readTransitWindow(crossings, now, evaluate) {
       throw new Error('Invalid durable transit window');
     }
     const [name, mmsi, type, ts] = event;
-    if (ts <= now - TRANSIT_WINDOW_MS || ts > now) continue;
+    if (ts <= now - RETENTION_MS || ts > now) continue;
     const key = `${name}:${mmsi}`;
     if (lastCrossing.has(key) && ts - lastCrossing.get(key) < COOLDOWN_MS) continue;
     lastCrossing.set(key, ts);
+    // Keep the expired original through the cooldown so a later duplicate
+    // cannot become countable when the original leaves the display window.
+    if (ts <= now - TRANSIT_WINDOW_MS) continue;
     if (!result.has(name)) result.set(name, []);
     result.get(name).push({ mmsi, type, ts });
   }
