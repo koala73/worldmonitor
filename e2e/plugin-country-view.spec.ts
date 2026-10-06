@@ -22,6 +22,10 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let rawMode: 'observed' | 'transient' | 'denied' | 'zero' = 'observed';
   let rawAdvisoryLevel = 'normal';
   let admissionFailure: string | undefined;
+  let delayRaw = false;
+  let releaseRaw: () => void = () => {};
+  const delayedRaw = new Promise<void>(resolve => { releaseRaw = resolve; });
+  let rawCompleted = 0;
   let rawRetrievedAt = '2026-10-05T12:00:00.000Z';
   let releaseOrder: () => void = () => {};
   let delayOrder = Boolean(rawScenario);
@@ -96,6 +100,8 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
         sources.advisories = validateRawSignal('advisories', { advisories: [{ title: 'Controlled advisory', link: 'https://example.com/advisory', source: 'US State Dept', sourceCountry: 'US', pubDate: '2026-10-01T12:00:00Z', level: rawAdvisoryLevel, country: 'US' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'normal'])) }, time) as typeof sources.advisories;
         sources.thermal = validateRawSignal('thermal', { clusters: [{ id: 'fixture-hot', countryCode: 'US', status: 'THERMAL_STATUS_SPIKE', firstDetectedAt: '2026-10-01T12:00:00Z', lastDetectedAt: '2026-10-01T14:00:00Z' }], fetchedAt: time, observationWindowHours: 24, sourceVersion: 'thermal-escalation-v1' }, time) as typeof sources.thermal;
       }
+      if (delayRaw) await delayedRaw;
+      rawCompleted++;
       return { structuredContent: assembleRawSignals(selectedCountry, sources, time) };
     }
     if (section === 'facts' && code === 'US' && delayUS) await delayed;
@@ -192,7 +198,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('static country tiers match the website without adding host data readers', async ({ page }, info) => {
@@ -366,6 +372,33 @@ for (const denied of [true, false]) test(`admission failure ${denied ? 'clears d
   await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-desktop.png`) });
   await page.setViewportSize({ width: 390, height: 844 });
   await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-mobile.png`) });
+});
+
+test('AI admission denial clears raw Signals and cancels late raw republishing', async ({ page }, info) => {
+  const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first');
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  host.releaseOrder();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
+  await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBe(1);
+  host.delayRaw();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect.poll(() => host.calls.filter(call => call.arguments.section === 'signalsRaw').length).toBe(2);
+  host.admissionFail('Controlled entitlement forbidden');
+  await frame.getByRole('button', { name: 'New AI assessment', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBeNull();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
+  expect(host.contexts.at(-1)?.signals?.isTier1).toBe(true);
+  await expect.poll(() => host.cancelled.filter(name => name === 'get_country_brief_section').length).toBeGreaterThan(0);
+  host.releaseRaw();
+  await expect.poll(() => host.rawCompleted).toBe(2);
+  const signals = frame.locator('[data-brief-section=signals]');
+  await expect(signals).toContainText('Earthquakes unavailable');
+  await expect(signals).not.toContainText('USGS and Natural Resources Canada');
+  expect(host.contexts.at(-1)?.signals?.earthquakes).toBeNull();
+  await signals.screenshot({ path: info.outputPath('ai-admission-denied-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signals.screenshot({ path: info.outputPath('ai-admission-denied-mobile.png') });
 });
 
 test.describe('localized normal travel advice', () => {

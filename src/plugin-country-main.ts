@@ -111,12 +111,16 @@ async function mountPlugin(): Promise<void> {
   function getAssessment(code: string, signal: AbortSignal, force = false) {
     const cached = assessments.get(code);
     if (cached && !force && Date.now() - (assessmentTimes.get(code) ?? 0) < 300_000) return cached;
+    const assessmentRevision = revision;
     const admissionReady = force ? call('open_country_brief', { country_code: code, refresh: true, request_id: crypto.randomUUID() }, signal).then(raw => {
       const receipt = (raw as { panelRequest?: unknown }).panelRequest;
       if (receipt === undefined) return;
       const next = panelAdmissionSchema.parse(receipt);
       if (next.countryCode !== code || panel.getCode() !== code || signal.aborted) throw new Error('Assessment country changed.');
       admission = next; admissions.set(code, next); showUsage();
+    }).catch(error => {
+      if (error instanceof CountrySectionError && error.state === 'locked') clearDeniedRawSignals(code, signal, assessmentRevision);
+      throw error;
     }) : Promise.resolve();
     const pendingAssessment = admissionReady.then(() => call('get_country_brief', { country_code: code }, signal)).then(raw => {
       const result = assessmentSchema.parse(raw);
@@ -167,6 +171,22 @@ async function mountPlugin(): Promise<void> {
     usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last country request. Resets ${reset}. This country load uses 1 request; its sections and topic tabs are included. Refresh uses 1 new request.`;
   }
 
+  function clearDeniedRawSignals(code: string, signal: AbortSignal, expectedRevision: number): void {
+    if (signal.aborted || expectedRevision !== revision || panel.getCode() !== code || signalSlots?.countryCode !== code) return;
+    openRequest?.abort();
+    signalSlots.raw = null;
+    signalCoverage = null;
+    source.clearLoadedData();
+    admissions.delete(code);
+    admission = undefined;
+    hydratedAt = 0;
+    showUsage();
+    const composed = composeCountrySignals(signalSlots.base, code, panel.getName() ?? code, signalSlots.military, signalSlots.militaryNotes, null,
+      hasCountryGeometry(code), (lat, lon) => isCoordinateInCountry(lat, lon, code) === true);
+    panel.updateSignals(composed.signals, composed.notes);
+    scheduleContext();
+  }
+
   async function open(raw: unknown, refresh = false, receipt?: unknown, fromHost = false): Promise<object> {
     if (!ready) { queuedView = { raw, receipt, fromHost }; return { state: 'connecting' }; }
     const argumentsInput = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'jmespath')) : raw;
@@ -194,18 +214,7 @@ async function mountPlugin(): Promise<void> {
     if (!fromHost && (refresh || !nextAdmission)) {
       status.textContent = `Opening ${name} country brief…`;
       const result = await call('open_country_brief', { country_code: code, topic: view.topic, refresh, ...(refresh ? { request_id: view.request_id ?? crypto.randomUUID() } : {}) }, admissionSignal).catch(error => {
-        if (error instanceof CountrySectionError && error.state === 'locked' && !admissionSignal.aborted && openedRevision === revision && panel.getCode() === code && signalSlots?.countryCode === code) {
-          signalSlots.raw = null;
-          signalCoverage = null;
-          source.clearLoadedData();
-          admissions.delete(code);
-          admission = undefined;
-          showUsage();
-          const composed = composeCountrySignals(signalSlots.base, code, name, signalSlots.military, signalSlots.militaryNotes, null,
-            hasCountryGeometry(code), (lat, lon) => isCoordinateInCountry(lat, lon, code) === true);
-          panel.updateSignals(composed.signals, composed.notes);
-          scheduleContext();
-        }
+        if (error instanceof CountrySectionError && error.state === 'locked') clearDeniedRawSignals(code, admissionSignal, openedRevision);
         throw error;
       }) as { panelRequest?: unknown };
       if (result.panelRequest !== undefined) nextAdmission = panelAdmissionSchema.parse(result.panelRequest);
