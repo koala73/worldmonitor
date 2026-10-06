@@ -118,6 +118,21 @@ const RENDER = `
         publisherText += " Unlisted publisher count unavailable.";
       }
       row.appendChild(el("div", "story-src", publisherText));
+      var reliability = s.credibilityScore;
+      var reliabilityText = typeof reliability === "number" && Number.isFinite(reliability) && reliability >= 0 && reliability <= 100
+        ? "Source reliability: " + reliability + "/100." : "Source reliability unavailable.";
+      var sourceTier = s.sourceTier;
+      var sourceTierText = Number.isInteger(sourceTier) && sourceTier >= 1 && sourceTier <= 4
+        ? "Declared source tier: " + sourceTier + "." : "Declared source tier unavailable.";
+      row.appendChild(el("div", "story-src", reliabilityText + " " + sourceTierText));
+      var corroboration = s.corroboration && typeof s.corroboration === "object" ? s.corroboration : {};
+      var coverageState = corroboration.state;
+      var coverageText = ["unknown", "single-publisher", "tier4-only", "corroborated"].indexOf(coverageState) >= 0
+        ? "Corroboration coverage: " + coverageState + "." : "Corroboration coverage unavailable.";
+      var publisherCount = corroboration.publishers;
+      coverageText += Number.isInteger(publisherCount) && publisherCount >= 0
+        ? " Reported publishers: " + publisherCount + "." : " Reported publisher count unavailable.";
+      row.appendChild(el("div", "story-src", coverageText + " Coverage does not establish accuracy."));
       host.appendChild(row);
     }
     var shown = host.childNodes.length;
@@ -139,6 +154,15 @@ const RENDER = `
           (knownTotal ? (total > stories.length ? " Full list is not loaded." : " Sample contains all reported stories.")
             : " Full list coverage is unavailable."));
       }
+    }
+    if (storyState.available) {
+      var selectionDrops = ins && ins.provenance && ins.provenance.selectionDrops;
+      var dropParts = [];
+      for (var dropField of [["admissibility", "admissibility"], ["sourceCap", "source cap"], ["overflow", "overflow"]]) {
+        var dropped = selectionDrops && typeof selectionDrops === "object" && !Array.isArray(selectionDrops) ? selectionDrops[dropField[0]] : undefined;
+        dropParts.push(dropField[1] + " " + (Number.isInteger(dropped) && dropped >= 0 ? dropped : "unavailable"));
+      }
+      footParts.push("Selection exclusions: " + dropParts.join("; ") + ".");
     }
     if (ins && ins.status === "degraded") footParts.push("Source reports degraded news intelligence.");
     if (envelope.cached_at) footParts.push("Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : ""));

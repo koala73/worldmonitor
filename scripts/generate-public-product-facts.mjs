@@ -356,7 +356,7 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     `get_natural_disasters → ${disasterFilename}`,
   ).replace(
     /get_news_intelligence → news-intelligence(?:-v\d+)?\.html/,
-    'get_news_intelligence → news-intelligence-v2.html',
+    'get_news_intelligence → news-intelligence-v3.html',
   ).replace(
     /get_conflict_events → conflict-events(?:-v\d+)?\.html/,
     'get_conflict_events → conflict-events-v2.html',

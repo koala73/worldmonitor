@@ -750,7 +750,7 @@
         "ui://worldmonitor/country-brief-v3.html",
         "ui://worldmonitor/market-radar-v3.html",
         "ui://worldmonitor/chokepoint-monitor-v2.html",
-        "ui://worldmonitor/news-intelligence-v2.html",
+        "ui://worldmonitor/news-intelligence-v3.html",
         "ui://worldmonitor/conflict-events-v2.html",
         "ui://worldmonitor/natural-disasters-v2.html",
         "ui://worldmonitor/prediction-markets-v3.html",
@@ -758,7 +758,7 @@
         "ui://worldmonitor/news-dashboard-v3.html",
         "ui://worldmonitor/country-view-v3.html"
       ],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk-v3.html, get_world_brief → world-brief-v2.html, get_country_brief → country-brief-v3.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor-v2.html, get_news_intelligence → news-intelligence-v2.html, get_conflict_events → conflict-events-v2.html, get_natural_disasters → natural-disasters-v2.html, get_prediction_markets → prediction-markets-v3.html, get_forecast_predictions → forecasts-v3.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk-v3.html, get_world_brief → world-brief-v2.html, get_country_brief → country-brief-v3.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor-v2.html, get_news_intelligence → news-intelligence-v3.html, get_conflict_events → conflict-events-v2.html, get_natural_disasters → natural-disasters-v2.html, get_prediction_markets → prediction-markets-v3.html, get_forecast_predictions → forecasts-v3.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {
