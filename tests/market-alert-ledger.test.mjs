@@ -53,8 +53,10 @@ function predictionSignal(pred, shift) {
   };
 }
 
-function ingest(ledger, signals, nowMs = NOW, previousMarketChanges = { 'CL=F': 1.0, 'ZW=F': 1.0 }) {
-  return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], previousMarketChanges });
+const QUIET_BASELINE = { marketChanges: { 'CL=F': 1.0, 'ZW=F': 1.0 }, emitted: [] };
+
+function ingest(ledger, signals, nowMs = NOW, baseline = QUIET_BASELINE) {
+  return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], baseline });
 }
 
 function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR) {
@@ -105,7 +107,7 @@ describe('ingestSignals', () => {
   it('a prediction whose question has no topic keyword opens no row', () => {
     const rain = { title: 'Will it rain in London on Friday?', yesPrice: 50, volume: 10, url: 'https://polymarket.com/event/rain' };
     const { ledger, created, gated } = ingestSignals({}, [predictionSignal(rain, 8)], {
-      nowMs: NOW, runtimeMode: 'legacy', markets: [], predictions: [rain], previousMarketChanges: {},
+      nowMs: NOW, runtimeMode: 'legacy', markets: [], predictions: [rain], baseline: { marketChanges: {}, emitted: [] },
     });
     assert.deepEqual(ledger, {});
     assert.equal(created, 0);
@@ -137,24 +139,45 @@ describe('ingestSignals', () => {
     assert.equal(Object.keys(ledger).length, 2);
   });
 
-  it('a fresh crossing opens a row and a still-elevated change does not', () => {
+  it('a market signal opens a row only when it was not emitted on the previous tick', () => {
     const crude = [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE)];
-    const elevated = ingest({}, crude, NOW, { 'CL=F': 3.0 });
-    assert.deepEqual({ ledger: elevated.ledger, created: elevated.created, held: elevated.held }, { ledger: {}, created: 0, held: 2 });
+    const fresh = ingest({}, crude, NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: [] });
+    assert.deepEqual({ created: fresh.created, held: fresh.held }, { created: 2, held: 0 });
 
-    const crossed = ingest({}, crude, NOW, { 'CL=F': 1.0 });
-    assert.deepEqual({ created: crossed.created, held: crossed.held }, { created: 2, held: 0 });
+    const partlyEmitted = ingest({}, crude, NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
+    assert.deepEqual(Object.values(partlyEmitted.ledger).map((entry) => entry.type), ['flow_price_divergence']);
+    assert.deepEqual({ created: partlyEmitted.created, held: partlyEmitted.held }, { created: 1, held: 1 });
 
-    const unseen = ingest({}, crude, NOW, { 'ZW=F': 3.0 });
-    assert.deepEqual({ ledger: unseen.ledger, created: unseen.created, held: unseen.held }, { ledger: {}, created: 0, held: 2 }, 'a symbol absent from the previous snapshot is held');
+    const unseen = ingest({}, crude, NOW, { marketChanges: { 'ZW=F': 3.0 }, emitted: [] });
+    assert.deepEqual({ ledger: unseen.ledger, created: unseen.created, held: unseen.held }, { ledger: {}, created: 0, held: 2 }, 'a symbol absent from the previous marketChanges is held');
+  });
 
-    const betweenThresholds = ingest({}, crude, NOW, { 'CL=F': 1.8 });
-    assert.deepEqual(Object.values(betweenThresholds.ledger).map((entry) => entry.type), ['silent_divergence']);
-    assert.equal(betweenThresholds.held, 1);
+  it('silent on one tick then explained on the next opens the explained row', () => {
+    const silentTick = ingest({}, [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE)], NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: [] });
+    assert.deepEqual(silentTick.emitted, ['flow_price_divergence:CL=F', 'silent_divergence:CL=F']);
+    const explainedTick = ingest(silentTick.ledger, [marketSignal('explained_market_move', CRUDE)], NOW + 5 * 60 * 1000, { marketChanges: { 'CL=F': 3.1 }, emitted: silentTick.emitted });
+    assert.deepEqual({ created: explainedTick.created, held: explainedTick.held }, { created: 1, held: 0 });
+    assert.deepEqual(Object.values(explainedTick.ledger).map((entry) => entry.type).sort(), ['explained_market_move', 'flow_price_divergence', 'silent_divergence']);
+    assert.deepEqual(explainedTick.emitted, ['explained_market_move:CL=F']);
+  });
 
-    const fell = ingest({}, crude, NOW, { 'CL=F': -3.0 });
-    assert.deepEqual(Object.values(fell.ledger).map((entry) => entry.type), ['flow_price_divergence']);
-    assert.equal(fell.held, 1);
+  it('a signal under the confidence gate on one tick is new on the next', () => {
+    const gatedTick = ingest({}, [marketSignal('silent_divergence', CRUDE, { confidence: 0.59 })], NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: [] });
+    assert.deepEqual({ gated: gatedTick.gated, emitted: gatedTick.emitted }, { gated: 1, emitted: [] });
+    const passingTick = ingest(gatedTick.ledger, [marketSignal('silent_divergence', CRUDE)], NOW + 5 * 60 * 1000, { marketChanges: { 'CL=F': 3.1 }, emitted: gatedTick.emitted });
+    assert.deepEqual({ created: passingTick.created, held: passingTick.held }, { created: 1, held: 0 });
+  });
+
+  it('reports the sorted market ids that passed the type and confidence gate, never predictions', () => {
+    const signals = [
+      marketSignal('silent_divergence', WHEAT),
+      marketSignal('flow_price_divergence', CRUDE),
+      marketSignal('silent_divergence', CRUDE, { confidence: 0.59 }),
+      marketSignal('flow_drop', CRUDE),
+      predictionSignal(RATE_CUT, -10),
+    ];
+    const { emitted } = ingest({}, signals, NOW, null);
+    assert.deepEqual(emitted, ['flow_price_divergence:CL=F', 'silent_divergence:ZW=F']);
   });
 
   it('no baseline holds every market signal', () => {
@@ -165,19 +188,19 @@ describe('ingestSignals', () => {
     assert.equal(held, 3);
   });
 
-  it('re-emission inside an open window still counts a sample when the change stayed elevated', () => {
+  it('re-emission inside an open window still counts a sample when the alert was emitted on the previous tick', () => {
     const first = ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger;
-    const { ledger, created, updated, held } = ingest(first, [marketSignal('silent_divergence', CRUDE)], NOW + 5 * 60 * 1000, { 'CL=F': 3.1 });
+    const { ledger, created, updated, held } = ingest(first, [marketSignal('silent_divergence', CRUDE)], NOW + 5 * 60 * 1000, { marketChanges: { 'CL=F': 3.1 }, emitted: ['silent_divergence:CL=F'] });
     assert.deepEqual({ created, updated, held }, { created: 0, updated: 1, held: 0 });
     const entries = Object.values(ledger);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].samples, 1);
   });
 
-  it('a closed window does not reopen while the change stays elevated', async () => {
+  it('a closed window does not reopen while the alert keeps re-emitting', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
-    const { ledger, created, held } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { 'CL=F': 3.0 });
+    const { ledger, created, held } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
     assert.deepEqual({ created, held }, { created: 0, held: 1 });
     assert.deepEqual(Object.values(ledger).map((entry) => entry.status), ['resolved']);
   });

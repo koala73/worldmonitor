@@ -61,12 +61,12 @@ const PREDICTION_MAX_AGE_MS = 90 * MIN_MS;
 // Two polls of the predictions seeder's live Railway cron (`*/10 * * * *`) plus jitter.
 export const PREDICTION_POLL_GAP_MAX_MS = 25 * MIN_MS;
 const DIGEST_MAX_AGE_MS = 60 * MIN_MS;
-// Three ticks: an older snapshot cannot say whether a move crossed the
-// threshold since the previous tick or drifted there over an outage.
+// Three ticks: an older snapshot cannot say whether an alert was absent on
+// the previous tick or lost over an outage.
 const SNAPSHOT_MAX_AGE_MS = 15 * MIN_MS;
 // Scorecard outlives the 30-minute health gate by days; the snapshot is only
-// the previous tick's prediction prices and market changes and is rewritten
-// every emitting tick.
+// the previous tick's prediction poll, market changes and emitted alert ids
+// and is rewritten every emitting tick.
 const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 const SNAPSHOT_TTL_SECONDS = 24 * 60 * 60;
 export const MAX_ARCHIVE_HASHES = 20_000;
@@ -178,13 +178,14 @@ function parseLedger(value) {
 
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
-  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges)) return null;
+  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted)) return null;
   if (data.predictionsFetchedAt !== null && typeof data.predictionsFetchedAt !== 'number') return null;
   return {
     timestamp: Number(data.timestamp),
     predictionChanges: data.predictionChanges,
     predictionsFetchedAt: data.predictionsFetchedAt,
     marketChanges: data.marketChanges,
+    emitted: data.emitted,
   };
 }
 
@@ -221,15 +222,15 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const markets = mapMarkets([stocks?.data, commodities?.data, crypto?.data]);
   const predictions = predictionsPayload ? mapPredictions(predictionsPayload.data) : [];
   const items = digest ? digestNewsItems(digest.data) : [];
-  const observed = () => ({
+  const observed = (emitted) => ({
     timestamp: nowMs,
     predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
     predictionsFetchedAt,
     marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
+    emitted,
   });
 
   let signals = [];
-  let snapshot = previousSnapshot;
   if (digest) {
     const news = buildNewsContext(items);
     signals = detectMarketAlerts({
@@ -242,12 +243,9 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
       isRecentDuplicate: () => false,
       markSignalSeen: () => {},
     });
-    snapshot = observed();
   }
 
-  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, {
-    nowMs, runtimeMode, markets, predictions, previousMarketChanges: baseline ? baseline.marketChanges : null,
-  });
+  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline });
   const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive });
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
@@ -256,7 +254,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   return {
     ledger,
     scorecard: buildScorecard(ledger, nowMs),
-    snapshot: snapshot ?? observed(),
+    snapshot: digest || !previousSnapshot ? observed(ingested.emitted) : previousSnapshot,
     summary: {
       inputs: {
         stocks: stocks?.data.quotes?.length ?? 0,

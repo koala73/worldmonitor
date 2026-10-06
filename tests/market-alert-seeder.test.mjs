@@ -34,10 +34,18 @@ const LIVE_SNAPSHOT = {
   predictionChanges: { [FED_CUT_KEY]: 40 },
   predictionsFetchedAt: PREDICTIONS_FETCHED_AT - 10 * MIN,
   marketChanges: { 'CL=F': 0.4 },
+  emitted: [],
 };
 const OBSERVED_PREDICTIONS = { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 };
 const OBSERVED_MARKETS = { '^GSPC': 0.2, 'CL=F': 3.1, BTC: 0.5 };
-const OBSERVED_SNAPSHOT = { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, predictionsFetchedAt: PREDICTIONS_FETCHED_AT, marketChanges: OBSERVED_MARKETS };
+const CRUDE_ALERTS = ['flow_price_divergence:CL=F', 'silent_divergence:CL=F'];
+const OBSERVED_SNAPSHOT = {
+  timestamp: NOW,
+  predictionChanges: OBSERVED_PREDICTIONS,
+  predictionsFetchedAt: PREDICTIONS_FETCHED_AT,
+  marketChanges: OBSERVED_MARKETS,
+  emitted: CRUDE_ALERTS,
+};
 
 function envelope(data, fetchedAt = PREDICTIONS_FETCHED_AT) {
   return { _seed: { fetchedAt, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 1, state: 'OK' }, data };
@@ -172,13 +180,23 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
   });
 
-  it('a snapshot in the pre-#8951 shape, without predictionsFetchedAt, is no baseline', async () => {
-    const { predictionsFetchedAt, ...merged } = LIVE_SNAPSHOT;
-    assert.equal(typeof predictionsFetchedAt, 'number');
-    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(merged) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
-    assert.deepEqual(tick.ledger, {});
-    assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
-    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+  it('a snapshot missing a field added by #8951 is no baseline', async () => {
+    for (const missing of ['predictionsFetchedAt', 'emitted']) {
+      const partial = { ...LIVE_SNAPSHOT };
+      delete partial[missing];
+      const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(partial) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+      assert.deepEqual(tick.ledger, {}, `without ${missing}`);
+      assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
+      assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+    }
+  });
+
+  it('a market alert emitted on the previous tick is held, and the snapshot still records it', async () => {
+    const alerted = envelope({ ...LIVE_SNAPSHOT, marketChanges: { 'CL=F': 3.0 }, emitted: CRUDE_ALERTS });
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: alerted }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(Object.values(tick.ledger).map((entry) => entry.id), [`prediction_leads_news:${FED_CUT_KEY}`]);
+    assert.equal(tick.summary.emitted.held, 2);
+    assert.deepEqual(tick.snapshot.emitted, CRUDE_ALERTS);
   });
 
   it('a 5-minute-old snapshot is a live baseline', async () => {
@@ -193,7 +211,7 @@ describe('buildTick runs the shared detectors under Node', () => {
   it('a first tick without a digest records the observed prices as the baseline', async () => {
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.ledger, {});
-    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+    assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, emitted: [] });
   });
 
   it('discards a market payload whose fetchedAt is 45 minutes old', async () => {
