@@ -24,7 +24,6 @@ import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-score
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
-import { GROQ_DEFAULT_MODEL } from './_llm-model-timeouts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 import {
   FORECAST_EVIDENCE_KEY,
@@ -807,6 +806,12 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Judge B must come from a different model family than judge A so dual-model
+// agreement is two independent reads. It was Groq until every Groq judge call
+// returned an empty body from 2026-08-29 (175/175 attempts), which stalled the
+// whole judged lane; no judged forecast resolved after 2026-08-23.
+const JUDGE_B_DEFAULT_MODEL = 'openai/gpt-6-luna';
+
 function createLiveJudgeModels(options = {}) {
   const stageBudgetMs = envPositiveInt('FORECAST_RESOLUTION_JUDGE_STAGE_BUDGET_MS', 35_000);
   const common = {
@@ -829,10 +834,10 @@ function createLiveJudgeModels(options = {}) {
     }),
     (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
       ...common,
-      stage: 'forecast_resolution_judge_groq',
-      providerOrder: ['groq'],
+      stage: 'forecast_resolution_judge_openrouter_b',
+      providerOrder: ['openrouter'],
       modelOverrides: {
-        groq: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_GROQ || GROQ_DEFAULT_MODEL,
+        openrouter: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B || JUDGE_B_DEFAULT_MODEL,
       },
     }),
   ];

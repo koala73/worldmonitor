@@ -29,6 +29,7 @@ import {
   pruneArchivedTerminalEntries,
   readDigestAccumulatorArchive,
   reportJudgedLaneObservability,
+  resolveJudgedEntry,
   resolvePendingJudgedEntries,
   summarizeJudgedAttemptClasses,
   judgedArchiveHorizonMs,
@@ -37,6 +38,7 @@ import {
   selectJudgedArchiveItems,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { __setForecastLlmCallOverrideForTests } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -2596,5 +2598,43 @@ describe('terminal receipt attempt history (#7068)', () => {
       row.evidence.attemptLog.map((record) => record.class),
       ['archive_unavailable', 'archive_unavailable', 'archive_unavailable'],
     );
+  });
+});
+
+describe('live judge panel', () => {
+  afterEach(() => __setForecastLlmCallOverrideForTests(null));
+
+  it('runs both judges on OpenRouter with two different model families and never calls Groq', async () => {
+    const deadline = T0 + DAY_MS;
+    const entry = {
+      id: 'fc-live-panel',
+      key: `fc-live-panel@${deadline}`,
+      title: 'Escalation risk: Freedonia',
+      domain: 'conflict',
+      region: 'Freedonia',
+      deadline,
+      spec: { kind: 'judged', deadline, question: 'Did Freedonia escalate before the deadline?' },
+    };
+    const archive = {
+      available: true,
+      coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: deadline + DAY_MS,
+      items: [{ id: 'N1', title: 'Freedonia border clash', description: 'Troops clashed at the Freedonia border.', source: 'wire.example', publishedAt: deadline - DAY_MS }],
+    };
+    const calls = [];
+    __setForecastLlmCallOverrideForTests(async (_system, _user, options = {}) => {
+      calls.push({ providerOrder: options.providerOrder, modelOverrides: options.modelOverrides });
+      return null;
+    });
+
+    await resolveJudgedEntry(entry, archive, deadline + DAY_MS, {});
+
+    assert.equal(calls.length, 2, 'two judges are called');
+    for (const call of calls) assert.deepEqual(call.providerOrder, ['openrouter']);
+    const models = calls.map((call) => call.modelOverrides?.openrouter);
+    assert.equal(new Set(models).size, 2, `judges must be different models: ${models.join(', ')}`);
+    const families = models.map((model) => String(model).split('/')[0]);
+    assert.equal(new Set(families).size, 2, `judges must be different model families: ${models.join(', ')}`);
+    assert.ok(!calls.some((call) => JSON.stringify(call).includes('groq')), 'no judge routes through Groq');
   });
 });
