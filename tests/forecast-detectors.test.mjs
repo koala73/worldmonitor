@@ -587,10 +587,9 @@ describe('market anchor event-class equivalence (#7071)', () => {
     assert.equal(pred.probability, +(0.4 * 0.4 + 0.6 * 0.35).toFixed(3));
   });
 
-  it('anchors a cyber forecast to a same-country cyberattack market', () => {
-    const marketTitle = 'Will Russia carry out a major cyberattack on a NATO member in 2026?';
-    const pred = anchorFor('cyber', 'Russia', 'Cyber threat concentration: Russia', marketTitle, { yesPrice: 30 });
-    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  it('does not anchor a cyber threat-count forecast to a cyberattack event market', () => {
+    const pred = anchorFor('cyber', 'Russia', 'Cyber threat concentration: Russia', 'Will Russia carry out a major cyberattack on a NATO member in 2026?', { yesPrice: 30 });
+    assert.equal(pred.calibration, null);
   });
 
   it('anchors a political instability forecast to a resignation market', () => {
@@ -605,10 +604,15 @@ describe('market anchor event-class equivalence (#7071)', () => {
     assert.equal(pred.calibration?.marketTitle, marketTitle);
   });
 
-  it('does not anchor a disruption forecast to a return-to-normal market', () => {
-    const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', 'Strait of Hormuz traffic returns to normal by December 31?', { yesPrice: 20 });
-    assert.equal(pred.calibration, null);
-  });
+  for (const marketTitle of [
+    'Strait of Hormuz traffic returns to normal by December 31?',
+    'Will the Strait of Hormuz remain open through October?',
+  ]) {
+    it(`does not anchor a disruption forecast to "${marketTitle}"`, () => {
+      const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+    });
+  }
 
   it('does not anchor through an entity-graph neighbour or a shared macro-region tag', () => {
     const neighbour = anchorFor('conflict', 'Syria', 'Escalation risk: Syria', 'Will the U.S. invade Iran before 2027?', { yesPrice: 20 });
@@ -617,10 +621,12 @@ describe('market anchor event-class equivalence (#7071)', () => {
     assert.equal(macroTag.calibration, null);
   });
 
-  it('does not treat a trade war as an armed escalation market', () => {
-    const pred = anchorFor('conflict', 'China', 'Escalation risk: China', 'Will the US-China trade war escalate in 2026?', { yesPrice: 40 });
-    assert.equal(pred.calibration, null);
-  });
+  for (const marketTitle of ['Will the US-China trade war escalate in 2026?', 'Will the China trade-war escalate by October 20?']) {
+    it(`does not treat "${marketTitle}" as an armed escalation market`, () => {
+      const pred = anchorFor('conflict', 'China', 'Escalation risk: China', marketTitle, { yesPrice: 40 });
+      assert.equal(pred.calibration, null);
+    });
+  }
 
   it('does not anchor political instability to a ceasefire collapse market', () => {
     const pred = anchorFor('political', 'Iran', 'Political instability: Iran', 'Will the Israel-Iran ceasefire collapse by December 31?', { yesPrice: 30 });

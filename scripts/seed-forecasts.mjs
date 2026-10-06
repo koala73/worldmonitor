@@ -2183,6 +2183,7 @@ const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
   'withdrawal', 'reopen', 'reopened', 'restored', 'resolution', 'resolved',
   'return to normal', 'returns to normal', 'back to normal',
+  'remain open', 'remains open', 'stay open', 'stays open',
 ];
 const MARKET_ADVERSE_OUTCOME_TERMS = [
   'attack', 'strike', 'war', 'conflict', 'offensive', 'unrest',
@@ -2218,7 +2219,7 @@ const MARKET_ADVERSE_CONDITION_END_PATTERNS = [
 ];
 
 const marketEventTerms = (alternation) => new RegExp(String.raw`(?:^|[^a-z0-9])(?:${alternation})(?:[^a-z0-9]|$)`);
-const ARMED_WAR_PATTERN = String.raw`(?<!trade |tariff |price |culture )wars?`;
+const ARMED_WAR_PATTERN = String.raw`(?<!trade[ -]|tariff[ -]|price[ -]|culture[ -])wars?`;
 const ARMED_ESCALATION_EVENT_PATTERNS = [
   marketEventTerms(String.raw`${ARMED_WAR_PATTERN}|(?:air ?)?strikes?|attack(?:s|ed)?|invade[sd]?|invasion|offensive|clash(?:es)?|bomb(?:s|ed|ing)?|military (?:action|operation|intervention|conflict)|ground (?:operation|incursion)|incursion`),
   new RegExp(String.raw`\b(?:conflict|${ARMED_WAR_PATTERN}|fighting|hostilities)\b.{0,30}\bescalat`),
@@ -2235,14 +2236,12 @@ const MARKET_PRICE_EVENT_PATTERNS = [
 // A market anchors a forecast only when it resolves on the same event class
 // (#7071). Region overlap alone let invasion, leadership, and territory markets
 // calibrate cyber and posture forecasts. A domain or title family with no entry
-// gets no anchor. `adverse` serves forecasts whose YES outcome is escalation,
+// gets no anchor. Cyber has none: its forecasts resolve on a threat count, and
+// no market prices a count. `adverse` serves forecasts whose YES outcome is escalation,
 // `deescalatory` serves ceasefire-style forecasts; a missing slot means no anchor.
 const MARKET_ANCHOR_EVENT_CLASSES = {
   conflict: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
   military: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
-  cyber: {
-    adverse: [marketEventTerms(String.raw`cyber|cyber[- ]?attacks?|cyber[- ]?war(?:fare)?|hack(?:s|ed|ing|ers?)?|ransomware|malware|ddos|data breach(?:es)?`)],
-  },
   // Leadership-identity questions ("next prime minister", "become president
   // before 2045") are not instability outcomes, so bare office titles do not count.
   political: {
