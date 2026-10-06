@@ -186,7 +186,7 @@ function parsePreviousArchive(value) {
 
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
-  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted)) return null;
+  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted) || !isPlainObject(data.activity)) return null;
   if (data.predictionsFetchedAt !== null && typeof data.predictionsFetchedAt !== 'number') return null;
   return {
     timestamp: Number(data.timestamp),
@@ -194,6 +194,7 @@ function parseSnapshot(value) {
     predictionsFetchedAt: data.predictionsFetchedAt,
     marketChanges: data.marketChanges,
     emitted: data.emitted,
+    activity: data.activity,
   };
 }
 
@@ -230,12 +231,13 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const markets = mapMarkets([stocks?.data, commodities?.data, crypto?.data]);
   const predictions = predictionsPayload ? mapPredictions(predictionsPayload.data) : [];
   const items = digest ? digestNewsItems(digest.data) : [];
-  const observed = (emitted) => ({
+  const observed = (emitted, activity) => ({
     timestamp: nowMs,
     predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
     predictionsFetchedAt,
     marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
     emitted,
+    activity,
   });
 
   let signals = [];
@@ -254,7 +256,10 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   }
 
   const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline });
-  const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive });
+  // The baseline's runs, not this tick's: ingest prunes against nowMs, and a
+  // control window for a row whose deadline passed this tick starts up to one
+  // tick before that cutoff.
+  const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive, activity: baseline?.activity ?? {} });
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
   for (const signal of signals) byType[signal.type] = (byType[signal.type] ?? 0) + 1;
@@ -263,7 +268,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   return {
     ledger,
     scorecard: buildScorecard(ledger, nowMs, { archive: archiveStatus }),
-    snapshot: digest ? observed(ingested.emitted) : (previousSnapshot ?? observed(null)),
+    snapshot: digest ? observed(ingested.emitted, ingested.activity) : (previousSnapshot ?? observed(null, {})),
     summary: {
       inputs: {
         stocks: stocks?.data.quotes?.length ?? 0,

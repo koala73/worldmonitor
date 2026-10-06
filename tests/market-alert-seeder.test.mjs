@@ -36,6 +36,7 @@ const LIVE_SNAPSHOT = {
   predictionsFetchedAt: PREDICTIONS_FETCHED_AT - 10 * MIN,
   marketChanges: { 'CL=F': 0.4 },
   emitted: [],
+  activity: {},
 };
 const OBSERVED_PREDICTIONS = { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 };
 const OBSERVED_MARKETS = { '^GSPC': 0.2, 'CL=F': 3.1, BTC: 0.5 };
@@ -46,6 +47,7 @@ const OBSERVED_SNAPSHOT = {
   predictionsFetchedAt: PREDICTIONS_FETCHED_AT,
   marketChanges: OBSERVED_MARKETS,
   emitted: CRUDE_ALERTS,
+  activity: {},
 };
 
 function envelope(data, fetchedAt = PREDICTIONS_FETCHED_AT) {
@@ -184,7 +186,7 @@ describe('buildTick runs the shared detectors under Node', () => {
   });
 
   it('a snapshot missing a field added by #8951 is no baseline', async () => {
-    for (const missing of ['predictionsFetchedAt', 'emitted']) {
+    for (const missing of ['predictionsFetchedAt', 'emitted', 'activity']) {
       const partial = { ...LIVE_SNAPSHOT };
       delete partial[missing];
       const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(partial) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
@@ -219,6 +221,32 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(byType(next.ledger, 'silent_divergence').length, 0, 'a tick that never ran the detector cannot vouch that the move was new');
     assert.equal(next.summary.emitted.held, next.summary.emitted.total);
     assert.deepEqual(next.snapshot.emitted, CRUDE_ALERTS);
+  });
+
+  it('a move already elevated at cold start is held with no row, and the hold is recorded as activity', async () => {
+    const cold = await buildTick(rawInputs({ [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(cold.ledger, {});
+    assert.deepEqual(cold.snapshot, OBSERVED_SNAPSHOT);
+    const held = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(cold.snapshot) }), { nowMs: NOW + 5 * MIN, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(held.ledger, {});
+    assert.equal(held.summary.emitted.held, 2);
+    assert.deepEqual(held.snapshot.activity, { 'CL=F': { since: NOW + 5 * MIN, until: NOW + 5 * MIN } });
+    const still = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(held.snapshot) }), { nowMs: NOW + 10 * MIN, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(still.snapshot.activity, { 'CL=F': { since: NOW + 5 * MIN, until: NOW + 10 * MIN } }, 'the run survives the snapshot round trip');
+  });
+
+  it('a control window overlapped by recorded activity is skipped when the row resolves', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
+    const pending = pendingCrude(emittedAt);
+    const [key] = Object.keys(pending);
+    const snapshot = { ...LIVE_SNAPSHOT, activity: { 'CL=F': { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR } } };
+    const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
+    const tick = await buildTick(
+      rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: envelope(snapshot), [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }),
+      { nowMs: NOW, archive },
+    );
+    assert.deepEqual(tick.ledger[key].control, { start: emittedAt - 24 * HOUR, end: emittedAt - 18 * HOUR, outcome: 'skipped', reason: 'overlap' });
+    assert.deepEqual(tick.snapshot, snapshot);
   });
 
   it('discards a market payload whose fetchedAt is 45 minutes old', async () => {

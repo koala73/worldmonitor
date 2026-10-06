@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  MARKET_ALERT_ACTIVITY_GAP_MS,
+  MARKET_ALERT_ACTIVITY_RETENTION_MS,
   MARKET_ALERT_BASE_RATE_RULE,
   MARKET_ALERT_EVIDENCE_EXPIRY_MS,
   MARKET_ALERT_LEDGER_RETENTION_MS,
@@ -55,7 +57,8 @@ function predictionSignal(pred, shift) {
   };
 }
 
-const QUIET_BASELINE = { marketChanges: { 'CL=F': 1.0, 'ZW=F': 1.0 }, emitted: [] };
+const QUIET_BASELINE = { marketChanges: { 'CL=F': 1.0, 'ZW=F': 1.0 }, emitted: [], activity: {} };
+const ALERTED = { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'], activity: {} };
 
 function ingest(ledger, signals, nowMs = NOW, baseline = QUIET_BASELINE) {
   return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], baseline });
@@ -225,19 +228,41 @@ describe('ingestSignals', () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
     const [row] = Object.values(closed);
-    const { ledger, created, held, touched } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
-    assert.deepEqual({ created, held, touched }, { created: 0, held: 1, touched: 1 });
+    const { ledger, created, held, touched, activity } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'], activity: {} });
+    assert.deepEqual({ created, held, touched, activity }, { created: 0, held: 1, touched: 1, activity: {} });
     assert.deepEqual(Object.values(ledger), [{ ...row, lastSeenAt: dueAt + 2 }]);
   });
 
-  it('a hold for a missing baseline or an unquoted symbol touches no row', async () => {
+  it('a hold for a missing baseline or an unquoted symbol touches no row and records no activity', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
-    for (const baseline of [null, { marketChanges: { 'ZW=F': 3.0 }, emitted: [] }]) {
-      const { ledger, held, touched } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, baseline);
-      assert.deepEqual({ held, touched }, { held: 1, touched: 0 });
+    for (const baseline of [null, { marketChanges: { 'ZW=F': 3.0 }, emitted: [], activity: {} }]) {
+      const { ledger, held, touched, activity } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, baseline);
+      assert.deepEqual({ held, touched, activity }, { held: 1, touched: 0, activity: {} });
       assert.deepEqual(ledger, closed);
     }
+  });
+
+  it('a quoted hold with no row for the symbol records a run of activity and counts as touched', () => {
+    const { ledger, held, touched, activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW, ALERTED);
+    assert.deepEqual({ ledger, held, touched, activity }, { ledger: {}, held: 1, touched: 1, activity: { 'CL=F': { since: NOW, until: NOW } } });
+  });
+
+  it('a later hold extends the run inside the continuity window and starts a new one past it', () => {
+    assert.equal(MARKET_ALERT_ACTIVITY_GAP_MS, 15 * MIN);
+    const run = { since: NOW, until: NOW };
+    for (const [gap, since] of [[5 * MIN, NOW], [MARKET_ALERT_ACTIVITY_GAP_MS, NOW], [20 * MIN, NOW + 20 * MIN]]) {
+      const { activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW + gap, { ...ALERTED, activity: { 'CL=F': run } });
+      assert.deepEqual(activity, { 'CL=F': { since, until: NOW + gap } }, `${gap / MIN} minutes after the last hold`);
+    }
+  });
+
+  it('carries forward runs inside the retention window and drops older ones', () => {
+    assert.equal(MARKET_ALERT_ACTIVITY_RETENTION_MS, 30 * HOUR);
+    const kept = { since: NOW - 31 * HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS };
+    const dropped = { since: NOW - 31 * HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - 1 };
+    const { activity } = ingest({}, [], NOW, { ...QUIET_BASELINE, activity: { 'CL=F': kept, 'ZW=F': dropped } });
+    assert.deepEqual(activity, { 'CL=F': kept });
   });
 
   it('drops signals under the dashboard confidence gate and unknown types', () => {
@@ -549,6 +574,23 @@ describe('resolveDueEntries', () => {
       const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
       const crude = Object.values(result.ledger).find((entry) => entry.emittedAt === NOW);
       assert.deepEqual(crude.control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
+    });
+
+    it('skips the control when a run of held activity with no row for the entity overlaps it', async () => {
+      const activity = { 'CL=F': { since: NOW - 26 * HOUR, until: NOW - 23 * HOUR } };
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED), activity });
+      assert.deepEqual(Object.values(result.ledger)[0].control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
+    });
+
+    it('a run that ended before the control window, started after it, or belongs to another entity does not skip it', async () => {
+      for (const activity of [
+        { 'CL=F': { since: NOW - 30 * HOUR, until: CONTROL.start - 1 } },
+        { 'CL=F': { since: CONTROL.end + 1, until: NOW - 1 } },
+        { 'ZW=F': { since: NOW - 26 * HOUR, until: NOW - 23 * HOUR } },
+      ]) {
+        const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED), activity });
+        assert.deepEqual(Object.values(result.ledger)[0].control, { ...CONTROL, outcome: 'HIT', storyHash: 'c1' }, JSON.stringify(activity));
+      }
     });
 
     it('an alert of another type for another entity does not count as overlap', async () => {

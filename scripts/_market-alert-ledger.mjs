@@ -30,6 +30,11 @@ export const MARKET_ALERT_CONTROL_OFFSET_MS = DAY_MS;
 export const MARKET_ALERT_EVIDENCE_EXPIRY_MS = 6 * DAY_MS;
 export const MARKET_ALERT_ROLLING_WINDOW_DAYS = 30;
 export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS * DAY_MS;
+// Holds this close together are one run of activity. The seeder's
+// SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot too old to
+// be a baseline is also too old to continue a run.
+export const MARKET_ALERT_ACTIVITY_GAP_MS = 15 * 60 * 1000;
+export const MARKET_ALERT_ACTIVITY_RETENTION_MS = MARKET_ALERT_CONTROL_OFFSET_MS + MARKET_ALERT_WINDOW_MS;
 export const MARKET_ALERT_CONFIDENCE_GATE = 0.6;
 export const MARKET_ALERT_HIT_MAX_TIER = 2;
 export const MARKET_ALERT_MAX_DESCRIPTION_CHARS = 200;
@@ -124,13 +129,21 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
  * held. A signal held because the symbol was alerted on the previous tick
  * bumps `lastSeenAt` on the symbol's most recent row, whatever its status, so
  * a closed window whose alert keeps firing still blocks a later control
- * window. `emitted` in the result is this tick's gated market ids, sorted,
- * for the next tick's baseline.
+ * window. When no row exists for the symbol (a move already elevated when the
+ * seeder had no baseline), the hold is recorded in `activity` instead: a map
+ * from symbol to the latest run of such holds, `{ since, until }` in ms, where
+ * holds no more than MARKET_ALERT_ACTIVITY_GAP_MS apart extend one run.
+ * `baseline.activity` is carried forward pruned to runs that ended inside
+ * MARKET_ALERT_ACTIVITY_RETENTION_MS, long enough for the control window of
+ * an emission that resolves at its deadline. `emitted` in the result is this
+ * tick's gated market ids, sorted, for the next tick's baseline.
  */
 export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline }) {
   const ledger = { ...existing };
   const marketsBySymbol = new Map(markets.map((market) => [market.symbol, market]));
   const predictionsByKey = new Map(predictions.map((prediction) => [predictionMarketKey(prediction), prediction]));
+  const activity = Object.fromEntries(Object.entries(baseline?.activity ?? {})
+    .filter(([, run]) => run.until >= nowMs - MARKET_ALERT_ACTIVITY_RETENTION_MS));
   const emitted = new Set();
   let created = 0;
   let updated = 0;
@@ -162,10 +175,14 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
       const quoted = baseline !== null && Object.hasOwn(baseline.marketChanges, entityKey);
       if (!quoted || !NEW_WHEN[signal.type](baseline, entityKey)) {
         held += 1;
-        const latest = quoted ? latestRowFor(ledger, entityKey) : null;
+        if (!quoted) continue;
+        touched += 1;
+        const latest = latestRowFor(ledger, entityKey);
         if (latest) {
           ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
-          touched += 1;
+        } else {
+          const prior = activity[entityKey];
+          activity[entityKey] = { since: prior && prior.until >= nowMs - MARKET_ALERT_ACTIVITY_GAP_MS ? prior.since : nowMs, until: nowMs };
         }
         continue;
       }
@@ -175,7 +192,7 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
     ledger[entry.key] = entry;
     created += 1;
   }
-  return { ledger: sortLedger(ledger), created, updated, gated, held, touched, emitted: [...emitted].sort() };
+  return { ledger: sortLedger(ledger), created, updated, gated, held, touched, emitted: [...emitted].sort(), activity };
 }
 
 export function storyMatchesEntity(title, entity, entityMatches) {
@@ -232,13 +249,14 @@ function isWeekend(ms) {
  * control is skipped when its start is older than the evidence expiry, when
  * the emission and the control start fall on different sides of a weekend
  * in UTC, when the archive does not cover its start, or when any alert for
- * the same entity was open, or still re-emitting while held, during it.
+ * the same entity was open, still re-emitting while held, or re-emitting
+ * with no row as a run in `activity` (see ingestSignals), during it.
  *
  * `read` says whether the archive was read this pass (a tick with nothing
  * due reads nothing) and `readAt` is when; a failed read leaves every
  * resolvable entry unproven.
  */
-export async function resolveDueEntries(existing, { nowMs, archive }) {
+export async function resolveDueEntries(existing, { nowMs, archive, activity = {} }) {
   const ledger = { ...existing };
   const counts = { hit: 0, miss: 0, void: 0, unproven: 0 };
   const resolvable = [];
@@ -284,8 +302,10 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     if (isWeekend(entry.emittedAt) !== isWeekend(start)) return { start, end, outcome: 'skipped', reason: 'weekend' };
     if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
     const entityKey = entityKeyOf(entry.id);
+    const run = activity[entityKey];
     const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey
-      && other.emittedAt <= end && Math.max(other.deadline, other.lastSeenAt ?? 0) >= start);
+      && other.emittedAt <= end && Math.max(other.deadline, other.lastSeenAt ?? 0) >= start)
+      || (run && run.since <= end && run.until >= start);
     if (open) return { start, end, outcome: 'skipped', reason: 'overlap' };
     return { start, end, candidates: matching(entry, start, end) };
   };
