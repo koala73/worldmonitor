@@ -1527,6 +1527,7 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-security-advisories', '0 * * * *'],
     ['seed-supply-chain-trade', '0 */6 * * *'],
     ['seed-comtrade-bilateral-hs4', '0 6 1 * *'],
+    ['seed-trade-flows', '0 5 * * *'],
     ['seed-bundle-market-backup', '*/5 * * * *'],
     ['seed-bundle-derived-signals', '*/5 * * * *'],
     ['seed-bundle-portwatch', '0 */1 * * *'],
@@ -1539,6 +1540,30 @@ describe('critical ingestion Railway registry contract', () => {
   // closure never verified.
   const closureManaged = managedRailwayServices(registry)
     .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
+
+  it('reconciles Comtrade flow watches without rebuilding for unrelated forecast changes', () => {
+    const entry = registry.find((candidate) => candidate.service === 'seed-trade-flows');
+    assert.ok(entry, 'daily Comtrade flows must be registry-managed');
+    const serviceId = 'svc-comtrade-flows';
+    const live = service({ watchPatterns: ['scripts/**', 'shared/**'], cronSchedule: '0 5 * * *' });
+    live.deploy.startCommand = 'node seed-trade-flows.mjs';
+    live.variables = {
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+      UPSTASH_REDIS_REST_TOKEN: 'configured',
+    };
+    const ids = new Map([[entry.service, serviceId]]);
+    const drift = auditRailwayServiceConfig({ services: { [serviceId]: live } }, ids, [entry]);
+    const patch = buildRailwayServiceConfigPatch(drift);
+    assert.deepEqual(patch, { services: { [serviceId]: { build: { watchPatterns: entry.watchPatterns } } } });
+    const reconciled = { ...live, build: { ...live.build, ...patch.services[serviceId].build } };
+    assert.deepEqual(auditRailwayServiceConfig({ services: { [serviceId]: reconciled } }, ids, [entry]), []);
+    for (const path of ['scripts/seed-forecasts.mjs', 'scripts/seed-forecast-resolutions.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), false, path);
+    }
+    for (const path of ['scripts/seed-trade-flows.mjs', 'scripts/shared/comtrade-period.mjs', 'scripts/_seed-utils.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), true, path);
+    }
+  });
 
   it('audit-manages the always-on Umami collector with its exact image inputs', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
