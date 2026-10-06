@@ -915,7 +915,7 @@ describe('news digest methodology parity', () => {
     const briefModel = briefLlmSrc.match(/BRIEF_LLM_OPENROUTER_MODEL = process\.env\.BRIEF_LLM_OPENROUTER_MODEL \|\| '([^']+)'/)?.[1];
     assert.ok(briefModel, 'BRIEF_LLM_OPENROUTER_MODEL must default to a string literal');
     assertDocMatches(
-      new RegExp(`provider chain to OpenRouter by skipping Ollama(?: and Groq)?[\\s\\S]*\`${briefModel.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\``),
+      new RegExp(`provider chain to OpenRouter by skipping Ollama[\\s\\S]*\`${briefModel.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\``),
       'digest prose and whyMatters OpenRouter-only posture',
     );
   });
