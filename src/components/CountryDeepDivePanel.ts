@@ -2876,9 +2876,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index' && item.label !== 'Weekly Momentum');
     const weeklyValue = data.weekChangePercent.trim();
     if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
+      const magnitude = weeklyValue.replace(/^[+-]/, '');
+      const negative = weeklyValue.startsWith('-') && /[1-9]/.test(magnitude.split(/[eE]/)[0] ?? '');
       base.unshift({
         label: 'Weekly Momentum',
-        value: `${delta >= 0 ? '+' : ''}${data.weekChangePercent}%`,
+        value: `${negative ? '-' : '+'}${magnitude}%`,
         trend,
       });
     }

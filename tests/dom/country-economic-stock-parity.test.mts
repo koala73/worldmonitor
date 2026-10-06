@@ -98,3 +98,15 @@ it('retains the existing unavailable-stock behavior', () => {
   panel.updateStock({ ...stock, available: false });
   expect(body.innerHTML).toBe(before);
 });
+
+it.each([['+0.08', '+0.08%'], ['+0', '+0%'], ['-0', '+0%'], ['  +0.0800  ', '+0.0800%']])('formats the valid signed value %s once while preserving precision', (weekChangePercent, expected) => {
+  const { panel, body } = panelFixture();
+  panel.updateStock({ ...stock, weekChangePercent });
+  expect(body.querySelectorAll('.cdp-economic-value')[1]?.textContent).toBe(expected);
+});
+
+it.each([['-1e-400', '-1e-400%'], ['-.001e-400', '-.001e-400%'], ['+1e-400', '+1e-400%'], ['-0e-400', '+0e-400%']])('preserves the supplied sign of nonzero decimal text %s when numeric parsing underflows', (weekChangePercent, expected) => {
+  const { panel, body } = panelFixture();
+  panel.updateStock({ ...stock, weekChangePercent });
+  expect(body.querySelectorAll('.cdp-economic-value')[1]?.textContent).toBe(expected);
+});
