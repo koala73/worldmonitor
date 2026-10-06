@@ -2410,6 +2410,20 @@ describe('forecast narrative fallbacks', () => {
     assert.match(prompt, /\[SIMULATED_BRANCHES\]/);
   });
 
+  it('buildUserPrompt does not feed unscored horizon projections to the narrative model (#7075)', () => {
+    const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.7, 0.6, '7d', [
+      { type: 'cii', value: 'Iran CII 87', weight: 0.4 },
+    ]);
+    a.projections = { h24: 0.37, d7: 0.7, d30: 0.53 };
+    buildForecastCase(a);
+
+    const prompt = buildUserPrompt([a]);
+    assert.match(prompt, /Probability: 70%/);
+    assert.ok(!prompt.includes('[PROJECTIONS]'), 'projection block must not reach the prompt');
+    assert.ok(!prompt.includes('37%'), '24h projection must not reach the prompt');
+    assert.ok(!prompt.includes('53%'), '30d projection must not reach the prompt');
+  });
+
   it('populateFallbackNarratives fills missing scenario, perspectives, and case narratives', () => {
     const pred = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.7, 0.6, '7d', [
       { type: 'cii', value: 'Iran CII 87 (critical)', weight: 0.4 },
