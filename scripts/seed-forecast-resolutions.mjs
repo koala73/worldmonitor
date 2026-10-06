@@ -90,7 +90,7 @@ const JUDGE_ATTEMPT_STAGE_SET = new Set(JUDGE_ATTEMPT_STAGES);
 // carry a class, never their message — a raw exception can embed URLs, keys or
 // prompt echoes, and the ledger is archived to R2 verbatim.
 const JUDGE_ATTEMPT_DETAILS = new Set([
-  'archive_window_incomplete', 'archive_read_unavailable', 'fewer_than_two_models',
+  'archive_window_incomplete', 'archive_read_unavailable', 'fewer_than_two_models', 'judges_not_independent',
   'judge_call_rejected', 'judge_returned_empty', 'unparsable_judgment',
   'unrecognized_outcome', 'coverage_beyond_max_lookback',
 ]);
@@ -541,6 +541,14 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
       detail: 'fewer_than_two_models', ...attemptContext,
     };
   }
+  if (!Array.isArray(options.judgeModels) && !liveJudgesAreIndependent()) {
+    const { a, b } = liveJudgeModelIds();
+    console.error(`  [forecast-resolutions] judges share a model family (${a} / ${b}); refusing to judge`);
+    return {
+      status: 'pending', stage: 'judge_a', reason: 'judge_unavailable',
+      detail: 'judges_not_independent', ...attemptContext,
+    };
+  }
   const judgeModels = Array.isArray(options.judgeModels)
     ? options.judgeModels.slice(0, 2)
     : createLiveJudgeModels(options);
@@ -812,6 +820,18 @@ function escapeRegExp(value) {
 // whole judged lane; no judged forecast resolved after 2026-08-23.
 const JUDGE_B_DEFAULT_MODEL = 'openai/gpt-6-luna';
 
+function liveJudgeModelIds(env = process.env) {
+  return {
+    a: env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER || env.FORECAST_LLM_MODEL_OPENROUTER || 'deepseek/deepseek-v4-flash',
+    b: env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B || JUDGE_B_DEFAULT_MODEL,
+  };
+}
+
+function liveJudgesAreIndependent(env = process.env) {
+  const { a, b } = liveJudgeModelIds(env);
+  return a.split('/')[0] !== b.split('/')[0];
+}
+
 function createLiveJudgeModels(options = {}) {
   const stageBudgetMs = envPositiveInt('FORECAST_RESOLUTION_JUDGE_STAGE_BUDGET_MS', 35_000);
   const common = {
@@ -826,19 +846,13 @@ function createLiveJudgeModels(options = {}) {
       ...common,
       stage: 'forecast_resolution_judge_openrouter',
       providerOrder: ['openrouter'],
-      modelOverrides: {
-        openrouter: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER
-          || process.env.FORECAST_LLM_MODEL_OPENROUTER
-          || 'deepseek/deepseek-v4-flash',
-      },
+      modelOverrides: { openrouter: liveJudgeModelIds().a },
     }),
     (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
       ...common,
       stage: 'forecast_resolution_judge_openrouter_b',
       providerOrder: ['openrouter'],
-      modelOverrides: {
-        openrouter: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B || JUDGE_B_DEFAULT_MODEL,
-      },
+      modelOverrides: { openrouter: liveJudgeModelIds().b },
     }),
   ];
 }
