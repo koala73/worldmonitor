@@ -3640,6 +3640,26 @@ describe('forecast quality gating', () => {
     assert.ok(hard.publishSelectionScore > judged.publishSelectionScore);
   });
 
+  it('gives a hard-resolvable state-derived forecast no selection lift (#5234)', () => {
+    const make = (generationOrigin) => {
+      const pred = makePrediction('market', 'Black Sea', 'Energy repricing risk from Black Sea maritime disruption state', 0.5, 0.58, '30d', [
+        { type: 'market_transmission', value: 'energy transmission', weight: 0.24 },
+      ]);
+      buildForecastCases([pred]);
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: 0.6 };
+      pred.analysisPriority = 0.12;
+      pred.generationOrigin = generationOrigin;
+      return pred;
+    };
+    const judged = make('state_derived');
+    judged.resolution = { kind: 'judged', deadline: Date.parse('2026-08-01T00:00:00Z'), question: 'q' };
+    const hard = make('state_derived');
+    hard.resolution = { kind: 'hard', metricKey: 'market:commodities-bootstrap:v1|price(symbol==CL=F)', operator: 'crosses', threshold: 88, baselineValue: 80, window: 'within-horizon', deadline: Date.parse('2026-08-01T00:00:00Z'), sourceFeed: 'market:commodities-bootstrap:v1' };
+    selectPublishedForecastPool([judged, hard], { targetCount: 2 });
+    assert.equal(hard.publishSelectionScore, judged.publishSelectionScore);
+  });
+
   it('preserves five real domains through selection, hard rebalance, and publication', () => {
     const candidates = [];
     function add(domain, index, kind, priority) {
