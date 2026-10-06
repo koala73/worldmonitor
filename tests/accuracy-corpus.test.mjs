@@ -99,6 +99,28 @@ const sectionWith = (scorecardOverrides = {}, sectionOverrides = {}) => ({
   ...sectionOverrides,
 });
 
+// Issue #7072: the scorecard now carries a bootstrap interval on each mean
+// Brier and the matured-to-scored funnel. Bounds on a mean score cannot be
+// recomputed from published counts, so the page prints the producer's and only
+// when the interval covers the same population as the score beside it.
+const UNCERTAINTY = Object.freeze({
+  method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072',
+  overallBrier: { count: 490, mean: 0.192435, ci95: [0.178214, 0.207013], insufficientSample: false },
+  skillBrier: { count: 180, mean: 0.117824, ci95: [0.098461, 0.139207], insufficientSample: false },
+});
+const FUNNEL = Object.freeze({
+  matured: 820,
+  immature: 130,
+  maturityUnknown: 8,
+  resolved: 772,
+  scored: 490,
+  pendingHardMatured: 12,
+  pendingJudgeMatured: 36,
+  resolvedOfMatured: { count: 820, successes: 772, rate: 0.941463, ci95: [0.923243, 0.955567] },
+  scoredOfMatured: { count: 820, successes: 490, rate: 0.597561, ci95: [0.563617, 0.630595] },
+});
+const WITH_INTERVALS = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL });
+
 describe('forecast scorecard field whitelist', () => {
   it('declares exactly the fields proto GetForecastScorecardResponse declares', () => {
     const proto = read('proto/worldmonitor/forecast/v1/get_forecast_scorecard.proto');
@@ -717,7 +739,7 @@ describe('accuracy page honesty rules', () => {
   it('explains the unscored horizons and the absent score intervals without leaning on issue numbers', () => {
     const { html } = renderState(LIVE_SECTION);
     const text = stripTags(html);
-    assert.match(text, /No confidence intervals on the Brier and log scores/i);
+    assert.match(text, /No confidence intervals on the log scores/i);
     assert.match(text, /24h|24-hour/i);
     assert.doesNotMatch(text, /±/, 'an interval must never be invented');
     // A tracking link may follow as supporting detail, but no sentence may
@@ -753,7 +775,7 @@ describe('accuracy page honesty rules', () => {
   it('whitelists the distribution rather than spreading the captured payload', () => {
     const leaky = {
       ...LIVE_SECTION,
-      scorecard: { ...LIVE_SCORECARD, betEngine: { count: 299 }, judgedLane: 'shadow' },
+      scorecard: { ...WITH_INTERVALS.scorecard, betEngine: { count: 299 }, judgedLane: 'shadow' },
     };
     const { html } = renderState(leaky);
     const download = downloadFor(leaky);
@@ -784,7 +806,7 @@ describe('accuracy page honesty rules', () => {
     assert.equal(download.source, SNAPSHOT_PATH);
     assert.match(download.license, /^https:\/\//);
     assert.deepEqual(download.confidenceIntervals.proportions, { published: true, method: 'wilson-95' });
-    assert.equal(download.confidenceIntervals.meanScores.published, false);
+    assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
     assert.equal(download.horizonProjections.scored, false);
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
@@ -843,6 +865,154 @@ describe('accuracy page proportion intervals', () => {
     assert.deepEqual(intervals.calibration['0-10'], { successes: 0, count: 40, ci95: [0, 0.087622] });
     assert.deepEqual(intervals.byDomain.political, { successes: 6, count: 6, ci95: [0.609666, 1] });
     assert.equal(Object.hasOwn(intervals.calibration, '70-80'), false, 'an empty bucket has no estimate');
+  });
+});
+
+describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
+  const tileOf = (html, label) => stripTags(html.match(new RegExp(`<div class="metric"><span>${label}</span>[\\s\\S]*?</div>`))[0]);
+  const funnelOf = (html) => {
+    const table = html.match(/<table data-maturity-funnel>[\s\S]*?<\/table>/);
+    return table ? stripTags(table[0]) : null;
+  };
+
+  it('whitelists both blocks down to their declared members, keeping a null interval', () => {
+    const selected = selectDeclaredScorecardFields({
+      ...WITH_INTERVALS.scorecard,
+      uncertainty: { ...UNCERTAINTY, skillBrier: null, draws: [0.1], overallBrier: { ...UNCERTAINTY.overallBrier, scope: 'overall' } },
+      funnel: { ...FUNNEL, entryIds: ['a'], scoredOfMatured: { ...FUNNEL.scoredOfMatured, sampleIds: ['b'] } },
+    });
+    assert.deepEqual(selected.uncertainty, { ...UNCERTAINTY, skillBrier: null });
+    assert.deepEqual(selected.funnel, FUNNEL);
+  });
+
+  it('prints the headline Brier interval in the result sentence and beside both Brier tiles', () => {
+    const { html } = renderState(WITH_INTERVALS);
+    const sentence = stripTags(html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/)[1]);
+    assert.match(sentence, /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\) across 180 scored forecasts/);
+    assert.match(tileOf(html, 'Brier score, headline cohort'), /180 scored forecasts, 95% interval 0\.098 to 0\.139/);
+    assert.match(tileOf(html, 'Brier score, every scored entry'), /490 scored forecasts, 95% interval 0\.178 to 0\.207/);
+    assert.match(renderAccuracyLlmsSection(WITH_INTERVALS), /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\)/);
+  });
+
+  it('shows a not-measurable interval when it is null, absent, or over a different population', () => {
+    const cases = [
+      sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: null, overallBrier: null } }),
+      LIVE_SECTION,
+      sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, count: 179 }, overallBrier: { ...UNCERTAINTY.overallBrier, ci95: [0.2] } } }),
+    ];
+    for (const section of cases) {
+      const { html } = renderState(section);
+      assert.match(tileOf(html, 'Brier score, headline cohort'), /95% interval not measurable/);
+      assert.match(tileOf(html, 'Brier score, every scored entry'), /95% interval not measurable/);
+      assert.doesNotMatch(stripTags(html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/)[1]), /interval/);
+    }
+  });
+
+  it('refuses an interval whose mean or bounds cannot belong to the printed score', () => {
+    for (const skillBrier of [
+      { ...UNCERTAINTY.skillBrier, mean: 0.2 },
+      { ...UNCERTAINTY.skillBrier, ci95: [-0.01, 0.139207] },
+      { ...UNCERTAINTY.skillBrier, ci95: [0.098461, 1.2] },
+      {},
+    ]) {
+      const section = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null, skillBrier } });
+      assert.match(tileOf(renderState(section).html, 'Brier score, headline cohort'), /95% interval not measurable/);
+      assert.equal(downloadFor(section).confidenceIntervals.meanScores.brier.published, false);
+    }
+  });
+
+  it('treats a one-forecast interval as not measurable, since it has zero width', () => {
+    const single = sectionWith({
+      overall: { ...LIVE_SCORECARD.overall, count: 1 },
+      uncertainty: { ...UNCERTAINTY, overallBrier: { count: 1, mean: 0.04, ci95: [0.04, 0.04], insufficientSample: true } },
+    });
+    assert.match(tileOf(renderState(single).html, 'Brier score, every scored entry'), /1 scored forecasts, 95% interval not measurable/);
+  });
+
+  it('flags an interval resting on fewer forecasts than the producer trusts', () => {
+    const small = sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } });
+    assert.match(tileOf(renderState(small).html, 'Brier score, headline cohort'), /95% interval 0\.098 to 0\.139, small sample/);
+  });
+
+  it('renders the funnel from matured to resolved to scored with Wilson intervals', () => {
+    const text = funnelOf(renderState(WITH_INTERVALS).html);
+    assert.ok(text, 'the funnel must be a real table');
+    assert.match(text, /Past their deadline or resolved 820/);
+    assert.match(text, /Resolved 94\.1% of 820 due or resolved forecasts \(772 forecasts\), 95% interval 92\.3% to 95\.6%/);
+    assert.match(text, /Graded 59\.8% of 820 due or resolved forecasts \(490 forecasts\), 95% interval 56\.4% to 63\.1%/);
+    assert.match(text, /Past their deadline, still open 12/);
+    assert.match(text, /Past their deadline, awaiting a judge 36/);
+    assert.match(text, /Not yet due, unresolved 130/);
+    assert.match(text, /No recorded deadline 8/);
+  });
+
+  it('prints a denominator with every funnel percentage', () => {
+    const text = funnelOf(withoutIntervals(renderState(WITH_INTERVALS).html));
+    for (const match of text.matchAll(/\d[\d.]*%/g)) {
+      assert.match(text.slice(match.index, match.index + 40), /% of [\d,]+/);
+    }
+  });
+
+  it('shows the funnel rates as not measurable when nothing has matured', () => {
+    const empty = {
+      ...FUNNEL, matured: 0, resolved: 0, scored: 0, pendingHardMatured: 0, pendingJudgeMatured: 0, resolvedOfMatured: null, scoredOfMatured: null,
+    };
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: empty })).html);
+    assert.match(text, /Resolved Not measurable/);
+    assert.match(text, /Graded Not measurable/);
+  });
+
+  it('shows a missing stage count as not measurable rather than zero', () => {
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: {} })).html);
+    assert.doesNotMatch(text, /\b0\b/);
+    assert.match(text, /Past their deadline or resolved Not measurable/);
+    assert.match(text, /Resolved Not measurable/);
+  });
+
+  it('derives both funnel rates from the stage counts it prints, not from a disagreeing rate object', () => {
+    const disagreeing = {
+      ...FUNNEL,
+      resolvedOfMatured: { count: 100, successes: 50, rate: 0.5, ci95: [0.4, 0.6] },
+      scoredOfMatured: { count: 100, successes: 10, rate: 0.1, ci95: [0.05, 0.17] },
+    };
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: disagreeing })).html);
+    assert.match(text, /Resolved 94\.1% of 820 due or resolved forecasts \(772 forecasts\)/);
+    assert.match(text, /Graded 59\.8% of 820 due or resolved forecasts \(490 forecasts\)/);
+  });
+
+  it('says the funnel is not carried rather than drawing zeros for an older capture', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.equal(funnelOf(html), null);
+    assert.match(stripTags(html), /This capture does not carry the maturity funnel yet/);
+  });
+
+  it('describes which mean scores carry an interval, on the page and in the distribution', () => {
+    const text = stripTags(renderState(WITH_INTERVALS).html);
+    assert.match(text, /No confidence intervals on the log scores/);
+    const download = downloadFor(WITH_INTERVALS);
+    assert.equal(download.confidenceIntervals.meanScores.brier.published, true);
+    assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
+    assert.equal(downloadFor(LIVE_SECTION).confidenceIntervals.meanScores.brier.published, false);
+    const bothNull = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null, skillBrier: null } });
+    assert.equal(downloadFor(bothNull).confidenceIntervals.meanScores.brier.published, false, 'a method with no interval publishes nothing');
+    const unrendered = sectionWith({
+      uncertainty: {
+        ...UNCERTAINTY,
+        overallBrier: { ...UNCERTAINTY.overallBrier, count: 489 },
+        skillBrier: { ...UNCERTAINTY.skillBrier, ci95: [0.2] },
+      },
+    });
+    assert.equal(downloadFor(unrendered).confidenceIntervals.meanScores.brier.published, false, 'an interval the page refuses to print is not published');
+    const collapsed = sectionWith({
+      skill: { count: 0, excludedScored: 40, excludedOrigins: ['bet_engine', 'state_derived'] },
+      overall: { count: 40, brier: 0.2, logScore: 0.6 },
+      uncertainty: { ...UNCERTAINTY, overallBrier: { count: 40, mean: 0.2, ci95: [0.15, 0.25], insufficientSample: false }, skillBrier: null },
+    });
+    assert.equal(classifyAccuracyState(collapsed).coverage, 'insufficient');
+    assert.doesNotMatch(renderState(collapsed).html, /95% interval 0\.150 to 0\.250/, 'an insufficient cohort renders no tiles');
+    assert.equal(downloadFor(collapsed).confidenceIntervals.meanScores.brier.published, false, 'the download claims only an interval the page printed');
+    const skillOnly = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null } });
+    assert.equal(downloadFor(skillOnly).confidenceIntervals.meanScores.brier.published, true);
   });
 });
 

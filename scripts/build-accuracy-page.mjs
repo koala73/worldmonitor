@@ -34,6 +34,8 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'error',
   'skill',
   'publishedByDomain',
+  'uncertainty',
+  'funnel',
 ]);
 
 // A fixed vocabulary, because the page is public: an exception message or an
@@ -72,12 +74,27 @@ const CALIBRATION_FIELDS = Object.freeze([
 const MARKET_SKILL_FIELDS = Object.freeze(['count', 'forecastBrier', 'marketBrier', 'brierDelta']);
 const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount']);
 const PUBLISHED_DOMAIN_FIELDS = Object.freeze(['domain', 'count', 'brier', 'yesCount']);
+const UNCERTAINTY_FIELDS = Object.freeze(['method', 'overallBrier', 'skillBrier']);
+const INTERVAL_FIELDS = Object.freeze(['count', 'mean', 'ci95', 'insufficientSample']);
+const FUNNEL_FIELDS = Object.freeze([
+  'matured', 'immature', 'maturityUnknown', 'resolved', 'scored', 'pendingHardMatured', 'pendingJudgeMatured',
+  'resolvedOfMatured', 'scoredOfMatured',
+]);
+const PROPORTION_FIELDS = Object.freeze(['count', 'successes', 'rate', 'ci95']);
 
-const NESTED_OBJECT_FIELDS = Object.freeze({
+export const SCORECARD_NESTED_OBJECT_FIELDS = Object.freeze({
   totals: TOTALS_FIELDS,
   overall: SUMMARY_FIELDS,
   vsMarketSkill: MARKET_SKILL_FIELDS,
   skill: SKILL_FIELDS,
+  uncertainty: UNCERTAINTY_FIELDS,
+  funnel: FUNNEL_FIELDS,
+});
+// Members that are themselves objects. The producer writes null for an
+// interval it cannot compute, and null is kept: it is the not-measurable state.
+export const SCORECARD_NESTED_CHILD_FIELDS = Object.freeze({
+  uncertainty: { overallBrier: INTERVAL_FIELDS, skillBrier: INTERVAL_FIELDS },
+  funnel: { resolvedOfMatured: PROPORTION_FIELDS, scoredOfMatured: PROPORTION_FIELDS },
 });
 const NESTED_ROW_FIELDS = Object.freeze({
   byDomain: DOMAIN_FIELDS,
@@ -140,9 +157,16 @@ export function selectDeclaredScorecardFields(payload) {
   const out = {};
   for (const field of SCORECARD_DECLARED_FIELDS) {
     if (!Object.hasOwn(payload, field) || payload[field] === undefined) continue;
-    if (Object.hasOwn(NESTED_OBJECT_FIELDS, field)) {
-      const nested = pickFields(payload[field], NESTED_OBJECT_FIELDS[field]);
-      if (nested) out[field] = nested;
+    if (Object.hasOwn(SCORECARD_NESTED_OBJECT_FIELDS, field)) {
+      const nested = pickFields(payload[field], SCORECARD_NESTED_OBJECT_FIELDS[field]);
+      if (!nested) continue;
+      for (const [child, childFields] of Object.entries(SCORECARD_NESTED_CHILD_FIELDS[field] ?? {})) {
+        if (!Object.hasOwn(nested, child) || nested[child] === null) continue;
+        const picked = pickFields(nested[child], childFields);
+        if (picked) nested[child] = picked;
+        else delete nested[child];
+      }
+      out[field] = nested;
       continue;
     }
     if (Object.hasOwn(NESTED_ROW_FIELDS, field)) {
@@ -335,6 +359,36 @@ function scoreCell(value, escapeHtml) {
   return isFiniteNumber(value) ? escapeHtml(formatScore(value)) : escapeHtml(INSUFFICIENT_SAMPLE);
 }
 
+// A mean score's interval needs every forecast's own score, so the page cannot
+// derive it and prints the producer's. It is shown only beside a score over the
+// same forecasts (same count, same mean); anything else is not measurable.
+// Both sides round to six decimals, so equal means agree to 1e-6.
+function scoreInterval(interval, count, score) {
+  // One forecast resamples to itself, so its interval has zero width.
+  if (!isPlainObject(interval) || !isFiniteNumber(count) || count < 2 || interval.count !== count) return null;
+  if (!isFiniteNumber(score) || !isFiniteNumber(interval.mean) || Math.abs(interval.mean - score) > 1e-6) return null;
+  const [low, high] = Array.isArray(interval.ci95) && interval.ci95.length === 2 ? interval.ci95 : [];
+  if (!isFiniteNumber(low) || !isFiniteNumber(high) || low < 0 || low > high || high > 1) return null;
+  return { low, high, small: interval.insufficientSample === true };
+}
+
+// The headline tiles carry the Brier intervals and render only for a
+// measurable cohort, so the page and the distribution both ask this.
+function shownBrierIntervals(state) {
+  const scorecard = state.scorecard;
+  if (!scorecard || state.coverage === 'insufficient') return { skill: null, overall: null };
+  const uncertainty = scorecard.uncertainty;
+  return {
+    skill: scoreInterval(uncertainty?.skillBrier, scorecard.skill?.count, scorecard.skill?.brier),
+    overall: scoreInterval(uncertainty?.overallBrier, scorecard.overall?.count, scorecard.overall?.brier),
+  };
+}
+
+function scoreIntervalText(interval) {
+  if (!interval) return '95% interval not measurable';
+  return `95% interval ${formatScore(interval.low)} to ${formatScore(interval.high)}${interval.small ? ', small sample' : ''}`;
+}
+
 function formatUtcDateTime(ms) {
   return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
 }
@@ -393,23 +447,24 @@ function excludedCohortPhrase(skill) {
   return origins.length > 0 ? origins.join(', ') : 'none';
 }
 
-function headlineResultSentence(scorecard) {
+function headlineResultSentence(scorecard, interval) {
   const skill = isPlainObject(scorecard?.skill) ? scorecard.skill : {};
   if (!isFiniteNumber(skill.brier) || !isFiniteNumber(skill.count) || skill.count <= 0) return '';
   const windowDays = isFiniteNumber(scorecard.rollingWindowDays) ? scorecard.rollingWindowDays : null;
   const windowPhrase = windowDays
     ? `Over the current ${formatCount(windowDays)}-day window`
     : 'Over the current rolling window';
-  return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
+  const intervalPhrase = interval ? ` (${scoreIntervalText(interval)})` : '';
+  return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)}${intervalPhrase} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the Brier and log scores yet; each score is published with the number of forecasts behind it instead. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
 
 export function renderAccuracyLlmsSection(section) {
   const state = classifyAccuracyState(section);
   const page = new URL(ACCURACY_PAGE_PATH, WORLD_MONITOR_ORG.url).href;
   const paragraphs = [`The standing forecast-resolution record is published at ${page}.`];
-  const result = state.scorecard ? headlineResultSentence(state.scorecard) : '';
+  const result = state.scorecard ? headlineResultSentence(state.scorecard, shownBrierIntervals(state).skill) : '';
   if (result) {
     paragraphs.push(result);
     if (state.capturedAt) {
@@ -433,7 +488,7 @@ export function renderAccuracyLlmsSection(section) {
   return `## Forecast accuracy\n\n${paragraphs.join('\n\n')}\n`;
 }
 
-function headlineTiles(scorecard, escapeHtml) {
+function headlineTiles(scorecard, intervals, escapeHtml) {
   const skill = isPlainObject(scorecard.skill) ? scorecard.skill : {};
   const skillCount = isFiniteNumber(skill.count) ? skill.count : 0;
   const { overall, totals } = scorecard;
@@ -441,7 +496,7 @@ function headlineTiles(scorecard, escapeHtml) {
     [
       'Brier score, headline cohort',
       isFiniteNumber(skill.brier) ? formatScore(skill.brier) : 'Not measurable',
-      `${formatCount(skillCount)} scored forecasts`,
+      `${formatCount(skillCount)} scored forecasts, ${scoreIntervalText(intervals.skill)}`,
     ],
     [
       'Log score, headline cohort',
@@ -451,7 +506,7 @@ function headlineTiles(scorecard, escapeHtml) {
     [
       'Brier score, every scored entry',
       isFiniteNumber(overall?.brier) ? formatScore(overall.brier) : 'Not measurable',
-      `${formatCount(overall?.count ?? 0)} scored forecasts`,
+      `${formatCount(overall?.count ?? 0)} scored forecasts, ${scoreIntervalText(intervals.overall)}`,
     ],
     [
       'Scored entries',
@@ -466,8 +521,8 @@ ${tiles.map(([label, value, note]) => `        <div class="metric"><span>${escap
       </section>`;
 }
 
-function headlineResultParagraph(scorecard, escapeHtml) {
-  const sentence = headlineResultSentence(scorecard);
+function headlineResultParagraph(scorecard, interval, escapeHtml) {
+  const sentence = headlineResultSentence(scorecard, interval);
   return sentence ? `      <p data-accuracy-result>${escapeHtml(sentence)}</p>\n` : '';
 }
 
@@ -548,6 +603,41 @@ function totalsTable(totals, intervals, escapeHtml) {
   return `      <div class="table-scroll"><table data-ledger-totals>
         <caption>Resolution ledger totals for the rolling window. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
         <thead><tr><th scope="col">Ledger stage</th><th scope="col">Entries</th></tr></thead>
+        <tbody>
+${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}
+        </tbody>
+      </table></div>`;
+}
+
+// Both rates are derived from the stage counts the table prints, so a rate can
+// never describe a different population from the row above it.
+function funnelRateHtml(successes, count, escapeHtml) {
+  const estimate = proportionEstimate(successes, count);
+  if (!estimate) return escapeHtml('Not measurable');
+  const text = `${rateOf(estimate.successes / estimate.count, estimate.count, 'due or resolved forecasts')} (${formatCount(estimate.successes)} forecasts), 95% interval`;
+  return `${escapeHtml(text)} ${intervalHtml(estimate, escapeHtml)}`;
+}
+
+function funnelSection(funnel, escapeHtml) {
+  const heading = '      <h2>From deadline to grade</h2>';
+  if (!isPlainObject(funnel)) {
+    return `${heading}
+      <p>This capture does not carry the maturity funnel yet, so the share of due forecasts that were resolved and graded is not shown.</p>`;
+  }
+  const count = (value) => escapeHtml(Number.isInteger(value) && value >= 0 ? formatCount(value) : 'Not measurable');
+  const rows = [
+    ['Past their deadline or resolved', count(funnel.matured)],
+    ['Resolved', funnelRateHtml(funnel.resolved, funnel.matured, escapeHtml)],
+    ['Graded', funnelRateHtml(funnel.scored, funnel.matured, escapeHtml)],
+    ['Past their deadline, still open', count(funnel.pendingHardMatured)],
+    ['Past their deadline, awaiting a judge', count(funnel.pendingJudgeMatured)],
+    ['Not yet due, unresolved', count(funnel.immature)],
+    ['No recorded deadline', count(funnel.maturityUnknown)],
+  ];
+  return `${heading}
+      <div class="table-scroll"><table data-maturity-funnel>
+        <caption>Of the forecasts in the ledger that are past their deadline or already resolved, how many were resolved and how many could be graded. Unresolved forecasts not yet due are left out of both rates, so a young forecast never counts as a miss. The 95% interval is a Wilson interval on the counts shown.</caption>
+        <thead><tr><th scope="col">Stage</th><th scope="col">Forecasts</th></tr></thead>
         <tbody>
 ${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}
         </tbody>
@@ -739,7 +829,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
   return `      <h2>What this page does not publish</h2>
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
-        <li>No confidence intervals on the Brier and log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry yet, and this page will not invent one from the averages. Each score is published with the number of forecasts behind it instead. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
+        <li>No confidence intervals on the log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling the individual forecasts. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
         <li>No accuracy for the 24-hour, 7-day and 30-day projections shown in the product. Those horizons are not scored yet, so nothing here describes them. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
         <li>No individual forecasts, resolution evidence, judge inputs or archive locations. This page publishes aggregates only.</li>
       </ul>`;
@@ -784,16 +874,18 @@ ${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
     .filter((bucket) => Number(bucket.count) === 0)
     .map((bucket) => bucket.bucket);
   const intervals = proportionIntervals(scorecard);
+  const brierIntervals = shownBrierIntervals(state);
 
   return `${heading}
       <p class="lede">World Monitor scores every forecast it publishes once the outcome is knowable, over a rolling ${escapeHtml(formatCount(scorecard.rollingWindowDays))}-day window. This is the standing record: the scores, the calibration, the sample sizes, and the parts that are not measurable yet.</p>
 ${verdictSection(scorecard, escapeHtml)}
 ${recordStatus(state, escapeHtml)}
-${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, escapeHtml)}\n${headlineResultParagraph(scorecard, escapeHtml)}`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
+${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, brierIntervals, escapeHtml)}\n${headlineResultParagraph(scorecard, brierIntervals.skill, escapeHtml)}`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
 ${cohortSection(scorecard.skill, unknownOriginSentence(scorecard), escapeHtml)}
       <h2>Resolution ledger</h2>
 ${totalsTable(scorecard.totals, intervals, escapeHtml)}
       <p>${escapeHtml(scorecard.methodology)}</p>
+${funnelSection(scorecard.funnel, escapeHtml)}
       <h2>Calibration</h2>
 ${calibrationTable(scorecard, intervals, escapeHtml)}
       <h2>Accuracy by domain</h2>
@@ -919,7 +1011,13 @@ export function accuracyDatasetDownload({ state, snapshotPath }) {
     },
     confidenceIntervals: {
       proportions: { published: true, method: 'wilson-95' },
-      meanScores: { published: false, trackedIn: CONFIDENCE_INTERVAL_ISSUE },
+      meanScores: {
+        brier: {
+          published: Object.values(shownBrierIntervals(state)).some(Boolean),
+          method: state.scorecard?.uncertainty?.method ?? null,
+        },
+        logScore: { published: false, trackedIn: CONFIDENCE_INTERVAL_ISSUE },
+      },
     },
     intervals: proportionIntervals(state.scorecard),
     horizonProjections: { scored: false, trackedIn: HORIZON_SCORING_ISSUE },
