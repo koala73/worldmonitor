@@ -23,6 +23,8 @@
 // 'within-horizon' window ([emission, deadline]), with a horizon-scoped
 // threshold (#5010) — never the feed's full 365-day trailing tally.
 
+import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeResolutionFeeds } from './_forecast-resolution-eval.mjs';
+
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
 // Production detectors and the state-derived path emit only '24h'/'7d'/'30d'
@@ -652,23 +654,30 @@ export function buildResolutionSpec(pred, inputs, generatedAt, options = {}) {
   }
 
   // prediction_market exemption (before the JUDGED_DOMAINS gate).
-  const hasPredictionMarketSignal = (pred.signals || []).some(
-    (s) => SIGNAL_TO_HARD_FAMILY[s.type] === 'prediction_market',
-  );
-  if (hasPredictionMarketSignal) {
-    return buildHardSpec(pred, inputs, 'prediction_market', generatedAt, options);
+  const family = hardFamilyFor(pred);
+  if (family === 'prediction_market') {
+    return buildHardSpec(pred, inputs, family, generatedAt, options);
   }
 
   if (JUDGED_DOMAINS.has(pred.domain)) {
     return buildJudgedSpec(pred, generatedAt);
   }
 
-  const family = resolveHardFamily(pred);
   if (!family) {
     return buildJudgedSpec(pred, generatedAt);
   }
 
   return buildHardSpec(pred, inputs, family, generatedAt, options);
+}
+
+// The hard family buildResolutionSpec dispatches a forecast to, before the
+// origin and JUDGED_DOMAINS gates. Specs do not store it, so the shadow gate
+// recomputes it from the forecast.
+function hardFamilyFor(pred) {
+  const hasPredictionMarketSignal = (pred.signals || []).some(
+    (s) => SIGNAL_TO_HARD_FAMILY[s.type] === 'prediction_market',
+  );
+  return hasPredictionMarketSignal ? 'prediction_market' : resolveHardFamily(pred);
 }
 
 // The seam pass (D1): sets pred.resolution on every prediction in place and
@@ -679,4 +688,74 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
     pred.resolution = buildResolutionSpec(pred, inputs, generatedAt, options);
   }
   return predictions;
+}
+
+// ── Emission-time extraction gate, shadow phase (#7067) ─────────────────
+//
+// Dry-runs the resolver's extractor against the resolver-shaped view of each
+// hard spec's sourceFeed. Shadow only: verdicts are reported, specs are never
+// changed. A verdict is one of:
+//   pass             the extractor returns a finite metric
+//   fail             the extractor returns non-finite (would downgrade)
+//   feed_unavailable the feed read failed or the key is empty
+//   skipped          count() specs: the resolver tallies dated events rather
+//                    than extracting one record, so a missing record is a 0
+export function extractionShadowFeedKeys(predictions) {
+  return [...new Set(predictions
+    .filter((pred) => pred.resolution?.kind === 'hard')
+    .map((pred) => pred.resolution.sourceFeed)
+    .filter(Boolean))];
+}
+
+// rawByKey holds one entry per successful read, so a key missing from it is a
+// failed read. Pure: no network, clock, or mutation.
+export function evaluateExtractionShadow(predictions, rawByKey) {
+  const feedsByKey = shapeResolutionFeeds(rawByKey);
+  const verdicts = [];
+  for (const pred of predictions) {
+    const spec = pred.resolution;
+    if (spec?.kind !== 'hard') continue;
+    const verdict = (outcome, reason, value = null) => ({
+      id: pred.id,
+      outcome,
+      family: hardFamilyFor(pred) || 'unknown',
+      domain: pred.domain || 'unknown',
+      metricKey: spec.metricKey,
+      reason,
+      value,
+    });
+    const parsed = parseMetricKey(spec.metricKey);
+    if (!parsed) {
+      verdicts.push(verdict('fail', 'unparseable_metric_key'));
+      continue;
+    }
+    if (parsed.fn === 'count') {
+      verdicts.push(verdict('skipped', 'count_resolved_by_tally'));
+      continue;
+    }
+    const readKeys = [spec.sourceFeed, parsed.feedKey].filter(Boolean);
+    if (!readKeys.some((key) => Object.hasOwn(feedsByKey, key))) {
+      verdicts.push(verdict('feed_unavailable', 'feed_read_failed'));
+      continue;
+    }
+    const feedData = selectResolutionFeed(feedsByKey, spec, parsed);
+    if (feedData == null) {
+      verdicts.push(verdict('feed_unavailable', 'feed_empty'));
+      continue;
+    }
+    const { value } = extractMetricObservation(parsed, feedData);
+    verdicts.push(Number.isFinite(value) ? verdict('pass', 'finite_metric', value) : verdict('fail', 'metric_not_found'));
+  }
+  return verdicts;
+}
+
+export function summarizeExtractionShadow(verdicts) {
+  const summary = { total: verdicts.length, byOutcome: {}, byFamily: {}, byDomain: {} };
+  const bump = (counts, outcome) => { counts[outcome] = (counts[outcome] || 0) + 1; };
+  for (const { outcome, family, domain } of verdicts) {
+    bump(summary.byOutcome, outcome);
+    bump(summary.byFamily[family] ??= {}, outcome);
+    bump(summary.byDomain[domain] ??= {}, outcome);
+  }
+  return summary;
 }

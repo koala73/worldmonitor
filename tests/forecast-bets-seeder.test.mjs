@@ -5,11 +5,11 @@ import {
   buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenEnsembleIds,
   ENSEMBLE_TOP_K_DEFAULT,
 } from '../scripts/seed-forecast-bets.mjs';
-import { ingestHistory, resolveDueEntries, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory, resolveDueEntries } from '../scripts/seed-forecast-resolutions.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 import { MARKET_SLOT_COUNT } from '../scripts/_bet-templates-markets.mjs';
 import { MARKET_GEO_SLOT_COUNT } from '../scripts/_bet-templates-markets-geo.mjs';
-import { resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
+import { resolveHardSpec, shapeResolutionFeed } from '../scripts/_forecast-resolution-eval.mjs';
 import { createEnsembleCache } from '../scripts/_forecast-ensemble.mjs';
 
 const NOW = Date.parse('2026-07-12T00:00:00Z');

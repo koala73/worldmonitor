@@ -6,9 +6,9 @@ import {
   MARKET_BET_TEMPLATES, MARKET_FEED, MARKET_SETTLEMENT_FEED, MARKET_MIN_VOLUME,
   eligibleMarkets, marketSlugFromUrl,
 } from '../scripts/_bet-templates-markets.mjs';
-import { parseMetricKey, resolveHardSpec, MARKET_SETTLEMENT_MAX_LAG_MS } from '../scripts/_forecast-resolution-eval.mjs';
+import { parseMetricKey, resolveHardSpec, shapeResolutionFeed, MARKET_SETTLEMENT_MAX_LAG_MS } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
-import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
 import {
   updateMarketSettlements, parseGammaSettlement, parseKalshiSettlement,
 } from '../scripts/_forecast-market-settlements.mjs';
