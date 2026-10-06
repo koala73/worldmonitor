@@ -485,6 +485,11 @@ const stripTags = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
 /** Elements holding a predicted-probability RANGE, which is not a rate. */
 const withoutProbabilityBands = (html) => html.replace(/<(th|span)\b[^>]*\bdata-probability-band\b[^>]*>[\s\S]*?<\/\1>/g, '<$1></$1>');
+// Interval bounds belong to the counted rate printed beside them, and "95%"
+// names a confidence level, not a rate; neither needs a population of its own.
+const withoutIntervals = (html) => html
+  .replace(/<span data-rate-interval>[\s\S]*?<\/span>/g, '<span></span>')
+  .replace(/95% (?:Wilson )?interval/g, 'confidence interval');
 
 describe('accuracy page honesty rules', () => {
   it('renders all three record facts in text, always, not one headline that erases the others', () => {
@@ -501,7 +506,7 @@ describe('accuracy page honesty rules', () => {
 
   it('prints a denominator with every percentage it publishes', () => {
     const { html } = renderState(LIVE_SECTION);
-    const text = stripTags(withoutProbabilityBands(html));
+    const text = stripTags(withoutIntervals(withoutProbabilityBands(html)));
     const percentages = [...text.matchAll(/\d[\d.]*%/g)];
     assert.ok(percentages.length >= 5, `expected the page to publish rates, found ${percentages.length}`);
     for (const match of percentages) {
@@ -667,10 +672,10 @@ describe('accuracy page honesty rules', () => {
     assert.match(text, /51\.1% of 958/, 'scored over all entries, with both counts');
   });
 
-  it('explains the unscored horizons and the absent intervals without leaning on issue numbers', () => {
+  it('explains the unscored horizons and the absent score intervals without leaning on issue numbers', () => {
     const { html } = renderState(LIVE_SECTION);
     const text = stripTags(html);
-    assert.match(text, /confidence interval/i);
+    assert.match(text, /No confidence intervals on the Brier and log scores/i);
     assert.match(text, /24h|24-hour/i);
     assert.doesNotMatch(text, /±/, 'an interval must never be invented');
     // A tracking link may follow as supporting detail, but no sentence may
@@ -736,7 +741,8 @@ describe('accuracy page honesty rules', () => {
     assert.equal(download.staleAfterHours, SCORECARD_STALE_AFTER_HOURS);
     assert.equal(download.source, SNAPSHOT_PATH);
     assert.match(download.license, /^https:\/\//);
-    assert.equal(download.confidenceIntervals.published, false);
+    assert.deepEqual(download.confidenceIntervals.proportions, { published: true, method: 'wilson-95' });
+    assert.equal(download.confidenceIntervals.meanScores.published, false);
     assert.equal(download.horizonProjections.scored, false);
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
@@ -745,6 +751,41 @@ describe('accuracy page honesty rules', () => {
       vsMarketSkill: 'all-scored-entries',
       overall: 'all-scored-entries',
     });
+  });
+});
+
+// Issue #7072: every binomial proportion on the page carries a Wilson 95%
+// interval derived from the two counts the page already publishes. Expected
+// bounds are golden values, so a formula change cannot pass by moving both sides.
+describe('accuracy page proportion intervals', () => {
+  const rowOf = (html, marker) => stripTags(html.match(new RegExp(`<tr ${marker}[\\s\\S]*?</tr>`))[0]);
+
+  it('puts a Wilson interval beside the overall void rate', () => {
+    const totals = renderState(LIVE_SECTION).html.match(/<table data-ledger-totals>[\s\S]*?<\/table>/)[0];
+    assert.match(stripTags(totals), /36\.5% of 772 resolved entries \(282 entries\), 95% interval 33\.2% to 40\.0%/);
+  });
+
+  it('puts a Wilson interval beside every calibration realized rate', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(rowOf(html, 'data-calibration-bucket="0-10"'), /0\.0% of 40 forecasts 0\.0% to 8\.8%/);
+    assert.match(rowOf(html, 'data-calibration-bucket="90-100"'), /100\.0% of 1 forecasts 20\.7% to 100\.0%/, 'n=1 is published with its full width');
+  });
+
+  it('puts a Wilson interval beside each domain and origin void rate, and none on an empty denominator', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(rowOf(html, 'data-domain="political"'), /100\.0% of 6 resolved 61\.0% to 100\.0%/);
+    assert.match(rowOf(html, 'data-origin="bet_engine"'), /0\.0% of 299 resolved 0\.0% to 1\.3%/);
+    const empty = sectionWith({ byDomain: [{ domain: 'macro', resolved: 0, scored: 0, void: 0, voidRate: 0 }] });
+    assert.match(rowOf(renderState(empty).html, 'data-domain="macro"'), /No interval/);
+  });
+
+  it('publishes the same intervals in the distribution, with their counts', () => {
+    const { intervals } = downloadFor(LIVE_SECTION);
+    assert.equal(intervals.method, 'wilson-95');
+    assert.deepEqual(intervals.void, { successes: 282, count: 772, ci95: [0.332064, 0.39984] });
+    assert.deepEqual(intervals.calibration['0-10'], { successes: 0, count: 40, ci95: [0, 0.087622] });
+    assert.deepEqual(intervals.byDomain.political, { successes: 6, count: 6, ci95: [0.609666, 1] });
+    assert.equal(Object.hasOwn(intervals.calibration, '70-80'), false, 'an empty bucket has no estimate');
   });
 });
 

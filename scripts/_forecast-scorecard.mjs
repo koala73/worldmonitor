@@ -70,6 +70,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     byDomain: summarizeGroups(scored, resolved, 'domain', 'domain'),
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
+    funnel: summarizeFunnel(entries, nowMs),
   };
 
   const overall = summarizeScored(scored);
@@ -86,6 +87,11 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const excludeOrigins = new Set(options.skillExcludeOrigins ?? defaultExcluded);
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
+  scorecard.uncertainty = {
+    method: `entry-level percentile bootstrap, ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
+    overallBrier: brierInterval(scored, 'overall'),
+    skillBrier: brierInterval(scored.filter((entry) => !excludeOrigins.has(generationOriginOf(entry))), 'skill'),
+  };
   const marketSkill = summarizeMarketSkill(scored);
   if (marketSkill) scorecard.vsMarketSkill = marketSkill;
 
@@ -349,6 +355,67 @@ function attemptCount(entry) {
   return entry.judgeAttemptLog.length;
 }
 
+// `totals.publicationCoverage` divides scored by every ledger entry, immature
+// ones included. These denominators count only windows that are due: past
+// their deadline, or already resolved (an early resolution is decided, so it
+// cannot sit in a numerator above its own denominator). An unresolved entry
+// with no deadline is counted apart rather than guessed into either side.
+function summarizeFunnel(entries, nowMs) {
+  let matured = 0;
+  let immature = 0;
+  let maturityUnknown = 0;
+  let pendingHardMatured = 0;
+  let pendingJudgeMatured = 0;
+  let resolved = 0;
+  let scored = 0;
+  for (const entry of entries) {
+    if (entry?.status === 'resolved') {
+      matured += 1;
+      resolved += 1;
+      if (isScoredEntry(entry)) scored += 1;
+      continue;
+    }
+    const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+    if (!Number.isFinite(deadline)) {
+      maturityUnknown += 1;
+    } else if (deadline > nowMs) {
+      immature += 1;
+    } else {
+      matured += 1;
+      if (entry?.status === 'pending') pendingHardMatured += 1;
+      if (entry?.status === 'pending-judge') pendingJudgeMatured += 1;
+    }
+  }
+  return {
+    matured,
+    immature,
+    maturityUnknown,
+    resolved,
+    scored,
+    pendingHardMatured,
+    pendingJudgeMatured,
+    resolvedOfMatured: proportion(resolved, matured),
+    scoredOfMatured: proportion(scored, matured),
+  };
+}
+
+function proportion(successes, count) {
+  if (!count) return null;
+  return { count, successes, rate: round(successes / count), ci95: wilsonInterval(successes, count) };
+}
+
+function brierInterval(entries, scope) {
+  if (!entries.length) return null;
+  const scores = entries.map((entry) => brier(entry));
+  const { mean: ci95 } = pairedBootstrap(scores, { mean }, { scope, seed: SCORECARD_BOOTSTRAP_SEED });
+  return {
+    count: scores.length,
+    mean: round(mean(scores)),
+    ci95,
+    insufficientSample: scores.length < INTERVAL_MIN_SAMPLE,
+  };
+}
+
 function summarizeGroups(scored, resolved, key, label) {
   const keys = new Set([
     ...scored.map((entry) => entry?.[key] || 'unknown'),
@@ -443,6 +510,12 @@ export const ACTIVATION_MIN_FORWARD_DOMAIN = 30;
 // at or below this margin. Preregistered here so the gate cannot be tuned
 // after the forward cohort is seen.
 export const ACTIVATION_NON_INFERIORITY_MARGIN = 0.005;
+// Scorecard intervals (#7072) use their own seed so a change to the #7070
+// shadow gate's draws cannot move a published interval, and vice versa.
+export const SCORECARD_BOOTSTRAP_SEED = 7072;
+// Below this many entries an interval is still published, flagged as resting
+// on too small a sample to read as a stable estimate.
+export const INTERVAL_MIN_SAMPLE = 30;
 const RELIABILITY_BINS = 10;
 const WILSON_Z95 = 1.959963984540054;
 
