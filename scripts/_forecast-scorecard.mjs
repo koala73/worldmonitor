@@ -288,6 +288,15 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     voidByReason[reason] = (voidByReason[reason] || 0) + 1;
   }
 
+  // NO entries sealed before #8904 carry no basis; they count as `unrecorded`
+  // rather than being folded into `event`.
+  const noByBasis = {};
+  for (const entry of judgedResolved) {
+    if (entry?.outcome !== 'NO') continue;
+    const basis = entry?.evidence?.basis || 'unrecorded';
+    noByBasis[basis] = (noByBasis[basis] || 0) + 1;
+  }
+
   // The acceptance metric is SCORED-within-SLA, not resolved-within-SLA: a lane
   // that seals everything as VOID on day one resolves 100% within SLA while
   // resolving nothing. VOIDs stay in the denominator so they depress the rate,
@@ -324,6 +333,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     scored: judgedResolved.filter(isScoredEntry).length,
     void: judgedResolved.filter((entry) => entry?.outcome === 'VOID').length,
     voidByReason,
+    noByBasis,
     scoredWithinSla,
     voidWithinSla,
     scoredWithinSlaRate: judgedResolved.length ? round(scoredWithinSla / judgedResolved.length) : 0,
