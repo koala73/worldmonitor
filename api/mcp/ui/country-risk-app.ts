@@ -70,8 +70,8 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   .wrap { padding: 16px; max-width: 520px; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .country { font-size: 20px; font-weight: 650; letter-spacing: 0.2px; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .country { min-width: 0; overflow-wrap: anywhere; font-size: 20px; font-weight: 650; letter-spacing: 0.2px; }
   .badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--muted); }
   .cii-row { display: flex; align-items: center; gap: 14px; margin: 14px 0 4px; }
@@ -92,7 +92,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   .meta { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
     display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; font-size: 12px; }
   .meta .k { color: var(--muted); }
-  .meta .v { font-weight: 600; }
+  .meta .v { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
   .foot { margin-top: 14px; font-size: 11px; color: var(--muted); }
   .empty { color: var(--muted); padding: 8px 0; }
   a { color: var(--accent); text-decoration: none; }
@@ -120,10 +120,14 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     <div class="bar"><span id="ciibar"></span></div>
     <div class="components" id="components"></div>
     <div class="meta">
+      <div class="k">Structural baseline</div><div class="v" id="baseline">—</div>
+      <div class="k">Approx. 24-hour movement</div><div class="v" id="movement">—</div>
       <div class="k">Travel advisory</div><div class="v" id="advisory">—</div>
       <div class="k">Sanctions exposure</div><div class="v" id="sanctions">—</div>
       <div class="k">Trend</div><div class="v" id="trend">—</div>
     </div>
+    <div class="foot" id="movement-note" style="display:none">Zero may mean stable or no valid prior snapshot.</div>
+    <div class="foot" id="display-note" style="display:none"></div>
     <div class="foot" id="foot"></div>
   </div>
 </div>
@@ -294,6 +298,21 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
         : "No component breakdown available.";
       host.appendChild(none);
     }
+
+    var baseline = degraded ? null : num(score.staticBaseline);
+    var movement = degraded ? null : num(score.dynamicScore);
+    setText("baseline", baseline == null ? "—" : String(baseline));
+    setText("movement", movement == null ? "—" : String(movement));
+    document.getElementById("movement-note").style.display = movement === 0 ? "block" : "none";
+
+    var shortenedCountry = cleanText(data.countryName, 65).length > 64;
+    var shortenedAdvisory = !degraded && typeof data.advisoryLevel === "string" && cleanText(data.advisoryLevel, 65).length > 64;
+    var displayNote = document.getElementById("display-note");
+    displayNote.textContent = shortenedCountry && shortenedAdvisory
+      ? "Country name and travel advisory shortened to 64 characters each."
+      : shortenedCountry ? "Country name shortened to 64 characters."
+      : shortenedAdvisory ? "Travel advisory shortened to 64 characters." : "";
+    displayNote.style.display = displayNote.textContent ? "block" : "none";
 
     setText("advisory", degraded ? "—" : describeAdvisory(data.advisoryLevel));
     setText("sanctions", degraded ? "—" : describeSanctions(data.sanctionsActive, data.sanctionsCount));
