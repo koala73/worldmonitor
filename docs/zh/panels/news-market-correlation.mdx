@@ -64,7 +64,7 @@ description: "探索性领先/滞后面板，将 GDELT 主题新闻量与六种�
 ## 刷新频率
 
 - **市场序列**：作为 `seed-bundle-market-backup` 捆绑任务的一员，每 15 分钟重新写入一次。超过 45 分钟未更新时，健康检查会将其标记为过期。
-- **新闻序列**：Railway 服务 `seed-gdelt-intel` 每 15 分钟运行一次 `scripts/seed-gdelt-bulk-materializer.mjs`，每次运行都会更新所有主题的新闻量序列。
+- **新闻序列**：Railway 服务 `seed-gdelt-intel` 每 15 分钟运行一次 `scripts/seed-gdelt-bulk-materializer.mjs`。只有批次中存在匹配记录时，主题才会新增新闻量数据点并更新时间戳；否则沿用上一次运行的序列和时间戳。
 - **面板**：接近视口时获取数据，并在保持接近视口期间每 15 分钟刷新一次（`REFRESH_INTERVALS.newsMarketCorrelation`）。
 
 ## 层级与权限
