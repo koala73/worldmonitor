@@ -669,7 +669,7 @@ export class CountryIntelManager implements AppModule {
             if (lines.length > 0) {
               this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
             } else {
-              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' });
             }
           }
         }

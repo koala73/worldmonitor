@@ -655,7 +655,7 @@ describe('processResolutionCycleWithJudges', () => {
           model: 'deepseek/deepseek-v4-flash',
           text: JSON.stringify({ outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The cited article confirms passage.' }),
         }),
-        async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The policy passed before the deadline.' }),
+        async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The policy passed before the deadline.' }),
       ],
     });
 
@@ -672,7 +672,7 @@ describe('processResolutionCycleWithJudges', () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
-        async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', outcome: 'NO', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article does not establish passage.' }),
+        async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'NO', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article does not establish passage.' }),
       ],
     });
 
@@ -756,7 +756,7 @@ describe('processResolutionCycleWithJudges', () => {
     }, nowMs, {
       judgeModels: [
         async () => ({ provider: 'openrouter', outcome: 'YES', citations: [{ id: 'N1', quote: 'The coalition held its final vote before the forecast deadline' }] }),
-        async () => ({ provider: 'groq', outcome: 'NO', citations: [{ id: 'N1', quote: 'The coalition held its final vote before the forecast deadline' }] }),
+        async () => ({ provider: 'openrouter', outcome: 'NO', citations: [{ id: 'N1', quote: 'The coalition held its final vote before the forecast deadline' }] }),
       ],
     });
 
@@ -886,7 +886,7 @@ describe('processResolutionCycleWithJudges', () => {
           evidenceByEntry.set(entry.id, items.map((item) => item.id));
           return { provider: 'openrouter', outcome: 'YES', citations: [{ id: items[0].id, quote: items[0].description }] };
         },
-        async (_entry, items) => ({ provider: 'groq', outcome: 'YES', citations: [{ id: items[0].id, quote: items[0].description }] }),
+        async (_entry, items) => ({ provider: 'openrouter', outcome: 'YES', citations: [{ id: items[0].id, quote: items[0].description }] }),
       ],
     });
 
@@ -905,7 +905,7 @@ describe('processResolutionCycleWithJudges', () => {
     }, T0 + DAY_MS + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'VOID', citations: [], rationale: 'Archive is insufficient.' }),
-        async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', outcome: 'VOID', citations: [], rationale: 'Not enough coverage.' }),
+        async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'VOID', citations: [], rationale: 'Not enough coverage.' }),
       ],
     });
 
@@ -921,7 +921,7 @@ describe('processResolutionCycleWithJudges', () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1' }], rationale: 'The article says it passed.' }),
-        async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', outcome: 'YES', citations: [{ id: 'N1', quote: 'A fabricated sentence that is not in the archive' }], rationale: 'The policy passed before the deadline.' }),
+        async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'YES', citations: [{ id: 'N1', quote: 'A fabricated sentence that is not in the archive' }], rationale: 'The policy passed before the deadline.' }),
       ],
     });
 
@@ -968,7 +968,7 @@ describe('processResolutionCycleWithJudges', () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
-        async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', text: 'not-json' }),
+        async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', text: 'not-json' }),
       ],
     });
 
@@ -1899,7 +1899,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
   function agreeingJudges(outcome = 'YES', quote = 'The bill passed before the forecast deadline') {
     return [
       async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome, citations: [{ id: 'N1', quote }] }),
-      async () => ({ provider: 'groq', model: 'openai/gpt-oss-20b', outcome, citations: [{ id: 'N1', quote }] }),
+      async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome, citations: [{ id: 'N1', quote }] }),
     ];
   }
 
@@ -1957,21 +1957,21 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
       stage: 'judge_b',
       detail: 'judge_call_rejected',
       archive: (nowMs) => coveredArchive(nowMs),
-      judges: () => [agreeingJudges()[0], async () => { throw new Error('groq 503 at https://api.groq.com'); }],
+      judges: () => [agreeingJudges()[0], async () => { throw new Error('openrouter 503 at https://openrouter.ai'); }],
     },
     {
       name: 'json_parse_fail',
       stage: 'judge_b',
       detail: 'unparsable_judgment',
       archive: (nowMs) => coveredArchive(nowMs),
-      judges: () => [agreeingJudges()[0], async () => ({ provider: 'groq', model: 'm', text: 'not-json' })],
+      judges: () => [agreeingJudges()[0], async () => ({ provider: 'openrouter', model: 'm', text: 'not-json' })],
     },
     {
       name: 'invalid_outcome',
       stage: 'normalize',
       detail: 'unrecognized_outcome',
       archive: (nowMs) => coveredArchive(nowMs),
-      judges: () => [agreeingJudges()[0], async () => ({ provider: 'groq', model: 'm', outcome: 'MAYBE' })],
+      judges: () => [agreeingJudges()[0], async () => ({ provider: 'openrouter', model: 'm', outcome: 'MAYBE' })],
     },
   ];
 
@@ -2115,7 +2115,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
   it('aggregates attempt classes across the ledger and into the scorecard', async () => {
     const nowMs = T_DEADLINE + 2;
     const result = await runCycle(coveredArchive(nowMs), nowMs, {
-      judgeModels: [agreeingJudges()[0], async () => ({ provider: 'groq', model: 'm', text: 'not-json' })],
+      judgeModels: [agreeingJudges()[0], async () => ({ provider: 'openrouter', model: 'm', text: 'not-json' })],
     });
 
     const aggregate = summarizeJudgedAttemptClasses(result.ledger);
@@ -2245,7 +2245,7 @@ describe('judged archive horizon (#7068)', () => {
 
   const judges = [
     async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] }),
-    async () => ({ provider: 'groq', model: 'm2', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] }),
+    async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] }),
   ];
 
   it('derives the horizon as deadline + maxLookback - evidenceLookback', () => {
@@ -2538,7 +2538,7 @@ describe('untrusted archive boundary (#7068)', () => {
     // Both judges obey the injected instruction and return an uncited YES.
     const compromised = [
       async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [] }),
-      async () => ({ provider: 'groq', model: 'm2', outcome: 'YES', citations: [] }),
+      async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [] }),
     ];
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, { judgeModels: compromised });
 
@@ -2558,7 +2558,7 @@ describe('untrusted archive boundary (#7068)', () => {
     }];
     const invented = [
       async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [{ id: 'N42', quote: 'The bill passed before the forecast deadline' }] }),
-      async () => ({ provider: 'groq', model: 'm2', outcome: 'YES', citations: [{ id: 'N42', quote: 'The bill passed before the forecast deadline' }] }),
+      async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [{ id: 'N42', quote: 'The bill passed before the forecast deadline' }] }),
     ];
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, { judgeModels: invented });
 
@@ -2577,7 +2577,7 @@ describe('untrusted archive boundary (#7068)', () => {
     }];
     const withQuote = (quote) => [
       async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [{ id: 'N1', quote }] }),
-      async () => ({ provider: 'groq', model: 'm2', outcome: 'YES', citations: [{ id: 'N1', quote }] }),
+      async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [{ id: 'N1', quote }] }),
     ];
 
     const drifted = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, {
@@ -2741,7 +2741,7 @@ describe('live judge panel', () => {
     else process.env.OPENROUTER_API_KEY = savedKey;
   });
 
-  it('runs both judges on OpenRouter with two different model families and never calls Groq', async () => {
+  it('runs both judges on OpenRouter with two different model families', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
     const deadline = T0 + DAY_MS;
     const entry = {
@@ -2773,7 +2773,6 @@ describe('live judge panel', () => {
     assert.equal(new Set(models).size, 2, `judges must be different models: ${models.join(', ')}`);
     const families = models.map((model) => String(model).split('/')[0]);
     assert.equal(new Set(families).size, 2, `judges must be different model families: ${models.join(', ')}`);
-    assert.ok(!calls.some((call) => JSON.stringify(call).includes('groq')), 'no judge routes through Groq');
   });
 });
 

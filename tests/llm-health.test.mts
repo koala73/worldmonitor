@@ -15,7 +15,7 @@ import {
 const { MODEL_FAILURE_THRESHOLD, MODEL_QUARANTINE_MS } = __testing__;
 
 const OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions';
-const GROQ = 'https://api.groq.com/openai/v1/chat/completions';
+const OTHER_PROVIDER = 'https://llm.example.test/v1/chat/completions';
 const DEAD_MODEL = 'ghost/ghost-model-v9';
 
 /** Real provider bodies for an unroutable model ID, verbatim in shape. */
@@ -47,14 +47,13 @@ afterEach(() => {
 });
 
 describe('configured provider health', () => {
-  it('reports a configured non-gsk Groq key as available on the server (#7126)', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
-    delete process.env.OPENROUTER_API_KEY;
+  it('reports a configured hosted key as available on the server (#7126)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.OLLAMA_API_URL;
     delete process.env.LLM_API_URL;
 
     globalThis.fetch = async (input) => {
-      assert.equal(String(input), 'https://api.groq.com');
+      assert.equal(String(input), 'https://openrouter.ai');
       return new Response(null, { status: 404 });
     };
 
@@ -62,7 +61,26 @@ describe('configured provider health', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     const status = getLlmHealthStatus();
-    assert.equal(status['https://api.groq.com']?.available, true);
+    assert.equal(status['https://openrouter.ai']?.available, true);
+  });
+
+  it('does not probe Groq when a stale GROQ_API_KEY is still set (#8885)', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+
+    const probed: string[] = [];
+    globalThis.fetch = async (input) => {
+      probed.push(String(input));
+      return new Response(null, { status: 200 });
+    };
+
+    warmHealthCache();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(probed, []);
+    assert.deepEqual(getLlmHealthStatus(), {});
   });
 });
 
@@ -236,7 +254,7 @@ describe('model quarantine', () => {
       'a sibling model on the same provider stays usable',
     );
     assert.equal(
-      isModelUsable(GROQ, DEAD_MODEL),
+      isModelUsable(OTHER_PROVIDER, DEAD_MODEL),
       true,
       'the same model ID on another provider stays usable',
     );

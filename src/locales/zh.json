@@ -16,7 +16,7 @@
     "predictionMarkets": "预测市场",
     "loadingMarkets": "正在加载预测市场...",
     "infrastructure": "基础设施暴露",
-    "briefUnavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。",
+    "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
     "cached": "已缓存",
     "fresh": "最新",
     "noMarkets": "未找到预测市场",
@@ -796,7 +796,7 @@
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
       "predictionMarkets": "预测市场",
-      "unavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。"
+      "unavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。"
     },
     "countryBrief": {
       "identifying": "正在识别国家...",
@@ -812,7 +812,7 @@
       "predictionMarkets": "预测市场",
       "loadingMarkets": "正在加载预测市场...",
       "infrastructure": "基础设施暴露",
-      "briefUnavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。",
+      "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
       "cached": "已缓存",
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
@@ -1427,7 +1427,7 @@
       "rankingStories": "正在排序重要报道...",
       "analyzingSentiment": "正在分析情绪...",
       "generatingBrief": "正在生成全球简报...",
-      "infoTooltip": "<strong>AI驱动分析</strong><br>• <strong>世界简报</strong>：AI摘要（Groq/OpenRouter）<br>• <strong>情绪分析</strong>：新闻情感分析<br>• <strong>传播速度</strong>：快速传播的报道<br>• <strong>焦点</strong>：将新闻实体与地图信号（军事、抗议、中断）关联<br><em>仅限桌面端 • 由Llama 3.3 + 焦点检测驱动</em>",
+      "infoTooltip": "<strong>AI驱动分析</strong><br>• <strong>世界简报</strong>：AI摘要（OpenRouter）<br>• <strong>情绪分析</strong>：新闻情感分析<br>• <strong>传播速度</strong>：快速传播的报道<br>• <strong>焦点</strong>：将新闻实体与地图信号（军事、抗议、中断）关联<br><em>仅限桌面端 • 由Llama 3.3 + 焦点检测驱动</em>",
       "streamQualityLabel": "视频画质",
       "streamQualityDesc": "设置所有直播流的画质（低画质可节省带宽）",
       "globeRenderScaleOptions": {
@@ -1439,7 +1439,7 @@
       },
       "mapFlashLabel": "实时事件脉冲",
       "mapFlashDesc": "突发新闻到达时在地图上闪烁标记位置",
-      "aiFlowCloudLabel": "云端AI（Groq & OpenRouter）",
+      "aiFlowCloudLabel": "云端AI（OpenRouter）",
       "aiFlowCloudDesc": "将标题发送到云端进行AI摘要（推荐）",
       "aiFlowBrowserLabel": "浏览器本地模型",
       "aiFlowBrowserDesc": "在浏览器中本地运行AI",

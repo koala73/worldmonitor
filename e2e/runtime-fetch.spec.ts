@@ -201,7 +201,7 @@ test.describe('desktop runtime routing guardrails', () => {
           await window.fetch('/api/local-env-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
+            body: JSON.stringify({ key: 'OPENROUTER_API_KEY', value: 'sk-secret-value' }),
           });
         } catch (error) {
           envUpdateError = error instanceof Error ? error.message : String(error);
@@ -210,7 +210,7 @@ test.describe('desktop runtime routing guardrails', () => {
           await window.fetch('/api/local-validate-secret', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
+            body: JSON.stringify({ key: 'OPENROUTER_API_KEY', value: 'sk-secret-value' }),
           });
         } catch (error) {
           validateError = error instanceof Error ? error.message : String(error);

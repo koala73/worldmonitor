@@ -26,6 +26,16 @@ export function resolveMetadataOrigin(req: Request): string {
 }
 
 /**
+ * The published auth.md walkthrough for an origin. The apex is the one allowed
+ * host that does not serve it: Cloudflare 301s apex `/auth.md` to www
+ * (ARCHITECTURE.md §2 exemption list), and agents following the advertised
+ * link off the discovered host drop out of the connect flow.
+ */
+export function authSkillUrl(origin: string): string {
+  return `${origin === FALLBACK_ORIGIN ? 'https://www.worldmonitor.app' : origin}/auth.md`;
+}
+
+/**
  * These documents are read-only. Answer CORS preflights, allow GET/HEAD, and
  * reject everything else with a spec-correct 405 + Allow. Returns null when the
  * request should proceed to the metadata handler.

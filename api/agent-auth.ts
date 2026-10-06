@@ -22,7 +22,7 @@
  * api/mcp/auth.ts byte-for-byte so both surfaces present one identical challenge.
  */
 
-import { resolveMetadataOrigin } from './_agent-metadata';
+import { authSkillUrl, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
 
@@ -49,7 +49,7 @@ export default function handler(req: Request): Response {
       'Authentication required. Discover the authorization server via the protected-resource metadata, then obtain a bearer token (OAuth 2.1 + PKCE) — or pass an API key via the X-WorldMonitor-Key header.',
     resource_metadata: resourceMetadataUrl,
     authorization_server: `${origin}/.well-known/oauth-authorization-server`,
-    skill: `${origin}/auth.md`,
+    skill: authSkillUrl(origin),
   });
 
   return new Response(body, {

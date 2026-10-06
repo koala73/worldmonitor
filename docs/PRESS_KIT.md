@@ -39,7 +39,7 @@ World Monitor uses a multi-tier AI pipeline to process and summarize information
 4. **Threat Classification**: A three-stage pipeline automatically categorizes incoming news by severity and type.
 5. **Country Intelligence Briefs**: Full-page dossiers for any country, combining instability scores, AI analysis, event timelines, and prediction market data.
 
-Browser-side ML features can run locally using lightweight models, with no data leaving the user's device. Server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data; cloud AI providers such as Groq and OpenRouter are used only for the features that explicitly configure them.
+Browser-side ML features can run locally using lightweight models, with no data leaving the user's device. Server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data; cloud AI providers such as OpenRouter are used only for the features that explicitly configure them.
 
 ---
 

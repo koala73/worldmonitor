@@ -254,7 +254,7 @@ describe('buildDailyMarketBrief', () => {
 
   it('REGRESSION: a hanging summarizer must not stall the brief — falls back to rules within the timeout', async () => {
     // Repro the actual prod symptom: the LLM provider call (newsClient
-    // .summarizeArticle → Vercel function → OpenRouter/Groq) hangs without
+    // .summarizeArticle → Vercel function → OpenRouter) hangs without
     // ever rejecting, and the panel sits on "Building daily market brief..."
     // forever because the try/catch around summarizeProvider only handles
     // rejections — not pending-forever promises. The fix (PR
