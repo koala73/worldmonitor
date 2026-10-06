@@ -63,8 +63,7 @@ async function fetchUnhcrYearItems(year) {
   return items;
 }
 
-async function fetchDisplacementSummary() {
-  const currentYear = new Date().getFullYear();
+export async function fetchDisplacementSummary() {
   let rawItems = [];
   let dataYearUsed = currentYear;
 
@@ -223,7 +222,7 @@ export function validate(data) {
   );
 }
 
-const currentYear = new Date().getFullYear();
+const currentYear = new Date().getUTCFullYear();
 const canonicalKey = `${CANONICAL_KEY_PREFIX}:${currentYear}`;
 
 export function declareRecords(data) {

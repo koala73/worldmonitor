@@ -853,15 +853,10 @@
       "host": "api.groq.com",
       "provider": "api.groq.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "shared/llm-health-providers.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.hyperliquid.xyz",

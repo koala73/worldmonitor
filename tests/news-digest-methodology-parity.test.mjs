@@ -11,7 +11,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
-  GROQ_DEFAULT_MODEL,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
 } from '../scripts/_llm-model-timeouts.mjs';
@@ -890,7 +889,6 @@ describe('news digest methodology parity', () => {
     const providerNames = [...weeklyBriefSrc.matchAll(/name:\s*'([^']+)'/g)]
       .map((m) => m[1]);
     const sharedModels = {
-      GROQ_DEFAULT_MODEL,
       OPENROUTER_FREE_BACKUP_MODEL,
       OPENROUTER_FREE_PRIMARY_MODEL,
     };
@@ -898,17 +896,16 @@ describe('news digest methodology parity', () => {
       .map((m) => m[1] || sharedModels[m[2]]);
     const weeklyTemperature = extractNumericConst(weeklyBriefSrc, 'BRIEF_TEMPERATURE');
 
-    assert.deepEqual(providerNames, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
+    assert.deepEqual(providerNames, ['openrouter', 'openrouter-free', 'openrouter-free-backup']);
     assert.deepEqual(providerModels, [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
-      'openai/gpt-oss-20b',
     ]);
     assert.equal(weeklyTemperature, 0.3);
 
     assertDocMatches(
-      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`nvidia\/nemotron-3-super-120b-a12b:free`[\s\S]*Groq `openai\/gpt-oss-20b`[\s\S]*temperature\s+`0\.3`/, // pragma: allowlist secret
+      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`nvidia\/nemotron-3-super-120b-a12b:free`[\s\S]*temperature\s+`0\.3`/, // pragma: allowlist secret
       'regional weekly brief provider order, models, and temperature',
     );
     assertDocMatches(
@@ -918,7 +915,7 @@ describe('news digest methodology parity', () => {
     const briefModel = briefLlmSrc.match(/BRIEF_LLM_OPENROUTER_MODEL = process\.env\.BRIEF_LLM_OPENROUTER_MODEL \|\| '([^']+)'/)?.[1];
     assert.ok(briefModel, 'BRIEF_LLM_OPENROUTER_MODEL must default to a string literal');
     assertDocMatches(
-      new RegExp(`provider chain to OpenRouter by skipping Ollama and Groq[\\s\\S]*\`${briefModel.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\``),
+      new RegExp(`provider chain to OpenRouter by skipping Ollama[\\s\\S]*\`${briefModel.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\``),
       'digest prose and whyMatters OpenRouter-only posture',
     );
   });

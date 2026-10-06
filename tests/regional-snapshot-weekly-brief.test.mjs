@@ -27,14 +27,11 @@ const gatewaySrc = readFileSync(resolve(root, 'server/gateway.ts'), 'utf-8');
 const protoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/get_regional_brief.proto'), 'utf-8');
 const serviceProtoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/service.proto'), 'utf-8');
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalGroqApiKey = process.env.GROQ_API_KEY;
 
 afterEach(() => {
   __setWeeklyBriefTransportForTests(null);
   if (originalOpenRouterApiKey === undefined) delete process.env.OPENROUTER_API_KEY;
   else process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
-  if (originalGroqApiKey === undefined) delete process.env.GROQ_API_KEY;
-  else process.env.GROQ_API_KEY = originalGroqApiKey;
 });
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -132,7 +129,7 @@ describe('parseBriefJson', () => {
 // ── generateWeeklyBrief ─────────────────────────────────────────────────────
 
 describe('generateWeeklyBrief', () => {
-  function mockCall(text, provider = 'groq', model = 'openai/gpt-oss-20b') {
+  function mockCall(text, provider = 'openrouter', model = 'deepseek/deepseek-v4-flash') {
     return async () => ({ text, provider, model });
   }
 
@@ -144,17 +141,16 @@ describe('generateWeeklyBrief', () => {
     assert.ok(brief.generated_at > 0);
     assert.ok(brief.period_start > 0);
     assert.equal(brief.situation_recap, 'Iran increased naval posture near Hormuz.');
-    assert.equal(brief.provider, 'groq');
+    assert.equal(brief.provider, 'openrouter');
   });
 
   it('uses the fixed backup free model after paid and primary validation failures', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     const bodies = [];
     __setWeeklyBriefTransportForTests({
       fetch: async (url, init = {}) => {
         if (!String(url).includes('openrouter.ai')) {
-          throw new Error(`Groq must not be reached: ${url}`);
+          throw new Error(`only OpenRouter may be reached: ${url}`);
         }
         const body = JSON.parse(String(init.body || '{}'));
         bodies.push(body);

@@ -16,7 +16,7 @@
     "predictionMarkets": "Thị trường Dự đoán",
     "loadingMarkets": "Đang tải thị trường dự đoán...",
     "infrastructure": "Mức độ phơi bày Hạ tầng",
-    "briefUnavailable": "Bản tin AI không khả dụng — cấu hình GROQ_API_KEY trong Cài đặt.",
+    "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
     "cached": "Đã lưu cache",
     "fresh": "Mới cập nhật",
     "noMarkets": "Không tìm thấy thị trường dự đoán",
@@ -796,7 +796,7 @@
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",
       "predictionMarkets": "Thị trường Dự đoán",
-      "unavailable": "Bản tin AI không khả dụng — cấu hình GROQ_API_KEY trong Cài đặt."
+      "unavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt."
     },
     "countryBrief": {
       "identifying": "Đang xác định quốc gia...",
@@ -812,7 +812,7 @@
       "predictionMarkets": "Thị trường Dự đoán",
       "loadingMarkets": "Đang tải thị trường dự đoán...",
       "infrastructure": "Mức độ phơi bày Hạ tầng",
-      "briefUnavailable": "Bản tin AI không khả dụng — cấu hình GROQ_API_KEY trong Cài đặt.",
+      "briefUnavailable": "Bản tin AI không khả dụng — cấu hình OPENROUTER_API_KEY trong Cài đặt.",
       "cached": "Đã lưu cache",
       "fresh": "Mới cập nhật",
       "noMarkets": "Không tìm thấy thị trường dự đoán",
@@ -1427,7 +1427,7 @@
       "rankingStories": "Đang xếp hạng tin quan trọng...",
       "analyzingSentiment": "Đang phân tích cảm xúc...",
       "generatingBrief": "Đang tạo bản tin thế giới...",
-      "infoTooltip": "<strong>Phân tích Hỗ trợ AI</strong><br>• <strong>Bản tin Thế giới</strong>: Tóm tắt AI (Groq/OpenRouter)<br>• <strong>Cảm xúc</strong>: Phân tích sắc thái tin tức<br>• <strong>Tốc độ</strong>: Tin đang lan nhanh<br>• <strong>Điểm Hội tụ</strong>: Tương quan thực thể tin tức với tín hiệu bản đồ (quân sự, biểu tình, gián đoạn)<br><em>Chỉ Desktop • Được hỗ trợ bởi Llama 3.3 + Phát hiện Điểm Hội tụ</em>",
+      "infoTooltip": "<strong>Phân tích Hỗ trợ AI</strong><br>• <strong>Bản tin Thế giới</strong>: Tóm tắt AI (OpenRouter)<br>• <strong>Cảm xúc</strong>: Phân tích sắc thái tin tức<br>• <strong>Tốc độ</strong>: Tin đang lan nhanh<br>• <strong>Điểm Hội tụ</strong>: Tương quan thực thể tin tức với tín hiệu bản đồ (quân sự, biểu tình, gián đoạn)<br><em>Chỉ Desktop • Được hỗ trợ bởi Llama 3.3 + Phát hiện Điểm Hội tụ</em>",
       "streamQualityLabel": "Chất lượng Video",
       "streamQualityDesc": "Đặt chất lượng cho tất cả luồng phát trực tiếp (thấp hơn tiết kiệm băng thông)",
       "globeRenderScaleOptions": {
@@ -1439,7 +1439,7 @@
       },
       "mapFlashLabel": "Xung Sự kiện Trực tiếp",
       "mapFlashDesc": "Nhấp nháy vị trí trên bản đồ khi có tin tức nóng",
-      "aiFlowCloudLabel": "AI Đám mây (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "AI Đám mây (OpenRouter)",
       "aiFlowCloudDesc": "Gửi tiêu đề tới cloud để AI tóm tắt (khuyến nghị)",
       "aiFlowBrowserLabel": "Mô hình cục bộ trên trình duyệt",
       "aiFlowBrowserDesc": "Chạy AI cục bộ trong trình duyệt của bạn",
