@@ -97,7 +97,7 @@ const RENDER = `
       var publishers = Array.isArray(s.publishers) ? s.publishers : null;
       var publisherNames = [];
       if (publishers) {
-        for (var j = 0; j < publishers.length && j < 12; j++) {
+        for (var j = 0; j < publishers.length && publisherNames.length < 12; j++) {
           var publisher = publishers[j];
           if (!publisher || typeof publisher.name !== "string" || !publisher.name.trim()) continue;
           var tier = publisher.tier;

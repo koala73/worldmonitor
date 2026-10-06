@@ -258,6 +258,18 @@ describe('News Intelligence supplied story details', () => {
       assert.doesNotMatch(row.textContent,/declared tier 0/);
     });
   });
+
+  it('fills the publisher cap with valid names after invalid roster entries', async () => {
+    const invalid=Array.from({length:12},(_,index)=>index%2?{name:'   '}:null);
+    const valid=Array.from({length:14},(_,index)=>({name:'Valid Publisher '+index,tier:1}));
+    await mount(result(envelope([{...detailed(),publishers:[...invalid,...valid],publishersUnlisted:0}])),document=>{
+      const row=rows(document)[0];
+      assert.match(row.textContent,/Valid Publisher 0 \(declared tier 1\)/);
+      assert.match(row.textContent,/Valid Publisher 11 \(declared tier 1\)/);
+      assert.doesNotMatch(row.textContent,/Valid Publisher 12|Valid Publisher 13|No contributing publishers listed/);
+      assert.match(row.textContent,/Showing 12 of 26 supplied publishers/);
+    });
+  });
 });
 
 
