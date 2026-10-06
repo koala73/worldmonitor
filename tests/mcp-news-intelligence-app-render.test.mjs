@@ -9,7 +9,8 @@ import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import { mcpHandler } from '../api/mcp.ts';
 import { makeProDeps } from './helpers/mcp-pro-deps.mjs';
 
-const currentUri = 'ui://worldmonitor/news-intelligence-v2.html';
+const currentUri = 'ui://worldmonitor/news-intelligence-v3.html';
+const previousUri = 'ui://worldmonitor/news-intelligence-v2.html';
 const legacyUri = 'ui://worldmonitor/news-intelligence.html';
 const story = (index) => ({
   primaryTitle: `Controlled headline ${index + 1}`, primarySource: 'Controlled Example Wire',
@@ -155,7 +156,8 @@ describe('News Intelligence current and private legacy static resource', () => {
     assert.equal(UI_RESOURCE_LIST_RESPONSE.filter(resource => resource.name === 'News Intelligence (interactive)').length, 1);
     assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === currentUri));
     assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacyUri));
-    for (const uri of [currentUri, legacyUri]) {
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === previousUri));
+    for (const uri of [currentUri, previousUri, legacyUri]) {
       assert.ok(isUiResourceUri(uri));
       const response = await buildUiResourceRead(10, uri, {});
       const body = await response.json();
@@ -171,7 +173,7 @@ describe('News Intelligence current and private legacy static resource', () => {
     let reads = 0;
     try {
       globalThis.fetch = async () => { reads++; throw new Error('Static UI must not read data'); };
-      for (const uri of [currentUri, legacyUri]) {
+      for (const uri of [currentUri, previousUri, legacyUri]) {
         const response = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri } }),
@@ -272,6 +274,113 @@ describe('News Intelligence supplied story details', () => {
   });
 });
 
+
+describe('News Intelligence supplied reliability and selection coverage', () => {
+  const supplied = () => ({
+    ...envelope([{ ...story(0), credibilityScore: 77, sourceTier: 2,
+      corroboration: { state: 'single-publisher', publishers: 1 } },
+    { ...story(1), credibilityScore: 89, sourceTier: 2,
+      corroboration: { state: 'corroborated', publishers: 4 } }]),
+  });
+
+  it('preserves supplied reliability, source tiers, corroboration and selection drops across accepted shapes', async () => {
+    const original = supplied();
+    original.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 3, overflow: 168 } };
+    const summary = { ...original, data: summarizeData(original.data) };
+    for (const wire of [result(original), result(original.data), { content: result(original).content },
+      result(original, true), result(original.data, true), result(summary, true)]) {
+      await mount(wire, document => {
+        assert.match(rows(document)[0].textContent, /Source reliability: 77\/100/);
+        assert.match(rows(document)[0].textContent, /Declared source tier: 2/);
+        assert.match(rows(document)[0].textContent, /Corroboration coverage: single-publisher/);
+        assert.match(rows(document)[0].textContent, /Reported publishers: 1/);
+        assert.match(rows(document)[1].textContent, /Source reliability: 89\/100/);
+        assert.match(rows(document)[1].textContent, /Corroboration coverage: corroborated/);
+        assert.match(rows(document)[1].textContent, /Reported publishers: 4/);
+        assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 3; overflow 168/);
+        assert.doesNotMatch(foot(document), /170 (?:loaded|reported) stories/);
+      });
+    }
+  });
+
+  it('keeps supplied selection drops separate from partial summary coverage', async () => {
+    const value = supplied();
+    value.data.insights.topStories.push(story(2), story(3));
+    value.data.insights.provenance = { selectionDrops: { overflow: 168 } };
+    await mount(result({ ...value, data: summarizeData(value.data) }, true), document => {
+      assert.equal(rows(document).length, 3);
+      assert.match(rows(document)[0].textContent, /Source reliability: 77\/100/);
+      assert.match(foot(document), /Showing 3 sampled stories of 4 reported stories/);
+      assert.match(foot(document), /Full list is not loaded/);
+      assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow 168/);
+      assert.doesNotMatch(foot(document), /172 reported stories/);
+    });
+  });
+
+  it('preserves measured zero and finite reliability without rounding or count inference', async () => {
+    for (const credibilityScore of [0, 77.5, 100]) {
+      const value = envelope([{ ...story(0), credibilityScore, sourceTier: 4,
+        sourceCount: 99, corroboration: { state: 'unknown', publishers: 0 } }]);
+      value.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 0, overflow: 0 } };
+      await mount(result(value), document => {
+        assert.ok(rows(document)[0].textContent.includes('Source reliability: ' + credibilityScore + '/100'));
+        assert.match(rows(document)[0].textContent, /Declared source tier: 4/);
+        assert.match(rows(document)[0].textContent, /Corroboration coverage: unknown/);
+        assert.match(rows(document)[0].textContent, /Reported publishers: 0/);
+        assert.doesNotMatch(rows(document)[0].textContent, /Reported publishers: 99/);
+        assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 0; overflow 0/);
+      });
+    }
+  });
+
+  it('keeps invalid or absent values unavailable without accepting incorrect fixture paths', async () => {
+    for (const invalid of [undefined, null, '', '2', true, -1, Infinity]) {
+      const value = envelope([{ ...story(0), credibilityScore: invalid, sourceTier: invalid,
+        corroboration: { state: '<img src=x onerror=alert(1)>', publishers: invalid, publisherCount: 9 } }]);
+      value.data.insights.selectionDrops = { admissibility: 9, sourceCap: 9, overflow: 9 };
+      value.data.insights.provenance = { selectionDrops: { admissibility: invalid, sourceCap: invalid, overflow: invalid } };
+      await mount(result(value), document => {
+        assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
+        assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+        assert.match(rows(document)[0].textContent, /Corroboration coverage unavailable/);
+        assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
+        assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
+        assert.equal(document.querySelectorAll('#list img, #list script').length, 0);
+      });
+    }
+  });
+
+  it('rejects out-of-range reliability, undeclared tiers and fractional counts independently', async () => {
+    for (const [credibilityScore, sourceTier, publishers] of [[101, 5, 1.5], [-0.1, 0, -1], [NaN, 2.5, '4']]) {
+      const value = envelope([{ ...story(0), credibilityScore, sourceTier,
+        corroboration: { state: 'tier4-only', publishers } }]);
+      value.data.insights.provenance = { selectionDrops: { admissibility: 1.5, sourceCap: -1, overflow: '168' } };
+      await mount(result(value), document => {
+        assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
+        assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+        assert.match(rows(document)[0].textContent, /Corroboration coverage: tier4-only/);
+        assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
+        assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow unavailable/);
+      });
+    }
+    await mount(result(envelope([{ ...story(0), sourceTier: 1 }])), document => {
+      assert.match(rows(document)[0].textContent, /Declared source tier: 1/);
+    });
+  });
+
+  it('clears old supplied fields on replacement and preserves partial drop coverage', async () => {
+    await mount(result(supplied()), (document, send) => {
+      send(result({ insights: { topStories: [story(0)], provenance: { selectionDrops: { overflow: 168 } } } }, true));
+      assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
+      assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+      assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
+      assert.doesNotMatch(rows(document)[0].textContent, /77\/100|single-publisher|Reported publishers: 1/);
+      assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow 168/);
+      assert.match(foot(document), /Showing 1 of 1 loaded stories/);
+      assert.doesNotMatch(foot(document), /Snapshot|stale|degraded/);
+    });
+  });
+});
 
 describe('News Intelligence publication timestamp wire types', () => {
   it('renders finite epoch milliseconds, including zero, separately from the cache snapshot', async () => {
