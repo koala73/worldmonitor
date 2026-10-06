@@ -25,7 +25,7 @@ const STYLES = `
   .evt:last-child { border-bottom: none; }
   .evt-main { min-width: 0; }
   .evt-sides { font-size: 13px; font-weight: 600; color: var(--fg); }
-  .evt-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .evt-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
   .evt-deaths { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; white-space: nowrap; }
 `;
 
@@ -118,9 +118,18 @@ const RENDER = `
       footParts.push(incomplete ? "Candidate completeness not confirmed."
         : confirmed ? "Candidate completeness confirmed." : "Candidate completeness unknown.");
       if (fetchedPartial) footParts.push("Candidate release fetched partially.");
-      var failedPages = source.annualFailedPages;
-      footParts.push(Number.isSafeInteger(failedPages) && failedPages >= 0
-        ? "Annual base pages failed: " + failedPages + "." : "Annual base failed-page count unknown.");
+      var sourceFailures = source.annualFailedPages;
+      var payloadFailures = uc.annualFailedPages;
+      var sourceFailuresKnown = Number.isSafeInteger(sourceFailures) && sourceFailures >= 0;
+      var payloadFailuresKnown = Number.isSafeInteger(payloadFailures) && payloadFailures >= 0;
+      if (sourceFailuresKnown && payloadFailuresKnown && sourceFailures !== payloadFailures) {
+        footParts.push("Annual base failed-page counts disagree: source metadata " + sourceFailures
+          + "; events payload " + payloadFailures + ".");
+      } else {
+        var failedPages = sourceFailuresKnown ? sourceFailures : payloadFailuresKnown ? payloadFailures : null;
+        footParts.push(failedPages != null
+          ? "Annual base pages failed: " + failedPages + "." : "Annual base failed-page count unknown.");
+      }
     }
     if (d.partial === true && d.truncation && typeof d.truncation === "object") {
       var returnedCount = num(d.truncation.returned_event_count);

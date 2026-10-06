@@ -27,6 +27,8 @@ const largeEvents = Array.from({ length: 160 }, (_, i) => ({
 }));
 let activeEvents = events;
 let missingUcdp = false;
+let missingUcdpMeta = false;
+let payloadAnnualFailedPages;
 const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 let handler;
 before(async () => {
@@ -53,11 +55,11 @@ globalThis.fetch = async (url, opts) => {
   const key = decodeURIComponent(address.pathname.slice(5));
   fixtureReads.push(key);
   let value = null;
-  if (key === 'conflict:ucdp-events:v1') value = missingUcdp ? null : { events: activeEvents, fetchedAt, version: 'controlled', candidateVersion: 'controlled+partial', candidateComplete: false };
+  if (key === 'conflict:ucdp-events:v1') value = missingUcdp ? null : { events: activeEvents, fetchedAt, version: 'controlled', candidateVersion: 'controlled+partial', candidateComplete: false, ...(payloadAnnualFailedPages === undefined ? {} : { annualFailedPages: payloadAnnualFailedPages }) };
   else if (key === 'unrest:events:v1') value = { events: [] };
   else if (key === 'risk:scores:sebuf:stale:v8') value = { ciiScores: [] };
   else if (key === 'conflict:iran-events:v1') value = { events: [] };
-  else if (key === 'seed-meta:conflict:ucdp-events') value = { fetchedAt, recordCount: activeEvents.length, candidateVersion: 'controlled+partial', candidateComplete: false, annualFailedPages: 2 };
+  else if (key === 'seed-meta:conflict:ucdp-events') value = missingUcdpMeta ? null : { fetchedAt, recordCount: activeEvents.length, candidateVersion: 'controlled+partial', candidateComplete: false, annualFailedPages: 2 };
   else if (key === 'seed-meta:unrest:events') value = { fetchedAt, recordCount: activeEvents.length };
   else throw new Error('Unexpected fixture key ' + key);
   return json({ result: value === null ? null : JSON.stringify(value) });
@@ -75,6 +77,8 @@ after(() => {
 async function result(args = {}, state = 'normal') {
   activeEvents = state === 'large' ? largeEvents : state === 'twenty' ? twentyEvents : state === 'empty' ? [] : events;
   missingUcdp = state === 'missing';
+  missingUcdpMeta = state === 'metadata-missing';
+  payloadAnnualFailedPages = missingUcdpMeta ? 5 : undefined;
   const { deps } = makeProDeps();
   const response = await handler(proReq('POST', callBody('get_conflict_events', args)), deps);
   const body = await response.json();
@@ -187,6 +191,52 @@ describe('Conflict Events supplied coverage and attribution', () => {
       });
     });
   }
+  it('retains a known payload failed-page count through the real relay when metadata is missing', async () => {
+    for (const args of [{}, { summary: true }, { jmespath: '@' }]) {
+      const wire = await result(args, 'metadata-missing');
+      const envelope = wire.structuredContent.projection || wire.structuredContent;
+      assert.equal(envelope.data['ucdp-events'].annualFailedPages, 5);
+      assert.notEqual(envelope.conflict_source.ucdp.annualFailedPages, 5);
+      await mount(wire, doc => {
+        assert.match(doc.getElementById('foot').textContent, /Annual base pages failed: 5/);
+        assert.doesNotMatch(doc.getElementById('foot').textContent, /failed-page count unknown/);
+      });
+    }
+  });
+  it('keeps both valid failure counts visible when metadata and payload disagree', async () => {
+    for (const [metadataCount, payloadCount] of [[0, 5], [5, 0], [2, 5]]) {
+      const wire = await result();
+      wire.structuredContent.conflict_source.ucdp.annualFailedPages = metadataCount;
+      wire.structuredContent.data['ucdp-events'].annualFailedPages = payloadCount;
+      await mount(wire, doc => {
+        const text = doc.getElementById('foot').textContent;
+        assert.match(text, /Annual base failed-page counts disagree/);
+        assert.ok(text.includes('source metadata ' + metadataCount));
+        assert.ok(text.includes('events payload ' + payloadCount));
+      });
+    }
+  });
+  it('uses only valid failure counts and preserves an agreed zero', async () => {
+    const wire = await result();
+    for (const [metadataCount, payloadCount, expected] of [[null, 5, 5], ['2', 5, 5], [2, -1, 2], [0, 0, 0], [2, 2, 2]]) {
+      wire.structuredContent.conflict_source.ucdp.annualFailedPages = metadataCount;
+      wire.structuredContent.data['ucdp-events'].annualFailedPages = payloadCount;
+      await mount(wire, doc => {
+        assert.ok(doc.getElementById('foot').textContent.includes('Annual base pages failed: ' + expected));
+        assert.doesNotMatch(doc.getElementById('foot').textContent, /disagree|count unknown/);
+      });
+    }
+  });
+  it('allows literal long publisher tokens to wrap within the attribution row', async () => {
+    const wire = await result();
+    const publisher = 'publisher'.repeat(60);
+    wire.structuredContent.data['ucdp-events'].events[0].sourceOriginal = publisher;
+    await mount(wire, doc => {
+      const attribution = [...doc.querySelectorAll('.evt-meta')].find(node => node.textContent === 'Source: ' + publisher);
+      assert.ok(attribution);
+      assert.equal(doc.defaultView.getComputedStyle(attribution).overflowWrap, 'anywhere');
+    });
+  });
   it('does not call an unfetched candidate partial and does not claim unknown metadata complete', async () => {
     const wire = await result();
     const envelope = wire.structuredContent;
