@@ -3491,6 +3491,10 @@ export class DataLoaderManager implements AppModule {
           flightClusters: flightData.clusters,
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
+          flightDataState: flightData.dataState,
+          vesselDataState: vesselData.dataState,
+          vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+          vesselCoverageNotes: vesselData.coverageNotes,
         };
         this.callbacks.refreshOpenCountryMilitary?.();
         this.callbacks.refreshOpenCountryTimeline?.();
@@ -3996,6 +4000,10 @@ export class DataLoaderManager implements AppModule {
         flightClusters: flightData.clusters,
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
+        flightDataState: flightData.dataState,
+        vesselDataState: vesselData.dataState,
+        vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+        vesselCoverageNotes: vesselData.coverageNotes,
       };
       this.callbacks.refreshOpenCountryMilitary?.();
       this.callbacks.refreshOpenCountryTimeline?.();

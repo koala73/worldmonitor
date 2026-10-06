@@ -1,5 +1,5 @@
 import type { EffectiveTariffRate } from '@/generated/client/worldmonitor/trade/v1/service_client';
-import type { CountryBriefSignals } from '@/types';
+import type { CountrySignalCounts } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import type { PredictionMarket } from '@/services/prediction';
@@ -215,7 +215,7 @@ export interface CountryPortActivityData {
 export interface CountryBriefPanel {
   setSectionFailure?(id: import('../../shared/country-brief-sections').BriefSectionId, state: 'locked' | 'unavailable', reason: string): void;
   setSectionCoverage?(id: import('../../shared/country-brief-sections').BriefSectionId, missing: string[]): void;
-  show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
+  show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts): void;
   hide(): void;
   showLoading(): void;
   getCode(): string | null;
@@ -230,8 +230,9 @@ export interface CountryBriefPanel {
   updateStock(data: StockIndexData): void;
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
-  updateScore?(score: CountryScore | null, signals: CountryBriefSignals): void;
+  updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
   isFallbackBrief?(): boolean;
+  updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary | null): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
