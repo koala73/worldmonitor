@@ -1498,8 +1498,11 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
       // Refresh the market snapshot alongside the probability: vsMarketSkill /
       // deviationSkill compare entry.probability against calibration.marketPrice,
       // so a re-graded probability must not be measured against the first-seen
-      // crowd price.
+      // crowd price. A run with no anchor clears it: the forecast's calibration
+      // at last sight is the truth, and a kept anchor may be one the matcher
+      // has since rejected (#7071).
       if (forecast.calibration && typeof forecast.calibration === 'object') entry.calibration = cloneJson(forecast.calibration);
+      else delete entry.calibration;
     }
   }
   // Market-settlement bets track the venue's CURRENT endDate: venues move
