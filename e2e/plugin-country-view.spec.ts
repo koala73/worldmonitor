@@ -333,13 +333,18 @@ test.describe('localized normal travel advice', () => {
   });
 });
 
-test('raw Signals exclude foreign outages when precise country geometry is unavailable', async ({ page }, info) => {
+test('raw Signals keep earthquake counts unknown and exclude foreign outages when country geometry is unavailable', async ({ page }, info) => {
   const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first', true);
   const frame = page.frameLocator('iframe');
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  const signals = frame.locator('[data-brief-section=signals]');
   await expect.poll(() => host.contexts.at(-1)?.signals?.outages).toBe(0);
-  await expect(frame.locator('[data-brief-section=signals]')).not.toContainText('1 Outages');
-  await frame.locator('[data-brief-section=signals]').screenshot({ path: info.outputPath('geometry-unavailable-signals.png') });
+  await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBeNull();
+  await expect(signals).toContainText('Earthquakes unavailable');
+  await expect(signals).toContainText('Earthquake country count is unknown because country geometry is unavailable.');
+  await expect(signals).not.toContainText('1 Earthquakes');
+  await expect(signals).not.toContainText('1 Outages');
+  await signals.screenshot({ path: info.outputPath('geometry-unavailable-signals.png') });
   host.releaseOrder();
 });
 

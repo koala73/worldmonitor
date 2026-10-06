@@ -1003,10 +1003,10 @@ describe('CSV military vessel class', () => {
 
 it('preserves bounded sanitized Signals coverage notes beside counts in the existing evidence export', async () => {
   const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
-  const bundle = buildCountryEvidenceBundle({ country: 'United States', code: 'US', signals: { outages: 1 }, signalCoverageNotes: ['<script>bad()</script>Returned sample; snapshot unknown; these counts are not fresh.', ...Array.from({ length: 20 }, () => 'x'.repeat(2000))] });
+  const bundle = buildCountryEvidenceBundle({ country: 'United States', code: 'US', signals: { outages: 1 }, signalCoverageNotes: ['<script>bad()</script><SCRIPT>bad()</SCRIPT><ScRiPt>bad()</ScRiPt>Returned sample; snapshot unknown; these counts are not fresh.', ...Array.from({ length: 20 }, () => 'x'.repeat(2000))] });
   assert.ok(bundle.freshnessNotes.some(note => note.includes('these counts are not fresh')));
   assert.ok(bundle.freshnessNotes.every(note => note.length <= 1600));
   assert.ok(bundle.freshnessNotes.length <= 15);
   assert.match(renderCountryEvidenceMarkdown(bundle), /Returned sample/);
-  assert.doesNotMatch(renderCountryEvidenceMarkdown(bundle), /<script>/);
+  assert.doesNotMatch(renderCountryEvidenceMarkdown(bundle), /<script\b/i);
 });

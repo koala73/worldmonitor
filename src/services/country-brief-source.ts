@@ -1,4 +1,4 @@
-import { RAW_SIGNAL_PATH, rawSignalsValueSchema } from '../../shared/country-raw-signals';
+import { RAW_SIGNAL_PATH } from '../../shared/country-raw-signals-model';
 import { combineAbortSignals } from './timeout-signal';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { createHostCountryFetch } from './country-brief-host-transport';
@@ -22,6 +22,9 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
     signalsRaw: async (code: string, signal: AbortSignal) => {
       if (mode !== 'host') throw new Error('Raw Signals reader requires a country host connection.');
       const requestSignal = combineAbortSignals([signal, AbortSignal.timeout(30_000)]);
+      requestSignal.throwIfAborted();
+      const { rawSignalsValueSchema } = await import('../../shared/country-raw-signals');
+      requestSignal.throwIfAborted();
       const response = await fetcher(`${base}${RAW_SIGNAL_PATH}?country_code=${code}`, { signal: requestSignal });
       requestSignal.throwIfAborted();
       const value = rawSignalsValueSchema.parse(await response.json());

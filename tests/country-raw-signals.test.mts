@@ -27,12 +27,28 @@ it('projects only attributed returned observations and keeps original clocks and
   assert.match(result.value.sources.thermal.attribution, /FIRMS.*CWFIS.*British Columbia/);
 });
 
-it('preserves precise false and falls back to complete place text only without geometry', () => {
+it('preserves known geometry success and zero regardless of place text', () => {
   const result = sample();
   assert.equal(projectRawSignals(result.value, 'United States', true, () => false).earthquakes, 0);
-  assert.equal(projectRawSignals(result.value, 'United States', false, () => false).earthquakes, 1);
-  assert.equal(projectRawSignals(result.value, 'other', false, () => true).earthquakes, 0);
+  assert.equal(projectRawSignals(result.value, 'other', true, () => true).earthquakes, 1);
 });
+
+it('keeps earthquake attribution unknown without geometry even for positive country text', () => {
+  const result = sample();
+  assert.equal(projectRawSignals(result.value, 'United States', false, () => false).earthquakes, null);
+});
+
+for (const { countryCode, countryName, place, location } of [
+  { countryCode: 'IN', countryName: 'India', place: 'Southern Indian Ocean', location: { latitude: -40, longitude: 70 } },
+  { countryCode: 'GN', countryName: 'Guinea', place: 'Papua New Guinea', location: { latitude: -6, longitude: 147 } },
+]) {
+  it(`keeps ${countryName} earthquake attribution unknown for ${place} without geometry`, () => {
+    const result = sample({ earthquakes: { earthquakes: [{ ...quake, place, location }] } });
+    const value = { ...result.value, countryCode };
+    assert.equal(rawSignalsResultSchema.safeParse({ ...result, value }).success, true);
+    assert.equal(projectRawSignals(value, countryName, false, () => false).earthquakes, null);
+  });
+}
 
 it('applies conservative global-empty semantics separately from valid returned-list zero', () => {
   const result = sample({ earthquakes: { earthquakes: [] }, outages: { outages: [] }, advisories: { advisories: [], byCountry: {} }, thermal: watch([]) });

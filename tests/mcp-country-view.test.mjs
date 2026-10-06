@@ -92,7 +92,7 @@ describe('country view MCP boundary', () => {
     const panel_request = opened.result.structuredContent.panelRequest.token;
     const reply = await paid('get_country_brief_section', { section: 'signalsRaw', arguments: { country_code: 'US' }, panel_request });
     assert.equal(reply.result?.structuredContent?.state, 'unavailable');
-    assert.deepEqual(Object.keys(reply.result.structuredContent.value.sources), ['earthquakes', 'outages', 'advisories', 'thermal']);
+    assert.deepEqual(Object.keys(reply.result.structuredContent.value.sources).sort(), ['advisories', 'earthquakes', 'outages', 'thermal']);
     assert.equal(reply.result.structuredContent.value.countryCode, 'US');
     assert.equal(requests.length, 4);
     assert.equal(pipe.count, 1);

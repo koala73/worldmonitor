@@ -1,4 +1,4 @@
-import { RAW_SIGNAL_FAMILIES, projectRawSignals, type RawSignalFamily, type RawSignalsValue, type RawSignalOutcome } from '../../shared/country-raw-signals';
+import { RAW_SIGNAL_FAMILIES, projectRawSignals, type RawSignalFamily, type RawSignalsValue, type RawSignalOutcome } from '../../shared/country-raw-signals-model';
 import { TIER1_COUNTRIES } from '@/config/countries';
 import type { CountrySignalCounts } from '@/types';
 import type { CountryMilitarySignalCounts } from './country-military-activity';
@@ -62,6 +62,7 @@ export function composeCountrySignals(base: CountrySignalCounts, code: string, n
   const notes = [...militaryNotes];
   if (!raw || raw.countryCode !== code) return { signals: { ...base, ...military }, notes, coverage: null };
   const families = raw.families;
+  if (!hasGeography) notes.push('Earthquake country count is unknown because country geometry is unavailable.');
   const displayed: RawSignalsValue = { countryCode: code, missing: [], sources: {
     earthquakes: families.earthquakes.observation ?? families.earthquakes.latest,
     outages: families.outages.observation ?? families.outages.latest,
