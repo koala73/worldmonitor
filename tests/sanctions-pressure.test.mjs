@@ -92,7 +92,7 @@ describe('handler: _state stripping', () => {
     );
   });
 
-  it('seed stores _state under STATE_KEY (not canonical key)', () => {
+  it('seed stores the full ID baseline separately under STATE_KEY', () => {
     assert.match(
       seedSrc,
       /extraKeys.*STATE_KEY/s,
@@ -358,7 +358,10 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
   });
 
   it('serializes both SEMA fields over the generated RPC route', async () => {
-    cacheStore.set(REDIS_KEY, cachedPayload({ semaCount: 0, semaError: 'SEMA parse failed' }));
+    cacheStore.set(REDIS_KEY, cachedPayload({
+      semaCount: 0, semaError: 'SEMA parse failed',
+      _state: { schemaVersion: 1, population: 'top-12-first-iso2-display-v1', comparison: { from: '1699000000000' } },
+    }));
     const { createSanctionsServiceRoutes } = await import('../src/generated/server/worldmonitor/sanctions/v1/service_server.ts');
     const [route] = createSanctionsServiceRoutes({
       listSanctionsPressure,
@@ -373,6 +376,8 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(body.semaCount, 0);
     assert.equal(body.semaError, 'SEMA parse failed');
     assert.equal(body.entries[0]?.sourceLists[0], 'SDN');
+    assert.equal(Object.hasOwn(body, '_state'), false);
+    assert.equal(Object.hasOwn(body, 'pressureMetadata'), false);
   });
 });
 
