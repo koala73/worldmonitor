@@ -197,8 +197,9 @@ function resolution(ledger, counts, archiveStatus) {
  * Each HIT or MISS also scores a control window of the same length that
  * starts 24 hours before the emission, under the same matching and tier
  * rule, so the scorecard can publish a base rate beside the hit rate. The
- * control is skipped when the archive does not cover its start or when a
- * window for the same id was open during it.
+ * control is skipped when the archive does not cover its start, when its
+ * start is older than the evidence expiry, or when any alert for the same
+ * entity was open during it.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
@@ -238,8 +239,12 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
   const controlWindow = (entry) => {
     const start = entry.emittedAt - MARKET_ALERT_CONTROL_OFFSET_MS;
     const end = start + MARKET_ALERT_WINDOW_MS;
+    // A story:track row outlives its first sighting by seven days, so a start
+    // older than six days can be claimed covered after its stories are gone.
+    if (start < nowMs - MARKET_ALERT_EVIDENCE_EXPIRY_MS) return { start, end, outcome: 'skipped', reason: 'expired' };
     if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
-    const open = Object.values(ledger).some((other) => other.id === entry.id && other.emittedAt <= end && other.deadline >= start);
+    const entityKey = entityKeyOf(entry.id);
+    const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey && other.emittedAt <= end && other.deadline >= start);
     if (open) return { start, end, outcome: 'skipped', reason: 'overlap' };
     return { start, end, candidates: matching(entry, start, end) };
   };
@@ -270,6 +275,10 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     }
   }
   return resolution(ledger, counts, archiveStatus);
+}
+
+function entityKeyOf(id) {
+  return id.slice(id.indexOf(':') + 1);
 }
 
 export function pruneLedger(ledger, nowMs) {

@@ -484,6 +484,34 @@ describe('resolveDueEntries', () => {
       const crude = Object.values(result.ledger).find((entry) => entry.id === 'silent_divergence:CL=F');
       assert.equal(crude.control.outcome, 'HIT');
     });
+
+    it('skips the control when an alert of another type for the same entity was open during it, pending or resolved', async () => {
+      const pendingFlow = ingest({}, [marketSignal('flow_price_divergence', CRUDE)], NOW - 23 * HOUR).ledger;
+      const resolvedFlow = (await resolveDueEntries(pendingFlow, { nowMs: NOW - 17 * HOUR + 1, archive: archiveOf([], {}, NOW - 48 * HOUR) })).ledger;
+      assert.equal(Object.values(resolvedFlow)[0].status, 'resolved');
+      for (const earlier of [pendingFlow, resolvedFlow]) {
+        const ledger = ingest(earlier, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+        const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
+        const crude = Object.values(result.ledger).find((entry) => entry.id === 'silent_divergence:CL=F');
+        assert.deepEqual(crude.control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
+      }
+    });
+
+    it('an alert of another type for another entity does not count as overlap', async () => {
+      const wheat = ingest({}, [marketSignal('flow_price_divergence', WHEAT)], NOW - 23 * HOUR).ledger;
+      const ledger = ingest(wheat, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+      const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
+      const crude = Object.values(result.ledger).find((entry) => entry.id === 'silent_divergence:CL=F');
+      assert.equal(crude.control.outcome, 'HIT');
+    });
+
+    it('skips the control as expired once its start is older than the evidence expiry, even with coverage claimed', async () => {
+      const archive = () => archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED);
+      const stale = await resolveDueEntries(pendingLedger(), { nowMs: CONTROL.start + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 60 * 1000, archive: archive() });
+      assert.deepEqual(Object.values(stale.ledger)[0].control, { ...CONTROL, outcome: 'skipped', reason: 'expired' });
+      const fresh = await resolveDueEntries(pendingLedger(), { nowMs: CONTROL.start + 5 * 24 * HOUR, archive: archive() });
+      assert.deepEqual(Object.values(fresh.ledger)[0].control, { ...CONTROL, outcome: 'HIT', storyHash: 'c1' });
+    });
   });
 
   it('does not touch an already resolved entry', async () => {

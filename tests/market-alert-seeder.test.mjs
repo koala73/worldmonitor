@@ -462,12 +462,22 @@ describe('createRedisArchive', () => {
     const { value, warnings } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
     assert.deepEqual(warnings, []);
     assert.equal(value.truncated, true);
-    assert.equal(value.coveredFromMs, NOW - (MAX_ARCHIVE_HASHES - 1) * MIN, 'the oldest kept lastSeen');
+    assert.equal(value.coveredFromMs, NOW - (MAX_ARCHIVE_HASHES - 1) * MIN + 1, 'just after the oldest kept lastSeen');
     assert.equal(value.stories.length, MAX_ARCHIVE_HASHES);
     assert.deepEqual([value.stories[0].hash, value.stories.at(-1).hash], ['h0', `h${MAX_ARCHIVE_HASHES - 1}`]);
     const requested = pipeline.sent.slice(1).flat().map(([, key]) => key);
     assert.equal(requested.length, MAX_ARCHIVE_HASHES);
     assert.ok(!requested.includes(`story:track:v1:h${MAX_ARCHIVE_HASHES}`), 'the oldest member is dropped');
+  });
+
+  it('proves only windows after a truncated cutoff whose score the LIMIT split across kept and dropped members', async () => {
+    const tiedAt = NOW - MAX_ARCHIVE_HASHES * MIN;
+    const newestFirst = Array.from({ length: MAX_ARCHIVE_HASHES + 1 }, (_, i) => [`h${i}`, String(i >= MAX_ARCHIVE_HASHES - 2 ? tiedAt : NOW - i * MIN)]).flat();
+    const pipeline = fakePipeline(archiveRows({ ZREVRANGEBYSCORE: () => ({ result: newestFirst }) }));
+    const { value } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
+    assert.equal(value.truncated, true);
+    assert.deepEqual(value.stories.slice(-2).map((story) => story.hash), [`h${MAX_ARCHIVE_HASHES - 2}`, `h${MAX_ARCHIVE_HASHES - 1}`]);
+    assert.equal(value.coveredFromMs, tiedAt + 1);
   });
 
   it('returns null on a malformed ZREVRANGEBYSCORE result', async () => {

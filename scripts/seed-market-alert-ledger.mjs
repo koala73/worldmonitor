@@ -317,10 +317,11 @@ function stayPending(what) {
 export function createRedisArchive(pipeline = defaultRedisPipeline) {
   return {
     // Newest first: when the window overflows, the kept stories are the
-    // newest MAX_ARCHIVE_HASHES and coveredFromMs rises to the oldest kept
-    // lastSeen, so the newest due rows still resolve. A story's lastSeen is
-    // never below its firstSeen, so every story first seen at or after
-    // coveredFromMs is in the kept set.
+    // newest MAX_ARCHIVE_HASHES and coveredFromMs rises to one past the oldest
+    // kept lastSeen, since the LIMIT can split members tied at that score, so
+    // the newest due rows still resolve. A story's lastSeen is never below its
+    // firstSeen, so every story first seen at or after coveredFromMs is in the
+    // kept set.
     async readStories(sinceMs) {
       const rows = await pipeline([
         ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
@@ -333,7 +334,8 @@ export function createRedisArchive(pipeline = defaultRedisPipeline) {
       const kept = truncated ? newestFirst.slice(0, 2 * MAX_ARCHIVE_HASHES) : newestFirst;
       const members = kept.filter((_, i) => i % 2 === 0);
       const scoreAt = (flat, i) => (flat.length > i && Number.isFinite(Number(flat[i])) ? Number(flat[i]) : null);
-      const coveredFromMs = truncated ? scoreAt(kept, kept.length - 1) : scoreAt(oldest, 1);
+      const oldestKept = scoreAt(kept, kept.length - 1);
+      const coveredFromMs = truncated ? (oldestKept == null ? null : oldestKept + 1) : scoreAt(oldest, 1);
       const tracks = await readStoryTracksChunked(members, pipeline, { context: 'market-alert-ledger' });
       if (!tracks) return null;
       const stories = [];
