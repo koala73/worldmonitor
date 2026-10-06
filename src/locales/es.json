@@ -2378,6 +2378,12 @@
         "stale": "Desactualizado",
         "staleHint": "Última calificación: {{date}}. El calificador no se ha ejecutado desde entonces, así que estas cifras son más antiguas de lo debido.",
         "fullRecord": "Historial completo"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Cómo han puntuado los pronósticos de {{domain}}: puntuación Brier en {{n}} pronósticos calificados en los últimos {{days}} días. Este es el registro del dominio, no de este pronóstico. 0 es perfecto, 0,25 es una moneda al aire, menor es mejor.",
+        "unmeasured": "Aún no medido",
+        "unmeasuredHint": "Los pronósticos de {{domain}} tienen {{n}} resultados calificados en los últimos {{days}} días. Un dominio necesita {{min}} antes de que se muestre su precisión."
       }
     },
     "escalationCorrelation": {

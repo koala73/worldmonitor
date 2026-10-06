@@ -1985,6 +1985,12 @@
         "stale": "Inaktuellt",
         "staleHint": "Senast bedömt {{date}}. Bedömningen har inte körts sedan dess, så dessa siffror är äldre än de borde vara.",
         "fullRecord": "Fullständigt facit"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Hur {{domain}}-prognoser har presterat: Brier-värde över {{n}} bedömda prognoser de senaste {{days}} dagarna. Detta är domänens meritlista, inte denna prognos'. 0 är perfekt, 0,25 är en slantsingling, lägre är bättre.",
+        "unmeasured": "Ännu inte mätt",
+        "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
       }
     },
     "escalationCorrelation": {

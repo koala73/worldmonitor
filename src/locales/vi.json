@@ -2358,6 +2358,12 @@
         "stale": "Đã lỗi thời",
         "staleHint": "Chấm điểm lần cuối {{date}}. Bộ chấm điểm chưa chạy lại từ đó, nên các con số này cũ hơn mức cần thiết.",
         "fullRecord": "Thành tích đầy đủ"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Điểm số của các dự báo {{domain}}: Brier score trên {{n}} dự báo được xếp loại trong {{days}} ngày qua. Đây là thành tích của lĩnh vực, không phải của dự báo này. 0 là hoàn hảo, 0,25 là tung đồng xu, thấp hơn là tốt hơn.",
+        "unmeasured": "Chưa được đo lường",
+        "unmeasuredHint": "Các dự báo {{domain}} có {{n}} kết quả được xếp loại trong {{days}} ngày qua. Một lĩnh vực cần {{min}} trước khi độ chính xác của nó được hiển thị."
       }
     },
     "escalationCorrelation": {

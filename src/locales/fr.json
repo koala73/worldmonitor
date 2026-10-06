@@ -2378,6 +2378,12 @@
         "stale": "Obsolète",
         "staleHint": "Dernière notation le {{date}}. Le noteur n'a pas tourné depuis, ces chiffres sont donc plus anciens qu'ils ne devraient l'être.",
         "fullRecord": "Bilan complet"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Performance des prévisions {{domain}} : score de Brier sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. C'est l'historique du domaine, pas de cette prévision. 0 est parfait, 0,25 est un pile ou face, plus bas est mieux.",
+        "unmeasured": "Pas encore mesuré",
+        "unmeasuredHint": "Les prévisions {{domain}} ont {{n}} résultats évalués au cours des {{days}} derniers jours. Un domaine doit en avoir {{min}} avant que sa précision soit affichée."
       }
     },
     "escalationCorrelation": {

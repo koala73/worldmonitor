@@ -2105,6 +2105,12 @@
         "stale": "Umepitwa na wakati",
         "staleHint": "Ulipimwa mara ya mwisho {{date}}. Kipimo hakijaendeshwa tangu wakati huo, kwa hivyo nambari hizi ni za zamani kuliko inavyopaswa.",
         "fullRecord": "Rekodi kamili"
+      },
+      "reliability": {
+        "measured": "{{domain}}: alama ya Brier {{score}} (n={{n}})",
+        "measuredHint": "Jinsi {{domain}} utabiri umekuwa na alama: Brier score zaidi ya {{n}} utabiri uliokadiria katika siku {{days}} zilizopita. Hii ni rekodi ya kikoa, si ya utabiri huu. 0 ni kamili, 0.25 ni sarafu flipped, chini ni bora.",
+        "unmeasured": "Haijapimwa bado",
+        "unmeasuredHint": "{{domain}} utabiri una {{n}} matokeo yaliyokadiria katika siku {{days}} zilizopita. Kikoa kinahitaji {{min}} kabla usahihi wake kuonekana."
       }
     },
     "escalationCorrelation": {

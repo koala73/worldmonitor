@@ -2102,6 +2102,12 @@
         "stale": "Elavult",
         "staleHint": "Utolsó értékelés: {{date}}. Az értékelő azóta nem futott, így ezek a számok régebbiek a kelleténél.",
         "fullRecord": "Teljes eredménylista"
+      },
+      "reliability": {
+        "measured": "{{domain}}: Brier-pontszám {{score}} (n={{n}})",
+        "measuredHint": "Hogyan teljesítettek a(z) {{domain}} előrejelzések: Brier-pontszám {{n}} értékelt előrejelzés alapján az elmúlt {{days}} napban. Ez a tartomány története, nem az adott előrejelzésé. A 0 a tökéletes, a 0,25 egy érmefeldobás, az alacsonyabb jobb.",
+        "unmeasured": "Még nem mért",
+        "unmeasuredHint": "A(z) {{domain}} előrejelzéseknek {{n}} értékelt eredménye van az elmúlt {{days}} napban. Egy tartománynak {{min}} eredményre van szüksége ahhoz, hogy a pontossága megjelenjen."
       }
     },
     "escalationCorrelation": {

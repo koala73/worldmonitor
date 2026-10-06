@@ -2368,6 +2368,12 @@
         "stale": "Güncel değil",
         "staleHint": "Son puanlama: {{date}}. Puanlayıcı o zamandan beri çalışmadı, bu yüzden bu sayılar olması gerekenden eski.",
         "fullRecord": "Tüm kayıt"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "{{domain}} tahminlerinin performansı: Son {{days}} gün içinde {{n}} puanlanan tahmin üzerinden Brier skoru. Bu, alanın kaydıdır, bu tahmin için değil. 0 mükemmeldir, 0,25 yazı tura atmaktır, düşük daha iyidir.",
+        "unmeasured": "Henüz ölçülmedi",
+        "unmeasuredHint": "{{domain}} tahminleri son {{days}} gün içinde {{n}} puanlanan sonuca sahiptir. Bir alanın doğruluğunun gösterilmesi için {{min}} gereklidir."
       }
     },
     "escalationCorrelation": {

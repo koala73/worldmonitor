@@ -2358,6 +2358,12 @@
         "stale": "古いデータ",
         "staleHint": "最終採点日 {{date}}。それ以降採点が実行されていないため、これらの数値は本来より古いものです。",
         "fullRecord": "完全な実績"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "{{domain}}の予報がどのように採点されたかを示します: 過去{{days}}日間の{{n}}件の採点済み予報に対するBrierスコア。これはこの予報ではなく、ドメインの実績です。0は完璧、0.25はコイントス、低いほど良好です。",
+        "unmeasured": "まだ測定されていません",
+        "unmeasuredHint": "{{domain}}の予報は過去{{days}}日間に{{n}}件の採点済み結果があります。ドメインの精度を表示するには{{min}}件必要です。"
       }
     },
     "escalationCorrelation": {

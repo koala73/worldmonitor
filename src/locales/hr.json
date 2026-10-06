@@ -2113,6 +2113,12 @@
         "stale": "Zastarjelo",
         "staleHint": "Zadnje ocjenjivanje {{date}}. Ocjenjivač otada nije pokrenut, pa su ovi brojevi stariji nego što bi trebali biti.",
         "fullRecord": "Potpuni rezultati"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Kako su prognoza {{domain}} bodovane: Brierov rezultat preko {{n}} ocijenjenih prognoza u zadnjih {{days}} dana. Ovo je rezultat domene, ne ove prognose. 0 je savršeno, 0.25 je bacanje novčića, niže je bolje.",
+        "unmeasured": "Još nije izmjereno",
+        "unmeasuredHint": "Prognose {{domain}} imaju {{n}} ocijenjenih rezultata u zadnjih {{days}} dana. Domena treba {{min}} prije nego što se prikaže njena točnost."
       }
     },
     "escalationCorrelation": {

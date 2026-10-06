@@ -2368,6 +2368,12 @@
         "stale": "Veraltet",
         "staleHint": "Zuletzt bewertet am {{date}}. Die Bewertung ist seitdem nicht gelaufen, daher sind diese Zahlen älter, als sie sein sollten.",
         "fullRecord": "Vollständige Bilanz"
+      },
+      "reliability": {
+        "measured": "{{domain}}: Brier-Score {{score}} (n={{n}})",
+        "measuredHint": "Wie {{domain}}-Prognosen abgeschnitten haben: Brier-Score über {{n}} bewertete Prognosen in den letzten {{days}} Tagen. Dies ist die Bilanz der Domain, nicht die dieser Prognose. 0 ist perfekt, 0,25 ist ein Münzwurf, niedriger ist besser.",
+        "unmeasured": "Noch nicht gemessen",
+        "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Eine Domain benötigt {{min}}, bevor ihre Genauigkeit angezeigt wird."
       }
     },
     "escalationCorrelation": {

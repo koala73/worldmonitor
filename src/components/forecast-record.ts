@@ -58,6 +58,49 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
   return { kind: 'ready', ...graded, brier: skill.brier, graded: count, yesShare, voids };
 }
 
+/** Mirrors INTERVAL_MIN_SAMPLE in scripts/_forecast-scorecard.mjs; a test pins the two together. */
+export const DOMAIN_RELIABILITY_MIN_SAMPLE = 30;
+
+export type DomainReliability =
+  | { kind: 'measured'; brier: number; n: number }
+  | { kind: 'unmeasured'; n: number };
+
+/** Per-domain scorecard rows for the card badges; null when the scorecard cannot vouch for them. */
+export interface ReliabilityTable {
+  windowDays: number;
+  byDomain: ReadonlyMap<string, DomainReliability>;
+}
+
+export function projectReliability(resp: GetForecastScorecardResponse): ReliabilityTable | null {
+  if (resp.degraded || resp.error) return null;
+  const byDomain = new Map<string, DomainReliability>();
+  for (const row of resp.byDomain ?? []) {
+    const n = finite(row.scored) && row.scored > 0 ? row.scored : 0;
+    byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier)
+      ? { kind: 'measured', brier: row.brier, n }
+      : { kind: 'unmeasured', n });
+  }
+  const windowDays = finite(resp.rollingWindowDays) && resp.rollingWindowDays > 0 ? resp.rollingWindowDays : DEFAULT_WINDOW_DAYS;
+  return { windowDays, byDomain };
+}
+
+/** A domain the scorecard has no row for has graded nothing yet, so it reads as unmeasured with n=0. */
+export function renderReliabilityBadge(table: ReliabilityTable | null, domain: string, domainLabel: string): string {
+  if (!table) return '';
+  const r = table.byDomain.get(domain) ?? { kind: 'unmeasured', n: 0 };
+  const days = table.windowDays;
+  const [text, hint] = r.kind === 'measured'
+    ? [
+        t('components.forecast.reliability.measured', { domain: domainLabel, score: r.brier.toFixed(3), n: r.n }),
+        t('components.forecast.reliability.measuredHint', { domain: domainLabel, n: r.n, days }),
+      ]
+    : [
+        t('components.forecast.reliability.unmeasured'),
+        t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
+      ];
+  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(recordHref(isDesktopRuntime()))}" title="${escapeHtml(hint)}">${escapeHtml(text)}</a>`;
+}
+
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
 export function baseRateBrier(yesShare: number): number {
   return yesShare * (1 - yesShare);

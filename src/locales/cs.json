@@ -2388,6 +2388,12 @@
         "stale": "Neaktuální",
         "staleHint": "Naposledy hodnoceno {{date}}. Hodnocení od té doby neproběhlo, takže tato čísla jsou starší, než by měla být.",
         "fullRecord": "Úplné výsledky"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Jak se vedly předpovědi {{domain}}: Brier skóre přes {{n}} vyhodnocených předpovědí za poslední {{days}} dní. Jedná se o záznam domény, nikoli o tuto předpověď. 0 je dokonalé, 0,25 je losování mincí, nižší je lepší.",
+        "unmeasured": "Zatím neměřeno",
+        "unmeasuredHint": "Předpovědi {{domain}} mají {{n}} vyhodnocených výsledků za poslední {{days}} dní. Doména potřebuje {{min}}, než se zobrazí její přesnost."
       }
     },
     "escalationCorrelation": {

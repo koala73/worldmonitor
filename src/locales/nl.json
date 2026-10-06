@@ -1985,6 +1985,12 @@
         "stale": "Verouderd",
         "staleHint": "Laatst beoordeeld op {{date}}. De beoordelaar heeft sindsdien niet gedraaid, dus deze cijfers zijn ouder dan ze zouden moeten zijn.",
         "fullRecord": "Volledige staat van dienst"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Hoe {{domain}} voorspellingen hebben gescoord: Brier-score over {{n}} beoordeelde voorspellingen in de afgelopen {{days}} dagen. Dit is het trackrecord van het domein, niet van deze voorspelling. 0 is perfect, 0,25 is een muntopgooi, lager is beter.",
+        "unmeasured": "Nog niet gemeten",
+        "unmeasuredHint": "{{domain}} voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. Een domein heeft minimaal {{min}} nodig voordat de nauwkeurigheid wordt weergegeven."
       }
     },
     "escalationCorrelation": {

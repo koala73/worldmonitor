@@ -2378,6 +2378,12 @@
         "stale": "Neactualizat",
         "staleHint": "Ultima evaluare la {{date}}. Evaluatorul nu a mai rulat de atunci, așa că aceste cifre sunt mai vechi decât ar trebui.",
         "fullRecord": "Istoric complet"
+      },
+      "reliability": {
+        "measured": "{{domain}}: scor Brier {{score}} (n={{n}})",
+        "measuredHint": "Cum au fost evaluate previziunile {{domain}}: scor Brier din {{n}} previziuni evaluate în ultimele {{days}} zile. Acesta este istoricul domeniului, nu al acestei previziuni. 0 este perfect, 0,25 este o aruncare de monedă, mai mic este mai bine.",
+        "unmeasured": "Încă nemăsurat",
+        "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
       }
     },
     "escalationCorrelation": {

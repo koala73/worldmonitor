@@ -2388,6 +2388,12 @@
         "stale": "Nieaktualne",
         "staleHint": "Ostatnia ocena {{date}}. Od tego czasu ocenianie nie zostało uruchomione, więc te liczby są starsze, niż powinny.",
         "fullRecord": "Pełne wyniki"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} (n={{n}})",
+        "measuredHint": "Jak prognozy {{domain}} uzyskały wyniki: wynik Brier w {{n}} ocenionych prognozach w ciągu ostatnich {{days}} dni. To zapis domeny, nie tej prognozy. 0 to perfekcja, 0,25 to rzut monetą, niższe wartości są lepsze.",
+        "unmeasured": "Jeszcze nie zmierzone",
+        "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Domena musi mieć {{min}} zanim wyświetli się jej dokładność."
       }
     },
     "escalationCorrelation": {
