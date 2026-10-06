@@ -679,6 +679,8 @@ const STANDALONE_KEYS = {
   forecastResolutions:           'forecast:resolutions:v1',
   forecastScorecard:             'forecast:scorecard:v1',
   forecastCalibrationMap:        'forecast:calibration-map:v1',
+  marketAlertLedger:             'correlation:market-alerts:ledger:v1',
+  marketAlertScorecard:          'correlation:market-alerts:scorecard:v1',
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
@@ -1226,6 +1228,31 @@ const SEED_META = {
       fromKey: null,
       issue: 7070,
       activationKey: 'seed-activated:forecast:calibration-map',
+    },
+  },
+  // #8867 market-alert ledger and its scorecard, written every 5-minute tick
+  // by seed-market-alert-ledger (seed-bundle-derived-signals). Both bind the
+  // one activation marker the seeder sets after its first publish.
+  marketAlertLedger: {
+    key: 'seed-meta:correlation:market-alerts',
+    maxStaleMin: 30,
+    activationKey: 'seed-activated:correlation:market-alerts',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8867,
+      activationKey: 'seed-activated:correlation:market-alerts',
+    },
+  },
+  marketAlertScorecard: {
+    key: 'seed-meta:correlation:market-alerts-scorecard',
+    maxStaleMin: 30,
+    activationKey: 'seed-activated:correlation:market-alerts',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8867,
+      activationKey: 'seed-activated:correlation:market-alerts',
     },
   },
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
@@ -2043,6 +2070,8 @@ const ON_DEMAND_KEYS = new Set([
   'newsFeedHealth',
   'imdCycloneMarine',
   'forecastCalibrationMap',
+  'marketAlertLedger',
+  'marketAlertScorecard',
   'newsRecallBenchmark',
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
@@ -2122,6 +2151,8 @@ const ACTIVATION_MARKERS = {
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
   forecastCalibrationMap: SEED_META.forecastCalibrationMap.activationKey,
+  marketAlertLedger: SEED_META.marketAlertLedger.activationKey,
+  marketAlertScorecard: SEED_META.marketAlertScorecard.activationKey,
   supplyVulnerability: SEED_META.supplyVulnerability.activationKey,
   supplyChokepointDependencies: SEED_META.supplyChokepointDependencies.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
@@ -2360,6 +2391,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'forecastCalibrationMap', // #7070 shadow-only map, no reader; absent until the daily resolver first writes it. A dead resolver still alarms through forecastResolutions/forecastScorecard.
+  'marketAlertLedger', 'marketAlertScorecard', // #8867: an empty ledger means no market alert has fired yet, and the scorecard then carries four zero rows; a dead seeder still alarms through the 30-minute seed-meta gate.
   'viarailLive', // unofficial optional VIA Rail live JSON (#6615); unconfigured / 404 is STALE_SEED then NOT_CONFIGURED, never EMPTY/crit
   // Venues closed or not yet reporting: the relay advances seed-meta only when
   // BestTime answers every venue cleanly with no usable live reading, for up to 24h
