@@ -41,6 +41,7 @@ import {
   ALERT_LEVEL_METHODOLOGY_VERSION,
   isRoundupHeadline,
   isReportableHeadline,
+  detectDisease,
   HEADLINE_LOOKBACK_DAYS,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
 
@@ -288,9 +289,9 @@ test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', as
   ]);
 });
 
-// The 2026-10 Irkutsk lab death (suspected pneumonic plague) reached no WHO,
-// CDC or ECDC feed, and ThinkGlobalHealth stopped updating on 2026-09-11.
-// CIDRAP's plague topic was the only permitted source that carried it.
+// The 2026-10 Irkutsk lab death (suspected pneumonic plague) reached no WHO or
+// CDC feed, and ThinkGlobalHealth stopped updating on 2026-09-11. CIDRAP's
+// plague topic carried it from 2026-10-05, ECDC's news feed from 2026-10-06.
 test('fetchDiseaseOutbreaks publishes plague stories from the CIDRAP plague topic', async (t) => {
   const recent = new Date(Date.now() - 86_400_000).toUTCString();
   const plagueXml = `<?xml version="1.0"?><rss><channel><item>
@@ -311,6 +312,59 @@ test('fetchDiseaseOutbreaks publishes plague stories from the CIDRAP plague topi
   assert.ok(plague, 'CIDRAP plague topic item missing from the published outbreaks');
   assert.equal(plague.disease, 'Plague');
   assert.equal(plague.countryCode, 'RU');
+  // The headline carries the facts (suspected, 1 dead, 200 quarantined); the
+  // RSS description alone says only that the cause is unconfirmed.
+  assert.equal(plague.summary, 'Suspected plague incident leaves 1 dead, 200 under quarantine in Siberia. Russia has yet to confirm what caused the lab worker’s death.');
+});
+
+test('headline-source summaries lead with the headline', () => {
+  const item = (title, desc, sourceName = 'CIDRAP') => mapItem(rssNormalizeItem({
+    title, link: 'https://www.cidrap.umn.edu/x', desc, pubDate: 'Mon, 14 Sep 2026 15:25:00 -0500', sourceName,
+  }));
+  assert.equal(item('Ebola outbreak in DR Congo tops 6,600 cases', '').summary, 'Ebola outbreak in DR Congo tops 6,600 cases');
+  assert.equal(item('Is cholera back in Haiti?', 'Cases rise.').summary, 'Is cholera back in Haiti? Cases rise.');
+  assert.equal(item('Mpox in Nigeria', 'Mpox in Nigeria: 12 new cases.', 'ECDC').summary, 'Mpox in Nigeria: 12 new cases.');
+  assert.equal(item('Cholera outbreak in Sudan', 'x'.repeat(400)).summary.length, 300);
+  // CDC and WHO keep the description as the summary.
+  assert.equal(item('Measles outbreak in Texas', 'HAN advisory.', 'CDC').summary, 'HAN advisory.');
+});
+
+// Russia reported the Irkutsk death as "pneumonia of unknown etiology", and
+// ECDC's Oct 6 statement used the same framing; it reached ECDC's news feed,
+// not its epidemiological updates.
+test('unexplained pneumonia is a reportable disease label', () => {
+  assert.equal(detectDisease('ECDC closely monitoring situation following case of pneumonia of unknown origin in Russia'), 'Pneumonia of unknown cause');
+  assert.equal(detectDisease('Cluster of pneumonia of unknown etiology in Argentina'), 'Pneumonia of unknown cause');
+  assert.equal(detectDisease('Fatal pneumonia of unspecified etiology in a laboratory worker; possible plague'), 'Plague');
+  assert.equal(detectDisease('Pneumonia vaccine uptake in older adults'), 'Unknown Disease');
+});
+
+test('fetchDiseaseOutbreaks publishes ECDC news on unexplained pneumonia', async (t) => {
+  assert.ok(DISEASE_RSS_FEEDS.some(({ url, sourceName }) =>
+    sourceName === 'ECDC' && url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed'));
+  const recent = new Date(Date.now() - 86_400_000).toUTCString();
+  const newsXml = `<?xml version="1.0"?><rss><channel><item>
+    <title>ECDC closely monitoring situation following case of pneumonia of unknown origin in Russia</title>
+    <link>https://www.ecdc.europa.eu/en/news-events/ecdc-closely-monitoring-situation-following-case-pneumonia-unknown-origin-russia</link>
+    <description>Following the reported death of a laboratory worker in Irkutsk, Russia, ECDC is monitoring the situation.</description>
+    <pubDate>${recent}</pubDate></item><item>
+    <title>EU-led assessment to Albania will strengthen cross-sector response to antimicrobial resistance</title>
+    <link>https://www.ecdc.europa.eu/en/news-events/albania-amr</link>
+    <description>An EU-led mission of experts to Albania.</description>
+    <pubDate>${recent}</pubDate></item></channel></rss>`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed') return new Response(newsXml, { status: 200 });
+    if (url.endsWith('.js')) return new Response('not found', { status: 404 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const ecdc = outbreaks.filter((o) => o.sourceName === 'ECDC');
+  assert.equal(ecdc.length, 1);
+  assert.equal(ecdc[0].disease, 'Pneumonia of unknown cause');
+  assert.equal(ecdc[0].countryCode, 'RU');
 });
 
 // New Mexico is the main US plague focus; it must not geocode to Mexico.

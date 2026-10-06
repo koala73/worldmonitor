@@ -107,8 +107,13 @@ export function detectDisease(title) {
   for (const d of known) {
     if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
   }
+  if (UNEXPLAINED_PNEUMONIA_RE.test(title)) return 'Pneumonia of unknown cause';
   return 'Unknown Disease';
 }
+
+// Health authorities report an unidentified respiratory death as "pneumonia of
+// unknown etiology" before naming a pathogen (Irkutsk, 2026-10).
+export const UNEXPLAINED_PNEUMONIA_RE = /\bpneumonia of (?:unknown|unexplained|undetermined|unspecified) (?:origin|etiology|aetiology|cause)\b/i;
 
 // ── Per-item normalization (shape contract for content-age) ──────────────
 //
@@ -237,6 +242,14 @@ export function isReportableHeadline(outbreak, nowMs = Date.now()) {
   return outbreak.publishedAt >= nowMs - HEADLINE_LOOKBACK_DAYS * 86_400_000;
 }
 
+// A headline-source headline states the event ("Suspected plague incident
+// leaves 1 dead"); its description often only adds context, so the summary
+// leads with the headline.
+function headlineSummary(title, desc) {
+  if (!desc || desc.startsWith(title)) return (desc || title).slice(0, 300);
+  return `${title}${/[.?!]$/.test(title) ? '' : '.'} ${desc}`.slice(0, 300);
+}
+
 export function mapItem(item) {
   const headline = HEADLINE_SOURCES.has(item.sourceName);
   const headlineCountry = headline ? headlineCountryCode(`${item.title} ${item.desc}`) : '';
@@ -256,7 +269,7 @@ export function mapItem(item) {
     location,
     countryCode,
     alertLevel: detectAlertLevel(item.title, item.desc),
-    summary: item.desc,
+    summary: headline ? headlineSummary(item.title, item.desc) : item.desc,
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
     sourceName: item.sourceName,
