@@ -39,6 +39,17 @@ const {
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
 
+test('transit coverage alerts below five measured canonical waterways despite a fresh payload', () => {
+  const key = STANDALONE_KEYS.chokepointTransits;
+  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [3, 'COVERAGE_PARTIAL'], [4, 'COVERAGE_PARTIAL'], [5, 'OK'], [13, 'OK']]) {
+    const result = classifyKey('chokepointTransits', key, { allowOnDemand: false }, makeCtx({
+      strens: { [key]: 2000 },
+      metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
+    }));
+    assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
+  }
+});
+
 test('MND first-failure pending requires fresh last-good and expires without another poll', () => {
   const name = 'crossStraitActivityTaiwanMnd';
   const key = STANDALONE_KEYS[name];
