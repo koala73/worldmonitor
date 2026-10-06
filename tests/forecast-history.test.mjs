@@ -500,3 +500,31 @@ describe('forecast resolution seam coverage (U3, R2/D1)', () => {
     assert.equal(hardCount, 2);
   });
 });
+
+describe('projection horizon contracts persist into history (#7075)', () => {
+  it('a point-in-time contract per horizon survives buildHistoryForecastEntry -> JSON -> parse', () => {
+    const pred = makePrediction('supply_chain', 'Strait of Hormuz', 'Hormuz disruption risk rises', 0.62, 0.55, '7d', [
+      { type: 'chokepoint', value: 'Strait of Hormuz disruption detected', weight: 0.5 },
+    ]);
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(Object.keys(entry.horizonResolutions), ['h24', 'd7', 'd30']);
+    assert.deepEqual(entry.horizonResolutions.d7, pred.horizonResolutions.d7);
+    assert.equal(entry.horizonResolutions.d7.kind, 'hard');
+    assert.equal(entry.horizonResolutions.h24.deadline, HARD_CONFLICT_GENERATED_AT + 24 * 60 * 60 * 1000);
+  });
+
+  it('an unscored horizon keeps its reason', () => {
+    const pred = makePrediction('market', 'Middle East', 'Oil price impact from Hormuz disruption', 0.5, 0.4, '7d', [
+      { type: 'commodity', value: 'Oil sensitivity: 0.9', weight: 0.3 },
+    ]);
+    attachResolutionSpecs([pred], { commodityQuotes: { quotes: [{ symbol: 'CL=F', price: 68.92 }] } }, HARD_CONFLICT_GENERATED_AT);
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(entry.horizonResolutions.h24, { horizon: 'h24', timeHorizon: '24h', kind: 'unscored', reason: 'cumulative_unsupported' });
+  });
+
+  it('a forecast without contracts persists null', () => {
+    const pred = makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.6, 0.5, '7d', []);
+    assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
+  });
+});

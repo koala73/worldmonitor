@@ -22,6 +22,9 @@ import {
   evaluateExtractionShadow,
   extractionShadowFeedKeys,
   summarizeExtractionShadow,
+  HORIZON_SAMPLE_TOLERANCE_MS,
+  PROJECTION_HORIZONS,
+  buildHorizonResolutionSpecs,
 } from '../scripts/_forecast-resolution.mjs';
 
 // Emission-time commodities feed shape (inputs.commodityQuotes) — mirrors the
@@ -1173,5 +1176,89 @@ describe('extraction gate shadow (#7067)', () => {
       byFamily: { gps: { pass: 1, fail: 1 }, market: { pass: 1 } },
       byDomain: { supply_chain: { pass: 1, fail: 1 }, market: { pass: 1 } },
     });
+  });
+});
+
+describe('projection horizon contracts (#7075)', () => {
+  const pointInTime = () => pred({
+    id: 'fc-hormuz',
+    domain: 'supply_chain',
+    region: 'Strait of Hormuz',
+    title: 'Hormuz disruption risk rises',
+    timeHorizon: '7d',
+    signals: [{ type: 'chokepoint', value: 'Strait of Hormuz disruption detected', weight: 0.5 }],
+  });
+  const reasons = (specs) => new Set(Object.values(specs).map((spec) => `${spec.kind}:${spec.reason}`));
+
+  it('PROJECTION_HORIZONS pairs every projection key with its HORIZON_MS horizon', () => {
+    assert.deepEqual(PROJECTION_HORIZONS, { h24: '24h', d7: '7d', d30: '30d' });
+    for (const timeHorizon of Object.values(PROJECTION_HORIZONS)) assert.ok(Object.hasOwn(HORIZON_MS, timeHorizon));
+  });
+
+  it('a point-in-time hard forecast gets one complete contract per horizon, each at its own deadline', () => {
+    const parent = buildResolutionSpec(pointInTime(), {}, GENERATED_AT);
+    assert.equal(parent.window, 'at-deadline');
+    const specs = buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT);
+    assert.deepEqual(Object.keys(specs), ['h24', 'd7', 'd30']);
+    for (const [horizon, timeHorizon] of Object.entries(PROJECTION_HORIZONS)) {
+      assert.deepEqual(specs[horizon], {
+        horizon,
+        timeHorizon,
+        kind: 'hard',
+        semantics: 'point_in_time',
+        metricKey: parent.metricKey,
+        operator: parent.operator,
+        threshold: parent.threshold,
+        window: 'at-deadline',
+        sourceFeed: parent.sourceFeed,
+        deadline: GENERATED_AT + HORIZON_MS[timeHorizon],
+        sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
+      });
+    }
+    assert.equal(specs.d7.deadline, parent.deadline);
+    assert.notEqual(specs.h24.deadline, specs.d30.deadline);
+  });
+
+  it('a cumulative (within-horizon) hard forecast is unscored on every horizon with a stated reason', () => {
+    const forecast = pred({
+      domain: 'market',
+      region: 'Middle East',
+      title: 'Oil price impact from Hormuz disruption',
+      signals: [{ type: 'commodity', value: 'Oil sensitivity: 0.9', weight: 0.3 }],
+    });
+    assert.equal(buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT).window, 'within-horizon');
+    const specs = buildHorizonResolutionSpecs(forecast, COMMODITY_INPUTS, GENERATED_AT);
+    assert.deepEqual(specs.h24, { horizon: 'h24', timeHorizon: '24h', kind: 'unscored', reason: 'cumulative_unsupported' });
+    assert.deepEqual(reasons(specs), new Set(['unscored:cumulative_unsupported']));
+  });
+
+  it('a settlement-deadline (at-endDate) forecast is unscored: its truth time is not horizon-bound', () => {
+    const forecast = pred({
+      domain: 'political',
+      region: 'Iran',
+      title: 'Will the U.S. invade Iran before 2027?',
+      timeHorizon: '30d',
+      signals: [{ type: 'prediction_market', value: 'Polymarket: 62%', weight: 0.8 }],
+    });
+    const inputs = { predictionMarkets: { geopolitical: [{ title: 'Will the U.S. invade Iran before 2027?', yesPrice: 62, endDate: '2026-12-31' }] } };
+    assert.deepEqual(reasons(buildHorizonResolutionSpecs(forecast, inputs, GENERATED_AT)), new Set(['unscored:settlement_deadline']));
+  });
+
+  it('a judged forecast is unscored with no_hard_contract', () => {
+    const specs = buildHorizonResolutionSpecs(pred({ domain: 'political', signals: [] }), {}, GENERATED_AT);
+    assert.deepEqual(reasons(specs), new Set(['unscored:no_hard_contract']));
+  });
+
+  it('attachResolutionSpecs sets horizonResolutions beside resolution', () => {
+    const [forecast] = attachResolutionSpecs([pointInTime()], {}, GENERATED_AT);
+    assert.equal(forecast.resolution.kind, 'hard');
+    assert.deepEqual(forecast.horizonResolutions, buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT));
+  });
+
+  it('is deterministic for identical inputs', () => {
+    assert.deepEqual(
+      buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT),
+      buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT),
+    );
   });
 });
