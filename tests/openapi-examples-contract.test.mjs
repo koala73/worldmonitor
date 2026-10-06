@@ -802,6 +802,20 @@ describe('OpenAPI curated example values', () => {
     }
   });
 
+  it('keeps every probability example inside [0, 1]', () => {
+    const outOfRange = [];
+    const walk = (value, path) => {
+      if (Array.isArray(value)) return value.forEach((item, index) => walk(item, `${path}[${index}]`));
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (/probability$/i.test(key) && typeof child === 'number' && (child < 0 || child > 1)) outOfRange.push(`${path}.${key}=${child}`);
+        walk(child, `${path}.${key}`);
+      }
+    };
+    for (const file of serviceSpecs) walk(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')).paths, file);
+    assert.deepEqual(outOfRange, []);
+  });
+
   it('uses an ISO datetime example for webcam lastUpdated', () => {
     const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
     const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get

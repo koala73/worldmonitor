@@ -17,9 +17,9 @@
 import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
-import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
+import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
-import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
+import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -1395,23 +1395,50 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
       const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
       if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
 
-      const openKey = findOpenWindowKey(ledger, id, generatedAt);
-      if (openKey) {
-        updateOpenWindow(ledger[openKey], forecast, generatedAt, snapshotAt);
-        continue;
+      let parentKey = findOpenWindowKey(ledger, id, generatedAt);
+      if (parentKey) {
+        updateOpenWindow(ledger[parentKey], forecast, generatedAt, snapshotAt);
+      } else {
+        parentKey = `${id}@${deadline}`;
+        if (ledger[parentKey]) updateOpenWindow(ledger[parentKey], forecast, generatedAt, snapshotAt);
+        else ledger[parentKey] = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
       }
-
-      const key = `${id}@${deadline}`;
-      if (ledger[key]) {
-        updateOpenWindow(ledger[key], forecast, generatedAt, snapshotAt);
-        continue;
-      }
-      ledger[key] = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
+      registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt);
     }
   }
 
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
+}
+
+// One ledger window per hard projection contract (#7075), keyed
+// `<parentKey>@<horizon>`, scored on the projection probability and resolved
+// at its own deadline by resolveHorizonSpec. The window freezes at first
+// registration: a projection claims a fixed offset from its own emission, so
+// a later emission's h24 claims a later deadline and cannot grade a window
+// due earlier. A re-emission inside the parent window only advances
+// lastSeenAt. Only the published population registers: synthetic and shadow
+// origins are held out of the headline and would otherwise multiply their
+// rows for no measurable value. A forecast without emission-time contracts
+// (history written before #7075) registers nothing.
+function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt) {
+  const contracts = forecast.horizonResolutions;
+  if (!contracts || typeof contracts !== 'object') return;
+  if (!isPublishedOriginEntry(forecast)) return;
+  for (const [horizon, spec] of Object.entries(contracts)) {
+    if (spec?.kind !== 'hard') continue;
+    const probability = Number(forecast.projections?.[horizon]);
+    const deadline = Number(spec.deadline);
+    if (!Number.isFinite(probability) || !Number.isFinite(deadline)) continue;
+    const key = `${parentKey}@${horizon}`;
+    const existing = ledger[key];
+    if (existing) {
+      if (existing.status === 'pending') existing.lastSeenAt = Math.max(Number(existing.lastSeenAt || 0), snapshotAt);
+      continue;
+    }
+    const view = { ...forecast, probability, timeHorizon: spec.timeHorizon };
+    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey };
+  }
 }
 
 function migratePendingCountFeedKeys(ledger) {
@@ -1511,7 +1538,9 @@ export function resolveDueEntries(ledger, feedsByKey, nowMs) {
     if (entry.status !== 'pending') continue;
     const parsed = parseMetricKey(entry.spec?.metricKey);
     const feedData = selectResolutionFeed(feedsByKey, entry.spec, parsed);
-    const result = resolveHardSpec(entry, feedData, entry.samples, nowMs);
+    const result = isHorizonEntry(entry)
+      ? resolveHorizonSpec(entry, nowMs)
+      : resolveHardSpec(entry, feedData, entry.samples, nowMs);
     if (result.status !== 'resolved') continue;
 
     entry.status = 'resolved';
@@ -1659,7 +1688,7 @@ function sourceRank(source) {
 
 function findOpenWindowKey(ledger, id, generatedAt) {
   return Object.keys(ledger)
-    .filter((key) => ledger[key]?.id === id)
+    .filter((key) => ledger[key]?.id === id && !isHorizonEntry(ledger[key]))
     .filter((key) => ledger[key].status === 'pending' || ledger[key].status === 'pending-judge')
     .filter((key) => generatedAt < Number(ledger[key].deadline))
     .sort((a, b) => Number(ledger[a].deadline) - Number(ledger[b].deadline))[0] || null;

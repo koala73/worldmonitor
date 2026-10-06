@@ -16,6 +16,7 @@ export const SCORECARD_DATA_FIELDS = [
   'calibration',
   'vsMarketSkill',
   'skill',
+  'publishedByDomain',
 ] as const satisfies readonly (keyof GetForecastScorecardResponse)[];
 
 export type ScorecardData = Pick<GetForecastScorecardResponse, typeof SCORECARD_DATA_FIELDS[number]>;

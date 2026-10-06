@@ -73,6 +73,13 @@ message ScorecardSkill {
   int32 yes_count = 6;
 }
 
+message ScorecardPublishedDomain {
+  string domain = 1;
+  int32 count = 2;
+  double brier = 3;
+  int32 yes_count = 4;
+}
+
 message GetForecastScorecardResponse {
   int32 schema_version = 1;
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -88,4 +95,6 @@ message GetForecastScorecardResponse {
   bool stale = 12;
   string error = 13;
   ScorecardSkill skill = 14;
+  // Published-origin accuracy by domain.
+  repeated ScorecardPublishedDomain published_by_domain = 15;
 }

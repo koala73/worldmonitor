@@ -2105,6 +2105,12 @@
         "stale": "Umepitwa na wakati",
         "staleHint": "Ulipimwa mara ya mwisho {{date}}. Kipimo hakijaendeshwa tangu wakati huo, kwa hivyo nambari hizi ni za zamani kuliko inavyopaswa.",
         "fullRecord": "Rekodi kamili"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} dhidi ya kiwango cha msingi {{base}} (n={{n}})",
+        "measuredHint": "Jinsi ambavyo mwonekano uliotangazwa wa {{domain}} umefanya alama zaidi ya {{n}} mwonekano uliokadiria katika siku {{days}} zilizopita. Kiwango cha msingi ni kile kinachoshindwa kwa kujibu kila wakati kwa kiwango kilichogunduliwa cha ndiyo cha kikoa. Chini ni nzuri. Hii ni rekodi ya kikoa, sio ya mwonekano huu.",
+        "unmeasured": "Haijapimwa bado",
+        "unmeasuredHint": "{{domain}} utabiri una {{n}} matokeo yaliyokadiria katika siku {{days}} zilizopita. Kikoa kinahitaji {{min}} kabla usahihi wake kuonekana."
       }
     },
     "escalationCorrelation": {

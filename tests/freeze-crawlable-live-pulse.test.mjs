@@ -207,6 +207,7 @@ function countryPayload() {
       ],
       vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
       skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+      publishedByDomain: [{ domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 }, { domain: 'market', count: 60, brier: 0.13, yesCount: 22 }],
       degraded: false,
       stale: false,
       error: '',

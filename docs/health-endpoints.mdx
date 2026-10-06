@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 313,
-    "ok": 313,
+    "total": 315,
+    "ok": 315,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -955,3 +955,19 @@ prove that every upstream story was captured. The marker names this proof and
 its archive source. Only judging opts into it. Accumulator pruning still
 requires the version-1 backfill proof. If the bounded scan cannot establish
 continuity, judging remains unavailable and the health signal names the stall.
+
+### Market alert ledger
+
+`marketAlertLedger` monitors `correlation:market-alerts:ledger:v1` through
+`seed-meta:correlation:market-alerts`. `marketAlertScorecard` monitors
+`correlation:market-alerts:scorecard:v1` through
+`seed-meta:correlation:market-alerts-scorecard`. The `seed-market-alert-ledger`
+section of `seed-bundle-derived-signals` rewrites both keys on every 5-minute
+tick, and each becomes stale after 30 minutes.
+
+The ledger stays empty until the first market alert fires, so an empty payload
+is a valid state for both keys and never reports `EMPTY`. Both checks bind the
+activation marker `seed-activated:correlation:market-alerts`, which the seeder
+sets after its first publish. Before the marker exists, a missing payload reads
+as the soft on-demand state. After it exists, a missing publication reports
+`STALE_SEED` once the 30-minute gate passes.

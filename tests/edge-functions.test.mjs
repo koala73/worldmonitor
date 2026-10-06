@@ -70,6 +70,13 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     'url-classifier.js',
     // Railway seed-wb-indicators.mjs writes the same v2 keys the Edge RPC reads.
     'world-bank-rpc-cache.js',
+    // #8867: market-alert detectors and their import graph, consumed by
+    // scripts/seed-market-alert-ledger.mjs (Railway nixpacks-root-scripts).
+    'text-analysis-core.js',
+    'entity-registry.js',
+    'entity-extraction-core.js',
+    'market-alert-core.js',
+    'news-clustering-core.js',
   ]);
   // The attribution manifest is canonical at shared/ and is consumed by
   // repository-rooted build tooling. It is not a scripts-runtime input, so a
