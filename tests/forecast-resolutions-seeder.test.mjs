@@ -2728,14 +2728,27 @@ describe('absence-based NO (#8896)', () => {
     assert.deepEqual(row.evidence.judgedBy.map((judgment) => judgment.basis), ['absence', 'absence']);
     assert.deepEqual(row.evidence.citations.map((citation) => citation.id), ['N1', 'N2']);
     assert.equal(result.scorecard.totals.scored, 1);
+    assert.deepEqual(result.scorecard.judgedLane.noByBasis, { absence: 1 });
   });
 
   it('records an event basis on a NO that proves non-occurrence', async () => {
-    const { row } = await run(archiveWith(onSubjectItems()), [eventNo('openrouter'), eventNo('groq')]);
+    const { result, row } = await run(archiveWith(onSubjectItems()), [eventNo('openrouter'), eventNo('groq')]);
 
     assert.equal(row.outcome, 'NO');
     assert.equal(row.evidence.basis, 'event');
     assert.deepEqual(row.evidence.judgments.map((judgment) => judgment.basis), ['event', 'event']);
+    assert.deepEqual(result.scorecard.judgedLane.noByBasis, { event: 1 });
+  });
+
+  it('counts a NO sealed before the basis field existed as unrecorded, and never counts YES or VOID', async () => {
+    const { row } = await run(archiveWith(onSubjectItems()), [eventNo('openrouter'), eventNo('groq')]);
+    const ledger = {
+      legacy: { ...row, id: 'fc-legacy', evidence: { ...row.evidence, basis: undefined } },
+      yes: { ...row, id: 'fc-yes', outcome: 'YES' },
+      void: { ...row, id: 'fc-void', outcome: 'VOID', evidence: { ...row.evidence, basis: undefined, reason: 'all_judges_void' } },
+    };
+
+    assert.deepEqual(computeScorecard(ledger, NOW).judgedLane.noByBasis, { unrecorded: 1 });
   });
 
   it('never seals an absence-based NO while the archive does not cover the entry window', async () => {
