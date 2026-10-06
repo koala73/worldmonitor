@@ -151,6 +151,14 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (score >= 25) return { label: "Moderate", varName: "--moderate" };
     return { label: "Low", varName: "--low" };
   }
+  function ciiLevelFor(score) {
+    if (typeof score !== "number" || !isFinite(score)) return { label: "Unknown", varName: "--muted" };
+    if (score >= 81) return { label: "Critical", varName: "--severe" };
+    if (score >= 66) return { label: "High", varName: "--high" };
+    if (score >= 51) return { label: "Elevated", varName: "--moderate" };
+    if (score >= 31) return { label: "Normal", varName: "--low" };
+    return { label: "Low", varName: "--low" };
+  }
   // Only real numbers and numeric strings become numbers. A bare Number()
   // coerces null, "", and [] to 0, which would render a MISSING score as a
   // reassuring 0 — the same "absent read as calm" failure as the outage path.
@@ -241,7 +249,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     var score = (data.cii && typeof data.cii === "object") ? data.cii : {};
     var cii = degraded ? null : num(score.combinedScore);
     setText("cii", cii == null ? "—" : String(Math.round(cii)));
-    var lv = levelFor(cii);
+    var lv = ciiLevelFor(cii);
     var levelEl = document.getElementById("level");
     var bar = document.getElementById("ciibar");
     levelEl.textContent = lv.label;

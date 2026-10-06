@@ -31,7 +31,7 @@ Call `get_mcp_allowance({})` to read the current verified account allowance when
 
 World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:
 
-- `ui://worldmonitor/country-risk-v2.html`
+- `ui://worldmonitor/country-risk-v3.html`
 - `ui://worldmonitor/world-brief-v2.html`
 - `ui://worldmonitor/country-brief-v3.html`
 - `ui://worldmonitor/market-radar-v3.html`

@@ -426,7 +426,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const actualUris = body.result.resources.map((r) => r.uri);
     assert.deepEqual(actualUris, [
       'worldmonitor://seed-meta/freshness',
-      'ui://worldmonitor/country-risk-v2.html',
+      'ui://worldmonitor/country-risk-v3.html',
       'ui://worldmonitor/world-brief-v2.html',
       'ui://worldmonitor/country-brief-v3.html',
       'ui://worldmonitor/market-radar-v3.html',
@@ -483,19 +483,25 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
   });
 
-  it('advertises Country Risk v2 while preserving the original private read URI', async () => {
-    const current = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v2.html')));
+  it('advertises Country Risk v3 while preserving both private read aliases', async () => {
+    const current = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v3.html')));
+    const previous = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v2.html')));
     const legacy = await handler(anonReq(readBody('ui://worldmonitor/country-risk.html')));
     const currentContent = (await current.json()).result.contents[0];
+    const previousContent = (await previous.json()).result.contents[0];
     const legacyContent = (await legacy.json()).result.contents[0];
-    assert.equal(currentContent.uri, 'ui://worldmonitor/country-risk-v2.html');
+    assert.equal(currentContent.uri, 'ui://worldmonitor/country-risk-v3.html');
+    assert.equal(previousContent.uri, 'ui://worldmonitor/country-risk-v2.html');
     assert.equal(legacyContent.uri, 'ui://worldmonitor/country-risk.html');
     assert.equal(currentContent.text, legacyContent.text);
     assert.deepEqual(currentContent._meta, legacyContent._meta);
+    assert.equal(currentContent.text, previousContent.text);
+    assert.deepEqual(currentContent._meta, previousContent._meta);
     const listed = await handler(anonReq({ jsonrpc: '2.0', id: 102, method: 'resources/list', params: {} }));
     const uris = (await listed.json()).result.resources.map(resource => resource.uri);
     assert.ok(uris.includes(currentContent.uri));
     assert.ok(!uris.includes(legacyContent.uri));
+    assert.ok(!uris.includes(previousContent.uri));
     const tools = await handler(envKeyReq({ jsonrpc: '2.0', id: 103, method: 'tools/list', params: {} }));
     const riskTool = (await tools.json()).result.tools.find(tool => tool.name === 'get_country_risk');
     assert.equal(riskTool._meta.ui.resourceUri, currentContent.uri);
@@ -1036,7 +1042,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('sanctions'), '3417 OFAC-listed');
     // cii is a CiiScore object, never a bare number.
     assert.equal(view.text('cii'), '78');
-    assert.equal(view.text('level'), 'Severe');
+    assert.equal(view.text('level'), 'High');
     assert.equal(view.text('advisory'), 'do not travel');
     assert.equal(view.text('trend'), 'Rising');
     assert.equal(view.text('foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
