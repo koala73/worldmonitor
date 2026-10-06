@@ -213,6 +213,22 @@ describe('population filter', () => {
     ]), fitAt);
     assert.equal(map.totalSample, 60);
   });
+
+  it('excludes market anchors recorded without lineage, which predate the #7071 matcher', () => {
+    const clean = repeat(60, () => entry({ domain: 'cyber', probability: 0.4, outcome: 'NO' }));
+    const stale = repeat(20, () => ({
+      ...entry({ domain: 'cyber', probability: 0.2, outcome: 'YES' }),
+      calibration: { marketTitle: 'Will China invade Taiwan by December 31, 2027?', marketPrice: 0.12, drift: 0.3, source: 'polymarket' },
+    }));
+    const lineage = repeat(5, () => ({
+      ...entry({ domain: 'cyber', probability: 0.5, outcome: 'NO' }),
+      calibration: { marketPrice: 0.6, drift: -0.1, source: 'polymarket', internalProbability: 0.5, marketBlendedProbability: 0.54 },
+    }));
+    const map = fitCalibrationMap(ledgerOf([...clean, ...stale, ...lineage]), T0 + 30 * DAY_MS);
+    assert.equal(map.totalSample, 65);
+    assert.equal(map.domains.cyber.positives, 0, 'a stale-anchor YES would have raised this');
+    assert.equal(map.domains.cyber.knots.at(-1).x, 0.54, 'the fit reads calibration.marketBlendedProbability');
+  });
 });
 
 describe('fit and evaluation separation', () => {

@@ -74,10 +74,10 @@ export function emissionTime(entry) {
   return Number.isFinite(firstSeenAt) ? firstSeenAt : NaN;
 }
 
-// Until #7071 persists lineage, the stored `probability` IS the post-blend
-// value; once `marketBlendedProbability` exists it is the explicit source.
+// The stored `probability` IS the post-blend value; #7071 lineage on the
+// calibration object names it explicitly when an anchor applied.
 export function sourceProbability(entry) {
-  const blended = Number(entry?.marketBlendedProbability);
+  const blended = Number(entry?.calibration?.marketBlendedProbability);
   const value = Number.isFinite(blended) ? blended : Number(entry?.probability);
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
 }
@@ -98,12 +98,20 @@ function round6(value) {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+// An anchor without lineage was chosen by the pre-#7071 matcher, which paired
+// forecasts with unrelated markets, so its blended probability is not an
+// input the current seeder can produce.
+function hasPreLineageAnchor(entry) {
+  const calibration = entry?.calibration;
+  return Number.isFinite(Number(calibration?.marketPrice)) && !Number.isFinite(Number(calibration?.marketBlendedProbability));
+}
+
 /** Scored published-origin entries resolved inside the rolling window ending at nowMs. */
 export function selectFitCohort(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   return ledgerEntries(ledger).filter((entry) => {
-    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry)) return false;
+    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry)) return false;
     const resolvedAt = Number(entry.resolvedAt);
     const emittedAt = emissionTime(entry);
     return Number.isFinite(resolvedAt) && resolvedAt >= minResolvedAt && resolvedAt <= nowMs
