@@ -153,9 +153,9 @@ export function buildMarketImplications(data: unknown): string {
     const ticker = sanitizeForPromptLine(safeStr(card.ticker));
     const title = sanitizeForPromptLine(safeStr(card.title));
     const direction = sanitizeForPromptLine(safeStr(card.direction));
-    const confidence = sanitizeForPromptLine(safeStr(card.confidence));
     if (!ticker || !title) return null;
-    return `- ${ticker} ${direction} (${confidence}): ${title}`;
+    // No confidence label: the cards are unscored (#8869), and the analyst would repeat it.
+    return `- ${ticker} ${direction}: ${title}`;
   }).filter((l): l is string => l !== null);
 
   return lines.length ? `AI Market Signals:\n${lines.join('\n')}` : '';
