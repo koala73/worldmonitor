@@ -23,7 +23,7 @@ Panel id is `news-market-correlation`; canonical component is `src/components/Ne
 The panel covers a deliberately narrow slice. Read its verdicts within these limits:
 
 - **Six assets only.** S&P 500 (`^GSPC`), Nasdaq Composite (`^IXIC`), Bitcoin (`BTC-USD`), Ethereum (`ETH-USD`), Gold (`GC=F`), and WTI Crude (`CL=F`). There is no Brent, natural gas, FX, single stock, or prediction market. An asset whose series failed to load is disabled in the selector.
-- **Global topics, not countries or crises.** The news series is worldwide GDELT volume for a topic query. Only the security topics return a series: Military Activity, Cyber Threats, Nuclear, Sanctions, Intelligence, and Maritime Security. The selector also lists the positive-news topics (Science Breakthroughs, Climate Progress, Conservation Wins, Humanitarian Progress, Innovation), but the timeline route rejects them as `invalid topic`, so choosing one returns no data.
+- **Global topics, not countries or crises.** The news series is worldwide GDELT volume for a topic. The selector offers six security topics: Military Activity, Cyber Threats, Nuclear, Sanctions, Intelligence, and Maritime Security.
 - **Pearson on hourly returns.** The coefficient is linear and contemporaneous within an hourly bucket. It compares news volume with the percentage price change, not with the price level.
 - **No persistence.** Every coefficient, interval, and lead/lag verdict is recomputed in the browser on each load. Nothing is stored, so there is no history of past verdicts.
 
@@ -37,7 +37,7 @@ The panel covers a deliberately narrow slice. Read its verdicts within these lim
 | Series | Route or key | Upstream |
 |---|---|---|
 | Market prices | Bootstrap on-demand key `marketCorrelationSeries` (Redis `market:correlation-series:v1`) | Yahoo Finance chart API, `range=14d`, `interval=1h`, seeded by `scripts/seed-market-correlation-series.mjs`. |
-| News volume | `GET /api/intelligence/v1/get-gdelt-topic-timeline` (Redis `gdelt:intel:vol:<topic>`) | GDELT DOC API `TimelineVol` over a 14-day span, seeded by `scripts/seed-gdelt-intel.mjs`. |
+| News volume | `GET /api/intelligence/v1/get-gdelt-topic-timeline` (Redis `gdelt:intel:vol:<topic>`) | Counts of matching GDELT bulk records per time bucket, written by `scripts/seed-gdelt-bulk-materializer.mjs`. |
 
 ## Method
 
@@ -64,7 +64,7 @@ The lead/lag line shows the lag in hours, its coefficient, and its sample size. 
 ## Refresh cadence
 
 - **Market series**: re-seeded every 15 minutes as a member of the `seed-bundle-market-backup` bundle. Health flags it stale after 45 minutes.
-- **News series**: `seed-gdelt-intel` refreshes one topic's timeline per 4-hour slot, so each topic's volume series is refreshed about once a day.
+- **News series**: the `seed-gdelt-intel` Railway service runs `scripts/seed-gdelt-bulk-materializer.mjs` every 15 minutes and updates every topic's volume series on each run.
 - **Panel**: fetches when it is near the viewport and refreshes every 15 minutes while it stays near the viewport (`REFRESH_INTERVALS.newsMarketCorrelation`).
 
 ## Tier & gating
