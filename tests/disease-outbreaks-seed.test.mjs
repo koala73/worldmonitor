@@ -288,6 +288,38 @@ test('fetchDiseaseOutbreaks publishes only reportable ECDC/CIDRAP headlines', as
   ]);
 });
 
+// The 2026-10 Irkutsk lab death (suspected pneumonic plague) reached no WHO,
+// CDC or ECDC feed, and ThinkGlobalHealth stopped updating on 2026-09-11.
+// CIDRAP's plague topic was the only permitted source that carried it.
+test('fetchDiseaseOutbreaks publishes plague stories from the CIDRAP plague topic', async (t) => {
+  const recent = new Date(Date.now() - 86_400_000).toUTCString();
+  const plagueXml = `<?xml version="1.0"?><rss><channel><item>
+    <title>Suspected plague incident leaves 1 dead, 200 under quarantine in Siberia</title>
+    <link>https://www.cidrap.umn.edu/plague/suspected-plague-siberia</link>
+    <description>Russia has yet to confirm what caused the lab worker’s death.</description>
+    <pubDate>${recent}</pubDate></item></channel></rss>`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url === 'https://www.cidrap.umn.edu/news/88/rss') return new Response(plagueXml, { status: 200 });
+    if (url.endsWith('.js')) return new Response('not found', { status: 404 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const plague = outbreaks.find((o) => o.sourceUrl === 'https://www.cidrap.umn.edu/plague/suspected-plague-siberia');
+  assert.ok(plague, 'CIDRAP plague topic item missing from the published outbreaks');
+  assert.equal(plague.disease, 'Plague');
+  assert.equal(plague.countryCode, 'RU');
+});
+
+// New Mexico is the main US plague focus; it must not geocode to Mexico.
+test('New Mexico geocodes to the United States, not Mexico', () => {
+  assert.equal(headline('Plague infects man from New Mexico').countryCode, 'US');
+  assert.equal(headline('Hantavirus case reported in New Mexico county').location, 'United States');
+  assert.equal(headline('Dengue outbreak spreads in Mexico').countryCode, 'MX');
+});
+
 // Avian flu coverage names turkey farms constantly; the bird must not geocode
 // to Türkiye, while the country still does.
 test('turkey the bird does not geocode to Türkiye in headline sources', () => {

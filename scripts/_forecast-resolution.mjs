@@ -254,6 +254,29 @@ const FAMILY_WINDOW = {
   market: 'within-horizon',
 };
 
+// Chokepoint -> market region (sea) it transmits to. Shared with seed-forecasts.mjs.
+export const CHOKEPOINT_MARKET_REGIONS = {
+  'Strait of Hormuz': 'Middle East',
+  'Bab el-Mandeb': 'Red Sea',
+  'Red Sea': 'Red Sea',
+  'Suez Canal': 'Red Sea',
+  'Taiwan Strait': 'Western Pacific',
+  'South China Sea': 'Western Pacific',
+  'Strait of Malacca': 'South China Sea',
+  'Kerch Strait': 'Black Sea',
+  'Black Sea': 'Black Sea',
+  'Bosporus Strait': 'Black Sea',
+  'Persian Gulf': 'Middle East',
+  'Arabian Sea': 'Middle East',
+  'Baltic Sea': 'Northern Europe',
+  'Danish Straits': 'Northern Europe',
+  'Strait of Gibraltar': 'Mediterranean',
+  'Mediterranean Sea': 'Mediterranean',
+  'Panama Canal': 'Central America',
+  'Lombok Strait': 'Southeast Asia',
+  'Cape of Good Hope': 'Southern Africa',
+};
+
 // ── Commodity label -> future ticker (market family) ────────────────────
 //
 // The market:commodities-bootstrap:v1 feed is keyed by Yahoo-style future
@@ -481,17 +504,8 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
-    case 'supply_chain': {
-      // Threshold is a boolean-shaped condition (disruption present),
-      // represented as riskScore >= 60 (the detector's own "disrupted"
-      // gate threshold, seed-forecasts.mjs detectSupplyChainScenarios).
-      return {
-        metricKey: `supply_chain:chokepoints:v4|riskScore(route==${pred.region})`,
-        operator: '>=',
-        threshold: 60,
-        window: FAMILY_WINDOW[family],
-      };
-    }
+    case 'supply_chain':
+      return chokepointDisruptionMetrics(pred.region);
     case 'prediction_market': {
       // Percent-anchored so a digit-bearing source label doesn't skew the
       // baseline (FIX 6). Falls back to the emission probability.
@@ -530,19 +544,8 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       if (commoditySignal) {
         const label = String(commoditySignal.value ?? '').split(' sensitivity:')[0].trim();
         const symbol = COMMODITY_LABEL_TO_SYMBOL[label];
-        if (symbol) {
-          const price = findCommodityPrice(inputs, symbol); // finite & > 0 (guarded in the index)
-          if (Number.isFinite(price)) {
-            return {
-              metricKey: `market:commodities-bootstrap:v1|price(symbol==${symbol})`,
-              sourceFeed: 'market:commodities-bootstrap:v1',
-              operator: 'crosses',
-              threshold: +(price * MARKET_PRICE_MOVE_RATIO).toFixed(2),
-              baselineValue: +price.toFixed(2),
-              window: FAMILY_WINDOW[family],
-            };
-          }
-        }
+        const metrics = symbol ? commodityMoveMetrics(inputs, symbol) : null;
+        if (metrics) return metrics;
       }
       // No commodity-ticker hard path succeeded: an unmapped label
       // (Semiconductors, Trade goods, ambiguous compounds), no emission
@@ -556,6 +559,54 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
     default:
       return null;
   }
+}
+
+// Threshold is a boolean-shaped condition (disruption present), represented as
+// riskScore >= 60 (the detector's own "disrupted" gate threshold,
+// seed-forecasts.mjs detectSupplyChainScenarios).
+function chokepointDisruptionMetrics(route) {
+  return {
+    metricKey: `supply_chain:chokepoints:v4|riskScore(route==${route})`,
+    sourceFeed: 'supply_chain:chokepoints:v4',
+    operator: '>=',
+    threshold: 60,
+    window: FAMILY_WINDOW.supply_chain,
+  };
+}
+
+function commodityMoveMetrics(inputs, symbol) {
+  const price = findCommodityPrice(inputs, symbol); // finite & > 0 (guarded in the index)
+  if (!Number.isFinite(price)) return null;
+  return {
+    metricKey: `market:commodities-bootstrap:v1|price(symbol==${symbol})`,
+    sourceFeed: 'market:commodities-bootstrap:v1',
+    operator: 'crosses',
+    threshold: +(price * MARKET_PRICE_MOVE_RATIO).toFixed(2),
+    baselineValue: +price.toFixed(2),
+    window: FAMILY_WINDOW.market,
+  };
+}
+
+// The chokepoint record a sea-level forecast resolves on: the most disrupted
+// of the sea's chokepoints at emission (ties by name), so the spec names one route.
+function mostDisruptedChokepointInSea(inputs, sea) {
+  const chokepoints = inputs?.chokepoints?.chokepoints || inputs?.chokepoints?.routes || [];
+  return chokepoints
+    .filter((cp) => cp?.region && cp.region !== sea && CHOKEPOINT_MARKET_REGIONS[cp.region] === sea && Number.isFinite(Number(cp.riskScore)))
+    .sort((a, b) => Number(b.riskScore) - Number(a.riskScore) || a.region.localeCompare(b.region))[0]?.region ?? null;
+}
+
+// State-derived buckets with a checkable market or chokepoint outcome (#5234).
+// sovereign_risk, rates_inflation and fx_stress have no regional hard feed
+// (FRED is US-only; BIS EER covers 12 economies, not these regions) and stay judged.
+function deriveStateDerivedHardMetrics(pred, inputs) {
+  const bucketId = pred.stateDerivation?.bucketId;
+  if (bucketId === 'energy') return commodityMoveMetrics(inputs, 'CL=F');
+  if (bucketId === 'freight' && pred.domain === 'supply_chain') {
+    const route = mostDisruptedChokepointInSea(inputs, pred.region);
+    return route ? chokepointDisruptionMetrics(route) : null;
+  }
+  return null;
 }
 
 function buildQuestion(pred) {
@@ -589,8 +640,7 @@ function buildJudgedSpec(pred, generatedAt) {
   };
 }
 
-function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
-  const metrics = deriveHardMetrics(pred, family, inputs, options);
+function buildHardSpec(pred, inputs, family, generatedAt, options = {}, metrics = deriveHardMetrics(pred, family, inputs, options)) {
   if (!metrics || !Number.isFinite(metrics.threshold)) {
     // Threshold fallback (R3/plan step 3): a hard family that cannot derive
     // a finite threshold emits a judged spec rather than an unresolvable
@@ -650,7 +700,8 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
 // buildResolutionSpec itself never throws.
 export function buildResolutionSpec(pred, inputs, generatedAt, options = {}) {
   if (pred.generationOrigin === 'state_derived') {
-    return buildJudgedSpec(pred, generatedAt);
+    const metrics = deriveStateDerivedHardMetrics(pred, inputs);
+    return metrics ? buildHardSpec(pred, inputs, null, generatedAt, options, metrics) : buildJudgedSpec(pred, generatedAt);
   }
 
   // prediction_market exemption (before the JUDGED_DOMAINS gate).

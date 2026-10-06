@@ -75,16 +75,19 @@ function repeat(count, make) {
 }
 
 describe('golden fit on the frozen published-origin ledger', () => {
-  it('reproduces the 2026-10-06 production map exactly', () => {
+  // The map persisted on 2026-10-06 also fitted 9 unknown-origin rows
+  // (7 conflict, 1 market, 1 supply_chain). Excluding them (#5240) changes only
+  // identity domains, so the applied curve is the same as that map's.
+  it('fits the frozen 2026-10-06 ledger exactly', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT);
     assert.deepEqual(map, {
       schemaVersion: 1,
       version: `forecast-calibration-pav-v1@${FIT_AT}`,
       codeVersion: 'forecast-calibration-pav-v1',
       fittedAt: FIT_AT,
-      fitWindow: { from: 1783411395890, to: FIT_AT },
+      fitWindow: { from: 1783494135407, to: FIT_AT },
       cohortFilter: {
-        excludedOrigins: ['state_derived', 'bet_engine'],
+        excludedOrigins: ['state_derived', 'bet_engine', 'unknown'],
         outcomes: ['YES', 'NO'],
         rollingWindowDays: 180,
         emissionField: 'generatedAt',
@@ -93,14 +96,13 @@ describe('golden fit on the frozen published-origin ledger', () => {
       minTotalSample: 60,
       minDomainSample: 30,
       probabilityBounds: { floor: 0.01, ceiling: 0.99 },
-      totalSample: 241,
+      totalSample: 232,
       domains: {
-        conflict: { n: 18, positives: 8, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
+        conflict: { n: 11, positives: 8, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
         cyber: { n: 197, positives: 0, mode: 'isotonic', knots: [{ x: 0.011, y: 0.01 }, { x: 0.53, y: 0.01 }] },
         infrastructure: { n: 11, positives: 0, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
-        market: { n: 8, positives: 6, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
+        market: { n: 7, positives: 5, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
         military: { n: 6, positives: 4, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
-        supply_chain: { n: 1, positives: 1, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
       },
     });
   });
@@ -108,12 +110,12 @@ describe('golden fit on the frozen published-origin ledger', () => {
   it('pools adjacent violators on real mixed outcomes when the domain minimum is lowered', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT, { minDomainSample: 10 });
     assert.deepEqual(map.domains.conflict, {
-      n: 18,
+      n: 11,
       positives: 8,
       mode: 'isotonic',
-      knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.4375 }, { x: 0.85, y: 0.4375 }, { x: 0.93, y: 0.99 }],
+      knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.777778 }, { x: 0.85, y: 0.777778 }, { x: 0.93, y: 0.99 }],
     });
-    assert.equal(map.domains.market.mode, 'identity', 'n=8 stays below the lowered minimum');
+    assert.equal(map.domains.market.mode, 'identity', 'n=7 stays below the lowered minimum');
   });
 
   it('is deterministic across repeated fits', () => {
@@ -192,14 +194,24 @@ describe('population filter', () => {
     assert.equal(map.totalSample, 60);
     assert.equal(map.domains.cyber.n, 60);
     assert.equal(map.domains.cyber.positives, 0, 'any shadow/synthetic YES would have raised this');
-    assert.deepEqual(map.cohortFilter.excludedOrigins, ['state_derived', 'bet_engine']);
+    assert.deepEqual(map.cohortFilter.excludedOrigins, ['state_derived', 'bet_engine', 'unknown']);
+  });
+
+  it('excludes entries with no recorded origin from the fit', () => {
+    const real = repeat(60, () => entry({ domain: 'cyber', probability: 0.4, outcome: 'NO' }));
+    const unattributed = repeat(40, () => entry({ domain: 'cyber', origin: 'unknown', probability: 0.4, outcome: 'YES' }));
+    const absent = repeat(40, () => entry({ domain: 'cyber', origin: '', probability: 0.4, outcome: 'YES' }));
+    const map = fitCalibrationMap(ledgerOf([...real, ...unattributed, ...absent]), T0 + 30 * DAY_MS);
+    assert.equal(map.totalSample, 60);
+    assert.equal(map.domains.cyber.positives, 0, 'any unattributed YES would have raised this');
+    assert.ok(map.cohortFilter.excludedOrigins.includes('unknown'));
   });
 
   it('counts only published-origin scored entries in the production fixture', () => {
     const rows = Object.values(FIXTURE.data);
     assert.ok(rows.some((row) => row.generationOrigin === 'bet_engine' && row.outcome === 'YES'));
     assert.ok(rows.some((row) => row.generationOrigin === 'state_derived'));
-    const expected = rows.filter((row) => !['bet_engine', 'state_derived'].includes(row.generationOrigin) && (row.outcome === 'YES' || row.outcome === 'NO')).length;
+    const expected = rows.filter((row) => !['bet_engine', 'state_derived', 'unknown'].includes(row.generationOrigin || 'unknown') && (row.outcome === 'YES' || row.outcome === 'NO')).length;
     assert.equal(fitCalibrationMap(FIXTURE.data, FIT_AT).totalSample, expected);
   });
 

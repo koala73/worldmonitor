@@ -652,13 +652,51 @@ describe('accuracy page honesty rules', () => {
   });
 
   it('describes the headline cohort by what it excludes, not by a publication property', () => {
-    // Entries with no generationOrigin fall back to 'unknown', which is NOT
-    // excluded, so the cohort is not "published origins". Name the exclusions.
+    // The cohort is the scored set minus excludedOrigins, not "published
+    // origins". Name the exclusions.
     const text = stripTags(renderState(LIVE_SECTION).html);
     assert.match(text, /bet_engine/);
     assert.match(text, /state_derived/);
     assert.match(text, /310/, 'excludedScored must be published so the headline population is unambiguous');
     assert.doesNotMatch(text, /published origin/i, 'the code does not enforce a publication property');
+  });
+
+  it('states whether entries with no recorded origin count, from the excluded origins it renders', () => {
+    const counted = stripTags(renderState(LIVE_SECTION).html);
+    assert.match(counted, /filed as unknown and is counted/);
+    assert.doesNotMatch(counted, /filed as unknown and is left out/);
+    assert.match(downloadFor(LIVE_SECTION).headlineCohort.definition, /unknown and is included/);
+
+    const excludedSection = sectionWith({
+      skill: { count: 176, brier: 0.113943, logScore: 0.366094, excludedScored: 314, excludedOrigins: ['bet_engine', 'state_derived', 'unknown'] },
+    });
+    const html = renderState(excludedSection).html;
+    const text = stripTags(html);
+    assert.match(text, /filed as unknown and is left out/);
+    assert.match(text, /predate origin tagging/);
+    assert.doesNotMatch(text, /unknown and (is counted|does count)/);
+    assert.match(html, /<tr data-origin="unknown"><th scope="row">unknown<\/th><td>No, excluded<\/td>/);
+    const definition = downloadFor(excludedSection).headlineCohort.definition;
+    assert.match(definition, /unknown and is excluded/);
+    assert.doesNotMatch(definition, /is included/);
+
+    // excludedOrigins lists only origins with scored entries, so once unknown
+    // rows age out of the window its absence must not read as "counted".
+    const agedOut = sectionWith({
+      byGenerationOrigin: LIVE_SCORECARD.byGenerationOrigin.filter((row) => row.generationOrigin !== 'unknown'),
+      skill: { count: 176, brier: 0.113943, logScore: 0.366094, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+    });
+    assert.match(stripTags(renderState(agedOut).html), /filed as unknown; none was scored in this window/);
+    assert.match(downloadFor(agedOut).headlineCohort.definition, /none was scored in this window/);
+
+    // A VOID-only unknown row: the caption and the row must give one answer.
+    const voidOnly = sectionWith({
+      byGenerationOrigin: LIVE_SCORECARD.byGenerationOrigin.map((row) => (row.generationOrigin === 'unknown' ? { ...row, scored: 0, brier: undefined, logScore: undefined } : row)),
+      skill: { count: 176, brier: 0.113943, logScore: 0.366094, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+    });
+    const voidOnlyHtml = renderState(voidOnly).html;
+    assert.match(stripTags(voidOnlyHtml), /filed as unknown; none was scored in this window/);
+    assert.match(voidOnlyHtml, /<tr data-origin="unknown"><th scope="row">unknown<\/th><td>No scored entries<\/td>/);
   });
 
   it('describes the scored share of the ledger by its definition, not by its field name', () => {

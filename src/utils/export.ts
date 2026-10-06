@@ -489,6 +489,8 @@ function signalLabel(key: string): string {
 function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
   if (!signals) return [];
   const normalized: Record<string, unknown> = { ...signals };
+  if (normalized.cyberThreats === null) normalized.cyberThreats = 'unavailable';
+  else if (normalized.cyberThreats === 0) normalized.cyberThreats = '0';
   for (const key of ['temporalAnomalies', 'globalTemporalAnomalies']) {
     if (key in normalized && normalized[key] === null) {
       normalized[key] = 'unavailable';
