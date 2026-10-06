@@ -94,6 +94,13 @@ describe('cleanRssDescription: one pass must decode exactly one level', () => {
     assert.equal(cleanRssDescription('He said &amp;quot;no&amp;quot;'), 'He said &quot;no&quot;');
   });
 
+  // A tag regex needs the closing `>`; an unclosed tag start survives it.
+  // Descriptions are plain text, so no `<` is left after the strip.
+  it('leaves no tag start behind', () => {
+    assert.equal(cleanRssDescription('Cases rose <script src=x'), 'Cases rose script src=x');
+    assert.equal(cleanRssDescription('a<<b>script>alert(1)<</b>/script>b'), 'ascript>alert(1)/script>b');
+  });
+
   it('keeps double-escaped markup as text through the tag strip', () => {
     const raw = 'Acme patched an XSS triggered by &amp;lt;script&amp;gt; tags in bios.';
     const desc = cleanRssDescription(raw);

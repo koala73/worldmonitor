@@ -162,6 +162,9 @@ const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdq
 export function cleanRssDescription(rawDesc) {
   return decodeHtmlEntities(rawDesc || '')
     .replace(/<[^>]+>/g, '')
+    // An unclosed tag start ("<script src=x") survives the strip; the result
+    // is plain text, so no `<` remains.
+    .replace(/</g, '')
     .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
     .replace(/\s+/g, ' ').trim().slice(0, 300);
 }
