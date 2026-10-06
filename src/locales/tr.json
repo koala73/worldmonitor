@@ -2334,7 +2334,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>",
+      "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>",
       "title": "AI Pazar Çıkarımları",
       "directions": {
         "long": "UZUN",
@@ -2347,7 +2347,8 @@
       "signals_one": "{{count}} sinyal",
       "signals_other": "{{count}} sinyal",
       "disclaimer": "AI tarafından oluşturulan işlem sinyalleri yalnızca bilgi amaçlıdır. Yatırım tavsiyesi değildir. Her zaman kendi araştırmanızı yapın.",
-      "unavailable": "AI pazar çıkarımları her tahmin çalıştırmasından sonra oluşturulur. Kısa süre içinde tekrar kontrol edin."
+      "unavailable": "AI pazar çıkarımları her tahmin çalıştırmasından sonra oluşturulur. Kısa süre içinde tekrar kontrol edin.",
+      "unscored": "Anlatı senaryoları, doğruluk açısından değerlendirilmez."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin."

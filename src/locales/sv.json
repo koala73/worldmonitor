@@ -1953,7 +1953,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI-marknadsbetydelse</strong> LLM-genererade handelssignaler härledda från levande geopolitiska, råvaru- och makroläge efter varje prognosecykel.<ul><li><strong>Riktning</strong>: LÅNGSIKTIGT / KORTSIKTIGT / SÄKRING med konfidensbedömning</li><li><strong>Tidsram</strong>: 1V, 2V, 1M eller 3M horisont</li><li><strong>Drivkraft</strong>: Nyckelkatalysator bakom signalen</li><li><strong>Risk</strong>: Reservation eller ogiltighetsvillkor</li></ul><em>Endast för informationsändamål. Inte investeringsråd.</em>",
+      "infoTooltip": "<strong>AI-marknadsbetydelse</strong> LLM-genererade handelssignaler härledda från levande geopolitiska, råvaru- och makroläge efter varje prognosecykel.<ul><li><strong>Riktning</strong>: LÅNGSIKTIGT / KORTSIKTIGT / SÄKRING</li><li><strong>Tidsram</strong>: 1V, 2V, 1M eller 3M horisont</li><li><strong>Drivkraft</strong>: Nyckelkatalysator bakom signalen</li><li><strong>Risk</strong>: Reservation eller ogiltighetsvillkor</li></ul><em>Endast för informationsändamål. Inte investeringsråd.</em>",
       "title": "AI-marknadspåverkan",
       "directions": {
         "long": "LÅNGT",
@@ -1966,7 +1966,8 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signaler",
       "disclaimer": "AI-genererade handelssignaler endast för informationssyften. Inte investeringsrådgivning. Gör alltid din egen forskning.",
-      "unavailable": "AI-marknadspåverkan genereras efter varje prognosakörning. Kontrollera snart igen."
+      "unavailable": "AI-marknadspåverkan genereras efter varje prognosakörning. Kontrollera snart igen.",
+      "unscored": "Narrativa scenarier, ej bedömda för noggrannhet."
     },
     "forecast": {
       "infoTooltip": "<strong>AI-prognoser</strong> AI-genererade sannolikhetsuppskattningar för geopolitiska och ekonomiska händelser:<ul><li>Täckning över domäner: konflikt, marknader, försörjningskedjor, cyber, politik</li><li>Varje prognos visar uppskattad sannolikhet, konfidensnivå och tidshoriont</li><li>Kalibrerad mot prediktionsmarknadsbaser där tillgängligt</li></ul>Prognoser uppdateras när nya efterrättelsetecken kommer in. Filtrera efter domän med flikarna ovan."

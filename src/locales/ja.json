@@ -2325,7 +2325,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
+      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
       "title": "AI市場への影響",
       "directions": {
         "long": "ロング",
@@ -2337,7 +2337,8 @@
       "appliesToNext": "次のAI再生成に適用",
       "signals_other": "{{count}}シグナル",
       "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
-      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
+      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。",
+      "unscored": "ナラティブなシナリオであり、精度は評価されていません。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 予測</strong> 地政学的および経済的イベントの AI 生成確率推定:<ul><li>クロスドメインカバレッジ: 紛争、市場、サプライチェーン、サイバー、政治</li><li>各予測は推定確率、信頼度、時間軸を表示</li><li>利用可能な場合は予測市場ベースラインに対して調整済み</li></ul>新しいインテリジェンスシグナルが到着すると予測が更新されます。上記のタブでドメイン別にフィルタリングしてください。"

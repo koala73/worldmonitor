@@ -1193,7 +1193,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Rögzítés egészsége, piaci kapitalizáció és 24 órás volumen a főbb USD-rögzített tokenekhez (USDT, USDC, DAI, BUSD). A megtört rögzítés rendszerkockázatot jelez."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI piaci következmények</strong> LLM által generált kereskedési jelek az élő geopolitikai, nyersanyag és makro állapotból az egyes előrejelzési ciklus után.<ul><li><strong>Irány</strong>: LONG / SHORT / HEDGE megbízhatósági besorolással</li><li><strong>Időkeret</strong>: 1W, 2W, 1M vagy 3M horizont</li><li><strong>Katalizátor</strong>: A jel mögötti kulcs katalizátor</li><li><strong>Kockázat</strong>: Figyelmeztetés vagy érvénytelenítési feltétel</li></ul><em>Csak tájékoztató célokra. Nem befektetési tanács.</em>",
+      "infoTooltip": "<strong>AI piaci következmények</strong> LLM által generált kereskedési jelek az élő geopolitikai, nyersanyag és makro állapotból az egyes előrejelzési ciklus után.<ul><li><strong>Irány</strong>: LONG / SHORT / HEDGE</li><li><strong>Időkeret</strong>: 1W, 2W, 1M vagy 3M horizont</li><li><strong>Katalizátor</strong>: A jel mögötti kulcs katalizátor</li><li><strong>Kockázat</strong>: Figyelmeztetés vagy érvénytelenítési feltétel</li></ul><em>Csak tájékoztató célokra. Nem befektetési tanács.</em>",
       "title": "AI piaci következmények",
       "directions": {
         "long": "LONG",
@@ -1206,7 +1206,8 @@
       "signals_one": "{{count}} jel",
       "signals_other": "{{count}} jel",
       "disclaimer": "AI által generált kereskedési jelek csak tájékoztató célokra. Nem befektetési tanács. Mindig végezze el saját kutatását.",
-      "unavailable": "Az AI piaci következmények az egyes előrejelzési futtatás után kerülnek létrehozásra. Kérjük, próbálkozzon később."
+      "unavailable": "Az AI piaci következmények az egyes előrejelzési futtatás után kerülnek létrehozásra. Kérjük, próbálkozzon később.",
+      "unscored": "Narratív szcenáriók, nem értékelve a pontosság szerint."
     },
     "status": {
       "updatedAt": "Frissítve: {{time}}"

@@ -2343,7 +2343,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE avec notation de confiance</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
+      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
       "title": "Implications du marché IA",
       "directions": {
         "long": "LONG",
@@ -2357,7 +2357,8 @@
       "signals_other": "{{count}} signaux",
       "disclaimer": "Signaux de trading générés par l'IA à titre informatif uniquement. Ne constitue pas un conseil en investissement. Effectuez toujours vos propres recherches.",
       "unavailable": "Les implications du marché IA sont générées après chaque exécution de prévision. Veuillez revenir bientôt.",
-      "signals_many": "{{count}} signaux"
+      "signals_many": "{{count}} signaux",
+      "unscored": "Scénarios narratifs, non évalués pour leur exactitude."
     },
     "forecast": {
       "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus."

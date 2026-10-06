@@ -2325,7 +2325,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE (신뢰도 등급 포함)</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>",
+      "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>",
       "title": "AI 시장 영향",
       "directions": {
         "long": "롱",
@@ -2337,7 +2337,8 @@
       "appliesToNext": "다음 AI 재생성에 적용",
       "signals_other": "{{count}}개 신호",
       "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
-      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
+      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요.",
+      "unscored": "서술형 시나리오이며 정확도는 평가되지 않습니다."
     },
     "forecast": {
       "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li><li>사용 가능한 경우 예측 시장 기준선을 기준으로 보정됨</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다."

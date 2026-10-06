@@ -1193,7 +1193,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI Market Implications</strong> LLM-generated trade signals derived from live geopolitical, commodity, and macro state after each forecast cycle.<ul><li><strong>Direction</strong>: LONG / SHORT / HEDGE with confidence rating</li><li><strong>Timeframe</strong>: 1W, 2W, 1M, or 3M horizon</li><li><strong>Driver</strong>: Key catalyst behind the signal</li><li><strong>Risk</strong>: Caveat or invalidation condition</li></ul><em>For informational purposes only. Not investment advice.</em>",
+      "infoTooltip": "<strong>پیامدهای بازار تولید شده با هوش مصنوعی</strong> سیگنال‌های معاملاتی تولید شده توسط مدل زبانی بزرگ از وضعیت ژئوپلیتیکی، کالایی و کلان‌اقتصادی زندهٔ بعد از هر چرخهٔ پیش‌بینی.<ul><li><strong>جهت</strong>: LONG / SHORT / HEDGE</li><li><strong>بازه زمانی</strong>: افق 1W، 2W، 1M یا 3M</li><li><strong>راهبر</strong>: کاتالیزور کلیدی پشت سیگنال</li><li><strong>خطر</strong>: هشدار یا شرط نقض‌کنندگی</li></ul><em>فقط برای اطلاع. توصیه سرمایه‌گذاری نیست.</em>",
       "title": "AI Market Implications",
       "directions": {
         "long": "LONG",
@@ -1206,7 +1206,8 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "disclaimer": "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research.",
-      "unavailable": "AI market implications are generated after each forecast run. Check back shortly."
+      "unavailable": "AI market implications are generated after each forecast run. Check back shortly.",
+      "unscored": "سناریوهای روایی، بدون ارزیابی دقت."
     },
     "status": {
       "updatedAt": "Updated {{time}}"

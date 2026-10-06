@@ -2334,7 +2334,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI-Marktauswirkungen</strong> LLM-generierte Handelssignale aus Live-Geopolitik, Rohstoffen und Makrozustand nach jedem Prognosezyklus.<ul><li><strong>Richtung</strong>: LONG / SHORT / HEDGE mit Konfidenzwert</li><li><strong>Zeitrahmen</strong>: 1W, 2W, 1M oder 3M Horizont</li><li><strong>Katalysator</strong>: Wichtiger Auslöser hinter dem Signal</li><li><strong>Risiko</strong>: Warnung oder Ungültigkeitsbedingung</li></ul><em>Nur zu Informationszwecken. Keine Anlageberatung.</em>",
+      "infoTooltip": "<strong>AI-Marktauswirkungen</strong> LLM-generierte Handelssignale aus Live-Geopolitik, Rohstoffen und Makrozustand nach jedem Prognosezyklus.<ul><li><strong>Richtung</strong>: LONG / SHORT / HEDGE</li><li><strong>Zeitrahmen</strong>: 1W, 2W, 1M oder 3M Horizont</li><li><strong>Katalysator</strong>: Wichtiger Auslöser hinter dem Signal</li><li><strong>Risiko</strong>: Warnung oder Ungültigkeitsbedingung</li></ul><em>Nur zu Informationszwecken. Keine Anlageberatung.</em>",
       "title": "KI-Marktauswirkungen",
       "directions": {
         "long": "LONG",
@@ -2347,7 +2347,8 @@
       "signals_one": "{{count}} Signal",
       "signals_other": "{{count}} Signale",
       "disclaimer": "KI-generierte Handelssignale nur zu Informationszwecken. Keine Anlageberatung. Führen Sie immer eigene Recherchen durch.",
-      "unavailable": "AI-Marktimplikationen werden nach jedem Prognoselauf generiert. Bitte versuchen Sie es in Kürze erneut."
+      "unavailable": "AI-Marktimplikationen werden nach jedem Prognoselauf generiert. Bitte versuchen Sie es in Kürze erneut.",
+      "unscored": "Narrative Szenarien, nicht auf Genauigkeit bewertet."
     },
     "forecast": {
       "infoTooltip": "<strong>KI-Prognosen</strong> KI-generierte Wahrscheinlichkeitsschätzungen für geopolitische und wirtschaftliche Ereignisse:<ul><li>Bereichsübergreifende Abdeckung: Konflikte, Märkte, Lieferkette, Cyber, Politik</li><li>Jede Prognose zeigt geschätzte Wahrscheinlichkeit, Konfidenzgrad und Zeithorizont</li><li>Kalibriert an den Basiswerten von Prognosemärkten, wo verfügbar</li></ul>Prognosen werden aktualisiert, wenn neue Aufklärungssignale eintreffen. Filtern Sie nach Bereich mit den Registerkarten oben."
