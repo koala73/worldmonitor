@@ -32,7 +32,8 @@ const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
 const EXCLUDED_NAMES = new Set([
   'North', 'South', 'East', 'West', 'Northern', 'Southern', 'Eastern', 'Western', 'Central', 'Centrale',
   'Northeast', 'Northeastern', 'Southeastern', 'Capital', 'Commonwealth', 'Free', 'Littoral', 'Maritime',
-  'Oriental', 'Plateau', 'Plateaux', 'Cordillera', 'Poblacion',
+  'Oriental', 'Plateau', 'Plateaux', 'Cordillera', 'Poblacion', 'Centre', 'Nord', 'Rivers', 'Lakes',
+  'Midlands', 'Savanes',
   'Delta', 'Corona', 'Colon', 'Oral', 'Male', 'Mary', 'Mango', 'Bush',
   'Reading', 'Mobile', 'Independence', 'Enterprise', 'Providence', 'Surprise', 'Paradise', 'Orange',
   'Concord', 'Phoenix', 'Aurora', 'Nice', 'Split', 'Batman', 'Ogre', 'Sale', 'Mesa', 'Vista', 'Centennial',

@@ -22,6 +22,7 @@ import {
   mapItem,
   isRoundupHeadline,
   isReportableHeadline,
+  detectDisease,
   UNEXPLAINED_PNEUMONIA_RE,
   diseaseContentMeta,
   diseasePublishTransform,
@@ -132,7 +133,7 @@ export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fe
         title = title.slice(0, -titleSuffix.length).trim();
       }
       const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim()
-        || (block.match(/<link\b[^>]*\bhref="([^"]+)"/) || [])[1]?.trim() || '';
+        || (block.match(/<link\b[^>]*\bhref=(["'])(.*?)\1/) || [])[2]?.trim() || '';
       const rawDesc = (block.match(/<(description|summary|content)\b[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/) || [])[2] || '';
       const desc = cleanRssDescription(rawDesc);
       const pubDate = (block.match(/<(pubDate|published|updated)>(.*?)<\/\1>/) || [])[2]?.trim() || '';
@@ -225,7 +226,9 @@ export async function fetchDiseaseOutbreaks() {
     .filter(item => {
       if (isRoundupHeadline(item.title)) return false;
       const text = `${item.title} ${item.desc}`.toLowerCase();
-      return diseaseKeywords.some(k => text.includes(k)) || UNEXPLAINED_PNEUMONIA_RE.test(text);
+      // A title naming a detected disease ("Two MERS cases ...") needs no generic keyword.
+      return diseaseKeywords.some(k => text.includes(k)) || UNEXPLAINED_PNEUMONIA_RE.test(text)
+        || detectDisease(item.title) !== 'Unknown Disease';
     })
     .map(mapItem)
     .filter((outbreak) => isReportableHeadline(outbreak));

@@ -422,6 +422,8 @@ test('place lookup stays inside the detected country and skips place names used 
   assert.equal(headline('Reading the data: measles outbreak in the United Kingdom grows').location, 'United Kingdom');
   // "Delta" (variant) is also a Nigerian state.
   assert.equal(headline('Delta variant drives COVID wave in Nigeria').location, 'Nigeria');
+  // Haiti's Centre department; here "Centre" is part of an institution's name.
+  assert.equal(headline('Cholera surge in Haiti, says National Centre for Disease Control').location, 'Haiti');
   // Kinshasa is in CD; a Russia story naming it keeps the Russia centroid.
   const ru = headline('Russia sends plague experts after Kinshasa talks');
   assert.equal(ru.countryCode, 'RU');
@@ -490,6 +492,40 @@ test('CDC items older than the lookback or undated are dropped', () => {
   assert.equal(isReportableHeadline(cdc(''), NOW), false);
   const who = mapItem(whoNormalizeItem({ Title: 'Yellow fever - Brazil', ItemDefaultUrl: '/x', PublicationDateAndTime: '2025-01-10T08:16:08Z' }));
   assert.equal(isReportableHeadline(who, NOW), true);
+});
+
+// The seeder's keyword gate runs before disease detection; a MERS report with
+// no generic outbreak word must still reach it.
+test('fetchDiseaseOutbreaks publishes reports that name only a detected disease', async (t) => {
+  const recent = new Date(Date.now() - 86_400_000).toUTCString();
+  const xml = `<?xml version="1.0"?><rss><channel><item>
+    <title>Two MERS cases reported in Saudi Arabia</title>
+    <link>https://www.ecdc.europa.eu/en/mers-sa</link>
+    <description>Officials reported them this week.</description>
+    <pubDate>${recent}</pubDate></item></channel></rss>`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed') return new Response(xml, { status: 200 });
+    if (url.endsWith('.js')) return new Response('not found', { status: 404 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const mers = outbreaks.find((o) => o.sourceUrl === 'https://www.ecdc.europa.eu/en/mers-sa');
+  assert.ok(mers, 'MERS report missing');
+  assert.equal(mers.disease, 'MERS');
+  assert.equal(mers.countryCode, 'SA');
+});
+
+test('Atom links accept single-quoted href', async () => {
+  const atom = `<feed><entry><title>Cholera update - WHO</title><link href='https://www.unognewsroom.org/story/en/9/cholera'/><updated>2026-10-05T10:00:00Z</updated><summary>Cholera in Sudan.</summary></entry></feed>`;
+  const items = await fetchRssItems('http://www.unognewsroom.org/feed', 'WHO briefing', {
+    titleSuffix: ' - WHO',
+    fetchImpl: async () => new Response(atom, { status: 200 }),
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].link, 'https://www.unognewsroom.org/story/en/9/cholera');
+  assert.equal(items[0].title, 'Cholera update');
 });
 
 test('MERS and hantavirus are detected as whole words', () => {
