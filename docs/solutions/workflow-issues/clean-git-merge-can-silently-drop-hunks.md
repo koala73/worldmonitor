@@ -73,7 +73,7 @@ afterPublish: async (ledger) => {
 
 Biome marks this rule FIXABLE. Do not take the auto-fix here: it deletes one key, which keeps the bug. Merge the bodies by hand.
 
-Detection: run `npm run lint` after every merge that touches a shared options object or config literal. The both-parents diff above shows two added keys, which is easy to read as correct.
+Detection: run `npm run lint` after every merge that touches a shared options object or config literal. It lints only `./src`, `./server`, `./api`, `./tests`, `./e2e`, `./scripts` and `./middleware.ts`; for a merged file elsewhere, run `npx biome lint <path>` on it directly. The both-parents diff above shows two added keys, which is easy to read as correct.
 
 Related: the deployment key-prefix write-ownership contract lives in
 `docs/solutions/logic-errors/deployment-key-prefix-is-a-write-ownership-contract.md`

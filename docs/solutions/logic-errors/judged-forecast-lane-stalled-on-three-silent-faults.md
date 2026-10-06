@@ -27,7 +27,7 @@ The judged lane of `seed-forecast-resolutions` resolves forecasts by asking two 
 ## Symptoms
 
 - `forecast:scorecard:v1` `judgedLane` showed 175 of 175 judge-B attempts since 2026-08-29 as `judge_unavailable` or `judge_returned_empty`.
-- `forecast:evidence:coverage:v1` was absent. Without it, every due entry stopped at `archive_incomplete` before any judge call.
+- `forecast:evidence:coverage:v1` was absent when read on 2026-10-06. At that point every due entry stopped at `archive_incomplete` before any judge call. Earlier the two faults overlapped rather than ran in sequence: from 2026-08-29 to 2026-10-05 the attempt log holds 176 `judge_unavailable` attempts (entries that reached judge B) interleaved with 85 `archive_incomplete` attempts.
 - The evidence archive itself was healthy: 15,818 records back to 2026-09-21 with no empty 6-hour bucket (per #8877). Only the proof of coverage was missing.
 - 195 entries sealed VOID as `beyond_archive_horizon` while this went on (per #8877).
 - Nothing alarmed. Seed metadata stayed fresh because the seeder ran on schedule and wrote its ledger.

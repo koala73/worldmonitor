@@ -986,9 +986,9 @@ The horizon exists because two spans are anchored to different clocks: required 
 
 ### Evidence Coverage Proof
 
-The record that certifies the evidence archive holds every item for a window. Judged resolution requires it before reading the archive at all. Without a valid proof the resolver treats the archive as incomplete and calls no judge, even when the archive itself is healthy.
+The record that states how far the forecast evidence archive can be trusted for a time window. Judged resolution reads the archive only when such a proof covers the entry's window; without one the archive counts as incomplete and no judge is called, even when the archive itself is healthy.
 
-A proof comes from one of two sources with different authority. A complete backfill, extended by confirmed digest publications, proves capture, and only that kind may authorize pruning the older accumulator. A continuity attestation, rebuilt from the archive's own records when the oldest is old enough and no gap exceeds a declared bucket, proves activity at that granularity rather than capture of every story, so only judging may accept it. Publications extend an existing proof but cannot carry it across a gap longer than the bucket. Because the proof expires, some path must be able to create it from scratch, or one long outage blocks judging until an operator intervenes. See also: Judged Resolution, Archive Horizon.
+There are two kinds, with different strength. A **capture proof** comes from a complete backfill and asserts that every story in the window was written to the archive; it is the only kind that may authorize pruning the older accumulator. A **continuity attestation** is rebuilt from the archive's own records and asserts only that the archive was being written to at a declared granularity throughout the window, not that every story was captured; only judging accepts it. A continuity attestation lapses across any publication gap longer than its granularity, which a capture proof does not. See also: Judged Resolution, Archive Horizon.
 
 ### Attempt Class
 

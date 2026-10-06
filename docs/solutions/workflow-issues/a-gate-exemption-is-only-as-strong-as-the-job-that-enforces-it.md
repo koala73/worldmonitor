@@ -102,7 +102,7 @@ gh pr view <n> --json statusCheckRollup --jq \
 
 ## Second instance: docs-only PRs never run docs-i18n-parity
 
-The same job-graph gap applies to every docs test in `test:data`, not only to exempted artifacts. The CODE filter in `.github/workflows/test.yml` drops every `docs/` path (`/^docs\// { next }`), so a PR that touches only `docs/` sets `code=false` and skips `unit`. `tests/docs-i18n-parity.test.mjs`, which requires a non-empty, translated `docs/zh/<page>.mdx` for every nav-included English page, runs only inside `unit`.
+The same job-graph gap applies to docs tests in `test:data`, not only to exempted artifacts. The CODE filter in `.github/workflows/test.yml` counts a few `docs/` paths as code (generated OpenAPI files, resilience snapshots, selected research files) and drops the rest (`/^docs\// { next }`). A PR that touches only ordinary docs pages and navigation therefore sets `code=false`, which skips `unit-shards` and `unit-built-output`. The aggregate `unit` job still runs (`if: always()`) and accepts the skipped results. `tests/docs-i18n-parity.test.mjs`, which requires a non-empty, translated `docs/zh/<page>.mdx` for every nav-included English page, runs through `test:data` inside `unit-shards`, so it never runs on such a PR.
 
 On #8887 the first commits added `docs/panels/news-market-correlation.mdx` and its `docs/docs.json` nav entry with no zh mirror. Every check that ran was green, because the parity test never ran. The zh translation was added in a later commit before merge. The always-on `docs-stats` job runs the docs date checks and `docs-stats.mjs --check`, but not the parity test.
 

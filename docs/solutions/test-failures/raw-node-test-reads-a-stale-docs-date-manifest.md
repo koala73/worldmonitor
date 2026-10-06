@@ -40,12 +40,13 @@ Treating the red as a regression from the branch under test. The failure reprodu
 
 ## Solution
 
-Regenerate the manifest before a direct run, then restore it so the regenerated copy does not ride along in an unrelated commit:
+Prefer `npm run test:data`, which runs the `docs:dates` pre-step itself. For a direct run, first check that the manifest has no local edits, then regenerate it, run the test, and restore only the regenerated copy so it does not ride along in an unrelated commit:
 
 ```bash
+git diff --quiet -- src/config/docs-page-dates.generated.ts || echo "manifest has local edits: commit or stash them first"
 npm run --silent docs:dates
 npx tsx --test tests/docs-locale-seo.test.mts   # 37 pass, 0 fail
-git checkout -- src/config/docs-page-dates.generated.ts
+git restore -- src/config/docs-page-dates.generated.ts   # only if the first command printed nothing
 ```
 
 Or run through the npm script, which triggers the hook: `npm run test:data`.
