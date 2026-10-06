@@ -59,8 +59,12 @@ const MIN_MS = 60 * 1000;
 const MARKET_MAX_AGE_MS = 30 * MIN_MS;
 const PREDICTION_MAX_AGE_MS = 90 * MIN_MS;
 const DIGEST_MAX_AGE_MS = 60 * MIN_MS;
+// Three ticks: an older snapshot cannot say whether a move crossed the
+// threshold since the previous tick or drifted there over an outage.
+const SNAPSHOT_MAX_AGE_MS = 15 * MIN_MS;
 // Scorecard outlives the 30-minute health gate by days; the snapshot is only
-// the previous tick's prediction prices and is rewritten every emitting tick.
+// the previous tick's prediction prices and market changes and is rewritten
+// every emitting tick.
 const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 const SNAPSHOT_TTL_SECONDS = 24 * 60 * 60;
 export const MAX_ARCHIVE_HASHES = 20_000;
@@ -172,8 +176,12 @@ function parseLedger(value) {
 
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
-  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges)) return null;
-  return { timestamp: Number(data.timestamp), predictionChanges: data.predictionChanges };
+  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges)) return null;
+  return { timestamp: Number(data.timestamp), predictionChanges: data.predictionChanges, marketChanges: data.marketChanges };
+}
+
+function snapshotRecords(snapshot) {
+  return Object.keys(snapshot.predictionChanges).length + Object.keys(snapshot.marketChanges).length;
 }
 
 function digestTimestamp(seed, data) {
@@ -190,10 +198,16 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const digest = freshPayload(raw, DIGEST_KEY, DIGEST_MAX_AGE_MS, nowMs, discarded, digestTimestamp);
   const runtimeMode = resolveCorrelationRuntimeMode(raw[CORRELATION_RUNTIME_MODE_KEY]);
   const previousSnapshot = parseSnapshot(raw[SNAPSHOT_KEY]);
+  const baseline = previousSnapshot && nowMs - previousSnapshot.timestamp <= SNAPSHOT_MAX_AGE_MS ? previousSnapshot : null;
 
   const markets = mapMarkets([stocks, commodities, crypto]);
   const predictions = predictionsPayload ? mapPredictions(predictionsPayload) : [];
   const items = digest ? digestNewsItems(digest) : [];
+  const observed = () => ({
+    timestamp: nowMs,
+    predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
+    marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
+  });
 
   let signals = [];
   let snapshot = previousSnapshot;
@@ -202,21 +216,19 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
     signals = detectMarketAlerts({
       markets,
       predictions,
-      previousPredictionChanges: predictionsPayload && previousSnapshot
-        ? new Map(Object.entries(previousSnapshot.predictionChanges))
-        : null,
+      previousPredictionChanges: predictionsPayload && baseline ? new Map(Object.entries(baseline.predictionChanges)) : null,
       newsTopics: news.newsTopics,
       newsEntityContexts: news.newsEntityContexts,
       pipelineFlowMentions: news.pipelineFlowMentions,
       isRecentDuplicate: () => false,
       markSignalSeen: () => {},
     });
-    if (predictionsPayload) {
-      snapshot = { timestamp: nowMs, predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)) };
-    }
+    if (predictionsPayload) snapshot = observed();
   }
 
-  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions });
+  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, {
+    nowMs, runtimeMode, markets, predictions, previousMarketChanges: baseline ? baseline.marketChanges : null,
+  });
   const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive });
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
@@ -225,7 +237,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   return {
     ledger,
     scorecard: buildScorecard(ledger, nowMs),
-    snapshot: snapshot ?? { timestamp: nowMs, predictionChanges: {} },
+    snapshot: snapshot ?? observed(),
     summary: {
       inputs: {
         stocks: stocks?.quotes?.length ?? 0,
@@ -236,7 +248,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
         runtimeMode,
       },
       discarded,
-      emitted: { total: signals.length, byType, gated: ingested.skipped },
+      emitted: { total: signals.length, byType, gated: ingested.gated, held: ingested.held },
       created: ingested.created,
       updated: ingested.updated,
       resolved: { hit: resolved.hit, miss: resolved.miss, void: resolved.void, unproven: resolved.unproven },
@@ -253,7 +265,7 @@ export function formatSummary(summary) {
   const discarded = summary.discarded.map(({ key, reason }) => `${key}=${reason}`).join(',') || 'none';
   return `  [market-alert-ledger] inputs stocks=${inputs.stocks} commodities=${inputs.commodities} crypto=${inputs.crypto} `
     + `predictions=${inputs.predictions} digestItems=${inputs.digestItems} mode=${inputs.runtimeMode} discarded=${discarded} | `
-    + `emitted=${emitted.total} (${byType}) gated=${emitted.gated} new=${summary.created} re-emitted=${summary.updated} | `
+    + `emitted=${emitted.total} (${byType}) gated=${emitted.gated} held=${emitted.held} new=${summary.created} re-emitted=${summary.updated} | `
     + `resolved hit=${resolved.hit} miss=${resolved.miss} void=${resolved.void} unproven=${resolved.unproven}${summary.readFailed ? ' archive-read-failed' : ''} | `
     + `pending=${summary.pending} entries=${summary.entries}`;
 }
@@ -356,7 +368,7 @@ async function runTick() {
 async function dryRun() {
   getRedisCredentials();
   const tick = await runTick();
-  console.log(JSON.stringify({ scorecard: tick.scorecard, snapshotEntries: Object.keys(tick.snapshot.predictionChanges).length }, null, 2));
+  console.log(JSON.stringify({ scorecard: tick.scorecard, snapshotEntries: snapshotRecords(tick.snapshot) }, null, 2));
 }
 
 async function main() {
@@ -388,7 +400,7 @@ async function main() {
       key: MARKET_ALERT_SNAPSHOT_KEY,
       ttl: SNAPSHOT_TTL_SECONDS,
       transform: () => latest.snapshot,
-      declareRecords: (snapshot) => Object.keys(snapshot.predictionChanges).length,
+      declareRecords: snapshotRecords,
       metaKey: MARKET_ALERT_SNAPSHOT_META_KEY,
     }],
     afterPublish: async () => {

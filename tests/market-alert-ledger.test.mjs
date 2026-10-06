@@ -8,6 +8,7 @@ import {
   MARKET_ALERT_WINDOW_MS,
   buildScorecard,
   entityForMarket,
+  entityForPrediction,
   ingestSignals,
   pruneLedger,
   resolveDueEntries,
@@ -52,8 +53,8 @@ function predictionSignal(pred, shift) {
   };
 }
 
-function ingest(ledger, signals, nowMs = NOW) {
-  return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT] });
+function ingest(ledger, signals, nowMs = NOW, previousMarketChanges = {}) {
+  return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], previousMarketChanges });
 }
 
 function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR) {
@@ -82,14 +83,13 @@ describe('ingestSignals', () => {
       confidence: 0.71,
       runtimeMode: 'legacy',
       description: 'Crude Oil moved +3.10% - no news found for: CL=F, Crude Oil',
-      firstSeenAt: NOW,
       lastSeenAt: NOW,
       samples: 0,
       status: 'pending',
     });
   });
 
-  it('records a prediction signal with its question, url, and topics', () => {
+  it('records a prediction signal with its question, url, and the topics named in the question', () => {
     const { ledger } = ingest({}, [predictionSignal(RATE_CUT, -10)]);
     const [entry] = Object.values(ledger);
     assert.equal(entry.id, `prediction_leads_news:${RATE_CUT.url}|${RATE_CUT.title}`);
@@ -98,8 +98,18 @@ describe('ingestSignals', () => {
       kind: 'prediction',
       title: RATE_CUT.title,
       url: RATE_CUT.url,
-      relatedTopics: ['fed', 'interest', 'inflation', 'recession'],
+      relatedTopics: ['fed'],
     });
+  });
+
+  it('a prediction whose question has no topic keyword opens no row', () => {
+    const rain = { title: 'Will it rain in London on Friday?', yesPrice: 50, volume: 10, url: 'https://polymarket.com/event/rain' };
+    const { ledger, created, gated } = ingestSignals({}, [predictionSignal(rain, 8)], {
+      nowMs: NOW, runtimeMode: 'legacy', markets: [], predictions: [rain], previousMarketChanges: {},
+    });
+    assert.deepEqual(ledger, {});
+    assert.equal(created, 0);
+    assert.equal(gated, 1);
   });
 
   it('resolves a market symbol to its registry entity through an alias and keeps null when none exists', () => {
@@ -127,12 +137,57 @@ describe('ingestSignals', () => {
     assert.equal(Object.keys(ledger).length, 2);
   });
 
+  it('a fresh crossing opens a row and a still-elevated change does not', () => {
+    const crude = [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE)];
+    const elevated = ingest({}, crude, NOW, { 'CL=F': 3.0 });
+    assert.deepEqual({ ledger: elevated.ledger, created: elevated.created, held: elevated.held }, { ledger: {}, created: 0, held: 2 });
+
+    const crossed = ingest({}, crude, NOW, { 'CL=F': 1.0 });
+    assert.deepEqual({ created: crossed.created, held: crossed.held }, { created: 2, held: 0 });
+
+    const unseen = ingest({}, crude, NOW, { 'ZW=F': 3.0 });
+    assert.deepEqual({ created: unseen.created, held: unseen.held }, { created: 2, held: 0 });
+
+    const betweenThresholds = ingest({}, crude, NOW, { 'CL=F': 1.8 });
+    assert.deepEqual(Object.values(betweenThresholds.ledger).map((entry) => entry.type), ['silent_divergence']);
+    assert.equal(betweenThresholds.held, 1);
+
+    const fell = ingest({}, crude, NOW, { 'CL=F': -3.0 });
+    assert.deepEqual(Object.values(fell.ledger).map((entry) => entry.type), ['flow_price_divergence']);
+    assert.equal(fell.held, 1);
+  });
+
+  it('no baseline holds every market signal', () => {
+    const signals = [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE), marketSignal('silent_divergence', WHEAT)];
+    const { ledger, created, held } = ingest({}, signals, NOW, null);
+    assert.deepEqual(ledger, {});
+    assert.equal(created, 0);
+    assert.equal(held, 3);
+  });
+
+  it('re-emission inside an open window still counts a sample when the change stayed elevated', () => {
+    const first = ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger;
+    const { ledger, created, updated, held } = ingest(first, [marketSignal('silent_divergence', CRUDE)], NOW + 5 * 60 * 1000, { 'CL=F': 3.1 });
+    assert.deepEqual({ created, updated, held }, { created: 0, updated: 1, held: 0 });
+    const entries = Object.values(ledger);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].samples, 1);
+  });
+
+  it('a closed window does not reopen while the change stays elevated', async () => {
+    const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
+    const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
+    const { ledger, created, held } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { 'CL=F': 3.0 });
+    assert.deepEqual({ created, held }, { created: 0, held: 1 });
+    assert.deepEqual(Object.values(ledger).map((entry) => entry.status), ['resolved']);
+  });
+
   it('drops signals under the dashboard confidence gate and unknown types', () => {
     const low = marketSignal('silent_divergence', CRUDE, { confidence: 0.59 });
     const foreign = marketSignal('flow_drop', CRUDE);
-    const { ledger, skipped } = ingest({}, [low, foreign]);
+    const { ledger, gated } = ingest({}, [low, foreign]);
     assert.deepEqual(ledger, {});
-    assert.equal(skipped, 2);
+    assert.equal(gated, 2);
   });
 
   it('truncates the description to 200 characters', () => {
@@ -156,10 +211,19 @@ describe('storyMatchesEntity', () => {
     assert.equal(storyMatchesEntity('Buckwheat harvest sets record', wheat), false);
     assert.equal(storyMatchesEntity('Gas prices rise', entityForMarket({ symbol: 'ZZ=F', name: 'Gas' })), false);
   });
-  it('matches a prediction through any of its topics', () => {
-    const entity = { kind: 'prediction', title: RATE_CUT.title, url: RATE_CUT.url, relatedTopics: ['fed', 'interest'] };
+  it('matches a prediction through a topic keyword its question names', () => {
+    const entity = entityForPrediction(RATE_CUT);
     assert.equal(storyMatchesEntity('Fed signals a December pause', entity), true);
     assert.equal(storyMatchesEntity('Federer retires from tennis', entity), false);
+    assert.equal(storyMatchesEntity('Inflation cools for a third month', entity), false);
+  });
+});
+
+describe('entityForPrediction', () => {
+  it('derives only keywords present in the question', () => {
+    assert.deepEqual(entityForPrediction(RATE_CUT).relatedTopics, ['fed']);
+    assert.deepEqual(entityForPrediction({ title: 'Will Iran strike Israel by June?' }).relatedTopics, ['iran', 'israel']);
+    assert.deepEqual(entityForPrediction({ title: 'Will Bitcoin exceed $100k?' }).relatedTopics, ['bitcoin']);
   });
 });
 

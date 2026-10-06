@@ -27,6 +27,9 @@ const RUNTIME_MODE_KEY = 'correlation:runtime-mode:v1';
 
 const FED_CUT = { title: 'Will the Fed cut rates in December?', yesPrice: 30, volume: 1000, url: 'https://polymarket.com/event/fed-cut', source: 'polymarket' };
 const FED_CUT_KEY = `${FED_CUT.url}|${FED_CUT.title}`;
+const LIVE_SNAPSHOT = { timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 }, marketChanges: { 'CL=F': 0.4 } };
+const OBSERVED_PREDICTIONS = { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 };
+const OBSERVED_MARKETS = { '^GSPC': 0.2, 'CL=F': 3.1, BTC: 0.5 };
 
 function envelope(data, fetchedAt = NOW - 2 * MIN) {
   return { _seed: { fetchedAt, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 1, state: 'OK' }, data };
@@ -53,7 +56,7 @@ function rawInputs(overrides = {}) {
     [DIGEST_KEY]: digestOf(QUIET_NEWS),
     [RUNTIME_MODE_KEY]: { mode: 'exact' },
     [MARKET_ALERT_LEDGER_KEY]: envelope({}),
-    [SNAPSHOT_KEY]: envelope({ timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 } }),
+    [SNAPSHOT_KEY]: envelope(LIVE_SNAPSHOT),
     ...overrides,
   };
 }
@@ -71,7 +74,7 @@ function pendingCrude(emittedAt) {
       id: 'silent_divergence:CL=F', key, type: 'silent_divergence',
       entity: { kind: 'market', symbol: 'CL=F', name: 'Crude Oil', entityId: 'CL=F' },
       emittedAt, deadline: emittedAt + MARKET_ALERT_WINDOW_MS, observedChange: 2.5, newsVelocity: 0, confidence: 0.65,
-      runtimeMode: 'legacy', description: 'Crude Oil moved +2.50%', firstSeenAt: emittedAt, lastSeenAt: emittedAt, samples: 0, status: 'pending',
+      runtimeMode: 'legacy', description: 'Crude Oil moved +2.50%', lastSeenAt: emittedAt, samples: 0, status: 'pending',
     },
   };
 }
@@ -150,7 +153,30 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(entry.entity.title, FED_CUT.title);
     assert.equal(entry.entity.url, FED_CUT.url);
     assert.ok(entry.entity.relatedTopics.includes('fed'));
-    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 } });
+    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
+  });
+
+  it('a snapshot older than 15 minutes is a stale baseline', async () => {
+    const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 16 * MIN });
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(tick.ledger, {});
+    assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
+    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
+  });
+
+  it('a 5-minute-old snapshot is a live baseline', async () => {
+    const tick = await buildTick(rawInputs(), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(
+      Object.values(tick.ledger).map((entry) => entry.id).sort(),
+      ['flow_price_divergence:CL=F', `prediction_leads_news:${FED_CUT_KEY}`, 'silent_divergence:CL=F'],
+    );
+    assert.equal(tick.summary.emitted.held, 0);
+  });
+
+  it('a first tick without a digest records the observed prices as the baseline', async () => {
+    const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(tick.ledger, {});
+    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
   });
 
   it('discards a market payload whose fetchedAt is 45 minutes old', async () => {
@@ -166,7 +192,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     const tick = await buildTick(rawInputs({ [PREDICTIONS_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
     assert.equal(byType(tick.ledger, 'silent_divergence').length, 1);
-    assert.deepEqual(tick.snapshot, { timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 } });
+    assert.deepEqual(tick.snapshot, LIVE_SNAPSHOT);
   });
 
   it('skips emission without a fresh digest but still resolves a due entry', async () => {
@@ -183,7 +209,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.ledger[key].outcome, 'HIT');
     assert.equal(tick.ledger[key].evidence.leadTimeMs, HOUR);
     assert.equal(tick.summary.emitted.total, 0);
-    assert.deepEqual(tick.snapshot, { timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 } });
+    assert.deepEqual(tick.snapshot, LIVE_SNAPSHOT);
     assert.equal(tick.scorecard.totals.hit, 1);
   });
 
@@ -233,10 +259,10 @@ describe('buildTick runs the shared detectors under Node', () => {
   it('summarizes the tick for the log line', async () => {
     const tick = await buildTick(rawInputs(), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.summary.inputs, { stocks: 1, commodities: 1, crypto: 1, predictions: 1, digestItems: 2, runtimeMode: 'exact' });
-    assert.equal(tick.summary.emitted.total, 3);
+    assert.deepEqual(tick.summary.emitted, { total: 3, byType: { prediction_leads_news: 1, silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 0 });
     assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 0 });
     assert.equal(tick.summary.pending, 3);
-    assert.match(formatSummary(tick.summary), / resolved hit=0 miss=0 void=0 unproven=0 \| pending=3 /);
+    assert.match(formatSummary(tick.summary), / gated=0 held=0 new=3 re-emitted=0 \| resolved hit=0 miss=0 void=0 unproven=0 \| pending=3 /);
   });
 });
 

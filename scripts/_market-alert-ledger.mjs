@@ -1,12 +1,20 @@
 /**
  * Market-alert ledger (#8867): the pure steps behind
- * scripts/seed-market-alert-ledger.mjs. Each emitted market alert opens a
- * six-hour window keyed `${type}:${entity}@${deadline}`; a closed window is
- * resolved against the English digest archive under MARKET_ALERT_RESOLUTION_RULE.
+ * scripts/seed-market-alert-ledger.mjs. A market alert whose change crossed
+ * the detector's threshold since the previous tick, or a prediction alert
+ * whose question names a topic keyword, opens a six-hour window keyed
+ * `${type}:${entity}@${deadline}`; a closed window is resolved against the
+ * English digest archive under MARKET_ALERT_RESOLUTION_RULE.
  * Redis never appears here: the archive is injected, so tests run on fixtures.
  */
 
-import { MARKET_ALERT_TYPES, predictionMarketKey } from './shared/market-alert-core.js';
+import {
+  FLOW_PRICE_THRESHOLD,
+  MARKET_ALERT_TYPES,
+  MARKET_MOVE_THRESHOLD,
+  TOPIC_MAPPINGS,
+  predictionMarketKey,
+} from './shared/market-alert-core.js';
 import { findEntitiesInText, getEntityIndex, lookupEntityByAlias } from './shared/entity-extraction-core.js';
 import { SUPPRESSED_TRENDING_TERMS, TOPIC_KEYWORDS, containsTopicKeyword, escapeRegex } from './shared/text-analysis-core.js';
 
@@ -32,9 +40,20 @@ export const MARKET_ALERT_MAX_DESCRIPTION_CHARS = 200;
 export const MARKET_ALERT_LEDGER_SOURCE_VERSION = 'market-alert-ledger-v1';
 export const MARKET_ALERT_LEDGER_SCHEMA_VERSION = 1;
 
-export const MARKET_ALERT_RESOLUTION_RULE = 'An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol\'s registry entity or a whole-word match of the market name of four or more characters; for a prediction market, any topic keyword derived from the question at emission. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story\'s first tracking.';
+export const MARKET_ALERT_RESOLUTION_RULE = 'An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol\'s registry entity or a whole-word match of the market name of four or more characters; for a prediction market, a topic keyword that appears in the question itself. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story\'s first tracking.';
 
 const ALERT_TYPES = new Set(MARKET_ALERT_TYPES);
+
+const MARKET_SIGNAL_ABOVE_THRESHOLD = {
+  explained_market_move: (change) => Math.abs(change) >= MARKET_MOVE_THRESHOLD,
+  silent_divergence: (change) => Math.abs(change) >= MARKET_MOVE_THRESHOLD,
+  flow_price_divergence: (change) => change >= FLOW_PRICE_THRESHOLD,
+};
+
+const PREDICTION_TOPIC_KEYWORDS = [...new Set([
+  ...TOPIC_KEYWORDS.filter((keyword) => !SUPPRESSED_TRENDING_TERMS.has(keyword)),
+  ...Object.keys(TOPIC_MAPPINGS),
+])];
 
 function pruneUndefined(object) {
   return Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
@@ -52,17 +71,20 @@ export function entityForMarket(market) {
   return { kind: 'market', symbol: market.symbol, name: market.name, entityId };
 }
 
-export function entityForPrediction(prediction, relatedTopics = []) {
+export function entityForPrediction(prediction) {
   const titleLower = prediction.title.toLowerCase();
-  const topics = new Set(relatedTopics);
-  for (const keyword of TOPIC_KEYWORDS) {
-    if (!SUPPRESSED_TRENDING_TERMS.has(keyword) && containsTopicKeyword(titleLower, keyword)) topics.add(keyword);
-  }
-  return pruneUndefined({ kind: 'prediction', title: prediction.title, url: prediction.url || undefined, relatedTopics: [...topics] });
+  const relatedTopics = PREDICTION_TOPIC_KEYWORDS.filter((keyword) => containsTopicKeyword(titleLower, keyword));
+  return pruneUndefined({ kind: 'prediction', title: prediction.title, url: prediction.url || undefined, relatedTopics });
 }
 
 function findOpenWindow(ledger, id, nowMs) {
   return Object.values(ledger).find((entry) => entry.status === 'pending' && entry.id === id && nowMs < entry.deadline);
+}
+
+function crossedThreshold(type, symbol, previousMarketChanges) {
+  if (previousMarketChanges === null) return false;
+  if (!Object.hasOwn(previousMarketChanges, symbol)) return true;
+  return !MARKET_SIGNAL_ABOVE_THRESHOLD[type](previousMarketChanges[symbol]);
 }
 
 function createEntry(signal, entity, nowMs, runtimeMode) {
@@ -80,24 +102,30 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
     confidence: signal.confidence,
     runtimeMode,
     description: String(signal.description ?? '').slice(0, MARKET_ALERT_MAX_DESCRIPTION_CHARS),
-    firstSeenAt: nowMs,
     lastSeenAt: nowMs,
     samples: 0,
     status: 'pending',
   });
 }
 
-export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions }) {
+/**
+ * A market signal opens a row only when its symbol crossed the detector's
+ * threshold since the previous tick; a move that stays elevated re-emits every
+ * tick and would otherwise open a fresh row every six hours. With no baseline
+ * (`previousMarketChanges` null) every market signal is held.
+ */
+export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, previousMarketChanges }) {
   const ledger = { ...existing };
   const marketsBySymbol = new Map(markets.map((market) => [market.symbol, market]));
   const predictionsByKey = new Map(predictions.map((prediction) => [predictionMarketKey(prediction), prediction]));
   let created = 0;
   let updated = 0;
-  let skipped = 0;
+  let gated = 0;
+  let held = 0;
   for (const signal of signals) {
     const entityKey = signal.data?.correlatedEntities?.[0];
     if (!ALERT_TYPES.has(signal.type) || !(signal.confidence >= MARKET_ALERT_CONFIDENCE_GATE) || !entityKey) {
-      skipped += 1;
+      gated += 1;
       continue;
     }
     const open = findOpenWindow(ledger, `${signal.type}:${entityKey}`, nowMs);
@@ -106,14 +134,25 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
       updated += 1;
       continue;
     }
-    const entity = signal.type === 'prediction_leads_news'
-      ? entityForPrediction(predictionsByKey.get(entityKey), signal.data.relatedTopics)
-      : entityForMarket(marketsBySymbol.get(entityKey));
+    let entity;
+    if (signal.type === 'prediction_leads_news') {
+      entity = entityForPrediction(predictionsByKey.get(entityKey));
+      if (entity.relatedTopics.length === 0) {
+        gated += 1;
+        continue;
+      }
+    } else {
+      if (!crossedThreshold(signal.type, entityKey, previousMarketChanges)) {
+        held += 1;
+        continue;
+      }
+      entity = entityForMarket(marketsBySymbol.get(entityKey));
+    }
     const entry = createEntry(signal, entity, nowMs, runtimeMode);
     ledger[entry.key] = entry;
     created += 1;
   }
-  return { ledger: sortLedger(ledger), created, updated, skipped };
+  return { ledger: sortLedger(ledger), created, updated, gated, held };
 }
 
 export function storyMatchesEntity(title, entity, entityMatches) {
