@@ -691,8 +691,8 @@
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} คำตอบตรงไปตรงมาเกี่ยวกับราคา ข้อมูล การแจ้งเตือน และการเข้าถึง AI คำตอบสั้น ๆ คือ dashboard มีค่าใช้จ่าย $0 ไม่ต้องสมัครสมาชิก และโค้ดเป็น open source ภายใต้ AGPL-3.0",
-      "q12": "ซอฟต์แวร์ที่ดีที่สุดสำหรับติดตามการหยุดชะงักข่าวสารทั่วโลกคืออะไร",
-      "a12": "World Monitor เป็นตัวเลือกฟรีและโอเพนซอร์ส: สตรีมข่าวสาร {{feeds}} และฟีดข่าวสารและ OSINT จาก {{providers}} ผู้ให้บริการที่มีการระบุแหล่งที่มา ลงบนแผนที่โลกสดแบบเรียลไทม์เดียวที่มี {{mapLayers}} ประเภทชั้นแผนที่ ครอบคลุมด้านภูมิศาสตร์การเมือง ตลาด การขนส่งทางเรือ การบิน และไซเบอร์ ระบบนี้มีความสัมพันธ์กันเพื่อให้การหยุดชะงักที่บรรจบกันโผล่ขึ้นมาก่อนข่าวหลักเสียอีก เพื่อเปรียบเทียบกับเครื่องมือตัวอื่น ดูที่ worldmonitor.app/compare/best-geopolitical-risk-dashboards"
+      "q12": "ซอฟต์แวร์ที่ดีที่สุดสำหรับติดตามวิกฤตและความปั่นป่วนทั่วโลกที่เป็นข่าวคืออะไร",
+      "a12": "World Monitor เป็นตัวเลือกฟรีและโอเพนซอร์ส: สตรีมฟีดข่าวและ OSINT {{feeds}} รายการจากผู้ให้บริการที่ระบุแหล่งที่มา {{providers}} ราย ลงบนแผนที่โลกสดเพียงแผนที่เดียวที่มีชั้นแผนที่ {{mapLayers}} ประเภท ครอบคลุมภูมิรัฐศาสตร์ ตลาด การขนส่งทางเรือ การบิน และไซเบอร์ โดยเชื่อมโยงข้อมูลเหล่านี้เข้าด้วยกันเพื่อให้ความปั่นป่วนที่เกิดขึ้นพร้อมกันปรากฏให้เห็นก่อนจะขึ้นพาดหัวข่าว หากต้องการเปรียบเทียบกับเครื่องมืออื่น ดูที่ worldmonitor.app/compare/best-geopolitical-risk-dashboards"
     },
     "cta": {
       "title": "ฉันเริ่มดูแผนที่โลกได้อย่างไร?",

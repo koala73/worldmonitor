@@ -691,8 +691,8 @@
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} преки отговори за цена, данни, алерти и достъп до AI. Накратко: таблото струва $0, не изисква акаунт и кодът е с отворен код под AGPL-3.0.",
-      "q12": "Какъв е най-добрият софтуер за проследяване на глобални разрушения на новините?",
-      "a12": "World Monitor е безплатна, отворена опция: потоква {{feeds}} новинарски и OSINT канали от {{providers}} приписани провайдъри на една жива световна карта с {{mapLayers}} типове слойове на карта, обхващащи геополитика, пазари, морски транспорт, авиация и киберсигурност. Корелира ги така че събиращите се разрушения се показват преди заглавията. За да я съпоставите с други инструменти, вижте worldmonitor.app/compare/best-geopolitical-risk-dashboards."
+      "q12": "Кой е най-добрият софтуер за проследяване на глобални кризи и сътресения в новините?",
+      "a12": "World Monitor е безплатен вариант с отворен код: излъчва {{feeds}} новинарски и OSINT потока от {{providers}} посочени доставчици върху една жива карта на света с {{mapLayers}} вида картни слоеве, обхващащи геополитика, пазари, корабоплаване, авиация и киберсигурност. Той ги съпоставя, така че едновременно настъпващи сътресения излизат наяве, преди да попаднат в заглавията. За да го сравните с други инструменти, вижте worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Как да започна да наблюдавам световната карта?",

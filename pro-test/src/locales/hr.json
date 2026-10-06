@@ -691,8 +691,8 @@
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} izravnih odgovora o cijeni, podacima, upozorenjima i AI pristupu. Kraće rečeno: dashboard košta $0, ne trebate račun, a kod je otvorenog koda pod licencom AGPL-3.0.",
-      "q12": "Koji je najbolji softver za praćenje globalnih vijesti o prekidima?",
-      "a12": "World Monitor je besplatna, otvorena opcija: streama {{feeds}} vijesti i OSINT feedove od {{providers}} atribuiranih davatelja na jednu živu svjetsku kartu s {{mapLayers}} tipova kartnih slojeva, pokrivajući geopolitiku, tržišta, brodski promet, zrakoplovstvo i cyber. Korelira ih kako bi se konvergirajući poremećaji prikazali prije nego što se pojave u naslovima. Za usporedbu s drugim alatima, pogledajte worldmonitor.app/compare/best-geopolitical-risk-dashboards."
+      "q12": "Koji je najbolji softver za praćenje globalnih kriza i poremećaja u vijestima?",
+      "a12": "World Monitor je besplatna opcija otvorenog koda: prenosi {{feeds}} izvora vijesti i OSINT-a od {{providers}} navedenih pružatelja na jednu živu kartu svijeta s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, pomorski promet, zrakoplovstvo i kibernetičku sigurnost. Povezuje ih tako da se poremećaji koji se podudaraju pokažu prije nego što dospiju u naslove. Za usporedbu s drugim alatima pogledajte worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Kako početi pratiti mapu svijeta?",

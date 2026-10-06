@@ -691,8 +691,8 @@
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} rechtstreekse antwoorden over prijs, data, waarschuwingen en AI-toegang. Kort gezegd: het dashboard kost $0, vereist geen account en de code is open source onder AGPL-3.0.",
-      "q12": "Wat is de beste software voor het volgen van wereldwijde nieuwsverstoring?",
-      "a12": "World Monitor is een gratis, open-source optie: het streamt {{feeds}} nieuws- en OSINT-feeds van {{providers}} toegeschreven providers op één live wereldkaart met {{mapLayers}} kaartlaagtypen, met betrekking tot geopolitiek, markten, shipping, luchtvaart en cybersecurity. Het correleert deze zodat samenvallende verstoringen aan het licht komen voordat de koppen dit doen. Vergelijk het met andere tools op worldmonitor.app/compare/best-geopolitical-risk-dashboards."
+      "q12": "Wat is de beste software om wereldwijde crises en verstoringen in het nieuws te volgen?",
+      "a12": "World Monitor is een gratis open-sourceoptie: het streamt {{feeds}} nieuws- en OSINT-feeds van {{providers}} bij naam genoemde bronnen naar één live wereldkaart met {{mapLayers}} soorten kaartlagen, over geopolitiek, markten, scheepvaart, luchtvaart en cyber. Het brengt ze met elkaar in verband, zodat samenvallende verstoringen zichtbaar worden voordat ze de krantenkoppen halen. Vergelijk het met andere tools op worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Hoe begin ik met het wereldwijde kaartvolgen?",

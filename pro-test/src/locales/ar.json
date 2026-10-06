@@ -691,8 +691,8 @@
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} إجابة مباشرة حول السعر والبيانات والتنبيهات وإمكانية الوصول إلى الذكاء الاصطناعي. النسخة المختصرة: تبلغ تكلفة لوحة المعلومات $0، ولا تحتاج إلى حساب، والكود مفتوح المصدر بموجب AGPL-3.0.",
-      "q12": "ما أفضل برنامج لتتبع الاضطرابات الإخبارية العالمية؟",
-      "a12": "World Monitor هو خيار مجاني مفتوح المصدر: يبث {{feeds}} تغذية إخبارية واستخبارية من {{providers}} مزودي نسب، على خريطة عالمية مباشرة واحدة تتضمن {{mapLayers}} نوع طبقة خريطة، تغطي الجيوسياسة والأسواق والشحن والطيران والعمليات السيبرانية. يربط بينها بحيث تظهر الاضطرابات المتقاربة قبل العناوين الرئيسية. لمقارنتها مع الأدوات الأخرى، راجع worldmonitor.app/compare/best-geopolitical-risk-dashboards."
+      "q12": "ما أفضل برنامج لتتبع الأزمات والاضطرابات العالمية في الأخبار؟",
+      "a12": "World Monitor خيار مجاني ومفتوح المصدر: يبث {{feeds}} موجزاً من الأخبار ومصادر OSINT من {{providers}} مزوداً مُسمّى على خريطة عالمية حية واحدة تضم {{mapLayers}} نوعاً من طبقات الخريطة، وتغطي الجغرافيا السياسية والأسواق والشحن والطيران والأمن السيبراني. ويربط بينها حتى تظهر الاضطرابات المتزامنة قبل أن تتصدر العناوين. لمقارنته بالأدوات الأخرى، راجع worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "كيف أبدأ في مراقبة خريطة العالم؟",
