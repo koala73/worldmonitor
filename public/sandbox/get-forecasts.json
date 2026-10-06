@@ -25,9 +25,10 @@
         {
           "calibration": {
             "drift": 1.5,
+            "internalProbability": 1.5,
+            "marketBlendedProbability": 1.5,
             "marketPrice": 75.25,
-            "marketTitle": "example",
-            "source": "example"
+            "marketTitle": "example"
           },
           "cascades": [
             {

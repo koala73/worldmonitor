@@ -57,6 +57,8 @@ export interface CalibrationInfo {
   marketPrice: number;
   drift: number;
   source: string;
+  internalProbability?: number;
+  marketBlendedProbability?: number;
 }
 
 export interface Perspectives {
