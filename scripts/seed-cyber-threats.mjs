@@ -27,11 +27,16 @@ const FIRST_SEEN_TTL = 14 * 24 * 60 * 60; // 14d — refreshed every run; surviv
 const FEODO_URL = 'https://feodotracker.abuse.ch/downloads/ipblocklist.json';
 const URLHAUS_RECENT_URL = (limit) => `https://urlhaus-api.abuse.ch/v1/urls/recent/limit/${limit}/`;
 const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv';
-const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=';
+const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?types=IPv4&modified_since=';
 const ABUSEIPDB_BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist';
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const MAX_LIMIT = 1000;
+// OTX filters the export by `types=` (a singular `type=` is ignored and returns every
+// indicator type). It serves 1000 rows per page with OTX-hosted `next` links, and `count`
+// is the number of DISTINCT indicators (14d on 2026-10-06: 239 rows, 234 distinct, count 234).
+// Coverage needs every page; the cap bounds a runaway cursor.
+const OTX_MAX_PAGES = 10;
 const DEFAULT_DAYS = 14;
 const MAX_CACHED_THREATS = 2000;
 const GEO_MAX_UNRESOLVED = 200;
@@ -357,17 +362,53 @@ function providerRow(row, source) {
     && Number.isInteger(score) && score >= 0 && score <= 100;
 }
 
-async function providerRows(response, source, containerKeys, bareArray = false) {
+function otxIncomplete() {
+  return Object.assign(new Error('Incomplete OTX page cannot establish source coverage'), { code: 'OTX_INCOMPLETE_PAGE' });
+}
+
+// A `next` cursor is followed only on the export endpoint itself; anything else means
+// coverage cannot be established and nothing is fetched (the API key never leaves OTX).
+function otxNextUrl(next) {
+  if (next == null) return null;
+  if (typeof next !== 'string') return undefined;
+  let url;
+  try { url = new URL(next); } catch { throw otxIncomplete(); }
+  const exportUrl = new URL(OTX_INDICATORS_URL);
+  if (url.origin !== exportUrl.origin || url.pathname !== exportUrl.pathname) throw otxIncomplete();
+  return url.href;
+}
+
+// Page-level coverage checks run before row validation so a known-incomplete export is
+// reported as incomplete even when its rows or wrapper are also malformed.
+function otxPageCoverage(payload, page) {
+  if (Array.isArray(payload)) {
+    if (page > 1 || payload.length > MAX_LIMIT) throw otxIncomplete();
+    return { next: null, count: payload.length };
+  }
+  const rows = payload?.results;
+  if (Array.isArray(rows) && rows.length > MAX_LIMIT) throw otxIncomplete();
+  if (page === 1 && typeof payload?.previous === 'string') throw otxIncomplete();
+  const next = otxNextUrl(payload?.next);
+  const count = Number.isSafeInteger(payload?.count) && payload.count >= 0 ? payload.count : null;
+  return { next, count };
+}
+
+async function providerRows(response, source, containerKeys, bareArray = false, otxPage = null) {
   let payload;
   try { payload = await response.json(); } catch { return null; }
   if (source === 'otx') {
-    const rows = Array.isArray(payload) ? payload : payload?.results;
-    const hasPage = ['next', 'previous'].some(key => typeof payload?.[key] === 'string');
-    const countMismatch = Number.isSafeInteger(payload?.count) && payload.count >= 0
-      && Array.isArray(rows) && payload.count !== rows.length;
-    if (hasPage || countMismatch || (Array.isArray(rows) && rows.length > MAX_LIMIT)) {
-      throw Object.assign(new Error('Incomplete OTX page cannot establish source coverage'), { code: 'OTX_INCOMPLETE_PAGE' });
+    const { next, count } = otxPageCoverage(payload, otxPage.page);
+    if (next === undefined) return null;
+    if (count !== null && otxPage.count !== null && count !== otxPage.count) throw otxIncomplete();
+    const pageRows = Array.isArray(payload) ? payload : payload?.results;
+    if (Array.isArray(pageRows)) {
+      for (const row of pageRows) otxPage.indicators.add(row?.indicator ?? row?.ip);
     }
+    if (!next && count !== null && Array.isArray(pageRows) && otxPage.indicators.size !== count) {
+      throw otxIncomplete();
+    }
+    otxPage.next = next;
+    otxPage.count = count ?? otxPage.count;
   }
   if (utf8JsonBytes(payload) > PROVIDER_MAX_DECODED_BYTES) return null;
   let rows;
@@ -562,13 +603,19 @@ async function fetchOtx(days) {
   if (!apiKey) { console.log('  OTX: skipped (no OTX_API_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
   try {
     const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-    const resp = await fetch(`${OTX_INDICATORS_URL}${encodeURIComponent(since)}`, {
-      headers: { Accept: 'application/json', 'X-OTX-API-KEY': apiKey, 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!resp.ok) return providerResult(false);
-    const results = await providerRows(resp, 'otx', ['results'], true);
-    if (results === null) return providerResult(false, [], null, 'invalid-payload');
+    const otxPage = { page: 0, indicators: new Set(), count: null, next: `${OTX_INDICATORS_URL}${encodeURIComponent(since)}` };
+    const results = [];
+    while (otxPage.next) {
+      if (++otxPage.page > OTX_MAX_PAGES) throw otxIncomplete();
+      const resp = await fetch(otxPage.next, {
+        headers: { Accept: 'application/json', 'X-OTX-API-KEY': apiKey, 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!resp.ok) return providerResult(false);
+      const rows = await providerRows(resp, 'otx', ['results'], true, otxPage);
+      if (rows === null) return providerResult(false, [], null, 'invalid-payload');
+      results.push(...rows);
+    }
     const threats = [];
     for (const r of results) {
       const ip = clean(r?.indicator || r?.ip || '', 80).toLowerCase();

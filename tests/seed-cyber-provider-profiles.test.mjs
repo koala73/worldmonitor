@@ -63,7 +63,10 @@ async function producerHarness(context, options = {}) {
     if (url.includes('C2IntelFeeds')) return new Response(options.failure ? '' : options.csv ?? '192.0.2.2,Possible CobaltStrike C2 IP', { status: options.failure ? 503 : 200 });
     if (url.includes('urlhaus-api')) return options.urlhausFailure ? new Response('', { status: 503 })
       : Response.json(options.bodies?.urlhaus ?? { urls: options.urls ?? [] });
-    if (url.includes('otx.alienvault')) return Response.json(options.bodies?.otx ?? { results: options.otx ?? [] });
+    if (url.includes('otx.alienvault')) {
+      if (options.otxPages) return Response.json(options.otxPages[parsedUrl.searchParams.get('page') ?? '1'] ?? { results: [null] });
+      return Response.json(options.bodies?.otx ?? { results: options.otx ?? [] });
+    }
     if (url.includes('api.abuseipdb')) return Response.json(options.bodies?.abuseipdb ?? { data: options.abuse ?? [] });
     if (parsedUrl.hostname === 'ipinfo.io' || parsedUrl.hostname === 'freeipapi.com') return Response.json(options.geo ?? {});
     throw new Error(`Unexpected fixture URL: ${url}`);
@@ -403,4 +406,80 @@ test('complete bounded OTX pages and generic invalid payload policy remain uncha
       assert.equal(seed.validate(await seed.fetchAllThreats()), true);
     });
   }
+});
+
+const OTX_EXPORT = 'https://otx.alienvault.com/api/v1/indicators/export?types=IPv4&modified_since=2026-05-14';
+function otxPages(sizes, { count = sizes.reduce((sum, size) => sum + size, 0), counts } = {}) {
+  let indicatorIndex = 0;
+  return Object.fromEntries(sizes.map((size, pageIndex) => [String(pageIndex + 1), {
+    results: Array.from({ length: size }, () => {
+      indicatorIndex += 1;
+      return { id: indicatorIndex, indicator: `198.18.${Math.floor(indicatorIndex / 250)}.${indicatorIndex % 250 + 1}`,
+        type: 'IPv4', title: '', description: '', content: '' };
+    }),
+    count: counts?.[pageIndex] ?? count,
+    next: pageIndex + 1 < sizes.length ? `${OTX_EXPORT}&page=${pageIndex + 2}` : null,
+    previous: pageIndex > 0 ? (pageIndex === 1 ? OTX_EXPORT : `${OTX_EXPORT}&page=${pageIndex}`) : null,
+  }]));
+}
+
+test('paginated OTX exports are followed on the OTX origin until the advertised count is covered', async testContext => {
+  // Live shape on 2026-10-06: count 2365 served as 1000 + 1000 + 365 with OTX-hosted next links.
+  const { seed, calls, writes } = await producerHarness(testContext, { keys: ['OTX_API_KEY'],
+    otxPages: otxPages([1000, 1000, 365]) });
+  const out = await seed.fetchOtx(14);
+  assert.equal(out.ok, true);
+  assert.equal(out.reason, 'success');
+  assert.equal(out.observedAt, NOW);
+  assert.equal(out.threats.length, 1000);
+  assert.deepEqual(calls.filter(url => url.includes('otx.alienvault')).map(url => new URL(url).searchParams.get('page')),
+    [null, '2', '3']);
+  calls.length = 0;
+  writes.length = 0;
+  assert.equal(seed.validate(await seed.fetchAllThreats()), true);
+});
+
+test('OTX export filters by the plural types parameter and counts distinct indicators', async testContext => {
+  // Live shape on 2026-10-06: `type=IPv4` was ignored (domains, hashes, CVEs, URLs came back),
+  // and the IPv4 export repeated 5 indicators across 239 rows while advertising count 234.
+  const pages = otxPages([239], { count: 234 });
+  for (let duplicate = 0; duplicate < 5; duplicate++) {
+    pages['1'].results[234 + duplicate].indicator = pages['1'].results[duplicate].indicator;
+  }
+  const { seed, calls } = await producerHarness(testContext, { keys: ['OTX_API_KEY'], otxPages: pages });
+  const out = await seed.fetchOtx(14);
+  assert.equal(out.ok, true);
+  assert.equal(out.observedAt, NOW);
+  const [otxCall] = calls.filter(url => url.includes('otx.alienvault'));
+  assert.equal(new URL(otxCall).searchParams.get('types'), 'IPv4');
+  assert.equal(new URL(otxCall).searchParams.has('type'), false);
+});
+
+test('paginated OTX exports that never cover the advertised count stay unavailable', async testContext => {
+  for (const [name, pages, maxCalls] of [
+    ['short final page', otxPages([1000, 1000, 300], { count: 2365 }), 3],
+    ['count changes between pages', otxPages([1000, 1000, 365], { counts: [2365, 2400, 2365] }), 2],
+    ['page cap', Object.fromEntries(Array.from({ length: 40 }, (unusedPage, pageIndex) => [String(pageIndex + 1),
+      { results: [{ indicator: `198.19.0.${pageIndex + 1}` }], count: 40,
+        next: `${OTX_EXPORT}&page=${pageIndex + 2}`, previous: pageIndex ? OTX_EXPORT : null }])), 10],
+  ]) {
+    await testContext.test(name, async child => {
+      const { seed, calls } = await producerHarness(child, { keys: ['OTX_API_KEY'], otxPages: pages });
+      const out = await seed.fetchOtx(14);
+      assert.equal(out.ok, false);
+      assert.equal(out.reason, 'incomplete-page');
+      assert.equal(out.observedAt, null);
+      assert.ok(calls.filter(url => url.includes('otx.alienvault')).length <= maxCalls);
+    });
+  }
+});
+
+test('an invalid later OTX page is an invalid payload, not a partial observation', async testContext => {
+  const pages = otxPages([1000, 1000, 365]);
+  pages['2'].results[5] = null;
+  const { seed } = await producerHarness(testContext, { keys: ['OTX_API_KEY'], otxPages: pages });
+  const out = await seed.fetchOtx(14);
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, 'invalid-payload');
+  assert.deepEqual(out.threats, []);
 });
