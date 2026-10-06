@@ -2392,10 +2392,6 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     maxStaleMin: 2160,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
-    afterPublish: async (ledger) => {
-      const health = await buildJudgedLaneHealthPatch(ledger);
-      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
-    },
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
@@ -2413,8 +2409,10 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
       skipWhenEmpty: true,
       allowMissingOnSkip: true,
     }],
-    afterPublish: async () => {
+    afterPublish: async (ledger) => {
       if (calibrationRun.map) await markCalibrationMapActivated();
+      const health = await buildJudgedLaneHealthPatch(ledger);
+      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
     },
   });
 }
