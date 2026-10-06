@@ -178,6 +178,7 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function exportCountryBriefJSON(data) { state.jsonExports.push(data); }
       export function exportCountryBriefCSV(data) { state.csvExports.push(data); }
       export function exportCountryEvidenceMarkdown(data) { state.evidenceExports.push(data); }
+      export function countryEvidenceMarkdownArtifact(data) { return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) }; }
     `],
     ['country-geometry-stub', `export const ME_STRIKE_BOUNDS = {};`],
     ['country-flag-stub', `export function toFlagEmoji(code, fallback = ':world:') { return code ? ':' + code + ':' : fallback; }`],
@@ -639,12 +640,12 @@ describe('country evidence bundle export', () => {
     assert.match(legacySource, /data-format="csv"/);
     assert.match(legacySource, /trackGateHit\('evidence-export'\)/);
 
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown/);
+    assert.match(dossierSource, /countryEvidenceMarkdownArtifact/);
     assert.match(dossierSource, /cdp-evidence-export-btn/);
     assert.match(dossierSource, /if \(!this\.canRequestPremium\(\)\)/);
     assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
-    assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);
+    assert.match(dossierSource, /this\.exportEvidenceBundle\(signal\)/);
+    assert.match(dossierSource, /this\.downloadText\(countryEvidenceMarkdownArtifact\(data\), signal\)/);
   });
 
   it('blocks country brief evidence export for free users', async () => {
@@ -666,6 +667,27 @@ describe('country evidence bundle export', () => {
     } finally {
       harness.cleanup();
     }
+  });
+
+  it('uses one Evidence snapshot, disables duplicate clicks and suppresses status after country close', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
+    try {
+      let settle!: (value: { state: 'host-accepted' }) => void;
+      const delivered: Array<{ artifact: { content: string }; signal: AbortSignal }> = [];
+      const panel = harness.createPanel((artifact: { content: string }, signal: AbortSignal) => {
+        delivered.push({ artifact, signal });
+        return new Promise(resolve => { settle = resolve; });
+      });
+      panel.show('France', 'FR', null, zeroCountryBriefSignals());
+      for (let attempt = 0; attempt < 25 && !harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn'); attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      const button = harness.getPanelRoot()!.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement;
+      button.dispatchEvent(new Event('click')); button.dispatchEvent(new Event('click'));
+      assert.equal(delivered.length, 1); assert.equal(button.disabled, true);
+      assert.equal(JSON.parse(delivered[0]!.artifact.content).code, 'FR');
+      panel.hide(); assert.equal(delivered[0]!.signal.aborted, true);
+      settle({ state: 'host-accepted' }); await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(harness.getToasts(), []);
+    } finally { harness.cleanup(); }
   });
 
   it('renders the World Monitor data footer from the brief evidence', async () => {
@@ -845,6 +867,8 @@ describe('country evidence bundle export', () => {
       const button = harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement | null;
       assert.ok(button, 'expected evidence export button');
       button.dispatchEvent(new Event('click'));
+
+      await new Promise(resolve => setImmediate(resolve));
 
       const exports = harness.getEvidenceExports();
       assert.equal(exports.length, 1);

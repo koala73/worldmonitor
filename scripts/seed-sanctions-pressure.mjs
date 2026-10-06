@@ -6,6 +6,7 @@
 // 120MB XML download against Railway's 512MB container limit.
 import sax from 'sax';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs';
 
 import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
@@ -42,18 +43,27 @@ const ET_CODE = {
 const DEFAULT_RECENT_LIMIT = 60;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
+function validPressureClock(value) {
+  return typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value)
+    && Number.isSafeInteger(Number(value)) && Number(value) <= 8640000000000000;
+}
+
 const OFAC_SOURCES = [
   { label: 'SDN', url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/sdn_advanced.xml' },
   { label: 'CONSOLIDATED', url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/cons_advanced.xml' },
 ];
 
+function validSourceId(source, id) {
+  return typeof id === 'string' && (source === SEMA_SOURCE
+    ? /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(id)
+    : new RegExp(`^${source}:\\d+$`).test(id));
+}
+
 function validSourceRecords(source, records) {
   if (!Array.isArray(records) || records.length === 0) return false;
   const ids = new Set();
   return records.every(entry => {
-    const validId = source === SEMA_SOURCE
-      ? /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(entry?.id)
-      : new RegExp(`^${source}:\\d+$`).test(entry?.id);
+    const validId = validSourceId(source, entry?.id);
     if (!validId || ids.has(entry.id) || typeof entry.name !== 'string' || !entry.name.trim()
       || !Object.hasOwn(ET_CODE, entry.entityType)
       || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
@@ -96,9 +106,12 @@ function selectSanctionsSourceSnapshot(source, result, previous, now) {
       || previous.retainedUntil === previous.fetchedAt + LEGACY_SOURCE_RETAIN_MS)
     && now < previous.fetchedAt + SOURCE_RETAIN_MS
     && Number.isSafeInteger(previous.publishedAt) && previous.publishedAt >= 0 && previous.publishedAt <= previous.fetchedAt
+    && (previous.quarantinedCount === undefined
+      || (Number.isSafeInteger(previous.quarantinedCount) && previous.quarantinedCount >= 0))
     && validSourceRecords(source, previous.records);
   const snapshot = valid
-    ? { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, publishedAt: result.publishedAt, records: result.records }
+    ? { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, publishedAt: result.publishedAt,
+      quarantinedCount: result.quarantinedCount, records: result.records }
     : retained ? { ...previous, retainedUntil: previous.fetchedAt + SOURCE_RETAIN_MS } : null;
   return {
     snapshot,
@@ -615,7 +628,10 @@ async function fetchSource(source) {
 
 async function fetchSanctionsPressure() {
   const previousState = await verifySeedKey(STATE_KEY).catch(() => null);
-  const previousIds = new Set(Array.isArray(previousState?.entryIds) ? previousState.entryIds.map((id) => String(id)) : []);
+  const validPreviousIds = Array.isArray(previousState?.entryIds)
+    && previousState.entryIds.every(id => validSourceId(SEMA_SOURCE, id)
+      || OFAC_SOURCES.some(({ label }) => validSourceId(label, id)));
+  const previousIds = new Set(validPreviousIds ? previousState.entryIds : []);
   const hasPrevious = previousIds.size > 0;
   console.log(`  Previous state: ${hasPrevious ? `${previousIds.size} known IDs` : 'none (first run or expired)'}`);
 
@@ -624,17 +640,22 @@ async function fetchSanctionsPressure() {
   for (const source of OFAC_SOURCES) {
     try {
       const result = await fetchSource(source);
-      outcomes[source.label] = { records: result.entries, publishedAt: result.datasetDate || 0, error: null };
+      outcomes[source.label] = { records: result.entries, publishedAt: result.datasetDate || 0, quarantinedCount: 0, error: null };
     } catch (err) {
       console.warn(`  OFAC ${source.label} fetch failed: ${err?.message || err}`);
       outcomes[source.label] = { records: [], publishedAt: 0, error: 'OFAC_INGEST_FAILED' };
     }
   }
   const sema = await ingestSemaEntries();
-  outcomes[SEMA_SOURCE] = { records: sema.records, publishedAt: sema.publishedAtMs || 0, error: sema.error };
+  if (!sema.error && !Array.isArray(sema.quarantined)) throw new Error('SANCTIONS_QUARANTINE_INVALID');
+  outcomes[SEMA_SOURCE] = { records: sema.records, publishedAt: sema.publishedAtMs || 0,
+    quarantinedCount: sema.error ? null : sema.quarantined.length, error: sema.error };
   if (sema.error) console.warn(`  SEMA fetch failed: ${sema.error}`);
 
   const now = Date.now();
+  if (!validPressureClock(String(now)) || now + SOURCE_RETAIN_MS > 8640000000000000) {
+    throw new Error('SANCTIONS_CLOCK_INVALID');
+  }
   const _sourceSnapshots = {};
   const _sourceHealth = {};
   for (const [source, result] of Object.entries(outcomes)) {
@@ -682,8 +703,31 @@ async function fetchSanctionsPressure() {
   }));
   console.log(`  Entity index: ${_entityIndex.length} records (~${Math.round(JSON.stringify(_entityIndex).length / 1024)}KB)`);
 
+  const knownWindow = hasPrevious && validPressureClock(previousState.observedAt)
+    && Number(previousState.observedAt) < now;
+  const pressureMetadata = {
+    schemaVersion: 1,
+    sourceVersion: SANCTIONS_SOURCE_VERSION,
+    population: 'top-12-first-iso2-display-v1',
+    cohort: { computationAt: String(now), datasetDate: String(datasetDate), totalCount, newEntryCount },
+    comparison: {
+      kind: knownWindow ? 'id-set-difference' : hasPrevious ? 'window-unavailable' : 'baseline-unavailable',
+      from: knownWindow ? previousState.observedAt : null,
+      to: String(now),
+    },
+    sourceHealth: Object.fromEntries(Object.entries(_sourceHealth).map(([source, health]) => [source, {
+      status: health.status, lastAttemptAt: health.lastAttemptAt, lastSuccessAt: health.lastSuccessAt,
+      retainedUntil: health.retainedUntil, publishedAt: health.publishedAt, recordCount: health.recordCount,
+      errorCode: health.errorCode,
+      quarantinedCount: _sourceSnapshots[source]?.quarantinedCount ?? null,
+    }])),
+  };
+  if (Buffer.byteLength(JSON.stringify(pressureMetadata), 'utf8') > 4096) {
+    throw new Error('SANCTIONS_METADATA_TOO_LARGE');
+  }
+
   return {
-    fetchedAt: String(Date.now()),
+    fetchedAt: String(now),
     datasetDate: String(datasetDate),
     totalCount,
     sdnCount,
@@ -696,11 +740,13 @@ async function fetchSanctionsPressure() {
     countries: buildCountryPressure(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
+    pressureMetadata,
     _entityIndex,
     _sourceSnapshots,
     _sourceHealth,
     _countryCounts: buildCountryCounts(entries),
     _state: {
+      observedAt: String(now),
       entryIds: entries.map((entry) => entry.id),
     },
   };
@@ -734,14 +780,20 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   // Strip internal-only fields before writing the main key so the pressure payload
   // does not include the entity index (~hundreds of KB) or state snapshot.
   publishTransform: (data) => {
-    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, ...rest } = data;
+    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
         const { _aliases, _identifiers, _publishedAt, _regime, ...publicEntry } = entry;
         return publicEntry;
       });
     }
-    return rest;
+    const canonical = { ...rest, _state: pressureMetadata };
+    const projection = projectCountrySanctions(canonical, 'ZZ', Number(canonical.fetchedAt));
+    if (projection.state === 'unavailable' && !(canonical.totalCount === 0
+      && ['All sources unavailable', 'Empty producer sentinel'].includes(projection.reason))) {
+      throw new Error(`Invalid canonical sanctions publication: ${projection.reason}`);
+    }
+    return canonical;
   },
   zeroIsValid: true,
   beforePublish: async (data) => {

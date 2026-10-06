@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { freezeBriefContent } from '@/components/CountryBriefOutput';
+import { describe, expect, it, vi } from 'vitest';
+import { freezeBriefContent, createCountryBriefOutput } from '@/components/CountryBriefOutput';
+import { createHostCountryDownload, type CountryTextArtifact, type CountryTextDownload } from '@/utils/country-text-download';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 
 function link(href: string, text = 'Source'): HTMLAnchorElement {
@@ -9,6 +10,60 @@ function link(href: string, text = 'Source'): HTMLAnchorElement {
 }
 
 describe('Country Brief export URL policy', () => {
+  it.each(['report', 'story'] as const)('uses the injected %s delivery with a bound snapshot and retained source HTML', async kind => {
+    const content = document.createElement('section');
+    content.textContent = 'USGS · observed unknown · retained 2026-10-06T05:57:35Z';
+    const articles: CountryTextArtifact[] = [];
+    const anchor = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const output = createCountryBriefOutput({ country: 'Canada', code: 'CA', capturedAt: '2026-10-06T05:59:29Z', sections: [{ id: 'signals', title: 'Signals', topics: ['all'], state: 'unavailable', content }], story: [{ title: 'Evidence', content }] }, kind, () => {}, async artifact => { articles.push(artifact); return { state: 'host-accepted' }; });
+    document.body.append(output);
+    output.querySelector<HTMLButtonElement>('.cdp-export-primary')!.click();
+    await Promise.resolve();
+    expect(anchor).not.toHaveBeenCalled();
+    expect(articles[0]?.filename).toBe(`ca-${kind}-2026-10-06.html`);
+    expect(articles[0]?.content).toContain('USGS · observed unknown · retained 2026-10-06T05:57:35Z');
+    expect(articles[0]?.content).toContain("default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'");
+    expect(articles[0]?.content).toContain('Canada');
+    expect(output.querySelector('[role=status]')?.textContent).toContain('File completion is not confirmed');
+    output.remove();
+  });
+  it('unsupported native output sends no request or Blob anchor and keeps its preview', async () => {
+    const call = vi.fn(); const anchor = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const output = createCountryBriefOutput({ country: 'Canada', code: 'CA', capturedAt: '2026-10-06T05:57:35Z', sections: [], story: [] }, 'report', () => {}, createHostCountryDownload(() => ({}), call));
+    document.body.append(output); output.querySelector<HTMLButtonElement>('.cdp-export-primary')!.click(); await Promise.resolve(); await Promise.resolve();
+    expect(call).not.toHaveBeenCalled(); expect(anchor).not.toHaveBeenCalled();
+    expect(output.querySelector('[role=status]')?.textContent).toContain('does not support');
+    expect(output.querySelector('article')?.textContent).toContain('Canada'); output.remove();
+  });
+  it('blocks duplicate clicks and discards a reply after close', async () => {
+    let settle!: (value: { state: 'host-accepted' }) => void;
+    const deliver = vi.fn<CountryTextDownload>(() => new Promise<{ state: 'host-accepted' }>(resolve => { settle = resolve; }));
+    const output = createCountryBriefOutput({ country: 'Canada', code: 'CA', capturedAt: '2026-10-06T05:57:35Z', sections: [], story: [] }, 'report', () => output.remove(), deliver);
+    document.body.append(output); const button = output.querySelector<HTMLButtonElement>('.cdp-export-primary')!;
+    button.click(); button.click(); expect(deliver).toHaveBeenCalledTimes(1); expect(button.disabled).toBe(true);
+    output.querySelector<HTMLButtonElement>('.cdp-output-header button')!.click();
+    expect(deliver.mock.calls[0]![1].aborted).toBe(true);
+    settle({ state: 'host-accepted' }); await Promise.resolve();
+    expect(output.querySelector('[role=status]')?.textContent).not.toContain('Host accepted');
+  });
+  it('does not update a newer country view when its parent signal aborts', async () => {
+    let settle!: (value: { state: 'host-accepted' }) => void;
+    const parent = new AbortController();
+    const output = createCountryBriefOutput({ country: 'Canada', code: 'CA', capturedAt: '2026-10-06T05:57:35Z', sections: [], story: [] }, 'report', () => {}, () => new Promise(resolve => { settle = resolve; }), parent.signal);
+    document.body.append(output); output.querySelector<HTMLButtonElement>('.cdp-export-primary')!.click();
+    parent.abort(); settle({ state: 'host-accepted' }); await Promise.resolve();
+    expect(output.querySelector('[role=status]')?.textContent).not.toContain('Host accepted'); output.remove();
+  });
+  it('does not describe an unconfirmed report attempt as a downloaded file', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:fixture', revokeObjectURL: () => {} }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const output = createCountryBriefOutput({ country: 'Canada', code: 'CA', capturedAt: '2026-10-06T05:57:35Z', sections: [], story: [] }, 'report', () => {});
+    document.body.append(output);
+    output.querySelector<HTMLButtonElement>('.cdp-export-primary')!.click();
+    await Promise.resolve();
+    expect(output.querySelector('[role=status]')?.textContent).not.toContain('Downloaded');
+    output.remove();
+  });
   it('keeps web URLs and remaps local fragments without changing the source', () => {
     const source = document.createElement('section');
     source.id = 'section';
