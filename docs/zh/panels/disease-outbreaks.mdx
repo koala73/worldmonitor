@@ -32,9 +32,9 @@ description: "疾病爆发面板实时聚合全球活跃传染病警报，来源
 - **CDC Health Alert Network (HAN)** — 以美国为中心的源，补充 WHO 的北美事件。
 - **ECDC 流行病学更新与新闻** — 欧洲疾病预防控制中心发布的疫情更新及其对正在监测事件的声明，包括欧盟/欧洲经济区以外的事件。
 - **CIDRAP 疾病新闻** — 明尼苏达大学 CIDRAP 的埃博拉、病毒性出血热、禽流感、猴痘、霍乱、麻疹、登革热、脊髓灰质炎、食源性疾病和鼠疫订阅源。仅保留同时点名已知疾病与国家、且发布不超过 90 天的报道；多主题的 "Quick takes" 汇总会被跳过。
+- **ThinkGlobalHealth disease tracker** — 包含约 1,600+ ProMED 来源实时警报的开源包，附经纬度（保持 90 天回溯，使地图不被旧事件淹没）。
 
 ECDC 与 CIDRAP 条目的摘要以报道标题开头。在卫生机构确认病原体之前，不明原因肺炎报告以该名称（Pneumonia of unknown cause）列出。
-- **ThinkGlobalHealth disease tracker** — 包含约 1,600+ ProMED 来源实时警报的开源包，附经纬度（保持 90 天回溯，使地图不被旧事件淹没）。
 
 注意：面板内的信息工具提示为简洁起见将其概括为 "WHO、ProMED 和卫生部"。以上是种子器中实现的完整上游列表。结果被标准化、去重，并写入 Redis 中的 `health:disease-outbreaks:v1`，TTL 为 72 小时（每日 cron 间隔的 3 倍）。
 
