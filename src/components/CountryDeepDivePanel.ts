@@ -2874,7 +2874,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       : 'flat';
 
     const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index' && item.label !== 'Weekly Momentum');
-    if (Number.isFinite(delta)) {
+    const weeklyValue = data.weekChangePercent.trim();
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
       base.unshift({
         label: 'Weekly Momentum',
         value: `${delta >= 0 ? '+' : ''}${data.weekChangePercent}%`,

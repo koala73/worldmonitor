@@ -81,7 +81,7 @@ it('preserves parity when the controller reapplies stock after IMF arrives', () 
   expect(renderedRows(body)).toEqual(renderedRows(website.body));
 });
 
-it.each(['', 'unknown', 'NaN'])('does not fabricate weekly momentum for invalid input %s', weekChangePercent => {
+it.each(['', 'unknown', 'NaN', '0.08oops', '0.08%', '   '])('does not fabricate weekly momentum for invalid input %s', weekChangePercent => {
   const { panel, body } = panelFixture();
   panel.updateEconomicIndicators(imfRows());
   panel.updateStock(stock);
