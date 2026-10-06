@@ -272,6 +272,21 @@ describe('fit and evaluation separation', () => {
     assert.equal(shadow.forward.count, 4);
     assert.equal(shadow.activationGate.context.registered, 4);
   });
+
+  it('ignores projection horizon rows in both the fit and the forward cohort (#7075)', () => {
+    const horizonRow = (overrides) => {
+      const base = entry(overrides);
+      return { ...base, key: `${base.key}@d7`, parentKey: base.key, spec: { kind: 'hard', horizon: 'd7', semantics: 'point_in_time' } };
+    };
+    const forward = repeat(4, () => entry({ generatedAt: fitAt + DAY_MS }));
+    const shadow = evaluateCalibrationShadow(ledgerOf([...forward, horizonRow({ generatedAt: fitAt + DAY_MS, outcome: 'YES' })]), map, fitAt + 20 * DAY_MS);
+    assert.equal(shadow.forward.count, 4);
+    assert.equal(shadow.activationGate.context.registered, 4);
+
+    const fitRows = repeat(60, () => entry({ probability: 0.3, outcome: 'NO' }));
+    const refit = fitCalibrationMap(ledgerOf([...fitRows, horizonRow({ probability: 0.9, outcome: 'YES' })]), fitAt);
+    assert.equal(refit.totalSample, 60);
+  });
 });
 
 describe('activation gate', () => {

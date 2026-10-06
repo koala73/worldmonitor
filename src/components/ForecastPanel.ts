@@ -6,7 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
-import { projectForecastRecord, renderForecastRecord, type ForecastRecord } from './forecast-record';
+import { projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
@@ -265,6 +265,9 @@ function injectStyles(): void {
     .fc-record-item { color: var(--text-primary, #e6edf3); white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
     .fc-record-stale { color: #d29922; border: 1px solid rgba(210,153,34,0.35); border-radius: 3px; padding: 0 5px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .fc-record-stale[title] { cursor: help; }
+    .fc-reliability, .fc-reliability-placeholder { display: inline-block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-reliability-placeholder { visibility: hidden; }
+    .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
     .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
     .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
   `;
@@ -297,6 +300,8 @@ export class ForecastPanel extends Panel {
   /** Track-record strip state (#7074). Refreshed on every updateForecasts() tick. */
   private record: ForecastRecord = { kind: 'loading' };
   private recordPromise: Promise<void> | null = null;
+  /** Per-domain card badges (#5092), from the same scorecard response as the strip. */
+  private reliability: ReliabilityTable | null = null;
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
@@ -308,6 +313,7 @@ export class ForecastPanel extends Panel {
     bindActivationKeys(this.content, '[data-fc-toggle]');
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      if (target.closest('a.fc-reliability')) return;
 
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
@@ -458,8 +464,15 @@ export class ForecastPanel extends Panel {
     if (this.recordPromise) return;
     this.recordPromise = fetchForecastScorecard(this.signal)
       .then(
-        (resp) => { this.record = projectForecastRecord(resp); },
-        (err: unknown) => { if (!this.isAbortError(err)) this.record = { kind: 'unavailable' }; },
+        (resp) => {
+          this.record = projectForecastRecord(resp);
+          this.reliability = projectReliability(resp);
+        },
+        (err: unknown) => {
+          if (this.isAbortError(err)) return;
+          this.record = { kind: 'unavailable' };
+          this.reliability = null;
+        },
       )
       .then(() => {
         this.recordPromise = null;
@@ -474,6 +487,12 @@ export class ForecastPanel extends Panel {
         }
         // renderForecastRecord() escapes every interpolated value.
         setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
+        for (const badgeSlot of this.content.querySelectorAll<HTMLElement>('[data-fc-reliability]')) {
+          const domain = badgeSlot.dataset.fcReliability ?? '';
+          badgeSlot.classList.remove('fc-reliability-pending');
+          // renderReliabilityBadge() escapes every interpolated value.
+          setTrustedHtml(badgeSlot, trustedHtml(renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain), 'ForecastPanel reliability badge; escaped markup from renderReliabilityBadge (#5092)'));
+        }
       });
   }
 
@@ -724,6 +743,7 @@ export class ForecastPanel extends Panel {
               ${simChipHtml}
             </div>
             ${simBarHtml}
+            <div data-fc-reliability="${escapeHtml(domain)}"${this.record.kind === 'loading' ? ' class="fc-reliability-pending"' : ''}>${this.record.kind === 'loading' ? '<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>' : renderReliabilityBadge(this.reliability, domain, catLabel)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

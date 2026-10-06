@@ -2378,6 +2378,12 @@
         "stale": "Neactualizat",
         "staleHint": "Ultima evaluare la {{date}}. Evaluatorul nu a mai rulat de atunci, așa că aceste cifre sunt mai vechi decât ar trebui.",
         "fullRecord": "Istoric complet"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} vs rata de bază {{base}} (n={{n}})",
+        "measuredHint": "Cum s-au clasat prognozele publicate {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} de zile. Rata de bază este ce s-ar fi obținut prin răspunsul întotdeauna cu rata observată „da\" a domeniului. Mai mic este mai bun. Acesta este istoricul domeniului, nu al acestei prognoze.",
+        "unmeasured": "Încă nemăsurat",
+        "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
       }
     },
     "escalationCorrelation": {

@@ -2378,6 +2378,12 @@
         "stale": "Non aggiornato",
         "staleHint": "Ultima valutazione: {{date}}. Il valutatore non è più stato eseguito da allora, quindi questi numeri sono più vecchi del dovuto.",
         "fullRecord": "Storico completo"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} vs tasso di base {{base}} (n={{n}})",
+        "measuredHint": "Come i forecast pubblicati {{domain}} hanno ottenuto un punteggio su {{n}} forecast valutati negli ultimi {{days}} giorni. Il tasso di base è quello che si otterrebbe rispondendo sempre con il tasso di sì osservato del dominio. Più basso è meglio. Questo è il track record del dominio, non di questo forecast.",
+        "unmeasured": "Non ancora misurato",
+        "unmeasuredHint": "Le previsioni di {{domain}} hanno {{n}} risultati valutati negli ultimi {{days}} giorni. Un dominio ha bisogno di {{min}} prima che la sua accuratezza sia mostrata."
       }
     },
     "escalationCorrelation": {

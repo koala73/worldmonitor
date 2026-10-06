@@ -21,6 +21,10 @@ message CalibrationInfo {
   double market_price = 2;
   double drift = 3;
   string source = 4;
+  // Probability before the market blend.
+  optional double internal_probability = 5;
+  // Probability after the market blend and domain cap.
+  optional double market_blended_probability = 6;
 }
 
 message Perspectives {
@@ -29,25 +33,14 @@ message Perspectives {
   string contrarian = 3;
 }
 
-// Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
-// Every forecast carries exactly one spec, either "hard" or "judged":
-//   - "hard":   auto-resolvable by a free metric comparison against a
-//               WorldMonitor feed the detector already scored from. Sets
-//               metric_key (feed + path expression), operator, threshold,
-//               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
-//               member). baseline_value is set only when operator is
-//               "crosses" (the emission-time metric value the move is
-//               measured from).
-//   - "judged": resolved by a later LLM judge against the question string;
-//               no numeric threshold, but still a resolution deadline.
-// kind and operator are strings, not proto enums, mirroring the trend field
-// above so a new operator/kind never requires a proto migration to land in
-// the 45-day history. Current kind values are "hard" and "judged"; current
-// operator values are ">=", "<=", and "crosses".
-// kind and deadline are always set; every other field is optional and absent
-// (persisted as JSON null) when it does not apply to the kind — a judged spec
-// carries no threshold/baseline_value so "no threshold" is never confused
-// with a real threshold of 0, and a hard spec carries no question.
+// kind and operator are strings, not enums, so a new value never needs a
+// proto migration to land in the 45-day history.
+
+// Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
+// comparing metric_key from source_feed to threshold with operator ">=", "<="
+// or "crosses") or "judged" (an LLM judge answers question). kind and deadline
+// are always set; other fields apply per kind. baseline_value applies only to
+// "crosses" specs. A judged spec's threshold is absent, never 0.
 message ResolutionSpec {
   string kind = 1;
   optional string metric_key = 2;

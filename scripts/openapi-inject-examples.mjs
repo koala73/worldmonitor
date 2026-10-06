@@ -723,6 +723,7 @@ function numberExample(name, schema = {}, integer = false) {
   }
   else if (key.includes('percent') || key.includes('ratio') || key.includes('score')) value = 42.5;
   else if (key.includes('confidence')) value = 0.82;
+  else if (key.includes('probability')) value = 0.62;
   else if (key.includes('price') || key.includes('cost') || key.includes('rate')) value = 75.25;
   else if (key.includes('count') || key.includes('total')) value = 1;
 

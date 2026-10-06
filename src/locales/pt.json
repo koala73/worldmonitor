@@ -1993,6 +1993,12 @@
         "stale": "Desatualizado",
         "staleHint": "Última avaliação em {{date}}. O avaliador não rodou desde então, então estes números estão mais antigos do que deveriam.",
         "fullRecord": "Histórico completo"
+      },
+      "reliability": {
+        "measured": "{{domain}} Brier {{score}} vs taxa base {{base}} (n={{n}})",
+        "measuredHint": "Como as previsões publicadas de {{domain}} pontuaram em {{n}} previsões avaliadas nos últimos {{days}} dias. A taxa base é o que sempre responder a taxa de \"sim\" observada do domínio teria pontuado. Quanto menor, melhor. Este é o histórico do domínio, não desta previsão.",
+        "unmeasured": "Ainda não medido",
+        "unmeasuredHint": "As previsões de {{domain}} têm {{n}} resultados avaliados nos últimos {{days}} dias. Um domínio precisa de {{min}} antes que sua precisão seja exibida."
       }
     },
     "escalationCorrelation": {

@@ -57,6 +57,8 @@ export interface CalibrationInfo {
   marketPrice: number;
   drift: number;
   source: string;
+  internalProbability?: number;
+  marketBlendedProbability?: number;
 }
 
 export interface Perspectives {
@@ -157,6 +159,9 @@ export interface GetForecastScorecardResponse {
   stale: boolean;
   error: string;
   skill?: ScorecardSkill;
+  publishedByDomain: ScorecardPublishedDomain[];
+  uncertainty?: ScorecardUncertainty;
+  funnel?: ScorecardFunnel;
 }
 
 export interface ScorecardTotals {
@@ -220,6 +225,45 @@ export interface ScorecardSkill {
   excludedScored: number;
   excludedOrigins: string[];
   yesCount: number;
+}
+
+export interface ScorecardPublishedDomain {
+  domain: string;
+  count: number;
+  brier: number;
+  yesCount: number;
+}
+
+export interface ScorecardUncertainty {
+  method: string;
+  overallBrier?: ScorecardInterval;
+  skillBrier?: ScorecardInterval;
+}
+
+export interface ScorecardInterval {
+  count: number;
+  mean: number;
+  ci95: number[];
+  insufficientSample: boolean;
+}
+
+export interface ScorecardFunnel {
+  matured: number;
+  immature: number;
+  maturityUnknown: number;
+  resolved: number;
+  scored: number;
+  pendingHardMatured: number;
+  pendingJudgeMatured: number;
+  resolvedOfMatured?: ScorecardProportion;
+  scoredOfMatured?: ScorecardProportion;
+}
+
+export interface ScorecardProportion {
+  count: number;
+  successes: number;
+  rate: number;
+  ci95: number[];
 }
 
 export interface GetSimulationPackageRequest {

@@ -73,6 +73,52 @@ message ScorecardSkill {
   int32 yes_count = 6;
 }
 
+message ScorecardPublishedDomain {
+  string domain = 1;
+  int32 count = 2;
+  double brier = 3;
+  int32 yes_count = 4;
+}
+
+// Bootstrap interval on a mean Brier score.
+message ScorecardInterval {
+  int32 count = 1;
+  double mean = 2;
+  // [low, high] at 95%.
+  repeated double ci95 = 3;
+  // True when count is under 30.
+  bool insufficient_sample = 4;
+}
+
+message ScorecardUncertainty {
+  string method = 1;
+  ScorecardInterval overall_brier = 2;
+  ScorecardInterval skill_brier = 3;
+}
+
+// successes of count, with a Wilson interval.
+message ScorecardProportion {
+  int32 count = 1;
+  int32 successes = 2;
+  double rate = 3;
+  // [low, high] at 95%.
+  repeated double ci95 = 4;
+}
+
+// Matured means past deadline or resolved.
+message ScorecardFunnel {
+  int32 matured = 1;
+  int32 immature = 2;
+  int32 maturity_unknown = 3;
+  int32 resolved = 4;
+  int32 scored = 5;
+  int32 pending_hard_matured = 6;
+  int32 pending_judge_matured = 7;
+  // Both rates use matured as the denominator.
+  ScorecardProportion resolved_of_matured = 8;
+  ScorecardProportion scored_of_matured = 9;
+}
+
 message GetForecastScorecardResponse {
   int32 schema_version = 1;
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -88,4 +134,8 @@ message GetForecastScorecardResponse {
   bool stale = 12;
   string error = 13;
   ScorecardSkill skill = 14;
+  // Published-origin accuracy by domain.
+  repeated ScorecardPublishedDomain published_by_domain = 15;
+  ScorecardUncertainty uncertainty = 16;
+  ScorecardFunnel funnel = 17;
 }
