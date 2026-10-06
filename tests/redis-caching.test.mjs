@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createTempDir, removeTempDir } from './helpers/temp-dir.mjs';
 
@@ -1775,6 +1776,59 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
       restoreEnv();
     }
   });
+
+  for (const scenario of [
+    { name: 'reads the preview CII snapshot instead of production', environment: 'preview', code: 'US', previewScore: 80, expectedScore: 80, expectedTime: 1800000000000 },
+    { name: 'reads the production CII snapshot in production', environment: 'production', code: 'US', previewScore: 80, expectedScore: 10, expectedTime: 1700000000000 },
+    { name: 'preserves a measured zero in the preview snapshot', environment: 'preview', code: 'US', previewScore: 0, expectedScore: 0, expectedTime: 1800000000000 },
+    { name: 'fails closed when preview CII is missing despite production data', environment: 'preview', code: 'US', previewScore: null, expectedScore: undefined, expectedTime: 0, unavailable: true },
+    { name: 'keeps untracked Canada scoreless with raw advisory and sanctions', environment: 'preview', code: 'CA', previewScore: 80, expectedScore: undefined, expectedTime: 0 },
+  ]) {
+    it(scenario.name, async () => {
+      const { module, cleanup } = await importCountryRisk();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        VERCEL_ENV: scenario.environment,
+        VERCEL_GIT_COMMIT_SHA: 'abcdef0123456789',
+      });
+      const redis = createRequire(import.meta.url)(resolve(root, 'server/_shared/redis.ts'));
+      redis.__resetKeyPrefixCacheForTests();
+      const originalFetch = globalThis.fetch;
+      const riskKey = 'risk:scores:sebuf:stale:v8';
+      const redisValues = new Map([
+        [riskKey, JSON.stringify({ ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1700000000000 }] })],
+        ['intelligence:advisories:v1', JSON.stringify({ byCountry: { US: 'normal', CA: 'normal' }, byCountryName: { CA: 'Canada' } })],
+        ['sanctions:country-counts:v1', JSON.stringify({ US: 0, CA: 41 })],
+      ]);
+      if (scenario.previewScore !== null) {
+        redisValues.set('preview:abcdef01:' + riskKey, JSON.stringify({
+          ciiScores: [{ region: 'US', combinedScore: scenario.previewScore, computedAt: 1800000000000 }],
+        }));
+      }
+      globalThis.fetch = async (url) => {
+        const rawUrl = String(url);
+        assert.equal(new URL(rawUrl).origin, 'https://redis.test');
+        if (rawUrl.includes('/get/')) return jsonResponse({ result: redisValues.get(parseGetKey(rawUrl)) });
+        throw new Error(`Unexpected fetch URL: ${rawUrl}`);
+      };
+      try {
+        const result = await module.getCountryRisk({}, { countryCode: scenario.code });
+        assert.equal(result.cii?.combinedScore, scenario.expectedScore);
+        assert.equal(result.fetchedAt, scenario.expectedTime);
+        assert.equal(result.upstreamUnavailable, scenario.unavailable === true);
+        assert.equal(result.advisoryLevel, scenario.unavailable ? '' : 'normal');
+        assert.equal(result.sanctionsCount, scenario.code === 'CA' ? 41 : 0);
+        assert.equal(result.sanctionsActive, scenario.code === 'CA');
+        assert.equal(result.countryName, scenario.code === 'CA' ? 'Canada' : 'United States');
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+        redis.__resetKeyPrefixCacheForTests();
+      }
+    });
+  }
 
   it('returns fetchedAt=0 for untracked countries with no CII score', async () => {
     const { module, cleanup } = await importCountryRisk();

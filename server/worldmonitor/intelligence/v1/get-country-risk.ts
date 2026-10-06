@@ -42,7 +42,7 @@ export async function getCountryRisk(
   }
 
   const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
-    getCachedJson(RISK_SCORES_KEY, true),
+    getCachedJson(RISK_SCORES_KEY),
     getCachedJson(ADVISORIES_KEY, true),
     getCachedJson(SANCTIONS_COUNTS_KEY, true),
   ]);
