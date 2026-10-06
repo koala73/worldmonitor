@@ -83,7 +83,8 @@ export interface PredictionMarketCore {
  * event URL, so neither the prefix nor the URL alone tells two markets apart.
  * The URL plus the full title does. Unique URL-backed titles also store a
  * namespaced alias so a later poll that loses the URL can still find the
- * previous price, without letting two URL-backed markets share a title key.
+ * previous price. Duplicate URL-less titles are omitted from the snapshot
+ * rather than overwriting one previous price.
  */
 export function predictionMarketKey(market: Pick<PredictionMarketCore, 'title' | 'url'>): string {
   const url = market.url?.trim();
@@ -97,16 +98,28 @@ function titleAliasKey(title: string): string {
   return `${TITLE_ALIAS_PREFIX}${title}`;
 }
 
-function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<string, number> {
-  const titleCounts = new Map<string, number>();
+function titleCounts(predictions: PredictionMarketCore[]): Map<string, number> {
+  const counts = new Map<string, number>();
   for (const pred of predictions) {
-    titleCounts.set(pred.title, (titleCounts.get(pred.title) ?? 0) + 1);
+    counts.set(pred.title, (counts.get(pred.title) ?? 0) + 1);
   }
+  return counts;
+}
+
+function isUniqueTitle(counts: Map<string, number>, title: string): boolean {
+  return counts.get(title) === 1;
+}
+
+function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<string, number> {
+  const counts = titleCounts(predictions);
   const snapshot = new Map<string, number>();
   for (const pred of predictions) {
-    snapshot.set(predictionMarketKey(pred), pred.yesPrice);
     const url = pred.url?.trim();
-    if (url && titleCounts.get(pred.title) === 1) {
+    // Duplicate URL-less titles share one key; storing either price would
+    // make a later URL-gain look like a shift against the other market.
+    if (!url && !isUniqueTitle(counts, pred.title)) continue;
+    snapshot.set(predictionMarketKey(pred), pred.yesPrice);
+    if (url && isUniqueTitle(counts, pred.title)) {
       snapshot.set(titleAliasKey(pred.title), pred.yesPrice);
     }
   }
@@ -116,14 +129,16 @@ function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<str
 function previousPredictionPrice(
   pred: PredictionMarketCore,
   previous: Map<string, number>,
+  currentCounts: Map<string, number>,
 ): number | undefined {
+  const url = pred.url?.trim();
+  if (!url && !isUniqueTitle(currentCounts, pred.title)) return undefined;
   const key = predictionMarketKey(pred);
   const exact = previous.get(key);
   if (exact !== undefined) return exact;
-  const url = pred.url?.trim();
-  // URL gained: previous poll stored the URL-less title key.
+  if (!isUniqueTitle(currentCounts, pred.title)) return undefined;
+  // URL gained: previous poll stored the URL-less title key only if unique.
   // URL lost: previous poll stored a namespaced unique-title alias.
-  // Two URL-backed markets with the same title do not share either path.
   return url ? previous.get(pred.title) : previous.get(titleAliasKey(pred.title));
 }
 
@@ -419,6 +434,7 @@ export function analyzeCorrelationsCore(
     currentHistory.set(topic, updated);
   }
 
+  const currentTitleCounts = titleCounts(predictions);
   const currentSnapshot: StreamSnapshot = {
     newsVelocity: newsTopics,
     marketChanges: new Map(markets.map(m => [m.symbol, m.change ?? 0])),
@@ -434,7 +450,7 @@ export function analyzeCorrelationsCore(
   // Detect prediction shifts
   for (const pred of predictions) {
     const key = predictionMarketKey(pred);
-    const prev = previousPredictionPrice(pred, previousSnapshot.predictionChanges);
+    const prev = previousPredictionPrice(pred, previousSnapshot.predictionChanges, currentTitleCounts);
     if (prev !== undefined) {
       // Keep the sign (#8868): a fall must read as a fall. Only the threshold
       // and the confidence work on the magnitude.

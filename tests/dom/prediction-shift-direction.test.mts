@@ -128,4 +128,12 @@ describe('prediction-market shift direction (#8868)', () => {
       [{ title: MARKET, yesPrice: 70, url: urlB }],
     )).toEqual([]);
   });
+
+  it('does not treat duplicate URL-less titles as one previous price', () => {
+    const url = 'https://polymarket.com/event/atlantis-rates';
+    expect(runTwoSnapshots(
+      [{ title: MARKET, yesPrice: 40 }, { title: MARKET, yesPrice: 70 }],
+      [{ title: MARKET, yesPrice: 40, url }],
+    )).toEqual([]);
+  });
 });
