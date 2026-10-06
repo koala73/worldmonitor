@@ -143,17 +143,41 @@ describe('ForecastPanel reliability badge', () => {
     }
   });
 
-  it('patches badges in place so an open card is not rebuilt', async () => {
+  it('patches badges in place so an open Analysis pane stays open', async () => {
     let release!: (r: Response) => void;
     stubScorecard(() => new Promise<Response>((resolve) => { release = resolve; }));
 
-    panel.updateForecasts([forecast('fc-1', 'conflict')]);
+    const open = { ...forecast('fc-1', 'conflict'), caseFile: { supportingEvidence: [], counterEvidence: [], triggers: [] } } as unknown as Forecast;
+    panel.updateForecasts([open]);
     const card = await vi.waitFor(() => cardFor(panel, 'Forecast fc-1'));
     expect(card.querySelector('.fc-reliability')).toBeNull();
+    card.querySelector<HTMLElement>('[data-fc-toggle="detail-fc-1"]')!.click();
+    const pane = card.querySelector<HTMLElement>('[data-fc-panel="detail-fc-1"]')!;
+    expect(pane.classList.contains('fc-hidden')).toBe(false);
 
     release(Response.json(scorecard([domainGroup('conflict', 45, 0.2134)])));
     await vi.waitFor(() => expect(card.querySelector('a.fc-reliability')).not.toBeNull());
     expect(card.isConnected).toBe(true);
+    expect(pane.isConnected).toBe(true);
+    expect(pane.classList.contains('fc-hidden')).toBe(false);
+  });
+
+  it('follows the badge link without toggling the card action row', async () => {
+    stubScorecard(async () => Response.json(scorecard([domainGroup('conflict', 45, 0.2134)])));
+
+    panel.updateForecasts([forecast('fc-1', 'conflict')]);
+    await settled(panel);
+    const card = cardFor(panel, 'Forecast fc-1');
+    const badge = await vi.waitFor(() => {
+      const el = card.querySelector<HTMLAnchorElement>('a.fc-reliability');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const toggleRow = card.querySelector<HTMLElement>('.fc-toggle-row')!;
+    const before = toggleRow.style.display;
+    document.addEventListener('click', (e) => e.preventDefault(), { once: true });
+    badge.click();
+    expect(toggleRow.style.display).toBe(before);
   });
 
   it('renders no badge when the scorecard request fails', async () => {

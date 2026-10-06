@@ -312,6 +312,7 @@ export class ForecastPanel extends Panel {
     bindActivationKeys(this.content, '[data-fc-toggle]');
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      if (target.closest('a.fc-reliability')) return;
 
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
