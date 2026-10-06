@@ -175,7 +175,7 @@ test('commodity DOM ordinals survive closed and hidden rows, sources and compone
   assert.equal(row.sourceLinks[3].url, undefined);
   assert.equal(row.totalSourceCount, 5);
   assert.equal(row.omittedSourceCount, 1);
-  assert.equal(JSON.stringify(details).includes('https://example.com/fifth'), false);
+  assert.deepEqual(row.sourceLinks.filter(link => typeof link.url === 'string').map(link => new URL(link.url).href), ['https://example.com/concentration', 'https://example.com/buffer']);
   assert.deepEqual(row.components[1], { componentIndex: 1, omittedReason: 'hidden' });
   assert.equal(row.components[2].valueText, '71%');
   assert.equal(row.omittedComponentCount, 1);
@@ -427,4 +427,23 @@ test('the final request guard rejects an oversized actual CN context envelope be
   const before = view.messages.length;
   await assert.rejects(view.context.api.request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify({ countryCode: 'CN', china: { groups: [] }, hostile: '中'.repeat(40000) }) }] }));
   assert.equal(view.messages.length, before);
+});
+
+test('commodity complete caveats respect the exact added RPC boundary without a later source URL', () => {
+  const view = harness({ country: 'CA' });
+  const row = commodityRow(view, commodityCard(view));
+  row.querySelector('.cdp-vulnerability-sources').replaceChildren();
+  row.querySelector('.cdp-vulnerability-reasons').textContent = 'a'.repeat(6255);
+  const result = view.publish();
+  const details = result.snapshot.openCommodityDetails.rows[0];
+  const without = structuredClone(result.message);
+  const base = JSON.parse(without.params.content[0].text);
+  delete base.openCommodityDetails;
+  without.params.content[0].text = JSON.stringify(base);
+  const addedBytes = result.bytes - new TextEncoder().encode(JSON.stringify(without)).length;
+  assert.ok(addedBytes <= 8192, 'Actual added RPC bytes ' + addedBytes);
+  assert.equal(details.sourceLinks.length, 0);
+  assert.equal(details.caveatsTextOriginalByteCount, 6257);
+  assert.equal(details.caveatsText.length, 6254);
+  assert.equal(details.caveatsTextTruncated, true);
 });

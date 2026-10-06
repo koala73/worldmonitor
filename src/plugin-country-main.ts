@@ -131,7 +131,7 @@ function openCommodityContext(base: Record<string, unknown>, root: HTMLElement |
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
       target[field] = contextText(text, middle, bytes).text;
-      target[`${field}Truncated`] = true;
+      target[`${field}Truncated`] = String(target[field]).length !== text.length;
       if (fits()) low = middle; else high = middle - 1;
     }
     target[field] = contextText(text, low, bytes).text;
