@@ -1212,7 +1212,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         this.setCostShockCalculationStatus('unavailable', resp.unavailableReason || 'No matching cost scenario returned.');
         return;
       }
+      const sliderOwnedFocus = this.costShockCalcBody?.querySelector('.cdp-cost-shock-calc-slider') === document.activeElement;
       this.updateMultiSectorCostShock(resp);
+      if (sliderOwnedFocus) this.costShockCalcBody?.querySelector<HTMLInputElement>('.cdp-cost-shock-calc-slider')?.focus();
     } catch {
       if (current()) this.setCostShockCalculationStatus('unavailable');
     }

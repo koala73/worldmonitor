@@ -183,3 +183,25 @@ it('aborts on content reset and ignores a late successful result', async () => {
   await vi.advanceTimersByTimeAsync(0);
   expect(body.querySelector('.cdp-cost-shock-calc-total-value')?.textContent).toBe('$30.0M');
 });
+
+it('keeps keyboard focus on the replacement slider after matching recovery', async () => {
+  document.body.append(body);
+  const slider = body.querySelector<HTMLInputElement>('input[type=range]')!;
+  slider.focus();
+  cost.mockResolvedValue(result(60));
+  move(60);
+  await vi.advanceTimersByTimeAsync(300);
+  const replacement = body.querySelector<HTMLInputElement>('input[type=range]')!;
+  expect(replacement.value).toBe('60');
+  expect(document.activeElement).toBe(replacement);
+});
+it('does not steal focus from another control when a matching result arrives', async () => {
+  document.body.append(body);
+  const other = document.createElement('button');
+  document.body.append(other);
+  other.focus();
+  cost.mockResolvedValue(result(60));
+  move(60);
+  await vi.advanceTimersByTimeAsync(300);
+  expect(document.activeElement).toBe(other);
+});
