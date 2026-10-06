@@ -2929,5 +2929,18 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "components.forecast.record.label": "Track record",
+  "components.forecast.record.labelHint": "How the published forecasts scored once they resolved, over the last {{days}} days. Hover a number for what it means.",
+  "components.forecast.record.unavailable": "Unavailable right now",
+  "components.forecast.record.insufficient": "Not enough graded forecasts yet",
+  "components.forecast.record.brier": "Brier {{score}} (n={{n}})",
+  "components.forecast.record.brierHint": "Brier score over {{n}} graded forecasts: the average squared gap between the forecast probability and what happened. 0 is perfect, 0.25 is a coin flip, lower is better.",
+  "components.forecast.record.baseRate": "Base rate {{score}} (n={{n}})",
+  "components.forecast.record.baseRateHint": "What always answering the observed yes rate would have scored on the same {{n}} forecasts ({{pct}}% resolved yes). Beating it means the forecasts add information.",
+  "components.forecast.record.void": "Void {{pct}}% ({{count}} of {{resolved}})",
+  "components.forecast.record.voidHint": "Forecasts that resolved but could not be graded, out of {{resolved}} resolved in the window.",
+  "components.forecast.record.stale": "Out of date",
+  "components.forecast.record.staleHint": "Last graded {{date}}. The grader has not run since, so these numbers are older than they should be.",
+  "components.forecast.record.fullRecord": "Full record"
 }

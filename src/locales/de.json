@@ -2353,7 +2353,22 @@
       "unscored": "Narrative Szenarien, nicht auf Genauigkeit bewertet."
     },
     "forecast": {
-      "infoTooltip": "<strong>KI-Prognosen</strong> KI-generierte Wahrscheinlichkeitsschätzungen für geopolitische und wirtschaftliche Ereignisse:<ul><li>Bereichsübergreifende Abdeckung: Konflikte, Märkte, Lieferkette, Cyber, Politik</li><li>Jede Prognose zeigt geschätzte Wahrscheinlichkeit, Konfidenzgrad und Zeithorizont</li><li>Kalibriert an den Basiswerten von Prognosemärkten, wo verfügbar</li></ul>Prognosen werden aktualisiert, wenn neue Aufklärungssignale eintreffen. Filtern Sie nach Bereich mit den Registerkarten oben."
+      "infoTooltip": "<strong>KI-Prognosen</strong> KI-generierte Wahrscheinlichkeitsschätzungen für geopolitische und wirtschaftliche Ereignisse:<ul><li>Bereichsübergreifende Abdeckung: Konflikte, Märkte, Lieferkette, Cyber, Politik</li><li>Jede Prognose zeigt geschätzte Wahrscheinlichkeit, Konfidenzgrad und Zeithorizont</li><li>Kalibriert an den Basiswerten von Prognosemärkten, wo verfügbar</li></ul>Prognosen werden aktualisiert, wenn neue Aufklärungssignale eintreffen. Filtern Sie nach Bereich mit den Registerkarten oben.",
+      "record": {
+        "label": "Bilanz",
+        "labelHint": "Wie die veröffentlichten Prognosen nach ihrer Auflösung in den letzten {{days}} Tagen abgeschnitten haben. Zeiger auf eine Zahl halten, um ihre Bedeutung zu sehen.",
+        "unavailable": "Derzeit nicht verfügbar",
+        "insufficient": "Noch nicht genug bewertete Prognosen",
+        "brier": "Brier-Score {{score}} (n={{n}})",
+        "brierHint": "Brier-Score über {{n}} bewertete Prognosen: die mittlere quadratische Abweichung zwischen der prognostizierten Wahrscheinlichkeit und dem tatsächlichen Ausgang. 0 ist perfekt, 0,25 entspricht einem Münzwurf, niedriger ist besser.",
+        "baseRate": "Basisrate {{score}} (n={{n}})",
+        "baseRateHint": "Was ein Prognostiker erreicht hätte, der immer die beobachtete Ja-Quote nennt, auf denselben {{n}} Prognosen ({{pct}} % endeten mit Ja). Wer besser ist, liefert echte Information.",
+        "void": "Ungültig {{pct}} % ({{count}} von {{resolved}})",
+        "voidHint": "Aufgelöste Prognosen, die nicht bewertet werden konnten, von {{resolved}} aufgelösten im Zeitraum.",
+        "stale": "Veraltet",
+        "staleHint": "Zuletzt bewertet am {{date}}. Die Bewertung ist seitdem nicht gelaufen, daher sind diese Zahlen älter, als sie sein sollten.",
+        "fullRecord": "Vollständige Bilanz"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Eskalationsmonitor</strong> Erkennt konvergierende geopolitische Signale:<ul><li>Korreliert Militärbewegungen, Konfliktereignisse und Nachrichten-Spitzen</li><li>Bewertet Konvergenzzonen nach Schweregrad (kritisch/hoch/mittel/niedrig)</li><li>Verfolgt Eskalations- oder Deeskalationstrends im Laufe der Zeit</li></ul>Klicken Sie auf eine Kachel, um zur Region auf der Karte zu springen."

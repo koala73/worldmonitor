@@ -2353,7 +2353,22 @@
       "unscored": "Anlatı senaryoları, doğruluk açısından değerlendirilmez."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin."
+      "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin.",
+      "record": {
+        "label": "Geçmiş performans",
+        "labelHint": "Yayımlanan tahminlerin son {{days}} günde sonuçlandıktan sonra nasıl puanlandığı. Anlamını görmek için bir sayının üzerine gelin.",
+        "unavailable": "Şu anda kullanılamıyor",
+        "insufficient": "Henüz yeterli sayıda puanlanmış tahmin yok",
+        "brier": "Brier puanı {{score}} (n={{n}})",
+        "brierHint": "{{n}} puanlanmış tahmin üzerinden Brier puanı: tahmin edilen olasılık ile gerçekleşen sonuç arasındaki farkın karesinin ortalaması. 0 mükemmel, 0,25 yazı tura atmaya denk; düşük olan daha iyidir.",
+        "baseRate": "Temel oran {{score}} (n={{n}})",
+        "baseRateHint": "Aynı {{n}} tahminde her zaman gözlenen \"evet\" oranını söyleyen birinin alacağı puan (%{{pct}} \"evet\" ile sonuçlandı). Bunu geçmek, tahminlerin bilgi kattığı anlamına gelir.",
+        "void": "Geçersiz %{{pct}} ({{resolved}} içinden {{count}})",
+        "voidHint": "Sonuçlanan ancak puanlanamayan tahminler; dönemde sonuçlanan {{resolved}} tahmin içinden.",
+        "stale": "Güncel değil",
+        "staleHint": "Son puanlama: {{date}}. Puanlayıcı o zamandan beri çalışmadı, bu yüzden bu sayılar olması gerekenden eski.",
+        "fullRecord": "Tüm kayıt"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Tırmanma İzleyicisi</strong> Yakınlaşan jeopolitik sinyalleri tespit eder:<ul><li>Askeri hareketleri, çatışma olaylarını ve haber artışlarını ilişkilendirir</li><li>Yakınlaşma bölgelerini önem derecesine (kritik/yüksek/orta/düşük) göre puanlar</li><li>Zaman içinde tırmanma veya gerginlik düşüşü eğilimlerini izler</li></ul>Bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
