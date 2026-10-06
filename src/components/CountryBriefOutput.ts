@@ -7,6 +7,8 @@ import briefCss from '@/styles/country-deep-dive.css?inline';
 import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { TRADE_ROUTES } from '@/config/trade-routes';
 import { createOperationalExposureForm, renderOperationalWorksheet, type OperationalWorksheetSession } from './OperationalExposureForm';
+import { attemptWebCountryDownload, countryDownloadMessage, type CountryTextArtifact, type CountryTextDownload } from '@/utils/country-text-download';
+import { combineAbortSignals } from '@/services/timeout-signal';
 
 const operationalSession: OperationalWorksheetSession = {};
 
@@ -95,7 +97,7 @@ const reportTheme = `
 // The decision brief renders its headings and narrative in English regardless of
 // the shell locale, so inheriting lang="fr" would make the file misdescribe itself
 // to screen readers and translation tooling.
-function downloadHtml(name: string, article: HTMLElement, title: string, lang?: string): void {
+function htmlArtifact(name: string, article: HTMLElement, title: string, lang?: string): CountryTextArtifact {
   const doc = document.implementation.createHTMLDocument(title);
   doc.documentElement.lang = lang || document.documentElement.lang || 'en';
   doc.head.prepend(h('meta', { charset: 'utf-8' }));
@@ -103,16 +105,23 @@ function downloadHtml(name: string, article: HTMLElement, title: string, lang?: 
     h('meta', { 'http-equiv': 'Content-Security-Policy', content: "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'" }),
     h('style', {}, briefCss, reportTheme));
   doc.body.append(article.cloneNode(true));
-  const url = URL.createObjectURL(new Blob(['<!doctype html>', doc.documentElement.outerHTML], { type: 'text/html;charset=utf-8' }));
+  return { filename: name, mimeType: 'text/html;charset=utf-8', content: `<!doctype html>${doc.documentElement.outerHTML}` };
+}
+
+function downloadHtml(name: string, article: HTMLElement, title: string, lang?: string): void {
+  const artifact = htmlArtifact(name, article, title, lang);
+  const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
   const link = h('a', { href: url, download: name });
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export function createCountryBriefOutput(snapshot: BriefOutputSnapshot, kind: 'story' | 'report', onClose: () => void): HTMLElement {
+export function createCountryBriefOutput(snapshot: BriefOutputSnapshot, kind: 'story' | 'report', onClose: () => void, deliver: CountryTextDownload = attemptWebCountryDownload, parentSignal?: AbortSignal): HTMLElement {
   const output = h('section', { className: 'cdp-output', 'aria-label': kind === 'story' ? 'Create a country story' : 'Export country report' });
   const close = h('button', { type: 'button', className: 'cdp-action-btn' }, '← Back to brief');
-  close.addEventListener('click', onClose);
+  const cancellation = new AbortController();
+  const signal = combineAbortSignals(parentSignal ? [parentSignal, cancellation.signal] : [cancellation.signal]);
+  close.addEventListener('click', () => { cancellation.abort(); onClose(); });
   const controls = h('div', { className: 'cdp-output-controls' });
   const paper = h('article', { className: 'cdp-output-paper' });
   const status = h('div', { role: 'status', 'aria-live': 'polite', className: 'cdp-output-feedback' });
@@ -156,12 +165,20 @@ export function createCountryBriefOutput(snapshot: BriefOutputSnapshot, kind: 's
     controls.append(h('p', {}, 'One country snapshot. Review every slide before downloading.'), previous, counter, next);
     renderStory();
   }
-  const download = h('button', { type: 'button', className: 'cdp-action-btn cdp-export-primary' }, kind === 'story' ? 'Download story HTML' : 'Download report HTML');
-  download.addEventListener('click', () => {
-    const article = kind === 'report' ? paper : h('article', { className: 'cdp-output-paper' }, heading(),
-      ...snapshot.story.map(item => h('section', { className: 'cdp-output-story-slide' }, h('h2', {}, item.title), item.content.cloneNode(true))));
-    downloadHtml(`${snapshot.code.toLowerCase()}-${kind}-${snapshot.capturedAt.slice(0, 10)}.html`, article, `${snapshot.country} · ${kind}`);
-    status.textContent = `Downloaded ${kind}. Open the HTML file to print or save as PDF.`;
+  const download = h('button', { type: 'button', className: 'cdp-action-btn cdp-export-primary' }, kind === 'story' ? 'Download story HTML' : 'Download report HTML') as HTMLButtonElement;
+  download.addEventListener('click', async () => {
+    if (download.disabled || signal.aborted) return;
+    download.disabled = true;
+    status.textContent = 'Download requested. Waiting for confirmation.';
+    try {
+      const article = kind === 'report' ? paper : h('article', { className: 'cdp-output-paper' }, heading(),
+        ...snapshot.story.map(item => h('section', { className: 'cdp-output-story-slide' }, h('h2', {}, item.title), item.content.cloneNode(true))));
+      const artifact = htmlArtifact(`${snapshot.code.toLowerCase()}-${kind}-${snapshot.capturedAt.slice(0, 10)}.html`, article, `${snapshot.country} · ${kind}`);
+      const result = await deliver(artifact, signal);
+      if (!signal.aborted && output.isConnected) status.textContent = countryDownloadMessage(result);
+    } catch {
+      if (!signal.aborted && output.isConnected) status.textContent = countryDownloadMessage({ state: 'unconfirmed' });
+    } finally { if (!signal.aborted) download.disabled = false; }
   });
   controls.append(download, status);
   output.append(h('header', { className: 'cdp-output-header' }, close, h('h2', {}, kind === 'story' ? 'Create a story' : 'Export report')),
