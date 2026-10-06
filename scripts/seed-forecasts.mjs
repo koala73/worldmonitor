@@ -2182,6 +2182,7 @@ const MARKET_CALIBRATION_DOMAIN_CAPS = {
 const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
   'withdrawal', 'reopen', 'reopened', 'restored', 'resolution', 'resolved',
+  'return to normal', 'returns to normal', 'back to normal',
 ];
 const MARKET_ADVERSE_OUTCOME_TERMS = [
   'attack', 'strike', 'war', 'conflict', 'offensive', 'unrest',
@@ -2215,6 +2216,58 @@ const MARKET_ADVERSE_CONDITION_END_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_ADVERSE_CONDITION_PATTERN}\b.{0,40}\bend(?:s|ed|ing)?\b(?!\s+of\b)`),
   new RegExp(String.raw`\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b${MARKET_ADVERSE_CONDITION_PATTERN}\b`),
 ];
+
+const marketEventTerms = (alternation) => new RegExp(String.raw`(?:^|[^a-z0-9])(?:${alternation})(?:[^a-z0-9]|$)`);
+const ARMED_WAR_PATTERN = String.raw`(?<!trade |tariff |price |culture )wars?`;
+const ARMED_ESCALATION_EVENT_PATTERNS = [
+  marketEventTerms(String.raw`${ARMED_WAR_PATTERN}|(?:air ?)?strikes?|attack(?:s|ed)?|invade[sd]?|invasion|offensive|clash(?:es)?|bomb(?:s|ed|ing)?|military (?:action|operation|intervention|conflict)|ground (?:operation|incursion)|incursion`),
+  new RegExp(String.raw`\b(?:conflict|${ARMED_WAR_PATTERN}|fighting|hostilities)\b.{0,30}\bescalat`),
+  new RegExp(String.raw`\bescalat\w*\b.{0,30}\b(?:conflict|${ARMED_WAR_PATTERN}|fighting|hostilities)\b`),
+];
+const DE_ESCALATION_EVENT_PATTERNS = [
+  marketEventTerms(String.raw`ceasefire|cease-fire|truce|armistice|peace (?:deal|agreement|talks|treaty|accord)`),
+  ...MARKET_ADVERSE_CONDITION_END_PATTERNS,
+];
+const MARKET_PRICE_EVENT_PATTERNS = [
+  marketEventTerms(String.raw`oil|crude|brent|wti|natural gas|lng|gasoline|gold|silver|copper|wheat|prices?|inflation|cpi|recession|gdp|interest rates?|rate (?:cut|hike)s?|tariffs?|yields?|currency|(?:stock )?market (?:crash|correction|sell-?off)`),
+];
+
+// A market anchors a forecast only when it resolves on the same event class
+// (#7071). Region overlap alone let invasion, leadership, and territory markets
+// calibrate cyber and posture forecasts. A domain or title family with no entry
+// gets no anchor. `adverse` serves forecasts whose YES outcome is escalation,
+// `deescalatory` serves ceasefire-style forecasts; a missing slot means no anchor.
+const MARKET_ANCHOR_EVENT_CLASSES = {
+  conflict: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
+  military: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
+  cyber: {
+    adverse: [marketEventTerms(String.raw`cyber|cyber[- ]?attacks?|cyber[- ]?war(?:fare)?|hack(?:s|ed|ing|ers?)?|ransomware|malware|ddos|data breach(?:es)?`)],
+  },
+  // Leadership-identity questions ("next prime minister", "become president
+  // before 2045") are not instability outcomes, so bare office titles do not count.
+  political: {
+    adverse: [marketEventTerms(String.raw`resign(?:s|ed|ation)?|step(?:s)? down|oust(?:s|ed|er)?|removed from office|leave office|out as (?:president|prime minister|pm|leader)|impeach(?:ed|ment)?|no[- ]confidence|coup|(?:government|coalition) (?:collapse[sd]?|falls?)|snap election|early election|martial law|unrest|protests?|riots?|regime (?:change|collapse|fall)`)],
+  },
+  supply_chain: {
+    adverse: [marketEventTerms(String.raw`straits?|canal|blockade[sd]?|shipping|transits?|chokepoints?|freight|tankers?|ports? (?:closure|closed|shut(?:s|down)?)`)],
+    excludeTitles: [/^gps interference in /i],
+  },
+  infrastructure: {
+    adverse: [marketEventTerms(String.raw`outages?|blackouts?|power (?:cuts?|outages?|failures?)|grid|pipelines?|undersea cables?|cable cuts?|internet shutdowns?|sabotage[sd]?`)],
+  },
+  market: {
+    adverse: MARKET_PRICE_EVENT_PATTERNS,
+    deescalatory: MARKET_PRICE_EVENT_PATTERNS,
+    requireTitleOverlap: true,
+  },
+};
+
+function resolveMarketAnchorEventPatterns(pred, predictionDeEscalatoryOutcome) {
+  const entry = MARKET_ANCHOR_EVENT_CLASSES[pred.domain];
+  if (!entry) return null;
+  if (entry.excludeTitles?.some((pattern) => pattern.test(pred.title || ''))) return null;
+  return (predictionDeEscalatoryOutcome ? entry.deescalatory : entry.adverse) || null;
+}
 
 const DOMAIN_ACTOR_BLUEPRINTS = {
   conflict: [
@@ -2655,15 +2708,24 @@ function calibrateWithMarkets(predictions, markets) {
     direction: 0,
     region: 0,
     semantic: 0,
+    eventClass: 0,
     capNoop: 0,
+    noClass: 0,
   };
   for (const pred of predictions) {
     const keywords = REGION_KEYWORDS[pred.region] || [];
     const regionTerms = [...new Set([...getSearchTermsForRegion(pred.region), pred.region])];
+    const subjectTerms = getSubjectTermsForRegion(pred.region);
     const expectedTags = buildExpectedRegionTags(regionTerms, pred.region);
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
+    const eventPatterns = resolveMarketAnchorEventPatterns(pred, predictionDeEscalatoryOutcome);
+    if (!eventPatterns) {
+      stats.noClass++;
+      continue;
+    }
+    const requireTitleOverlap = MARKET_ANCHOR_EVENT_CLASSES[pred.domain].requireTitleOverlap === true;
     const candidates = marketUniverse
       .map(m => {
         const mRegions = tagRegions(m.title);
@@ -2688,16 +2750,19 @@ function calibrateWithMarkets(predictions, markets) {
           stats.region++;
           return false;
         }
-        const hasSpecificRegionSignal = item.regionHits > 0 || item.tagOverlap;
-        const hasSemanticOverlap = item.titleHits > 0 || item.domainHits > 0;
-        if (pred.domain === 'market') {
-          const keep = hasSpecificRegionSignal && item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
-          if (!keep) stats.semantic++;
-          return keep;
+        // A shared macro tag or an entity-graph neighbour is not the same subject:
+        // "Escalation risk: Syria" must not anchor to a US-invades-Iran market.
+        const hasSpecificRegionSignal = countTermMatches(item.market.title, subjectTerms).hits > 0;
+        const hasTitleOverlap = item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
+        if (!hasSpecificRegionSignal || (requireTitleOverlap && !hasTitleOverlap)) {
+          stats.semantic++;
+          return false;
         }
-        const keep = hasSpecificRegionSignal && (hasSemanticOverlap || item.score >= 6);
-        if (!keep) stats.semantic++;
-        return keep;
+        if (!textMatchesAnyPattern(item.market.title, eventPatterns)) {
+          stats.eventClass++;
+          return false;
+        }
+        return true;
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -2720,14 +2785,16 @@ function calibrateWithMarkets(predictions, markets) {
         marketPrice: +marketProb.toFixed(3),
         drift: +(originalProbability - marketProb).toFixed(3),
         source: match.source || 'polymarket',
+        internalProbability: originalProbability,
+        marketBlendedProbability: cappedProbability,
       };
       pred.probability = cappedProbability;
       stats.applied++;
     }
   }
-  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.capNoop;
-  if (stats.applied > 0 || dropped > 0) {
-    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} cap_noop=${stats.capNoop}`);
+  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.eventClass + stats.capNoop;
+  if (stats.applied > 0 || dropped > 0 || stats.noClass > 0) {
+    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} event_class=${stats.eventClass} cap_noop=${stats.capNoop} no_class_forecasts=${stats.noClass}`);
   }
 }
 
@@ -2766,10 +2833,11 @@ function loadCountryCodes() {
 
 const NEWS_MATCHABLE_TYPES = new Set(['country', 'theater']);
 
-function getSearchTermsForRegion(region) {
+// The region's own names and country keywords, without the entity-graph
+// neighbours getSearchTermsForRegion adds (Syria -> Iran, Israel -> United States).
+function getSubjectTermsForRegion(region) {
   const terms = [region];
   const codes = loadCountryCodes();
-  const graph = loadEntityGraph();
 
   // 1. Country codes JSON: resolve ISO codes to names + keywords
   const countryEntry = codes[region];
@@ -2802,6 +2870,13 @@ function getSearchTermsForRegion(region) {
       terms.push(...matched.keywords);
     }
   }
+
+  return [...new Set(terms)].filter(t => t && t.length > 2);
+}
+
+function getSearchTermsForRegion(region) {
+  const terms = getSubjectTermsForRegion(region);
+  const graph = loadEntityGraph();
 
   // 3. Entity graph: add linked country/theater names (not commodities)
   const nodeId = graph.aliases?.[region];
@@ -4845,6 +4920,13 @@ function buildPriorForecastSnapshot(pred) {
   };
 }
 
+function buildCalibrationLineage(calibration) {
+  return {
+    ...(Number.isFinite(calibration.internalProbability) && { internalProbability: calibration.internalProbability }),
+    ...(Number.isFinite(calibration.marketBlendedProbability) && { marketBlendedProbability: calibration.marketBlendedProbability }),
+  };
+}
+
 function buildHistoryForecastEntry(pred) {
   return {
     id: pred.id,
@@ -4869,6 +4951,7 @@ function buildHistoryForecastEntry(pred) {
           marketPrice: pred.calibration.marketPrice,
           drift: pred.calibration.drift,
           source: pred.calibration.source,
+          ...buildCalibrationLineage(pred.calibration),
         }
       : null,
     cascades: (pred.cascades || []).slice(0, 3).map(cascade => ({
@@ -5472,6 +5555,7 @@ function buildPublishedForecastPayload(pred) {
       marketPrice: Number(pred.calibration.marketPrice || 0),
       drift: Number(pred.calibration.drift || 0),
       source: pred.calibration.source || '',
+      ...buildCalibrationLineage(pred.calibration),
     } : null,
     createdAt: Number(pred.createdAt || 0),
     updatedAt: Number(pred.updatedAt || 0),

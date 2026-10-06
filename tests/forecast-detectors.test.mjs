@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   forecastId,
@@ -39,6 +40,7 @@ import {
   buildForecastCase,
   buildForecastCases,
   buildPriorForecastSnapshot,
+  buildHistoryForecastEntry,
   buildPublishedForecastPayload,
   buildPublishedSeedPayload,
   buildChangeItems,
@@ -88,6 +90,7 @@ import {
 import { OPENROUTER_PROVIDER_ROUTING } from '../scripts/_llm-model-timeouts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 import { assessFunnelDiversity } from '../scripts/_forecast-funnel.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
 
 const originalForecastEnv = {
   FORECAST_LLM_PROVIDER_ORDER: process.env.FORECAST_LLM_PROVIDER_ORDER,
@@ -233,10 +236,9 @@ describe('resolveCascades', () => {
 describe('calibrateWithMarkets', () => {
   it('matching market adjusts probability with 40/60 blend', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation',
+      'conflict', 'Iran', 'Escalation',
       0.7, 0.6, '7d', [],
     );
-    pred.region = 'Middle East';
     const markets = {
       geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
     };
@@ -263,11 +265,11 @@ describe('calibrateWithMarkets', () => {
 
   it('drift calculated correctly', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation',
+      'conflict', 'Iran', 'Escalation',
       0.7, 0.6, '7d', [],
     );
     const markets = {
-      geopolitical: [{ title: 'Iran MENA conflict?', yesPrice: 40, volume: 50000 }],
+      geopolitical: [{ title: 'Will Israel strike Iran in MENA?', yesPrice: 40, volume: 50000 }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration.drift, +(0.7 - 0.4).toFixed(3));
@@ -305,14 +307,14 @@ describe('calibrateWithMarkets', () => {
   // fixture, so without these the regression ships green.
   it('calibrates from an anchor that lives in the finance pool, not geopolitical', () => {
     const pred = makePrediction(
-      'economic', 'United States', 'US recession',
+      'market', 'United States', 'US recession',
       0.7, 0.6, '7d', [],
     );
     pred.region = 'United States';
     calibrateWithMarkets([pred], {
       geopolitical: [],
       tech: [],
-      finance: [{ title: 'US recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      finance: [{ title: 'United States recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
     });
     assert.ok(pred.calibration !== null, 'a finance-pool market must still calibrate');
     assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3));
@@ -320,13 +322,13 @@ describe('calibrateWithMarkets', () => {
 
   it('calibrates from an anchor that lives in the tech pool', () => {
     const pred = makePrediction(
-      'economic', 'United States', 'US AI market correction',
+      'market', 'United States', 'US AI market correction',
       0.7, 0.6, '7d', [],
     );
     pred.region = 'United States';
     calibrateWithMarkets([pred], {
       geopolitical: [],
-      tech: [{ title: 'US AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      tech: [{ title: 'United States AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
       finance: [],
     });
     assert.ok(pred.calibration !== null, 'a tech-pool market must still calibrate');
@@ -371,7 +373,7 @@ describe('calibrateWithMarkets', () => {
       0.45, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Sudan destabilize further amid conflict?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Sudan destabilize further amid renewed war?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.45).toFixed(3));
@@ -409,7 +411,7 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate from a low-liquidity market', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.5, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
@@ -421,7 +423,7 @@ describe('calibrateWithMarkets', () => {
 
   it('re-applies the domain cap after market calibration', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.85, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
@@ -433,7 +435,7 @@ describe('calibrateWithMarkets', () => {
 
   it('does not record calibration metadata when a cap makes the blend a no-op', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.9, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
@@ -475,7 +477,7 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate from unrelated same-region macro market', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Israel', 'Escalation risk: Israel',
       0.7, 0.6, '7d', [],
     );
     const markets = {
@@ -488,7 +490,7 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate commodity forecasts from loosely related regional conflict markets', () => {
     const pred = makePrediction(
-      'market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption',
+      'market', 'Lebanon', 'Oil price impact from Lebanon disruption',
       0.668, 0.58, '30d', [],
     );
     const markets = {
@@ -497,6 +499,152 @@ describe('calibrateWithMarkets', () => {
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.668);
+  });
+});
+
+describe('market anchor event-class equivalence (#7071)', () => {
+  const anchorFor = (domain, region, title, marketTitle, { probability = 0.35, signals = [], yesPrice = 15 } = {}) => {
+    const pred = makePrediction(domain, region, title, probability, 0.5, '7d', signals);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: marketTitle, yesPrice, source: 'polymarket', volume: 100000 }],
+    });
+    return pred;
+  };
+
+  for (const [domain, region, title, marketTitle] of [
+    ['cyber', 'United States', 'Cyber threat concentration: United States', 'Will Nick Fuentes become President of the United States before 2045?'],
+    ['cyber', 'China', 'Cyber threat concentration: China', 'Will China invade Taiwan by December 31, 2027?'],
+    ['cyber', 'Russia', 'Cyber threat concentration: Russia', 'Will Ukraine agree to cede territory to Russia before 2027?'],
+    ['conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Ukraine agree to cede territory to Russia before 2027?'],
+    ['military', 'Israel/Gaza', 'Military posture escalation: Israel/Gaza', 'Will Benjamin Netanyahu be the next Prime Minister of Israel?'],
+  ]) {
+    it(`does not anchor "${title}" to "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle);
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  it('does not anchor a leadership-identity market to a political instability forecast', () => {
+    const pred = anchorFor('political', 'United States', 'Political instability: United States', 'Will Nick Fuentes become President of the United States before 2045?');
+    assert.equal(pred.calibration, null);
+  });
+
+  it('gives forecast families with no registry entry no anchor', () => {
+    const gps = anchorFor('supply_chain', 'Middle East', 'GPS interference in Middle East shipping zone', 'Will Iran close the Strait of Hormuz in 2026?');
+    assert.equal(gps.calibration, null);
+    const unknownDomain = anchorFor('economic', 'United States', 'US recession', 'US recession by end of 2026?');
+    assert.equal(unknownDomain.calibration, null);
+  });
+
+  it('anchors "Escalation risk: Ukraine" to a Russia offensive market', () => {
+    const marketTitle = 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?';
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', marketTitle, { yesPrice: 40 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+    assert.equal(pred.probability, +(0.4 * 0.4 + 0.6 * 0.35).toFixed(3));
+  });
+
+  it('anchors a cyber forecast to a same-country cyberattack market', () => {
+    const marketTitle = 'Will Russia carry out a major cyberattack on a NATO member in 2026?';
+    const pred = anchorFor('cyber', 'Russia', 'Cyber threat concentration: Russia', marketTitle, { yesPrice: 30 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('anchors a political instability forecast to a resignation market', () => {
+    const marketTitle = 'Will Benjamin Netanyahu resign as Prime Minister of Israel in 2026?';
+    const pred = anchorFor('political', 'Israel', 'Political instability: Israel', marketTitle, { yesPrice: 20 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('anchors a chokepoint disruption forecast to a strait closure market', () => {
+    const marketTitle = 'Will Iran close the Strait of Hormuz in 2026?';
+    const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', marketTitle, { yesPrice: 20 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('does not anchor a disruption forecast to a return-to-normal market', () => {
+    const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', 'Strait of Hormuz traffic returns to normal by December 31?', { yesPrice: 20 });
+    assert.equal(pred.calibration, null);
+  });
+
+  it('does not anchor through an entity-graph neighbour or a shared macro-region tag', () => {
+    const neighbour = anchorFor('conflict', 'Syria', 'Escalation risk: Syria', 'Will the U.S. invade Iran before 2027?', { yesPrice: 20 });
+    assert.equal(neighbour.calibration, null);
+    const macroTag = anchorFor('military', 'Korean Peninsula', 'Military posture escalation: Korean Peninsula', 'US strike on Cuba by December 31?', { yesPrice: 20 });
+    assert.equal(macroTag.calibration, null);
+  });
+
+  it('does not treat a trade war as an armed escalation market', () => {
+    const pred = anchorFor('conflict', 'China', 'Escalation risk: China', 'Will the US-China trade war escalate in 2026?', { yesPrice: 40 });
+    assert.equal(pred.calibration, null);
+  });
+
+  it('does not anchor political instability to a ceasefire collapse market', () => {
+    const pred = anchorFor('political', 'Iran', 'Political instability: Iran', 'Will the Israel-Iran ceasefire collapse by December 31?', { yesPrice: 30 });
+    assert.equal(pred.calibration, null);
+  });
+
+  const ceasefireSignals = [{ type: 'ceasefire', value: 'ceasefire talks progressing', weight: 0.4 }];
+
+  it('anchors a de-escalation forecast to a ceasefire market', () => {
+    const marketTitle = 'Will Sudan agree to a ceasefire by September 30?';
+    const pred = anchorFor('conflict', 'Sudan', 'Ceasefire holds in Sudan', marketTitle, { probability: 0.4, yesPrice: 60, signals: ceasefireSignals });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('does not anchor a de-escalation forecast to a same-direction market on another event', () => {
+    const pred = anchorFor('conflict', 'Sudan', 'Ceasefire holds in Sudan', 'Will Sudan hold a peaceful presidential election in 2026?', { probability: 0.4, yesPrice: 60, signals: ceasefireSignals });
+    assert.equal(pred.calibration, null);
+  });
+
+  it('records pre-blend and post-blend lineage beside the unchanged drift', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    assert.equal(pred.calibration.internalProbability, 0.35);
+    assert.equal(pred.calibration.marketBlendedProbability, pred.probability);
+    assert.equal(pred.calibration.drift, +(0.35 - 0.4).toFixed(3));
+  });
+
+  it('records the post-cap value as marketBlendedProbability', () => {
+    const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will Israel strike Iran by June 30?', { probability: 0.85, yesPrice: 99 });
+    assert.equal(pred.probability, 0.9);
+    assert.equal(pred.calibration.internalProbability, 0.85);
+    assert.equal(pred.calibration.marketBlendedProbability, 0.9);
+  });
+
+  it('carries lineage into the history entry and the published payload', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    for (const projected of [buildHistoryForecastEntry(pred).calibration, buildPublishedForecastPayload(pred).calibration]) {
+      assert.equal(projected.internalProbability, 0.35);
+      assert.equal(projected.marketBlendedProbability, pred.probability);
+      assert.equal(projected.drift, pred.calibration.drift);
+    }
+  });
+
+  it('carries lineage from the history snapshot into the resolution ledger entry', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    const generatedAt = Date.UTC(2026, 9, 6);
+    const deadline = generatedAt + 7 * 24 * 60 * 60 * 1000;
+    pred.resolution = { kind: 'judged', deadline, question: 'Does Ukraine see a major escalation within 7 days?' };
+    const ledger = ingestHistory({}, [{ generatedAt, predictions: [buildHistoryForecastEntry(pred)] }], generatedAt);
+    const entry = ledger[`${pred.id}@${deadline}`];
+    assert.equal(entry.calibration.internalProbability, 0.35);
+    assert.equal(entry.calibration.marketBlendedProbability, pred.probability);
+    assert.equal(entry.calibration.drift, pred.calibration.drift);
+  });
+
+  it('matches the reviewed anchor set on the frozen production replay', () => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/forecast-market-anchor-replay.json', import.meta.url), 'utf8'));
+    const anchors = {};
+    for (const f of fixture.forecasts) {
+      const pred = makePrediction(f.domain, f.region, f.title, f.internalProbability, 0.5, f.timeHorizon, f.signals);
+      calibrateWithMarkets([pred], fixture.markets);
+      if (pred.calibration) anchors[`${f.domain}|${f.region}|${f.title}`] = pred.calibration.marketTitle;
+    }
+    assert.deepEqual(anchors, {
+      'conflict|Colombia|Active armed conflict: Colombia': 'US strike on Colombia by December 31?',
+      'conflict|China|Escalation risk: China': 'Will China invade Taiwan by December 31, 2027?',
+      'conflict|Iran|Escalation risk: Iran': 'Will the U.S. invade Iran before 2027?',
+    });
   });
 });
 
