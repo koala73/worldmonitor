@@ -370,6 +370,23 @@ describe('map lifecycle', () => {
     assert.equal(declareCalibrationMapRecords(run.map), 0, 'a null map is skipped and the last map preserved');
   });
 
+  it('treats an Upstash error body as a failed read, not an absent map', async () => {
+    const saved = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN, fetch: globalThis.fetch };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'ERR max requests limit exceeded' }), { status: 200 });
+    try {
+      const run = await resolveCalibrationMap(ledger, fitAt);
+      assert.deepEqual(run, { map: null, action: 'read_failed' });
+    } finally {
+      globalThis.fetch = saved.fetch;
+      for (const [key, value] of [['UPSTASH_REDIS_REST_URL', saved.url], ['UPSTASH_REDIS_REST_TOKEN', saved.token]]) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('unwraps the seed envelope of a persisted map', async () => {
     const existing = fitCalibrationMap(ledger, fitAt);
     const run = await resolveCalibrationMap(ledger, fitAt + DAY_MS, async (key) => {

@@ -1617,6 +1617,9 @@ async function readRedisJson(key) {
   });
   if (!resp.ok) throw new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
   const payload = await resp.json();
+  // Upstash reports command errors with HTTP 200 and no result; reading that
+  // as an absent key would refit the frozen calibration map or start a new ledger.
+  if (payload.error) throw new Error(`Redis GET ${key} failed: ${payload.error}`);
   if (payload.result == null) return null;
   return JSON.parse(payload.result);
 }
