@@ -117,6 +117,27 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.skill.yesCount, 1);
   });
 
+  it('holds entries with no recorded origin out of the headline but keeps them in overall and byGenerationOrigin', () => {
+    // Rows written before origin tagging carry no origin, or the resolver's
+    // literal 'unknown'. They cannot be attributed to a generator (#5240).
+    const absent = resolved({ probability: 0.9, outcome: 'NO' });
+    delete absent.generationOrigin;
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.8, outcome: 'YES', generationOrigin: 'legacy_detector' }),
+      b: absent,
+      c: resolved({ probability: 0.1, outcome: 'YES', generationOrigin: 'unknown' }),
+    }, NOW);
+
+    assert.equal(scorecard.overall.count, 3);
+    assert.equal(scorecard.skill.count, 1);
+    assert.equal(scorecard.skill.yesCount, 1);
+    assert.equal(scorecard.skill.excludedScored, 2);
+    assert.deepEqual(scorecard.skill.excludedOrigins, ['unknown']);
+    assert.equal(scorecard.skill.brier, 0.04);
+    const unknownRow = scorecard.byGenerationOrigin.find((row) => row.generationOrigin === 'unknown');
+    assert.equal(unknownRow.scored, 2);
+  });
+
   it('reports skill.yesCount as 0, not absent, when nothing real in the cohort came true', () => {
     const scorecard = computeScorecard({
       a: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),

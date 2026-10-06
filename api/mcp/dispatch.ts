@@ -228,6 +228,7 @@ async function executeCacheTool(
 
   let data: Record<string, unknown> = {};
   labels.forEach((label, i) => { data[label] = results[i]; });
+  if (tool._project) data = tool._project(data);
 
   let chokepointPolicy: ReturnType<typeof chokepointSourcePolicy> | undefined;
   if (panel === 'chokepoints') {

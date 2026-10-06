@@ -585,6 +585,60 @@ describe('deadline is always present', () => {
   });
 });
 
+describe('state-derived hard specs (#5234)', () => {
+  const CHOKEPOINT_INPUTS = {
+    chokepoints: {
+      chokepoints: [
+        { name: 'Kerch Strait', region: 'Kerch Strait', riskScore: 70 },
+        { name: 'Bosporus Strait', region: 'Bosporus Strait', riskScore: 30 },
+        { name: 'Suez Canal', region: 'Suez Canal', riskScore: 35 },
+      ],
+    },
+  };
+  const stateDerived = (domain, bucketId, region, timeHorizon) => pred({
+    domain,
+    region,
+    timeHorizon,
+    generationOrigin: 'state_derived',
+    title: `${bucketId} from ${region} maritime disruption state`,
+    signals: [{ type: 'market_transmission', value: 'x', weight: 0.24 }],
+    stateDerivation: { bucketId },
+  });
+
+  for (const domain of ['market', 'supply_chain']) {
+    it(`an energy bucket (${domain}) resolves on a 10% WTI move from the emission price`, () => {
+      const spec = buildResolutionSpec(stateDerived(domain, 'energy', 'Black Sea', domain === 'market' ? '30d' : '7d'), COMMODITY_INPUTS, GENERATED_AT);
+      assert.equal(spec.kind, 'hard');
+      assert.equal(spec.metricKey, 'market:commodities-bootstrap:v1|price(symbol==CL=F)');
+      assert.equal(spec.operator, 'crosses');
+      assert.equal(spec.baselineValue, 68.92);
+      assert.equal(spec.threshold, +(68.92 * 1.1).toFixed(2));
+      assert.equal(spec.window, 'within-horizon');
+    });
+  }
+
+  it('a freight bucket resolves on the most disrupted chokepoint of its sea at emission', () => {
+    const spec = buildResolutionSpec(stateDerived('supply_chain', 'freight', 'Black Sea', '7d'), CHOKEPOINT_INPUTS, GENERATED_AT);
+    assert.equal(spec.kind, 'hard');
+    assert.equal(spec.metricKey, 'supply_chain:chokepoints:v4|riskScore(route==Kerch Strait)');
+    assert.equal(spec.operator, '>=');
+    assert.equal(spec.threshold, 60);
+    assert.equal(spec.window, 'at-deadline');
+  });
+
+  it('stays judged when the emission inputs cannot anchor the check', () => {
+    assert.equal(buildResolutionSpec(stateDerived('market', 'energy', 'Black Sea', '30d'), {}, GENERATED_AT).kind, 'judged');
+    assert.equal(buildResolutionSpec(stateDerived('supply_chain', 'freight', 'Western Pacific', '7d'), CHOKEPOINT_INPUTS, GENERATED_AT).kind, 'judged');
+  });
+
+  for (const bucketId of ['sovereign_risk', 'rates_inflation', 'fx_stress']) {
+    it(`${bucketId} stays judged: no regional hard feed exists`, () => {
+      const spec = buildResolutionSpec(stateDerived('market', bucketId, 'Middle East', '30d'), { ...COMMODITY_INPUTS, ...CHOKEPOINT_INPUTS }, GENERATED_AT);
+      assert.equal(spec.kind, 'judged');
+    });
+  }
+});
+
 describe('R4 — sourceFeed membership over every hard fixture', () => {
   const fixtures = [
     pred({ id: 'conflict', domain: 'conflict', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] }),

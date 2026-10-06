@@ -242,6 +242,12 @@ export interface CacheToolDef extends BaseToolDef {
   // the dispatcher reads this list directly with no synthesized fallback.
   _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
   _execute?: never;
+  // Optional argument-free projection of the stored values onto the fields the
+  // tool's `outputSchema` declares, applied to the label-walked `data` map
+  // before `_postFilter` and summary. Use it when the Redis value carries
+  // producer-internal blocks the public contract withholds. A throw fails the
+  // call; there is no fallback to the unprojected value.
+  _project?: (data: Record<string, unknown>) => Record<string, unknown>;
   // Optional in-memory post-filter applied to the label-walked `data` map
   // AFTER the Redis reads + freshness + cache_all_null guard. Pure narrowing:
   // receives the assembled data object plus the tools/call `arguments`, returns

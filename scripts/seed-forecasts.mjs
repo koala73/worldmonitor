@@ -9,7 +9,7 @@ import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
+import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -260,28 +260,6 @@ const CHOKEPOINT_COMMODITIES = {
   'Western Pacific': { commodity: 'Semiconductors', sensitivity: 0.9 },
   'South China Sea': { commodity: 'Trade goods', sensitivity: 0.6 },
   'Black Sea': { commodity: 'Grain/Energy', sensitivity: 0.7 },
-};
-
-const CHOKEPOINT_MARKET_REGIONS = {
-  'Strait of Hormuz': 'Middle East',
-  'Bab el-Mandeb': 'Red Sea',
-  'Red Sea': 'Red Sea',
-  'Suez Canal': 'Red Sea',
-  'Taiwan Strait': 'Western Pacific',
-  'South China Sea': 'Western Pacific',
-  'Strait of Malacca': 'South China Sea',
-  'Kerch Strait': 'Black Sea',
-  'Black Sea': 'Black Sea',
-  'Bosporus Strait': 'Black Sea',
-  'Persian Gulf': 'Middle East',
-  'Arabian Sea': 'Middle East',
-  'Baltic Sea': 'Northern Europe',
-  'Danish Straits': 'Northern Europe',
-  'Strait of Gibraltar': 'Mediterranean',
-  'Mediterranean Sea': 'Mediterranean',
-  'Panama Canal': 'Central America',
-  'Lombok Strait': 'Southeast Asia',
-  'Cape of Good Hope': 'Southern Africa',
 };
 
 const MARKET_INPUT_KEYS = {
@@ -14158,8 +14136,11 @@ function summarizePublishFiltering(predictions, selectedPredictions = [], publis
   };
 }
 
+// Publish selection prefers hard-resolvable forecasts. A state-derived forecast
+// can carry a hard spec (#5234) without that preference applying to it, so the
+// published share of synthetic backfill does not change.
 function isHardResolvableForecast(pred) {
-  return pred?.resolution?.kind === 'hard';
+  return pred?.resolution?.kind === 'hard' && pred.generationOrigin !== 'state_derived';
 }
 
 function isRealForecastForDomainCoverage(pred) {
@@ -14340,7 +14321,7 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
   const defensePenalty = topBucketId === 'defense' && pred.marketSelectionContext?.topChannel !== 'defense_repricing'
     ? 0.018
     : 0;
-  const resolvabilityLift = pred?.resolution?.kind === 'hard' ? RESOLVABLE_HARD_SELECTION_LIFT : 0;
+  const resolvabilityLift = isHardResolvableForecast(pred) ? RESOLVABLE_HARD_SELECTION_LIFT : 0;
   pred.publishSelectionMemory = memoryHint ? {
     matchedBy: memoryHint.matchedBy,
     situationId: memoryHint.memory?.situationId || '',

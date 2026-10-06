@@ -30,6 +30,8 @@ const WHO_NAME_OVERRIDES = {
   'papua new guinea': 'PG',
   'kingdom of saudi arabia': 'SA',
   'united kingdom': 'GB',
+  // The US state, not Mexico: the main US plague and hantavirus focus.
+  'new mexico': 'US',
 };
 
 export function extractCountryCodeFull(text) {

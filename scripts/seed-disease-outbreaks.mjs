@@ -42,8 +42,8 @@ const ECDC_EPI_UPDATES_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/
 // CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
 // just the first topic), so each outbreak-prone disease is its own request:
 // Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
-// dengue, polio, foodborne disease.
-const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66];
+// dengue, polio, foodborne disease, plague.
+const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66, 88];
 // ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts
 // with lat/lng. Default branch is `master` (NOT `main`) — using `main` returns
 // HTTP 404 and silently zeroes out this source, which is the only one that
