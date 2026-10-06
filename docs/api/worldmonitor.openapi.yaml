@@ -44015,7 +44015,7 @@ components:
                 pkgFingerprint:
                     type: string
                     description: |-
-                        Opaque package fingerprint; it changes when the cron rotates the package.
+                        Opaque fingerprint of the package key; it changes when the key changes.
                          Empty when reason='no_package'.
                 reason:
                     type: string

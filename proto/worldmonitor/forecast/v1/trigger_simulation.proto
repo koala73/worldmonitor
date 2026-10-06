@@ -29,7 +29,7 @@ message TriggerSimulationResponse {
   string run_id = 2;
   // The fingerprint is the first 16 hex chars of sha256 over the package's R2 key.
 
-  // Opaque package fingerprint; it changes when the cron rotates the package.
+  // Opaque fingerprint of the package key; it changes when the key changes.
   // Empty when reason='no_package'.
   string pkg_fingerprint = 3;
   // 'already-handled' merges "already queued" and "already completed this
