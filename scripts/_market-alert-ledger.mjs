@@ -82,8 +82,7 @@ function findOpenWindow(ledger, id, nowMs) {
 }
 
 function crossedThreshold(type, symbol, previousMarketChanges) {
-  if (previousMarketChanges === null) return false;
-  if (!Object.hasOwn(previousMarketChanges, symbol)) return true;
+  if (previousMarketChanges === null || !Object.hasOwn(previousMarketChanges, symbol)) return false;
   return !MARKET_SIGNAL_ABOVE_THRESHOLD[type](previousMarketChanges[symbol]);
 }
 
@@ -111,8 +110,9 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
 /**
  * A market signal opens a row only when its symbol crossed the detector's
  * threshold since the previous tick; a move that stays elevated re-emits every
- * tick and would otherwise open a fresh row every six hours. With no baseline
- * (`previousMarketChanges` null) every market signal is held.
+ * tick and would otherwise open a fresh row every six hours. A symbol without
+ * a baseline (`previousMarketChanges` null, or the symbol absent from it) is
+ * held.
  */
 export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, previousMarketChanges }) {
   const ledger = { ...existing };

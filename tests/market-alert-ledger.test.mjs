@@ -53,7 +53,7 @@ function predictionSignal(pred, shift) {
   };
 }
 
-function ingest(ledger, signals, nowMs = NOW, previousMarketChanges = {}) {
+function ingest(ledger, signals, nowMs = NOW, previousMarketChanges = { 'CL=F': 1.0, 'ZW=F': 1.0 }) {
   return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], previousMarketChanges });
 }
 
@@ -146,7 +146,7 @@ describe('ingestSignals', () => {
     assert.deepEqual({ created: crossed.created, held: crossed.held }, { created: 2, held: 0 });
 
     const unseen = ingest({}, crude, NOW, { 'ZW=F': 3.0 });
-    assert.deepEqual({ created: unseen.created, held: unseen.held }, { created: 2, held: 0 });
+    assert.deepEqual({ ledger: unseen.ledger, created: unseen.created, held: unseen.held }, { ledger: {}, created: 0, held: 2 }, 'a symbol absent from the previous snapshot is held');
 
     const betweenThresholds = ingest({}, crude, NOW, { 'CL=F': 1.8 });
     assert.deepEqual(Object.values(betweenThresholds.ledger).map((entry) => entry.type), ['silent_divergence']);
