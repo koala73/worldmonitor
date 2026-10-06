@@ -1772,7 +1772,8 @@
       "scripts/seed-sanctions-pressure.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
-      "scripts/shared/country-names.json"
+      "scripts/shared/country-names.json",
+      "scripts/shared/country-sanctions-signals.mjs"
     ],
     "cronSchedule": "0 */6 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"

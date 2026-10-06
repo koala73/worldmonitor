@@ -6,7 +6,7 @@
 // 120MB XML download against Railway's 512MB container limit.
 import sax from 'sax';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs';
+import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs';
 
 import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
