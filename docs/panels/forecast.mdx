@@ -158,6 +158,28 @@ A judged entry is decided by two independent LLM judges reading a news-evidence 
 
 Rather than retry such an entry until its attempt budget is exhausted, the resolver seals it deterministically as VOID with reason `beyond_archive_horizon`, and warns while entries are still inside the window so the backlog can be drained before they strand. Every judge attempt persists a structured record naming the stage it failed at (`archive`, `judge_a`/`judge_b`, `normalize`, `agreement`, `terminal`) and the failure class, which the scorecard rolls up under `judgedLane` — an internal operator block that is not served on the public scorecard endpoint — alongside first-attempt seal rate, VOID-by-reason and attempts per resolved entry. The SLA metric counts *scored* resolutions within the window rather than resolutions of any kind, so a lane that seals everything as an instant VOID reports a rate of zero rather than a perfect one; the VOIDs it produced are reported beside it. A `beyond_archive_horizon` VOID is cost control, not a resolution-quality result: it is counted as VOID, never as a scored resolution.
 
+### Calibration map (shadow)
+
+Each resolver run also maintains a calibration map in `forecast:calibration-map:v1`. The map is fitted by isotonic regression (pool-adjacent-violators) on individual resolved YES/NO published-origin forecasts from the 180-day window. It excludes `bet_engine` and `state_derived` entries, the same population as the headline skill score. A domain receives a non-identity map only when the fit has at least 60 published-origin outcomes overall and at least 30 in that domain. Every other domain, and any domain the map has not seen, passes probabilities through unchanged. Fitted values are bounded to the range 1% to 99%.
+
+The map records its version, fit time, fit window, cohort filter, per-domain sample and positives, and the probability stage it was fitted on (`marketBlendedProbability`, which is the stored `probability` until the lineage fields exist). The map stays unchanged between runs so that its forward cohort can grow. It is refitted only when its code version changes or the stored map is missing or invalid. A failed read keeps the stored map instead of refitting.
+
+The map is shadow-only. Nothing reads it to change a published, projected, or scored probability. The scorecard carries an internal `calibrationShadow` block for the forward cohort, which is the set of forecasts emitted after the map was fitted. Like `judgedLane`, the public scorecard endpoint does not serve it. For the forward cohort the block reports raw and calibrated Brier, the paired bootstrap 95% interval on their difference, expected calibration error with bootstrap intervals, and reliability buckets with Wilson intervals. Every figure shows its sample size. The evaluator refuses any entry emitted at or before the end of the fit window, so the map is never scored on the outcomes it was fitted on.
+
+#### Activation gate
+
+`calibrationShadow.activationGate` reports `eligible` and lists every reason it is not eligible. The gate is eligible only when all of these conditions hold:
+
+- The forward cohort has at least 60 published-origin outcomes, and at least 30 in every domain with a non-identity map.
+- The upper bound of the paired bootstrap 95% interval on calibrated minus raw Brier is at most 0.005, overall and in every non-identity domain.
+- The map is monotone and has at least one non-identity domain.
+
+Forward coverage (registered, matured, scored, VOID by reason, pending) and the generation-origin mix are reported beside the verdict, so a change in which forecasts resolve cannot read as a skill gain. The bootstrap draws 2,000 entry-level resamples from a fixed seed, so a rerun on the same ledger gives the same intervals. The gate does not activate anything. Making the calibrated value canonical is a separate change.
+
+#### Rollback to identity
+
+Identity is the fallback at every level. An unknown domain, an identity domain, and a missing map all return the input probability unchanged. The map never overwrites the stored `probability`, so a return to identity loses no lineage.
+
 ## Tier & gating
 
 On **web**, AI Forecasts is currently in **trial** — free to anyone, including unauthenticated readers. On **desktop**, the same panel ships with `premium: 'locked'` in `src/config/panels.ts` so it is gated there. This split reflects the product's current trial positioning; expect the web gating to tighten over time.

@@ -21,6 +21,7 @@ import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObser
 import { finiteObservations } from './_bet-templates-macro.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
+import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
@@ -49,6 +50,12 @@ export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Shadow-only calibration map (#7070). Rewritten unchanged every run, so the
+// TTL only matters if the resolver stops for this long; an expired map refits
+// and restarts the forward cohort.
+export const CALIBRATION_MAP_KEY = 'forecast:calibration-map:v1';
+export const CALIBRATION_MAP_META_KEY = 'seed-meta:forecast:calibration-map';
+export const CALIBRATION_MAP_TTL_SECONDS = 90 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
@@ -145,6 +152,33 @@ export function declareScorecardRecords(scorecard) {
   return Number.isInteger(scorecard?.totals?.entries) ? scorecard.totals.entries : 0;
 }
 
+export function declareCalibrationMapRecords(map) {
+  return map?.domains ? Object.keys(map.domains).length : 0;
+}
+
+export function buildScorecard(ledger, nowMs, calibrationMap = null) {
+  return {
+    ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() }),
+    calibrationShadow: evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
+  };
+}
+
+/**
+ * Read the persisted map and keep or fit it. A failed read returns no map
+ * rather than refitting: a refit after a transient Redis error would move
+ * fittedAt and silently restart the forward cohort.
+ */
+export async function resolveCalibrationMap(ledger, nowMs, readJson = readRedisJson) {
+  let existing;
+  try {
+    existing = unwrapEnvelope(await readJson(CALIBRATION_MAP_KEY)).data;
+  } catch (err) {
+    console.warn(`  [forecast-resolutions] calibration map read failed; keeping the persisted map: ${err?.message || err}`);
+    return { map: null, action: 'read_failed' };
+  }
+  return resolveCalibrationMapForRun(existing, ledger, nowMs);
+}
+
 // Gate-2 promotion flag (#5525 U14): default OFF — setting
 // FORECAST_PROMOTE_BET_ENGINE=1 on the resolutions service is the deliberate
 // promotion act that lifts bet_engine into the scorecard's skill headline.
@@ -153,7 +187,7 @@ function promoteBetEngineEnabled() {
   return process.env.FORECAST_PROMOTE_BET_ENGINE === '1';
 }
 
-export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs) {
+export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
@@ -162,7 +196,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
   // resolveDueEntries so entries resolved this cycle (resolvedAt === nowMs, not
   // yet archived) are always retained and still emit a receipt above.
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
+  const scorecard = buildScorecard(ledger, nowMs, options.calibrationMap ?? null);
   return { ledger, receipts, scorecard };
 }
 
@@ -172,7 +206,7 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
+  const scorecard = buildScorecard(ledger, nowMs, options.calibrationMap ?? null);
   return { ledger, receipts, scorecard };
 }
 
@@ -2133,7 +2167,7 @@ function buildLiveJudgedOptions(nowMs = Date.now()) {
   };
 }
 
-async function buildLedgerForRun() {
+async function buildLedgerForRun(calibrationRun) {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY),
@@ -2162,6 +2196,9 @@ async function buildLedgerForRun() {
   console.log(`  Terminal receipts queued for R2: ${receiptsForArchive.length}`);
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
+  const calibration = await resolveCalibrationMap(result.ledger, nowMs);
+  calibrationRun.map = calibration.map;
+  console.log(`  Calibration map: ${calibration.action}${calibration.reason ? ` (${calibration.reason})` : ''}${calibration.map ? ` ${calibration.map.version}` : ''}`);
   return result.ledger;
 }
 
@@ -2204,9 +2241,11 @@ async function dryRun() {
     async () => null,
     async () => null,
   ];
+  const calibration = await resolveCalibrationMap(preLedger, nowMs);
   const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, {
     ...judgedOptions,
     judgeModels: dryRunJudgeModels,
+    calibrationMap: calibration.map,
   });
   const entries = Object.values(result.ledger);
   const summary = {
@@ -2222,6 +2261,8 @@ async function dryRun() {
     judgedLane: result.scorecard.judgedLane,
     judgedAttemptClasses: summarizeJudgedAttemptClasses(result.ledger),
     archiveHorizonAlerts: collectJudgedArchiveHorizonAlerts(result.ledger, nowMs, judgedOptions),
+    calibrationMap: { action: calibration.action, reason: calibration.reason, map: calibration.map },
+    calibrationShadow: result.scorecard.calibrationShadow,
   };
   console.log(JSON.stringify(summary, null, 2));
 }
@@ -2256,7 +2297,8 @@ export async function appendR2Receipts(receipts, options = {}) {
 if (DIRECT_RUN && process.argv.includes('--dry-run')) {
   await dryRun();
 } else if (DIRECT_RUN) {
-  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, buildLedgerForRun, {
+  const calibrationRun = { map: null };
+  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(calibrationRun), {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
     declareRecords,
@@ -2269,10 +2311,19 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => computeScorecard(ledger, Date.now(), { promoteBetEngine: promoteBetEngineEnabled() }),
+      transform: (ledger) => buildScorecard(ledger, Date.now(), calibrationRun.map),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,
+    }, {
+      key: CALIBRATION_MAP_KEY,
+      ttl: CALIBRATION_MAP_TTL_SECONDS,
+      transform: () => calibrationRun.map,
+      declareRecords: declareCalibrationMapRecords,
+      metaKey: CALIBRATION_MAP_META_KEY,
+      // No map this run (read failure, or an empty fit) preserves the last one.
+      skipWhenEmpty: true,
+      allowMissingOnSkip: true,
     }],
   });
 }
