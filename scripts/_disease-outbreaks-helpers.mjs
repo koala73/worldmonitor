@@ -148,6 +148,11 @@ export function whoNormalizeItem(item, nowMs = Date.now()) {
   };
 }
 
+// CIDRAP and UN Geneva escape their HTML body twice, so `&amp;nbsp;` survives
+// the single decode as `&nbsp;`. Only entities with no markup meaning get the
+// second decode; `&lt;`, `&quot;` and numeric references stay as text.
+const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdquo);/gi;
+
 /**
  * Clean one RSS <description> body: decode entities, strip tags, trim,
  * truncate to 300 chars. Order matters — decode before tag-strip so escaped
@@ -160,11 +165,6 @@ export function cleanRssDescription(rawDesc) {
     .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
     .replace(/\s+/g, ' ').trim().slice(0, 300);
 }
-
-// CIDRAP and UN Geneva escape their HTML body twice, so `&amp;nbsp;` survives
-// the single decode as `&nbsp;`. Only entities with no markup meaning get the
-// second decode; `&lt;`, `&quot;` and numeric references stay as text.
-const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdquo);/gi;
 
 /**
  * Normalize one RSS item (CDC HAN, ECDC, CIDRAP).
@@ -243,7 +243,7 @@ function headlineCountryCode(text) {
 // The CDC newsroom feed also carries obituaries, conference notes and
 // surveillance reports, and returns its whole archive back to 2017; a CDC item
 // must name a known disease (its location defaults to the US). WHO DON posts
-// are rare and stay current for months, so WHO keeps no window.
+// are rare and stay current for months, so WHO DON keeps no window.
 // Every CIDRAP feed returns its last 20 items however old; match the
 // ThinkGlobalHealth window so a quiet topic cannot resurface year-old stories.
 export const HEADLINE_LOOKBACK_DAYS = 90;
@@ -273,6 +273,9 @@ const placeRes = new Map();
 
 export function namedPlace(countryCode, text) {
   for (const [name, lat, lng] of outbreakPlaces[countryCode] ?? []) {
+    // Matching is case-sensitive, so a substring miss rules the name out
+    // without compiling its word-boundary regex.
+    if (!text.includes(name)) continue;
     let re = placeRes.get(name);
     if (!re) {
       re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
@@ -285,8 +288,9 @@ export function namedPlace(countryCode, text) {
 
 export function mapItem(item) {
   const headline = HEADLINE_SOURCES.has(item.sourceName);
-  const headlineCountry = headline ? headlineCountryCode(`${item.title} ${item.desc}`) : '';
-  const place = headlineCountry ? namedPlace(headlineCountry, `${item.title} ${item.desc}`) : null;
+  const text = `${item.title} ${item.desc}`;
+  const headlineCountry = headline ? headlineCountryCode(text) : '';
+  const place = headlineCountry ? namedPlace(headlineCountry, text) : null;
   const location = item._location
     || (headline
       ? (place?.name ?? (headlineCountry ? REGION_NAMES.of(headlineCountry) : ''))
