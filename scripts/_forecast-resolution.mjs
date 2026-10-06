@@ -47,6 +47,31 @@ export const CONFLICT_COUNT_SOURCE_FEED = 'conflict:acled-resolution:v1:all:0:0'
 export const UNREST_COUNT_SOURCE_FEED = 'unrest:events-resolution:v1';
 export const CYBER_COUNT_SOURCE_FEED = 'cyber:threats-bootstrap:v2';
 
+// ── Projection horizon contracts (#7075) ─────────────────────────────────
+//
+// Projection key (the `projections` block of a forecast) -> the HORIZON_MS
+// horizon it claims. A forecast's three projections each get their own
+// resolution contract at emission; the resolver registers one ledger window
+// per contract, keyed `<parentKey>@<horizon>`.
+export const PROJECTION_HORIZONS = Object.freeze({ h24: '24h', d7: '7d', d30: '30d' });
+
+// One resolver cycle: seed-forecast-resolutions runs cron `0 6 * * *`, so a
+// point-in-time read lands at most one cycle from its horizon deadline. The
+// value is frozen into each contract so a later change never re-scores rows
+// registered under the old tolerance.
+export const HORIZON_SAMPLE_TOLERANCE_MS = DAY_MS;
+
+// v1 scores point-in-time contracts only. The within-horizon families cannot
+// be scored per horizon here: the market curve is monotone-decreasing across
+// horizons, which violates the cumulative probability law for a crosses-by-
+// deadline event, and the count families scale their threshold with the
+// horizon, so their horizons are not nested events. A settlement deadline
+// (at-endDate) is the market's truth time, not a horizon.
+const HORIZON_UNSCORED_REASON_BY_WINDOW = {
+  'within-horizon': 'cumulative_unsupported',
+  'at-endDate': 'settlement_deadline',
+};
+
 // Never returns null and never silently coerces an unrecognized horizon to a
 // nearby one — a silent '7d' fallback would score a 14d forecast a full week
 // early and corrupt the track record this bet exists to make trustworthy.
@@ -737,8 +762,46 @@ function hardFamilyFor(pred) {
 export function attachResolutionSpecs(predictions, inputs, generatedAt, options = {}) {
   for (const pred of predictions) {
     pred.resolution = buildResolutionSpec(pred, inputs, generatedAt, options);
+    pred.horizonResolutions = buildHorizonResolutionSpecs(pred, inputs, generatedAt, options);
   }
   return predictions;
+}
+
+// One contract per projection horizon, built by the same dispatch as the
+// parent spec with the horizon swapped in. Deterministic like
+// buildResolutionSpec. A horizon that cannot carry a complete point-in-time
+// contract is `unscored` with the reason, never a judged question.
+export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
+  const specs = {};
+  for (const [horizon, timeHorizon] of Object.entries(PROJECTION_HORIZONS)) {
+    const spec = buildResolutionSpec({ ...pred, timeHorizon }, inputs, generatedAt, options);
+    const reason = horizonUnscoredReason(spec);
+    if (reason) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason };
+      continue;
+    }
+    specs[horizon] = {
+      horizon,
+      timeHorizon,
+      kind: 'hard',
+      semantics: 'point_in_time',
+      metricKey: spec.metricKey,
+      operator: spec.operator,
+      threshold: spec.threshold,
+      ...(Number.isFinite(spec.baselineValue) && { baselineValue: spec.baselineValue }),
+      window: spec.window,
+      sourceFeed: spec.sourceFeed,
+      deadline: spec.deadline,
+      sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
+    };
+  }
+  return specs;
+}
+
+function horizonUnscoredReason(spec) {
+  if (spec.kind !== 'hard') return 'no_hard_contract';
+  if (spec.window === 'at-deadline') return null;
+  return HORIZON_UNSCORED_REASON_BY_WINDOW[spec.window] || 'unsupported_window';
 }
 
 // ── Emission-time extraction gate, shadow phase (#7067) ─────────────────

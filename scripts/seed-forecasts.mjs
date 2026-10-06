@@ -4974,6 +4974,9 @@ function buildHistoryForecastEntry(pred) {
     // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
     // payload emits, so Bet 2's resolver can score forecasts still in-window.
     resolution: buildResolutionOutputBlock(pred.resolution),
+    // Per-horizon projection contracts (#7075). History only: the resolver
+    // registers one window per hard contract; the public payload is unchanged.
+    horizonResolutions: buildHorizonResolutionsOutputBlock(pred.horizonResolutions),
   };
 }
 
@@ -5524,6 +5527,25 @@ function buildResolutionOutputBlock(resolution) {
     ...(str(resolution.sourceFeed) !== undefined && { sourceFeed: str(resolution.sourceFeed) }),
     ...(str(resolution.question) !== undefined && { question: str(resolution.question) }),
   };
+}
+
+function buildHorizonResolutionsOutputBlock(horizonResolutions) {
+  if (!horizonResolutions || typeof horizonResolutions !== 'object') return null;
+  const num = (v) => (Number.isFinite(v) ? Number(v) : undefined);
+  const str = (v) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  const block = {};
+  for (const [horizon, spec] of Object.entries(horizonResolutions)) {
+    if (!spec || typeof spec !== 'object') continue;
+    block[horizon] = Object.fromEntries(Object.entries({
+      ...buildResolutionOutputBlock(spec),
+      horizon: str(spec.horizon),
+      timeHorizon: str(spec.timeHorizon),
+      semantics: str(spec.semantics),
+      sampleToleranceMs: num(spec.sampleToleranceMs),
+      reason: str(spec.reason),
+    }).filter(([, value]) => value !== undefined));
+  }
+  return block;
 }
 
 function buildPublishedForecastPayload(pred) {
