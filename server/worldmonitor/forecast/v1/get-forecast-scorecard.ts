@@ -34,6 +34,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     byGenerationOrigin: [],
     calibration: [],
     publishedByDomain: [],
+    receipts: [],
     degraded: false,
     stale: false,
     error: '',
