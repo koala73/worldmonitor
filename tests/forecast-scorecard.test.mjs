@@ -616,6 +616,11 @@ describe('public forecast receipts (#5092)', () => {
     assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - 2]);
   });
 
+  it('publishes the probability the scorer used, clamped to [0, 1]', () => {
+    const receipts = build([hardEntry({ probability: -0.2, resolvedAt: NOW - 1 }), hardEntry({ probability: 1.4, resolvedAt: NOW - 2 })]);
+    assert.deepEqual(receipts.map((receipt) => receipt.probability), [0, 1]);
+  });
+
   it('keeps shadow bet-engine entries out even when the headline promotes them', () => {
     assert.equal(build([hardEntry({ generationOrigin: 'bet_engine' })], { promoteBetEngine: true }).length, 0);
     for (const origin of DEFAULT_SKILL_EXCLUDED_ORIGINS) {

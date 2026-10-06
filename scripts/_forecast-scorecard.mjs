@@ -919,7 +919,7 @@ function publicReceipt(entry) {
   const receipt = {
     question,
     forecastAt,
-    probability: Math.round(probability * 1000) / 1000,
+    probability: Math.round(clampProbability(probability) * 1000) / 1000,
     outcome: entry.outcome,
     resolvedAt,
   };

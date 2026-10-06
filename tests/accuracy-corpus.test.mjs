@@ -942,15 +942,25 @@ describe('accuracy page forecast receipts (#5092)', () => {
     assert.match(stripTags(html), /No forecast has resolved in this window yet/);
   });
 
-  it('says the receipts are not carried rather than implying none resolved for an older capture', () => {
-    // The API defaults the repeated field to [], so an empty list beside
-    // resolved forecasts is a seed that predates receipts, not an empty record.
-    for (const section of [LIVE_SECTION, sectionWith({ receipts: [] })]) {
-      const { html } = renderState(section);
-      assert.equal(receiptsOf(html), null);
-      assert.match(stripTags(html), /This capture does not carry per-forecast receipts\./);
-      assert.doesNotMatch(stripTags(html), /No forecast has resolved|refresh adds/);
-    }
+  it('says the receipts are not carried when the field is absent', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.equal(receiptsOf(html), null);
+    assert.match(stripTags(html), /This capture does not carry per-forecast receipts\./);
+    assert.doesNotMatch(stripTags(html), /No forecast has resolved|refresh adds/);
+  });
+
+  it('names both causes of an empty list beside resolved forecasts instead of guessing one', () => {
+    // The API defaults the field to [], so an old seed and a window where only
+    // excluded origins resolved look the same.
+    const text = stripTags(renderState(sectionWith({ receipts: [] })).html);
+    assert.match(text, /This capture carries no receipts: it predates them, or no published forecast resolved in the window\./);
+    assert.doesNotMatch(text, /does not carry per-forecast receipts/);
+  });
+
+  it('does not tell LLM readers the page publishes aggregates only', () => {
+    const llms = renderAccuracyLlmsSection(WITH_INTERVALS);
+    assert.doesNotMatch(llms, /aggregates only|no individual forecasts/);
+    assert.match(llms, /receipts for the most recently resolved published forecasts/);
   });
 
   it('prints an out-of-range receipt date as not recorded instead of failing the build', () => {

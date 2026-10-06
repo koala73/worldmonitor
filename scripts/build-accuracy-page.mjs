@@ -465,7 +465,7 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)}${intervalPhrase} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section) {
   const state = classifyAccuracyState(section);
@@ -692,11 +692,15 @@ function receiptSourceHtml(receipt, escapeHtml) {
 function receiptsSection(scorecard, escapeHtml) {
   const heading = '      <h2>Recently resolved forecasts</h2>';
   const { receipts } = scorecard;
-  // The API defaults the repeated field to [], so an empty list beside resolved
-  // forecasts is a seed written before receipts existed, not an empty record.
-  if (!Array.isArray(receipts) || (receipts.length === 0 && Number(scorecard.totals?.resolved) > 0)) {
+  if (!Array.isArray(receipts)) {
     return `${heading}
       <p>This capture does not carry per-forecast receipts.</p>`;
+  }
+  // The API defaults the field to [], so an old seed and a window where only
+  // excluded origins resolved look the same; name both rather than guess.
+  if (receipts.length === 0 && Number(scorecard.totals?.resolved) > 0) {
+    return `${heading}
+      <p>This capture carries no receipts: it predates them, or no published forecast resolved in the window.</p>`;
   }
   const rows = receipts.filter((receipt) => (
     isPlainObject(receipt) && Object.hasOwn(RECEIPT_OUTCOME_LABELS, receipt.outcome) && typeof receipt.question === 'string'
