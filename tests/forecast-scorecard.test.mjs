@@ -112,6 +112,19 @@ describe('computeScorecard', () => {
     assert.deepEqual(scorecard.skill.excludedOrigins, ['bet_engine', 'state_derived']);
     // Brier over the two detector entries only: ((0.8-1)^2 + (0.4-0)^2)/2 = 0.1
     assert.equal(scorecard.skill.brier, 0.1);
+    // The cohort's base rate is yesCount / count. The synthetic YES (c) must
+    // not leak in, or the headline would be compared against the wrong null.
+    assert.equal(scorecard.skill.yesCount, 1);
+  });
+
+  it('reports skill.yesCount as 0, not absent, when nothing real in the cohort came true', () => {
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.9, outcome: 'YES', generationOrigin: 'state_derived' }),
+    }, NOW);
+
+    assert.equal(scorecard.skill.count, 1);
+    assert.equal(scorecard.skill.yesCount, 0);
   });
 
   it('always emits skill.excludedOrigins as an array (empty on a healthy scorecard)', () => {

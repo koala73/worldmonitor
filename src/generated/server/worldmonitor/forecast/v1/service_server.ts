@@ -219,6 +219,7 @@ export interface ScorecardSkill {
   logScore?: number;
   excludedScored: number;
   excludedOrigins: string[];
+  yesCount: number;
 }
 
 export interface GetSimulationPackageRequest {

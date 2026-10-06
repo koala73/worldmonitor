@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const ACCURACY_CONTENT_VERSION = '2026-09-12';
+export const ACCURACY_CONTENT_VERSION = '2026-10-06';
 
 export const ACCURACY_PAGE_PATH = '/accuracy/';
 
@@ -67,7 +67,7 @@ const CALIBRATION_FIELDS = Object.freeze([
   'bucket', 'minProbability', 'maxProbability', 'count', 'predictedMean', 'realizedRate', 'brier',
 ]);
 const MARKET_SKILL_FIELDS = Object.freeze(['count', 'forecastBrier', 'marketBrier', 'brierDelta']);
-const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins']);
+const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount']);
 
 const NESTED_OBJECT_FIELDS = Object.freeze({
   totals: TOTALS_FIELDS,
@@ -528,6 +528,127 @@ function cohortSection(skill, escapeHtml) {
       <p>The headline Brier and log score cover ${escapeHtml(formatCount(count))} scored forecasts: every scored entry except those from the origins the scorecard excludes, currently ${escapeHtml(excludedCohortPhrase(skill))}. That exclusion costs ${escapeHtml(formatCount(excludedScored))} scored entries. An entry that carries no origin at all is filed as unknown and is counted, so this cohort is defined by what it leaves out and not by any property of the entries it keeps. The all-scored figure beside it is the same window with every origin put back, which is why the two numbers differ.</p>`;
 }
 
+// The verdict block (#8873) reads a cohort as three counts and one score:
+// { count, yesCount, brier }. The base rate is yesCount / count, and the null
+// it is judged against is the forecaster who answers that rate to everything,
+// whose Brier is rate × (1 − rate). Outcomes in this ledger are rare, so that
+// null is far stricter than the 0.25 coin flip the headline is anchored to.
+const PROBABILITY_BANDS = Object.freeze([
+  { lead: 'When World Monitor put the chance', phrase: 'under 20%', subject: 'the forecast', from: 0, below: 0.2 },
+  { lead: 'When it put the chance', phrase: 'between 20% and 50%', subject: 'it', from: 0.2, below: 0.5 },
+  { lead: 'When it put the chance at', phrase: '50% or more', subject: 'it', from: 0.5, below: Infinity },
+]);
+
+// The producer rounds realizedRate to six decimals, so count × realizedRate is
+// within count × 5e-7 of the true YES count: Math.round is exact for any
+// ledger under a million entries.
+function bucketYesCount(bucket) {
+  return Number(bucket.count) > 0 && isFiniteNumber(bucket.realizedRate)
+    ? Math.round(Number(bucket.count) * bucket.realizedRate)
+    : 0;
+}
+
+function bandOutcomes(calibration) {
+  const buckets = Array.isArray(calibration) ? calibration : [];
+  return PROBABILITY_BANDS.map((band) => {
+    const rows = buckets.filter((bucket) => Number(bucket.minProbability) >= band.from && Number(bucket.minProbability) < band.below);
+    return {
+      band,
+      count: rows.reduce((sum, bucket) => sum + Number(bucket.count), 0),
+      yesCount: rows.reduce((sum, bucket) => sum + bucketYesCount(bucket), 0),
+    };
+  });
+}
+
+// null when the buckets do not account for every graded forecast: a base rate
+// over a different population would be a number from nowhere.
+function pooledCohort(scorecard) {
+  const { overall } = scorecard;
+  if (!isPlainObject(overall) || !isFiniteNumber(overall.count) || overall.count <= 0 || !isFiniteNumber(overall.brier)) return null;
+  const bands = bandOutcomes(scorecard.calibration);
+  if (bands.reduce((sum, band) => sum + band.count, 0) !== overall.count) return null;
+  return {
+    count: overall.count,
+    yesCount: bands.reduce((sum, band) => sum + band.yesCount, 0),
+    brier: overall.brier,
+  };
+}
+
+function baseRateSentences({ count, yesCount, brier }) {
+  const baseRate = yesCount / count;
+  const constantBrier = baseRate * (1 - baseRate);
+  // Compare the printed figures first so the sentence can never call a tie a
+  // win: when both round to the same three decimals, the reader sees a tie.
+  const verdict = formatScore(brier) === formatScore(constantBrier)
+    ? 'matched'
+    : brier < constantBrier ? 'beat' : 'did not beat';
+  return `Always answering that rate would have an error of ${formatScore(constantBrier)}. World Monitor's error was ${formatScore(brier)}, so it ${verdict} always answering the base rate${verdict === 'matched' ? ', to three decimals' : ''}.`;
+}
+
+function ledgerVerdictSentences(totals, windowDays) {
+  const windowPhrase = isFiniteNumber(windowDays) ? `Over the current ${formatCount(windowDays)}-day window` : 'Over the current rolling window';
+  return `${windowPhrase}, ${formatCount(totals.resolved)} forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} have come due and are waiting to be judged.`;
+}
+
+function bandSentence({ band, count, yesCount }, escapeHtml) {
+  const outcome = count > 0
+    ? `${band.subject} came true in ${formatCount(yesCount)} of ${formatCount(count)} cases.`
+    : 'there were no graded forecasts.';
+  return `${escapeHtml(band.lead)} <span data-probability-band>${escapeHtml(band.phrase)}</span>, ${escapeHtml(outcome)}`;
+}
+
+function marketVerdictSentence(vsMarketSkill) {
+  if (!isPlainObject(vsMarketSkill) || !isFiniteNumber(vsMarketSkill.count) || vsMarketSkill.count === 0) {
+    return 'No graded forecast overlapped a liquid prediction market, so there is no market comparison.';
+  }
+  const delta = Number(vsMarketSkill.brierDelta);
+  const closer = delta < 0
+    ? "the market's odds were closer to what happened than World Monitor's"
+    : delta > 0
+      ? "World Monitor's odds were closer to what happened than the market's"
+      : 'the two were equally close to what happened';
+  return `In the ${formatCount(vsMarketSkill.count)} cases where a liquid prediction market covered the same question, ${closer}.`;
+}
+
+function pooledVerdictSentences(scorecard) {
+  const cohort = pooledCohort(scorecard);
+  if (!cohort) {
+    return 'The base rate across all graded forecasts cannot be derived from this capture, because its probability buckets do not account for every graded forecast.';
+  }
+  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}. ${baseRateSentences(cohort)}`;
+}
+
+function headlineVerdictSentences(skill) {
+  const count = isPlainObject(skill) && isFiniteNumber(skill.count) ? skill.count : 0;
+  if (count <= 0 || !isFiniteNumber(skill.brier)) {
+    return 'The headline cohort has no graded forecast in this window, so there is nothing to compare it against.';
+  }
+  if (!isFiniteNumber(skill.yesCount)) {
+    return `The narrower headline cohort of ${formatCount(count)} forecasts cannot be compared the same way yet: the published scorecard does not yet record how many of its forecasts came true.`;
+  }
+  return `Within the narrower headline cohort of ${formatCount(count)} forecasts, ${formatCount(skill.yesCount)} came true: ${rateOf(skill.yesCount / count, count, 'forecasts')}. ${baseRateSentences({ count, yesCount: skill.yesCount, brier: skill.brier })}`;
+}
+
+function verdictSection(scorecard, escapeHtml) {
+  const paragraphs = [
+    escapeHtml(ledgerVerdictSentences(scorecard.totals, scorecard.rollingWindowDays)),
+    bandOutcomes(scorecard.calibration).map((outcome) => bandSentence(outcome, escapeHtml)).join(' '),
+    escapeHtml(marketVerdictSentence(scorecard.vsMarketSkill)),
+    escapeHtml(pooledVerdictSentences(scorecard)),
+    escapeHtml(headlineVerdictSentences(scorecard.skill)),
+  ];
+  return `      <section data-accuracy-verdict aria-label="Plain-language verdict">
+        <h2>In plain terms</h2>
+${paragraphs.map((paragraph) => `        <p>${paragraph}</p>`).join('\n')}
+      </section>
+      <dl data-accuracy-definitions>
+        <dt>Brier score</dt>
+        <dd>${escapeHtml('The error figure used above: the average squared gap between the chance World Monitor gave and what happened. 0 is perfect, 0.25 is a coin flip, and lower is better.')}</dd>
+        <dt>Base rate</dt>
+        <dd>${escapeHtml('How often the outcomes in a set of forecasts came true, whatever the question. Always answering the base rate is the forecast that knows the history and nothing about any single question; its error is the rate times one minus the rate. Beating it is the first test of skill.')}</dd>
+      </dl>`;
+}
+
 function limitsSection(omittedBuckets, escapeHtml) {
   const bucketSentence = omittedBuckets.length > 0
     ? `Calibration buckets that scored nothing are omitted from the table rather than drawn as a zero: ${omittedBuckets.join(', ')} are empty in this window.`
@@ -582,6 +703,7 @@ ${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
 
   return `${heading}
       <p class="lede">World Monitor scores every forecast it publishes once the outcome is knowable, over a rolling ${escapeHtml(formatCount(scorecard.rollingWindowDays))}-day window. This is the standing record: the scores, the calibration, the sample sizes, and the parts that are not measurable yet.</p>
+${verdictSection(scorecard, escapeHtml)}
 ${recordStatus(state, escapeHtml)}
 ${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, escapeHtml)}\n${headlineResultParagraph(scorecard, escapeHtml)}`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
 ${cohortSection(scorecard.skill, escapeHtml)}

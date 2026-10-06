@@ -1435,6 +1435,9 @@ components:
                     type: array
                     items:
                         type: string
+                yesCount:
+                    type: integer
+                    format: int32
             description: |-
                 Headline "real skill" summary: Brier/log score over scored entries whose
                  generation origin is NOT synthetic backfill or an unpromoted shadow stream.

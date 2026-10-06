@@ -222,6 +222,10 @@ function summarizeSkill(scored, excludeSet) {
   const summary = summarizeScored(real);
   return pruneUndefined({
     count: real.length,
+    // yesCount / count is the cohort's base rate, the null /accuracy/ compares
+    // the headline Brier against (#8873). The pooled calibration buckets carry
+    // the all-scored equivalent, but nothing else carries this cohort's.
+    yesCount: real.filter((entry) => entry.outcome === 'YES').length,
     excludedScored: excludedEntries.length,
     // Always an array (proto `repeated string` is non-optional): a typed client
     // reads skill.excludedOrigins.length on the healthy path, where it is [].
