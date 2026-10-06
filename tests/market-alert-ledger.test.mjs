@@ -258,9 +258,9 @@ describe('ingestSignals', () => {
   });
 
   it('carries forward runs inside the retention window and drops older ones', () => {
-    assert.equal(MARKET_ALERT_ACTIVITY_RETENTION_MS, 30 * HOUR);
-    const kept = { since: NOW - 31 * HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS };
-    const dropped = { since: NOW - 31 * HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - 1 };
+    assert.equal(MARKET_ALERT_ACTIVITY_RETENTION_MS, 30 * HOUR + 6 * 24 * HOUR, 'control offset + window + the six days a due row may wait for evidence');
+    const kept = { since: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS };
+    const dropped = { since: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - 1 };
     const { activity } = ingest({}, [], NOW, { ...QUIET_BASELINE, activity: { 'CL=F': kept, 'ZW=F': dropped } });
     assert.deepEqual(activity, { 'CL=F': kept });
   });

@@ -185,6 +185,19 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
   });
 
+  it('a stale baseline still carries its recorded activity and blocks a control over it', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
+    const pending = pendingCrude(emittedAt);
+    const [key] = Object.keys(pending);
+    const run = { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR };
+    const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 16 * MIN, activity: { 'CL=F': run } });
+    const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
+    assert.equal(tick.summary.emitted.held, 2, 'no live baseline, so the crude alerts are held');
+    assert.deepEqual(tick.ledger[key].control, { start: emittedAt - 24 * HOUR, end: emittedAt - 18 * HOUR, outcome: 'skipped', reason: 'overlap' });
+    assert.deepEqual(tick.snapshot.activity, { 'CL=F': run }, 'a run is a fact about the past and outlives the baseline');
+  });
+
   it('a snapshot missing a field added by #8951 is no baseline', async () => {
     for (const missing of ['predictionsFetchedAt', 'emitted', 'activity']) {
       const partial = { ...LIVE_SNAPSHOT };

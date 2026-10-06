@@ -34,7 +34,9 @@ export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS
 // SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot too old to
 // be a baseline is also too old to continue a run.
 export const MARKET_ALERT_ACTIVITY_GAP_MS = 15 * 60 * 1000;
-export const MARKET_ALERT_ACTIVITY_RETENTION_MS = MARKET_ALERT_CONTROL_OFFSET_MS + MARKET_ALERT_WINDOW_MS;
+// A due row may wait the evidence expiry before it resolves, and its control
+// window starts an offset plus a window before that.
+export const MARKET_ALERT_ACTIVITY_RETENTION_MS = MARKET_ALERT_CONTROL_OFFSET_MS + MARKET_ALERT_WINDOW_MS + MARKET_ALERT_EVIDENCE_EXPIRY_MS;
 export const MARKET_ALERT_CONFIDENCE_GATE = 0.6;
 export const MARKET_ALERT_HIT_MAX_TIER = 2;
 export const MARKET_ALERT_MAX_DESCRIPTION_CHARS = 200;
@@ -138,11 +140,11 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
  * an emission that resolves at its deadline. `emitted` in the result is this
  * tick's gated market ids, sorted, for the next tick's baseline.
  */
-export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline }) {
+export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity = baseline?.activity ?? {} }) {
   const ledger = { ...existing };
   const marketsBySymbol = new Map(markets.map((market) => [market.symbol, market]));
   const predictionsByKey = new Map(predictions.map((prediction) => [predictionMarketKey(prediction), prediction]));
-  const activity = Object.fromEntries(Object.entries(baseline?.activity ?? {})
+  const activity = Object.fromEntries(Object.entries(previousActivity)
     .filter(([, run]) => run.until >= nowMs - MARKET_ALERT_ACTIVITY_RETENTION_MS));
   const emitted = new Set();
   let created = 0;

@@ -255,11 +255,12 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
     });
   }
 
-  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline });
-  // The baseline's runs, not this tick's: ingest prunes against nowMs, and a
-  // control window for a row whose deadline passed this tick starts up to one
-  // tick before that cutoff.
-  const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive, activity: baseline?.activity ?? {} });
+  // Runs are facts about the past, so they come from the previous snapshot
+  // even when it is too old to be a baseline; the resolver reads the snapshot's
+  // map rather than this tick's because ingest prunes against nowMs.
+  const previousActivity = previousSnapshot?.activity ?? {};
+  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity });
+  const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive, activity: previousActivity });
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
   for (const signal of signals) byType[signal.type] = (byType[signal.type] ?? 0) + 1;
