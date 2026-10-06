@@ -15,13 +15,18 @@ export const DEFAULT_JUDGED_SLA_MS = 2 * DAY_MS;
 
 // Origins whose scored entries are held OUT of the headline skill Brier:
 // `state_derived` = synthetic count-padding backfill (not a real prediction);
-// `bet_engine`    = shadow bets scored for evidence but not yet promoted.
+// `bet_engine`    = shadow bets scored for evidence but not yet promoted;
+// `unknown`       = rows written before origin tagging (#5240). They mix
+//                   detector-shaped and state_derived-shaped titles, so they
+//                   cannot be attributed to a generator.
 // The all-origins `overall` block still counts them for continuity.
 export const SYNTHETIC_GENERATION_ORIGINS = ['state_derived'];
 export const SHADOW_GENERATION_ORIGINS = ['bet_engine'];
+export const UNATTRIBUTED_GENERATION_ORIGINS = ['unknown'];
 export const DEFAULT_SKILL_EXCLUDED_ORIGINS = Object.freeze([
   ...SYNTHETIC_GENERATION_ORIGINS,
   ...SHADOW_GENERATION_ORIGINS,
+  ...UNATTRIBUTED_GENERATION_ORIGINS,
 ]);
 
 export function generationOriginOf(entry) {
@@ -217,15 +222,6 @@ function summarizeScored(entries) {
 // which is the honest signal that the headline is unmeasurable.
 function summarizeSkill(scored, excludeSet) {
   if (!scored.length) return null;
-  // KNOWN-GAP (#5233 follow-up, tracked in #5240): entries whose generationOrigin
-  // is absent fall back to 'unknown', which is NOT in the exclude set, so they
-  // count toward real skill. Deliberately conservative — untagged is not the same
-  // as synthetic, and dropping genuinely-real entries would understate skill.
-  // The live history payload already tags entries (buildHistoryForecastEntry
-  // defaults to 'legacy_detector'), so the ~52% 'unknown' in the ledger are
-  // LEGACY entries created before that default and age out over the 180d
-  // retention (0 are yet scored). Residual risk only if a legacy 'unknown' entry
-  // scores before aging out; #5240 tracks a one-time backfill/monitor.
   const real = scored.filter((entry) => !excludeSet.has(generationOriginOf(entry)));
   const excludedEntries = scored.filter((entry) => excludeSet.has(generationOriginOf(entry)));
   const excludedOrigins = [...new Set(excludedEntries.map(generationOriginOf))].sort();
