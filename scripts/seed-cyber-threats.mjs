@@ -364,7 +364,7 @@ async function providerRows(response, source, containerKeys, bareArray = false) 
   // it. Generic invalid payloads still follow the existing provider policy.
   if (source === 'otx') {
     const rows = Array.isArray(payload) ? payload : payload?.results;
-    const hasPage = ['next', 'previous'].some(key => payload?.[key] != null && boundedText(payload[key], 4096));
+    const hasPage = ['next', 'previous'].some(key => typeof payload?.[key] === 'string');
     const countMismatch = Number.isSafeInteger(payload?.count) && payload.count >= 0
       && Array.isArray(rows) && payload.count !== rows.length;
     if (hasPage || countMismatch || (Array.isArray(rows) && rows.length > MAX_LIMIT)) {

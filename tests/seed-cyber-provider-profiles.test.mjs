@@ -326,6 +326,9 @@ test('known OTX incompleteness survives invalid rows, wrappers and decoded bound
     ['malformed row with next', { results: [null], count: 100, next: 'https://otx.fixture/page2' }],
     ['invalid count with next', { results: [row], count: '100', next: 'https://otx.fixture/page2' }],
     ['oversized next with count mismatch', { results: [row], count: 100, next: 'x'.repeat(4097) }],
+    ['oversized next without count', { results: [row], next: 'x'.repeat(4097) }],
+    ['oversized next with matching count', { results: [row], count: 1, next: 'x'.repeat(4097) }],
+    ['oversized previous without count', { results: [row], previous: 'x'.repeat(4097) }],
     ['10001 rows', { results: Array(10001).fill(row), count: 10001, next: null }],
     ['10001 bare rows', Array(10001).fill(row)],
     ['invalid wrapper with next', { results: 'malformed', next: 'https://otx.fixture/page2' }],
@@ -393,7 +396,7 @@ test('complete bounded OTX pages and generic invalid payload policy remain uncha
     });
   }
   for (const body of [{ results: [null] }, { results: [row], count: '100' },
-    { results: [row], count: 1, next: 'x'.repeat(4097) }]) {
+    { results: [row], count: 1, next: 123 }]) {
     await testContext.test('invalid without known incompleteness', async child => {
       const { seed } = await producerHarness(child, { keys: ['OTX_API_KEY'], rows: [foreign], csv: '', bodies: { otx: body } });
       assert.equal((await seed.fetchOtx(14)).reason, 'invalid-payload');
