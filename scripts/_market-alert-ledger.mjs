@@ -1,7 +1,7 @@
 /**
  * Market-alert ledger (#8867): the pure steps behind
- * scripts/seed-market-alert-ledger.mjs. A market alert that was not emitted
- * on the previous tick, or a prediction alert whose question names a topic
+ * scripts/seed-market-alert-ledger.mjs. A market alert that is new since the
+ * previous tick (NEW_WHEN), or a prediction alert whose question names a topic
  * keyword, opens a six-hour window keyed `${type}:${entity}@${deadline}`; a
  * closed window is resolved against the English digest archive under
  * MARKET_ALERT_RESOLUTION_RULE, and a control window 24 hours earlier under
@@ -68,13 +68,29 @@ export function entityForPrediction(prediction) {
   return pruneUndefined({ kind: 'prediction', title: prediction.title, url: prediction.url || undefined, relatedTopics });
 }
 
+function entityKeyOf(id) {
+  return id.slice(id.indexOf(':') + 1);
+}
+
 function findOpenWindow(ledger, id, nowMs) {
   return Object.values(ledger).find((entry) => entry.status === 'pending' && entry.id === id && nowMs < entry.deadline);
 }
 
-function newSincePreviousTick(baseline, id, symbol) {
-  return baseline !== null && Object.hasOwn(baseline.marketChanges, symbol) && !baseline.emitted.includes(id);
+function latestRowFor(ledger, symbol) {
+  return Object.values(ledger)
+    .filter((entry) => entityKeyOf(entry.id) === symbol)
+    .reduce((latest, entry) => (latest === null || entry.emittedAt > latest.emittedAt ? entry : latest), null);
 }
+
+// The detector flips a move between explained and silent as the digest
+// changes, so a quiet-market alert is new only when nothing fired for the
+// symbol on the previous tick; the flip itself must not reopen the move.
+const quietSymbol = (baseline, symbol) => !baseline.emitted.some((id) => entityKeyOf(id) === symbol);
+const NEW_WHEN = {
+  silent_divergence: quietSymbol,
+  flow_price_divergence: quietSymbol,
+  explained_market_move: (baseline, symbol) => !baseline.emitted.includes(`explained_market_move:${symbol}`),
+};
 
 function createEntry(signal, entity, nowMs, runtimeMode) {
   const id = `${signal.type}:${signal.data.correlatedEntities[0]}`;
@@ -98,14 +114,18 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
 }
 
 /**
- * A market signal opens a row only when `${type}:${symbol}` was not emitted
- * on the previous tick: `baseline.emitted` holds the previous tick's market
- * ids that passed the type and confidence gate, so a move that stays
- * elevated re-emits every tick without opening a fresh row every six hours.
- * A symbol without a baseline (`baseline` null, or the symbol absent from
+ * A market signal opens a row only when NEW_WHEN says it is new against the
+ * previous tick: `baseline.emitted` holds the previous tick's market ids that
+ * passed the type and confidence gate, so a move that stays elevated re-emits
+ * every tick without opening a fresh row every six hours, and a move that was
+ * silent and then found its news gets one row of each kind. A symbol without
+ * a baseline (`baseline` null, or the symbol absent from
  * `baseline.marketChanges` because its feed skipped the previous tick) is
- * held. `emitted` in the result is this tick's gated market ids, sorted, for
- * the next tick's baseline.
+ * held. A signal held because the symbol was alerted on the previous tick
+ * bumps `lastSeenAt` on the symbol's most recent row, whatever its status, so
+ * a closed window whose alert keeps firing still blocks a later control
+ * window. `emitted` in the result is this tick's gated market ids, sorted,
+ * for the next tick's baseline.
  */
 export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline }) {
   const ledger = { ...existing };
@@ -116,6 +136,7 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
   let updated = 0;
   let gated = 0;
   let held = 0;
+  let touched = 0;
   for (const signal of signals) {
     const entityKey = signal.data?.correlatedEntities?.[0];
     if (!ALERT_TYPES.has(signal.type) || !(signal.confidence >= MARKET_ALERT_CONFIDENCE_GATE) || !entityKey) {
@@ -138,8 +159,14 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
         continue;
       }
     } else {
-      if (!newSincePreviousTick(baseline, id, entityKey)) {
+      const quoted = baseline !== null && Object.hasOwn(baseline.marketChanges, entityKey);
+      if (!quoted || !NEW_WHEN[signal.type](baseline, entityKey)) {
         held += 1;
+        const latest = quoted ? latestRowFor(ledger, entityKey) : null;
+        if (latest) {
+          ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
+          touched += 1;
+        }
         continue;
       }
       entity = entityForMarket(marketsBySymbol.get(entityKey));
@@ -148,7 +175,7 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
     ledger[entry.key] = entry;
     created += 1;
   }
-  return { ledger: sortLedger(ledger), created, updated, gated, held, emitted: [...emitted].sort() };
+  return { ledger: sortLedger(ledger), created, updated, gated, held, touched, emitted: [...emitted].sort() };
 }
 
 export function storyMatchesEntity(title, entity, entityMatches) {
@@ -199,7 +226,7 @@ function resolution(ledger, counts, archiveStatus) {
  * rule, so the scorecard can publish a base rate beside the hit rate. The
  * control is skipped when the archive does not cover its start, when its
  * start is older than the evidence expiry, or when any alert for the same
- * entity was open during it.
+ * entity was open, or still re-emitting while held, during it.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
@@ -244,7 +271,8 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     if (start < nowMs - MARKET_ALERT_EVIDENCE_EXPIRY_MS) return { start, end, outcome: 'skipped', reason: 'expired' };
     if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
     const entityKey = entityKeyOf(entry.id);
-    const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey && other.emittedAt <= end && other.deadline >= start);
+    const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey
+      && other.emittedAt <= end && Math.max(other.deadline, other.lastSeenAt ?? 0) >= start);
     if (open) return { start, end, outcome: 'skipped', reason: 'overlap' };
     return { start, end, candidates: matching(entry, start, end) };
   };
@@ -275,10 +303,6 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     }
   }
   return resolution(ledger, counts, archiveStatus);
-}
-
-function entityKeyOf(id) {
-  return id.slice(id.indexOf(':') + 1);
 }
 
 export function pruneLedger(ledger, nowMs) {

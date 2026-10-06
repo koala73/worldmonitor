@@ -18,7 +18,8 @@ import {
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
 
 const NOW = Date.UTC(2026, 9, 6, 12, 0, 0);
-const HOUR = 60 * 60 * 1000;
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
 
 const CRUDE = { symbol: 'CL=F', name: 'Crude Oil', display: 'WTI', price: 80, change: 3.1 };
 const WHEAT = { symbol: 'ZW=F', name: 'Wheat', display: 'Wheat', price: 600, change: 2.4 };
@@ -142,17 +143,37 @@ describe('ingestSignals', () => {
     assert.equal(Object.keys(ledger).length, 2);
   });
 
-  it('a market signal opens a row only when it was not emitted on the previous tick', () => {
+  it('a quiet-market signal opens a row only when the previous tick emitted no alert for the symbol', () => {
     const crude = [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE)];
     const fresh = ingest({}, crude, NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: [] });
     assert.deepEqual({ created: fresh.created, held: fresh.held }, { created: 2, held: 0 });
 
     const partlyEmitted = ingest({}, crude, NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
-    assert.deepEqual(Object.values(partlyEmitted.ledger).map((entry) => entry.type), ['flow_price_divergence']);
-    assert.deepEqual({ created: partlyEmitted.created, held: partlyEmitted.held }, { created: 1, held: 1 });
+    assert.deepEqual({ ledger: partlyEmitted.ledger, created: partlyEmitted.created, held: partlyEmitted.held }, { ledger: {}, created: 0, held: 2 }, 'an alert of any type for the symbol holds both quiet-market alerts');
 
     const unseen = ingest({}, crude, NOW, { marketChanges: { 'ZW=F': 3.0 }, emitted: [] });
     assert.deepEqual({ ledger: unseen.ledger, created: unseen.created, held: unseen.held }, { ledger: {}, created: 0, held: 2 }, 'a symbol absent from the previous marketChanges is held');
+  });
+
+  it('a move that was silent, then explained, then silent again gets one row of each kind and nothing more', () => {
+    const avgo = { symbol: 'AVGO', name: 'Broadcom', display: 'AVGO', price: 1500, change: 5.0 };
+    const timeline = [[0, 'silent_divergence'], [5, 'silent_divergence'], [360, 'explained_market_move'], [365, 'explained_market_move'], [375, 'silent_divergence']];
+    let ledger = {};
+    let emitted = [];
+    for (const [minutes, type] of timeline) {
+      const tick = ingestSignals(ledger, [marketSignal(type, avgo)], {
+        nowMs: NOW + minutes * MIN, runtimeMode: 'legacy', markets: [avgo], predictions: [], baseline: { marketChanges: { AVGO: 5.0 }, emitted },
+      });
+      ledger = tick.ledger;
+      emitted = tick.emitted;
+    }
+    assert.deepEqual(Object.keys(ledger), [
+      `explained_market_move:AVGO@${NOW + 360 * MIN + MARKET_ALERT_WINDOW_MS}`,
+      `silent_divergence:AVGO@${NOW + MARKET_ALERT_WINDOW_MS}`,
+    ]);
+    const [explained, silent] = Object.values(ledger);
+    assert.equal(silent.lastSeenAt, NOW + 5 * MIN);
+    assert.equal(explained.lastSeenAt, NOW + 375 * MIN, 'the held silent re-emission touches the most recent row for the symbol');
   });
 
   it('silent on one tick then explained on the next opens the explained row', () => {
@@ -200,12 +221,23 @@ describe('ingestSignals', () => {
     assert.equal(entries[0].samples, 1);
   });
 
-  it('a closed window does not reopen while the alert keeps re-emitting', async () => {
+  it('a closed window does not reopen while the alert keeps re-emitting; the hold bumps only its lastSeenAt', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
-    const { ledger, created, held } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
-    assert.deepEqual({ created, held }, { created: 0, held: 1 });
-    assert.deepEqual(Object.values(ledger).map((entry) => entry.status), ['resolved']);
+    const [row] = Object.values(closed);
+    const { ledger, created, held, touched } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] });
+    assert.deepEqual({ created, held, touched }, { created: 0, held: 1, touched: 1 });
+    assert.deepEqual(Object.values(ledger), [{ ...row, lastSeenAt: dueAt + 2 }]);
+  });
+
+  it('a hold for a missing baseline or an unquoted symbol touches no row', async () => {
+    const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
+    const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
+    for (const baseline of [null, { marketChanges: { 'ZW=F': 3.0 }, emitted: [] }]) {
+      const { ledger, held, touched } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, baseline);
+      assert.deepEqual({ held, touched }, { held: 1, touched: 0 });
+      assert.deepEqual(ledger, closed);
+    }
   });
 
   it('drops signals under the dashboard confidence gate and unknown types', () => {
@@ -495,6 +527,19 @@ describe('resolveDueEntries', () => {
         const crude = Object.values(result.ledger).find((entry) => entry.id === 'silent_divergence:CL=F');
         assert.deepEqual(crude.control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
       }
+    });
+
+    it('skips the control when a closed alert for the entity was still re-emitting during it', async () => {
+      const earlierAt = NOW - 40 * HOUR;
+      const earlier = ingest({}, [marketSignal('silent_divergence', CRUDE)], earlierAt).ledger;
+      const closed = (await resolveDueEntries(earlier, { nowMs: earlierAt + MARKET_ALERT_WINDOW_MS + 1, archive: archiveOf([], {}, earlierAt - HOUR) })).ledger;
+      assert.ok(Object.values(closed)[0].deadline < CONTROL.start, 'the closed window ends before the control starts');
+      const heldAt = NOW - 22 * HOUR;
+      const touched = ingest(closed, [marketSignal('silent_divergence', CRUDE)], heldAt, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] }).ledger;
+      const ledger = ingest(touched, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+      const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
+      const crude = Object.values(result.ledger).find((entry) => entry.emittedAt === NOW);
+      assert.deepEqual(crude.control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
     });
 
     it('an alert of another type for another entity does not count as overlap', async () => {
