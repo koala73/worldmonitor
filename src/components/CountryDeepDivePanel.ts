@@ -2546,7 +2546,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateProductImports(data: CountryProductsResponse | null): void {
     if (!this.productImportsBody) return;
     this.productImportsBody.replaceChildren();
-    if (!data || data.products.length === 0) {
+    if (!data) {
+      this.productImportsBody.append(this.makeEmpty('No data available'));
+      return;
+    }
+    this.productImportsBody.append(this.el('div', 'cdp-card-footer', `Cache state: ${data.evidence?.state?.trim() || 'unavailable'} · Cache source: ${data.evidence?.source?.trim() || 'unavailable'}`));
+    if (data.products.length === 0) {
       this.productImportsBody.append(this.makeEmpty('No data available'));
       return;
     }
@@ -2732,6 +2737,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     );
     mount.append(header);
 
+    const year = Number.isInteger(product.year) && product.year > 0 ? product.year : 'unavailable';
+    mount.append(this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral · ${year}`));
+    const selection = product.partnerBasis === 'leading_5' ? 'Leading five' : product.partnerBasis === 'share_threshold' ? 'Suppliers selected by share' : 'Supplier selection unavailable';
+    const count = product.partnerBasis !== 'leading_5' && typeof product.omittedPartnerCount === 'number' && Number.isInteger(product.omittedPartnerCount) && product.omittedPartnerCount >= 0 ? product.omittedPartnerCount : 'unavailable';
+    const share = product.partnerBasis !== 'leading_5' && typeof product.omittedPartnerShare === 'number' && Number.isFinite(product.omittedPartnerShare) && product.omittedPartnerShare >= 0 && product.omittedPartnerShare <= 1 ? `${product.omittedPartnerShare * 100}%` : 'unavailable';
+    mount.append(this.el('div', 'cdp-card-footer', `${selection} · Omitted suppliers: ${count} · Omitted share: ${share}`));
+
     if (product.topExporters.length === 0) {
       mount.append(this.makeEmpty('No exporter data'));
       return;
@@ -2880,9 +2892,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         console.warn('[deep-dive] Chokepoint status unavailable for route risk enrichment');
       });
     }
-
-    const source = this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral \u00B7 ${product.year}`);
-    mount.append(source);
   }
 
   private factItem(label: string, value: string): HTMLElement {

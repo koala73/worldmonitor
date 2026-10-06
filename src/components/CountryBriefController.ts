@@ -115,7 +115,7 @@ export class CountryBriefController {
     if (!code) return;
     void this.read('military', signal => getCountryDefenseIndustrialBase(code, this.source.military, signal), value => this.panel.updateDefenseIndustrialBase?.(value.available ? value : null), true);
     void this.read('commodities', signal => this.source.supply.getCountryVulnerabilities({ iso2: code }, { signal }), value => this.panel.updateCommodityVulnerabilities?.(value), true);
-    void this.read('products', signal => this.source.supply.getCountryProducts({ iso2: code }, { signal }), value => this.panel.updateProductImports?.(value.products.length ? value : null), true);
+    void this.read('products', signal => this.source.supply.getCountryProducts({ iso2: code }, { signal }), value => this.panel.updateProductImports?.(value), true);
     void this.read('trade', signal => this.source.exposure(code, signal), sectors => {
       const top = sectors[0];
       this.panel.updateTradeExposure?.(top ? { iso2: code, hs2: top.hs2, exposures: sectors.slice(0, 3).map(s => ({ chokepointId: s.primaryChokepointId, chokepointName: s.primaryChokepointName, exposureScore: s.exposureScore, coastSide: '', shockSupported: s.hs2 === '27' })), primaryChokepointId: top.primaryChokepointId, vulnerabilityIndex: top.vulnerabilityIndex, fetchedAt: top.fetchedAt ?? '' } : null, sectors);
