@@ -259,3 +259,26 @@ describe('News Intelligence supplied story details', () => {
     });
   });
 });
+
+
+describe('News Intelligence publication timestamp wire types', () => {
+  it('renders finite epoch milliseconds, including zero, separately from the cache snapshot', async () => {
+    for (const [pubDate,expected] of [[1791279480000,'2026-10-06T09:38:00.000Z'],[0,'1970-01-01T00:00:00.000Z'],['2026-10-06T09:38:00.000Z','2026-10-06T09:38:00.000Z']]) {
+      await mount(result(envelope([{...story(0),pubDate}])),document=>{
+        assert.equal(rows(document)[0].querySelector('time')?.dateTime,expected);
+        assert.ok(rows(document)[0].textContent.includes('Published: '+expected));
+        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+      });
+    }
+  });
+
+  it('keeps invalid, missing, boolean, nonfinite and out-of-range times unavailable', async () => {
+    for (const pubDate of [undefined,null,'','   ','invalid-date',true,false,NaN,Infinity,-Infinity,8640000000000001,-8640000000000001]) {
+      await mount(result(envelope([{...story(0),pubDate}])),document=>{
+        assert.equal(rows(document)[0].querySelector('time'),null);
+        assert.match(rows(document)[0].textContent,/Publication time unavailable/);
+        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+      });
+    }
+  });
+});

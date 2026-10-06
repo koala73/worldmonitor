@@ -83,7 +83,9 @@ const RENDER = `
       var provenanceSummary = s.sourceProvenance && typeof s.sourceProvenance === "object"
         ? collapseWs(s.sourceProvenance.summary) : "";
       if (src) row.appendChild(el("div", "story-src", src + (provenanceSummary ? " • " + provenanceSummary : "")));
-      var published = typeof s.pubDate === "string" && s.pubDate.trim() ? new Date(s.pubDate) : null;
+      var hasPublicationTime = (typeof s.pubDate === "string" && s.pubDate.trim()) ||
+        (typeof s.pubDate === "number" && Number.isFinite(s.pubDate));
+      var published = hasPublicationTime ? new Date(s.pubDate) : null;
       if (published && Number.isFinite(published.getTime())) {
         var publication = el("time", "story-src", "Published: " + published.toISOString());
         publication.dateTime = published.toISOString();
