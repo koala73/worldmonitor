@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
+import { countrySignalsFromMilitary } from '../src/services/country-signals';
 
 type ExportUtils = typeof import('../src/utils/export.ts');
 type GlobalSnapshot = { exists: boolean; value: unknown };
@@ -410,6 +411,34 @@ function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement):
 }
 
 describe('country evidence bundle export', () => {
+  it('keeps cyber unknown without an admitted source and separates retained generation from export time', async () => {
+    const signals = countrySignalsFromMilitary('FR');
+    assert.equal(signals.cyberThreats, null);
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const originalClock = '2026-10-05T01:00:00.000Z';
+    const exportedAt = '2026-10-06T01:00:00.000Z';
+    const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+      signals: { cyberThreats: signals.cyberThreats }, generatedAt: originalClock,
+      briefGeneratedAt: originalClock, briefCached: true, exportedAt });
+    assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: 'unavailable' }]);
+    assert.equal(bundle.generatedAt, originalClock);
+    assert.equal(bundle.briefGeneratedAt, originalClock);
+    assert.equal(bundle.exportedAt, exportedAt);
+    assert.equal(bundle.briefCacheStatus, 'cached');
+    assert.ok(renderCountryEvidenceMarkdown(bundle).includes('Cyber threats: unavailable'));
+  });
+
+  it('preserves unavailable cyber counts and explicit zero separately in portable evidence', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    for (const [count, expected] of [[null, 'unavailable'], [0, '0'], [2, '2']] as const) {
+      const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+        signals: { cyberThreats: count }, exportedAt: '2026-10-06T01:00:00Z' });
+      assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: expected }]);
+      assert.ok(renderCountryEvidenceMarkdown(bundle).includes(`Cyber threats: ${expected}`));
+    }
+    assert.deepEqual(buildCountryEvidenceBundle({ country: 'France', code: 'FR' }).signals, []);
+  });
+
   it('builds a portable bundle with active signals, sources, freshness, and disclaimer', async () => {
     const { buildCountryEvidenceBundle, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER } = await loadExportUtils();
 
