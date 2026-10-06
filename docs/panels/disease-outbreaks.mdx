@@ -31,7 +31,7 @@ The seeder (`scripts/seed-disease-outbreaks.mjs`) fans out across:
 - **WHO Disease Outbreak News** — official WHO DON JSON API. Primary source for globally significant outbreaks.
 - **CDC Health Alert Network (HAN)** — US-centric feed that supplements WHO for North American events.
 - **ECDC epidemiological updates** — the European Centre for Disease Prevention and Control's outbreak updates, including events outside the EU/EEA.
-- **CIDRAP disease news** — University of Minnesota CIDRAP feeds for Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles, dengue, polio, and foodborne disease. A story counts only when it names a known disease and a country and is under 90 days old; multi-story "Quick takes" roundups are skipped.
+- **CIDRAP disease news** — University of Minnesota CIDRAP feeds for Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles, dengue, polio, foodborne disease, and plague. A story counts only when it names a known disease and a country and is under 90 days old; multi-story "Quick takes" roundups are skipped.
 - **ThinkGlobalHealth disease tracker** — open bundle of ~1,600+ ProMED-sourced real-time alerts with lat/lng (kept to a 90-day lookback so the map isn't flooded with old events).
 
 Note: the in-panel info tooltip summarises this as "WHO, ProMED, and health ministries" for brevity. The above is the full upstream list as implemented in the seeder. Results are normalised, deduplicated, and written to `health:disease-outbreaks:v1` in Redis with a 72-hour TTL (3× the daily cron interval).
