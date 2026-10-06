@@ -24,6 +24,7 @@
 // threshold (#5010) — never the feed's full 365-day trailing tally.
 
 import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeResolutionFeeds } from './_forecast-resolution-eval.mjs';
+import { isPublishedOriginEntry } from './_forecast-scorecard.mjs';
 
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
@@ -57,9 +58,17 @@ export const PROJECTION_HORIZONS = Object.freeze({ h24: '24h', d7: '7d', d30: '3
 
 // One resolver cycle: seed-forecast-resolutions runs cron `0 6 * * *`, so a
 // point-in-time read lands at most one cycle from its horizon deadline. The
-// value is frozen into each contract so a later change never re-scores rows
-// registered under the old tolerance.
+// per-contract value is frozen into each contract so a later change never
+// re-scores rows registered under the old tolerance.
 export const HORIZON_SAMPLE_TOLERANCE_MS = DAY_MS;
+
+// A sample is evidence about a horizon claim only when it sits nearer the
+// deadline than the emission, so the one-cycle tolerance is capped at half the
+// horizon: 12h for h24, one cycle for d7 and d30. A missed run then leaves an
+// h24 window UNOBSERVED instead of grading it on the emission-time reading.
+export function horizonSampleToleranceMs(timeHorizon) {
+  return Math.min(HORIZON_SAMPLE_TOLERANCE_MS, HORIZON_MS[timeHorizon] / 2);
+}
 
 // v1 scores point-in-time contracts only. The within-horizon families cannot
 // be scored per horizon here: the market curve is monotone-decreasing across
@@ -773,10 +782,18 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
 // contract is `unscored` with the reason, never a judged question. The
 // horizon equal to the forecast's own is unscored too: its projection is the
 // forecast probability under the same metric and deadline, so a window for
-// it would grade the forecast twice and pad that horizon's sample.
+// it would grade the forecast twice and pad that horizon's sample. Held-out
+// origins (the headline's excluded set; makePrediction always stamps the
+// origin) carry no contract: the lane measures the published population, and
+// the resolver applies the same gate at registration.
 export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
   const specs = {};
+  const excludedOrigin = !isPublishedOriginEntry(pred);
   for (const [horizon, timeHorizon] of Object.entries(PROJECTION_HORIZONS)) {
+    if (excludedOrigin) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason: 'excluded_origin' };
+      continue;
+    }
     if (timeHorizon === pred.timeHorizon) {
       specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason: 'parent_horizon' };
       continue;
@@ -799,7 +816,7 @@ export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options =
       window: spec.window,
       sourceFeed: spec.sourceFeed,
       deadline: spec.deadline,
-      sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
+      sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
     };
   }
   return specs;
