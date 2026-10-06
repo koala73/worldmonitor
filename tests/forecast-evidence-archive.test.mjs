@@ -890,7 +890,7 @@ describe('archive continuity recovery (#8877)', () => {
     });
   }
 
-  async function read(rows, { maxHashes = 100, persist = true, writeResult = 'OK', coverageMaxLagMs } = {}) {
+  async function read(rows, { maxHashes = 100, persist = true, writeResult = 'OK', coverageMaxLagMs, coverage = null } = {}) {
     const calls = [];
     const result = await seederMod.readForecastEvidenceArchive(start, now, {
       redisUrl: 'https://redis.example', redisToken: 'token', maxHashes,
@@ -901,8 +901,8 @@ describe('archive continuity recovery (#8877)', () => {
         if (Array.isArray(cmd[0])) return response(cmd.map(([, key]) => ({
           result: rows.find(row => mod.forecastEvidenceRecordKey(row.hash) === key)?.member ?? null,
         })));
-        if (cmd[0] === 'GET') return response({ result: null });
-        if (cmd[0] === 'SET') return response({ result: writeResult });
+        if (cmd[0] === 'GET') return response({ result: coverage ? JSON.stringify(coverage) : null });
+        if (cmd[0] === 'SET' || cmd[0] === 'EVAL') return response({ result: writeResult });
         assert.equal(cmd[0], 'ZREVRANGEBYSCORE');
         return response({ result: rows.filter(row => row.score >= Number(cmd[3]) && row.score <= Number(cmd[2]))
           .slice(0, Number(cmd.at(-1))).flatMap(row => [row.hash, String(row.score)]) });
@@ -962,6 +962,38 @@ describe('archive continuity recovery (#8877)', () => {
     assert.equal(reread.coverageRecovered, false);
     assert.equal(mod.parseForecastEvidenceCoverage({ ...proof, continuityBucketMs: 1 }), null);
     assert.equal(mod.advanceForecastEvidenceCoverage(proof, now).sourceKey, mod.FORECAST_EVIDENCE_KEY);
+  });
+
+  it('does not advance a continuity proof across a later six-hour gap', () => {
+    const rows = archiveFixture();
+    const proof = mod.recoverForecastEvidenceCoverage(rows.map(row => ({ record: JSON.parse(row.member), score: row.score })), now);
+    assert.ok(mod.advanceForecastEvidenceCoverage(proof, now + 6 * hour));
+    assert.equal(mod.advanceForecastEvidenceCoverage(proof, now + 6 * hour + 1), null);
+  });
+
+  it('includes an uneven oldest boundary beyond the tail-lag bucket', async () => {
+    const rows = archiveFixture().map((row, i) => {
+      const score = now - (5 + i * 5.95) * hour;
+      return { ...row, score, member: JSON.stringify({ ...JSON.parse(row.member), lastSeen: score }) };
+    });
+    assert.equal((await read(rows)).result.available, true);
+  });
+
+  it('rechecks a stale continuity proof and replaces only the marker that was read', async () => {
+    const rows = archiveFixture();
+    const original = mod.recoverForecastEvidenceCoverage(rows.map(row => ({ record: JSON.parse(row.member), score: row.score })), now);
+    const oldEnd = now - 7 * hour;
+    const coverage = { ...original, coverageEndMs: oldEnd, sourceDigestAtMs: oldEnd,
+      coverageStartMs: oldEnd - 14 * 24 * hour, cutoverVerifiedAtMs: oldEnd,
+      archiveOldestScoreMs: oldEnd - 14 * 24 * hour };
+    const { result, calls } = await read(rows, { coverage });
+    assert.equal(result.available, true);
+    const replace = calls.find(cmd => cmd[0] === 'EVAL');
+    assert.ok(replace);
+    assert.equal(replace[4], JSON.stringify(coverage), 'replacement compares the exact previous marker');
+    assert.equal((await read(rows, { coverage, writeResult: null })).result.available, false, 'a concurrent marker must win');
+    const holed = rows.filter((_, i) => i !== 25);
+    assert.equal((await read(holed, { coverage })).result.available, false);
   });
 
   it('checks continuity without writing during a dry run', async () => {

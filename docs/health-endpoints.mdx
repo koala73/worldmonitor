@@ -936,12 +936,16 @@ successes and VOID outcomes do not clear the streak. A new scored-within-SLA
 outcome or an idle lane resets it. The normal health classifier exposes the
 failure as `SEED_ERROR`.
 
-If the evidence coverage marker expires, the resolver attempts a bounded scan
+If the evidence coverage marker expires or its version-2 proof becomes stale,
+the resolver attempts a bounded scan
 of the dedicated archive. Recovery requires at least 14 days of valid records,
 no gap longer than six hours (including the newest record to the read clock),
 matching index and record timestamps, and no truncation, duplicate hashes, or
 unreadable records. It installs a version-2 continuity marker with `SET NX` and
-the existing 15-day TTL. A concurrent marker is never overwritten. Dry runs
+the existing 15-day TTL. Stale markers are replaced only if their value still
+matches the value read before the scan. A concurrent publication is never
+overwritten. Publishers cannot advance version-2 proof across a gap longer
+than six hours; recovery requires a new complete continuity scan. Dry runs
 check recovery without publishing a marker.
 
 Continuity proves activity at the declared six-hour granularity; it cannot

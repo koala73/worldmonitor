@@ -1845,11 +1845,12 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   );
   if (coveragePayload?.error) throw new Error('Redis coverage marker read failed');
   let coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
-  const needsRecovery = !coverage;
+  const coverageUsable = forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true);
+  const needsRecovery = !coverage || (coverage.v === 2 && !coverageUsable);
   const scanStartMs = needsRecovery
-    ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
+    ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 2 * FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
     : requestedCoverageStartMs;
-  if (coverage && !forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) {
+  if (!needsRecovery && !coverageUsable) {
     return {
       ...base,
       coverageStartMs: coverage?.coverageStartMs,
@@ -1963,10 +1964,12 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     };
     if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) return refused;
     if (options.persistRecoveredCoverage !== false) {
-      const written = await requestRedis(url, [
-        'SET', FORECAST_EVIDENCE_COVERAGE_KEY, JSON.stringify(coverage),
-        'EX', FORECAST_EVIDENCE_TTL_S, 'NX',
-      ], 'Redis recovered forecast coverage');
+      // Replace stale proof only if no publisher changed it during the scan.
+      const command = typeof coveragePayload?.result === 'string'
+        ? ['EVAL', "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) end return nil",
+          '1', FORECAST_EVIDENCE_COVERAGE_KEY, coveragePayload.result, JSON.stringify(coverage), FORECAST_EVIDENCE_TTL_S]
+        : ['SET', FORECAST_EVIDENCE_COVERAGE_KEY, JSON.stringify(coverage), 'EX', FORECAST_EVIDENCE_TTL_S, 'NX'];
+      const written = await requestRedis(url, command, 'Redis recovered forecast coverage');
       if (written?.result !== 'OK') return { ...refused, incompleteReason: 'coverage_recovery_write_failed' };
     }
   }

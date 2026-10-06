@@ -251,6 +251,8 @@ export function recoverForecastEvidenceCoverage(records, nowMs) {
 export function advanceForecastEvidenceCoverage(raw, nowMs) {
   const metadata = parseForecastEvidenceCoverage(raw);
   if (!metadata || !Number.isFinite(nowMs)) return null;
+  // A publication cannot prove continuity across an earlier outage.
+  if (metadata.v === 2 && nowMs - metadata.coverageEndMs > FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS) return null;
   const coverageEndMs = Math.max(metadata.coverageEndMs, Math.floor(nowMs));
   return {
     ...metadata,
