@@ -1,5 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
 import { Window } from 'happy-dom';
 import { COUNTRY_RISK_APP_HTML } from '../api/mcp/ui/country-risk-app.ts';
 import { buildStructuredContent } from '../api/mcp/structured-content.ts';
@@ -41,7 +43,7 @@ const text = (doc, id) => doc.getElementById(id).textContent;
 function assertRisk(doc) {
   assert.equal(text(doc, 'country'), 'Russia');
   assert.equal(text(doc, 'cii'), '78');
-  assert.equal(text(doc, 'level'), 'Severe');
+  assert.equal(text(doc, 'level'), 'High');
   assert.equal(doc.querySelectorAll('#components .comp').length, 4);
   assert.match(text(doc, 'components'), /Domestic unrest44.*Armed conflict88.*Security & mobility65.*Information environment71/);
   assert.equal(text(doc, 'advisory'), 'do not travel');
@@ -59,6 +61,22 @@ function assertUnknownScore(doc) {
 }
 
 describe('Country Risk exported HTML projections', () => {
+  it('uses canonical CII headline levels at every boundary and for the captured Ukraine score', async () => {
+    const source = readFileSync(new URL('../src/services/cached-risk-scores.ts', import.meta.url), 'utf8');
+    const mapper = source.match(/function getScoreLevel\(score: number\):[^{]+\{[\s\S]*?\n\}/);
+    assert.ok(mapper);
+    const compiled = transformSync(`${mapper[0]}\nexport { getScoreLevel };`, { loader: 'ts', format: 'esm', target: 'es2022' });
+    const { getScoreLevel } = await import(`data:text/javascript;base64,${Buffer.from(compiled.code).toString('base64')}`);
+    for (const [score, label] of [[0, 'Low'], [30, 'Low'], [31, 'Normal'], [50, 'Normal'], [51, 'Elevated'], [65, 'Elevated'], [66, 'High'], [80, 'High'], [81, 'Critical'], [93, 'Critical'], [100, 'Critical'], ['93', 'Critical']]) {
+      assert.equal(getScoreLevel(Number(score)), label.toLowerCase(), `canonical mapper for ${score}`);
+      const view = await mount(wire({ ...risk, countryCode: 'UA', countryName: 'Ukraine', cii: { ...risk.cii, combinedScore: score } }));
+      assert.equal(text(view.doc, 'level'), label, `headline for ${score}`);
+      assert.equal(text(view.doc, 'cii'), String(score));
+      assert.equal(view.requests(), 0);
+      view.send(wire(outage, true));
+      assertUnknownScore(view.doc);
+    }
+  });
   for (const query of ['@', subset]) {
     it(`preserves country, risk, evidence and date for projection ${query}`, async () => {
       const projected = applyJmespath(risk, query);
@@ -74,7 +92,7 @@ describe('Country Risk exported HTML projections', () => {
   });
   for (const replacement of [null, 7, false, '', 'unloaded', [], {}, { unexpected: 'shape' }]) {
     for (const format of ['text', 'projection']) {
-      it(`clears previous Severe output for ${format} ${JSON.stringify(replacement)}`, async () => {
+      it(`clears previous High output for ${format} ${JSON.stringify(replacement)}`, async () => {
         const view = await mount(wire(risk));
         assertRisk(view.doc);
         view.send(format === 'text' ? textWire(replacement) : wire(replacement, true));
