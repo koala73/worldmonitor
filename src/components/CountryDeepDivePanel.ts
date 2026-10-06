@@ -1406,16 +1406,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       table.append(thead);
 
       const tbody = this.el('tbody', '');
-      const rows: Array<{ label: string; demand: number; imports: number }> = [
-        { label: 'Gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
-        { label: 'Diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
-        { label: 'Jet fuel', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
-        { label: 'LPG', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
+      const observed = new Set(data.jodiOilObservedMeasurements ?? []);
+      const fmtKbd = (value: number, path: string) => value > 0 || (value === 0 && observed.has(path)) ? `${value} kbd` : '\u2014';
+      const rows: Array<{ label: string; key: string; demand: number; imports: number }> = [
+        { label: 'Gasoline', key: 'gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
+        { label: 'Diesel', key: 'diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
+        { label: 'Jet fuel', key: 'jet', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
+        { label: 'LPG', key: 'lpg', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
       ];
       for (const r of rows) {
         const tr = this.el('tr', '');
-        const fmtKbd = (v: number) => v > 0 ? `${v} kbd` : '\u2014';
-        for (const val of [r.label, fmtKbd(r.demand), fmtKbd(r.imports)]) {
+        for (const val of [r.label, fmtKbd(r.demand, `${r.key}.demandKbd`), fmtKbd(r.imports, `${r.key}.importsKbd`)]) {
           const td = this.el('td', '');
           td.textContent = val;
           td.style.cssText = 'padding:2px 4px';
@@ -1423,7 +1424,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         }
         tbody.append(tr);
       }
-      if (data.crudeImportsKbd > 0) {
+      if (data.crudeImportsKbd > 0 || (data.crudeImportsKbd === 0 && observed.has('crude.importsKbd'))) {
         const tr = this.el('tr', '');
         for (const val of ['Crude', '\u2014', `${data.crudeImportsKbd} kbd`]) {
           const td = this.el('td', '');
@@ -1499,6 +1500,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         marker.style.cssText = 'position:absolute;top:-2px;left:50%;width:2px;height:12px;background:#f59e0b;transform:translateX(-50%)';
         barOuter.append(fill, marker);
         section.append(barOuter);
+      }
+      if (data.ieaStocksDataMonth) {
+        section.append(this.el('div', 'cdp-economic-source', `Source: IEA · ${data.ieaStocksDataMonth}`));
       }
       this.energyBody.append(section);
     }

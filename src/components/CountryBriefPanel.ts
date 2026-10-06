@@ -156,6 +156,7 @@ export interface CountryEnergyProfileData {
   electricityDate: string;
   jodiOilAvailable: boolean;
   jodiOilDataMonth: string;
+  jodiOilObservedMeasurements?: string[];
   gasolineDemandKbd: number;
   gasolineImportsKbd: number;
   dieselDemandKbd: number;
