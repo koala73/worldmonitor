@@ -4493,6 +4493,10 @@ describe('crawlable corpus generator', () => {
         hormuz,
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
+      assert.match(hormuzDocument.querySelector('[data-chokepoint-transits-note]').textContent,
+        /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+      assert.match(hormuzDocument.querySelector('[data-live-chokepoint]').dataset.transitMeasurementNote,
+        /Historical PortWatch totals/);
       // Visibility follows the pulse's availability flags, not a fixed
       // expectation. This asserted `hidden === true` unconditionally, which was
       // only true while the committed snapshot predated the #7535 flags; the

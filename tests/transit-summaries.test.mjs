@@ -10,6 +10,16 @@ import {
 } from '../server/worldmonitor/supply-chain/v1/_chokepoint-ids.ts';
 import { CHOKEPOINTS } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
 import { CHOKEPOINT_THREAT_LEVELS } from '../shared/chokepoint-threat-levels.js';
+import { readTransitWindow } from '../shared/chokepoint-transit-window.js';
+
+function transitStore() {
+  const rows = new Map();
+  return async (_script, _keys, [now, window, _ttl, batch]) => {
+    for (const event of JSON.parse(batch)) rows.set(JSON.stringify(event), event[3]);
+    return [...rows].filter(([, ts]) => ts > now - window && ts <= now)
+      .sort((a, b) => a[1] - b[1]).map(([member]) => member);
+  };
+}
 import { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } from '../shared/corridor-risk.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +154,7 @@ describe('seedTransitSummaries (relay)', () => {
 
   const transitsHarnessSrc = [
     extractArrayConst('CHOKEPOINTS'),
+    extractObjectConst('RELAY_NAME_TO_ID'),
     extractConstLine('TRANSIT_WINDOW_MS'),
     extractConstLine('CHOKEPOINT_TRANSIT_KEY'),
     extractConstLine('CHOKEPOINT_TRANSIT_TTL'),
@@ -163,13 +174,14 @@ describe('seedTransitSummaries (relay)', () => {
     upstashSet = async () => {},
     chokepointCrossings = new Map(),
     log = () => {},
+    upstashEval = transitStore(),
   }) {
     // eslint-disable-next-line no-new-func
     const factory = new Function(
-      'envelopeWrite', 'upstashSet', 'console', 'chokepointCrossings',
+      'envelopeWrite', 'upstashSet', 'console', 'chokepointCrossings', 'readTransitWindow', 'upstashEval',
       transitsHarnessSrc,
     );
-    return factory(envelopeWrite, upstashSet, { log, warn: () => {} }, chokepointCrossings);
+    return factory(envelopeWrite, upstashSet, { log, warn: () => {} }, chokepointCrossings, readTransitWindow, upstashEval);
   }
 
   // Fresh sandbox per call — `latestCorridorRiskData` resets like a cold
@@ -182,16 +194,17 @@ describe('seedTransitSummaries (relay)', () => {
     warn = () => {},
     log = () => {},
     chokepointCrossings = new Map(),
+    upstashEval = transitStore(),
   }) {
     // eslint-disable-next-line no-new-func
     const factory = new Function(
       'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED', 'chokepointCrossings',
-      'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS',
+      'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS', 'readTransitWindow', 'upstashEval',
       seedHarnessSrc,
     );
     return factory(
       envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, chokepointCrossings,
-      detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
+      detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS, readTransitWindow, upstashEval,
     );
   }
 
@@ -200,6 +213,42 @@ describe('seedTransitSummaries (relay)', () => {
     'taiwan_strait', 'cape_of_good_hope', 'gibraltar', 'bosphorus',
     'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
   ];
+
+  it('both publishers recover counts after restart and health counts only measured canonical waterways', async () => {
+    const upstashEval = transitStore();
+    const now = Date.now();
+    const crossings = new Map([
+      ['Strait of Hormuz', [{ mmsi: '111111111', type: 'tanker', ts: now - 1000 }]],
+      ['Black Sea', [{ mmsi: '222222222', type: 'cargo', ts: now - 1000 }]],
+    ]);
+    const writes = new Map();
+    const envelopeWrite = async (key, data) => { writes.set(key, data); return true; };
+    const upstashSet = async (key, data) => { writes.set(key, data); return true; };
+    await buildSeedChokepointTransits({ envelopeWrite, upstashSet, upstashEval, chokepointCrossings: crossings })();
+    await buildSeedChokepointTransits({ envelopeWrite, upstashSet, upstashEval })();
+    await buildSeedTransitSummaries({
+      envelopeRead: async key => key === 'supply_chain:portwatch:v1' ? { hormuz_strait: { history: [] } } : null,
+      envelopeWrite, upstashSet, upstashEval,
+    })();
+    assert.equal(writes.get('supply_chain:transit-summaries:v1').summaries.hormuz_strait.todayTotal, 1);
+    assert.equal(writes.get('supply_chain:chokepoint_transits:v1').transits['Strait of Hormuz'].total, 1);
+    const meta = writes.get('seed-meta:supply_chain:chokepoint_transits');
+    assert.equal(meta.recordCount, 1, 'the Black Sea area is not one of the 13 canonical waterways');
+    assert.equal(meta.transitCoverage.total, 13);
+    assert.equal(meta.transitCoverage.missing.length, 12);
+    assert.ok(!meta.transitCoverage.missing.includes('hormuz_strait'));
+  });
+
+  it('neither publisher replaces last-good counts when the durable window cannot be read', async () => {
+    const envelopeWrite = async () => assert.fail('must not publish without durable history');
+    const upstashSet = async () => assert.fail('must not refresh metadata');
+    const upstashEval = async () => null;
+    await assert.rejects(buildSeedChokepointTransits({ envelopeWrite, upstashSet, upstashEval })(), /transit window/);
+    await assert.rejects(buildSeedTransitSummaries({
+      envelopeRead: async key => key === 'supply_chain:portwatch:v1' ? { suez: { history: [] } } : null,
+      envelopeWrite, upstashSet, upstashEval,
+    })(), /transit window/);
+  });
 
   it('populated portwatch actually produces the compact summary key, all 13 per-id history keys, and a seed-meta write', async () => {
     const fakePortwatch = {
@@ -306,9 +355,9 @@ describe('seedTransitSummaries (relay)', () => {
       upstashSet: async () => {},
       chokepointCrossings: new Map([
         ['Suez Canal', [
-          { ts: now - 1_000, type: 'cargo' },
-          { ts: now - 2_000, type: 'tanker' },
-          { ts: now - 3_000, type: 'other' },
+          { mmsi: '111111111', ts: now - 1_000, type: 'cargo' },
+          { mmsi: '222222222', ts: now - 2_000, type: 'tanker' },
+          { mmsi: '333333333', ts: now - 3_000, type: 'other' },
           { ts: now - 25 * 60 * 60 * 1000, type: 'cargo' },
         ]],
       ]),
@@ -336,8 +385,8 @@ describe('seedTransitSummaries (relay)', () => {
     const now = Date.now();
     const crossings = new Map([
       ['Suez Canal', [
-        { ts: now - 1_000, type: 'cargo' },
-        { ts: now - 2_000, type: 'tanker' },
+        { mmsi: '111111111', ts: now - 1_000, type: 'cargo' },
+        { mmsi: '222222222', ts: now - 2_000, type: 'tanker' },
       ]],
       // Present in the map but entirely outside the 24h window: the empty-window
       // case, which must read as absent on BOTH sides rather than as zero traffic.
@@ -413,7 +462,7 @@ describe('seedTransitSummaries (relay)', () => {
       const seed = new Function(
         'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
         'chokepointCrossings', 'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS',
-        'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent',
+        'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent', 'readTransitWindow', 'upstashEval',
         source,
       )(
         async () => Response.json([{ name: 'Strait of Hormuz', score: 80, incident_count_7d: 628,
@@ -426,6 +475,7 @@ describe('seedTransitSummaries (relay)', () => {
         new Map(), detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
         CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel, 'test-agent',
         async event => { notifications.push(event); },
+        readTransitWindow, transitStore(),
       );
       await seed.seedCorridorRisk();
       await seed.seedTransitSummaries();
