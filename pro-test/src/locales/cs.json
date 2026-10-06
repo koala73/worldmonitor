@@ -690,7 +690,9 @@
       "a10": "Palantir zprovozňuje vlastní data instituce uvnitř té instituce. World Monitor začíná z druhé strany: shromažďuje, normalizuje, koreluje a monitoruje data veřejného světa, poté publikuje tuto inteligenční vrstvu přes bezplatný dashboard a open-source kód. Jiná úloha, jiný produkt.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} přímých odpovědí na cenu, data, upozornění a přístup k AI. Stručně: dashboard stojí $0, nevyžaduje účet a kód je open source pod licencí AGPL-3.0."
+      "sub": "{{answers}} přímých odpovědí na cenu, data, upozornění a přístup k AI. Stručně: dashboard stojí $0, nevyžaduje účet a kód je open source pod licencí AGPL-3.0.",
+      "q12": "Jaký je nejlepší software pro sledování globálních poruch zpravodajství?",
+      "a12": "World Monitor je volná, otevřená volba: streamuje {{feeds}} zpravodajských a OSINT zdrojů od {{providers}} přiřazených poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy map vrstev, pokrývající geopolitiku, trhy, lodní dopravu, letectví a kyber. Koreluje je tak, aby se konvergující poruchy objevily dříve než titulky. Pokud ji chcete porovnat s jinými nástroji, podívejte se na worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Jak začít sledovat mapu světa?",

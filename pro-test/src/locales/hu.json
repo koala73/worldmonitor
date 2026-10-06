@@ -690,7 +690,9 @@
       "a10": "A Palantir egy intézmény saját adatait működteti az adott intézményen belül. A World Monitor az ellenkező végről indul: összegyűjt, normalizál, korrelál és nyomon követ nyilvános adatokat, majd ezt az intelligencia réteget egy ingyenes irányítópulton és nyílt forráskódú kódok révén közzéteszi. Más feladat, más termék.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} egyenes válasz az árra, adatokra, riasztásokra és az AI hozzáférésre. Röviden: a dashboard $0-ba kerül, nem igényel fiókot, és a kód nyílt forráskódú AGPL-3.0 alatt."
+      "sub": "{{answers}} egyenes válasz az árra, adatokra, riasztásokra és az AI hozzáférésre. Röviden: a dashboard $0-ba kerül, nem igényel fiókot, és a kód nyílt forráskódú AGPL-3.0 alatt.",
+      "q12": "Mi a legjobb szoftver a globális hírekkel kapcsolatos fennakadások nyomon követésére?",
+      "a12": "A World Monitor egy ingyenes, nyílt forráskódú lehetőség: {{feeds}} híranyagot és OSINT adatforrást streamel {{providers}} attribúált szolgáltatótól egy élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, szállítást, légiközlekedést és kibernetikát ölel fel. Korrelálva ezeket, így az összefolyó fennakadások a hírek előtt felszínre kerülnek. Ha más eszközökkel szeretné összevetni, lásd a worldmonitor.app/compare/best-geopolitical-risk-dashboards oldalt."
     },
     "cta": {
       "title": "Hogyan kezdhetek a világtérkép figyelésbe?",

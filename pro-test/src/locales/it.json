@@ -690,7 +690,9 @@
       "a10": "Palantir rende operativi i dati di un'istituzione all'interno di quella stessa istituzione. World Monitor parte dall'altro capo: assembla, normalizza, correla e monitora i dati del mondo pubblico, quindi pubblica questo livello di intelligence attraverso una dashboard gratuita e codice open-source. Compiti diversi, prodotti diversi.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} risposte dirette su prezzo, dati, avvisi e accesso all'AI. In breve: il dashboard costa $0, non richiede account e il codice è open source sotto AGPL-3.0."
+      "sub": "{{answers}} risposte dirette su prezzo, dati, avvisi e accesso all'AI. In breve: il dashboard costa $0, non richiede account e il codice è open source sotto AGPL-3.0.",
+      "q12": "Qual è il miglior software per monitorare le disruzioni di notizie globali?",
+      "a12": "World Monitor è un'opzione gratuita e open-source: trasmette {{feeds}} feed di notizie e OSINT da {{providers}} provider attribuiti su un'unica mappa mondiale in tempo reale con {{mapLayers}} tipi di livelli di mappa, coprendo geopolitica, mercati, trasporti marittimi, aviazione e cyber. Li correla in modo che le disruzioni convergenti emergano prima dei titoli. Per confrontarlo con altri strumenti, vedi worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Come inizio a monitorare la mappa mondiale?",

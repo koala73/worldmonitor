@@ -690,7 +690,9 @@
       "a10": "Palantir hace que los datos propios de una institución sean operacionales dentro de esa institución. World Monitor comienza desde el otro extremo: reúne, normaliza, correlaciona y monitorea datos del mundo público, y luego publica esa capa de inteligencia a través de un panel gratuito y código de código abierto. Trabajo diferente, producto diferente.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} respuestas directas sobre precio, datos, alertas y acceso a IA. En resumen: el dashboard cuesta $0, no requiere cuenta y el código es de código abierto bajo AGPL-3.0."
+      "sub": "{{answers}} respuestas directas sobre precio, datos, alertas y acceso a IA. En resumen: el dashboard cuesta $0, no requiere cuenta y el código es de código abierto bajo AGPL-3.0.",
+      "q12": "¿Cuál es el mejor software para monitorear disrupciones de noticias globales?",
+      "a12": "World Monitor es una opción gratuita y de código abierto: transmite {{feeds}} fuentes de noticias e inteligencia de {{providers}} proveedores atribuidos en un mapa mundial en vivo con {{mapLayers}} tipos de capas de mapa, abarcando geopolítica, mercados, transporte marítimo, aviación y ciberseguridad. Las correlaciona para que las disrupciones convergentes salgan a la luz antes de que lo hagan los titulares. Para compararlo con otras herramientas, consulta worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "¿Cómo empiezo a monitorear el mapa mundial?",

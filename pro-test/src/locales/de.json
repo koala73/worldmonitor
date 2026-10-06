@@ -690,7 +690,9 @@
       "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} direkte Antworten zu Preis, Daten, Warnmeldungen und KI-Zugang. Kurzfassung: Das Dashboard kostet 0 $, benötigt kein Konto und der Code ist Open Source unter AGPL-3.0."
+      "sub": "{{answers}} direkte Antworten zu Preis, Daten, Warnmeldungen und KI-Zugang. Kurzfassung: Das Dashboard kostet 0 $, benötigt kein Konto und der Code ist Open Source unter AGPL-3.0.",
+      "q12": "Welche Software eignet sich am besten zur Verfolgung globaler Nachrichtenstörungen?",
+      "a12": "World Monitor ist eine kostenlose Open-Source-Option: Sie streamt {{feeds}} Nachrichten und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenschichttypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Sie korreliert diese, sodass konvergierende Störungen vor den Schlagzeilen auftauchen. Um es mit anderen Tools zu vergleichen, siehe worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Wie starte ich die Überwachung der Weltkarte?",
