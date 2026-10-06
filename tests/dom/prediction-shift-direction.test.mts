@@ -16,21 +16,30 @@ import {
   predictionMarketKey,
   type CorrelationSignalCore,
   type PredictionMarketCore,
+  type StreamSnapshot,
 } from '@/services/analysis-core';
 
-function runTwoSnapshots(
-  before: PredictionMarketCore[],
-  after: PredictionMarketCore[],
-): CorrelationSignalCore[] {
+function runSnapshots(polls: PredictionMarketCore[][]): CorrelationSignalCore[] {
   const seen = new Set<string>();
   const isRecentDuplicate = (key: string) => seen.has(key);
   const markSignalSeen = (key: string) => { seen.add(key); };
   const getSourceType = () => 'other' as const;
 
-  const first = analyzeCorrelationsCore([], before, [], null, getSourceType, isRecentDuplicate, markSignalSeen);
-  expect(first.signals).toEqual([]);
-  const second = analyzeCorrelationsCore([], after, [], first.snapshot, getSourceType, isRecentDuplicate, markSignalSeen);
-  return second.signals.filter(signal => signal.type === 'prediction_leads_news');
+  let snapshot: StreamSnapshot | null = null;
+  const signals: CorrelationSignalCore[] = [];
+  for (const poll of polls) {
+    const result = analyzeCorrelationsCore([], poll, [], snapshot, getSourceType, isRecentDuplicate, markSignalSeen);
+    snapshot = result.snapshot;
+    signals.push(...result.signals.filter(signal => signal.type === 'prediction_leads_news'));
+  }
+  return signals;
+}
+
+function runTwoSnapshots(
+  before: PredictionMarketCore[],
+  after: PredictionMarketCore[],
+): CorrelationSignalCore[] {
+  return runSnapshots([before, after]);
 }
 
 const MARKET = 'Will the central bank of Atlantis raise rates this year?';
@@ -78,5 +87,36 @@ describe('prediction-market shift direction (#8868)', () => {
     // Each market moved one point against its own previous price; neither
     // crossed the threshold, so no shift may be reported.
     expect(signals).toEqual([]);
+  });
+
+  it('emits both alerts when an equally sized rise reverses', () => {
+    const signals = runSnapshots([
+      [{ title: MARKET, yesPrice: 30 }],
+      [{ title: MARKET, yesPrice: 40 }],
+      [{ title: MARKET, yesPrice: 30 }],
+    ]);
+    expect(signals.map(signal => signal.data.predictionShift)).toEqual([10, -10]);
+    expect(signals[0]!.description).toContain('moved +10.0%');
+    expect(signals[1]!.description).toContain('moved -10.0%');
+  });
+
+  it('still compares prices when a unique title later gains a URL', () => {
+    const url = 'https://polymarket.com/event/atlantis-rates';
+    const [signal, ...rest] = runTwoSnapshots(
+      [{ title: MARKET, yesPrice: 40 }],
+      [{ title: MARKET, yesPrice: 30, url }],
+    );
+    expect(rest).toEqual([]);
+    expect(signal!.data.predictionShift).toBe(-10);
+  });
+
+  it('still compares prices when a unique title later loses a URL', () => {
+    const url = 'https://polymarket.com/event/atlantis-rates';
+    const [signal, ...rest] = runTwoSnapshots(
+      [{ title: MARKET, yesPrice: 40, url }],
+      [{ title: MARKET, yesPrice: 30 }],
+    );
+    expect(rest).toEqual([]);
+    expect(signal!.data.predictionShift).toBe(-10);
   });
 });

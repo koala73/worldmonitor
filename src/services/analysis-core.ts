@@ -81,11 +81,40 @@ export interface PredictionMarketCore {
  * identity: dated variants of one question ("... by March 31?" / "... by June
  * 30?") share long prefixes, and Polymarket rows drawn from one event share the
  * event URL, so neither the prefix nor the URL alone tells two markets apart.
- * The URL plus the full title does.
+ * The URL plus the full title does. The title is also stored as an alias when
+ * it is unique in the snapshot, so a poll that later gains or loses a URL can
+ * still find the previous price.
  */
 export function predictionMarketKey(market: Pick<PredictionMarketCore, 'title' | 'url'>): string {
   const url = market.url?.trim();
   return url ? `${url}|${market.title}` : market.title;
+}
+
+function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<string, number> {
+  const titleCounts = new Map<string, number>();
+  for (const pred of predictions) {
+    titleCounts.set(pred.title, (titleCounts.get(pred.title) ?? 0) + 1);
+  }
+  const snapshot = new Map<string, number>();
+  for (const pred of predictions) {
+    snapshot.set(predictionMarketKey(pred), pred.yesPrice);
+    const url = pred.url?.trim();
+    if (url && titleCounts.get(pred.title) === 1) {
+      snapshot.set(pred.title, pred.yesPrice);
+    }
+  }
+  return snapshot;
+}
+
+function previousPredictionPrice(
+  pred: PredictionMarketCore,
+  previous: Map<string, number>,
+): number | undefined {
+  const key = predictionMarketKey(pred);
+  const exact = previous.get(key);
+  if (exact !== undefined) return exact;
+  const url = pred.url?.trim();
+  return url ? previous.get(pred.title) : undefined;
 }
 
 export interface MarketDataCore {
@@ -383,7 +412,7 @@ export function analyzeCorrelationsCore(
   const currentSnapshot: StreamSnapshot = {
     newsVelocity: newsTopics,
     marketChanges: new Map(markets.map(m => [m.symbol, m.change ?? 0])),
-    predictionChanges: new Map(predictions.map(p => [predictionMarketKey(p), p.yesPrice])),
+    predictionChanges: predictionChangesSnapshot(predictions),
     topicVelocityHistory: currentHistory,
     timestamp: now,
   };
@@ -395,7 +424,7 @@ export function analyzeCorrelationsCore(
   // Detect prediction shifts
   for (const pred of predictions) {
     const key = predictionMarketKey(pred);
-    const prev = previousSnapshot.predictionChanges.get(key);
+    const prev = previousPredictionPrice(pred, previousSnapshot.predictionChanges);
     if (prev !== undefined) {
       // Keep the sign (#8868): a fall must read as a fall. Only the threshold
       // and the confidence work on the magnitude.
