@@ -1927,6 +1927,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
       'archive_unavailable', 'archive_incomplete', 'archive_empty',
       'judge_unavailable', 'provider_error', 'json_parse_fail', 'invalid_outcome',
       'missing_citations', 'invalid_citations', 'citation_mismatch', 'insufficient_subject_items',
+      'absence_selection_truncated', 'absence_coverage_unbounded',
       'judge_disagreement', 'all_judges_void', 'beyond_archive_horizon',
     ]);
   });
@@ -2650,6 +2651,36 @@ describe('absence-based NO (#8896)', () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archive, nowMs, { judgeModels });
     return { result, row: result.ledger[`fc-judge@${T_DEADLINE}`] };
   }
+
+  it('voids an absence-based NO when the item cap dropped on-subject reports the judges never saw', async () => {
+    const items = onSubjectItems(20);
+    const { row } = await run(archiveWith(items), [absenceNo('openrouter'), absenceNo('groq')]);
+    assert.equal(row.outcome, 'VOID');
+    assert.deepEqual(row.evidence.judgments.map((judgment) => judgment.reason), ['absence_selection_truncated', 'absence_selection_truncated']);
+    assert.ok(row.evidence.judgments.every((judgment) => judgment.basis === undefined), 'a VOID judgment carries no basis');
+  });
+
+  it('does not count source-name-only matches toward the on-subject floor', async () => {
+    const items = [
+      ...onSubjectItems(1),
+      ...[2, 3].map((n) => ({ id: `N${n}`, title: `Weather update ${n}`, description: 'Rain expected this weekend.', source: 'Freedonia Wire', publishedAt: T_DEADLINE - 10 - n })),
+    ];
+    const { row } = await run(archiveWith(items), [absenceNo('openrouter'), absenceNo('groq')]);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.judgments[0].reason, 'insufficient_subject_items');
+  });
+
+  it('voids an absence-based NO on an archive without coverage bounds', async () => {
+    const { row } = await run({ available: true, items: onSubjectItems() }, [absenceNo('openrouter'), absenceNo('groq')]);
+    assert.notEqual(row?.outcome, 'NO');
+  });
+
+  it('clears the basis when a NO is downgraded for missing citations', async () => {
+    const uncited = (provider) => async () => ({ provider, model: `${provider}-model`, outcome: 'NO', basis: 'absence', citations: [], rationale: 'nothing' });
+    const { row } = await run(archiveWith(onSubjectItems()), [uncited('openrouter'), uncited('groq')]);
+    assert.equal(row.outcome, 'VOID');
+    assert.ok(row.evidence.judgments.every((judgment) => judgment.basis === undefined));
+  });
 
   it('states the absence contract in the judge prompt without loosening the citation rule', () => {
     const { systemPrompt } = buildJudgedResolutionPrompt(entry, onSubjectItems(), NOW);
