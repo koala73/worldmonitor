@@ -33,7 +33,7 @@ const POOLED_MARKET = { domain: 'market', resolved: 420, scored: 400, void: 20, 
 
 function scorecard(rows: PublishedDomain[], overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: Date.parse('2026-10-05T06:00:00Z'),
     rollingWindowDays: 180,
     methodology: '',
@@ -146,8 +146,8 @@ describe('ForecastPanel reliability badge', () => {
   it('shows no badge when the response predates publishedByDomain', async () => {
     const absent = scorecard([]);
     delete (absent as unknown as Record<string, unknown>).publishedByDomain;
-    // The handler fills a missing field with [], beside a graded headline cohort.
-    const backfilled = scorecard([]);
+    // The handler fills a missing field with [], so a schema-1 seed reads as an empty list.
+    const backfilled = scorecard([], { schemaVersion: 1 });
     for (const legacy of [absent, backfilled]) {
       stubScorecard(async () => Response.json(legacy));
       panel.updateForecasts([forecast('fc-1', 'market')]);
@@ -160,10 +160,8 @@ describe('ForecastPanel reliability badge', () => {
     }
   });
 
-  it('says not yet measured everywhere when nothing in the headline cohort is graded yet', async () => {
-    const [badge] = await badgesFor([], ['market'], {
-      skill: { count: 0, logScore: 0, excludedScored: 13, excludedOrigins: ['bet_engine'], yesCount: 0 },
-    });
+  it('says not yet measured when a current seed has no published-origin entries', async () => {
+    const [badge] = await badgesFor([], ['market']);
     expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
   });
 

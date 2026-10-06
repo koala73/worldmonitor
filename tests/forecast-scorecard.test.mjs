@@ -153,6 +153,7 @@ describe('computeScorecard', () => {
       h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine' }),
     }, NOW, { promoteBetEngine: true });
 
+    assert.equal(scorecard.schemaVersion, 2, 'schema 2 marks a seed that carries publishedByDomain');
     assert.deepEqual(scorecard.publishedByDomain, [
       { domain: 'conflict', count: 1, brier: 0.09, yesCount: 0 },
       { domain: 'market', count: 2, brier: 0.1, yesCount: 1 },

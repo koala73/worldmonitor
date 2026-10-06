@@ -59,7 +59,8 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const pendingJudge = entries.filter((entry) => entry?.status === 'pending-judge');
 
   const scorecard = {
-    schemaVersion: 1,
+    // 2: carries publishedByDomain (#5092).
+    schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
     methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.',

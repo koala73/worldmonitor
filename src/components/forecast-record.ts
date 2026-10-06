@@ -60,6 +60,7 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
 
 /** Mirrors INTERVAL_MIN_SAMPLE in scripts/_forecast-scorecard.mjs; a test pins the two together. */
 export const DOMAIN_RELIABILITY_MIN_SAMPLE = 30;
+const PUBLISHED_BY_DOMAIN_SCHEMA = 2;
 
 export type DomainReliability =
   | { kind: 'measured'; brier: number; n: number; yesShare: number }
@@ -75,12 +76,11 @@ export interface ReliabilityTable {
 /**
  * Reads only publishedByDomain. byDomain pools shadow and synthetic origins,
  * so a response without the published breakdown yields no badges at all. The
- * handler fills an absent field with [], so an empty breakdown beside a graded
- * headline cohort means a seed that predates the field, not zero samples.
+ * handler fills an absent field with [], so only a schema-2 seed vouches for it.
  */
 export function projectReliability(resp: GetForecastScorecardResponse): ReliabilityTable | null {
   if (resp.degraded || resp.error || !Array.isArray(resp.publishedByDomain)) return null;
-  if (resp.publishedByDomain.length === 0 && finite(resp.skill?.count) && resp.skill.count > 0) return null;
+  if (!finite(resp.schemaVersion) || resp.schemaVersion < PUBLISHED_BY_DOMAIN_SCHEMA) return null;
   const byDomain = new Map<string, DomainReliability>();
   for (const row of resp.publishedByDomain) {
     const n = finite(row.count) && row.count > 0 ? row.count : 0;
