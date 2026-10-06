@@ -740,7 +740,7 @@ components:
                 provider:
                     type: string
                     minLength: 1
-                    description: 'LLM provider: "ollama", "groq", "openrouter"'
+                    description: 'LLM provider: "ollama", "openrouter"'
                 headlines:
                     type: array
                     items:

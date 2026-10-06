@@ -87,7 +87,7 @@
     "predictionMarkets": "Prediction Markets",
     "loadingMarkets": "Loading prediction markets...",
     "infrastructure": "Infrastructure Exposure",
-    "briefUnavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings.",
+    "briefUnavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings.",
     "cached": "Cached",
     "fresh": "Fresh",
     "noMarkets": "No active markets for this country.",
@@ -874,7 +874,7 @@
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",
       "predictionMarkets": "Prediction Markets",
-      "unavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings."
+      "unavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings."
     },
     "countryBrief": {
       "identifying": "Identifying country...",
@@ -890,7 +890,7 @@
       "predictionMarkets": "Prediction Markets",
       "loadingMarkets": "Loading prediction markets...",
       "infrastructure": "Infrastructure Exposure",
-      "briefUnavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings.",
+      "briefUnavailable": "AI brief unavailable — configure OPENROUTER_API_KEY in Settings.",
       "cached": "Cached",
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",
@@ -1580,7 +1580,7 @@
       "rankingStories": "Ranking important stories...",
       "analyzingSentiment": "Analyzing sentiment...",
       "generatingBrief": "Generating world brief...",
-      "infoTooltip": "<strong>AI-Powered Analysis</strong><br>• <strong>World Brief</strong>: AI summary (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: News tone analysis<br>• <strong>Velocity</strong>: Fast-moving stories<br>• <strong>Focal Points</strong>: Correlates news entities with map signals (military, protests, outages)<br><em>Desktop only • Powered by Llama 3.3 + Focal Point Detection</em>",
+      "infoTooltip": "<strong>AI-Powered Analysis</strong><br>• <strong>World Brief</strong>: AI summary (OpenRouter)<br>• <strong>Sentiment</strong>: News tone analysis<br>• <strong>Velocity</strong>: Fast-moving stories<br>• <strong>Focal Points</strong>: Correlates news entities with map signals (military, protests, outages)<br><em>Desktop only • Powered by Llama 3.3 + Focal Point Detection</em>",
       "streamQualityLabel": "Video Quality",
       "streamQualityDesc": "Set quality for all live streams (lower saves bandwidth)",
       "globeRenderScaleOptions": {
@@ -1592,7 +1592,7 @@
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Send headlines to cloud for AI summarization (recommended)",
       "aiFlowBrowserLabel": "Browser Local Model",
       "aiFlowBrowserDesc": "Run AI locally in your browser",

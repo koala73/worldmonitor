@@ -16,7 +16,7 @@
     "predictionMarkets": "Αγορές Προβλέψεων",
     "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
     "infrastructure": "Έκθεση Υποδομών",
-    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
     "cached": "Αποθηκευμένο",
     "fresh": "Πρόσφατο",
     "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
@@ -799,7 +799,7 @@
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
       "predictionMarkets": "Αγορές Προβλέψεων",
-      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις."
+      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις."
     },
     "countryBrief": {
       "identifying": "Αναγνώριση χώρας...",
@@ -815,7 +815,7 @@
       "predictionMarkets": "Αγορές Προβλέψεων",
       "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
       "infrastructure": "Έκθεση Υποδομών",
-      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
       "cached": "Αποθηκευμένο",
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
@@ -1430,7 +1430,7 @@
       "rankingStories": "Κατάταξη σημαντικών ιστοριών...",
       "analyzingSentiment": "Ανάλυση συναισθήματος...",
       "generatingBrief": "Δημιουργία παγκόσμιας ενημέρωσης...",
-      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
+      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
       "streamQualityLabel": "Ποιότητα Βίντεο",
       "streamQualityDesc": "Ρύθμιση ποιότητας για όλες τις ζωντανές ροές (χαμηλότερη εξοικονομεί εύρος ζώνης)",
       "globeRenderScaleOptions": {
@@ -1442,7 +1442,7 @@
       },
       "mapFlashLabel": "Παλμός Ζωντανών Γεγονότων",
       "mapFlashDesc": "Φωτίζει τοποθεσίες στον χάρτη όταν φτάνουν έκτακτα νέα",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Αποστολή τίτλων στο cloud για σύνοψη AI (συνιστάται)",
       "aiFlowBrowserLabel": "Τοπικό Μοντέλο Περιηγητή",
       "aiFlowBrowserDesc": "Εκτέλεση AI τοπικά στον περιηγητή σας",

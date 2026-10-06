@@ -2,7 +2,7 @@
  * #4913 — anonymous dashboards flooded the premium-gated summarize-article
  * endpoint after #4675/#4687 gated its LLM spend server-side without a
  * client-side entitlement gate: every summarize attempt fanned out up to 3
- * doomed RPCs (ollama→groq→openrouter through the same gated endpoint)
+ * doomed RPCs (ollama→openrouter through the same gated endpoint)
  * before landing on the browser-T5 fallback anon users get anyway.
  *
  * Three seams under test (same shape as tests/classify-entitlement-gate for
