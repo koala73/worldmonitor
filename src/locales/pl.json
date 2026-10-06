@@ -16,7 +16,7 @@
     "predictionMarkets": "Rynki prognostyczne",
     "loadingMarkets": "Ładowanie rynków prognostycznych...",
     "infrastructure": "Ekspozycja infrastruktury",
-    "briefUnavailable": "Raport AI niedostępny — skonfiguruj GROQ_API_KEY w Ustawieniach.",
+    "briefUnavailable": "Raport AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
     "cached": "Z pamięci podręcznej",
     "fresh": "Aktualne",
     "noMarkets": "Nie znaleziono rynków prognostycznych",
@@ -764,7 +764,7 @@
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",
       "predictionMarkets": "Rynki prognostyczne",
-      "unavailable": "Opis AI niedostępny — skonfiguruj GROQ_API_KEY w Ustawieniach."
+      "unavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach."
     },
     "countryBrief": {
       "components": {
@@ -800,7 +800,7 @@
       "predictionMarkets": "Rynki prognostyczne",
       "loadingMarkets": "Ładowanie rynków prognoz...",
       "infrastructure": "Ekspozycja infrastruktury",
-      "briefUnavailable": "Opis AI niedostępny — skonfiguruj GROQ_API_KEY w Ustawieniach.",
+      "briefUnavailable": "Opis AI niedostępny — skonfiguruj OPENROUTER_API_KEY w Ustawieniach.",
       "cached": "w pamieci podrecznej",
       "fresh": "Świeży",
       "noMarkets": "Nie znaleziono rynków prognostycznych",
@@ -1688,7 +1688,7 @@
     },
     "insights": {
       "noStories": "Brak pilnych lub wieloźródłowych wiadomości",
-      "infoTooltip": "<strong>Analiza oparta na sztucznej inteligencji</strong><br>• <strong>World Brief</strong>: Podsumowanie sztucznej inteligencji (Groq/OpenRouter)<br>• <strong>Nastroje</strong>: Analiza tonu wiadomości<br>• <strong>Velocity</strong>: Szybkie historie<br>• <strong>Focal Punkty</strong>: Koreluje wiadomości z sygnałami z mapy (wojsko, protesty, awarie)<br><em>Tylko komputer stacjonarny • Obsługiwane przez Lamę 3.3 + wykrywanie punktów ogniskowych</em>",
+      "infoTooltip": "<strong>Analiza oparta na sztucznej inteligencji</strong><br>• <strong>World Brief</strong>: Podsumowanie sztucznej inteligencji (OpenRouter)<br>• <strong>Nastroje</strong>: Analiza tonu wiadomości<br>• <strong>Velocity</strong>: Szybkie historie<br>• <strong>Focal Punkty</strong>: Koreluje wiadomości z sygnałami z mapy (wojsko, protesty, awarie)<br><em>Tylko komputer stacjonarny • Obsługiwane przez Lamę 3.3 + wykrywanie punktów ogniskowych</em>",
       "step": "Step {{step}}/{{total}}",
       "waitingForData": "Waiting for news data...",
       "rankingStories": "Ranking important stories...",
@@ -1696,7 +1696,7 @@
       "generatingBrief": "Generating world brief...",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Wyślij nagłówki do chmury w celu podsumowania AI (zalecane)",
       "aiFlowBrowserLabel": "Lokalny model przeglądarki",
       "aiFlowBrowserDesc": "Uruchom AI lokalnie w przeglądarce",

@@ -258,12 +258,12 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-ai-powered-intelligence"></a>
 ## AI-Powered Intelligence
 
-- **World Brief**: LLM-synthesized summary of top global developments via Groq Llama 3.1, Redis-cached
-- **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (Groq Llama 3.1 8B at temperature 0, 24h Redis cache). LLM overrides keyword result only when confidence is higher
+- **World Brief**: LLM-synthesized summary of top global developments via OpenRouter (Ollama when self-hosted), Redis-cached
+- **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (OpenRouter DeepSeek V4.1 Flash at temperature 0, Ollama when self-hosted, 24h Redis cache). LLM overrides keyword result only when confidence is higher
 - **Focal Point Detection**: Correlates entities across news, military activity, protests, outages, and markets to identify convergence. Requires cross-source confirmation before escalating to critical
 - **Country Instability Index (CII v8)**: Server-authoritative 0-100 stress scores for 31 Tier-1 countries. The documented formula blends four event components into `eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`, then combines `baselineRisk * 0.4 + eventScore * 0.6` with capped climate, cyber, fire, advisory, OREF, displacement, news-urgency, earthquake, sanctions, AIS, and UCDP/advisory floor terms. Each score emits `methodology_version`, component breakdown, advisory provenance, and signed 24-hour movement delta.
 - **Country Resilience Index (CRI)**: 0-100 resilience scores for the 196-country public rankable universe built from 72 indicators across 21 active dimensions, 6 domains, and 3 pillars. CRI uses official/authoritative sources, transparent goalposts, coverage tracking, and a four-class imputation taxonomy; the live runtime manifest reports the active formula tag and construct versions.
-- **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized via Groq (5 summaries/hour limit)
+- **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized through the summarization chain (5 summaries/hour limit)
 - **Strategic Posture Assessment**: Named operational theaters (Iran/Persian Gulf, Taiwan Strait, Baltic/Kaliningrad, Korean Peninsula, Eastern Mediterranean, Horn of Africa, South China Sea, Arctic, Black Sea) assessed continuously. Posture levels: NORMAL, ELEVATED, CRITICAL based on aircraft count, strike capability, naval presence, and country instability
 - **Geographic Convergence Detection**: Events binned into 1-degree geographic cells within 24-hour window. 3+ distinct event types in one cell triggers convergence alert
 - **Infrastructure Cascade Modeling**: BFS propagation (depth 3) through dependency graph of cables, pipelines, ports, chokepoints, and countries. Models real-world dependencies (e.g., Strait of Hormuz carries 80% of Japan's oil)
@@ -330,8 +330,7 @@ The live inventory currently covers 578+ observed upstream hosts. The [data-sour
 - ipinfo.io / freeipapi.com: IP geolocation enrichment
 - NWS (National Weather Service): Severe weather warnings
 - USASpending.gov: Government contracts and spending data
-- Groq API: Llama 3.1 for world briefs, threat classification, and spike summarization
-- OpenRouter API: LLM fallback provider
+- OpenRouter API: LLM provider for world briefs, threat classification, and spike summarization
 - MapTiler: Base map tiles
 
 <a id="corpus-supported-languages"></a>
@@ -357,7 +356,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 ## Architecture Principles
 
 - **Speed over perfection**: Keyword classifier is instant; LLM refines asynchronously. Users never wait
-- **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Groq, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
+- **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
 - **Show what you can't see**: Intelligence gap tracker explicitly reports data source outages rather than silently hiding them
 - **Browser-first compute where appropriate**: clustering, local ML, geolocation, and offline fallbacks run client-side; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data
 - **Local-first geolocation**: Country detection uses browser-side ray-casting against GeoJSON polygons (sub-millisecond, zero API dependency, works offline)
@@ -375,7 +374,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 - **Desktop**: Tauri 2.x (Rust core + Node.js sidecar), OS keychain integration (macOS Keychain, Windows Credential Manager), token-authenticated local API
 - **Backend**: Vercel Edge Functions, Railway relay server for blocked RSS feeds
 - **Data Store**: Upstash Redis (caching, Welford baselines, LLM dedup), IndexedDB (historical playback), localStorage (preferences, panel state)
-- **AI Pipeline**: Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser fallback for NER, sentiment, summarization)
+- **AI Pipeline**: Ollama (self-hosted), OpenRouter, Transformers.js (browser fallback for NER, sentiment, summarization)
 - **Monitoring**: Sentry error tracking and a data-freshness tracker across source groups with intelligence gap reporting
 - **Testing**: Playwright E2E tests (per-variant), Node.js test runner for data/sidecar tests
 - **PWA**: Service worker with CacheFirst map tiles (500 tiles, 30-day TTL), NetworkOnly for intelligence data, offline fallback page

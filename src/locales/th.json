@@ -16,7 +16,7 @@
     "predictionMarkets": "ตลาดพยากรณ์",
     "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
     "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-    "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า GROQ_API_KEY ในการตั้งค่า",
+    "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
     "cached": "แคชแล้ว",
     "fresh": "ใหม่",
     "noMarkets": "ไม่พบตลาดพยากรณ์",
@@ -796,7 +796,7 @@
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",
       "predictionMarkets": "ตลาดพยากรณ์",
-      "unavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า GROQ_API_KEY ในการตั้งค่า"
+      "unavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า"
     },
     "countryBrief": {
       "identifying": "กำลังระบุประเทศ...",
@@ -812,7 +812,7 @@
       "predictionMarkets": "ตลาดพยากรณ์",
       "loadingMarkets": "กำลังโหลดตลาดพยากรณ์...",
       "infrastructure": "โครงสร้างพื้นฐานที่เปิดเผย",
-      "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า GROQ_API_KEY ในการตั้งค่า",
+      "briefUnavailable": "สรุป AI ไม่พร้อมใช้งาน — กรุณาตั้งค่า OPENROUTER_API_KEY ในการตั้งค่า",
       "cached": "แคชแล้ว",
       "fresh": "ใหม่",
       "noMarkets": "ไม่พบตลาดพยากรณ์",
@@ -1427,7 +1427,7 @@
       "rankingStories": "กำลังจัดอันดับเรื่องราวสำคัญ...",
       "analyzingSentiment": "กำลังวิเคราะห์ความรู้สึก...",
       "generatingBrief": "กำลังสร้างสรุปสถานการณ์โลก...",
-      "infoTooltip": "<strong>การวิเคราะห์ด้วย AI</strong><br>• <strong>สรุปโลก</strong>: สรุปจาก AI (Groq/OpenRouter)<br>• <strong>ความรู้สึก</strong>: การวิเคราะห์น้ำเสียงข่าว<br>• <strong>ความเร็ว</strong>: เรื่องราวที่เคลื่อนไหวเร็ว<br>• <strong>จุดโฟกัส</strong>: เชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่ (ทหาร, การประท้วง, การหยุดชะงัก)<br><em>เดสก์ท็อปเท่านั้น • ขับเคลื่อนด้วย Llama 3.3 + การตรวจจับจุดโฟกัส</em>",
+      "infoTooltip": "<strong>การวิเคราะห์ด้วย AI</strong><br>• <strong>สรุปโลก</strong>: สรุปจาก AI (OpenRouter)<br>• <strong>ความรู้สึก</strong>: การวิเคราะห์น้ำเสียงข่าว<br>• <strong>ความเร็ว</strong>: เรื่องราวที่เคลื่อนไหวเร็ว<br>• <strong>จุดโฟกัส</strong>: เชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่ (ทหาร, การประท้วง, การหยุดชะงัก)<br><em>เดสก์ท็อปเท่านั้น • ขับเคลื่อนด้วย Llama 3.3 + การตรวจจับจุดโฟกัส</em>",
       "streamQualityLabel": "คุณภาพวิดีโอ",
       "streamQualityDesc": "ตั้งค่าคุณภาพสำหรับสตรีมสดทั้งหมด (ต่ำกว่าประหยัดแบนด์วิดท์)",
       "globeRenderScaleOptions": {
@@ -1439,7 +1439,7 @@
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "ส่งพาดหัวข่าวไปยังคลาวด์เพื่อสรุปด้วย AI (แนะนำ)",
       "aiFlowBrowserLabel": "โมเดลท้องถิ่นในเบราว์เซอร์",
       "aiFlowBrowserDesc": "เรียกใช้ AI ในเบราว์เซอร์ของคุณ",

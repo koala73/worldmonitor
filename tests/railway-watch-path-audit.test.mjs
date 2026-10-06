@@ -1565,6 +1565,31 @@ describe('critical ingestion Railway registry contract', () => {
     }
   });
 
+  it('reconciles radiation watches without redeploying for unrelated forecast changes', () => {
+    const entry = registry.find((candidate) => candidate.service === 'seed-radiation-watch');
+    assert.ok(entry, 'radiation cron must be registry-managed');
+    assert.equal(entry.cronSchedule, '*/15 * * * *');
+    const serviceId = 'svc-radiation';
+    const live = service({ watchPatterns: ['scripts/**', 'shared/**'], cronSchedule: '*/15 * * * *' });
+    live.deploy.startCommand = 'node seed-radiation-watch.mjs';
+    live.variables = {
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+      UPSTASH_REDIS_REST_TOKEN: 'configured',
+    };
+    const ids = new Map([[entry.service, serviceId]]);
+    const drift = auditRailwayServiceConfig({ services: { [serviceId]: live } }, ids, [entry]);
+    const patch = buildRailwayServiceConfigPatch(drift);
+    assert.deepEqual(patch, { services: { [serviceId]: { build: { watchPatterns: entry.watchPatterns } } } });
+    const reconciled = { ...live, build: { ...live.build, ...patch.services[serviceId].build } };
+    assert.deepEqual(auditRailwayServiceConfig({ services: { [serviceId]: reconciled } }, ids, [entry]), []);
+    for (const path of ['scripts/_forecast-resolution-eval.mjs', 'scripts/seed-forecast-resolutions.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), false, path);
+    }
+    for (const path of ['scripts/seed-radiation-watch.mjs', 'scripts/_seed-utils.mjs', 'scripts/package-lock.json']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), true, path);
+    }
+  });
+
   it('audit-manages the always-on Umami collector with its exact image inputs', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
     assert.ok(collector, 'umami must be registered');

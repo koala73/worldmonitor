@@ -887,7 +887,7 @@ export function parseRetryAfterMs(value) {
  * The cap exists so a stuck header cannot park a bundle past its timeout — it
  * bounds how long we SLEEP. But it also erases how far out the server actually
  * pushed us, and that magnitude is exactly what tells us a retry is pointless:
- * groq's daily-quota 429 asks for 1213s, which the cap flattens to 60s. Judging
+ * a provider's daily-quota 429 asked for 1213s, which the cap flattens to 60s. Judging
  * futility on the capped value silently reinstates the bug for any caller whose
  * remaining budget is >= 60s.
  *
@@ -979,7 +979,7 @@ export function isRetryableHttpStatus(status) {
  *     aborts the whole provider waterfall rather than failing over.
  *
  * Why the verdict matters — production, seed-insights 2026-08-03 12:10Z/12:20Z:
- * groq answered 429 with "tokens per day (TPD): Limit 100000, Used 100000 …
+ * a provider answered 429 with "tokens per day (TPD): Limit 100000, Used 100000 …
  * try again in 20m13.92s". That 1213s hint was clamped to the 10s ceiling and
  * retried twice, spending 20s of a 60s LLM budget (and of a 120s seed lock) on
  * a daily quota that could not reset for another 20 minutes. Those cycles ran
@@ -999,7 +999,7 @@ export function httpRetryError(resp, { maxRetryAfterMs, capMs, remainingBudgetMs
     // answers "how long may we sleep", never "is sleeping worth anything". Only
     // the uncapped hint carries the magnitude that settles that, and comparing
     // the capped value instead would reinstate this very bug for any caller
-    // whose budget is >= MAX_RETRY_AFTER_MS (groq's 1213s reads as 60s there).
+    // whose budget is >= MAX_RETRY_AFTER_MS (a 1213s hint reads as 60s there).
     // `>=`: equality is futile for waterfall callers. Sleeping a hint that
     // equals the remaining budget spends the whole remainder; the next
     // withRetry attempt hits usableBudgetMs() <= 0 → createLlmBudgetError and

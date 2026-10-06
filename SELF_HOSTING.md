@@ -132,8 +132,7 @@ Create a `docker-compose.override.yml` to inject your keys. This file is **gitig
 services:
   worldmonitor:
     environment:
-      # 🤖 LLM — pick one or both (used for intelligence assessments)
-      GROQ_API_KEY: ""            # https://console.groq.com (free, 14.4K req/day)
+      # 🤖 LLM (used for intelligence assessments)
       OPENROUTER_API_KEY: ""      # https://openrouter.ai (free, 50 req/day)
 
       # 📊 Markets & Economics
@@ -180,7 +179,7 @@ services:
 | Status | Keys |
 |--------|------|
 | 🟢 No key needed | Earthquakes, weather, natural events, UNHCR displacement, prediction markets, stablecoins, crypto, spending, climate anomalies, submarine cables, BIS data, cyber threats |
-| 🟢 Free signup | GROQ, FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
+| 🟢 Free signup | FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
 | 🟡 Free (limited) | OpenSky (higher rate limits with account) |
 | 🔴 Paid | Cloudflare Radar (internet outages) |
 

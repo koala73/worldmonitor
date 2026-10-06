@@ -16,7 +16,7 @@
     "predictionMarkets": "Mercati predittivi",
     "loadingMarkets": "Caricamento mercati predittivi...",
     "infrastructure": "Esposizione infrastrutturale",
-    "briefUnavailable": "Rapporto IA non disponibile — configura GROQ_API_KEY nelle Impostazioni.",
+    "briefUnavailable": "Rapporto IA non disponibile — configura OPENROUTER_API_KEY nelle Impostazioni.",
     "cached": "In cache",
     "fresh": "Aggiornato",
     "noMarkets": "Nessun mercato predittivo trovato",
@@ -761,7 +761,7 @@
       "fresh": "Fresco",
       "noMarkets": "Nessun mercato di previsione trovato",
       "predictionMarkets": "Mercati predittivi",
-      "unavailable": "Brief AI non disponibile: configura GROQ_API_KEY in Impostazioni."
+      "unavailable": "Brief AI non disponibile: configura OPENROUTER_API_KEY in Impostazioni."
     },
     "countryBrief": {
       "components": {
@@ -797,7 +797,7 @@
       "predictionMarkets": "Mercati predittivi",
       "loadingMarkets": "Caricamento mercati predittivi...",
       "infrastructure": "Esposizione alle infrastrutture",
-      "briefUnavailable": "Brief AI non disponibile: configura GROQ_API_KEY in Impostazioni.",
+      "briefUnavailable": "Brief AI non disponibile: configura OPENROUTER_API_KEY in Impostazioni.",
       "cached": "In cache",
       "fresh": "Aggiornato",
       "noMarkets": "Nessun mercato predittivo trovato",
@@ -1776,7 +1776,7 @@
     },
     "insights": {
       "noStories": "Nessuna notizia urgente o multi-fonte al momento",
-      "infoTooltip": "<strong>Analisi basata sull'intelligenza artificiale</strong><br>• <strong>World Brief</strong>: Riepilogo AI (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Analisi del tono delle notizie<br>• <strong>Velocity</strong>: In rapido movimento storie<br>• <strong>Focal Points</strong>: correla le entità delle notizie con i segnali della mappa (militari, proteste, interruzioni)<br><em>Solo desktop • Fornito da Llama 3.3 + Focal Point Detection</em>",
+      "infoTooltip": "<strong>Analisi basata sull'intelligenza artificiale</strong><br>• <strong>World Brief</strong>: Riepilogo AI (OpenRouter)<br>• <strong>Sentiment</strong>: Analisi del tono delle notizie<br>• <strong>Velocity</strong>: In rapido movimento storie<br>• <strong>Focal Points</strong>: correla le entità delle notizie con i segnali della mappa (militari, proteste, interruzioni)<br><em>Solo desktop • Fornito da Llama 3.3 + Focal Point Detection</em>",
       "step": "Step {{step}}/{{total}}",
       "waitingForData": "In attesa dei dati delle notizie...",
       "rankingStories": "Classificazione storie importanti...",
@@ -1786,7 +1786,7 @@
       "streamQualityDesc": "Imposta la qualità per tutte le dirette streaming (inferiore risparmia larghezza di banda)",
       "mapFlashLabel": "Impulso eventi live",
       "mapFlashDesc": "Evidenzia le posizioni sulla mappa quando arrivano notizie urgenti",
-      "aiFlowCloudLabel": "IA Cloud (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "IA Cloud (OpenRouter)",
       "aiFlowCloudDesc": "Invia i titoli al cloud per il riepilogo IA (consigliato)",
       "aiFlowBrowserLabel": "Modello locale del browser",
       "aiFlowBrowserDesc": "Esegui l'IA localmente nel tuo browser",

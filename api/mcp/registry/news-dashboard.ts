@@ -85,7 +85,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
       throw new RpcValidationError('analyze_news_headlines', [{ field: 'headlines', description: 'Translation requires exactly one headline.' }]);
     }
     const url = `${base}/api/news/v1/summarize-article`;
-    const body = JSON.stringify({ provider: 'groq', headlines: params.headlines, bodies: params.bodies ?? [], mode, lang: mode === 'translate' ? '' : lang, geoContext: params.geoContext ?? '', variant: mode === 'translate' ? lang : 'full', systemAppend: '' });
+    const body = JSON.stringify({ provider: 'openrouter', headlines: params.headlines, bodies: params.bodies ?? [], mode, lang: mode === 'translate' ? '' : lang, geoContext: params.geoContext ?? '', variant: mode === 'translate' ? lang : 'full', systemAppend: '' });
     const headers = await buildAuthHeaders(context, 'POST', url, body);
     const response = await fetchMcpDownstream(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-MCP/1.0' }, body, signal: AbortSignal.timeout(25_000) }, execution);
     await assertToolFetchOk(response, 'summarize-article');
