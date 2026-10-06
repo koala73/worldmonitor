@@ -4,7 +4,8 @@
  * on the previous tick, or a prediction alert whose question names a topic
  * keyword, opens a six-hour window keyed `${type}:${entity}@${deadline}`; a
  * closed window is resolved against the English digest archive under
- * MARKET_ALERT_RESOLUTION_RULE.
+ * MARKET_ALERT_RESOLUTION_RULE, and a control window 24 hours earlier under
+ * MARKET_ALERT_BASE_RATE_RULE.
  * Redis never appears here: the archive is injected, so tests run on fixtures.
  */
 
@@ -25,6 +26,7 @@ export const MARKET_ALERT_ACTIVATION_KEY = 'seed-activated:correlation:market-al
 export const MARKET_ALERT_COMPLETION_META_KEY = 'seed-completion:correlation:market-alerts';
 
 export const MARKET_ALERT_WINDOW_MS = 6 * HOUR_MS;
+export const MARKET_ALERT_CONTROL_OFFSET_MS = DAY_MS;
 export const MARKET_ALERT_EVIDENCE_EXPIRY_MS = 6 * DAY_MS;
 export const MARKET_ALERT_ROLLING_WINDOW_DAYS = 30;
 export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS * DAY_MS;
@@ -35,6 +37,7 @@ export const MARKET_ALERT_LEDGER_SOURCE_VERSION = 'market-alert-ledger-v1';
 export const MARKET_ALERT_LEDGER_SCHEMA_VERSION = 1;
 
 export const MARKET_ALERT_RESOLUTION_RULE = 'An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol\'s registry entity or a whole-word match of the market name of four or more characters; for a prediction market, a topic keyword that appears in the question itself. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story\'s first tracking.';
+export const MARKET_ALERT_BASE_RATE_RULE = 'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window and no alert for that entity was open during it.';
 
 const ALERT_TYPES = new Set(MARKET_ALERT_TYPES);
 
@@ -160,8 +163,15 @@ export function storyMatchesEntity(title, entity, entityMatches) {
   return entity.name.length >= 4 && new RegExp(`\\b${escapeRegex(entity.name)}\\b`, 'i').test(title);
 }
 
-function resolveEntry(entry, outcome, nowMs, evidence) {
-  return { ...entry, status: 'resolved', outcome, resolvedAt: nowMs, evidence };
+function resolveEntry(entry, outcome, nowMs, evidence, control) {
+  return pruneUndefined({ ...entry, status: 'resolved', outcome, resolvedAt: nowMs, evidence, control });
+}
+
+function scoreControl(control, qualifying) {
+  if (control.outcome === 'skipped') return control;
+  const { start, end, candidates } = control;
+  const story = qualifying(candidates);
+  return story ? { start, end, outcome: 'HIT', storyHash: story.hash } : { start, end, outcome: 'MISS' };
 }
 
 function countPending(ledger) {
@@ -183,6 +193,12 @@ function resolution(ledger, counts, archiveStatus) {
  * prove absence. A truncated read keeps the newest stories, so `coveredFromMs`
  * rises and the oldest due rows stay unproven until they void; the newest
  * rows resolve first.
+ *
+ * Each HIT or MISS also scores a control window of the same length that
+ * starts 24 hours before the emission, under the same matching and tier
+ * rule, so the scorecard can publish a base rate beside the hit rate. The
+ * control is skipped when the archive does not cover its start or when a
+ * window for the same id was open during it.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
@@ -199,7 +215,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
   }
   if (resolvable.length === 0) return resolution(ledger, counts, NO_ARCHIVE_READ);
 
-  const archived = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)));
+  const archived = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)) - MARKET_ALERT_CONTROL_OFFSET_MS);
   if (!Array.isArray(archived?.stories)) return resolution(ledger, counts, { ...NO_ARCHIVE_READ, readFailed: true });
   const { coveredFromMs, truncated, stories } = archived;
   const archiveStatus = { readFailed: false, truncated, coveredFromMs };
@@ -211,26 +227,32 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     if (!entityMatchCache.has(title)) entityMatchCache.set(title, findEntitiesInText(title));
     return entityMatchCache.get(title);
   };
-  const candidatesByKey = new Map();
-  for (const entry of proven) {
-    const candidates = stories
-      .filter((story) => story.firstSeen >= entry.emittedAt && story.firstSeen <= entry.deadline)
-      .filter((story) => storyMatchesEntity(
-        story.title,
-        entry.entity,
-        entry.entity.kind === 'market' && entry.entity.entityId ? entityMatchesFor(story.title) : undefined,
-      ))
-      .sort((a, b) => a.firstSeen - b.firstSeen);
-    candidatesByKey.set(entry.key, candidates);
-  }
+  const matching = (entry, fromMs, toMs) => stories
+    .filter((story) => story.firstSeen >= fromMs && story.firstSeen <= toMs)
+    .filter((story) => storyMatchesEntity(
+      story.title,
+      entry.entity,
+      entry.entity.kind === 'market' && entry.entity.entityId ? entityMatchesFor(story.title) : undefined,
+    ))
+    .sort((a, b) => a.firstSeen - b.firstSeen);
+  const controlWindow = (entry) => {
+    const start = entry.emittedAt - MARKET_ALERT_CONTROL_OFFSET_MS;
+    const end = start + MARKET_ALERT_WINDOW_MS;
+    if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
+    const open = Object.values(ledger).some((other) => other.id === entry.id && other.emittedAt <= end && other.deadline >= start);
+    if (open) return { start, end, outcome: 'skipped', reason: 'overlap' };
+    return { start, end, candidates: matching(entry, start, end) };
+  };
+  const windows = proven.map((entry) => ({ entry, live: matching(entry, entry.emittedAt, entry.deadline), control: controlWindow(entry) }));
 
-  const hashes = [...new Set([...candidatesByKey.values()].flat().map((story) => story.hash))];
+  const hashes = [...new Set(windows.flatMap(({ live, control }) => [...live, ...(control.candidates ?? [])].map((story) => story.hash)))];
   const sourceTierByHash = hashes.length > 0 ? await archive.readSourceTiers(hashes) : new Map();
   if (!(sourceTierByHash instanceof Map)) return resolution(ledger, counts, { ...archiveStatus, readFailed: true });
 
-  for (const entry of proven) {
-    const candidates = candidatesByKey.get(entry.key);
-    const evidence = candidates.find((story) => (sourceTierByHash.get(story.hash)?.tier ?? 4) <= MARKET_ALERT_HIT_MAX_TIER);
+  const qualifying = (candidates) => candidates.find((story) => (sourceTierByHash.get(story.hash)?.tier ?? 4) <= MARKET_ALERT_HIT_MAX_TIER);
+  for (const { entry, live, control } of windows) {
+    const evidence = qualifying(live);
+    const scoredControl = scoreControl(control, qualifying);
     if (evidence) {
       const { tier, source } = sourceTierByHash.get(evidence.hash);
       ledger[entry.key] = resolveEntry(entry, 'HIT', nowMs, {
@@ -240,10 +262,10 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
         tier,
         firstSeen: evidence.firstSeen,
         leadTimeMs: evidence.firstSeen - entry.emittedAt,
-      });
+      }, scoredControl);
       counts.hit += 1;
     } else {
-      ledger[entry.key] = resolveEntry(entry, 'MISS', nowMs, { reason: 'no_matching_story', candidates: candidates.length });
+      ledger[entry.key] = resolveEntry(entry, 'MISS', nowMs, { reason: 'no_matching_story', candidates: live.length }, scoredControl);
       counts.miss += 1;
     }
   }
@@ -273,6 +295,8 @@ export function buildScorecard(ledger, nowMs, { archive }) {
     const count = (outcome) => resolved.filter((entry) => entry.outcome === outcome).length;
     const hit = count('HIT');
     const miss = count('MISS');
+    const controls = resolved.filter((entry) => entry.control?.outcome === 'HIT' || entry.control?.outcome === 'MISS');
+    const baseHit = controls.filter((entry) => entry.control.outcome === 'HIT').length;
     return {
       pending,
       resolved: resolved.length,
@@ -281,6 +305,8 @@ export function buildScorecard(ledger, nowMs, { archive }) {
       void: count('VOID'),
       n: hit + miss,
       hitRate: hit + miss > 0 ? hit / (hit + miss) : null,
+      baseN: controls.length,
+      baseHitRate: controls.length > 0 ? baseHit / controls.length : null,
       medianLeadTimeMs: median(resolved.filter((entry) => entry.outcome === 'HIT').map((entry) => entry.evidence.leadTimeMs)),
     };
   };
@@ -290,7 +316,7 @@ export function buildScorecard(ledger, nowMs, { archive }) {
     generatedAt: nowMs,
     windowHours: MARKET_ALERT_WINDOW_MS / HOUR_MS,
     rollingWindowDays: MARKET_ALERT_ROLLING_WINDOW_DAYS,
-    methodology: MARKET_ALERT_RESOLUTION_RULE,
+    methodology: `${MARKET_ALERT_RESOLUTION_RULE} ${MARKET_ALERT_BASE_RATE_RULE}`,
     totals: { entries: entries.length, pending: totals.pending, resolved: totals.resolved, hit: totals.hit, miss: totals.miss, void: totals.void },
     archive: { readFailed: archive.readFailed, truncated: archive.truncated, unproven: archive.unproven, coveredFromMs: archive.coveredFromMs },
     byType: MARKET_ALERT_TYPES.map((type) => ({ type, ...rowFor(type) })),

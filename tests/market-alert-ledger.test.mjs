@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  MARKET_ALERT_BASE_RATE_RULE,
   MARKET_ALERT_EVIDENCE_EXPIRY_MS,
   MARKET_ALERT_LEDGER_RETENTION_MS,
   MARKET_ALERT_RESOLUTION_RULE,
@@ -397,26 +398,92 @@ describe('resolveDueEntries', () => {
     assert.deepEqual(byId, { 'silent_divergence:CL=F': 'pending', 'silent_divergence:ZW=F': 'resolved' });
   });
 
-  it('asks the archive only for stories since the oldest due emission', async () => {
+  it('asks the archive for stories since 24 hours before the oldest due emission', async () => {
     const calls = [];
     const archive = {
-      readStories: async (sinceMs) => { calls.push(sinceMs); return { coveredFromMs: NOW - HOUR, stories: [] }; },
+      readStories: async (sinceMs) => { calls.push(sinceMs); return { coveredFromMs: NOW - HOUR, truncated: false, stories: [] }; },
       readSourceTiers: async () => new Map(),
     };
     const ledger = ingest(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, [marketSignal('silent_divergence', WHEAT)], NOW + HOUR).ledger;
     await resolveDueEntries(ledger, { nowMs: dueAt + HOUR + 1, archive });
-    assert.deepEqual(calls, [NOW]);
+    assert.deepEqual(calls, [NOW - 24 * HOUR]);
   });
 
-  it('resolves VOID once the evidence window has expired, without reading the archive', async () => {
+  it('resolves VOID once the evidence window has expired, without reading the archive or scoring a control', async () => {
     let reads = 0;
-    const archive = { readStories: async () => { reads += 1; return { coveredFromMs: NOW - HOUR, stories: [] }; }, readSourceTiers: async () => new Map() };
+    const archive = { readStories: async () => { reads += 1; return { coveredFromMs: NOW - HOUR, truncated: false, stories: [] }; }, readSourceTiers: async () => new Map() };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 1, archive });
     assert.equal(result.void, 1);
     assert.equal(reads, 0);
     const [entry] = Object.values(result.ledger);
     assert.equal(entry.outcome, 'VOID');
     assert.deepEqual(entry.evidence, { reason: 'evidence_expired' });
+    assert.equal(entry.control, undefined);
+  });
+
+  describe('base-rate control', () => {
+    const CONTROL = { start: NOW - 24 * HOUR, end: NOW - 18 * HOUR };
+    const COVERED = NOW - 25 * HOUR;
+    const controlStory = { hash: 'c1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW - 23 * HOUR };
+    const liveStory = { hash: 'h1', title: 'Crude oil extends gains', firstSeen: NOW + 2 * HOUR };
+
+    it('scores the control window by its own stories while the live window scores by its own', async () => {
+      const tierReads = [];
+      const archive = archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED);
+      const readSourceTiers = archive.readSourceTiers;
+      archive.readSourceTiers = async (hashes) => { tierReads.push([...hashes].sort()); return readSourceTiers(hashes); };
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
+      const [entry] = Object.values(result.ledger);
+      assert.equal(entry.outcome, 'MISS');
+      assert.deepEqual(entry.control, { ...CONTROL, outcome: 'HIT', storyHash: 'c1' });
+      assert.deepEqual(tierReads, [['c1']]);
+    });
+
+    it('reads the live and control candidates in one source-tier batch', async () => {
+      const tierReads = [];
+      const archive = archiveOf([liveStory, controlStory], { h1: { tier: 2, source: 'BBC' }, c1: { tier: 1, source: 'Reuters' } }, COVERED);
+      const readSourceTiers = archive.readSourceTiers;
+      archive.readSourceTiers = async (hashes) => { tierReads.push([...hashes].sort()); return readSourceTiers(hashes); };
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
+      const [entry] = Object.values(result.ledger);
+      assert.equal(entry.outcome, 'HIT');
+      assert.equal(entry.control.outcome, 'HIT');
+      assert.deepEqual(tierReads, [['c1', 'h1']]);
+    });
+
+    it('scores control MISS when the control window has no qualifying story', async () => {
+      const tier3 = { hash: 'c3', title: 'Oil slips as OPEC meets', firstSeen: NOW - 20 * HOUR };
+      const unrelated = { hash: 'u1', title: 'Parliament debates the budget', firstSeen: NOW - 22 * HOUR };
+      const archive = archiveOf([liveStory, tier3, unrelated], { h1: { tier: 1, source: 'Reuters' }, c3: { tier: 3, source: 'OilPrice.com' }, u1: { tier: 1, source: 'Reuters' } }, COVERED);
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
+      const [entry] = Object.values(result.ledger);
+      assert.equal(entry.outcome, 'HIT');
+      assert.deepEqual(entry.control, { ...CONTROL, outcome: 'MISS' });
+    });
+
+    it('skips the control when the archive does not cover its start', async () => {
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, CONTROL.start + 1) });
+      const [entry] = Object.values(result.ledger);
+      assert.equal(entry.outcome, 'MISS');
+      assert.deepEqual(entry.control, { ...CONTROL, outcome: 'skipped', reason: 'uncovered' });
+    });
+
+    it('skips the control when an alert for the same entity was open during it', async () => {
+      const earlier = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW - 23 * HOUR).ledger;
+      const ledger = ingest(earlier, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+      const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
+      const byEmission = Object.fromEntries(Object.values(result.ledger).map((entry) => [entry.emittedAt, entry]));
+      assert.deepEqual(byEmission[NOW].control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
+      assert.deepEqual(byEmission[NOW - 23 * HOUR].control, { start: NOW - 47 * HOUR, end: NOW - 41 * HOUR, outcome: 'skipped', reason: 'uncovered' });
+    });
+
+    it('a resolved row for another entity does not count as overlap', async () => {
+      const wheat = ingest({}, [marketSignal('silent_divergence', WHEAT)], NOW - 23 * HOUR).ledger;
+      const ledger = ingest(wheat, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+      const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
+      const crude = Object.values(result.ledger).find((entry) => entry.id === 'silent_divergence:CL=F');
+      assert.equal(crude.control.outcome, 'HIT');
+    });
   });
 
   it('does not touch an already resolved entry', async () => {
@@ -444,13 +511,29 @@ describe('buildScorecard', () => {
     assert.equal(card.generatedAt, NOW);
     assert.equal(card.windowHours, 6);
     assert.equal(card.rollingWindowDays, 30);
-    assert.equal(card.methodology, MARKET_ALERT_RESOLUTION_RULE);
+    assert.equal(card.methodology, `${MARKET_ALERT_RESOLUTION_RULE} ${MARKET_ALERT_BASE_RATE_RULE}`);
     assert.deepEqual(card.totals, { entries: 0, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0 });
     assert.deepEqual(card.archive, NO_ARCHIVE_PASS);
     assert.deepEqual(card.byType.map((row) => row.type), [...MARKET_ALERT_TYPES]);
     for (const row of card.byType) {
-      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, medianLeadTimeMs: null });
+      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null });
     }
+  });
+
+  it('pre-registers the base-rate rule next to the resolution rule', () => {
+    assert.equal(
+      MARKET_ALERT_BASE_RATE_RULE,
+      'The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window and no alert for that entity was open during it.',
+    );
+  });
+
+  it('computes baseHitRate over the controls that scored HIT or MISS', async () => {
+    const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
+    const two = ingest(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, [marketSignal('silent_divergence', WHEAT)]).ledger;
+    const controlStory = { hash: 'c1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW - 23 * HOUR };
+    const { ledger } = await resolveDueEntries(two, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, NOW - 25 * HOUR) });
+    const row = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS }).byType.find((r) => r.type === 'silent_divergence');
+    assert.deepEqual({ n: row.n, hitRate: row.hitRate, baseN: row.baseN, baseHitRate: row.baseHitRate }, { n: 2, hitRate: 0, baseN: 2, baseHitRate: 0.5 });
   });
 
   it('carries the resolution pass archive status', () => {
@@ -466,7 +549,7 @@ describe('buildScorecard', () => {
     const card = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS });
     assert.deepEqual(card.totals, { entries: 2, pending: 0, resolved: 2, hit: 1, miss: 1, void: 0 });
     const row = card.byType.find((r) => r.type === 'silent_divergence');
-    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, medianLeadTimeMs: 90 * 60 * 1000 });
+    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, baseN: 0, baseHitRate: null, medianLeadTimeMs: 90 * 60 * 1000 });
   });
 
   it('excludes a VOID from n and counts resolutions only inside the rolling window', async () => {
