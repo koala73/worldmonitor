@@ -770,10 +770,17 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
 // One contract per projection horizon, built by the same dispatch as the
 // parent spec with the horizon swapped in. Deterministic like
 // buildResolutionSpec. A horizon that cannot carry a complete point-in-time
-// contract is `unscored` with the reason, never a judged question.
+// contract is `unscored` with the reason, never a judged question. The
+// horizon equal to the forecast's own is unscored too: its projection is the
+// forecast probability under the same metric and deadline, so a window for
+// it would grade the forecast twice and pad that horizon's sample.
 export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
   const specs = {};
   for (const [horizon, timeHorizon] of Object.entries(PROJECTION_HORIZONS)) {
+    if (timeHorizon === pred.timeHorizon) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason: 'parent_horizon' };
+      continue;
+    }
     const spec = buildResolutionSpec({ ...pred, timeHorizon }, inputs, generatedAt, options);
     const reason = horizonUnscoredReason(spec);
     if (reason) {

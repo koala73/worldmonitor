@@ -1413,12 +1413,14 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 
 // One ledger window per hard projection contract (#7075), keyed
 // `<parentKey>@<horizon>`, scored on the projection probability and resolved
-// at its own deadline by resolveHorizonSpec. A re-emission inside the parent
-// window refreshes a still-open horizon window exactly as updateOpenWindow
-// refreshes the parent. Only the published population registers: synthetic
-// and shadow origins are held out of the headline and would otherwise triple
-// their rows for no measurable value. A forecast without emission-time
-// contracts (history written before #7075) registers nothing.
+// at its own deadline by resolveHorizonSpec. The window freezes at first
+// registration: a projection claims a fixed offset from its own emission, so
+// a later emission's h24 claims a later deadline and cannot grade a window
+// due earlier. A re-emission inside the parent window only advances
+// lastSeenAt. Only the published population registers: synthetic and shadow
+// origins are held out of the headline and would otherwise multiply their
+// rows for no measurable value. A forecast without emission-time contracts
+// (history written before #7075) registers nothing.
 function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt) {
   const contracts = forecast.horizonResolutions;
   if (!contracts || typeof contracts !== 'object') return;
@@ -1429,11 +1431,12 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
     const deadline = Number(spec.deadline);
     if (!Number.isFinite(probability) || !Number.isFinite(deadline)) continue;
     const key = `${parentKey}@${horizon}`;
-    const view = { ...forecast, probability, timeHorizon: spec.timeHorizon };
-    if (ledger[key]) {
-      updateOpenWindow(ledger[key], view, generatedAt, snapshotAt);
+    const existing = ledger[key];
+    if (existing) {
+      if (existing.status === 'pending') existing.lastSeenAt = Math.max(Number(existing.lastSeenAt || 0), snapshotAt);
       continue;
     }
+    const view = { ...forecast, probability, timeHorizon: spec.timeHorizon };
     ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey };
   }
 }

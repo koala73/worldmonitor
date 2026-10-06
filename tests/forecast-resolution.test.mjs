@@ -1231,6 +1231,7 @@ describe('projection horizon contracts (#7075)', () => {
       domain: 'market',
       region: 'Middle East',
       title: 'Oil price impact from Hormuz disruption',
+      timeHorizon: '14d',
       signals: [{ type: 'commodity', value: 'Oil sensitivity: 0.9', weight: 0.3 }],
     });
     assert.equal(buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT).window, 'within-horizon');
@@ -1244,7 +1245,7 @@ describe('projection horizon contracts (#7075)', () => {
       domain: 'political',
       region: 'Iran',
       title: 'Will the U.S. invade Iran before 2027?',
-      timeHorizon: '30d',
+      timeHorizon: '14d',
       signals: [{ type: 'prediction_market', value: 'Polymarket: 62%', weight: 0.8 }],
     });
     const inputs = { predictionMarkets: { geopolitical: [{ title: 'Will the U.S. invade Iran before 2027?', yesPrice: 62, endDate: '2026-12-31' }] } };
@@ -1252,7 +1253,7 @@ describe('projection horizon contracts (#7075)', () => {
   });
 
   it('a judged forecast is unscored with no_hard_contract', () => {
-    const specs = buildHorizonResolutionSpecs(pred({ domain: 'political', signals: [] }), {}, GENERATED_AT);
+    const specs = buildHorizonResolutionSpecs(pred({ domain: 'political', timeHorizon: '14d', signals: [] }), {}, GENERATED_AT);
     assert.deepEqual(reasons(specs), new Set(['unscored:no_hard_contract']));
   });
 
