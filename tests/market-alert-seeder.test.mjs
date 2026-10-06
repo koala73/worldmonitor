@@ -2,11 +2,17 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  ACCUMULATOR_KEY,
   DIGEST_KEY,
   MARKET_ALERT_WINDOW_MS,
+  MAX_ARCHIVE_HASHES,
+  READ_KEYS,
   SNAPSHOT_KEY,
   MARKET_ALERT_LEDGER_KEY,
   buildTick,
+  createRedisArchive,
+  formatSummary,
+  readRawInputs,
 } from '../scripts/seed-market-alert-ledger.mjs';
 
 const NOW = Date.UTC(2026, 9, 6, 12, 0, 0);
@@ -52,10 +58,57 @@ function rawInputs(overrides = {}) {
   };
 }
 
-const EMPTY_ARCHIVE = { readStories: async () => [], readSourceTiers: async () => new Map() };
+const EMPTY_ARCHIVE = { readStories: async () => ({ coveredFromMs: NOW - 24 * HOUR, stories: [] }), readSourceTiers: async () => new Map() };
 
 function byType(ledger, type) {
   return Object.values(ledger).filter((entry) => entry.type === type);
+}
+
+function pendingCrude(emittedAt) {
+  const key = `silent_divergence:CL=F@${emittedAt + MARKET_ALERT_WINDOW_MS}`;
+  return {
+    [key]: {
+      id: 'silent_divergence:CL=F', key, type: 'silent_divergence',
+      entity: { kind: 'market', symbol: 'CL=F', name: 'Crude Oil', entityId: 'CL=F' },
+      emittedAt, deadline: emittedAt + MARKET_ALERT_WINDOW_MS, observedChange: 2.5, newsVelocity: 0, confidence: 0.65,
+      runtimeMode: 'legacy', description: 'Crude Oil moved +2.50%', firstSeenAt: emittedAt, lastSeenAt: emittedAt, samples: 0, status: 'pending',
+    },
+  };
+}
+
+function fakePipeline(rowFor) {
+  const sent = [];
+  const pipeline = async (commands) => {
+    sent.push(commands);
+    return commands.map((command) => rowFor(command));
+  };
+  pipeline.sent = sent;
+  return pipeline;
+}
+
+const ARCHIVE_SINCE = NOW - 7 * HOUR;
+const OIL_STORY = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW - 5 * HOUR };
+
+function archiveRows(overrides = {}) {
+  const rows = {
+    ZRANGE: () => ({ result: ['h0', String(NOW - 8 * HOUR)] }),
+    ZRANGEBYSCORE: () => ({ result: [OIL_STORY.hash] }),
+    HGETALL: () => ({ result: ['title', OIL_STORY.title, 'firstSeen', String(OIL_STORY.firstSeen)] }),
+    SMEMBERS: () => ({ result: ['OilPrice.com', 'Reuters'] }),
+    ...overrides,
+  };
+  return (command) => rows[command[0]]?.(command) ?? { result: null };
+}
+
+async function captureWarnings(run) {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+  try {
+    return { value: await run(), warnings };
+  } finally {
+    console.warn = original;
+  }
 }
 
 describe('buildTick runs the shared detectors under Node', () => {
@@ -118,18 +171,11 @@ describe('buildTick runs the shared detectors under Node', () => {
 
   it('skips emission without a fresh digest but still resolves a due entry', async () => {
     const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
-    const key = `silent_divergence:CL=F@${emittedAt + MARKET_ALERT_WINDOW_MS}`;
-    const pending = {
-      [key]: {
-        id: 'silent_divergence:CL=F', key, type: 'silent_divergence',
-        entity: { kind: 'market', symbol: 'CL=F', name: 'Crude Oil', entityId: 'CL=F' },
-        emittedAt, deadline: emittedAt + MARKET_ALERT_WINDOW_MS, observedChange: 2.5, newsVelocity: 0, confidence: 0.65,
-        runtimeMode: 'legacy', description: 'Crude Oil moved +2.50%', firstSeenAt: emittedAt, lastSeenAt: emittedAt, samples: 0, status: 'pending',
-      },
-    };
+    const pending = pendingCrude(emittedAt);
+    const [key] = Object.keys(pending);
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: emittedAt + HOUR };
     const archive = {
-      readStories: async () => [story],
+      readStories: async () => ({ coveredFromMs: emittedAt - HOUR, stories: [story] }),
       readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, { tier: 1, source: 'Reuters' }])),
     };
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
@@ -139,6 +185,36 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.emitted.total, 0);
     assert.deepEqual(tick.snapshot, { timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 } });
     assert.equal(tick.scorecard.totals.hit, 1);
+  });
+
+  it('keeps a due entry pending and reports it unproven when the archive starts after its window opened', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
+    const pending = pendingCrude(emittedAt);
+    const [key] = Object.keys(pending);
+    const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: emittedAt + HOUR };
+    const archive = {
+      readStories: async () => ({ coveredFromMs: emittedAt + 1, stories: [story] }),
+      readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, { tier: 1, source: 'Reuters' }])),
+    };
+    const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
+    assert.equal(tick.ledger[key].status, 'pending');
+    assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 1 });
+    assert.equal(tick.summary.readFailed, false);
+    assert.match(formatSummary(tick.summary), / void=0 unproven=1 \| /);
+  });
+
+  it('refuses a malformed ledger instead of starting an empty one', async () => {
+    for (const value of [envelope([]), 'not-json', envelope('text')]) {
+      await assert.rejects(
+        buildTick(rawInputs({ [MARKET_ALERT_LEDGER_KEY]: value }), { nowMs: NOW, archive: EMPTY_ARCHIVE }),
+        { message: `${MARKET_ALERT_LEDGER_KEY} holds a malformed ledger; refusing to overwrite it` },
+      );
+    }
+  });
+
+  it('starts an empty ledger only when the key is missing', async () => {
+    const tick = await buildTick(rawInputs({ [MARKET_ALERT_LEDGER_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.equal(tick.summary.created, 3);
   });
 
   it('treats a digest older than an hour as absent', async () => {
@@ -158,7 +234,81 @@ describe('buildTick runs the shared detectors under Node', () => {
     const tick = await buildTick(rawInputs(), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.summary.inputs, { stocks: 1, commodities: 1, crypto: 1, predictions: 1, digestItems: 2, runtimeMode: 'exact' });
     assert.equal(tick.summary.emitted.total, 3);
-    assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0 });
+    assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 0 });
     assert.equal(tick.summary.pending, 3);
+    assert.match(formatSummary(tick.summary), / resolved hit=0 miss=0 void=0 unproven=0 \| pending=3 /);
+  });
+});
+
+describe('readRawInputs', () => {
+  it('throws naming the key when a GET row carries a command-level error', async () => {
+    const pipeline = fakePipeline(([, key]) => (key === MARKET_ALERT_LEDGER_KEY ? { error: 'ERR max requests limit exceeded' } : { result: null }));
+    await assert.rejects(readRawInputs(pipeline), { message: `Redis GET ${MARKET_ALERT_LEDGER_KEY} failed: ERR max requests limit exceeded` });
+  });
+
+  it('parses JSON strings and maps a missing key to null', async () => {
+    const pipeline = fakePipeline(([, key]) => (key === STOCKS_KEY ? { result: JSON.stringify(envelope({ quotes: [] })) } : { result: null }));
+    const raw = await readRawInputs(pipeline);
+    assert.deepEqual(pipeline.sent, [READ_KEYS.map((key) => ['GET', key])]);
+    assert.deepEqual(raw[STOCKS_KEY], envelope({ quotes: [] }));
+    assert.equal(raw[MARKET_ALERT_LEDGER_KEY], null);
+  });
+});
+
+describe('createRedisArchive', () => {
+  it('reads the oldest score and the window members in one pipeline', async () => {
+    const pipeline = fakePipeline(archiveRows());
+    const result = await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE);
+    assert.deepEqual(pipeline.sent[0], [
+      ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
+      ['ZRANGEBYSCORE', ACCUMULATOR_KEY, String(ARCHIVE_SINCE), '+inf', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
+    ]);
+    assert.deepEqual(result, { coveredFromMs: NOW - 8 * HOUR, stories: [OIL_STORY] });
+  });
+
+  it('reports an empty accumulator as covering nothing', async () => {
+    const pipeline = fakePipeline(archiveRows({ ZRANGE: () => ({ result: [] }), ZRANGEBYSCORE: () => ({ result: [] }) }));
+    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: null, stories: [] });
+  });
+
+  it('skips an expired story:track row', async () => {
+    const pipeline = fakePipeline(archiveRows({ HGETALL: () => ({ result: [] }) }));
+    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: NOW - 8 * HOUR, stories: [] });
+  });
+
+  it('returns null on a ZRANGE row error', async () => {
+    const pipeline = fakePipeline(archiveRows({ ZRANGE: () => ({ error: 'ERR' }) }));
+    const { value } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
+    assert.equal(value, null);
+  });
+
+  it('returns null on an HGETALL row error', async () => {
+    const pipeline = fakePipeline(archiveRows({ HGETALL: () => ({ error: 'ERR' }) }));
+    const { value } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
+    assert.equal(value, null);
+  });
+
+  it('returns null and leaves the due entries pending when the window overflows', async () => {
+    const members = Array.from({ length: MAX_ARCHIVE_HASHES + 1 }, (_, i) => `h${i}`);
+    const pipeline = fakePipeline(archiveRows({ ZRANGEBYSCORE: () => ({ result: members }) }));
+    const { value, warnings } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
+    assert.equal(value, null);
+    assert.equal(pipeline.sent.length, 1);
+    assert.match(warnings.join('\n'), /due entries stay pending/);
+  });
+
+  it('reads the best source tier per hash', async () => {
+    const pipeline = fakePipeline(archiveRows());
+    const tiers = await createRedisArchive(pipeline).readSourceTiers(['h1']);
+    assert.deepEqual(pipeline.sent, [[['SMEMBERS', 'story:sources:v1:h1']]]);
+    assert.deepEqual([...tiers], [['h1', { tier: 1, source: 'Reuters' }]]);
+  });
+
+  it('returns null on a SMEMBERS row error or a non-array result', async () => {
+    for (const row of [{ error: 'ERR' }, { result: null }]) {
+      const pipeline = fakePipeline(archiveRows({ SMEMBERS: () => row }));
+      const { value } = await captureWarnings(() => createRedisArchive(pipeline).readSourceTiers(['h1']));
+      assert.equal(value, null);
+    }
   });
 });

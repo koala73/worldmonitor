@@ -56,9 +56,9 @@ function ingest(ledger, signals, nowMs = NOW) {
   return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT] });
 }
 
-function archiveOf(stories, tiers) {
+function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR) {
   return {
-    readStories: async () => stories,
+    readStories: async () => ({ coveredFromMs, stories }),
     readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, tiers[hash] ?? { tier: 4, source: 'unknown' }])),
   };
 }
@@ -252,15 +252,61 @@ describe('resolveDueEntries', () => {
 
   it('leaves every due entry pending when the source read fails', async () => {
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + HOUR };
-    const archive = { readStories: async () => [story], readSourceTiers: async () => null };
+    const archive = { readStories: async () => ({ coveredFromMs: NOW - HOUR, stories: [story] }), readSourceTiers: async () => null };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
     assert.equal(result.readFailed, true);
     assert.equal(Object.values(result.ledger)[0].status, 'pending');
   });
 
+  it('leaves an entry pending when the archive cannot prove coverage of its window', async () => {
+    const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + 2 * HOUR };
+    const result = await resolveDueEntries(pendingLedger(), {
+      nowMs: dueAt + 1,
+      archive: archiveOf([story], { h1: { tier: 1, source: 'Reuters' } }, NOW + 1),
+    });
+    assert.equal(result.readFailed, false);
+    assert.deepEqual({ hit: result.hit, miss: result.miss, void: result.void, unproven: result.unproven }, { hit: 0, miss: 0, void: 0, unproven: 1 });
+    assert.equal(Object.values(result.ledger)[0].status, 'pending');
+    assert.equal(result.pending, 1);
+  });
+
+  it('an empty archive proves nothing', async () => {
+    const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([], {}, null) });
+    assert.equal(result.readFailed, false);
+    assert.equal(result.miss, 0);
+    assert.equal(result.unproven, 1);
+    assert.equal(Object.values(result.ledger)[0].status, 'pending');
+  });
+
+  it('scores a window the archive covers', async () => {
+    const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + 2 * HOUR };
+    const hit = await resolveDueEntries(pendingLedger(), {
+      nowMs: dueAt + 1,
+      archive: archiveOf([story], { h1: { tier: 1, source: 'Reuters' } }, NOW),
+    });
+    assert.equal(hit.hit, 1);
+    assert.equal(hit.unproven, 0);
+    assert.equal(Object.values(hit.ledger)[0].outcome, 'HIT');
+    const miss = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([], {}, NOW - 1) });
+    assert.equal(miss.miss, 1);
+    assert.equal(miss.unproven, 0);
+    assert.equal(Object.values(miss.ledger)[0].outcome, 'MISS');
+  });
+
+  it('scores only the due entries whose windows the archive covers', async () => {
+    const ledger = ingest(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, [marketSignal('silent_divergence', WHEAT)], NOW + HOUR).ledger;
+    const result = await resolveDueEntries(ledger, { nowMs: dueAt + HOUR + 1, archive: archiveOf([], {}, NOW + 30 * 60 * 1000) });
+    assert.deepEqual({ miss: result.miss, unproven: result.unproven, pending: result.pending }, { miss: 1, unproven: 1, pending: 1 });
+    const byId = Object.fromEntries(Object.values(result.ledger).map((entry) => [entry.id, entry.status]));
+    assert.deepEqual(byId, { 'silent_divergence:CL=F': 'pending', 'silent_divergence:ZW=F': 'resolved' });
+  });
+
   it('asks the archive only for stories since the oldest due emission', async () => {
     const calls = [];
-    const archive = { readStories: async (sinceMs) => { calls.push(sinceMs); return []; }, readSourceTiers: async () => new Map() };
+    const archive = {
+      readStories: async (sinceMs) => { calls.push(sinceMs); return { coveredFromMs: NOW - HOUR, stories: [] }; },
+      readSourceTiers: async () => new Map(),
+    };
     const ledger = ingest(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, [marketSignal('silent_divergence', WHEAT)], NOW + HOUR).ledger;
     await resolveDueEntries(ledger, { nowMs: dueAt + HOUR + 1, archive });
     assert.deepEqual(calls, [NOW]);
@@ -268,7 +314,7 @@ describe('resolveDueEntries', () => {
 
   it('resolves VOID once the evidence window has expired, without reading the archive', async () => {
     let reads = 0;
-    const archive = { readStories: async () => { reads += 1; return []; }, readSourceTiers: async () => new Map() };
+    const archive = { readStories: async () => { reads += 1; return { coveredFromMs: NOW - HOUR, stories: [] }; }, readSourceTiers: async () => new Map() };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 1, archive });
     assert.equal(result.void, 1);
     assert.equal(reads, 0);

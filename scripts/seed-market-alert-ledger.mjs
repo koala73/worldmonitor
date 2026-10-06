@@ -63,7 +63,7 @@ const DIGEST_MAX_AGE_MS = 60 * MIN_MS;
 // the previous tick's prediction prices and is rewritten every emitting tick.
 const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 const SNAPSHOT_TTL_SECONDS = 24 * 60 * 60;
-const MAX_ARCHIVE_HASHES = 20_000;
+export const MAX_ARCHIVE_HASHES = 20_000;
 const SMEMBERS_BATCH = 500;
 const PREDICTION_POOLS = ['geopolitical', 'tech', 'finance'];
 
@@ -164,8 +164,10 @@ export function buildNewsContext(items) {
 }
 
 function parseLedger(value) {
+  if (value == null) return {};
   const { data } = unwrapEnvelope(value);
-  return isPlainObject(data) ? data : {};
+  if (!isPlainObject(data)) throw new Error(`${MARKET_ALERT_LEDGER_KEY} holds a malformed ledger; refusing to overwrite it`);
+  return data;
 }
 
 function parseSnapshot(value) {
@@ -237,7 +239,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
       emitted: { total: signals.length, byType, gated: ingested.skipped },
       created: ingested.created,
       updated: ingested.updated,
-      resolved: { hit: resolved.hit, miss: resolved.miss, void: resolved.void },
+      resolved: { hit: resolved.hit, miss: resolved.miss, void: resolved.void, unproven: resolved.unproven },
       readFailed: resolved.readFailed,
       pending: resolved.pending,
       entries: Object.keys(ledger).length,
@@ -252,7 +254,7 @@ export function formatSummary(summary) {
   return `  [market-alert-ledger] inputs stocks=${inputs.stocks} commodities=${inputs.commodities} crypto=${inputs.crypto} `
     + `predictions=${inputs.predictions} digestItems=${inputs.digestItems} mode=${inputs.runtimeMode} discarded=${discarded} | `
     + `emitted=${emitted.total} (${byType}) gated=${emitted.gated} new=${summary.created} re-emitted=${summary.updated} | `
-    + `resolved hit=${resolved.hit} miss=${resolved.miss} void=${resolved.void}${summary.readFailed ? ' archive-read-failed' : ''} | `
+    + `resolved hit=${resolved.hit} miss=${resolved.miss} void=${resolved.void} unproven=${resolved.unproven}${summary.readFailed ? ' archive-read-failed' : ''} | `
     + `pending=${summary.pending} entries=${summary.entries}`;
 }
 
@@ -271,42 +273,52 @@ function bestSource(sources) {
   return best;
 }
 
+function arrayResult(row) {
+  return row != null && row.error == null && Array.isArray(row.result) ? row.result : null;
+}
+
+function stayPending(what) {
+  console.warn(`  [market-alert-ledger] ${what}; due entries stay pending this tick`);
+  return null;
+}
+
 export function createRedisArchive(pipeline = defaultRedisPipeline) {
   return {
     async readStories(sinceMs) {
-      const rows = await pipeline([['ZRANGEBYSCORE', ACCUMULATOR_KEY, String(sinceMs), '+inf', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)]]);
-      const members = rows?.[0]?.result;
-      if (!Array.isArray(members)) {
-        console.warn(`  [market-alert-ledger] ${ACCUMULATOR_KEY} read failed; due entries stay pending this tick`);
-        return null;
-      }
-      if (members.length > MAX_ARCHIVE_HASHES) {
-        console.warn(`  [market-alert-ledger] archive window holds more than ${MAX_ARCHIVE_HASHES} stories; the newest were not read`);
-      }
-      const hashes = members.slice(0, MAX_ARCHIVE_HASHES);
-      const tracks = await readStoryTracksChunked(hashes, pipeline, { context: 'market-alert-ledger' });
+      const rows = await pipeline([
+        ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
+        ['ZRANGEBYSCORE', ACCUMULATOR_KEY, String(sinceMs), '+inf', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
+      ]);
+      const oldest = arrayResult(rows?.[0]);
+      const members = arrayResult(rows?.[1]);
+      if (!oldest || !members) return stayPending(`${ACCUMULATOR_KEY} read failed`);
+      if (members.length > MAX_ARCHIVE_HASHES) return stayPending(`archive window holds more than ${MAX_ARCHIVE_HASHES} stories`);
+      const coveredFromMs = oldest.length >= 2 && Number.isFinite(Number(oldest[1])) ? Number(oldest[1]) : null;
+      const tracks = await readStoryTracksChunked(members, pipeline, { context: 'market-alert-ledger' });
       if (!tracks) return null;
       const stories = [];
-      for (let i = 0; i < hashes.length; i += 1) {
+      for (let i = 0; i < members.length; i += 1) {
+        if (tracks[i]?.error != null) return stayPending('story:track read failed');
         const result = tracks[i]?.result;
         const flat = Array.isArray(result) ? result : (isPlainObject(result) ? Object.entries(result).flat() : []);
         const track = flatToObject(flat);
         const firstSeen = Number(track.firstSeen);
         if (typeof track.title !== 'string' || !Number.isFinite(firstSeen)) continue;
-        stories.push({ hash: hashes[i], title: track.title, firstSeen });
+        stories.push({ hash: members[i], title: track.title, firstSeen });
       }
-      return stories;
+      return { coveredFromMs, stories };
     },
     async readSourceTiers(hashes) {
       const tiers = new Map();
       for (let i = 0; i < hashes.length; i += SMEMBERS_BATCH) {
         const chunk = hashes.slice(i, i + SMEMBERS_BATCH);
         const rows = await pipeline(chunk.map((hash) => ['SMEMBERS', `story:sources:v1:${hash}`]));
-        if (!Array.isArray(rows) || rows.length !== chunk.length) {
-          console.warn('  [market-alert-ledger] story:sources read failed; due entries stay pending this tick');
-          return null;
+        if (!Array.isArray(rows) || rows.length !== chunk.length) return stayPending('story:sources read failed');
+        for (let j = 0; j < chunk.length; j += 1) {
+          const sources = arrayResult(rows[j]);
+          if (!sources) return stayPending('story:sources read failed');
+          tiers.set(chunk[j], bestSource(sources));
         }
-        chunk.forEach((hash, j) => tiers.set(hash, bestSource(Array.isArray(rows[j]?.result) ? rows[j].result : [])));
       }
       return tiers;
     },
@@ -321,15 +333,16 @@ function parseJson(text) {
   }
 }
 
-async function readRawInputs() {
-  const rows = await defaultRedisPipeline(READ_KEYS.map((key) => ['GET', key]));
+export async function readRawInputs(pipeline = defaultRedisPipeline) {
+  const rows = await pipeline(READ_KEYS.map((key) => ['GET', key]));
   if (!Array.isArray(rows) || rows.length !== READ_KEYS.length) {
     throw new Error('Redis pipeline GET of the market-alert inputs failed');
   }
   const raw = {};
   READ_KEYS.forEach((key, i) => {
-    const value = rows[i]?.result;
-    raw[key] = typeof value === 'string' ? parseJson(value) : null;
+    const row = rows[i];
+    if (row?.error != null) throw new Error(`Redis GET ${key} failed: ${row.error}`);
+    raw[key] = typeof row?.result === 'string' ? parseJson(row.result) : null;
   });
   return raw;
 }

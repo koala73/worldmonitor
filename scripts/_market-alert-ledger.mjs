@@ -143,11 +143,14 @@ function resolution(ledger, counts, readFailed) {
 /**
  * VOID is a clock verdict and needs no archive read. Everything else fails
  * closed: a null story or source read leaves the due entries pending for the
- * next tick rather than scoring them against a partial archive.
+ * next tick rather than scoring them against a partial archive. A window is
+ * scored only when the archive still holds a story last seen at or before the
+ * window opened, because an accumulator that expired and was rebuilt cannot
+ * prove absence.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
-  const counts = { hit: 0, miss: 0, void: 0 };
+  const counts = { hit: 0, miss: 0, void: 0, unproven: 0 };
   const resolvable = [];
   for (const entry of Object.values(ledger)) {
     if (entry.status !== 'pending' || entry.deadline >= nowMs) continue;
@@ -160,8 +163,11 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
   }
   if (resolvable.length === 0) return resolution(ledger, counts, false);
 
-  const stories = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)));
-  if (!Array.isArray(stories)) return resolution(ledger, counts, true);
+  const archived = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)));
+  if (!Array.isArray(archived?.stories)) return resolution(ledger, counts, true);
+  const { coveredFromMs, stories } = archived;
+  const proven = resolvable.filter((entry) => coveredFromMs != null && entry.emittedAt >= coveredFromMs);
+  counts.unproven = resolvable.length - proven.length;
 
   const entityMatchCache = new Map();
   const entityMatchesFor = (title) => {
@@ -169,7 +175,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
     return entityMatchCache.get(title);
   };
   const candidatesByKey = new Map();
-  for (const entry of resolvable) {
+  for (const entry of proven) {
     const candidates = stories
       .filter((story) => story.firstSeen >= entry.emittedAt && story.firstSeen <= entry.deadline)
       .filter((story) => storyMatchesEntity(
@@ -185,7 +191,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
   const sourceTierByHash = hashes.length > 0 ? await archive.readSourceTiers(hashes) : new Map();
   if (!(sourceTierByHash instanceof Map)) return resolution(ledger, counts, true);
 
-  for (const entry of resolvable) {
+  for (const entry of proven) {
     const candidates = candidatesByKey.get(entry.key);
     const evidence = candidates.find((story) => (sourceTierByHash.get(story.hash)?.tier ?? 4) <= MARKET_ALERT_HIT_MAX_TIER);
     if (evidence) {

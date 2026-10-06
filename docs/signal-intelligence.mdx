@@ -214,6 +214,8 @@ The rolling 30-day scorecard at `correlation:market-alerts:scorecard:v1` reports
 
 > An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol's registry entity or a whole-word match of the market name of four or more characters; for a prediction market, any topic keyword derived from the question at emission. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story's first tracking.
 
+A closed window is scored only while the digest archive still holds a story last seen at or before the window opened; an archive that expired and was rebuilt cannot prove that no story appeared, so such windows stay pending and void after six days.
+
 ---
 
 ## Source Intelligence
