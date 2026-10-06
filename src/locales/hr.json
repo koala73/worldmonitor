@@ -86,7 +86,7 @@
     "predictionMarkets": "Tržišta predviđanja",
     "loadingMarkets": "Učitavanje tržišta predviđanja...",
     "infrastructure": "Izloženost infrastrukture",
-    "briefUnavailable": "AI pregled nije dostupan — konfiguriraj GROQ_API_KEY u Postavkama.",
+    "briefUnavailable": "AI pregled nije dostupan — konfiguriraj OPENROUTER_API_KEY u Postavkama.",
     "cached": "Keširano",
     "fresh": "Novo",
     "noMarkets": "Nema aktivnih tržišta za ovu zemlju.",
@@ -872,7 +872,7 @@
       "fresh": "Novo",
       "noMarkets": "Nema pronađenih tržišta predviđanja",
       "predictionMarkets": "Tržišta predviđanja",
-      "unavailable": "AI izvještaj nije dostupan — konfigurirajte GROQ_API_KEY u Postavkama."
+      "unavailable": "AI izvještaj nije dostupan — konfigurirajte OPENROUTER_API_KEY u Postavkama."
     },
     "countryBrief": {
       "identifying": "Prepoznavanje zemlje...",
@@ -888,7 +888,7 @@
       "predictionMarkets": "Tržišta predviđanja",
       "loadingMarkets": "Učitavanje tržišta predviđanja...",
       "infrastructure": "Izloženost infrastrukture",
-      "briefUnavailable": "AI izvještaj nije dostupan — konfigurirajte GROQ_API_KEY u Postavkama.",
+      "briefUnavailable": "AI izvještaj nije dostupan — konfigurirajte OPENROUTER_API_KEY u Postavkama.",
       "cached": "Cache",
       "fresh": "Novo",
       "noMarkets": "Nema pronađenih tržišta predviđanja",
@@ -1580,7 +1580,7 @@
       "rankingStories": "Rangiranje važnih vijesti...",
       "analyzingSentiment": "Analiza sentimenta...",
       "generatingBrief": "Generiranje svjetskog sažetka...",
-      "infoTooltip": "<strong>AI-pogonjena analiza</strong><br>• <strong>World Brief</strong>: AI sažetak (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Analiza tona vijesti<br>• <strong>Velocity</strong>: Brzo pokretne vijesti<br>• <strong>Focal Points</strong>: Povezuje vijesti sa signalima na karti (vojska, prosvjedi, ispadi)<br><em>Samo desktop • Pokreće Llama 3.3 + Detekcija Žarišne Točke</em>",
+      "infoTooltip": "<strong>AI-pogonjena analiza</strong><br>• <strong>World Brief</strong>: AI sažetak (OpenRouter)<br>• <strong>Sentiment</strong>: Analiza tona vijesti<br>• <strong>Velocity</strong>: Brzo pokretne vijesti<br>• <strong>Focal Points</strong>: Povezuje vijesti sa signalima na karti (vojska, prosvjedi, ispadi)<br><em>Samo desktop • Pokreće Llama 3.3 + Detekcija Žarišne Točke</em>",
       "streamQualityLabel": "Kvaliteta videa",
       "streamQualityDesc": "Postavi kvalitetu za sve live streamove (niža kvaliteta štedi bandwidth)",
       "globeRenderScaleOptions": {
@@ -1592,7 +1592,7 @@
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Osvjetli lokacije na karti kada stignu važne vijesti",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Pošalji naslove u oblak za AI sažimanje (preporučeno)",
       "aiFlowBrowserLabel": "Lokalni model preglednika",
       "aiFlowBrowserDesc": "Pokreni AI lokalno u svom pregledniku",

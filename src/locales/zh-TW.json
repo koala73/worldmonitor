@@ -16,7 +16,7 @@
     "predictionMarkets": "預測市場",
     "loadingMarkets": "正在載入預測市場...",
     "infrastructure": "基礎設施暴露",
-    "briefUnavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。",
+    "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
     "cached": "已快取",
     "fresh": "最新",
     "noMarkets": "未找到預測市場",
@@ -796,7 +796,7 @@
       "fresh": "最新",
       "noMarkets": "未找到預測市場",
       "predictionMarkets": "預測市場",
-      "unavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。"
+      "unavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。"
     },
     "countryBrief": {
       "identifying": "正在識別國家...",
@@ -812,7 +812,7 @@
       "predictionMarkets": "預測市場",
       "loadingMarkets": "正在載入預測市場...",
       "infrastructure": "基礎設施暴露",
-      "briefUnavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。",
+      "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
       "cached": "已快取",
       "fresh": "最新",
       "noMarkets": "未找到預測市場",
@@ -1427,7 +1427,7 @@
       "rankingStories": "正在排序重要報道...",
       "analyzingSentiment": "正在分析情緒...",
       "generatingBrief": "正在生成全球簡報...",
-      "infoTooltip": "<strong>AI驅動分析</strong><br>• <strong>世界簡報</strong>：AI摘要（Groq/OpenRouter）<br>• <strong>情緒分析</strong>：新聞情感分析<br>• <strong>傳播速度</strong>：快速傳播的報道<br>• <strong>焦點</strong>：將新聞實體與地圖訊號（軍事、抗議、中斷）關聯<br><em>僅限桌面端 • 由Llama 3.3 + 焦點檢測驅動</em>",
+      "infoTooltip": "<strong>AI驅動分析</strong><br>• <strong>世界簡報</strong>：AI摘要（OpenRouter）<br>• <strong>情緒分析</strong>：新聞情感分析<br>• <strong>傳播速度</strong>：快速傳播的報道<br>• <strong>焦點</strong>：將新聞實體與地圖訊號（軍事、抗議、中斷）關聯<br><em>僅限桌面端 • 由Llama 3.3 + 焦點檢測驅動</em>",
       "streamQualityLabel": "影片畫質",
       "streamQualityDesc": "設定所有直播流的畫質（低畫質可節省頻寬）",
       "globeRenderScaleOptions": {
@@ -1439,7 +1439,7 @@
       },
       "mapFlashLabel": "即時事件脈衝",
       "mapFlashDesc": "突發新聞到達時在地圖上閃爍標記位置",
-      "aiFlowCloudLabel": "雲端AI（Groq & OpenRouter）",
+      "aiFlowCloudLabel": "雲端AI（OpenRouter）",
       "aiFlowCloudDesc": "將標題傳送到雲端進行AI摘要（推薦）",
       "aiFlowBrowserLabel": "瀏覽器本地模型",
       "aiFlowBrowserDesc": "在瀏覽器中本地執行AI",

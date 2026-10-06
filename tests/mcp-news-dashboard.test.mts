@@ -149,6 +149,7 @@ test('brief analysis retains the full dashboard variant and requested summary la
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
   globalThis.fetch = async (_input, init) => {
     const request = JSON.parse(String(init?.body));
+    assert.equal(request.provider, 'openrouter');
     assert.equal(request.mode, 'brief');
     assert.equal(request.variant, 'full');
     assert.equal(request.lang, 'fr');

@@ -431,7 +431,7 @@ describe('httpRetryError', () => {
 // than this". Neither answers the question that actually matters when a
 // provider hands back a long Retry-After: is there any point retrying at all?
 //
-// Production (seed-insights, 2026-08-03 12:10Z/12:20Z): groq returned 429 with
+// Production (seed-insights, 2026-08-03 12:10Z/12:20Z): a provider returned 429 with
 // "tokens per day (TPD): Limit 100000, Used 100000 ... try again in 20m13.92s".
 // The 1213s hint was clamped to the 10s ceiling and retried twice, burning 20s
 // of a 60s LLM budget and a 120s seed lock against a wall that could not move
@@ -523,7 +523,7 @@ describe('httpRetryError — remainingBudgetMs (#6110)', () => {
 
   // Review caught this: `parseRetryAfterMs` clamps at MAX_RETRY_AFTER_MS (60s),
   // so judging futility on the PARSED value silently reinstated the bug for any
-  // caller with a budget >= 60s — groq's 1213s reads as 60s there, and 60s is
+  // caller with a budget >= 60s — a 1213s hint reads as 60s there, and 60s is
   // not > 60s. The verdict now uses the uncapped hint. Both live callers happen
   // to cap usable budget below 60s (insights 55s, narrative 40s), so this was
   // latent rather than live — and would have shipped as a comment claiming a

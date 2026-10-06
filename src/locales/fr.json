@@ -16,7 +16,7 @@
     "predictionMarkets": "Marchés de prédiction",
     "loadingMarkets": "Chargement des marchés...",
     "infrastructure": "Exposition infrastructure",
-    "briefUnavailable": "Brief IA indisponible — configurez GROQ_API_KEY dans les paramètres.",
+    "briefUnavailable": "Brief IA indisponible — configurez OPENROUTER_API_KEY dans les paramètres.",
     "cached": "En cache",
     "fresh": "Frais",
     "noMarkets": "Aucun marché trouvé",
@@ -802,7 +802,7 @@
       "fresh": "Frais",
       "noMarkets": "Aucun marché de prédiction trouvé",
       "predictionMarkets": "Marchés de Prédiction",
-      "unavailable": "Briefing IA indisponible — configurez GROQ_API_KEY dans les Paramètres."
+      "unavailable": "Briefing IA indisponible — configurez OPENROUTER_API_KEY dans les Paramètres."
     },
     "countryBrief": {
       "components": {
@@ -838,7 +838,7 @@
       "predictionMarkets": "Marchés de prédiction",
       "loadingMarkets": "Chargement des marchés de prédiction...",
       "infrastructure": "Exposition aux infrastructures",
-      "briefUnavailable": "Brief AI indisponible – configurez GROQ_API_KEY dans Paramètres.",
+      "briefUnavailable": "Brief AI indisponible – configurez OPENROUTER_API_KEY dans Paramètres.",
       "cached": "En cache",
       "fresh": "Récent",
       "noMarkets": "Aucun marché de prédiction trouvé",
@@ -1379,7 +1379,7 @@
     },
     "insights": {
       "noStories": "Aucune info de dernière minute pour l'instant",
-      "infoTooltip": "<strong>Analyse basée sur l'IA</strong><br>• <strong>World Brief</strong> : résumé de l'IA (Groq/OpenRouter)<br>• <strong>Sentiment</strong> : analyse du ton de l'actualité<br>• <strong>Velocity</strong> : histoires rapides<br>• <strong>Focal Points</strong> : corrèle les entités d'information avec les signaux cartographiques (militaires, manifestations, pannes)<br><em>ordinateur de bureau uniquement • Optimisé par Llama 3.3 + détection de point focal</em>",
+      "infoTooltip": "<strong>Analyse basée sur l'IA</strong><br>• <strong>World Brief</strong> : résumé de l'IA (OpenRouter)<br>• <strong>Sentiment</strong> : analyse du ton de l'actualité<br>• <strong>Velocity</strong> : histoires rapides<br>• <strong>Focal Points</strong> : corrèle les entités d'information avec les signaux cartographiques (militaires, manifestations, pannes)<br><em>ordinateur de bureau uniquement • Optimisé par Llama 3.3 + détection de point focal</em>",
       "step": "Step {{step}}/{{total}}",
       "waitingForData": "Attente des données d'actualités...",
       "rankingStories": "Classement des histoires importantes...",
@@ -1387,7 +1387,7 @@
       "generatingBrief": "Génération du brief mondial...",
       "mapFlashLabel": "Pulse événement en direct",
       "mapFlashDesc": "Faire clignoter les lieux sur la carte lors d'une alerte info",
-      "aiFlowCloudLabel": "IA Cloud (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "IA Cloud (OpenRouter)",
       "aiFlowCloudDesc": "Envoyer les titres au cloud pour le résumé IA (recommandé)",
       "aiFlowBrowserLabel": "Modèle local du navigateur",
       "aiFlowBrowserDesc": "Exécuter l'IA localement dans votre navigateur",

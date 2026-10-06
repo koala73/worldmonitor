@@ -29,12 +29,15 @@ import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
   FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+  FORECAST_EVIDENCE_TTL_S,
   forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
   isForecastEvidenceHash,
   parseForecastEvidenceCoverage,
   parseForecastEvidenceMember,
   resolveForecastEvidenceCoverageMaxLagMs,
+  recoverForecastEvidenceCoverage,
 } from './_forecast-evidence-archive.mjs';
 
 /**
@@ -47,6 +50,7 @@ export const MIGRATION_DIVERGENCE_SAMPLE_HASHES = 500;
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
+export const RESOLUTIONS_META_KEY = 'seed-meta:forecast:resolutions';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 // Shadow-only calibration map (#7070). Rewritten unchanged every run, so the
@@ -68,6 +72,8 @@ export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
 export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
 export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
 export const DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT = 15_000;
+// Recovery must prove the full window; the incident archive already exceeded 15,000.
+const DEFAULT_COVERAGE_RECOVERY_HASH_LIMIT = 30_000;
 export const DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS = 25_000;
 const DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS = 5_000;
 export const DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS = 14;
@@ -850,8 +856,8 @@ function escapeRegExp(value) {
 }
 
 // Judge B must come from a different model family than judge A so dual-model
-// agreement is two independent reads. It was Groq until every Groq judge call
-// returned an empty body from 2026-08-29 (175/175 attempts), which stalled the
+// agreement is two independent reads. The previous judge B provider returned
+// an empty body on every call from 2026-08-29 (175/175 attempts), which stalled the
 // whole judged lane; no judged forecast resolved after 2026-08-23.
 const JUDGE_B_DEFAULT_MODEL = 'openai/gpt-6-luna';
 
@@ -1623,7 +1629,7 @@ async function readRedisJson(key) {
   const payload = await resp.json();
   // Upstash reports command errors with HTTP 200 and no result; reading that
   // as an absent key would refit the frozen calibration map or start a new ledger.
-  if (payload.error) throw new Error(`Redis GET ${key} failed: ${payload.error}`);
+  if (payload?.error) throw new Error(`Redis GET ${key} returned an error`);
   if (payload.result == null) return null;
   return JSON.parse(payload.result);
 }
@@ -1788,9 +1794,6 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     ? Math.max(0, Math.floor(options.coverageMaxLagMs))
     : resolveForecastEvidenceCoverageMaxLagMs(options.env ?? process.env);
   const requestedCoverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
-  const maxHashes = Number.isFinite(options.maxHashes)
-    ? Math.max(1, Math.floor(options.maxHashes))
-    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
   const archiveTimeoutMs = Number.isFinite(options.archiveTimeoutMs)
     ? Math.max(1_000, Math.floor(options.archiveTimeoutMs))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_TIMEOUT_MS', DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS);
@@ -1824,8 +1827,18 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     ['GET', FORECAST_EVIDENCE_COVERAGE_KEY],
     `Redis GET ${FORECAST_EVIDENCE_COVERAGE_KEY}`,
   );
-  const coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
-  if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs)) {
+  if (coveragePayload?.error) throw new Error('Redis coverage marker read failed');
+  let coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
+  const coverageUsable = forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true);
+  const needsRecovery = !coverage || (coverage.v === 2 && !coverageUsable);
+  const maxHashes = Number.isFinite(options.maxHashes)
+    ? Math.max(1, Math.floor(options.maxHashes))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT',
+      needsRecovery ? DEFAULT_COVERAGE_RECOVERY_HASH_LIMIT : DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
+  const scanStartMs = needsRecovery
+    ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 2 * FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
+    : requestedCoverageStartMs;
+  if (!needsRecovery && !coverageUsable) {
     return {
       ...base,
       coverageStartMs: coverage?.coverageStartMs,
@@ -1845,7 +1858,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     'ZREVRANGEBYSCORE',
     FORECAST_EVIDENCE_KEY,
     String(nowMs),
-    String(requestedCoverageStartMs),
+    String(scanStartMs),
     'WITHSCORES',
     'LIMIT',
     '0',
@@ -1871,7 +1884,8 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   for (let index = 0; index < rawSelected.length; index += 2) {
     const hash = rawSelected[index];
     const score = Number(rawSelected[index + 1]);
-    if (!isForecastEvidenceHash(hash) || !Number.isFinite(score) || seenHashes.has(hash)) {
+    if (!isForecastEvidenceHash(hash) || !Number.isSafeInteger(score)
+      || score < scanStartMs || score > nowMs || seenHashes.has(hash)) {
       malformedTombstones += 1;
       continue;
     }
@@ -1930,13 +1944,33 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   // retained range that narrowing cannot describe — so it still fails the read.
   // Truncation is different: nothing is missing inside the narrowed window.
   const incomplete = malformedTombstones > 0;
+  if (needsRecovery) {
+    if (truncated) {
+      console.warn(`  [forecast-resolutions] coverage recovery scan truncated at ${maxHashes} records; review FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT`);
+    }
+    coverage = !incomplete && !truncated ? recoverForecastEvidenceCoverage(records, nowMs) : null;
+    const refused = {
+      ...base, items: [], available: false, incomplete: true, coverageComplete: false,
+      incompleteReason: truncated ? 'coverage_recovery_truncated' : 'coverage_unverified', truncated, malformedTombstones,
+    };
+    if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) return refused;
+    if (options.persistRecoveredCoverage !== false) {
+      // Replace stale proof only if no publisher changed it during the scan.
+      const command = typeof coveragePayload?.result === 'string'
+        ? ['EVAL', "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) end return nil",
+          '1', FORECAST_EVIDENCE_COVERAGE_KEY, coveragePayload.result, JSON.stringify(coverage), FORECAST_EVIDENCE_TTL_S]
+        : ['SET', FORECAST_EVIDENCE_COVERAGE_KEY, JSON.stringify(coverage), 'EX', FORECAST_EVIDENCE_TTL_S, 'NX'];
+      const written = await requestRedis(url, command, 'Redis recovered forecast coverage');
+      if (written?.result !== 'OK') return { ...refused, incompleteReason: 'coverage_recovery_write_failed' };
+    }
+  }
   if (truncated) {
     console.warn(`  [forecast-resolutions] evidence archive raw hash cap reached (${rawPairCount}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(effectiveCoverageStartMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
   }
   if (malformedTombstones > 0) {
     console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} missing/malformed/oversized/duplicate member(s)`);
   }
-  const items = records.map(({ record }, index) => ({
+  const items = records.filter(({ score }) => score >= requestedCoverageStartMs).map(({ record }, index) => ({
     id: `N${index + 1}`,
     title: record.title,
     description: record.description,
@@ -1946,6 +1980,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   }));
   return {
     ...base,
+    coverageRecovered: needsRecovery,
     // Report the window actually served: the marker's proof intersected with
     // what this query asked for and what the hash cap let us retain. Returning
     // the marker's frozen start would claim coverage the read did not deliver.
@@ -2128,7 +2163,7 @@ async function markCalibrationMapActivated() {
   }
 }
 
-async function buildLedgerForRun(calibrationRun) {
+async function buildLedgerForRun(runState) {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY),
@@ -2148,6 +2183,7 @@ async function buildLedgerForRun(calibrationRun) {
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
+  runState.archiveReadable = Boolean(judgedArchive?.available) && !judgedArchive?.incomplete;
   const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, judgedOptions);
   const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
   const archivedReceipts = await appendR2Receipts(receiptsForArchive);
@@ -2158,7 +2194,7 @@ async function buildLedgerForRun(calibrationRun) {
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
   const calibration = await resolveCalibrationMap(result.ledger, nowMs);
-  calibrationRun.map = calibration.map;
+  runState.map = calibration.map;
   console.log(`  Calibration map: ${calibration.action}${calibration.reason ? ` (${calibration.reason})` : ''}${calibration.map ? ` ${calibration.map.version}` : ''}`);
   return result.ledger;
 }
@@ -2187,6 +2223,38 @@ export function reportJudgedLaneObservability(ledger, nowMs, options = {}, logge
   return { attemptClasses, alerts };
 }
 
+export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now(), runState = {}) {
+  const [previous, rawCoverage] = await Promise.all([
+    readRedisJson(RESOLUTIONS_META_KEY),
+    readRedisJson(FORECAST_EVIDENCE_COVERAGE_KEY),
+  ]);
+  const since = Number.isSafeInteger(previous?.evaluatedAt) && previous.evaluatedAt <= nowMs
+    ? previous.evaluatedAt : nowMs - 24 * 60 * 60 * 1000;
+  const entries = Object.values(normalizeLedger(ledger));
+  const recent = entries.filter(entry => entry.status !== 'resolved'
+    || (Number(entry.resolvedAt) > since && Number(entry.resolvedAt) <= nowMs));
+  const lane = computeScorecard(recent, nowMs).judgedLane;
+  const eligible = lane.pendingJudgePastDeadline > 0 || lane.resolved > 0;
+  const previousStreak = Number.isSafeInteger(previous?.stalledRuns) && previous.stalledRuns > 0
+    ? previous.stalledRuns : 0;
+  const stalledRuns = eligible && lane.scoredWithinSla === 0 ? Math.min(3, previousStreak + 1) : 0;
+  const coverageVerified = forecastEvidenceCoversWindow(rawCoverage,
+    nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS, nowMs,
+    resolveForecastEvidenceCoverageMaxLagMs(), true);
+  const reasons = [];
+  if (!coverageVerified && lane.pendingJudgePastDeadline > 0) reasons.push('coverage_unverified_with_overdue_entries');
+  // A valid marker does not prove this run's archive read succeeded.
+  if (runState.archiveReadable === false && lane.pendingJudgePastDeadline > 0) reasons.push('archive_unreadable_with_overdue_entries');
+  if (stalledRuns >= 3) reasons.push('no_scored_within_sla_for_3_runs');
+  const health = {
+    evaluatedAt: nowMs, status: reasons.length ? 'error' : 'ok', reasons,
+    stalledRuns, scoredWithinSla: lane.scoredWithinSla,
+    pendingJudgePastDeadline: lane.pendingJudgePastDeadline, coverageVerified,
+  };
+  if (reasons.length) console.warn(`  [forecast-resolutions] judged lane health: ${reasons.join(', ')}`);
+  return health;
+}
+
 async function dryRun() {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
@@ -2196,7 +2264,7 @@ async function dryRun() {
   ]);
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
   const feeds = await readResolutionFeeds(preLedger);
-  const judgedOptions = buildLiveJudgedOptions(nowMs);
+  const judgedOptions = { ...buildLiveJudgedOptions(nowMs), persistRecoveredCoverage: false };
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
   const dryRunJudgeModels = [
     async () => null,
@@ -2258,8 +2326,8 @@ export async function appendR2Receipts(receipts, options = {}) {
 if (DIRECT_RUN && process.argv.includes('--dry-run')) {
   await dryRun();
 } else if (DIRECT_RUN) {
-  const calibrationRun = { map: null };
-  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(calibrationRun), {
+  const runState = { map: null };
+  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(runState), {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
     declareRecords,
@@ -2272,22 +2340,24 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => buildScorecard(ledger, Date.now(), calibrationRun.map),
+      transform: (ledger) => buildScorecard(ledger, Date.now(), runState.map),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,
     }, {
       key: CALIBRATION_MAP_KEY,
       ttl: CALIBRATION_MAP_TTL_SECONDS,
-      transform: () => calibrationRun.map,
+      transform: () => runState.map,
       declareRecords: declareCalibrationMapRecords,
       metaKey: CALIBRATION_MAP_META_KEY,
       // No map this run (read failure, or an empty fit) preserves the last one.
       skipWhenEmpty: true,
       allowMissingOnSkip: true,
     }],
-    afterPublish: async () => {
-      if (calibrationRun.map) await markCalibrationMapActivated();
+    afterPublish: async (ledger) => {
+      if (runState.map) await markCalibrationMapActivated();
+      const health = await buildJudgedLaneHealthPatch(ledger, Date.now(), runState);
+      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
     },
   });
 }

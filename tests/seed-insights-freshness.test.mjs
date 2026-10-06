@@ -464,7 +464,7 @@ test('the real seam scopes grounding to prompt-rendered member titles', () => {
 
 test('the seam classifies an unparseable response as PARSE, not as a gate', () => {
   const { composed, failureCode } = resolveInsightsSynthesis({
-    synthesisResult: { text: 'not parseable at all', provider: 'groq', model: 'test' },
+    synthesisResult: { text: 'not parseable at all', provider: 'openrouter', model: 'test' },
     topStories: [SEAM_STORY],
     briefCluster: SEAM_STORY,
     validatorMode: 'enforce',

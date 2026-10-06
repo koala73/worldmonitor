@@ -30,13 +30,14 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS: number;
 export const FORECAST_EVIDENCE_MEMBER_MAX_BYTES: number;
 export const ACCUMULATOR_RETENTION_MS: number;
 export const FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS: number;
+export const FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS: number;
 export function resolveForecastEvidenceCoverageMaxLagMs(
   env?: Record<string, string | undefined>,
 ): number;
 export function utf8ByteLength(value: string): number;
 export function isForecastEvidenceHash(value: unknown): value is string;
 export function forecastEvidenceRecordKey(hash: string): string;
-export interface ForecastEvidenceCoverage {
+interface ForecastEvidenceCoverageWindow {
   v: number;
   coverageStartMs: number;
   coverageEndMs: number;
@@ -44,20 +45,29 @@ export interface ForecastEvidenceCoverage {
   sourceDigestAtMs: number;
   maxLookbackMs: number;
   retentionSeconds: number;
-  sourceKey: string;
+}
+export type ForecastEvidenceCoverage = ForecastEvidenceCoverageWindow & ({
+  sourceKey: 'digest:accumulator:v1:full:en';
   legacyOldestHash: string;
   legacyOldestScoreMs: number;
-}
+} | {
+  sourceKey: 'forecast:evidence:v1';
+  continuityBucketMs: number;
+  archiveOldestHash: string;
+  archiveOldestScoreMs: number;
+});
 export function parseForecastEvidenceCoverage(raw: unknown): ForecastEvidenceCoverage | null;
 /**
  * `maxLagMs` defaults to 0: only the read path opts into a staleness budget;
- * gates that authorize destruction demand a marker reaching the instant given.
+ * gates that authorize destruction demand a legacy marker reaching the instant given.
+ * Only readers may opt into the continuity attestation with allowContinuity.
  */
 export function forecastEvidenceCoversWindow(
   raw: unknown,
   startMs: number,
   endMs: number,
   maxLagMs?: number,
+  allowContinuity?: boolean,
 ): boolean;
 /** Move a verified marker forward to a newer confirmed publication. */
 export function advanceForecastEvidenceCoverage(
@@ -85,3 +95,7 @@ export function accumulatorPruneBounds(nowMs: number, retentionMs?: number): { m
 
 /** ZREMRANGEBYSCORE bounds pruning the evidence archive past the 14-day reader contract. */
 export function evidencePruneBounds(nowMs: number): { min: string; max: string };
+
+export function recoverForecastEvidenceCoverage(
+  records: Array<{ record: ForecastEvidenceRecord; score: number }>, nowMs: number,
+): ForecastEvidenceCoverage | null;
