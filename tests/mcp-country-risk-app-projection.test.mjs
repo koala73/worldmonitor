@@ -123,6 +123,49 @@ describe('Country Risk exported HTML projections', () => {
     view.send(wire(risk, true));
     assertRisk(view.doc);
   });
+  it('preserves baseline and approximate signed movement across projections and country replacement', async () => {
+    for (const reshaped of [false, true]) {
+      const view = await mount(wire({ ...risk, cii: { ...risk.cii, staticBaseline: 14, dynamicScore: -3 } }, reshaped));
+      assert.equal(text(view.doc, 'baseline'), '14');
+      assert.equal(text(view.doc, 'movement'), '-3');
+      assert.equal(text(view.doc, 'trend'), 'Rising');
+      assert.match(view.doc.body.textContent, /Approx\. 24-hour movement/);
+      view.send(wire({ ...risk, countryCode: 'CA', countryName: 'Canada', cii: { combinedScore: 0, staticBaseline: 0, dynamicScore: 0, trend: 'TREND_DIRECTION_UNSPECIFIED' } }, reshaped));
+      assert.equal(text(view.doc, 'country'), 'Canada');
+      assert.equal(text(view.doc, 'baseline'), '0');
+      assert.equal(text(view.doc, 'movement'), '0');
+      assert.equal(text(view.doc, 'trend'), '—');
+      assert.equal(text(view.doc, 'movement-note'), 'Zero may mean stable or no valid prior snapshot.');
+      assert.equal(view.doc.getElementById('movement-note').style.display, 'block');
+      for (const replacement of [outage, { ...risk, cii: {} }, { ...risk, cii: { staticBaseline: null, dynamicScore: false } }, null]) {
+        view.send(wire(replacement, reshaped));
+        assert.equal(text(view.doc, 'baseline'), '—');
+        assert.equal(text(view.doc, 'movement'), '—');
+        assert.equal(view.doc.getElementById('movement-note').style.display, 'none');
+      }
+      view.send(wire({ ...risk, cii: { ...risk.cii, staticBaseline: 14, dynamicScore: 2.5 } }, reshaped));
+      assert.equal(text(view.doc, 'movement'), '2.5');
+      assert.equal(view.doc.getElementById('movement-note').style.display, 'none');
+      assertRisk(view.doc);
+      assert.equal(view.requests(), 0);
+    }
+  });
+  it('discloses country and advisory text caps and clears the notice after replacement', async () => {
+    const view = await mount(wire({ ...risk, countryName: 'c'.repeat(80), advisoryLevel: 'a'.repeat(80) }, true));
+    assert.equal(text(view.doc, 'country').length, 64);
+    assert.equal(text(view.doc, 'advisory').length, 64);
+    assert.equal(text(view.doc, 'display-note'), 'Country name and travel advisory shortened to 64 characters each.');
+    assert.equal(view.doc.getElementById('display-note').style.display, 'block');
+    view.send(wire({ ...risk, advisoryLevel: 'a'.repeat(80) }));
+    assert.equal(text(view.doc, 'display-note'), 'Travel advisory shortened to 64 characters.');
+    view.send(wire({ ...risk, countryName: 'c'.repeat(80) }));
+    assert.equal(text(view.doc, 'display-note'), 'Country name shortened to 64 characters.');
+    for (const replacement of [risk, outage, null]) {
+      view.send(wire(replacement));
+      assert.equal(text(view.doc, 'display-note'), '');
+      assert.equal(view.doc.getElementById('display-note').style.display, 'none');
+    }
+  });
   it('preserves parent-source and JSON-RPC trust gates without data reads', async () => {
     const view = await mount(wire(risk));
     view.send(textWire(null), { source: view.win });
