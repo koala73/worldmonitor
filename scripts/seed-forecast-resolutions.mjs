@@ -543,7 +543,7 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
   }
   if (!Array.isArray(options.judgeModels) && !liveJudgesAreIndependent()) {
     const { a, b } = liveJudgeModelIds();
-    console.error(`  [forecast-resolutions] judges share a model family (${a} / ${b}); refusing to judge`);
+    console.error(`  [forecast-resolutions] judges are not independent (${a} / ${b}, OpenRouter key ${process.env.OPENROUTER_API_KEY ? 'set' : 'unset'}); refusing to judge`);
     return {
       status: 'pending', stage: 'judge_a', reason: 'judge_unavailable',
       detail: 'judges_not_independent', ...attemptContext,
@@ -828,6 +828,8 @@ function liveJudgeModelIds(env = process.env) {
 }
 
 function liveJudgesAreIndependent(env = process.env) {
+  // Without an OpenRouter key both calls fall through to the generic LLM_MODEL.
+  if (!env.OPENROUTER_API_KEY) return false;
   const { a, b } = liveJudgeModelIds(env);
   return a.split('/')[0] !== b.split('/')[0];
 }

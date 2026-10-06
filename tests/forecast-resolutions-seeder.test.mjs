@@ -2602,9 +2602,15 @@ describe('terminal receipt attempt history (#7068)', () => {
 });
 
 describe('live judge panel', () => {
-  afterEach(() => __setForecastLlmCallOverrideForTests(null));
+  const savedKey = process.env.OPENROUTER_API_KEY;
+  afterEach(() => {
+    __setForecastLlmCallOverrideForTests(null);
+    if (savedKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = savedKey;
+  });
 
   it('runs both judges on OpenRouter with two different model families and never calls Groq', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-key';
     const deadline = T0 + DAY_MS;
     const entry = {
       id: 'fc-live-panel',
@@ -2640,7 +2646,7 @@ describe('live judge panel', () => {
 });
 
 describe('live judge panel independence', () => {
-  const ENV_KEYS = ['FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER', 'FORECAST_LLM_MODEL_OPENROUTER', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B'];
+  const ENV_KEYS = ['OPENROUTER_API_KEY', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER', 'FORECAST_LLM_MODEL_OPENROUTER', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B'];
   const saved = {};
   afterEach(() => {
     __setForecastLlmCallOverrideForTests(null);
@@ -2655,7 +2661,8 @@ describe('live judge panel independence', () => {
       saved[key] = process.env[key];
       delete process.env[key];
     }
-    Object.assign(process.env, env);
+    Object.assign(process.env, { OPENROUTER_API_KEY: 'test-key' }, env);
+    for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key];
     const deadline = T0 + DAY_MS;
     const entry = {
       id: 'fc-same-family',
@@ -2689,6 +2696,12 @@ describe('live judge panel independence', () => {
 
   it('refuses to judge when judge B is overridden to judge A\'s model', async () => {
     const { result, calls } = await runWithEnv({ FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B: 'deepseek/deepseek-v4-flash' });
+    assert.equal(calls.length, 0);
+    assert.equal(result.detail, 'judges_not_independent');
+  });
+
+  it('refuses to judge without an OpenRouter key, since both calls would reach the same generic LLM_MODEL', async () => {
+    const { result, calls } = await runWithEnv({ OPENROUTER_API_KEY: undefined });
     assert.equal(calls.length, 0);
     assert.equal(result.detail, 'judges_not_independent');
   });
