@@ -365,7 +365,7 @@ function headlineResultSentence(scorecard) {
   return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the Brier and log scores yet; each score is published with the number of forecasts behind it instead. Every rate carries a 95% Wilson interval. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the Brier and log scores yet; each score is published with the number of forecasts behind it instead. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
 
 export function renderAccuracyLlmsSection(section) {
   const state = classifyAccuracyState(section);
@@ -700,7 +700,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
   return `      <h2>What this page does not publish</h2>
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
-        <li>No confidence intervals on the Brier and log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry yet, and this page will not invent one from the averages. Each score is published with the number of forecasts behind it instead. Every rate does carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
+        <li>No confidence intervals on the Brier and log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry yet, and this page will not invent one from the averages. Each score is published with the number of forecasts behind it instead. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
         <li>No accuracy for the 24-hour, 7-day and 30-day projections shown in the product. Those horizons are not scored yet, so nothing here describes them. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
         <li>No individual forecasts, resolution evidence, judge inputs or archive locations. This page publishes aggregates only.</li>
       </ul>`;

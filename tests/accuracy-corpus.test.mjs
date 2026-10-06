@@ -760,6 +760,12 @@ describe('accuracy page honesty rules', () => {
 describe('accuracy page proportion intervals', () => {
   const rowOf = (html, marker) => stripTags(html.match(new RegExp(`<tr ${marker}[\\s\\S]*?</tr>`))[0]);
 
+  it('promises intervals only for the rates that carry one', () => {
+    const text = stripTags(renderState(LIVE_SECTION).html);
+    assert.doesNotMatch(text, /Every rate (does )?carr/);
+    assert.match(text, /scored share of the ledger and the base rates/);
+  });
+
   it('puts a Wilson interval beside the overall void rate', () => {
     const totals = renderState(LIVE_SECTION).html.match(/<table data-ledger-totals>[\s\S]*?<\/table>/)[0];
     assert.match(stripTags(totals), /36\.5% of 772 resolved entries \(282 entries\), 95% interval 33\.2% to 40\.0%/);
