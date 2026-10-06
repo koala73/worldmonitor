@@ -29,8 +29,8 @@ message TriggerSimulationResponse {
   string run_id = 2;
   // The fingerprint is the first 16 hex chars of sha256 over the package's R2 key.
 
-  // Opaque package fingerprint. Compare it with the outcome's fingerprint to
-  // detect cron rotation. Empty when reason='no_package'.
+  // Opaque package fingerprint; it changes when the cron rotates the package.
+  // Empty when reason='no_package'.
   string pkg_fingerprint = 3;
   // 'already-handled' merges "already queued" and "already completed this
   // cycle" so the response is not a cron-timing oracle; logs keep the split.

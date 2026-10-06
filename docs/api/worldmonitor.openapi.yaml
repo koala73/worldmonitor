@@ -11255,14 +11255,14 @@ paths:
                                 "forecasts":
                                     - "calibration":
                                         "drift": 1.5
-                                        "internalProbability": 1.5
-                                        "marketBlendedProbability": 1.5
+                                        "internalProbability": 0.62
+                                        "marketBlendedProbability": 0.62
                                         "marketPrice": 75.25
                                         "marketTitle": "example"
                                       "cascades":
                                           - "domain": "example"
                                             "effect": "example"
-                                            "probability": 1.5
+                                            "probability": 0.62
                                       "caseFile":
                                           "actorLenses":
                                               - "example"
@@ -11278,7 +11278,7 @@ paths:
                                           "branches":
                                               - "kind": "example"
                                                 "outcome": "example"
-                                                "projectedProbability": 1.5
+                                                "projectedProbability": 0.62
                                                 "rounds":
                                                     - {}
                                                 "summary": "Example WorldMonitor observation."
@@ -11411,8 +11411,8 @@ paths:
                                     - "brier": 1.5
                                       "bucket": "example"
                                       "count": 1
-                                      "maxProbability": 1.5
-                                      "minProbability": 1.5
+                                      "maxProbability": 0.62
+                                      "minProbability": 0.62
                                 "degraded": true
                                 "error": "example"
                             schema:
@@ -44015,8 +44015,8 @@ components:
                 pkgFingerprint:
                     type: string
                     description: |-
-                        Opaque package fingerprint. Compare it with the outcome's fingerprint to
-                         detect cron rotation. Empty when reason='no_package'.
+                        Opaque package fingerprint; it changes when the cron rotates the package.
+                         Empty when reason='no_package'.
                 reason:
                     type: string
                     description: |-

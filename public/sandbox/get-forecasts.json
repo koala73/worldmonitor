@@ -25,8 +25,8 @@
         {
           "calibration": {
             "drift": 1.5,
-            "internalProbability": 1.5,
-            "marketBlendedProbability": 1.5,
+            "internalProbability": 0.62,
+            "marketBlendedProbability": 0.62,
             "marketPrice": 75.25,
             "marketTitle": "example"
           },
@@ -34,7 +34,7 @@
             {
               "domain": "example",
               "effect": "example",
-              "probability": 1.5
+              "probability": 0.62
             }
           ],
           "caseFile": {
@@ -59,7 +59,7 @@
               {
                 "kind": "example",
                 "outcome": "example",
-                "projectedProbability": 1.5,
+                "projectedProbability": 0.62,
                 "rounds": [
                   {}
                 ],
