@@ -2873,7 +2873,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       ? delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
       : 'flat';
 
-    const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index');
+    const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index' && item.label !== 'Weekly Momentum');
+    const weeklyValue = data.weekChangePercent.trim();
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
+      base.unshift({
+        label: 'Weekly Momentum',
+        value: `${delta >= 0 ? '+' : ''}${data.weekChangePercent}%`,
+        trend,
+      });
+    }
     base.unshift({
       label: 'Stock Index',
       value: `${data.indexName}: ${data.price} ${data.currency}`,

@@ -260,6 +260,7 @@
       "supplierRetained": "Data ya wasambazaji imehifadhiwa kutoka uonyeshaji upya wa mwisho wa kuingiza data uliofanikiwa.",
       "source": "Vyanzo: Benki ya Dunia na Hifadhidata ya Uhamishaji Silaha ya SIPRI. TIV hupima ujazo wa uhamishaji, si thamani ya kifedha.",
       "sourceWorldBank": "Chanzo: Benki ya Dunia.",
+      "snapshotAssembled": "Picha ya data ya {{source}} imekusanywa {{time}}",
       "unavailable": "Haipatikani"
     },
     "foodStocks": "Hifadhi za chakula",
