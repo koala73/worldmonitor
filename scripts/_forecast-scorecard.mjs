@@ -237,6 +237,10 @@ function summarizeScored(entries) {
 // Per-domain accuracy over the published-origin population only, with each
 // domain's yesCount so a reader can derive its base-rate Brier. byDomain pools
 // every origin, so it cannot back a per-domain reliability claim (#5092).
+// isPublishedOriginEntry excludes bet_engine even when promoteBetEngine
+// (FORECAST_PROMOTE_BET_ENGINE, off in production) adds it to the headline
+// skill cohort, so the card badges and /accuracy/ domain table stay on
+// published forecasts until promotion is decided for them too (#8952).
 function summarizePublishedByDomain(scored) {
   const byDomain = new Map();
   for (const entry of scored.filter(isPublishedOriginEntry)) {

@@ -108,7 +108,7 @@ export function renderReliabilityBadge(table: ReliabilityTable | null, domain: s
         t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
       ];
   const text = table.stale ? `${main} · ${t('components.forecast.record.stale')}` : main;
-  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(recordHref(isDesktopRuntime()))}" title="${escapeHtml(hint)}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
+  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(reliabilityHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
@@ -146,6 +146,11 @@ function staleBadge(record: GradedRecord): string {
 }
 
 /** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
+/** The badge lands on the /accuracy/ table built from the same publishedByDomain rows. */
+export function reliabilityHref(desktop: boolean): string {
+  return `${recordHref(desktop)}#by-domain`;
+}
+
 export function recordHref(desktop: boolean): string {
   return desktop ? `${CANONICAL_ORIGIN}accuracy/` : '/accuracy/';
 }

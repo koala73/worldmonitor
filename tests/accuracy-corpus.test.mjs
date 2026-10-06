@@ -28,7 +28,7 @@ const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'
 // against a real funnel — 96 entries awaiting a judge and a `political` domain
 // with nothing scored are the states the page must not round away.
 const LIVE_SCORECARD = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: 1789020144012,
   rollingWindowDays: 180,
   methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.',
@@ -75,7 +75,11 @@ const LIVE_SCORECARD = Object.freeze({
   ],
   vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
   skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
-  publishedByDomain: [{ domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 }, { domain: 'market', count: 60, brier: 0.13, yesCount: 22 }],
+  publishedByDomain: [
+    { domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 },
+    { domain: 'market', count: 60, brier: 0.13, yesCount: 22 },
+    { domain: 'political', count: 12, brier: 0.2, yesCount: 4 },
+  ],
   degraded: false,
   stale: false,
   error: '',
@@ -647,13 +651,14 @@ describe('accuracy page honesty rules', () => {
     assert.match(text, /80-90/);
   });
 
-  it('marks an unscored domain as insufficient sample rather than leaving a cell empty', () => {
+  it('marks a domain below the sample floor as not yet measured rather than leaving a cell empty', () => {
     const { html } = renderState(LIVE_SECTION);
     const row = html.match(/<tr data-domain="political">[\s\S]*?<\/tr>/)[0];
     assert.equal((row.match(/<td[^>]*>\s*<\/td>/g) || []).length, 0, 'an empty cell reads as a measured zero');
-    assert.equal((row.match(/Insufficient sample/g) || []).length, 2, 'both score columns must be marked');
-    const scoredRow = html.match(/<tr data-domain="cyber">[\s\S]*?<\/tr>/)[0];
-    assert.doesNotMatch(scoredRow, /Insufficient sample/);
+    assert.equal((row.match(/Not yet measured/g) || []).length, 2, 'both score columns must be marked');
+    assert.doesNotMatch(row, /0\.200/, 'a below-floor Brier is never printed');
+    const scoredRow = html.match(/<tr data-domain="conflict">[\s\S]*?<\/tr>/)[0];
+    assert.doesNotMatch(scoredRow, /Not yet measured/);
   });
 
   it('labels every table and comparison with the population it covers', () => {
@@ -828,6 +833,65 @@ describe('accuracy page honesty rules', () => {
 // Issue #7072: every binomial proportion on the page carries a Wilson 95%
 // interval derived from the two counts the page already publishes. Expected
 // bounds are golden values, so a formula change cannot pass by moving both sides.
+describe('accuracy page published-origin domain table (#8952)', () => {
+  const tableOf = (html) => html.match(/<table data-by-domain>[\s\S]*?<\/table>/)?.[0] ?? null;
+  const rowText = (html, domain) => stripTags(html.match(new RegExp(`<tr data-domain="${domain}">[\\s\\S]*?</tr>`))[0]);
+
+  it('renders publishedByDomain under an anchor, with Brier and base rate p(1-p)', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(html, /<h2 id="by-domain">Accuracy by domain<\/h2>/);
+    const table = tableOf(html);
+    assert.ok(table, 'the published domain table renders');
+    assert.deepEqual([...table.matchAll(/<tr data-domain="([^"]+)"/g)].map(([, d]) => d), ['conflict', 'market', 'political']);
+    // conflict: p = 30/120, p(1-p) = 0.1875.
+    assert.match(rowText(html, 'conflict'), /conflict\s*120\s*0\.110\s*0\.188/);
+    // market: p = 22/60, p(1-p) = 0.2322.
+    assert.match(rowText(html, 'market'), /market\s*60\s*0\.130\s*0\.232/);
+  });
+
+  it('drops the pooled all-origin domain table from the page', () => {
+    const { html } = renderState(LIVE_SECTION);
+    const table = tableOf(html);
+    assert.doesNotMatch(table, /data-domain="cyber"|data-domain="energy"/, 'domains with only pooled rows do not appear');
+    assert.doesNotMatch(table, /0\.241727|0\.242|272/, 'the pooled market row is not printed');
+    assert.equal((html.match(/<table data-by-domain/g) || []).length, 1);
+  });
+
+  it('applies the badge sample floor: n=29 is not yet measured, n=30 is measured', () => {
+    const { html } = renderState(sectionWith({
+      publishedByDomain: [
+        { domain: 'conflict', count: 29, brier: 0.2, yesCount: 10 },
+        { domain: 'market', count: 30, brier: 0.21, yesCount: 10 },
+      ],
+    }));
+    assert.match(rowText(html, 'conflict'), /29\s*Not yet measured\s*Not yet measured/);
+    assert.match(rowText(html, 'market'), /30\s*0\.210\s*0\.222/);
+  });
+
+  it('names its population and its sample rule in the caption', () => {
+    const caption = stripTags(tableOf(renderState(LIVE_SECTION).html).match(/<caption>[\s\S]*?<\/caption>/)[0]);
+    assert.match(caption, /published/i);
+    assert.match(caption, /bet_engine/);
+    assert.match(caption, /30/);
+  });
+
+  it('says so instead of a table when the scorecard predates the published breakdown', () => {
+    const { publishedByDomain: _omit, ...legacy } = LIVE_SCORECARD;
+    for (const scorecard of [{ ...legacy, schemaVersion: 1 }, { ...LIVE_SCORECARD, schemaVersion: 1 }]) {
+      const { html } = renderState({ ...LIVE_SECTION, scorecard });
+      assert.match(html, /<h2 id="by-domain">/);
+      assert.equal(tableOf(html), null);
+      assert.match(stripTags(html), /predates the published-origin domain breakdown/);
+    }
+  });
+
+  it('says no published forecast is graded yet when the breakdown is empty', () => {
+    const { html } = renderState(sectionWith({ publishedByDomain: [] }));
+    assert.equal(tableOf(html), null);
+    assert.match(stripTags(html), /No published forecast has been graded in any domain/);
+  });
+});
+
 describe('accuracy page proportion intervals', () => {
   const rowOf = (html, marker) => stripTags(html.match(new RegExp(`<tr ${marker}[\\s\\S]*?</tr>`))[0]);
 
@@ -859,10 +923,9 @@ describe('accuracy page proportion intervals', () => {
 
   it('puts a Wilson interval beside each domain and origin void rate, and none on an empty denominator', () => {
     const { html } = renderState(LIVE_SECTION);
-    assert.match(rowOf(html, 'data-domain="political"'), /100\.0% of 6 resolved 61\.0% to 100\.0%/);
     assert.match(rowOf(html, 'data-origin="bet_engine"'), /0\.0% of 299 resolved 0\.0% to 1\.3%/);
-    const empty = sectionWith({ byDomain: [{ domain: 'macro', resolved: 0, scored: 0, void: 0, voidRate: 0 }] });
-    assert.match(rowOf(renderState(empty).html, 'data-domain="macro"'), /No interval/);
+    const empty = sectionWith({ byGenerationOrigin: [{ generationOrigin: 'macro_engine', resolved: 0, scored: 0, void: 0, voidRate: 0 }] });
+    assert.match(rowOf(renderState(empty).html, 'data-origin="macro_engine"'), /No interval/);
   });
 
   it('publishes the same intervals in the distribution, with their counts', () => {
