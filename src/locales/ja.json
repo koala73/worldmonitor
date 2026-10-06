@@ -115,6 +115,7 @@
       "doNotTravel": "渡航禁止",
       "reconsiderTravel": "渡航再考",
       "exerciseCaution": "注意喚起",
+      "normalPrecautions": "通常の注意",
       "advisory": "勧告",
       "activeSirens": "サイレン作動中",
       "sirens24h": "サイレン / 24時間",
@@ -2325,7 +2326,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
+      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
       "title": "AI市場への影響",
       "directions": {
         "long": "ロング",
@@ -2337,7 +2338,8 @@
       "appliesToNext": "次のAI再生成に適用",
       "signals_other": "{{count}}シグナル",
       "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
-      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
+      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。",
+      "unscored": "ナラティブなシナリオであり、精度は評価されていません。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 予測</strong> 地政学的および経済的イベントの AI 生成確率推定:<ul><li>クロスドメインカバレッジ: 紛争、市場、サプライチェーン、サイバー、政治</li><li>各予測は推定確率、信頼度、時間軸を表示</li><li>利用可能な場合は予測市場ベースラインに対して調整済み</li></ul>新しいインテリジェンスシグナルが到着すると予測が更新されます。上記のタブでドメイン別にフィルタリングしてください。"
@@ -3334,8 +3336,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "予測市場はしばしばニュースより先に情報を織り込む — トレーダーが早期に情報を入手している可能性。",
-        "actionableInsight": "今後1-6時間以内に市場の動きを説明するニュースが出ないか監視。",
+        "whyItMatters": "予測市場が動いたのに、そのトピックのニュース報道が少ないままです。市場がまだ報道されていない情報に反応している可能性があります。",
+        "actionableInsight": "市場の動きを説明する速報ニュースを監視してください。",
         "confidenceNote": "複数の予測市場が同方向に動いている場合、信頼度が高い。"
       },
       "news_leads_markets": {

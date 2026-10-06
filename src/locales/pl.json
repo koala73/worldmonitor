@@ -125,6 +125,7 @@
       "doNotTravel": "Nie podróżuj",
       "reconsiderTravel": "Rozważ ponownie podróż",
       "exerciseCaution": "Zachowaj ostrożność",
+      "normalPrecautions": "Zwykłe środki ostrożności",
       "advisory": "Ostrzeżenie podróżne",
       "activeSirens": "Aktywne syreny",
       "sirens24h": "Syreny / 24h",
@@ -2352,7 +2353,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implikacje rynkowe AI</strong> Sygnały handlowe generowane przez LLM pochodzące ze stanu geopolitycznego, towarowego i makroekonomicznego w czasie rzeczywistym po każdym cyklu prognozy.<ul><li><strong>Kierunek</strong>: LONG / SHORT / HEDGE z oceną pewności</li><li><strong>Horyzont czasowy</strong>: 1W, 2W, 1M lub 3M</li><li><strong>Katalizator</strong>: Kluczowy czynnik napędzający sygnał</li><li><strong>Ryzyko</strong>: Zastrzeżenie lub warunek unieważnienia</li></ul><em>Wyłącznie do celów informacyjnych. Nie stanowi porady inwestycyjnej.</em>",
+      "infoTooltip": "<strong>Implikacje rynkowe AI</strong> Sygnały handlowe generowane przez LLM pochodzące ze stanu geopolitycznego, towarowego i makroekonomicznego w czasie rzeczywistym po każdym cyklu prognozy.<ul><li><strong>Kierunek</strong>: LONG / SHORT / HEDGE</li><li><strong>Horyzont czasowy</strong>: 1W, 2W, 1M lub 3M</li><li><strong>Katalizator</strong>: Kluczowy czynnik napędzający sygnał</li><li><strong>Ryzyko</strong>: Zastrzeżenie lub warunek unieważnienia</li></ul><em>Wyłącznie do celów informacyjnych. Nie stanowi porady inwestycyjnej.</em>",
       "title": "Implikacje dla Rynku AI",
       "directions": {
         "long": "LONG",
@@ -2367,7 +2368,8 @@
       "disclaimer": "Sygnały handlowe generowane przez AI wyłącznie do celów informacyjnych. Nie stanowią porady inwestycyjnej. Zawsze przeprowadź własne badania.",
       "unavailable": "Implikacje rynkowe AI są generowane po każdym uruchomieniu prognozy. Wróć za chwilę.",
       "signals_few": "{{count}} sygnały",
-      "signals_many": "{{count}} sygnałów"
+      "signals_many": "{{count}} sygnałów",
+      "unscored": "Scenariusze narracyjne, bez oceny trafności."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Szacunki prawdopodobieństwa generowane przez AI dla zdarzeń geopolitycznych i gospodarczych:<ul><li>Pokrycie międzydomenowe: konflikty, rynki, łańcuchy dostaw, cyberbezpieczeństwo, polityka</li><li>Każda prognoza pokazuje szacunkowe prawdopodobieństwo, poziom pewności i horyzont czasowy</li><li>Skalibrowana względem bazel rynków predykcyjnych tam, gdzie są dostępne</li></ul>Prognozy aktualizują się w miarę napływu nowych sygnałów wywiadowczych. Filtruj wg domeny za pomocą zakładek powyżej."
@@ -3394,8 +3396,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Rynki prognostyczne często wyceniają informacje, zanim staną się wiadomościami — traderzy mogą mieć wczesny dostęp do wydarzeń.",
-        "actionableInsight": "Monitoruj pojawianie się wiadomości w ciągu najbliższych 1-6 godzin, które mogą wyjaśnić ruch rynkowy.",
+        "whyItMatters": "Rynek predykcyjny się poruszył, podczas gdy temat był słabo relacjonowany w mediach — rynek może reagować na informacje, które nie zostały jeszcze opublikowane.",
+        "actionableInsight": "Śledź najnowsze wiadomości, które mogą wyjaśnić ruch na rynku.",
         "confidenceNote": "Wyższe zaufanie, gdy wiele rynków prognostycznych porusza się w tym samym kierunku."
       },
       "news_leads_markets": {

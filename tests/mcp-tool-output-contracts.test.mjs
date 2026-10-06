@@ -27,6 +27,7 @@ import { strict as assert } from 'node:assert';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -97,6 +98,8 @@ function minimalShape(schema) {
 // hand-written payload, or the stub is not a valid instance of the very schema
 // it was derived from — which the Ajv check below would (rightly) reject.
 const STUB_FIXTURES = {
+  get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
+    [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
   get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {

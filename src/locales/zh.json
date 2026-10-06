@@ -115,6 +115,7 @@
       "doNotTravel": "禁止旅行",
       "reconsiderTravel": "重新考虑旅行",
       "exerciseCaution": "谨慎行事",
+      "normalPrecautions": "常规注意事项",
       "advisory": "旅行提醒",
       "activeSirens": "警报启动中",
       "sirens24h": "警报 / 24小时",
@@ -2325,7 +2326,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲，附带信心评分</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>",
+      "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>",
       "title": "AI市场影响",
       "directions": {
         "long": "看多",
@@ -2337,7 +2338,8 @@
       "appliesToNext": "适用于下一次AI重新生成",
       "signals_other": "{{count}}个信号",
       "disclaimer": "AI生成的交易信号仅供参考。非投资建议。请自行研究。",
-      "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。"
+      "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。",
+      "unscored": "叙事情景，未经准确性评估。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li><li>根据预测市场基线进行校准（如可用）</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。"
@@ -3334,8 +3336,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "预测市场通常在消息成为新闻之前就已定价——交易者可能提前获知事态发展。",
-        "actionableInsight": "关注未来1-6小时内可能出现的突发新闻，以解释市场变动。",
+        "whyItMatters": "预测市场出现波动，但该话题的新闻报道仍处于低位——市场可能在对尚未报道的信息做出反应。",
+        "actionableInsight": "监控可能解释市场波动的突发新闻。",
         "confidenceNote": "如果多个预测市场同向变动，置信度更高。"
       },
       "news_leads_markets": {

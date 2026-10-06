@@ -1960,7 +1960,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implicações de Mercado de IA</strong> Sinais de comércio gerados por LLM derivados do estado geopolítico, commodities e macro em tempo real após cada ciclo de previsão.<ul><li><strong>Direção</strong>: COMPRA / VENDA / PROTEÇÃO com classificação de confiança</li><li><strong>Prazo</strong>: Horizonte de 1S, 2S, 1M ou 3M</li><li><strong>Catalisador</strong>: Principal catalisador por trás do sinal</li><li><strong>Risco</strong>: Ressalva ou condição de invalidação</li></ul><em>Apenas para fins informativos. Não é aconselhamento de investimento.</em>",
+      "infoTooltip": "<strong>Implicações de Mercado de IA</strong> Sinais de comércio gerados por LLM derivados do estado geopolítico, commodities e macro em tempo real após cada ciclo de previsão.<ul><li><strong>Direção</strong>: COMPRA / VENDA / PROTEÇÃO</li><li><strong>Prazo</strong>: Horizonte de 1S, 2S, 1M ou 3M</li><li><strong>Catalisador</strong>: Principal catalisador por trás do sinal</li><li><strong>Risco</strong>: Ressalva ou condição de invalidação</li></ul><em>Apenas para fins informativos. Não é aconselhamento de investimento.</em>",
       "title": "Implicações de Mercado da IA",
       "directions": {
         "long": "COMPRADO",
@@ -1974,7 +1974,8 @@
       "signals_other": "{{count}} sinais",
       "disclaimer": "Sinais de negociação gerados por IA apenas para fins informativos. Não é orientação de investimento. Sempre faça sua própria pesquisa.",
       "unavailable": "As implicações de mercado da IA são geradas após cada execução de previsão. Volte em breve.",
-      "signals_many": "{{count}} sinais"
+      "signals_many": "{{count}} sinais",
+      "unscored": "Cenários narrativos, não classificados quanto à precisão."
     },
     "forecast": {
       "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li><li>Calibrada em relação aos baselines dos mercados de previsão quando disponível</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima."
@@ -2991,8 +2992,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Mercados de previsão frequentemente precificam informações antes de se tornarem notícias — traders podem ter acesso antecipado a desenvolvimentos.",
-        "actionableInsight": "Monitore notícias de última hora nas próximas 1-6 horas que possam explicar o movimento do mercado.",
+        "whyItMatters": "Um mercado de previsão se moveu enquanto a cobertura de notícias sobre o tema permaneceu baixa — o mercado pode estar reagindo a informações que ainda não foram reportadas.",
+        "actionableInsight": "Monitore notícias em desenvolvimento que possam explicar o movimento do mercado.",
         "confidenceNote": "Maior confiança se múltiplos mercados de previsão se moverem na mesma direção."
       },
       "news_leads_markets": {
@@ -3371,6 +3372,7 @@
       "doNotTravel": "Não viajar",
       "reconsiderTravel": "Reconsiderar viagem",
       "exerciseCaution": "Ter cautela",
+      "normalPrecautions": "Precauções normais",
       "advisory": "Aviso",
       "activeSirens": "Sirenes ativas",
       "sirens24h": "Sirenes / 24h",

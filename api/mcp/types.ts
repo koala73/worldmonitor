@@ -57,6 +57,8 @@ export interface McpToolExecutionContext {
   readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
+  // Set only by dispatch after a dedicated paid country-panel read is authorized.
+  countryPanelCode?: string;
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;

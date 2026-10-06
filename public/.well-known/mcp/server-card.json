@@ -5,12 +5,12 @@
   "description": "Live markets, conflicts, country risk, chokepoints, energy, and China decision signals.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.29.0",
+  "version": "1.30.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.29.0",
+    "version": "1.30.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -652,7 +652,7 @@
     },
     {
       "name": "get_country_brief_section",
-      "description": "Read one fixed country-view dataset for the embedded country brief. The section chooses a reviewed reader and its bounded arguments, including geographic flight observations, the bounded global AIS candidate snapshot, the reported fleet roster and country Atlas assets and details. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native observation dates remain in value; retrievedAt only records retrieval. Does not accept URLs, headers or arbitrary RPC paths.",
+      "description": "Read a fixed country-view dataset for the embedded country brief. Reviewed readers include military flights, AIS, fleet reports and Atlas assets. signalsRaw requires a verified same-country paid panel receipt and returns attributed earthquake, Internet outage, travel advisory and thermal samples through four fixed authorized GETs. Unavailable evidence is unknown, not zero; sample scope and unknown clocks remain explicit. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native dates remain in value; retrievedAt records retrieval. Does not accept URLs, headers or arbitrary RPC paths.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }

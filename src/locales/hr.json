@@ -185,6 +185,7 @@
       "doNotTravel": "Ne putuj",
       "reconsiderTravel": "Ponovno razmotriti putovanje",
       "exerciseCaution": "Budi oprezan",
+      "normalPrecautions": "Uobičajene mjere opreza",
       "advisory": "Savjet",
       "activeSirens": "Aktivne sirene",
       "sirens24h": "Sirene / 24h",
@@ -1200,7 +1201,7 @@
       "infoTooltip": "<strong>Stablecoini</strong> Zdravlje veza, tržišna vrijednost i volumen za 24h za glavne tokene vezane uz USD (USDT, USDC, DAI, BUSD). Pokidana veza signalizira sustavni rizik."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI implikacije na tržištu</strong> LLM-generirani trgovinski signali izvedeni iz živog geopolitičkog, commodityja i makro stanja nakon svakog ciklusa prognoziranja.<ul><li><strong>Smjer</strong>: LONG / SHORT / HEDGE s ocjenom pouzdanosti</li><li><strong>Vremenski okvir</strong>: 1T, 2T, 1M ili 3M horizont</li><li><strong>Pokretač</strong>: Ključni katalizator iza signala</li><li><strong>Rizik</strong>: Napomena ili uvjet poništavanja</li></ul><em>Samo u informativne svrhe. Nije investicijski savjet.</em>",
+      "infoTooltip": "<strong>AI implikacije na tržištu</strong> LLM-generirani trgovinski signali izvedeni iz živog geopolitičkog, commodityja i makro stanja nakon svakog ciklusa prognoziranja.<ul><li><strong>Smjer</strong>: LONG / SHORT / HEDGE</li><li><strong>Vremenski okvir</strong>: 1T, 2T, 1M ili 3M horizont</li><li><strong>Pokretač</strong>: Ključni katalizator iza signala</li><li><strong>Rizik</strong>: Napomena ili uvjet poništavanja</li></ul><em>Samo u informativne svrhe. Nije investicijski savjet.</em>",
       "title": "AI implikacije na tržištu",
       "directions": {
         "long": "LONG",
@@ -1214,7 +1215,8 @@
       "signals_other": "{{count}} signala",
       "disclaimer": "AI-generirani trgovinski signali samo u informativne svrhe. Nisu investicijski savjet. Uvijek napravite vlastito istraživanje.",
       "unavailable": "AI implikacije na tržištu se generiraju nakon svakog pokretanja prognoziranja. Vratite se uskoro.",
-      "signals_few": "{{count}} signala"
+      "signals_few": "{{count}} signala",
+      "unscored": "Narativni scenariji, bez ocjene točnosti."
     },
     "status": {
       "updatedAt": "Ažurirano {{time}}"
@@ -3454,8 +3456,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Tržišta predviđanja često uključe informacije prije nego što postanu vijest—trgovci mogu imati rani pristup razvoju događaja.",
-        "actionableInsight": "Pratite novosti koje bi mogla objasniti kretanje na tržištu u sljedećih 1-6 sati.",
+        "whyItMatters": "Tržište predviđanja se pomaknulo dok je pokrivanje vijesti o toj temi ostalo nisko — tržište može reagirati na informacije koje još nisu objavljene.",
+        "actionableInsight": "Pratite najnovije vijesti koje bi mogle objasniti kretanje na tržištu.",
         "confidenceNote": "Viša pouzdanost ako se više tržišta predviđanja kreće u istom smjeru."
       },
       "news_leads_markets": {

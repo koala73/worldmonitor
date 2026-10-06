@@ -97,6 +97,43 @@ function snapshot(generatedAt, predictions) {
 }
 
 describe('processResolutionCycle', () => {
+  describe('open-window calibration follows the latest snapshot (#7071)', () => {
+    const FEEDS = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 40 }] } };
+    const KEY = `fc-hormuz@${T0 + DAY_MS}`;
+    const anchored = { marketTitle: 'Will Iran close the Strait of Hormuz by December 31?', marketPrice: 0.2, drift: 0.4, source: 'polymarket' };
+    const first = forecast({ probability: 0.6, calibration: anchored });
+
+    for (const [label, later] of [
+      ['null', { calibration: null }],
+      ['absent', { calibration: undefined }],
+    ]) {
+      it(`drops a stale anchor when the later snapshot's calibration is ${label}`, () => {
+        const second = forecast({ probability: 0.62, generatedAt: T0 + 6 * 60 * 60 * 1000, deadline: T0 + DAY_MS, ...later });
+        const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 6 * 60 * 60 * 1000, [second])], FEEDS, T0 + 12 * 60 * 60 * 1000);
+        assert.equal(ledger[KEY].probability, 0.62);
+        assert.equal('calibration' in ledger[KEY], false);
+        const scorecard = computeScorecard(ledger, T0 + 12 * 60 * 60 * 1000);
+        assert.equal(scorecard.vsMarketSkill, undefined);
+      });
+    }
+
+    it('replaces the anchor with the later snapshot calibration', () => {
+      const replacement = { ...anchored, marketPrice: 0.3, drift: 0.32 };
+      const second = forecast({ probability: 0.62, generatedAt: T0 + 6 * 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: replacement });
+      const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 6 * 60 * 60 * 1000, [second])], FEEDS, T0 + 12 * 60 * 60 * 1000);
+      assert.deepEqual(ledger[KEY].calibration, replacement);
+    });
+
+    it('leaves a resolved entry calibration untouched', () => {
+      const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
+      const { ledger: resolved } = processResolutionCycle({}, [snapshot(T0, [first])], resolvedFeeds, T0 + 2 * DAY_MS);
+      assert.equal(resolved[KEY].status, 'resolved');
+      const late = forecast({ probability: 0.1, generatedAt: T0 + 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: null });
+      const { ledger } = processResolutionCycle(resolved, [snapshot(T0 + 60 * 60 * 1000, [late])], resolvedFeeds, T0 + 2 * DAY_MS);
+      assert.deepEqual(ledger[KEY].calibration, anchored);
+    });
+  });
+
   it('pre-registers one open window, updates probability only before deadline, and rolls over after deadline', () => {
     const first = forecast({ probability: 0.6, generatedAt: T0, deadline: T0 + DAY_MS });
     const second = forecast({
@@ -2681,9 +2718,15 @@ describe('judged lane health (#8877)', () => {
 });
 
 describe('live judge panel', () => {
-  afterEach(() => __setForecastLlmCallOverrideForTests(null));
+  const savedKey = process.env.OPENROUTER_API_KEY;
+  afterEach(() => {
+    __setForecastLlmCallOverrideForTests(null);
+    if (savedKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = savedKey;
+  });
 
   it('runs both judges on OpenRouter with two different model families and never calls Groq', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-key';
     const deadline = T0 + DAY_MS;
     const entry = {
       id: 'fc-live-panel',
@@ -2719,7 +2762,7 @@ describe('live judge panel', () => {
 });
 
 describe('live judge panel independence', () => {
-  const ENV_KEYS = ['FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER', 'FORECAST_LLM_MODEL_OPENROUTER', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B'];
+  const ENV_KEYS = ['OPENROUTER_API_KEY', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER', 'FORECAST_LLM_MODEL_OPENROUTER', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B'];
   const saved = {};
   afterEach(() => {
     __setForecastLlmCallOverrideForTests(null);
@@ -2734,7 +2777,8 @@ describe('live judge panel independence', () => {
       saved[key] = process.env[key];
       delete process.env[key];
     }
-    Object.assign(process.env, env);
+    Object.assign(process.env, { OPENROUTER_API_KEY: 'test-key' }, env);
+    for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key];
     const deadline = T0 + DAY_MS;
     const entry = {
       id: 'fc-same-family',
@@ -2768,6 +2812,12 @@ describe('live judge panel independence', () => {
 
   it('refuses to judge when judge B is overridden to judge A\'s model', async () => {
     const { result, calls } = await runWithEnv({ FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B: 'deepseek/deepseek-v4-flash' });
+    assert.equal(calls.length, 0);
+    assert.equal(result.detail, 'judges_not_independent');
+  });
+
+  it('refuses to judge without an OpenRouter key, since both calls would reach the same generic LLM_MODEL', async () => {
+    const { result, calls } = await runWithEnv({ OPENROUTER_API_KEY: undefined });
     assert.equal(calls.length, 0);
     assert.equal(result.detail, 'judges_not_independent');
   });

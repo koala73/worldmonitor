@@ -483,8 +483,8 @@ function downloadFor(section) {
 
 const stripTags = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
-/** Table cells holding a predicted-probability RANGE, which is not a rate. */
-const withoutProbabilityBands = (html) => html.replace(/<th scope="row" data-probability-band>[\s\S]*?<\/th>/g, '<th></th>');
+/** Elements holding a predicted-probability RANGE, which is not a rate. */
+const withoutProbabilityBands = (html) => html.replace(/<(th|span)\b[^>]*\bdata-probability-band\b[^>]*>[\s\S]*?<\/\1>/g, '<$1></$1>');
 
 describe('accuracy page honesty rules', () => {
   it('renders all three record facts in text, always, not one headline that erases the others', () => {
@@ -518,10 +518,11 @@ describe('accuracy page honesty rules', () => {
     const { html } = renderState(LIVE_SECTION);
     const text = stripTags(html);
     const headline = text.indexOf('0.118');
-    const rule = text.search(/[Ll]ower .{0,20}Brier .{0,20}is better|[Ll]ower is better/);
+    const rules = [...text.matchAll(/[Ll]ower .{0,20}Brier .{0,20}is better|[Ll]ower is better/g)].map((match) => match.index);
     assert.ok(headline > 0, 'the headline-cohort Brier must be rendered');
-    assert.ok(rule > 0, 'the page must state the direction of the scale');
-    assert.ok(Math.abs(rule - headline) < 700, `the scale direction must sit beside the number (gap ${Math.abs(rule - headline)})`);
+    assert.ok(rules.length > 0, 'the page must state the direction of the scale');
+    const gap = Math.min(...rules.map((index) => Math.abs(index - headline)));
+    assert.ok(gap < 700, `the scale direction must sit beside the number (gap ${gap})`);
   });
 
   it('states the headline Brier in a sentence, not only in a metric tile', () => {
@@ -744,6 +745,138 @@ describe('accuracy page honesty rules', () => {
       vsMarketSkill: 'all-scored-entries',
       overall: 'all-scored-entries',
     });
+  });
+});
+
+// Issue #8873: a reader must be able to answer "is it predicting accurately?"
+// and "how much is it voiding?" from the first block, in sentences with
+// counts, with every number traceable to scorecard.json. The expected values
+// below are recomputed from the fixture's own tables so the assertion is
+// "block equals table", not "block equals a constant somebody typed".
+describe('accuracy verdict block', () => {
+  const verdictText = (html) => {
+    const section = html.match(/<section data-accuracy-verdict[\s\S]*?<\/section>/);
+    assert.ok(section, 'the page must carry a verdict block');
+    return stripTags(section[0]).replace(/&#39;/g, "'");
+  };
+  const yesIn = (bucket) => Math.round(bucket.count * (bucket.realizedRate ?? 0));
+  const band = (keep) => {
+    const rows = LIVE_SCORECARD.calibration.filter(keep);
+    return { count: rows.reduce((n, row) => n + row.count, 0), yes: rows.reduce((n, row) => n + yesIn(row), 0) };
+  };
+  const unlikely = band((row) => row.minProbability < 0.2);
+  const middle = band((row) => row.minProbability >= 0.2 && row.minProbability < 0.5);
+  const likely = band((row) => row.minProbability >= 0.5);
+  const pooledYes = unlikely.yes + middle.yes + likely.yes;
+
+  it('leads the page: before the record status, with definitions right after it', () => {
+    const { html } = renderState(LIVE_SECTION);
+    const verdict = html.indexOf('<section data-accuracy-verdict');
+    const definitions = html.indexOf('data-accuracy-definitions');
+    const status = html.indexOf('<section data-accuracy-headline');
+    assert.ok(verdict > 0 && definitions > 0 && status > 0);
+    assert.ok(verdict < definitions && definitions < status, 'verdict, then definitions on first use, then the record');
+    const defined = stripTags(html.match(/<dl data-accuracy-definitions>[\s\S]*?<\/dl>/)[0]);
+    assert.match(defined, /Brier score/);
+    assert.match(defined, /0\.25/);
+    assert.match(defined, /Base rate/);
+    assert.match(defined, /rate times one minus the rate/, 'p(1-p) must be stated in words');
+  });
+
+  it('states the ledger counts the totals table publishes, and that void reasons are not yet published', () => {
+    const text = verdictText(renderState(LIVE_SECTION).html);
+    const { totals } = LIVE_SCORECARD;
+    assert.equal(unlikely.count + middle.count + likely.count, totals.scored, 'fixture buckets must cover every scored entry');
+    assert.match(text, new RegExp(`${totals.resolved} forecasts came due and were resolved`));
+    assert.match(text, new RegExp(`${totals.scored} could be graded`));
+    assert.match(text, new RegExp(`${totals.void} could not be graded`));
+    assert.match(text, new RegExp(`36\\.5% of ${totals.resolved} resolved forecasts`));
+    assert.match(text, new RegExp(`Another ${totals.pendingJudge} are in the queue for a judge, counted whether or not their deadline has passed`));
+    assert.doesNotMatch(text, /have come due and are waiting/);
+    assert.match(text, /does not yet publish why/, 'the void-reason breakdown is not in the scorecard; say so rather than invent it');
+  });
+
+  it('states how often unlikely and likely calls came true, from the calibration table', () => {
+    const text = verdictText(renderState(LIVE_SECTION).html);
+    assert.equal(unlikely.yes, 1, 'the fixture has one realised forecast under 20%');
+    // stripTags leaves a space where the band's closing tag was.
+    assert.match(text, new RegExp(`under 20%\\s*, the forecast came true in ${unlikely.yes} of ${unlikely.count} cases`));
+    assert.match(text, new RegExp(`between 20% and 50%\\s*, it came true in ${middle.yes} of ${middle.count} cases`));
+    assert.match(text, new RegExp(`50% or more\\s*, it came true in ${likely.yes} of ${likely.count} cases`));
+    const empty = sectionWith({
+      calibration: LIVE_SCORECARD.calibration.map((row) => (row.minProbability >= 0.5 ? { ...row, count: 0, predictedMean: undefined, realizedRate: undefined, brier: undefined } : row)),
+      overall: { ...LIVE_SCORECARD.overall, count: unlikely.count + middle.count },
+    });
+    assert.match(verdictText(renderState(empty).html), /50% or more\s*, there were no graded forecasts/);
+  });
+
+  it('names no metric in its sentences', () => {
+    const text = verdictText(renderState(LIVE_SECTION).html);
+    assert.doesNotMatch(text, /Brier|log score|calibration|cohort Brier/i);
+    assert.ok(text.length > 400, 'the block must carry the full set of sentences');
+  });
+
+  it('states the market comparison in words that follow the delta sign', () => {
+    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 cases where a liquid prediction market covered the same question, the market's odds were closer to what happened than World Monitor's/);
+    const flipped = sectionWith({ vsMarketSkill: { count: 78, forecastBrier: 0.073136, marketBrier: 0.154623, brierDelta: 0.081487 } });
+    assert.match(verdictText(renderState(flipped).html), /World Monitor's odds were closer to what happened than the market's/);
+    const tied = sectionWith({ vsMarketSkill: { count: 4, forecastBrier: 0.1, marketBrier: 0.1, brierDelta: 0 } });
+    assert.match(verdictText(renderState(tied).html), /the two were equally close/);
+    const absent = sectionWith({ vsMarketSkill: { count: 0, forecastBrier: 0, marketBrier: 0, brierDelta: 0 } });
+    assert.match(verdictText(renderState(absent).html), /No graded forecast overlapped a liquid prediction market/);
+  });
+
+  it('derives the all-scored base rate from the calibration buckets and compares the error of always answering it', () => {
+    const { overall } = LIVE_SCORECARD;
+    assert.equal(pooledYes, 140, 'the fixture buckets recover 140 realised outcomes');
+    const baseRate = pooledYes / overall.count;
+    const constantError = (baseRate * (1 - baseRate)).toFixed(3);
+    assert.equal(constantError, '0.204');
+    const text = verdictText(renderState(LIVE_SECTION).html);
+    assert.match(text, new RegExp(`Across all ${overall.count} graded forecasts, ${pooledYes} came true: 28\\.6% of ${overall.count}`));
+    assert.match(text, new RegExp(`Always answering that rate would have an error of ${constantError}`));
+    assert.match(text, /World Monitor's error was 0\.192, so it beat always answering the base rate/);
+
+    const worse = verdictText(renderState(sectionWith({ overall: { ...overall, brier: 0.25 } })).html);
+    assert.match(worse, /World Monitor's error was 0\.250, so it did not beat always answering the base rate/);
+    assert.doesNotMatch(worse, /so it beat/);
+
+    const even = verdictText(renderState(sectionWith({ overall: { ...overall, brier: 0.204082 } })).html);
+    assert.match(even, /World Monitor's error was 0\.204, so it matched always answering the base rate/);
+  });
+
+  it('withholds the derived base rate when the buckets do not cover every graded forecast', () => {
+    const short = sectionWith({ calibration: LIVE_SCORECARD.calibration.filter((row) => row.bucket !== '30-40') });
+    const text = verdictText(renderState(short).html);
+    assert.match(text, /cannot be derived/);
+    assert.doesNotMatch(text, /came true: /, 'a base rate over the wrong population must not be published');
+  });
+
+  it('compares the headline cohort only once the scorecard carries its yes count', () => {
+    const { skill } = LIVE_SCORECARD;
+    assert.equal(Object.hasOwn(skill, 'yesCount'), false, 'the shipped fixture predates the field');
+    const waiting = verdictText(renderState(LIVE_SECTION).html);
+    assert.match(waiting, new RegExp(`headline cohort of ${skill.count} forecasts cannot be compared the same way yet`));
+    assert.match(waiting, /does not yet record how many of its forecasts came true/);
+    assert.doesNotMatch(waiting, /0\.118/);
+
+    const carried = sectionWith({ skill: { ...skill, yesCount: 30 } });
+    const text = verdictText(renderState(carried).html);
+    assert.match(text, new RegExp(`Within the narrower headline cohort of ${skill.count} forecasts, 30 came true: 16\\.7% of ${skill.count}`));
+    assert.match(text, /Always answering that rate would have an error of 0\.139/);
+    assert.match(text, /World Monitor's error was 0\.118, so it beat always answering the base rate/);
+
+    const worse = verdictText(renderState(sectionWith({ skill: { ...skill, yesCount: 30, brier: 0.15 } })).html);
+    assert.match(worse, /World Monitor's error was 0\.150, so it did not beat always answering the base rate/);
+
+    const collapsed = verdictText(renderState(sectionWith({ skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] } })).html);
+    assert.match(collapsed, /headline cohort has no graded forecast in this window/);
+    assert.doesNotMatch(collapsed, /undefined|NaN/);
+  });
+
+  it('publishes skill.yesCount through the whitelist once the API carries it', () => {
+    assert.equal(selectDeclaredScorecardFields({ ...LIVE_SCORECARD, skill: { ...LIVE_SCORECARD.skill, yesCount: 30 } }).skill.yesCount, 30);
+    assert.match(read('proto/worldmonitor/forecast/v1/get_forecast_scorecard.proto'), /message ScorecardSkill \{[\s\S]*?int32 yes_count = \d+;[\s\S]*?\}/);
   });
 });
 

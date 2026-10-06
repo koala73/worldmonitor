@@ -14,13 +14,6 @@ function directionClass(dir: string): string {
   return 'badge-neutral';
 }
 
-function confidenceClass(conf: string): string {
-  const c = conf.toUpperCase();
-  if (c === 'HIGH') return 'badge-bullish';
-  if (c === 'LOW') return 'badge-bearish';
-  return 'badge-neutral';
-}
-
 function directionLabel(dir: string): string {
   const d = dir.toUpperCase();
   if (d === 'LONG') return t('components.marketImplications.directions.long');
@@ -54,7 +47,6 @@ function renderCard(card: MarketImplicationCard): string {
         <strong style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));letter-spacing:-0.02em">${escapeHtml(card.ticker)}</strong>
         ${card.name ? `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(card.name)}</span>` : ''}
         ${card.timeframe ? `<span class="signal-badge badge-neutral" style="font-family:var(--font-mono)">${escapeHtml(card.timeframe)}</span>` : ''}
-        ${card.confidence ? `<span class="signal-badge ${confidenceClass(card.confidence)}">${escapeHtml(card.confidence)}</span>` : ''}
       </div>
       <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;line-height:1.4;margin-bottom:6px">${escapeHtml(card.title)}</div>
       <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.55;color:var(--text-dim)">${escapeHtml(card.narrative)}</div>
@@ -120,6 +112,7 @@ export class MarketImplicationsPanel extends Panel {
 
     const html = `
       <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);line-height:1.5">${escapeHtml(t('components.marketImplications.unscored'))}</div>
         ${data.cards.map(renderCard).join('')}
         <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding:8px;border-top:1px solid var(--border);line-height:1.5;text-align:center">${escapeHtml(t('components.marketImplications.disclaimer'))}</div>
       </div>

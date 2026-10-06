@@ -247,7 +247,9 @@ function parseAsOfMs(value) {
 function valueFromRecord(fn, record) {
   switch (fn) {
     case 'riskScore':
-      return firstFinite(record.riskScore, record.risk_score, record.score, record.risk);
+      // supply_chain:chokepoints:v4 publishes disruptionScore; the generator
+      // renames it to riskScore before the detector reads it, the resolver does not.
+      return firstFinite(record.riskScore, record.risk_score, record.disruptionScore, record.score, record.risk);
     case 'yesPrice':
       return firstFinite(record.yesPrice, record.yes_price, record.price, record.probability);
     case 'hexCount':

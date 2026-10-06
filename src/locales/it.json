@@ -125,6 +125,7 @@
       "doNotTravel": "Non viaggiare",
       "reconsiderTravel": "Riconsiderare il viaggio",
       "exerciseCaution": "Prestare cautela",
+      "normalPrecautions": "Normali precauzioni",
       "advisory": "Avviso",
       "activeSirens": "Sirene attive",
       "sirens24h": "Sirene / 24h",
@@ -2343,7 +2344,7 @@
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implicazioni di Mercato AI</strong> Segnali di trading generati da LLM derivati da stato geopolitico, commodity e macro live dopo ogni ciclo di previsione.<ul><li><strong>Direzione</strong>: LONG / SHORT / HEDGE con rating di confidenza</li><li><strong>Orizzonte temporale</strong>: 1S, 2S, 1M, o 3M</li><li><strong>Driver</strong>: Catalizzatore chiave dietro il segnale</li><li><strong>Rischio</strong>: Avvertenza o condizione di invalidazione</li></ul><em>Solo a scopo informativo. Non è un consiglio di investimento.</em>",
+      "infoTooltip": "<strong>Implicazioni di Mercato AI</strong> Segnali di trading generati da LLM derivati da stato geopolitico, commodity e macro live dopo ogni ciclo di previsione.<ul><li><strong>Direzione</strong>: LONG / SHORT / HEDGE</li><li><strong>Orizzonte temporale</strong>: 1S, 2S, 1M, o 3M</li><li><strong>Driver</strong>: Catalizzatore chiave dietro il segnale</li><li><strong>Rischio</strong>: Avvertenza o condizione di invalidazione</li></ul><em>Solo a scopo informativo. Non è un consiglio di investimento.</em>",
       "title": "Implicazioni di Mercato IA",
       "directions": {
         "long": "LONG",
@@ -2357,7 +2358,8 @@
       "signals_other": "{{count}} segnali",
       "disclaimer": "Segnali di trading generati da IA solo a scopo informativo. Non è un consiglio di investimento. Fai sempre le tue ricerche.",
       "unavailable": "Le implicazioni di mercato IA vengono generate dopo ogni esecuzione di previsione. Torna a controllare tra poco.",
-      "signals_many": "{{count}} segnali"
+      "signals_many": "{{count}} segnali",
+      "unscored": "Scenari narrativi, non valutati per accuratezza."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li><li>Calibrata su baseline di prediction market dove disponibili</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto."
@@ -3374,8 +3376,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "I mercati predittivi spesso scontano le informazioni prima che diventino notizia: i trader possono avere accesso anticipato agli sviluppi.",
-        "actionableInsight": "Monitorare le notizie dell'ultima ora nelle prossime 1-6 ore che potrebbero spiegare il movimento del mercato.",
+        "whyItMatters": "Un mercato di previsione si è mosso mentre la copertura stampa dell'argomento è rimasta bassa—il mercato potrebbe reagire a informazioni non ancora riportate.",
+        "actionableInsight": "Monitora le ultime notizie che potrebbero spiegare il movimento del mercato.",
         "confidenceNote": "Maggiore fiducia se più mercati predittivi si muovono nella stessa direzione."
       },
       "news_leads_markets": {

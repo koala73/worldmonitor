@@ -201,3 +201,60 @@ it('maps generated activity reads to bounded host readers without opening an unm
   assert.equal(calls[1]!.arguments.include_candidates, 'true');
   assert.deepEqual(calls[2]!.arguments, {});
 });
+
+
+it('preserves all-failed raw source outcomes before the generic failure parser and retries incomplete results', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_PATH, validateRawSignal } = await import('../shared/country-raw-signals');
+  let calls = 0;
+  const fetch = createHostCountryFetch(async () => {
+    calls++; const time = '2026-10-05T12:00:00Z';
+    const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, calls === 1 ? 'locked' : 'unavailable', time, 'Controlled failure')])) as Parameters<typeof assembleRawSignals>[1];
+    if (calls >= 3) sources.outages = validateRawSignal('outages', { outages: [] }, time) as typeof sources.outages;
+    return assembleRawSignals('US', sources, time);
+  });
+  const url = `https://www.worldmonitor.app${RAW_SIGNAL_PATH}?country_code=US`;
+  const denied = await (await fetch(url)).json();
+  assert.equal(denied.sources.earthquakes.state, 'locked'); assert.equal(denied.countryCode, 'US');
+  assert.equal((await (await fetch(url)).json()).sources.earthquakes.state, 'unavailable');
+  assert.equal((await (await fetch(url)).json()).sources.outages.state, 'observed');
+  await fetch(url); assert.equal(calls, 4);
+});
+
+it('requires raw country equality even on all-failed replies and rejects missing/oversized envelopes', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_PATH } = await import('../shared/country-raw-signals');
+  const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])) as Parameters<typeof assembleRawSignals>[1];
+  const url = `https://www.worldmonitor.app${RAW_SIGNAL_PATH}?country_code=US`;
+  const wrong = createHostCountryFetch(async () => assembleRawSignals('CN', sources, '2026-10-05T12:00:00Z'));
+  await assert.rejects(wrong(url), /identity mismatch/);
+  const missing = createHostCountryFetch(async () => { const value: any = assembleRawSignals('US', sources, '2026-10-05T12:00:00Z'); delete value.value.countryCode; return value; });
+  await assert.rejects(missing(url));
+});
+
+it('never caches an aborted late raw completion', async () => {
+  const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_PATH } = await import('../shared/country-raw-signals');
+  let calls = 0; let release: () => void = () => {};
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])) as Parameters<typeof assembleRawSignals>[1];
+  const fetch = createHostCountryFetch(async () => { calls++; if (calls === 1) await waiting; return assembleRawSignals('US', sources, '2026-10-05T12:00:00Z'); });
+  const url = `https://www.worldmonitor.app${RAW_SIGNAL_PATH}?country_code=US`;
+  const controller = new AbortController(); const result = fetch(url, { signal: controller.signal });
+  const rejected = assert.rejects(result); controller.abort(); release(); await rejected;
+  await fetch(url); assert.equal(calls, 2);
+});
+
+
+it('caches only a complete specialized raw original and shares its admitted read', async () => {
+  const { assembleRawSignals, RAW_SIGNAL_PATH, validateRawSignal } = await import('../shared/country-raw-signals');
+  const time = '2026-10-05T12:00:00Z'; let calls = 0;
+  const sources = {
+    earthquakes: validateRawSignal('earthquakes', { earthquakes: [{ id: 'eq', place: 'United States', magnitude: 4.5, location: { latitude: 38, longitude: -77 }, occurredAt: 1791000000000, source: 'USGS', category: 'earthquake', sourceUrl: '' }] }, time),
+    outages: validateRawSignal('outages', { outages: [] }, time),
+    advisories: validateRawSignal('advisories', { advisories: [], byCountry: {} }, time),
+    thermal: validateRawSignal('thermal', { clusters: [{ id: 'hot', countryCode: 'XX', status: 'THERMAL_STATUS_NORMAL', firstDetectedAt: time, lastDetectedAt: time }], fetchedAt: time, observationWindowHours: 24, sourceVersion: 'thermal-escalation-v1' }, time),
+  } as Parameters<typeof assembleRawSignals>[1];
+  const fetch = createHostCountryFetch(async () => { calls++; return assembleRawSignals('US', sources, time); });
+  const url = `https://www.worldmonitor.app${RAW_SIGNAL_PATH}?country_code=US`;
+  const results = await Promise.all([fetch(url), fetch(url)]); assert.equal(calls, 1);
+  assert.deepEqual((await results[0]!.json()).missing, []); await fetch(url); assert.equal(calls, 1);
+  fetch.clear(); await fetch(url); assert.equal(calls, 2);
+});

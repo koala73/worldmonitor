@@ -435,6 +435,28 @@ describe('resolveHardSpec', () => {
     assert.equal(result.evidence.readTs, START + DAY_MS + 10);
   });
 
+  it('reads the producer-shaped chokepoint record: name + disruptionScore, no riskScore', () => {
+    const e = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)',
+        operator: '>=',
+        threshold: 60,
+        window: 'at-deadline',
+        deadline: START + DAY_MS,
+        sourceFeed: 'supply_chain:chokepoints:v4',
+      },
+      deadline: START + DAY_MS,
+    });
+    // Shape of the live supply_chain:chokepoints:v4 value (get-chokepoint-status.ts).
+    const feed = { chokepoints: [{ id: 'hormuz', name: 'Strait of Hormuz', disruptionScore: 72, status: 'red' }], fetchedAt: START };
+
+    const result = resolveHardSpec(e, feed, { recent: [] }, START + DAY_MS + 10);
+
+    assert.equal(result.outcome, 'YES');
+    assert.equal(result.evidence.metricValue, 72);
+  });
+
   it('keeps due count specs pending when the source feed is unavailable', () => {
     const e = entry();
 

@@ -643,6 +643,10 @@ export async function dispatchToolsCall(
           ? callArguments
           : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
+    if (tool.name === 'get_country_brief_section' && callArguments.section === 'signalsRaw'
+      && (!dedicatedPanel || !panelRead || !/^[A-Z]{2}$/.test(panelRead.panel))) {
+      throw new PanelRequestError('Raw Signals require a verified paid country panel read.', 'invalid');
+    }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
       if (limited) return limited;
@@ -769,6 +773,7 @@ export async function dispatchToolsCall(
     } else {
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
+      if (tool.name === 'get_country_brief_section' && panelRead && /^[A-Z]{2}$/.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
       if (tool.name === 'get_mcp_allowance' && (context.kind === 'pro' || context.kind === 'user_key')) {
         execution.readAccountAllowance = async () => {
           const allowance = await readAccountAllowance(context, deps, budget, freeAccountAllowance);

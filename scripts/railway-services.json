@@ -1428,6 +1428,7 @@
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-bets-keys.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-evidence-archive.mjs",
       "scripts/_forecast-funnel.mjs",

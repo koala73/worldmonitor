@@ -19,10 +19,21 @@ export const DEFAULT_JUDGED_SLA_MS = 2 * DAY_MS;
 // The all-origins `overall` block still counts them for continuity.
 export const SYNTHETIC_GENERATION_ORIGINS = ['state_derived'];
 export const SHADOW_GENERATION_ORIGINS = ['bet_engine'];
-const DEFAULT_SKILL_EXCLUDED_ORIGINS = [
+export const DEFAULT_SKILL_EXCLUDED_ORIGINS = Object.freeze([
   ...SYNTHETIC_GENERATION_ORIGINS,
   ...SHADOW_GENERATION_ORIGINS,
-];
+]);
+
+export function generationOriginOf(entry) {
+  return entry?.generationOrigin || 'unknown';
+}
+
+// The published-origin population: the headline skill set with bet_engine
+// held out regardless of the promotion flag. Calibration fits and evaluates
+// only this population (#7070).
+export function isPublishedOriginEntry(entry) {
+  return !DEFAULT_SKILL_EXCLUDED_ORIGINS.includes(generationOriginOf(entry));
+}
 
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
@@ -84,7 +95,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   // ensemble-vs-base-rate baseline delta, and outcome-conditioned deviation
   // skill (KTD3: on bets where the ensemble deviates from the market, does the
   // deviation's direction predict outcomes better than the market alone?).
-  const betEngineScored = scored.filter((entry) => (entry?.generationOrigin || 'unknown') === 'bet_engine');
+  const betEngineScored = scored.filter((entry) => generationOriginOf(entry) === 'bet_engine');
   if (betEngineScored.length) {
     const slice = {
       count: betEngineScored.length,
@@ -161,7 +172,7 @@ function normalizeLedger(ledger) {
   return [];
 }
 
-function isScoredEntry(entry) {
+export function isScoredEntry(entry) {
   return entry?.status === 'resolved'
     && (entry.outcome === 'YES' || entry.outcome === 'NO')
     && Number.isFinite(Number(entry.probability));
@@ -215,13 +226,16 @@ function summarizeSkill(scored, excludeSet) {
   // LEGACY entries created before that default and age out over the 180d
   // retention (0 are yet scored). Residual risk only if a legacy 'unknown' entry
   // scores before aging out; #5240 tracks a one-time backfill/monitor.
-  const originOf = (entry) => entry?.generationOrigin || 'unknown';
-  const real = scored.filter((entry) => !excludeSet.has(originOf(entry)));
-  const excludedEntries = scored.filter((entry) => excludeSet.has(originOf(entry)));
-  const excludedOrigins = [...new Set(excludedEntries.map(originOf))].sort();
+  const real = scored.filter((entry) => !excludeSet.has(generationOriginOf(entry)));
+  const excludedEntries = scored.filter((entry) => excludeSet.has(generationOriginOf(entry)));
+  const excludedOrigins = [...new Set(excludedEntries.map(generationOriginOf))].sort();
   const summary = summarizeScored(real);
   return pruneUndefined({
     count: real.length,
+    // yesCount / count is the cohort's base rate, the null /accuracy/ compares
+    // the headline Brier against (#8873). The pooled calibration buckets carry
+    // the all-scored equivalent, but nothing else carries this cohort's.
+    yesCount: real.filter((entry) => entry.outcome === 'YES').length,
     excludedScored: excludedEntries.length,
     // Always an array (proto `repeated string` is non-optional): a typed client
     // reads skill.excludedOrigins.length on the healthy path, where it is [].
@@ -409,6 +423,228 @@ function marketProbability(entry) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return NaN;
   return clampProbability(n > 1 ? n / 100 : n);
+}
+
+// ---------------------------------------------------------------------------
+// Calibration shadow metrics and activation gate (#7070).
+//
+// Input rows are forward-cohort pairs { domain, y, raw, calibrated }: one
+// resolved YES/NO published-origin entry, its stored probability, and what the
+// calibration map would have published instead. Building those rows (and
+// refusing in-sample entries) belongs to _forecast-calibration.mjs; this is the
+// measurement half and holds no opinion on how the map was fitted.
+// ---------------------------------------------------------------------------
+
+export const CALIBRATION_BOOTSTRAP_RESAMPLES = 2000;
+export const CALIBRATION_BOOTSTRAP_SEED = 7070;
+export const ACTIVATION_MIN_FORWARD_TOTAL = 60;
+export const ACTIVATION_MIN_FORWARD_DOMAIN = 30;
+// Upper bound of the paired 95% interval on (calibrated − raw) Brier must sit
+// at or below this margin. Preregistered here so the gate cannot be tuned
+// after the forward cohort is seen.
+export const ACTIVATION_NON_INFERIORITY_MARGIN = 0.005;
+const RELIABILITY_BINS = 10;
+const WILSON_Z95 = 1.959963984540054;
+
+export function wilsonInterval(successes, n, z = WILSON_Z95) {
+  if (!Number.isInteger(n) || n <= 0) return null;
+  const phat = successes / n;
+  const z2 = z * z;
+  const denominator = 1 + z2 / n;
+  const centre = (phat + z2 / (2 * n)) / denominator;
+  const half = (z * Math.sqrt((phat * (1 - phat)) / n + z2 / (4 * n * n))) / denominator;
+  return [round(Math.max(0, centre - half)), round(Math.min(1, centre + half))];
+}
+
+function bucketIndex(p) {
+  return Math.min(RELIABILITY_BINS - 1, Math.max(0, Math.floor(p * RELIABILITY_BINS)));
+}
+
+function expectedCalibrationError(rows, field) {
+  if (!rows.length) return NaN;
+  const sums = Array.from({ length: RELIABILITY_BINS }, () => ({ n: 0, p: 0, y: 0 }));
+  for (const row of rows) {
+    const bin = sums[bucketIndex(row[field])];
+    bin.n += 1;
+    bin.p += row[field];
+    bin.y += row.y;
+  }
+  let ece = 0;
+  for (const bin of sums) {
+    if (bin.n) ece += (bin.n / rows.length) * Math.abs(bin.p / bin.n - bin.y / bin.n);
+  }
+  return ece;
+}
+
+export function reliabilityBuckets(rows, field) {
+  const groups = new Map();
+  for (const row of rows) {
+    const index = bucketIndex(row[field]);
+    if (!groups.has(index)) groups.set(index, []);
+    groups.get(index).push(row);
+  }
+  return [...groups.keys()].sort((a, b) => a - b).map((index) => {
+    const group = groups.get(index);
+    const positives = group.reduce((sum, row) => sum + row.y, 0);
+    return {
+      bucket: `${index * 10}-${(index + 1) * 10}`,
+      count: group.length,
+      predictedMean: round(mean(group.map((row) => row[field]))),
+      realizedRate: round(positives / group.length),
+      realizedWilson95: wilsonInterval(positives, group.length),
+    };
+  });
+}
+
+function rowBrier(row, field) {
+  return (row[field] - row.y) ** 2;
+}
+
+// Deterministic PRNG so a rerun over the same ledger reproduces every interval.
+function mulberry32(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seedFor(scope, baseSeed) {
+  let hash = baseSeed >>> 0;
+  for (const char of scope) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  return hash;
+}
+
+function percentile(sorted, q) {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))];
+}
+
+/**
+ * Entry-level paired bootstrap: each resample draws entries (not raw and
+ * calibrated values separately), so every statistic sees the same pairs.
+ */
+export function pairedBootstrap(rows, statistics, options = {}) {
+  const resamples = options.resamples ?? CALIBRATION_BOOTSTRAP_RESAMPLES;
+  const random = mulberry32(seedFor(options.scope ?? 'overall', options.seed ?? CALIBRATION_BOOTSTRAP_SEED));
+  const names = Object.keys(statistics);
+  const draws = Object.fromEntries(names.map((name) => [name, []]));
+  const sample = new Array(rows.length);
+  for (let r = 0; r < resamples; r += 1) {
+    for (let i = 0; i < rows.length; i += 1) sample[i] = rows[Math.floor(random() * rows.length)];
+    for (const name of names) draws[name].push(statistics[name](sample));
+  }
+  return Object.fromEntries(names.map((name) => {
+    const sorted = draws[name].sort((a, b) => a - b);
+    return [name, [round(percentile(sorted, 0.025)), round(percentile(sorted, 0.975))]];
+  }));
+}
+
+const brierDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row, 'calibrated') - rowBrier(row, 'raw')));
+
+function summarizeShadowRows(rows, scope, options) {
+  const intervals = pairedBootstrap(rows, {
+    brierDelta: brierDeltaStatistic,
+    rawEce: (sample) => expectedCalibrationError(sample, 'raw'),
+    calibratedEce: (sample) => expectedCalibrationError(sample, 'calibrated'),
+  }, { ...options, scope });
+  const side = (field, eceCi95) => ({
+    brier: round(mean(rows.map((row) => rowBrier(row, field)))),
+    ece: round(expectedCalibrationError(rows, field)),
+    eceCi95,
+    reliability: reliabilityBuckets(rows, field),
+  });
+  return {
+    count: rows.length,
+    positives: rows.reduce((sum, row) => sum + row.y, 0),
+    raw: side('raw', intervals.rawEce),
+    calibrated: side('calibrated', intervals.calibratedEce),
+    // calibrated − raw: negative means the map lowered Brier on this cohort.
+    brierDelta: { mean: round(brierDeltaStatistic(rows)), ci95: intervals.brierDelta },
+  };
+}
+
+/**
+ * Raw vs calibrated metrics for a forward cohort. `modeByDomain` names which
+ * domains the map actually moves; identity domains are reported too, since
+ * their delta is zero by construction and shows the map stayed out of them.
+ */
+export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}) {
+  if (!rows.length) return { count: 0, positives: 0, byDomain: [] };
+  const domains = [...new Set(rows.map((row) => row.domain))].sort();
+  return {
+    ...summarizeShadowRows(rows, 'overall', options),
+    byDomain: domains.map((domain) => {
+      const domainRows = rows.filter((row) => row.domain === domain);
+      const summary = summarizeShadowRows(domainRows, `domain:${domain}`, options);
+      return {
+        domain,
+        mode: modeByDomain[domain] ?? 'identity',
+        count: summary.count,
+        positives: summary.positives,
+        rawBrier: summary.raw.brier,
+        calibratedBrier: summary.calibrated.brier,
+        brierDelta: summary.brierDelta,
+      };
+    }),
+  };
+}
+
+/**
+ * The #7070 activation gate. Reports eligibility and every failing reason;
+ * nothing reads `eligible` to change a published probability. Coverage, VOID
+ * and origin mix ride beside the verdict (from `context`) so a cohort that
+ * looks better only because its selection changed is visible next to it.
+ */
+export function evaluateActivationGate(shadow, modeByDomain, context = {}, options = {}) {
+  const thresholds = {
+    minForwardTotal: options.minForwardTotal ?? ACTIVATION_MIN_FORWARD_TOTAL,
+    minForwardDomain: options.minForwardDomain ?? ACTIVATION_MIN_FORWARD_DOMAIN,
+    nonInferiorityMargin: options.nonInferiorityMargin ?? ACTIVATION_NON_INFERIORITY_MARGIN,
+    bootstrapResamples: options.resamples ?? CALIBRATION_BOOTSTRAP_RESAMPLES,
+    bootstrapSeed: options.seed ?? CALIBRATION_BOOTSTRAP_SEED,
+  };
+  const reasons = [];
+  const activated = Object.keys(modeByDomain).filter((domain) => modeByDomain[domain] !== 'identity').sort();
+  if (options.mapMonotone === false) reasons.push('map_not_monotone');
+  if (!activated.length) reasons.push('no_non_identity_domain');
+  const forwardCount = shadow?.count ?? 0;
+  if (forwardCount < thresholds.minForwardTotal) reasons.push('insufficient_forward_total');
+
+  const nonInferior = (delta) => Array.isArray(delta?.ci95) && delta.ci95[1] <= thresholds.nonInferiorityMargin;
+  const overallNonInferior = forwardCount > 0 && nonInferior(shadow.brierDelta);
+  if (forwardCount > 0 && !overallNonInferior) reasons.push('overall_not_non_inferior');
+
+  const domains = activated.map((domain) => {
+    const row = shadow?.byDomain?.find((candidate) => candidate.domain === domain);
+    const count = row?.count ?? 0;
+    const sufficient = count >= thresholds.minForwardDomain;
+    const domainNonInferior = count > 0 && nonInferior(row.brierDelta);
+    if (!sufficient) reasons.push(`insufficient_forward_domain:${domain}`);
+    if (count > 0 && !domainNonInferior) reasons.push(`domain_not_non_inferior:${domain}`);
+    return {
+      domain,
+      count,
+      sufficient,
+      brierDeltaUpper: row?.brierDelta?.ci95?.[1] ?? null,
+      nonInferior: domainNonInferior,
+    };
+  });
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    thresholds,
+    forwardCount,
+    overall: {
+      brierDeltaUpper: shadow?.brierDelta?.ci95?.[1] ?? null,
+      nonInferior: overallNonInferior,
+    },
+    domains,
+    context,
+  };
 }
 
 function mean(values) {
