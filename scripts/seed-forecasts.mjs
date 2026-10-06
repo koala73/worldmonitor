@@ -16629,7 +16629,6 @@ async function fetchForecasts() {
   // because computePublishSelectionScore now reads resolution.kind for the
   // hard-resolvable selection lift (RESOLVABLE_HARD_SELECTION_LIFT).
   attachResolutionSpecs(predictions, inputs, runGeneratedAt);
-  await runExtractionGateShadow(predictions);
   attachMarketSelectionContext(predictions, marketSelectionIndex);
   prepareForecastMetrics(predictions);
 
@@ -16663,6 +16662,8 @@ async function fetchForecasts() {
   const initiallyPublishedSituationClusters = publishArtifacts.filteredSituationClusters;
   const initiallyPublishedSituationFamilies = publishArtifacts.filteredSituationFamilies;
   const publishedPredictions = publishArtifacts.publishedPredictions;
+  // Only published forecasts reach the resolution ledger, so only they are measured.
+  await runExtractionGateShadow(publishedPredictions);
   const publishTelemetry = summarizePublishFiltering(predictions, finalSelectionPool, publishedPredictions);
   const publishedSituationClusters = publishArtifacts.publishedSituationClusters;
   const publishedSituationFamilies = publishArtifacts.publishedSituationFamilies;
@@ -16721,7 +16722,7 @@ async function runExtractionGateShadow(predictions) {
     const count = (outcome) => summary.byOutcome[outcome] || 0;
     console.log(`  [ExtractionGate] shadow hard=${summary.total} pass=${count('pass')} fail=${count('fail')} feed_unavailable=${count('feed_unavailable')} skipped=${count('skipped')} byFamily=${JSON.stringify(summary.byFamily)} byDomain=${JSON.stringify(summary.byDomain)}`);
     for (const v of verdicts) {
-      if (v.outcome === 'fail') console.log(`  [ExtractionGate] would_downgrade id=${v.id} family=${v.family} domain=${v.domain} metricKey=${v.metricKey} reason=${v.reason}`);
+      if (v.outcome === 'fail') console.log(`  [ExtractionGate] would_downgrade id=${JSON.stringify(v.id)} family=${v.family} domain=${v.domain} metricKey=${JSON.stringify(v.metricKey)} reason=${v.reason}`);
     }
     return { verdicts, summary };
   } catch (err) {

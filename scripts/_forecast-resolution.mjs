@@ -738,11 +738,12 @@ export function evaluateExtractionShadow(predictions, rawByKey) {
       verdicts.push(verdict('feed_unavailable', 'feed_read_failed'));
       continue;
     }
-    const feedData = selectResolutionFeed(feedsByKey, spec, parsed);
-    if (feedData == null) {
+    // Check the raw value: shaping turns an absent FRED or settlement key into [].
+    if (selectResolutionFeed(rawByKey, spec, parsed) == null) {
       verdicts.push(verdict('feed_unavailable', 'feed_empty'));
       continue;
     }
+    const feedData = selectResolutionFeed(feedsByKey, spec, parsed);
     const { value } = extractMetricObservation(parsed, feedData);
     verdicts.push(Number.isFinite(value) ? verdict('pass', 'finite_metric', value) : verdict('fail', 'metric_not_found'));
   }

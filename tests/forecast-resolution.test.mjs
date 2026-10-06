@@ -1048,6 +1048,17 @@ describe('extraction gate shadow (#7067)', () => {
     });
   });
 
+  for (const [label, sourceFeed, metricKey] of [
+    ['FRED', 'economic:fred:v1:UNRATE:0', 'economic:fred:v1:UNRATE:0|value(metric==UNRATE)'],
+    ['market settlement', 'prediction:markets-resolution:v1', 'prediction:markets-resolution:v1|yesPrice(slug==fixture-market)'],
+  ]) {
+    it(`an absent ${label} key is feed_unavailable, though shaping turns it into []`, () => {
+      const forecast = { id: `fc-absent-${label}`, domain: 'market', signals: [], resolution: { kind: 'hard', sourceFeed, metricKey } };
+      const [verdict] = evaluateExtractionShadow([forecast], { [sourceFeed]: null });
+      assert.deepEqual([verdict.outcome, verdict.reason], ['feed_unavailable', 'feed_empty']);
+    });
+  }
+
   it('a failed feed read is feed_unavailable, not an extraction failure', () => {
     const forecasts = attached([gpsForecast('Persian Gulf'), oilForecast()]);
     const verdicts = evaluateExtractionShadow(forecasts, { [GPS_FEED]: null });

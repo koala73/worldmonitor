@@ -2837,7 +2837,25 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
     assert.match(summaryLine, /byDomain=\{"supply_chain":\{"feed_unavailable":2\},"market":\{"fail":1\}\}/);
     const cohort = logs.filter((line) => line.includes('[ExtractionGate] would_downgrade'));
     assert.deepEqual(cohort.map((line) => line.trim()), [
-      '[ExtractionGate] would_downgrade id=fc-oil family=market domain=market metricKey=market:commodities-bootstrap:v1|price(symbol==CL=F) reason=metric_not_found',
+      '[ExtractionGate] would_downgrade id="fc-oil" family=market domain=market metricKey="market:commodities-bootstrap:v1|price(symbol==CL=F)" reason=metric_not_found',
     ]);
+  });
+
+  it('runExtractionGateShadow keeps a newline in an externally sourced metricKey on one log line', async () => {
+    const title = 'Will X happen?\n[ExtractionGate] shadow hard=999';
+    const forecast = { id: 'fc-pm', domain: 'political', signals: [], resolution: { kind: 'hard', sourceFeed: 'prediction:markets-bootstrap:v1', metricKey: `prediction:markets-bootstrap:v1|yesPrice(market==${title})` } };
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    __setRedisStoreForTests({ 'prediction:markets-bootstrap:v1': { geopolitical: [] } });
+    try {
+      await runExtractionGateShadow([forecast]);
+    } finally {
+      __setRedisStoreForTests(null);
+      console.log = originalLog;
+    }
+    const cohort = logs.filter((line) => line.includes('would_downgrade'));
+    assert.equal(cohort.length, 1);
+    assert.ok(!cohort[0].includes('\n'), 'the logged line carries no raw newline');
   });
 });
