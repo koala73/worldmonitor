@@ -1807,6 +1807,7 @@
   "countryBrief.defenseIndustrial.supplierRetained": "Supplier data retained from the last successful importer refresh.",
   "countryBrief.defenseIndustrial.suppliers": "Arms suppliers ({{start}}–{{end}})",
   "countryBrief.defenseIndustrial.title": "Defense Industrial Base",
+  "countryBrief.defenseIndustrial.snapshotAssembled": "{{source}} snapshot assembled {{time}}",
   "countryBrief.defenseIndustrial.unavailable": "Not available",
   "countryBrief.defenseIndustrialBase.proLocked": "Upgrade to PRO for arms-supplier dependency and military capacity",
   "countryBrief.demographicsCapability.ageStructure": "Age structure",

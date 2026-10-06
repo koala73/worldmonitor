@@ -66,6 +66,13 @@ export function renderDefenseIndustrialSection(
     }
   }
 
+  for (const [source, time] of [
+    ['World Bank', data.industrialFetchedAt],
+    [`SIPRI (${data.countryCode})`, data.suppliers.length ? data.supplierFetchedAt : ''],
+  ]) {
+    if (time) section.append(el('div', 'cdp-economic-source', t('countryBrief.defenseIndustrial.snapshotAssembled', { source, time })));
+  }
+
   section.append(el('div', 'cdp-economic-source', t(defenseIndustrialSourceKey(data))));
   return section;
 }

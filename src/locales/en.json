@@ -256,6 +256,7 @@
       "supplierRetained": "Supplier data retained from the last successful importer refresh.",
       "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
       "sourceWorldBank": "Source: World Bank.",
+      "snapshotAssembled": "{{source}} snapshot assembled {{time}}",
       "unavailable": "Not available"
     },
     "economicIndicators": "Economic Indicators",

@@ -76,6 +76,7 @@
       "suppliers": "武器供應國（{{start}}–{{end}}）",
       "source": "來源：世界銀行與 SIPRI 武器轉讓資料庫。TIV 衡量轉讓量，而非金額。",
       "sourceWorldBank": "來源：世界銀行。",
+      "snapshotAssembled": "{{source}} 資料快照彙整時間：{{time}}",
       "unavailable": "暫無資料",
       "coverage": "已覆蓋國家",
       "supplierRetained": "供應國資料沿用上次成功重新整理的結果。"

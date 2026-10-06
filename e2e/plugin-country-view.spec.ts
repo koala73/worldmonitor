@@ -5,12 +5,13 @@ import us from './fixtures/country-brief-us.json' with { type: 'json' };
 import { readCountryView } from '../api/mcp/ui/news-dashboard-app';
 import { assembleRawSignals, failedRawSignal, validateRawSignal, RAW_SIGNAL_FAMILIES, type RawSignalsValue } from '../shared/country-raw-signals';
 import type { CountrySignalCounts } from '../src/types';
+import { buildDefenseIndustrialResponse } from '../shared/defense-industrial-response';
 
 const root = process.cwd();
 test.use({ serviceWorkers: 'block' });
 
 type HostCall = { name: string; arguments: Record<string, unknown> };
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false) {
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false) {
   const calls: HostCall[] = [];
   const requestNames = new Map<number, string>();
   const cancelled: string[] = [];
@@ -163,6 +164,14 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       value.missing = ['imfGrowth'];
     }
     if (partialBootstrap && section === 'housing') (values.housing as { missing?: string[] }).missing = ['bisPropertyCommercial'];
+    if (section === 'defense' && defenseClockFixture) return { structuredContent: { section, state: 'ready', retrievedAt: '2026-10-06T08:00:00.000Z', value: buildDefenseIndustrialResponse(code, {
+      fetchedAt: '2026-10-02T06:00:00.000Z',
+      countries: { [code]: { expenditurePctGdp: { value: 1.3, year: 2024, source: 'World Bank' } } },
+    }, {
+      fetchedAt: '2026-10-05T07:00:00.000Z',
+      importers: { [code]: { fetchedAt: '2026-10-01T05:00:00.000Z', retained: true, suppliers: [{ supplierIso2: 'CA', tivShare: 1 }],
+        mappingCoverage: 0.8, window: { startYear: 2021, endYear: 2025 }, source: 'SIPRI Arms Transfers Database' } },
+    }) } };
     if (section === 'defense' || section === 'resilience') return { structuredContent: { section, state: 'locked', reason: 'Controlled connection lacks access' } };
     return { structuredContent: { section, state: 'ready', value: values[section] ?? {}, retrievedAt: '2026-10-01T15:00:00.000Z' } };
   });
@@ -908,4 +917,34 @@ test('transient Atlas failure preserves same-country rows and detail actions whi
   await expect(energy).toContainText('Storage Atlas data is not authorized');
   await expect(energy.getByRole('button', { name: 'Controlled US Storage', exact: true })).toHaveCount(0);
   expect(host.admissions).toBe(3);
+});
+
+
+test('built country defense view and report preserve independent producer clocks', async ({ page }, info) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, true);
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  const military = frame.locator('[data-brief-section=military]');
+  await expect(military).toContainText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z');
+  await expect(military).toContainText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z');
+  await expect(military).toContainText('Supplier data retained');
+  await expect(military).toContainText('Mapped coverage');
+  await expect(military).not.toContainText('2026-10-05T07:00:00.000Z');
+  for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await military.getByText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z', { exact: true }).scrollIntoViewIfNeeded();
+    await expect(military.getByText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z', { exact: true })).toBeInViewport();
+    await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`defense-clocks-${name}.png`), fullPage: true });
+  }
+  await frame.getByRole('button', { name: 'Export report ↗', exact: true }).click();
+  const report = frame.locator('.cdp-output-paper');
+  await expect(report).toContainText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z');
+  await expect(report).toContainText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z');
+  await expect(report).toContainText('Supplier data retained');
+  await expect(report).not.toContainText('2026-10-05T07:00:00.000Z');
+  await report.getByText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(report.getByText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z', { exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('defense-clocks-report-mobile.png'), fullPage: true });
+  expect(host.unmanaged).toEqual([]);
 });
