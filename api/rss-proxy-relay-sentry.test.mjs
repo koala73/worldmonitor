@@ -104,13 +104,36 @@ test('a relay-retry AbortError is not reported to Sentry (WORLDMONITOR-11G)', as
   assert.equal(res.status, 500);
 });
 
-test('a non-timeout relay-retry failure is still reported to Sentry', async () => {
+/** Envelope wire format: header line, item header line, item payload line. */
+function parseEnvelope(body) {
+  const lines = body.split('\n');
+  assert.equal(JSON.parse(lines[1]).type, 'event', 'envelope item must be an event');
+  return JSON.parse(lines[2]);
+}
+
+test('a non-timeout relay-retry failure is still reported to Sentry at error', async () => {
   // Positive control. Without this, deleting the capture outright would leave
   // the AbortError test above green while silencing a real relay regression.
+  // ECONNREFUSED is a defect (never established) — must stay at error, not
+  // get pulled into the Network-connection-lost warning bucket.
   const { res, envelopes } = await runRelayRetryFailure(new Error('relay ECONNREFUSED'));
 
   assert.equal(envelopes.length, 1, 'a real relay failure must still be captured');
   assert.match(envelopes[0], /"step":"relay-retry"/);
   assert.match(envelopes[0], /relay ECONNREFUSED/);
+  assert.equal(parseEnvelope(envelopes[0]).level, 'error');
+  assert.equal(res.status, 500);
+});
+
+test('a Network connection lost relay-retry is reported at warning (WORLDMONITOR-17M)', async () => {
+  // Same shape as telegram-feed's R1 canary: established-then-dropped edge
+  // transport churn. Still queryable; must not page at error.
+  const { res, envelopes } = await runRelayRetryFailure(new Error('Network connection lost.'));
+
+  assert.equal(envelopes.length, 1, 'dropped-connection canary must still reach Sentry');
+  const event = parseEnvelope(envelopes[0]);
+  assert.equal(event.level, 'warning');
+  assert.equal(event.tags?.step, 'relay-retry');
+  assert.match(envelopes[0], /Network connection lost/);
   assert.equal(res.status, 500);
 });
