@@ -14,7 +14,7 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, runSeed, writeExtraKeyWithMetaAtomically } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
@@ -30,12 +30,15 @@ import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
   FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+  FORECAST_EVIDENCE_TTL_S,
   forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
   isForecastEvidenceHash,
   parseForecastEvidenceCoverage,
   parseForecastEvidenceMember,
   resolveForecastEvidenceCoverageMaxLagMs,
+  recoverForecastEvidenceCoverage,
 } from './_forecast-evidence-archive.mjs';
 
 /**
@@ -48,6 +51,7 @@ export const MIGRATION_DIVERGENCE_SAMPLE_HASHES = 500;
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
+export const JUDGED_LANE_HEALTH_KEY = 'forecast:judged-lane:health:v1';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
@@ -1562,6 +1566,7 @@ async function readRedisJson(key) {
   });
   if (!resp.ok) throw new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
   const payload = await resp.json();
+  if (payload?.error) throw new Error(`Redis GET ${key} returned an error`);
   if (payload.result == null) return null;
   return JSON.parse(payload.result);
 }
@@ -1819,8 +1824,13 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     ['GET', FORECAST_EVIDENCE_COVERAGE_KEY],
     `Redis GET ${FORECAST_EVIDENCE_COVERAGE_KEY}`,
   );
-  const coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
-  if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs)) {
+  if (coveragePayload?.error) throw new Error('Redis coverage marker read failed');
+  let coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
+  const needsRecovery = !coverage;
+  const scanStartMs = needsRecovery
+    ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
+    : requestedCoverageStartMs;
+  if (coverage && !forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) {
     return {
       ...base,
       coverageStartMs: coverage?.coverageStartMs,
@@ -1840,7 +1850,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     'ZREVRANGEBYSCORE',
     FORECAST_EVIDENCE_KEY,
     String(nowMs),
-    String(requestedCoverageStartMs),
+    String(scanStartMs),
     'WITHSCORES',
     'LIMIT',
     '0',
@@ -1866,7 +1876,8 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   for (let index = 0; index < rawSelected.length; index += 2) {
     const hash = rawSelected[index];
     const score = Number(rawSelected[index + 1]);
-    if (!isForecastEvidenceHash(hash) || !Number.isFinite(score) || seenHashes.has(hash)) {
+    if (!isForecastEvidenceHash(hash) || !Number.isSafeInteger(score)
+      || score < scanStartMs || score > nowMs || seenHashes.has(hash)) {
       malformedTombstones += 1;
       continue;
     }
@@ -1925,13 +1936,28 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   // retained range that narrowing cannot describe — so it still fails the read.
   // Truncation is different: nothing is missing inside the narrowed window.
   const incomplete = malformedTombstones > 0;
+  if (needsRecovery) {
+    coverage = !incomplete && !truncated ? recoverForecastEvidenceCoverage(records, nowMs) : null;
+    const refused = {
+      ...base, items: [], available: false, incomplete: true, coverageComplete: false,
+      incompleteReason: 'coverage_unverified', truncated, malformedTombstones,
+    };
+    if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) return refused;
+    if (options.persistRecoveredCoverage !== false) {
+      const written = await requestRedis(url, [
+        'SET', FORECAST_EVIDENCE_COVERAGE_KEY, JSON.stringify(coverage),
+        'EX', FORECAST_EVIDENCE_TTL_S, 'NX',
+      ], 'Redis recovered forecast coverage');
+      if (written?.result !== 'OK') return { ...refused, incompleteReason: 'coverage_recovery_write_failed' };
+    }
+  }
   if (truncated) {
     console.warn(`  [forecast-resolutions] evidence archive raw hash cap reached (${rawPairCount}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(effectiveCoverageStartMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
   }
   if (malformedTombstones > 0) {
     console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} missing/malformed/oversized/duplicate member(s)`);
   }
-  const items = records.map(({ record }, index) => ({
+  const items = records.filter(({ score }) => score >= requestedCoverageStartMs).map(({ record }, index) => ({
     id: `N${index + 1}`,
     title: record.title,
     description: record.description,
@@ -1941,6 +1967,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   }));
   return {
     ...base,
+    coverageRecovered: needsRecovery,
     // Report the window actually served: the marker's proof intersected with
     // what this query asked for and what the hash cap let us retain. Returning
     // the marker's frozen start would claim coverage the read did not deliver.
@@ -2170,6 +2197,41 @@ export function reportJudgedLaneObservability(ledger, nowMs, options = {}, logge
   return { attemptClasses, alerts };
 }
 
+export async function publishJudgedLaneHealth(ledger, nowMs = Date.now()) {
+  const [previous, rawCoverage] = await Promise.all([
+    readRedisJson(JUDGED_LANE_HEALTH_KEY),
+    readRedisJson(FORECAST_EVIDENCE_COVERAGE_KEY),
+  ]);
+  const since = Number.isSafeInteger(previous?.evaluatedAt) && previous.evaluatedAt <= nowMs
+    ? previous.evaluatedAt : nowMs - 24 * 60 * 60 * 1000;
+  const entries = Object.values(normalizeLedger(ledger));
+  const recent = entries.filter(entry => entry.status !== 'resolved'
+    || (Number(entry.resolvedAt) > since && Number(entry.resolvedAt) <= nowMs));
+  const lane = computeScorecard(recent, nowMs).judgedLane;
+  const eligible = lane.pendingJudgePastDeadline > 0 || lane.resolved > 0;
+  const previousStreak = Number.isSafeInteger(previous?.stalledRuns) && previous.stalledRuns > 0
+    ? previous.stalledRuns : 0;
+  const stalledRuns = eligible && lane.scoredWithinSla === 0 ? Math.min(3, previousStreak + 1) : 0;
+  const coverageVerified = forecastEvidenceCoversWindow(rawCoverage,
+    nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS, nowMs,
+    resolveForecastEvidenceCoverageMaxLagMs(), true);
+  const reasons = [];
+  if (!coverageVerified && lane.pendingJudgePastDeadline > 0) reasons.push('coverage_unverified_with_overdue_entries');
+  if (stalledRuns >= 3) reasons.push('no_scored_within_sla_for_3_runs');
+  const health = {
+    evaluatedAt: nowMs, status: reasons.length ? 'error' : 'ok', reasons,
+    stalledRuns, scoredWithinSla: lane.scoredWithinSla,
+    pendingJudgePastDeadline: lane.pendingJudgePastDeadline, coverageVerified,
+  };
+  await writeExtraKeyWithMetaAtomically({
+    key: JUDGED_LANE_HEALTH_KEY, data: health, ttlSeconds: SCORECARD_TTL_SECONDS,
+    recordCount: 1, fetchedAt: nowMs,
+    extra: { status: health.status, reasons, sourceVersion: 'judged-lane-health:v1' },
+  });
+  if (reasons.length) console.warn(`  [forecast-resolutions] judged lane health: ${reasons.join(', ')}`);
+  return health;
+}
+
 async function dryRun() {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
@@ -2179,7 +2241,7 @@ async function dryRun() {
   ]);
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
   const feeds = await readResolutionFeeds(preLedger);
-  const judgedOptions = buildLiveJudgedOptions(nowMs);
+  const judgedOptions = { ...buildLiveJudgedOptions(nowMs), persistRecoveredCoverage: false };
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
   const dryRunJudgeModels = [
     async () => null,
@@ -2247,6 +2309,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     maxStaleMin: 2160,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
+    afterPublish: async (ledger) => { await publishJudgedLaneHealth(ledger); },
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,

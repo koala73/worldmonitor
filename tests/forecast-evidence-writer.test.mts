@@ -56,6 +56,19 @@ describe('forecast evidence writer cutover gate (#7082)', () => {
     }), false);
   });
 
+  it('never prunes on an archive continuity attestation (#8877)', () => {
+    assert.equal(__testing__.shouldPruneAccumulator({
+      evidenceEligible: true, cutoverEnabled: true, nowMs,
+      trackingWritesConfirmed: true, evidenceWritesConfirmed: true,
+      coverageAdvanced: true, accumulatorTtlConfirmed: true,
+      coverage: {
+        ...coverage, v: 2, sourceKey: 'forecast:evidence:v1',
+        continuityBucketMs: 6 * 60 * 60 * 1000,
+        archiveOldestHash: 'f'.repeat(64), archiveOldestScoreMs: coverage.coverageStartMs,
+      },
+    }), false);
+  });
+
   it('preserves confirmed pruning for scopes outside full/en', () => {
     assert.equal(__testing__.shouldPruneAccumulator({
       evidenceEligible: false,

@@ -2598,3 +2598,84 @@ describe('terminal receipt attempt history (#7068)', () => {
     );
   });
 });
+
+describe('judged lane health (#8877)', () => {
+  const now = T0 + 20 * DAY_MS;
+  const pending = { status: 'pending-judge', deadline: now - 1000, probability: 0.7, spec: { kind: 'judged' } };
+  const marker = {
+    v: 1, coverageStartMs: now - 14 * DAY_MS, coverageEndMs: now,
+    cutoverVerifiedAtMs: now, sourceDigestAtMs: now, maxLookbackMs: 14 * DAY_MS,
+    retentionSeconds: 15 * 86400, sourceKey: 'digest:accumulator:v1:full:en',
+    legacyOldestHash: 'f'.repeat(64), legacyOldestScoreMs: now - 14 * DAY_MS,
+  };
+
+  async function assess(ledger, previous, coverage = marker) {
+    const { publishJudgedLaneHealth } = await import('../scripts/seed-forecast-resolutions.mjs');
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const writes = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/multi-exec')) {
+        writes.push(...JSON.parse(init.body));
+        return { ok: true, json: async () => [{ result: 'OK' }, { result: 'OK' }] };
+      }
+      const value = String(url).includes(encodeURIComponent('forecast:evidence:coverage:v1')) ? coverage : previous;
+      return { ok: true, json: async () => ({ result: value ? JSON.stringify(value) : null }) };
+    };
+    const health = await publishJudgedLaneHealth(ledger, now);
+    assert.equal(writes.length, 2, 'publish data and seed-meta together');
+    const meta = JSON.parse(writes[1][2]);
+    assert.equal(meta.status, health.status);
+    assert.equal(meta.fetchedAt, now);
+    return health;
+  }
+
+  it('alerts immediately on missing coverage with overdue work', async () => {
+    const health = await assess({ pending }, null, null);
+    assert.equal(health.status, 'error');
+    assert.ok(health.reasons.includes('coverage_unverified_with_overdue_entries'));
+  });
+
+  it('alerts on the third eligible run without a scored-within-SLA outcome', async () => {
+    const health = await assess({ pending }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 });
+    assert.equal(health.stalledRuns, 3);
+    assert.equal(health.status, 'error');
+    assert.ok(health.reasons.includes('no_scored_within_sla_for_3_runs'));
+  });
+
+  it('ignores old successes and does not count VOID as scoring', async () => {
+    const health = await assess({
+      pending,
+      old: { ...pending, status: 'resolved', outcome: 'YES', deadline: now - 10 * DAY_MS, resolvedAt: now - 10 * DAY_MS },
+      void: { ...pending, status: 'resolved', outcome: 'VOID', resolvedAt: now - 1 },
+    }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 });
+    assert.equal(health.status, 'error');
+    assert.equal(health.scoredWithinSla, 0);
+  });
+
+  it('clears the streak and alarm after a scored-within-SLA outcome', async () => {
+    const health = await assess({ pending, scored: { ...pending, status: 'resolved', outcome: 'YES', resolvedAt: now - 1 } },
+      { evaluatedAt: now - DAY_MS, stalledRuns: 4 });
+    assert.equal(health.status, 'ok');
+    assert.equal(health.stalledRuns, 0);
+    assert.equal(health.scoredWithinSla, 1);
+  });
+
+  it('does not publish healthy state when a health-state read fails', async () => {
+    const { publishJudgedLaneHealth } = await import('../scripts/seed-forecast-resolutions.mjs');
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    let writes = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/multi-exec')) writes += 1;
+      return { ok: true, json: async () => ({ error: 'ERR unavailable' }) };
+    };
+    await assert.rejects(publishJudgedLaneHealth({ pending }, now), /Redis GET/);
+    assert.equal(writes, 0);
+  });
+
+  it('does not alert during an idle lane or before the third stalled run', async () => {
+    assert.equal((await assess({}, { evaluatedAt: now - DAY_MS, stalledRuns: 2 }, null)).status, 'ok');
+    assert.equal((await assess({ pending }, null)).status, 'ok');
+  });
+});

@@ -400,12 +400,12 @@ describe('reader migration (#7082)', () => {
     const result = await seederMod.readForecastEvidenceArchive(start, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      fetchFn: sequenceFetch([{ result: null }], calls),
+      fetchFn: sequenceFetch([{ result: null }, { result: [] }], calls),
     });
     assert.equal(result.available, false);
     assert.equal(result.coverageComplete, false);
     assert.equal(result.incompleteReason, 'coverage_unverified');
-    assert.equal(calls.length, 1, 'an unverified archive must not be treated as an empty successful query');
+    assert.equal(calls.length, 2, 'an empty recovery scan must remain unavailable');
   });
 
   it('rejects a verified marker that covers only part of the requested window', async () => {
@@ -606,13 +606,14 @@ describe('reader migration (#7082)', () => {
       quietArchiveMigration: true,
       fetchFn: sequenceFetch([
         { result: null },
+        { result: [] },
         { result: [hash, String(now - 10)] },
         [{ result: ['title', 'Event happened', 'link', 'https://example.test', 'description', 'body', 'publishedAt', String(now - 20)] }],
       ], calls),
     });
     assert.equal(result.available, true);
     assert.equal(result.items[0].hash, hash);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
   });
 
   it('waits instead of using a pruned legacy fallback when verified coverage lags', async () => {
@@ -871,5 +872,107 @@ describe('bounded backfill and cutover (#7082)', () => {
       /write was not confirmed/,
     );
     assert.equal(calls.some(call => call.command[0] === 'SET' && call.command[1] === mod.FORECAST_EVIDENCE_COVERAGE_KEY), false);
+  });
+});
+
+describe('archive continuity recovery (#8877)', () => {
+  const now = 1_790_000_000_000;
+  const hour = 3_600_000;
+  const start = now - 14 * 24 * hour;
+
+  function archiveFixture() {
+    return Array.from({ length: 58 }, (_, i) => {
+      const score = now - i * 6 * hour;
+      const hash = i.toString(16).padStart(64, '0');
+      return { hash, score, member: mod.buildForecastEvidenceMember({
+        hash, title: `Story ${i}`, link: `https://news.example/${i}`, publishedAt: score,
+      }, score) };
+    });
+  }
+
+  async function read(rows, { maxHashes = 100, persist = true, writeResult = 'OK', coverageMaxLagMs } = {}) {
+    const calls = [];
+    const result = await seederMod.readForecastEvidenceArchive(start, now, {
+      redisUrl: 'https://redis.example', redisToken: 'token', maxHashes,
+      persistRecoveredCoverage: persist, coverageMaxLagMs,
+      fetchFn: async (_url, init) => {
+        const cmd = JSON.parse(init.body);
+        calls.push(cmd);
+        if (Array.isArray(cmd[0])) return response(cmd.map(([, key]) => ({
+          result: rows.find(row => mod.forecastEvidenceRecordKey(row.hash) === key)?.member ?? null,
+        })));
+        if (cmd[0] === 'GET') return response({ result: null });
+        if (cmd[0] === 'SET') return response({ result: writeResult });
+        assert.equal(cmd[0], 'ZREVRANGEBYSCORE');
+        return response({ result: rows.filter(row => row.score >= Number(cmd[3]) && row.score <= Number(cmd[2]))
+          .slice(0, Number(cmd.at(-1))).flatMap(row => [row.hash, String(row.score)]) });
+      },
+    });
+    return { result, calls };
+  }
+
+  it('recovers missing coverage from a full, continuous archive without the accumulator', async () => {
+    const { result, calls } = await read(archiveFixture());
+    assert.equal(result.available, true);
+    assert.equal(result.coverageRecovered, true);
+    assert.equal(result.coverageStartMs, start);
+    const write = calls.find(cmd => cmd[0] === 'SET');
+    assert.ok(write, 'recovery must persist the marker');
+    const proof = mod.parseForecastEvidenceCoverage(write[2]);
+    assert.equal(proof.sourceKey, mod.FORECAST_EVIDENCE_KEY);
+    assert.equal(mod.forecastEvidenceCoversWindow(proof, start, now), false, 'continuity must not authorize destructive prune');
+    assert.equal(mod.forecastEvidenceCoversWindow(proof, start, now, 0, true), true);
+    assert.ok(result.items.every(item => item.publishedAt >= start), 'guard-band records are not reader evidence');
+  });
+
+  for (const scenario of ['short', 'gap', 'stale', 'missing', 'mismatched-score', 'duplicate', 'truncated']) {
+    it(`refuses ${scenario} recovery without writing a marker`, async () => {
+      let rows = archiveFixture();
+      if (scenario === 'short') rows = rows.slice(0, 56);
+      if (scenario === 'gap') rows.splice(25, 1);
+      if (scenario === 'stale') rows = rows.slice(2);
+      if (scenario === 'missing') rows[25].member = null;
+      if (scenario === 'mismatched-score') rows[25].score -= 1;
+      if (scenario === 'duplicate') rows[25] = rows[24];
+      const { result, calls } = await read(rows, { maxHashes: scenario === 'truncated' ? 40 : 100 });
+      assert.equal(result.available, false);
+      assert.equal(calls.some(cmd => cmd[0] === 'SET'), false);
+    });
+  }
+
+  it('reuses the persisted proof and preserves the observed end clock', async () => {
+    const rows = archiveFixture().map(row => ({ ...row, score: row.score - hour,
+      member: JSON.stringify({ ...JSON.parse(row.member), lastSeen: row.score - hour }),
+    }));
+    const { result, calls } = await read(rows);
+    assert.equal(result.available, true);
+    const proof = JSON.parse(calls.find(cmd => cmd[0] === 'SET')[2]);
+    assert.equal(proof.coverageEndMs, now - hour);
+    assert.equal((await read(rows, { coverageMaxLagMs: 0 })).result.available, false);
+    const selected = rows.filter(row => row.score >= start);
+    const reread = await seederMod.readForecastEvidenceArchive(start, now, {
+      redisUrl: 'https://redis.example', redisToken: 'token',
+      fetchFn: sequenceFetch([
+        { result: JSON.stringify(proof) },
+        { result: selected.flatMap(row => [row.hash, String(row.score)]) },
+        selected.map(row => ({ result: row.member })),
+      ]),
+    });
+    assert.equal(reread.available, true);
+    assert.equal(reread.coverageRecovered, false);
+    assert.equal(mod.parseForecastEvidenceCoverage({ ...proof, continuityBucketMs: 1 }), null);
+    assert.equal(mod.advanceForecastEvidenceCoverage(proof, now).sourceKey, mod.FORECAST_EVIDENCE_KEY);
+  });
+
+  it('checks continuity without writing during a dry run', async () => {
+    const { result, calls } = await read(archiveFixture(), { persist: false });
+    assert.equal(result.available, true);
+    assert.equal(calls.some(cmd => cmd[0] === 'SET'), false);
+  });
+
+  it('does not claim durable recovery after an unconfirmed marker write', async () => {
+    const { result } = await read(archiveFixture(), { writeResult: null });
+    assert.equal(result.available, false);
+    assert.equal(result.incompleteReason, 'coverage_recovery_write_failed');
   });
 });

@@ -78,6 +78,7 @@ export const ACCUMULATOR_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
  * SHOULD fail closed rather than judge against a hole.
  */
 export const FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS = 6 * 60 * 60 * 1000;
+export const FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS = 6 * 60 * 60 * 1000;
 
 /**
  * @param {Record<string, string|undefined>} [env]
@@ -118,12 +119,11 @@ export function forecastEvidenceRecordKey(hash) {
 
 /**
  * Coverage is operational evidence, not an inference from retention policy.
- * A backfill creates the verified start and a confirmed digest publication
+ * A backfill or a complete archive continuity scan creates the start. A digest publication
  * advances the end. Readers accept the archive only when both bound the
  * complete requested window.
  *
  * @param {unknown} raw
- * @returns {{v: number, coverageStartMs: number, coverageEndMs: number, cutoverVerifiedAtMs: number, sourceDigestAtMs: number, maxLookbackMs: number, retentionSeconds: number, sourceKey: string, legacyOldestHash: string, legacyOldestScoreMs: number}|null}
  */
 export function parseForecastEvidenceCoverage(raw) {
   let value = raw;
@@ -136,38 +136,49 @@ export function parseForecastEvidenceCoverage(raw) {
   }
   if (!value || typeof value !== 'object') return null;
   const metadata = /** @type {Record<string, unknown>} */ (value);
+  const continuity = metadata.v === 2 && metadata.sourceKey === FORECAST_EVIDENCE_KEY;
+  const oldestHash = continuity ? metadata.archiveOldestHash : metadata.legacyOldestHash;
+  const oldestScore = continuity ? metadata.archiveOldestScoreMs : metadata.legacyOldestScoreMs;
   const timeFields = [
     metadata.coverageStartMs,
     metadata.coverageEndMs,
     metadata.cutoverVerifiedAtMs,
     metadata.sourceDigestAtMs,
-    metadata.legacyOldestScoreMs,
+    oldestScore,
   ];
   if (
-    metadata.v !== FORECAST_EVIDENCE_COVERAGE_VERSION
+    (!continuity && metadata.v !== FORECAST_EVIDENCE_COVERAGE_VERSION)
     || !timeFields.every(value => Number.isSafeInteger(value) && Number(value) >= 0)
     || metadata.maxLookbackMs !== FORECAST_EVIDENCE_MAX_LOOKBACK_MS
     || metadata.retentionSeconds !== FORECAST_EVIDENCE_TTL_S
-    || metadata.sourceKey !== FORECAST_EVIDENCE_SOURCE_KEY
-    || !isForecastEvidenceHash(metadata.legacyOldestHash)
+    || (!continuity && metadata.sourceKey !== FORECAST_EVIDENCE_SOURCE_KEY)
+    || (continuity && metadata.continuityBucketMs !== FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS)
+    || !isForecastEvidenceHash(oldestHash)
     || Number(metadata.coverageStartMs) > Number(metadata.coverageEndMs)
     || Number(metadata.coverageEndMs) - Number(metadata.coverageStartMs) < FORECAST_EVIDENCE_MAX_LOOKBACK_MS
     || Number(metadata.sourceDigestAtMs) !== Number(metadata.coverageEndMs)
     || Number(metadata.cutoverVerifiedAtMs) < Number(metadata.coverageStartMs)
     || Number(metadata.cutoverVerifiedAtMs) > Number(metadata.coverageEndMs)
-    || Number(metadata.legacyOldestScoreMs) > Number(metadata.coverageStartMs)
+    || Number(oldestScore) > Number(metadata.coverageStartMs)
   ) return null;
   return {
-    v: FORECAST_EVIDENCE_COVERAGE_VERSION,
+    v: continuity ? 2 : FORECAST_EVIDENCE_COVERAGE_VERSION,
     coverageStartMs: Math.floor(Number(metadata.coverageStartMs)),
     coverageEndMs: Math.floor(Number(metadata.coverageEndMs)),
     cutoverVerifiedAtMs: Math.floor(Number(metadata.cutoverVerifiedAtMs)),
     sourceDigestAtMs: Math.floor(Number(metadata.sourceDigestAtMs)),
     maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
     retentionSeconds: FORECAST_EVIDENCE_TTL_S,
-    sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
-    legacyOldestHash: metadata.legacyOldestHash,
-    legacyOldestScoreMs: Math.floor(Number(metadata.legacyOldestScoreMs)),
+    ...(continuity ? {
+      sourceKey: FORECAST_EVIDENCE_KEY,
+      continuityBucketMs: FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+      archiveOldestHash: oldestHash,
+      archiveOldestScoreMs: Number(oldestScore),
+    } : {
+      sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
+      legacyOldestHash: oldestHash,
+      legacyOldestScoreMs: Number(oldestScore),
+    }),
   };
 }
 
@@ -182,15 +193,46 @@ export function parseForecastEvidenceCoverage(raw) {
  * @param {number} startMs
  * @param {number} endMs
  * @param {number} [maxLagMs]
+ * @param {boolean} [allowContinuity] Reader-only attestation; never a prune authorization.
  */
-export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0) {
+export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0, allowContinuity = false) {
   const metadata = parseForecastEvidenceCoverage(raw);
   const lag = Number.isFinite(maxLagMs) && maxLagMs > 0 ? Math.floor(maxLagMs) : 0;
   return Boolean(
     metadata
+    && (metadata.v !== 2 || allowContinuity)
     && metadata.coverageStartMs <= startMs
     && metadata.coverageEndMs >= endMs - lag,
   );
+}
+
+/** Build a read-only continuity attestation from a complete validated scan. */
+export function recoverForecastEvidenceCoverage(records, nowMs) {
+  if (!Number.isSafeInteger(nowMs) || !records.length) return null;
+  const ordered = [...records].sort((a, b) => b.score - a.score);
+  const endMs = ordered[0].score;
+  const startMs = endMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS;
+  let previous = nowMs;
+  for (const { record, score } of ordered) {
+    if (!Number.isSafeInteger(score) || score !== record.lastSeen || score > previous
+      || previous - score > FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS) return null;
+    previous = score;
+  }
+  const oldest = ordered.at(-1);
+  if (oldest.score > startMs) return null;
+  return parseForecastEvidenceCoverage({
+    v: 2,
+    coverageStartMs: startMs,
+    coverageEndMs: endMs,
+    cutoverVerifiedAtMs: endMs,
+    sourceDigestAtMs: endMs,
+    maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+    retentionSeconds: FORECAST_EVIDENCE_TTL_S,
+    sourceKey: FORECAST_EVIDENCE_KEY,
+    continuityBucketMs: FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+    archiveOldestHash: oldest.record.hash,
+    archiveOldestScoreMs: oldest.score,
+  });
 }
 
 /**
