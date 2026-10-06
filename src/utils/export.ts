@@ -684,14 +684,15 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
   return lines.join('\n');
 }
 
-export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+export function countryEvidenceMarkdownArtifact(data: CountryEvidenceBundleInput): import('./country-text-download').CountryTextArtifact {
   const bundle = buildCountryEvidenceBundle(data);
   const timestamp = bundle.exportedAt.replace(/[:.]/g, '-');
-  downloadFile(
-    renderCountryEvidenceMarkdown(bundle),
-    `country-evidence-${bundle.code}-${timestamp}.md`,
-    'text/markdown;charset=utf-8',
-  );
+  return { content: renderCountryEvidenceMarkdown(bundle), filename: `country-evidence-${bundle.code}-${timestamp}.md`, mimeType: 'text/markdown;charset=utf-8' };
+}
+
+export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+  const artifact = countryEvidenceMarkdownArtifact(data);
+  downloadFile(artifact.content, artifact.filename, artifact.mimeType);
 }
 
 export function exportCountryBriefJSON(data: CountryBriefExport): void {

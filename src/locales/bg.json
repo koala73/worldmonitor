@@ -16,7 +16,7 @@
     "predictionMarkets": "Пазари на предвиждане",
     "loadingMarkets": "Зареждане на пазарите на предвиждане...",
     "infrastructure": "Експозиция на инфраструктура",
-    "briefUnavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings.",
+    "briefUnavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings.",
     "cached": "Кеширан",
     "fresh": "Свеж",
     "noMarkets": "Няма активни пазари за тази страна.",
@@ -799,7 +799,7 @@
       "fresh": "Свеж",
       "noMarkets": "Не са намерени пазари на предвиждане",
       "predictionMarkets": "Пазари на предвиждане",
-      "unavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings."
+      "unavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings."
     },
     "countryBrief": {
       "identifying": "Идентифициране на държава...",
@@ -815,7 +815,7 @@
       "predictionMarkets": "Пазари на предвиждане",
       "loadingMarkets": "Зареждане на пазарите на предвиждане...",
       "infrastructure": "Експозиция на инфраструктура",
-      "briefUnavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings.",
+      "briefUnavailable": "AI преглед недостъпен — конфигурирайте OPENROUTER_API_KEY в Settings.",
       "cached": "Кеширан",
       "fresh": "Свеж",
       "noMarkets": "Не са намерени пазари на предвиждане",
@@ -1430,7 +1430,7 @@
       "rankingStories": "Класиране на важни истории...",
       "analyzingSentiment": "Анализиране на сентимент...",
       "generatingBrief": "Генериране на световен преглед...",
-      "infoTooltip": "<strong>AI-управлява анализ</strong><br>• <strong>Световен преглед</strong>: AI обобщение (Groq/OpenRouter)<br>• <strong>Сентимент</strong>: Анализ на тона на новини<br>• <strong>Скорост</strong>: Бързо движещи се истории<br>• <strong>Фокусни точки</strong>: Коерелира новинни субекти със сигнали на карта (военни, протести, прекъсвания)<br><em>Десктоп само • Захранено от Llama 3.3 + Откритие на фокусни точки</em>",
+      "infoTooltip": "<strong>AI-управлява анализ</strong><br>• <strong>Световен преглед</strong>: AI обобщение (OpenRouter)<br>• <strong>Сентимент</strong>: Анализ на тона на новини<br>• <strong>Скорост</strong>: Бързо движещи се истории<br>• <strong>Фокусни точки</strong>: Коерелира новинни субекти със сигнали на карта (военни, протести, прекъсвания)<br><em>Десктоп само • Захранено от Llama 3.3 + Откритие на фокусни точки</em>",
       "streamQualityLabel": "Качество на видеото",
       "streamQualityDesc": "Задайте качество за всички живи потоци (по-ниско спестява честотна лента)",
       "globeRenderScaleOptions": {
@@ -1442,7 +1442,7 @@
       },
       "mapFlashLabel": "Импулс на живо събитие",
       "mapFlashDesc": "Светкавица местоположения на карта, когда прибиране на новини пристига",
-      "aiFlowCloudLabel": "Облачна AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Облачна AI (OpenRouter)",
       "aiFlowCloudDesc": "Изпратете заглавия към облак за AI обобщение (препоръчано)",
       "aiFlowBrowserLabel": "Браузер локален модел",
       "aiFlowBrowserDesc": "Изпълнете AI локално във вашия браузер",

@@ -65,7 +65,7 @@ describe('insights-loader', () => {
       assert.equal(insightsSnapshotRejection({
         worldBrief: 'Test brief',
         worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
-        briefProvider: 'groq',
+        briefProvider: 'openrouter',
         status: 'ok',
         topStories: [{ primaryTitle: 'Test', sourceCount: 2 }],
         generatedAt,
@@ -117,7 +117,7 @@ describe('insights-loader', () => {
       return {
         worldBrief: 'Test brief',
         worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
-        briefProvider: 'groq',
+        briefProvider: 'openrouter',
         status: 'ok',
         topStories: [{
           primaryTitle: 'Test', primarySource: 's', primaryLink: 'l', pubDate: '',

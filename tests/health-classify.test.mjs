@@ -2863,3 +2863,43 @@ test('dyad health is pending before activation and strict afterward', () => {
   assert.equal(classifyKey(name, key, { allowOnDemand: true },
     makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
 });
+
+
+test('calibration map uses its declared activation marker before the first resolver run', () => {
+  const name = 'forecastCalibrationMap';
+  const entry = classifyKey(name, STANDALONE_KEYS[name], { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } }));
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+  assert.ok(ON_DEMAND_KEYS.has(name));
+  assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 0);
+});
+
+test('calibration activation does not hide missing data, stale publications, errors, or unknown markers', () => {
+  const name = 'forecastCalibrationMap';
+  const key = STANDALONE_KEYS[name];
+  const staleAt = NOW - (SEED_META[name].maxStaleMin + 1) * ONE_MIN_MS;
+  const cases = [
+    [{ activationStates: { [name]: true } }, 'STALE_SEED'],
+    [{ activationStates: {} }, 'STALE_SEED'],
+    [{ activationStates: { [name]: false }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ fetchedAt: staleAt, recordCount: 1 }),
+    } }, 'STALE_SEED'],
+    [{ activationStates: { [name]: false }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ status: 'error', error: 'publication failed' }),
+    } }, 'SEED_ERROR'],
+    [{ activationStates: { [name]: true }, strens: { [key]: 128 }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ fetchedAt: staleAt, recordCount: 1 }),
+    } }, 'STALE_SEED'],
+  ];
+  for (const [state, status] of cases) {
+    const entry = classifyKey(name, key, { allowOnDemand: true }, makeCtx(state));
+    assert.equal(entry.status, status);
+    assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 1);
+  }
+  const fresh = classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 128 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ recordCount: 1 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
+});

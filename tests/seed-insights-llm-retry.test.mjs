@@ -6,7 +6,6 @@ import { callLLM, createSynthesisAcceptor, generateLegacySingleHeadlineBrief, __
 const LONG_BRIEF = 'Insights brief succeeded with more than enough narrative content to pass.';
 
 const originalEnv = {
-  GROQ_API_KEY: process.env.GROQ_API_KEY,
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   OLLAMA_API_URL: process.env.OLLAMA_API_URL,
 };
@@ -19,6 +18,11 @@ afterEach(() => {
   }
 });
 
+const PAID_MODEL = 'deepseek/deepseek-v4-flash';
+const FREE_MODEL = 'google/gemma-4-26b-a4b-it:free';
+const BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+const modelOf = (init) => JSON.parse(init.body).model;
+
 function okResponse(content) {
   return {
     ok: true,
@@ -30,7 +34,6 @@ function okResponse(content) {
 
 describe('seed-insights callLLM retry/budget', () => {
   it('honors a 429 Retry-After on the same provider before falling through', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     delete process.env.OLLAMA_API_URL;
     const originalSetTimeout = globalThis.setTimeout;
@@ -62,7 +65,6 @@ describe('seed-insights callLLM retry/budget', () => {
   });
 
   it('caps an oversized Retry-After hint before retrying', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     delete process.env.OLLAMA_API_URL;
     const originalSetTimeout = globalThis.setTimeout;
@@ -97,9 +99,8 @@ describe('seed-insights callLLM retry/budget', () => {
   //   usable 12s (callBudget 17s − 5s guard), hint 3s, retryDelayMs 8s
   //   wait0 = max(8s, 3s) = 8s → rem 4s
   //   wait1 = max(16s, 3s) = 16s (3s < 4s so still slept) → rem < 0
-  //   attempt2: usable <= 0 → createLlmBudgetError (no groq)
+  //   attempt2: usable <= 0 → createLlmBudgetError (no fallthrough)
   it('stops at the call budget without falling through to the next provider', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     delete process.env.OLLAMA_API_URL;
     const originalDateNow = Date.now;
@@ -112,9 +113,9 @@ describe('seed-insights callLLM retry/budget', () => {
 
     try {
       __setInsightsLlmTransportForTests({
-        fetch: async (url) => {
+        fetch: async (_url, init) => {
           calls += 1;
-          assert.ok(String(url).includes('openrouter.ai'), 'budget stop must not fall through to groq');
+          assert.equal(modelOf(init), PAID_MODEL, 'budget stop must not fall through to the next provider');
           return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '3' : null) } };
         },
       });
@@ -131,30 +132,28 @@ describe('seed-insights callLLM retry/budget', () => {
   });
 
   it('falls through to the next provider after a non-retryable 402', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     delete process.env.OLLAMA_API_URL;
-    const providers = [];
+    const models = [];
 
     __setInsightsLlmTransportForTests({
-      fetch: async (url) => {
-        const href = String(url);
-        providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('openrouter.ai')) return { ok: false, status: 402, headers: { get: () => null } };
+      fetch: async (_url, init) => {
+        models.push(modelOf(init));
+        if (modelOf(init) !== BACKUP_MODEL) return { ok: false, status: 402, headers: { get: () => null } };
         return okResponse(LONG_BRIEF);
       },
     });
 
     const result = await callLLM('Some breaking headline', { retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
-    assert.equal(result?.provider, 'groq');
+    assert.deepEqual(models, [PAID_MODEL, FREE_MODEL, BACKUP_MODEL]);
+    assert.equal(result?.provider, 'openrouter-free-backup');
   });
 });
 
 // #6110: the exact production shape from seed-insights 2026-08-03 12:10Z and
 // 12:20Z. openrouter answered but the composer gates rejected it, the chain
-// fell through to groq, and groq returned 429 with
+// fell through to the next provider, and it returned 429 with
 //   "tokens per day (TPD): Limit 100000, Used 100000 ... try again in 20m13.92s"
 // The 1213s hint was clamped to the 10s ceiling and retried TWICE — 20s of a
 // 60s LLM budget and a 120s seed lock spent on a daily quota that could not
@@ -165,9 +164,8 @@ describe('seed-insights callLLM retry/budget', () => {
 // because the symptom was in the CHAIN — the assertion that matters is that no
 // sleep happens at all, and it can only be observed here.
 describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6110)', () => {
-  it('fails groq over immediately when its hint outruns the run budget', async () => {
+  it('fails a provider over immediately when its hint outruns the run budget', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const originalSetTimeout = globalThis.setTimeout;
@@ -177,11 +175,11 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
 
     try {
       __setInsightsLlmTransportForTests({
-        fetch: async (url) => {
-          const target = String(url);
-          calls.push(target);
-          if (target.includes('openrouter')) return okResponse(`${LONG_BRIEF} REJECT_ME`);
-          // groq: daily token quota exhausted, ~20 minutes out.
+        fetch: async (_url, init) => {
+          const model = modelOf(init);
+          calls.push(model);
+          if (model !== BACKUP_MODEL) return okResponse(`${LONG_BRIEF} REJECT_ME`);
+          // Daily token quota exhausted, ~20 minutes out.
           return {
             ok: false,
             status: 429,
@@ -198,9 +196,9 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
 
       assert.deepEqual(waits, [], 'a hint 20 minutes out must not be slept on at all');
       assert.equal(
-        calls.filter((u) => u.includes('groq')).length,
+        calls.filter((model) => model === BACKUP_MODEL).length,
         1,
-        'groq must be attempted once and abandoned, not retried against a wall',
+        'the quota-exhausted provider must be attempted once and abandoned, not retried against a wall',
       );
       // The rejected openrouter candidate still comes back so the caller can
       // classify the failure as GATE rather than mislabel it a provider outage.
@@ -213,7 +211,6 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
 
   it('still honors a short hint that fits inside the budget', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const originalSetTimeout = globalThis.setTimeout;
@@ -247,23 +244,21 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
     // next withRetry attempt would throw createLlmBudgetError, aborting every
     // later provider. `>=` keeps the budget for fallthrough instead.
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const originalSetTimeout = globalThis.setTimeout;
     const originalDateNow = Date.now;
     const waits = [];
-    const providers = [];
+    const models = [];
     const frozen = 1_700_000_000_000;
     Date.now = () => frozen;
     globalThis.setTimeout = (fn, ms, ...args) => { waits.push(ms); fn(...args); return 0; };
 
     try {
       __setInsightsLlmTransportForTests({
-        fetch: async (url) => {
-          const href = String(url);
-          providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-          if (href.includes('openrouter.ai')) {
+        fetch: async (_url, init) => {
+          models.push(modelOf(init));
+          if (modelOf(init) !== BACKUP_MODEL) {
             return {
               ok: false,
               status: 429,
@@ -280,8 +275,8 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
       });
 
       assert.deepEqual(waits, [], 'equality must fail-fast, not sleep the full remainder');
-      assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq'], 'saved budget must reach the next provider');
-      assert.equal(result?.provider, 'groq');
+      assert.deepEqual(models, [PAID_MODEL, FREE_MODEL, BACKUP_MODEL], 'saved budget must reach the next provider');
+      assert.equal(result?.provider, 'openrouter-free-backup');
       assert.equal(result?.text, LONG_BRIEF);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
@@ -294,19 +289,18 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
 // primary model returned well-formed text that the brief composer then
 // rejected on its editorial gates, seed-insights gave up and published
 // degraded — never trying a fallback model that would have passed. Measured
-// against a live digest: openrouter composed 2/6, groq 6/6, yet production
-// only ever asked openrouter.
+// against a live digest: the primary composed 2/6, a fallback model 6/6, yet
+// production only ever asked the primary.
 describe('seed-insights callLLM output acceptance (#6001)', () => {
   it('falls through to the next provider when the caller rejects the output', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const seen = [];
     __setInsightsLlmTransportForTests({
-      fetch: async (url) => {
-        seen.push(String(url));
-        return okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF);
+      fetch: async (_url, init) => {
+        seen.push(modelOf(init));
+        return okResponse(modelOf(init) !== BACKUP_MODEL ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF);
       },
     });
 
@@ -317,13 +311,13 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     });
 
     assert.ok(result, 'an accepted provider result must be returned');
-    assert.equal(result.provider, 'groq');
+    assert.equal(result.provider, 'openrouter-free-backup');
     assert.equal(result.text, LONG_BRIEF);
 
     // #6001's guarantee, unchanged: a gate rejection must not strand the run on
     // the primary — the chain still reaches a provider that composes.
     assert.ok(
-      seen.some((url) => url.includes('groq')),
+      seen.includes(BACKUP_MODEL),
       'the chain must still advance past a provider whose output the gates reject',
     );
 
@@ -336,24 +330,22 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     // Asserted as a SHAPE, not a count: each rejecting provider is sampled
     // twice consecutively, the accepting one exactly once. A bare length check
     // would pass just as happily if the retries landed on the wrong provider.
-    const providerOf = (url) => (url.includes('groq') ? 'groq' : 'openrouter');
-    const attempts = seen.map(providerOf);
-    assert.equal(attempts.at(-1), 'groq', 'the accepting provider ends the walk');
+    assert.equal(seen.at(-1), BACKUP_MODEL, 'the accepting provider ends the walk');
     assert.equal(
-      attempts.filter((p) => p === 'groq').length,
+      seen.filter((model) => model === BACKUP_MODEL).length,
       1,
       'a provider that passes on its first sample is never resampled',
     );
     assert.equal(
-      attempts.filter((p) => p === 'openrouter').length,
-      6,
-      'each of the three rejecting openrouter providers is sampled exactly twice',
+      seen.filter((model) => model !== BACKUP_MODEL).length,
+      4,
+      'each of the two rejecting providers is sampled exactly twice',
     );
-    assert.equal(seen.length, 7);
+    assert.equal(seen.length, 5);
 
-    // The resample must be the SAME endpoint, back to back — a retry that
+    // The resample must be the SAME model, back to back — a retry that
     // silently moved to the next model would satisfy the counts above.
-    const rejecting = seen.slice(0, 6);
+    const rejecting = seen.slice(0, 4);
     for (let i = 0; i < rejecting.length; i += 2) {
       assert.equal(
         rejecting[i], rejecting[i + 1],
@@ -368,14 +360,13 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     // prompt, so #6995's resample-once was the same draft twice. The resample is
     // only real if the second sample differs: hotter, and told what was wrong.
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const bodies = [];
     __setInsightsLlmTransportForTests({
-      fetch: async (url, init) => {
+      fetch: async (_url, init) => {
         bodies.push(JSON.parse(init.body));
-        return okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF);
+        return okResponse(modelOf(init) !== BACKUP_MODEL ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF);
       },
     });
 
@@ -408,7 +399,6 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
   it('an accepted first sample never raises the temperature or consults the feedback hook', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    delete process.env.GROQ_API_KEY;
     delete process.env.OLLAMA_API_URL;
 
     const bodies = [];
@@ -440,14 +430,13 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     // caller now re-throws on the sentinel; this pins callLLM's side of the
     // contract for any throwing acceptor.
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const bodies = [];
     let feedbackCalls = 0;
     __setInsightsLlmTransportForTests({
-      fetch: async (url, init) => {
-        bodies.push({ url: String(url), body: JSON.parse(init.body) });
+      fetch: async (_url, init) => {
+        bodies.push({ body: JSON.parse(init.body) });
         return okResponse(LONG_BRIEF);
       },
     });
@@ -456,18 +445,18 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
       systemPrompt: 'sys',
       userPrompt: 'user',
       accept: () => {
-        // Fault only for openrouter-family attempts; groq's sample is accepted.
-        if (bodies.at(-1).url.includes('openrouter')) throw new Error('composer fault: composer-threw');
+        // Fault for every attempt but the backup model's, whose sample is accepted.
+        if (bodies.at(-1).body.model !== BACKUP_MODEL) throw new Error('composer fault: composer-threw');
         return { composed: true };
       },
       rejectionFeedback: () => { feedbackCalls += 1; return 'never'; },
     });
 
     assert.ok(result, 'the chain still lands on the provider whose sample is accepted');
-    assert.equal(result.provider, 'groq');
-    // No resample: each faulting provider is asked exactly once. Three
-    // openrouter-family providers + groq = 4 calls, not 7.
-    assert.equal(bodies.length, 4, 'a faulted acceptor never earns a resample');
+    assert.equal(result.provider, 'openrouter-free-backup');
+    // No resample: each faulting provider is asked exactly once. Two faulting
+    // providers + the accepting backup = 3 calls, not 5.
+    assert.equal(bodies.length, 3, 'a faulted acceptor never earns a resample');
     for (const { body } of bodies) {
       assert.equal(body.temperature, 0.1, 'a fault in our own gate must not heat the sampler');
       assert.equal(body.messages[1].content, 'user', 'no correction is appended for our own fault');
@@ -479,7 +468,6 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     // #7248 review: promptChars was computed once from the base prompts, so
     // every corrected resample recorded an undersized event.
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.USAGE_TELEMETRY = '1';
     process.env.AXIOM_API_TOKEN = 'axiom-test-token';
     delete process.env.OLLAMA_API_URL;
@@ -494,7 +482,7 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
         return { ok: true, status: 200, json: async () => ({}) };
       };
       __setInsightsLlmTransportForTests({
-        fetch: async (url) => okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF),
+        fetch: async (_url, init) => okResponse(modelOf(init) !== BACKUP_MODEL ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF),
       });
 
       const FEEDBACK = 'Correction: drop the ungrounded phrase.';
@@ -528,7 +516,6 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
   it('returns the last attempt when every provider is rejected, so the failure stays classifiable', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     __setInsightsLlmTransportForTests({ fetch: async () => okResponse(`${LONG_BRIEF} REJECT_ME`) });
@@ -547,7 +534,6 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
   it('keeps the first provider when no acceptor is supplied', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     const seen = [];
@@ -565,7 +551,6 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
   // must be fault-tolerant, and seed-insights makes composeFromText defensive.
   it('does not propagate an acceptor fault out of callLLM', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     __setInsightsLlmTransportForTests({ fetch: async () => okResponse(LONG_BRIEF) });
@@ -580,11 +565,10 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
   it('prefers a cleanly-rejected response over one whose acceptor threw', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     __setInsightsLlmTransportForTests({
-      fetch: async (url) => okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} CLEAN` : `${LONG_BRIEF} POISON`),
+      fetch: async (_url, init) => okResponse(modelOf(init) !== BACKUP_MODEL ? `${LONG_BRIEF} CLEAN` : `${LONG_BRIEF} POISON`),
     });
 
     const result = await callLLM(null, {
@@ -600,11 +584,10 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
   it('reports the FIRST rejection so the failure code names the primary model stage', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     delete process.env.OLLAMA_API_URL;
 
     __setInsightsLlmTransportForTests({
-      fetch: async (url) => okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} PRIMARY` : `${LONG_BRIEF} FALLBACK`),
+      fetch: async (_url, init) => okResponse(modelOf(init) === PAID_MODEL ? `${LONG_BRIEF} PRIMARY` : `${LONG_BRIEF} FALLBACK`),
     });
 
     const result = await callLLM(null, { systemPrompt: 'sys', userPrompt: 'user', accept: () => null });
@@ -678,7 +661,6 @@ describe('legacy single-headline brief status-qualifier gate (#8441)', () => {
   };
   const legacyWith = async (story, text) => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    delete process.env.GROQ_API_KEY;
     delete process.env.OLLAMA_API_URL;
     __setInsightsLlmTransportForTests({ fetch: async () => okResponse(text) });
     return generateLegacySingleHeadlineBrief([story]);

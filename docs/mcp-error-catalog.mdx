@@ -108,7 +108,7 @@ Fires from the `api/mcp/auth.ts` emission sites, always paired with HTTP **401**
 4. **OAuth token resolves but the Pro MCP token row is missing or cross-bound** — the `mcpTokenId` no longer maps to the userId. Typically a revoke from Settings → Connected MCP clients.
 **Not** in this list, deliberately: a caller whose subscription is inactive. A confirmed free account (a configured no-row result or an internally consistent tier-0 row) is admitted onto the free-account allowance (see `-32029` and `-32002` below). A provider-confirmed lapse follows the same free-account path: the shared entitlement gate treats the ended coverage as a confirmed free state. An expired or disabled paid entitlement without that lapse returns terminal `-32002` at HTTP 403 because re-authenticating cannot fix it. An entitlement lookup that fails or cannot be verified returns a retryable `-32603` at HTTP 503 — it is an availability failure, not a verdict about the caller.
 
-Every `-32001` from these auth-resolution sites carries a machine-readable `data` payload: `reason` is always `no-account`, `nextStep` is one sentence of guidance, and `upgradeUrl` is where to send the user. Branch on `error.data.reason`, not on the message text. (One defensive fail-closed guard in `api/mcp/handler.ts` emits a bare `-32001` / 401 with no `data` — it should be unreachable in practice, so treat a `data`-less `-32001` like case 1.)
+Every `-32001` from these auth-resolution sites carries a machine-readable `data` payload: `reason` is always `no-account`, `nextStep` is short guidance that names the free paths first, and `upgradeUrl` is where to send the user. Branch on `error.data.reason`, not on the message text. (One defensive fail-closed guard in `api/mcp/handler.ts` emits a bare `-32001` / 401 with no `data` — it should be unreachable in practice, so treat a `data`-less `-32001` like case 1.)
 
 Example wire payload (case 1):
 
@@ -121,7 +121,7 @@ Example wire payload (case 1):
     "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.",
     "data": {
       "reason": "no-account",
-      "nextStep": "Sign in at the upgrade URL, connect WorldMonitor MCP with your account, or subscribe to Pro for the full daily allowance.",
+      "nextStep": "Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, or call get_sources, which needs no credential. Subscribe to Pro at the upgrade URL for the full daily allowance.",
       "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
     }
   }

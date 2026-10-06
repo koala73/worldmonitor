@@ -1266,6 +1266,54 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-radiation-watch.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-radiation-watch",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-radiation-watch.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "*/15 * * * *",
+    "documentedAt": "scripts/seed-radiation-watch.mjs"
+  },
+  {
+    "entry": "scripts/seed-trade-flows.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-trade-flows",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-trade-flows.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/comtrade-period.mjs",
+      "scripts/shared/comtrade-strategic-products.json",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "0 5 * * *",
+    "documentedAt": "scripts/seed-trade-flows.mjs"
+  },
+  {
     "entry": "scripts/seed-comtrade-bilateral-hs4.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-comtrade-bilateral-hs4",
@@ -1724,7 +1772,8 @@
       "scripts/seed-sanctions-pressure.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
-      "scripts/shared/country-names.json"
+      "scripts/shared/country-names.json",
+      "scripts/shared/country-sanctions-signals.mjs"
     ],
     "cronSchedule": "0 */6 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"

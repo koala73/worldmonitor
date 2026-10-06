@@ -13,6 +13,8 @@ describe('installed dependency backports', () => {
   for (const [lockfile, name, version, resolved] of [
     ['package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:vendor/braces'],
     ['pro-test/package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:../vendor/braces'],
+    ['package-lock.json', 'stream-json', '1.9.2-worldmonitor.1', 'file:vendor/stream-json'],
+    ['pro-test/package-lock.json', 'stream-json', '1.9.2-worldmonitor.1', 'file:../vendor/stream-json'],
     ['blog-site/package-lock.json', 'http-cache-semantics', '4.2.1-worldmonitor.2', 'file:../vendor/http-cache-semantics'],
   ]) {
     it(`${lockfile} selects only the source backport for ${name}`, () => {
@@ -39,6 +41,13 @@ describe('installed dependency backports', () => {
         assert.deepEqual(readFileSync(consumer.resolve(`${name}/${file}`)), readFileSync(new URL(`../vendor/${name}/${file}`, import.meta.url)));
       }
     }
+  });
+
+  it('installs the patched assembler for jayson without install scripts', () => {
+    const consumer = createRequire(require.resolve('jayson'));
+    assert.deepEqual(readFileSync(consumer.resolve('stream-json/Assembler')), readFileSync(new URL('../vendor/stream-json/Assembler.js', import.meta.url)));
+    assert.equal(consumer('stream-json/package.json').private, true);
+    assert.equal(consumer('stream-json/package.json').scripts, undefined);
   });
 
   it('installs the patched source for Astro', { skip: !existsSync(new URL('../blog-site/node_modules/astro/package.json', import.meta.url)) }, () => {

@@ -9,7 +9,7 @@ const text = z.string().min(1);
 const date = text.max(100).refine(value => Number.isFinite(Date.parse(value)), 'Invalid observation date');
 const millis = z.number().finite().positive().max(8.64e15);
 const coordinates = z.object({ latitude: z.number().finite().min(-90).max(90), longitude: z.number().finite().min(-180).max(180) });
-const quake = z.object({ id: text.max(200), place: text.max(4096), magnitude: z.number().finite(), location: coordinates, occurredAt: millis, source: text.max(200), category: text.max(200), sourceUrl: z.string().max(2048) });
+const quake = z.object({ id: text.max(200), place: text.max(4096), magnitude: z.number().finite(), location: coordinates, occurredAt: millis, source: text.max(200), category: z.string().max(200).default(''), sourceUrl: z.string().max(2048) });
 const outage = z.object({ id: text.max(200), title: text.max(1000), country: text.max(4096), location: coordinates, detectedAt: millis, endedAt: z.number().finite().nonnegative().max(8.64e15).default(0), link: z.string().max(2048) });
 const advisory = z.object({ title: text.max(1000), link: text.max(2048), source: text.max(200), sourceCountry: text.max(100), pubDate: date, level: z.enum(['do-not-travel', 'reconsider', 'caution', 'normal', 'info']).default('info'), country: z.string().max(100).default('') });
 const thermal = z.object({ id: text.max(200), countryCode: z.string().regex(/^[A-Z]{2}$/), status: z.enum(['normal', 'elevated', 'spike', 'persistent']), firstDetectedAt: date, lastDetectedAt: date });
