@@ -2090,7 +2090,22 @@
       "infoTooltip": "<strong>Utawala wa BTC</strong> Dashibodi ya ishara mchanganyiko ya uwekaji wa Bitcoin na hamu ya hatari:<ul><li><strong>Ukwasi</strong>: Wakala wa ukwasi halisi wa Fed</li><li><strong>Mtiririko</strong>: Marejesho ya BTC dhidi ya QQQ ya siku 5</li><li><strong>Utawala</strong>: Mzunguko wa QQQ dhidi ya XLP (risk-on/off)</li><li><strong>Mwenendo wa BTC</strong>: Bei dhidi ya SMA50/200, Mayer Multiple</li><li><strong>Kiwango cha Hash</strong>: Mabadiliko ya hash ya mtandao ya siku 30</li><li><strong>Hofu na Tamaa</strong>: Kielezo cha hisia za soko</li></ul>Paneli hii ni ya utawala na uwekaji, si data pana ya uchumi mkuu."
     },
     "forecast": {
-      "infoTooltip": "<strong>Makadirio ya AI</strong> Makadirio ya uwezekano yanayotengenezwa na AI kwa matukio ya kijiografia na kiuchumi:<ul><li>Ufunikaji wa vikoa mbalimbali: migogoro, masoko, mnyororo wa ugavi, mtandao, siasa</li><li>Kila makadirio huonyesha uwezekano uliokadiriwa, kiwango cha uaminifu na upeo wa muda</li><li>Hulinganishwa na misingi ya masoko ya utabiri inapopatikana</li></ul>Makadirio husasishwa kadiri ishara mpya za kijasusi zinavyowasili. Chuja kwa kikoa ukitumia vichupo vilivyo hapo juu."
+      "infoTooltip": "<strong>Makadirio ya AI</strong> Makadirio ya uwezekano yanayotengenezwa na AI kwa matukio ya kijiografia na kiuchumi:<ul><li>Ufunikaji wa vikoa mbalimbali: migogoro, masoko, mnyororo wa ugavi, mtandao, siasa</li><li>Kila makadirio huonyesha uwezekano uliokadiriwa, kiwango cha uaminifu na upeo wa muda</li><li>Hulinganishwa na misingi ya masoko ya utabiri inapopatikana</li></ul>Makadirio husasishwa kadiri ishara mpya za kijasusi zinavyowasili. Chuja kwa kikoa ukitumia vichupo vilivyo hapo juu.",
+      "record": {
+        "label": "Rekodi ya utendaji",
+        "labelHint": "Jinsi utabiri uliochapishwa ulivyopata alama baada ya kuamuliwa, katika siku {{days}} zilizopita. Elea juu ya nambari kuona maana yake.",
+        "unavailable": "Haipatikani kwa sasa",
+        "insufficient": "Bado hakuna utabiri wa kutosha uliopimwa",
+        "brier": "Alama ya Brier {{score}} (n={{n}})",
+        "brierHint": "Alama ya Brier kwa utabiri {{n}} uliopimwa: wastani wa mraba wa tofauti kati ya uwezekano uliotabiriwa na kilichotokea. 0 ni kamili, 0.25 ni sawa na kurusha sarafu, chini ni bora.",
+        "baseRate": "Kiwango cha msingi {{score}} (n={{n}})",
+        "baseRateHint": "Alama ambayo mtu anayejibu kila mara kiwango cha \"ndiyo\" kilichoonekana angepata kwenye utabiri {{n}} uleule ({{pct}}% uliamuliwa \"ndiyo\"). Kuizidi kunamaanisha utabiri unaongeza taarifa.",
+        "void": "Batili {{pct}}% ({{count}} kati ya {{resolved}})",
+        "voidHint": "Utabiri ulioamuliwa lakini haukuweza kupimwa, kati ya {{resolved}} ulioamuliwa katika kipindi hiki.",
+        "stale": "Umepitwa na wakati",
+        "staleHint": "Ulipimwa mara ya mwisho {{date}}. Kipimo hakijaendeshwa tangu wakati huo, kwa hivyo nambari hizi ni za zamani kuliko inavyopaswa.",
+        "fullRecord": "Rekodi kamili"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Ufuatiliaji wa Kuongezeka kwa Mvutano</strong> Hutambua ishara za kijiografia zinazokutana:<ul><li>Huunganisha mienendo ya kijeshi, matukio ya migogoro na miinuko ya habari</li><li>Hupanga maeneo ya muunganiko kwa ukali (muhimu/juu/kati/chini)</li><li>Hufuatilia mwenendo wa kuongezeka au kupungua kwa mvutano kwa muda</li></ul>Bofya kadi ili kukuza eneo kwenye ramani."

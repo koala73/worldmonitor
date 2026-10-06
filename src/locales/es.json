@@ -2363,7 +2363,22 @@
       "unscored": "Escenarios narrativos, no calificados por precisión."
     },
     "forecast": {
-      "infoTooltip": "<strong>Pronósticos de IA</strong> Estimaciones de probabilidad generadas por IA para eventos geopolíticos y económicos:<ul><li>Cobertura multidominios: conflicto, mercados, cadena de suministro, ciberseguridad, política</li><li>Cada pronóstico muestra probabilidad estimada, nivel de confianza e horizonte temporal</li><li>Calibrado contra líneas de base de mercados de predicción donde esté disponible</li></ul>Los pronósticos se actualizan a medida que llegan nuevas señales de inteligencia. Filtra por dominio usando las pestañas anteriores."
+      "infoTooltip": "<strong>Pronósticos de IA</strong> Estimaciones de probabilidad generadas por IA para eventos geopolíticos y económicos:<ul><li>Cobertura multidominios: conflicto, mercados, cadena de suministro, ciberseguridad, política</li><li>Cada pronóstico muestra probabilidad estimada, nivel de confianza e horizonte temporal</li><li>Calibrado contra líneas de base de mercados de predicción donde esté disponible</li></ul>Los pronósticos se actualizan a medida que llegan nuevas señales de inteligencia. Filtra por dominio usando las pestañas anteriores.",
+      "record": {
+        "label": "Historial de aciertos",
+        "labelHint": "Cómo puntuaron los pronósticos publicados una vez resueltos, en los últimos {{days}} días. Pasa el cursor sobre un número para ver qué significa.",
+        "unavailable": "No disponible ahora mismo",
+        "insufficient": "Aún no hay suficientes pronósticos calificados",
+        "brier": "Puntuación Brier {{score}} (n={{n}})",
+        "brierHint": "Puntuación Brier sobre {{n}} pronósticos calificados: la media del cuadrado de la diferencia entre la probabilidad pronosticada y lo que ocurrió. 0 es perfecto, 0,25 equivale a lanzar una moneda; cuanto más baja, mejor.",
+        "baseRate": "Tasa base {{score}} (n={{n}})",
+        "baseRateHint": "Lo que habría obtenido quien respondiera siempre con la tasa de «sí» observada en los mismos {{n}} pronósticos ({{pct}}% se resolvieron como «sí»). Superarla significa que los pronósticos aportan información.",
+        "void": "Anulados {{pct}}% ({{count}} de {{resolved}})",
+        "voidHint": "Pronósticos resueltos que no pudieron calificarse, de {{resolved}} resueltos en el periodo.",
+        "stale": "Desactualizado",
+        "staleHint": "Última calificación: {{date}}. El calificador no se ha ejecutado desde entonces, así que estas cifras son más antiguas de lo debido.",
+        "fullRecord": "Historial completo"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Monitor de Escalada</strong> Detecta señales geopolíticas convergentes:<ul><li>Correlaciona movimientos militares, eventos de conflicto y picos de noticias</li><li>Puntúa zonas de convergencia por gravedad (crítica/alta/media/baja)</li><li>Rastrea tendencias de escalada o desescalada a lo largo del tiempo</li></ul>Haz clic en una tarjeta para ampliar la región en el mapa."

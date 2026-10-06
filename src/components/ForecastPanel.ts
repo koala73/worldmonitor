@@ -1,11 +1,12 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/services/forecast';
+import { escapeHtml, fetchForecastScorecard } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
 import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { projectForecastRecord, renderForecastRecord, type ForecastRecord } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
@@ -256,6 +257,16 @@ function injectStyles(): void {
     .fc-sim-chip--skeptical::before { background: #e05252; }
     .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Track record strip (#7074) ──────────────────────────────────────── */
+    .fc-record { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: 6px 8px 0; padding: 5px 8px; border: 1px solid var(--border-color, #30363d); border-radius: 4px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.4; color: var(--text-secondary, #7d8590); }
+    .fc-record-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+    .fc-record-label[title] { cursor: help; }
+    .fc-record-item { color: var(--text-primary, #e6edf3); white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+    .fc-record-stale { color: #d29922; border: 1px solid rgba(210,153,34,0.35); border-radius: 3px; padding: 0 5px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    .fc-record-stale[title] { cursor: help; }
+    .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
+    .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
   `;
   document.head.appendChild(style);
 }
@@ -283,6 +294,9 @@ export class ForecastPanel extends Panel {
   /** True once a fetch has completed successfully — so a refresh never cancels an in-flight one. */
   private caseFilesSettled = false;
   private sourceState: ForecastSourceState = { generatedAt: 0, degraded: false, stale: false, error: '' };
+  /** Track-record strip state (#7074). Refreshed on every updateForecasts() tick. */
+  private record: ForecastRecord = { kind: 'loading' };
+  private recordPromise: Promise<void> | null = null;
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
@@ -431,7 +445,36 @@ export class ForecastPanel extends Panel {
     // the filter miss. Tying the badge to the filter caused the panel to
     // flip to "unavailable" on any empty region pill.
     this.setDataBadge(this.forecasts.length > 0 && !this.sourceState.degraded ? 'live' : 'unavailable');
+    this.loadRecord();
     this.render();
+  }
+
+  /**
+   * Fetch the scorecard behind the track-record strip (#7074). One request in
+   * flight at a time; a failure shows the strip as unavailable rather than
+   * keeping numbers the backend can no longer vouch for.
+   */
+  private loadRecord(): void {
+    if (this.recordPromise) return;
+    this.recordPromise = fetchForecastScorecard(this.signal)
+      .then(
+        (resp) => { this.record = projectForecastRecord(resp); },
+        (err: unknown) => { if (!this.isAbortError(err)) this.record = { kind: 'unavailable' }; },
+      )
+      .then(() => {
+        this.recordPromise = null;
+        if (this.signal.aborted) return;
+        // Patch the strip in place: render() rebuilds the table and would close
+        // any Analysis or Signals pane the user opened. No slot yet means the
+        // content has not committed, so nothing can be open and render() is safe.
+        const slot = this.content.querySelector<HTMLElement>('[data-fc-record-slot]');
+        if (!slot) {
+          this.render();
+          return;
+        }
+        // renderForecastRecord() escapes every interpolated value.
+        setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
+      });
   }
 
   updateSimulation(theaterSummariesJson: string): void {
@@ -487,6 +530,7 @@ export class ForecastPanel extends Panel {
           <div class="fc-filters">${filtersHtml}</div>
           <div class="fc-filters">${regionsHtml}</div>
           ${sourceHtml}
+          <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
           <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
         </div>
       `, 'legacy Panel.setContent() migration'));
@@ -508,6 +552,7 @@ export class ForecastPanel extends Panel {
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-filters">${regionsHtml}</div>
         ${sourceHtml}
+        <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>

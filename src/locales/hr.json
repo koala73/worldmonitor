@@ -2098,7 +2098,22 @@
       "infoTooltip": "<strong>BTC režim</strong> Kombinirani signal za pozicioniranje Bitcoina i apatit za rizik:<ul><li><strong>Likvidnost</strong>: Proxy neto Fed likvidnosti</li><li><strong>Tok</strong>: BTC vs QQQ 5-dnevni povrati</li><li><strong>Režim</strong>: Rotacija QQQ vs XLP (risk-on/off)</li><li><strong>BTC trend</strong>: Cijena vs SMA50/200, Mayer Multiple</li><li><strong>Hash brzina</strong>: 30-dnevna promjena mrežnog heša</li><li><strong>Strah i pohlepa</strong>: Indeks tržišnih osjećaja</li></ul>Ovaj panel je za režim i pozicioniranje, ne za šira makroekonomska data."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Prognoze</strong> AI-generirane procjene vjerojatnosti za geopolitičke i ekonomske događaje:<ul><li>Pokrivanje više domena: sukobi, tržišta, lanac opskrbe, cyber, politika</li><li>Svaka prognoza prikazuje procijenjenu vjerojatnost, razinu pouzdanosti i vremenski horizont</li><li>Kalibrirana u odnosu na bazične vrijednosti tržišta predviđanja gdje su dostupne</li></ul>Prognoze se ažuriraju kako stignu novi signali obavještajnih službi. Filtrirajte po domeni koristeći kartice gore."
+      "infoTooltip": "<strong>AI Prognoze</strong> AI-generirane procjene vjerojatnosti za geopolitičke i ekonomske događaje:<ul><li>Pokrivanje više domena: sukobi, tržišta, lanac opskrbe, cyber, politika</li><li>Svaka prognoza prikazuje procijenjenu vjerojatnost, razinu pouzdanosti i vremenski horizont</li><li>Kalibrirana u odnosu na bazične vrijednosti tržišta predviđanja gdje su dostupne</li></ul>Prognoze se ažuriraju kako stignu novi signali obavještajnih službi. Filtrirajte po domeni koristeći kartice gore.",
+      "record": {
+        "label": "Dosadašnji rezultati",
+        "labelHint": "Kako su objavljene prognoze ocijenjene nakon razrješenja u posljednjih {{days}} dana. Zadržite pokazivač iznad broja da vidite što znači.",
+        "unavailable": "Trenutačno nedostupno",
+        "insufficient": "Još nema dovoljno ocijenjenih prognoza",
+        "brier": "Brierov rezultat {{score}} (n={{n}})",
+        "brierHint": "Brierov rezultat za {{n}} ocijenjenih prognoza: prosječni kvadrat razlike između prognozirane vjerojatnosti i onoga što se dogodilo. 0 je savršeno, 0,25 odgovara bacanju novčića, niže je bolje.",
+        "baseRate": "Osnovna stopa {{score}} (n={{n}})",
+        "baseRateHint": "Što bi postigao netko tko uvijek odgovara uočenim udjelom „da” na istih {{n}} prognoza ({{pct}} % razriješeno s „da”). Nadmašiti je znači da prognoze donose informaciju.",
+        "void": "Poništeno {{pct}} % ({{count}} od {{resolved}})",
+        "voidHint": "Prognoze koje su razriješene, ali se nisu mogle ocijeniti, od {{resolved}} razriješenih u razdoblju.",
+        "stale": "Zastarjelo",
+        "staleHint": "Zadnje ocjenjivanje {{date}}. Ocjenjivač otada nije pokrenut, pa su ovi brojevi stariji nego što bi trebali biti.",
+        "fullRecord": "Potpuni rezultati"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Monitor eskalacije</strong> Detektira konvergirajuće geopolitičke signale:<ul><li>Korelira vojne pokrete, sukobne događaje i vrhunce vijesti</li><li>Boduje zone konvergencije prema težini (kritično/visoko/srednje/nisko)</li><li>Prati trendove eskalacije ili de-eskalacije tijekom vremena</li></ul>Kliknite na karticu za uvećanje regije na karti."

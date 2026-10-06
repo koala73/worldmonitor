@@ -2343,7 +2343,22 @@
       "unscored": "Các kịch bản tường thuật, không được đánh giá về độ chính xác."
     },
     "forecast": {
-      "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li><li>Hiệu chỉnh theo so sánh đường cơ sở của thị trường dự đoán nếu có</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên."
+      "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li><li>Hiệu chỉnh theo so sánh đường cơ sở của thị trường dự đoán nếu có</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên.",
+      "record": {
+        "label": "Thành tích",
+        "labelHint": "Các dự báo đã công bố được chấm điểm thế nào sau khi có kết quả, trong {{days}} ngày qua. Di chuột lên một con số để xem ý nghĩa.",
+        "unavailable": "Hiện không khả dụng",
+        "insufficient": "Chưa có đủ dự báo được chấm điểm",
+        "brier": "Điểm Brier {{score}} (n={{n}})",
+        "brierHint": "Điểm Brier trên {{n}} dự báo đã chấm: trung bình bình phương chênh lệch giữa xác suất dự báo và kết quả thực tế. 0 là hoàn hảo, 0,25 tương đương tung đồng xu, càng thấp càng tốt.",
+        "baseRate": "Tỷ lệ cơ sở {{score}} (n={{n}})",
+        "baseRateHint": "Điểm mà người luôn trả lời theo tỷ lệ \"có\" quan sát được sẽ đạt trên cùng {{n}} dự báo này ({{pct}}% có kết quả \"có\"). Vượt được nó nghĩa là các dự báo mang thêm thông tin.",
+        "void": "Vô hiệu {{pct}}% ({{count}} trên {{resolved}})",
+        "voidHint": "Dự báo đã có kết quả nhưng không thể chấm điểm, trong số {{resolved}} dự báo có kết quả trong kỳ.",
+        "stale": "Đã lỗi thời",
+        "staleHint": "Chấm điểm lần cuối {{date}}. Bộ chấm điểm chưa chạy lại từ đó, nên các con số này cũ hơn mức cần thiết.",
+        "fullRecord": "Thành tích đầy đủ"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Trình theo dõi Tăng cường</strong> Phát hiện các tín hiệu địa chính trị hội tụ:<ul><li>Tương quan giữa chuyển động quân sự, sự kiện xung đột và đột biến tin tức</li><li>Điểm hội tụ theo mức độ nghiêm trọng (tới hạn/cao/trung bình/thấp)</li><li>Theo dõi xu hướng tăng cường hoặc giảm cường theo thời gian</li></ul>Nhấp vào một thẻ để phóng to khu vực trên bản đồ."
