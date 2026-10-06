@@ -791,7 +791,8 @@ describe('accuracy verdict block', () => {
     assert.match(text, new RegExp(`${totals.scored} could be graded`));
     assert.match(text, new RegExp(`${totals.void} could not be graded`));
     assert.match(text, new RegExp(`36\\.5% of ${totals.resolved} resolved forecasts`));
-    assert.match(text, new RegExp(`Another ${totals.pendingJudge} have come due and are waiting`));
+    assert.match(text, new RegExp(`Another ${totals.pendingJudge} are in the queue for a judge, counted whether or not their deadline has passed`));
+    assert.doesNotMatch(text, /have come due and are waiting/);
     assert.match(text, /does not yet publish why/, 'the void-reason breakdown is not in the scorecard; say so rather than invent it');
   });
 

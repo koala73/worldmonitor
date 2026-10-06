@@ -587,7 +587,7 @@ function baseRateSentences({ count, yesCount, brier }) {
 
 function ledgerVerdictSentences(totals, windowDays) {
   const windowPhrase = isFiniteNumber(windowDays) ? `Over the current ${formatCount(windowDays)}-day window` : 'Over the current rolling window';
-  return `${windowPhrase}, ${formatCount(totals.resolved)} forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} have come due and are waiting to be judged.`;
+  return `${windowPhrase}, ${formatCount(totals.resolved)} forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} are in the queue for a judge, counted whether or not their deadline has passed.`;
 }
 
 function bandSentence({ band, count, yesCount }, escapeHtml) {
