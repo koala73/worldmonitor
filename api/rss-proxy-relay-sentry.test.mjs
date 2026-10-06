@@ -1,5 +1,5 @@
 /**
- * Proves api/rss-proxy.js reports the RIGHT relay-retry failures to Sentry.
+ * Proves api/rss-proxy.js reports the RIGHT fetch/relay failures to Sentry.
  *
  * Lives in its own file, not api/rss-proxy.test.mjs, because the seam is the
  * envelope fetch: `_sentry-common.js` parses the DSN ONCE at module load and
@@ -13,7 +13,10 @@
  * response either way — so the response is byte-identical whether or not the
  * capture fires. A status assertion here would be a test that cannot fail,
  * which is exactly the limit tests/telegram-feed-contract.test.mjs documents
- * for its sibling case (#7438).
+ * for its sibling case (#7438). The outer `step: 'fetch'` catch does change
+ * the HTTP status, but those response mappings already live in
+ * api/rss-proxy.test.mjs; this file owns the Sentry envelope so a deleted
+ * `level: relayFailureLevel(...)` cannot stay green.
  */
 
 // MUST precede the rss-proxy import: `parseDsn()` in api/_sentry-common.js is
@@ -28,6 +31,8 @@ import assert from 'node:assert/strict';
 const TEST_KEY = 'rss-proxy-relay-sentry-key';
 const ENVELOPE_URL = 'https://127.0.0.1/api/4242/envelope/';
 const FEED_URL = 'https://techcrunch.com/feed';
+// Same host shape as api/rss-proxy.test.mjs; Origin/CORS checks need a real URL.
+const PROXY_ENDPOINT = 'https://api.worldmonitor.app/api/rss-proxy'; // pragma: allowlist secret
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -80,7 +85,7 @@ async function runRelayRetryFailure(relayError) {
   };
 
   const res = await handler(new Request(
-    `https://api.worldmonitor.app/api/rss-proxy?url=${encodeURIComponent(FEED_URL)}`,
+    `${PROXY_ENDPOINT}?url=${encodeURIComponent(FEED_URL)}`,
     { headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': TEST_KEY } },
   ));
   // The capture is fire-and-forget; give its microtask chain a turn to run so
@@ -136,4 +141,72 @@ test('a Network connection lost relay-retry is reported at warning (WORLDMONITOR
   assert.equal(event.tags?.step, 'relay-retry');
   assert.match(envelopes[0], /Network connection lost/);
   assert.equal(res.status, 500);
+});
+
+/**
+ * Drive the outer `step: 'fetch'` catch: no relay configured, so a throwing
+ * direct fetch rethrows into the handler's top-level catch.
+ *
+ * @param {Error} directError thrown by the direct fetch
+ * @returns {Promise<{ res: Response, envelopes: string[] }>}
+ */
+async function runOuterFetchFailure(directError) {
+  const envelopes = [];
+  delete process.env.WS_RELAY_URL;
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.startsWith(ENVELOPE_URL)) {
+      envelopes.push(String(init.body ?? ''));
+      return new Response('', { status: 200 });
+    }
+    throw directError;
+  };
+
+  const res = await handler(new Request(
+    `${PROXY_ENDPOINT}?url=${encodeURIComponent(FEED_URL)}`,
+    { headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': TEST_KEY } },
+  ));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return { res, envelopes };
+}
+
+test('an outer-catch AbortError is not reported to Sentry', async () => {
+  // Same gate as the relay-retry AbortError arm: timeouts stay out of Sentry
+  // entirely (`if (!isTimeout)`), not merely downgraded.
+  const abort = new Error('The operation was aborted');
+  abort.name = 'AbortError';
+
+  const { res, envelopes } = await runOuterFetchFailure(abort);
+
+  assert.deepEqual(envelopes, [], 'AbortError on the outer fetch catch must not reach Sentry');
+  assert.equal(res.status, 504);
+});
+
+test('an outer-catch ECONNREFUSED is reported to Sentry at error', async () => {
+  // Positive control for the outer catch's relayFailureLevel wiring. Without
+  // this, deleting `level: relayFailureLevel(error)` on step:fetch would leave
+  // the AbortError and Network-connection-lost outer tests green while
+  // restoring default error for refuse — or, worse, a silent no-op capture.
+  const { res, envelopes } = await runOuterFetchFailure(new Error('connect ECONNREFUSED'));
+
+  assert.equal(envelopes.length, 1, 'a refused outer-fetch failure must still be captured');
+  const event = parseEnvelope(envelopes[0]);
+  assert.equal(event.level, 'error');
+  assert.equal(event.tags?.step, 'fetch');
+  assert.match(envelopes[0], /ECONNREFUSED/);
+  assert.equal(res.status, 502);
+});
+
+test('an outer-catch Network connection lost is reported at warning (WORLDMONITOR-17M)', async () => {
+  // The PR wires relayFailureLevel onto both capture sites. relay-retry alone
+  // would leave step:fetch paging on the same edge drop shape.
+  const { res, envelopes } = await runOuterFetchFailure(new Error('Network connection lost.'));
+
+  assert.equal(envelopes.length, 1, 'dropped-connection outer catch must still reach Sentry');
+  const event = parseEnvelope(envelopes[0]);
+  assert.equal(event.level, 'warning');
+  assert.equal(event.tags?.step, 'fetch');
+  assert.match(envelopes[0], /Network connection lost/);
+  assert.equal(res.status, 502);
 });
