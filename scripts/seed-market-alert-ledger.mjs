@@ -223,7 +223,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
       isRecentDuplicate: () => false,
       markSignalSeen: () => {},
     });
-    if (predictionsPayload) snapshot = observed();
+    snapshot = observed();
   }
 
   const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, {

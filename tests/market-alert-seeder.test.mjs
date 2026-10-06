@@ -187,12 +187,34 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.deepEqual(tick.summary.discarded, [{ key: COMMODITIES_KEY, reason: 'stale' }]);
   });
 
-  it('skips the prediction detector and carries the snapshot forward when predictions are stale', async () => {
-    const stale = envelope({ geopolitical: [], tech: [], finance: [FED_CUT] }, NOW - 91 * MIN);
+  it('skips the prediction detector and writes an empty prediction baseline when predictions are stale', async () => {
+    const stale = envelope({ geopolitical: [], tech: [], finance: [FED_CUT] }, NOW - 100 * MIN);
     const tick = await buildTick(rawInputs({ [PREDICTIONS_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
-    assert.equal(byType(tick.ledger, 'silent_divergence').length, 1);
-    assert.deepEqual(tick.snapshot, LIVE_SNAPSHOT);
+    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: {}, marketChanges: OBSERVED_MARKETS });
+  });
+
+  it('market rows still open during a prediction outage', async () => {
+    const stalePredictions = envelope({ geopolitical: [], tech: [], finance: [FED_CUT] }, NOW - 100 * MIN);
+    const quietCrude = envelope({ quotes: [{ symbol: 'CL=F', name: 'Crude Oil', display: 'WTI', price: 78, change: 0.4 }] });
+    const outageTick = await buildTick(
+      rawInputs({ [PREDICTIONS_KEY]: stalePredictions, [COMMODITIES_KEY]: quietCrude }),
+      { nowMs: NOW, archive: EMPTY_ARCHIVE },
+    );
+    assert.deepEqual(outageTick.ledger, {});
+    const tick = await buildTick(
+      rawInputs({ [PREDICTIONS_KEY]: stalePredictions, [SNAPSHOT_KEY]: envelope(outageTick.snapshot) }),
+      { nowMs: NOW + 15 * MIN, archive: EMPTY_ARCHIVE },
+    );
+    assert.deepEqual(Object.values(tick.ledger).map((entry) => entry.id).sort(), ['flow_price_divergence:CL=F', 'silent_divergence:CL=F']);
+    assert.equal(tick.summary.emitted.held, 0);
+  });
+
+  it('the first fresh prediction poll after an outage opens no shift row', async () => {
+    const afterOutage = envelope({ ...LIVE_SNAPSHOT, predictionChanges: {} });
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: afterOutage }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
+    assert.equal(tick.snapshot.predictionChanges[FED_CUT_KEY], 30);
   });
 
   it('skips emission without a fresh digest but still resolves a due entry', async () => {
