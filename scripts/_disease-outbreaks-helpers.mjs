@@ -153,6 +153,18 @@ export function whoNormalizeItem(item, nowMs = Date.now()) {
 // second decode; `&lt;`, `&quot;` and numeric references stay as text.
 const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdquo);/gi;
 
+// Strip until nothing changes, then drop any `<` an unclosed tag start
+// ("<script src=x") leaves: the result is plain text.
+function stripTags(html) {
+  let text = html;
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, '');
+  } while (text !== previous);
+  return text.replace(/</g, '');
+}
+
 /**
  * Clean one RSS <description> body: decode entities, strip tags, trim,
  * truncate to 300 chars. Order matters — decode before tag-strip so escaped
@@ -160,10 +172,7 @@ const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdq
  * single pass via the shared decoder (#5436): `&amp;lt;` stays `&lt;`.
  */
 export function cleanRssDescription(rawDesc) {
-  return decodeHtmlEntities(rawDesc || '')
-    // Tags, then any `<` an unclosed tag start ("<script src=x") leaves: the
-    // result is plain text.
-    .replace(/<[^>]+>|</g, '')
+  return stripTags(decodeHtmlEntities(rawDesc || ''))
     .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
     .replace(/\s+/g, ' ').trim().slice(0, 300);
 }
