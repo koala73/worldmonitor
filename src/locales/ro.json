@@ -2362,7 +2362,22 @@
       "unscored": "Scenarii narative, nenotate pentru acuratețe."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus."
+      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus.",
+      "record": {
+        "label": "Istoricul rezultatelor",
+        "labelHint": "Cum au fost punctate prognozele publicate după ce s-au rezolvat, în ultimele {{days}} de zile. Treceți cursorul peste un număr pentru a vedea ce înseamnă.",
+        "unavailable": "Indisponibil momentan",
+        "insufficient": "Încă nu există suficiente prognoze evaluate",
+        "brier": "Scor Brier {{score}} (n={{n}})",
+        "brierHint": "Scor Brier pentru {{n}} prognoze evaluate: media pătratului diferenței dintre probabilitatea prognozată și ce s-a întâmplat. 0 este perfect, 0,25 echivalează cu aruncarea unei monede, mai mic înseamnă mai bine.",
+        "baseRate": "Rata de bază {{score}} (n={{n}})",
+        "baseRateHint": "Ce ar fi obținut cineva care răspunde mereu cu rata de „da” observată, pe aceleași {{n}} prognoze ({{pct}}% rezolvate cu „da”). A o depăși înseamnă că prognozele aduc informație.",
+        "void": "Anulate {{pct}}% ({{count}} din {{resolved}})",
+        "voidHint": "Prognoze rezolvate care nu au putut fi evaluate, din {{resolved}} rezolvate în perioadă.",
+        "stale": "Neactualizat",
+        "staleHint": "Ultima evaluare la {{date}}. Evaluatorul nu a mai rulat de atunci, așa că aceste cifre sunt mai vechi decât ar trebui.",
+        "fullRecord": "Istoric complet"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Detectează semnale geopolitice convergente:<ul><li>Corelează mișcări militare, evenimente de conflict și creșteri de știri</li><li>Evaluează zone de convergență după severitate (critic/înalt/mediu/scăzut)</li><li>Urmărește tendințele de escaladare sau de-escaladare în timp</li></ul>Faceți clic pe o carte pentru a mări regiunea pe hartă."

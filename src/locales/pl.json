@@ -2372,7 +2372,22 @@
       "unscored": "Scenariusze narracyjne, bez oceny trafności."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Szacunki prawdopodobieństwa generowane przez AI dla zdarzeń geopolitycznych i gospodarczych:<ul><li>Pokrycie międzydomenowe: konflikty, rynki, łańcuchy dostaw, cyberbezpieczeństwo, polityka</li><li>Każda prognoza pokazuje szacunkowe prawdopodobieństwo, poziom pewności i horyzont czasowy</li><li>Skalibrowana względem bazel rynków predykcyjnych tam, gdzie są dostępne</li></ul>Prognozy aktualizują się w miarę napływu nowych sygnałów wywiadowczych. Filtruj wg domeny za pomocą zakładek powyżej."
+      "infoTooltip": "<strong>AI Forecasts</strong> Szacunki prawdopodobieństwa generowane przez AI dla zdarzeń geopolitycznych i gospodarczych:<ul><li>Pokrycie międzydomenowe: konflikty, rynki, łańcuchy dostaw, cyberbezpieczeństwo, polityka</li><li>Każda prognoza pokazuje szacunkowe prawdopodobieństwo, poziom pewności i horyzont czasowy</li><li>Skalibrowana względem bazel rynków predykcyjnych tam, gdzie są dostępne</li></ul>Prognozy aktualizują się w miarę napływu nowych sygnałów wywiadowczych. Filtruj wg domeny za pomocą zakładek powyżej.",
+      "record": {
+        "label": "Dotychczasowe wyniki",
+        "labelHint": "Jak opublikowane prognozy wypadły po rozstrzygnięciu w ciągu ostatnich {{days}} dni. Najedź na liczbę, aby zobaczyć, co oznacza.",
+        "unavailable": "Obecnie niedostępne",
+        "insufficient": "Za mało ocenionych prognoz",
+        "brier": "Wynik Briera {{score}} (n={{n}})",
+        "brierHint": "Wynik Briera dla {{n}} ocenionych prognoz: średni kwadrat różnicy między prognozowanym prawdopodobieństwem a tym, co się wydarzyło. 0 to ideał, 0,25 to rzut monetą, niżej znaczy lepiej.",
+        "baseRate": "Stopa bazowa {{score}} (n={{n}})",
+        "baseRateHint": "Co osiągnąłby ktoś, kto zawsze odpowiadałby zaobserwowanym odsetkiem „tak”, na tych samych {{n}} prognozach ({{pct}}% rozstrzygnięto na „tak”). Pokonanie tej wartości oznacza, że prognozy wnoszą informację.",
+        "void": "Unieważnione {{pct}}% ({{count}} z {{resolved}})",
+        "voidHint": "Prognozy rozstrzygnięte, których nie dało się ocenić, spośród {{resolved}} rozstrzygniętych w okresie.",
+        "stale": "Nieaktualne",
+        "staleHint": "Ostatnia ocena {{date}}. Od tego czasu ocenianie nie zostało uruchomione, więc te liczby są starsze, niż powinny.",
+        "fullRecord": "Pełne wyniki"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Wykrywa zbieżne sygnały geopolityczne:<ul><li>Koreluje ruchy wojskowe, zdarzenia konfliktowe i skoki wiadomości</li><li>Ocenia strefy zbieżności według ważności (krytyczne/wysokie/średnie/niskie)</li><li>Śledzi trendy eskalacji lub de-eskalacji w czasie</li></ul>Kliknij kartę, aby przybliżyć region na mapie."

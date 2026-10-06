@@ -2086,7 +2086,22 @@
       "infoTooltip": "<strong>BTC rendszer</strong> Összetett jellemző irányítópult a Bitcoin pozicionálásához és a kockázati étvágyhoz:<ul><li><strong>Likviditás</strong>: Nettó Fed likviditás proxy</li><li><strong>Áramlás</strong>: BTC vs QQQ 5 napos hozam</li><li><strong>Rendszer</strong>: QQQ vs XLP rotáció (kockázat kapcsolva/ki)</li><li><strong>BTC trend</strong>: Ár vs SMA50/200, Mayer többszörös</li><li><strong>Hash ráta</strong>: 30 napos hálózati hash változás</li><li><strong>Félelem és mohóság</strong>: Piaci sentiment index</li></ul>Ez a panel a pozicionáláshoz és a rendszerhez szól, nem a széles makro adatokhoz."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li><li>Kalibrálva az előrejelzési piacok alapértékei alapján, ahol elérhető</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat."
+      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li><li>Kalibrálva az előrejelzési piacok alapértékei alapján, ahol elérhető</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat.",
+      "record": {
+        "label": "Eddigi eredmények",
+        "labelHint": "Hogyan szerepeltek a közzétett előrejelzések az eldőlésük után az elmúlt {{days}} napban. Vigye az egeret egy szám fölé, hogy lássa, mit jelent.",
+        "unavailable": "Jelenleg nem elérhető",
+        "insufficient": "Még nincs elég értékelt előrejelzés",
+        "brier": "Brier-pontszám {{score}} (n={{n}})",
+        "brierHint": "Brier-pontszám {{n}} értékelt előrejelzésre: az előrejelzett valószínűség és a tényleges kimenetel különbségének átlagos négyzete. A 0 tökéletes, a 0,25 egy érmefeldobásnak felel meg, az alacsonyabb a jobb.",
+        "baseRate": "Alapráta {{score}} (n={{n}})",
+        "baseRateHint": "Amit az érne el, aki mindig a megfigyelt „igen” arányt mondaná ugyanerre a(z) {{n}} előrejelzésre ({{pct}}% dőlt el „igen”-nel). Ha ennél jobbak vagyunk, az előrejelzések valódi információt adnak.",
+        "void": "Érvénytelen {{pct}}% ({{count}} / {{resolved}})",
+        "voidHint": "Eldőlt, de nem értékelhető előrejelzések, az időszakban eldőlt {{resolved}} közül.",
+        "stale": "Elavult",
+        "staleHint": "Utolsó értékelés: {{date}}. Az értékelő azóta nem futott, így ezek a számok régebbiek a kelleténél.",
+        "fullRecord": "Teljes eredménylista"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Eszkalációs Monitor</strong> Konvergens geopolitikai jeleket detektál:<ul><li>Korrelál katonai mozgásokat, konfliktusesemények és hírvágásokat</li><li>Konvergenciaövezeteket súlyosság szerint értékeli (kritikus/magas/közepes/alacsony)</li><li>Nyomon követi az eszkalációs vagy de-eszkalációs trendeket az idő során</li></ul>Kattintson egy kártyára, hogy nagyítson a térképhez."

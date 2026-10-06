@@ -2089,7 +2089,22 @@
       "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above."
+      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
+      "record": {
+        "label": "کارنامه",
+        "labelHint": "پیش‌بینی‌های منتشرشده پس از مشخص‌شدن نتیجه، در {{days}} روز گذشته چه امتیازی گرفتند. برای دیدن معنی هر عدد، نشانگر را روی آن نگه دارید.",
+        "unavailable": "در حال حاضر در دسترس نیست",
+        "insufficient": "هنوز پیش‌بینی ارزیابی‌شده کافی وجود ندارد",
+        "brier": "امتیاز برایر {{score}} (n={{n}})",
+        "brierHint": "امتیاز برایر برای {{n}} پیش‌بینی ارزیابی‌شده: میانگین مربع اختلاف میان احتمال پیش‌بینی‌شده و آنچه رخ داد. ۰ کامل است، ۰٫۲۵ معادل شیر یا خط است و کمتر بهتر است.",
+        "baseRate": "نرخ پایه {{score}} (n={{n}})",
+        "baseRateHint": "امتیازی که کسی با همیشه پاسخ‌دادن به نرخ «بله» مشاهده‌شده روی همین {{n}} پیش‌بینی می‌گرفت ({{pct}}٪ با «بله» مشخص شدند). پیشی‌گرفتن از آن یعنی پیش‌بینی‌ها اطلاعات افزوده دارند.",
+        "void": "باطل {{pct}}٪ ({{count}} از {{resolved}})",
+        "voidHint": "پیش‌بینی‌هایی که نتیجه‌شان مشخص شد اما قابل ارزیابی نبودند، از {{resolved}} مورد مشخص‌شده در این بازه.",
+        "stale": "قدیمی",
+        "staleHint": "آخرین ارزیابی در {{date}}. ارزیاب از آن زمان اجرا نشده است، بنابراین این اعداد قدیمی‌تر از حد لازم هستند.",
+        "fullRecord": "کارنامه کامل"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Detects converging geopolitical signals:<ul><li>Correlates military movements, conflict events, and news spikes</li><li>Scores convergence zones by severity (critical/high/medium/low)</li><li>Tracks escalation or de-escalation trends over time</li></ul>Click a card to zoom to the region on the map."

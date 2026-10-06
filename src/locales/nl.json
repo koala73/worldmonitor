@@ -1970,7 +1970,22 @@
       "unscored": "Narratieve scenario's, niet beoordeeld op nauwkeurigheid."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li><li>Gekalibreerd tegen voorspellingsmarkt basislijnen waar beschikbaar</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven."
+      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li><li>Gekalibreerd tegen voorspellingsmarkt basislijnen waar beschikbaar</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven.",
+      "record": {
+        "label": "Staat van dienst",
+        "labelHint": "Hoe de gepubliceerde voorspellingen scoorden nadat ze waren beslist, over de laatste {{days}} dagen. Beweeg over een getal om te zien wat het betekent.",
+        "unavailable": "Momenteel niet beschikbaar",
+        "insufficient": "Nog niet genoeg beoordeelde voorspellingen",
+        "brier": "Brier-score {{score}} (n={{n}})",
+        "brierHint": "Brier-score over {{n}} beoordeelde voorspellingen: het gemiddelde kwadraat van het verschil tussen de voorspelde kans en wat er gebeurde. 0 is perfect, 0,25 is een muntworp, lager is beter.",
+        "baseRate": "Basispercentage {{score}} (n={{n}})",
+        "baseRateHint": "Wat iemand die altijd het waargenomen ja-percentage antwoordt zou hebben gescoord op dezelfde {{n}} voorspellingen ({{pct}}% eindigde op ja). Beter scoren betekent dat de voorspellingen informatie toevoegen.",
+        "void": "Ongeldig {{pct}}% ({{count}} van {{resolved}})",
+        "voidHint": "Besliste voorspellingen die niet beoordeeld konden worden, van de {{resolved}} besliste in de periode.",
+        "stale": "Verouderd",
+        "staleHint": "Laatst beoordeeld op {{date}}. De beoordelaar heeft sindsdien niet gedraaid, dus deze cijfers zijn ouder dan ze zouden moeten zijn.",
+        "fullRecord": "Volledige staat van dienst"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalatie Monitor</strong> Detecteert convergerende geopolitieke signalen:<ul><li>Correleert militaire bewegingen, conflictgebeurtenissen en nieuwspieken</li><li>Scores convergentiezones op ernst (kritiek/hoog/gemiddeld/laag)</li><li>Volgt escalatie- of de-escalatietrends in de tijd</li></ul>Klik op een kaart om naar de regio op de kaart in te zoomen."

@@ -2362,7 +2362,22 @@
       "unscored": "Scénarios narratifs, non évalués pour leur exactitude."
     },
     "forecast": {
-      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus."
+      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus.",
+      "record": {
+        "label": "Bilan",
+        "labelHint": "Comment les prévisions publiées ont été notées une fois résolues, sur les {{days}} derniers jours. Survolez un chiffre pour en connaître le sens.",
+        "unavailable": "Indisponible pour le moment",
+        "insufficient": "Pas encore assez de prévisions notées",
+        "brier": "Score de Brier {{score}} (n={{n}})",
+        "brierHint": "Score de Brier sur {{n}} prévisions notées : la moyenne du carré de l'écart entre la probabilité prévue et ce qui s'est produit. 0 est parfait, 0,25 équivaut à un pile ou face ; plus c'est bas, mieux c'est.",
+        "baseRate": "Taux de base {{score}} (n={{n}})",
+        "baseRateHint": "Ce qu'aurait obtenu quelqu'un répondant toujours le taux de « oui » observé sur les mêmes {{n}} prévisions ({{pct}} % résolues par « oui »). Faire mieux signifie que les prévisions apportent de l'information.",
+        "void": "Annulées {{pct}} % ({{count}} sur {{resolved}})",
+        "voidHint": "Prévisions résolues mais impossibles à noter, sur {{resolved}} résolues dans la période.",
+        "stale": "Obsolète",
+        "staleHint": "Dernière notation le {{date}}. Le noteur n'a pas tourné depuis, ces chiffres sont donc plus anciens qu'ils ne devraient l'être.",
+        "fullRecord": "Bilan complet"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Moniteur d'escalade</strong> Détecte les signaux géopolitiques convergents :<ul><li>Corrélie les mouvements militaires, les événements conflictuels et les pics d'actualités</li><li>Note les zones de convergence par gravité (critique/haute/moyenne/basse)</li><li>Suit les tendances d'escalade ou de désescalade au fil du temps</li></ul>Cliquez sur une carte pour zoomer sur la région sur la carte."

@@ -2362,7 +2362,22 @@
       "unscored": "Scenari narrativi, non valutati per accuratezza."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li><li>Calibrata su baseline di prediction market dove disponibili</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto."
+      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li><li>Calibrata su baseline di prediction market dove disponibili</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto.",
+      "record": {
+        "label": "Storico dei risultati",
+        "labelHint": "Come sono state valutate le previsioni pubblicate una volta risolte, negli ultimi {{days}} giorni. Passa il cursore su un numero per vedere cosa significa.",
+        "unavailable": "Al momento non disponibile",
+        "insufficient": "Non ci sono ancora abbastanza previsioni valutate",
+        "brier": "Punteggio Brier {{score}} (n={{n}})",
+        "brierHint": "Punteggio Brier su {{n}} previsioni valutate: la media del quadrato dello scarto tra la probabilità prevista e ciò che è accaduto. 0 è perfetto, 0,25 equivale al lancio di una moneta; più è basso, meglio è.",
+        "baseRate": "Tasso di base {{score}} (n={{n}})",
+        "baseRateHint": "Cosa avrebbe ottenuto chi avesse sempre risposto con il tasso di «sì» osservato sulle stesse {{n}} previsioni ({{pct}}% risolte con «sì»). Batterlo significa che le previsioni aggiungono informazione.",
+        "void": "Annullate {{pct}}% ({{count}} su {{resolved}})",
+        "voidHint": "Previsioni risolte ma non valutabili, su {{resolved}} risolte nel periodo.",
+        "stale": "Non aggiornato",
+        "staleHint": "Ultima valutazione: {{date}}. Il valutatore non è più stato eseguito da allora, quindi questi numeri sono più vecchi del dovuto.",
+        "fullRecord": "Storico completo"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Rileva segnali geopolitici convergenti:<ul><li>Correla movimenti militari, eventi di conflitto e spike di notizie</li><li>Assegna punteggio alle zone di convergenza per gravità (critico/alto/medio/basso)</li><li>Traccia trend di escalation o de-escalation nel tempo</li></ul>Clicca su una card per ingrandire la regione sulla mappa."
