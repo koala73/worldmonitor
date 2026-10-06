@@ -76,6 +76,7 @@
       "suppliers": "武器供应国（{{start}}–{{end}}）",
       "source": "来源：世界银行与 SIPRI 武器转让数据库。TIV 衡量转让量，而非金额。",
       "sourceWorldBank": "来源：世界银行。",
+      "snapshotAssembled": "{{source}} 数据快照汇总时间：{{time}}",
       "unavailable": "暂无数据",
       "coverage": "已覆盖国家",
       "supplierRetained": "供应国数据沿用上次成功刷新的结果。"

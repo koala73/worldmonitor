@@ -25,7 +25,7 @@ const STYLES = `
   .evt:last-child { border-bottom: none; }
   .evt-main { min-width: 0; }
   .evt-sides { font-size: 13px; font-weight: 600; color: var(--fg); }
-  .evt-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .evt-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
   .evt-deaths { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; white-space: nowrap; }
 `;
 
@@ -50,8 +50,13 @@ const RENDER = `
     q("card").style.display = "block";
 
     var uc = d["ucdp-events"] && typeof d["ucdp-events"] === "object" ? d["ucdp-events"] : null;
-    var eventState = listState(uc && uc.events);
+    var eventValue = uc && uc.events;
+    var eventState = listState(eventValue);
     var evs = eventState.items;
+    var isSummary = eventValue && !Array.isArray(eventValue) && Array.isArray(eventValue.sample);
+    var total = Array.isArray(eventValue) ? eventValue.length
+      : isSummary && Number.isSafeInteger(eventValue.count) && eventValue.count >= evs.length ? eventValue.count : null;
+    var shown = 0;
     var vtMap = {
       UCDP_VIOLENCE_TYPE_STATE_BASED: "State-based",
       UCDP_VIOLENCE_TYPE_NON_STATE: "Non-state",
@@ -77,6 +82,9 @@ const RENDER = `
       var dt = dv != null ? new Date(typeof dv === "number" ? dv : String(dv)) : null;
       if (dt && !isNaN(dt.getTime())) metaParts.push(dt.toISOString().slice(0, 10));
       main.appendChild(el("div", "evt-meta", metaParts.join(" · ")));
+      if (typeof ev.sourceOriginal === "string" && collapseWs(ev.sourceOriginal)) {
+        main.appendChild(el("div", "evt-meta", "Source: " + collapseWs(ev.sourceOriginal)));
+      }
       row.appendChild(main);
       var deaths = num(ev.deathsBest);
       if (deaths != null) {
@@ -86,14 +94,43 @@ const RENDER = `
         row.appendChild(badge);
       }
       host.appendChild(row);
+      shown++;
     }
     if (!host.childNodes.length) {
       host.appendChild(el("div", "empty", eventState.available
-        ? "No conflict events available."
+        ? (isSummary && total !== 0 ? "Summary contains no supplied event samples." : "No conflict events available.")
         : "Conflict event data is temporarily unavailable."));
     }
 
     var footParts = [];
+    if (eventState.available) {
+      footParts.push(isSummary
+        ? "Summary sample: " + shown + (total == null ? " UCDP events; total unknown." : " of " + total + " UCDP events.")
+        : "Showing " + shown + " of " + total + " loaded UCDP events.");
+    }
+    if (uc) {
+      var source = envelope && envelope.conflict_source && envelope.conflict_source.ucdp || {};
+      var fetchedPartial = [source.candidateVersion, uc.candidateVersion].some(function(version) {
+        return typeof version === "string" && version.endsWith("+partial");
+      });
+      var incomplete = source.candidateComplete === false || uc.candidateComplete === false || fetchedPartial;
+      var confirmed = source.candidateComplete === true || uc.candidateComplete === true;
+      footParts.push(incomplete ? "Candidate completeness not confirmed."
+        : confirmed ? "Candidate completeness confirmed." : "Candidate completeness unknown.");
+      if (fetchedPartial) footParts.push("Candidate release fetched partially.");
+      var sourceFailures = source.annualFailedPages;
+      var payloadFailures = uc.annualFailedPages;
+      var sourceFailuresKnown = Number.isSafeInteger(sourceFailures) && sourceFailures >= 0;
+      var payloadFailuresKnown = Number.isSafeInteger(payloadFailures) && payloadFailures >= 0;
+      if (sourceFailuresKnown && payloadFailuresKnown && sourceFailures !== payloadFailures) {
+        footParts.push("Annual base failed-page counts disagree: source metadata " + sourceFailures
+          + "; events payload " + payloadFailures + ".");
+      } else {
+        var failedPages = sourceFailuresKnown ? sourceFailures : payloadFailuresKnown ? payloadFailures : null;
+        footParts.push(failedPages != null
+          ? "Annual base pages failed: " + failedPages + "." : "Annual base failed-page count unknown.");
+      }
+    }
     if (d.partial === true && d.truncation && typeof d.truncation === "object") {
       var returnedCount = num(d.truncation.returned_event_count);
       var originalCount = num(d.truncation.original_event_count);
