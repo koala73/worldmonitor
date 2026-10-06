@@ -2648,7 +2648,7 @@ describe('judged lane health (#8877)', () => {
     legacyOldestHash: 'f'.repeat(64), legacyOldestScoreMs: now - 14 * DAY_MS,
   };
 
-  async function assess(ledger, previous, coverage = marker) {
+  async function assess(ledger, previous, coverage = marker, runState = undefined) {
     const { buildJudgedLaneHealthPatch } = await import('../scripts/seed-forecast-resolutions.mjs');
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -2661,7 +2661,7 @@ describe('judged lane health (#8877)', () => {
       const value = String(url).includes(encodeURIComponent('forecast:evidence:coverage:v1')) ? coverage : previous;
       return { ok: true, json: async () => ({ result: value ? JSON.stringify(value) : null }) };
     };
-    const health = await buildJudgedLaneHealthPatch(ledger, now);
+    const health = await buildJudgedLaneHealthPatch(ledger, now, runState);
     assert.equal(writes.length, 0, 'runSeed owns the metadata publication');
     assert.equal(health.evaluatedAt, now);
     return health;
@@ -2671,6 +2671,19 @@ describe('judged lane health (#8877)', () => {
     const health = await assess({ pending }, null, null);
     assert.equal(health.status, 'error');
     assert.ok(health.reasons.includes('coverage_unverified_with_overdue_entries'));
+  });
+
+  it('alerts on the first run when the archive read failed despite a valid marker', async () => {
+    const health = await assess({ pending }, null, marker, { archiveReadable: false });
+    assert.equal(health.coverageVerified, true);
+    assert.equal(health.status, 'error');
+    assert.ok(health.reasons.includes('archive_unreadable_with_overdue_entries'));
+  });
+
+  it('does not alarm on an unreadable archive when nothing is overdue', async () => {
+    const future = { ...pending, deadline: now + DAY_MS };
+    const health = await assess({ future }, null, marker, { archiveReadable: false });
+    assert.equal(health.status, 'ok');
   });
 
   it('alerts on the third eligible run without a scored-within-SLA outcome', async () => {

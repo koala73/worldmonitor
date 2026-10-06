@@ -2221,7 +2221,7 @@ async function markCalibrationMapActivated() {
   }
 }
 
-async function buildLedgerForRun(calibrationRun) {
+async function buildLedgerForRun(runState) {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY),
@@ -2241,6 +2241,7 @@ async function buildLedgerForRun(calibrationRun) {
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
+  runState.archiveReadable = Boolean(judgedArchive?.available) && !judgedArchive?.incomplete;
   const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, judgedOptions);
   const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
   const archivedReceipts = await appendR2Receipts(receiptsForArchive);
@@ -2251,7 +2252,7 @@ async function buildLedgerForRun(calibrationRun) {
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
   const calibration = await resolveCalibrationMap(result.ledger, nowMs);
-  calibrationRun.map = calibration.map;
+  runState.map = calibration.map;
   console.log(`  Calibration map: ${calibration.action}${calibration.reason ? ` (${calibration.reason})` : ''}${calibration.map ? ` ${calibration.map.version}` : ''}`);
   return result.ledger;
 }
@@ -2280,7 +2281,7 @@ export function reportJudgedLaneObservability(ledger, nowMs, options = {}, logge
   return { attemptClasses, alerts };
 }
 
-export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now()) {
+export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now(), runState = {}) {
   const [previous, rawCoverage] = await Promise.all([
     readRedisJson(RESOLUTIONS_META_KEY),
     readRedisJson(FORECAST_EVIDENCE_COVERAGE_KEY),
@@ -2300,6 +2301,8 @@ export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now()) {
     resolveForecastEvidenceCoverageMaxLagMs(), true);
   const reasons = [];
   if (!coverageVerified && lane.pendingJudgePastDeadline > 0) reasons.push('coverage_unverified_with_overdue_entries');
+  // A valid marker does not prove this run's archive read succeeded.
+  if (runState.archiveReadable === false && lane.pendingJudgePastDeadline > 0) reasons.push('archive_unreadable_with_overdue_entries');
   if (stalledRuns >= 3) reasons.push('no_scored_within_sla_for_3_runs');
   const health = {
     evaluatedAt: nowMs, status: reasons.length ? 'error' : 'ok', reasons,
@@ -2381,8 +2384,8 @@ export async function appendR2Receipts(receipts, options = {}) {
 if (DIRECT_RUN && process.argv.includes('--dry-run')) {
   await dryRun();
 } else if (DIRECT_RUN) {
-  const calibrationRun = { map: null };
-  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(calibrationRun), {
+  const runState = { map: null };
+  await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(runState), {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
     declareRecords,
@@ -2395,14 +2398,14 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => buildScorecard(ledger, Date.now(), calibrationRun.map),
+      transform: (ledger) => buildScorecard(ledger, Date.now(), runState.map),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,
     }, {
       key: CALIBRATION_MAP_KEY,
       ttl: CALIBRATION_MAP_TTL_SECONDS,
-      transform: () => calibrationRun.map,
+      transform: () => runState.map,
       declareRecords: declareCalibrationMapRecords,
       metaKey: CALIBRATION_MAP_META_KEY,
       // No map this run (read failure, or an empty fit) preserves the last one.
@@ -2410,8 +2413,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
       allowMissingOnSkip: true,
     }],
     afterPublish: async (ledger) => {
-      if (calibrationRun.map) await markCalibrationMapActivated();
-      const health = await buildJudgedLaneHealthPatch(ledger);
+      if (runState.map) await markCalibrationMapActivated();
+      const health = await buildJudgedLaneHealthPatch(ledger, Date.now(), runState);
       return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
     },
   });
