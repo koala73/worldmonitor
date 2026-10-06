@@ -1180,12 +1180,12 @@ describe('extraction gate shadow (#7067)', () => {
 });
 
 describe('projection horizon contracts (#7075)', () => {
-  const pointInTime = () => pred({
+  const pointInTime = (timeHorizon = '14d') => pred({
     id: 'fc-hormuz',
     domain: 'supply_chain',
     region: 'Strait of Hormuz',
     title: 'Hormuz disruption risk rises',
-    timeHorizon: '7d',
+    timeHorizon,
     signals: [{ type: 'chokepoint', value: 'Strait of Hormuz disruption detected', weight: 0.5 }],
   });
   const reasons = (specs) => new Set(Object.values(specs).map((spec) => `${spec.kind}:${spec.reason}`));
@@ -1215,8 +1215,15 @@ describe('projection horizon contracts (#7075)', () => {
         sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
       });
     }
-    assert.equal(specs.d7.deadline, parent.deadline);
     assert.notEqual(specs.h24.deadline, specs.d30.deadline);
+  });
+
+  it('the horizon equal to the forecast\'s own horizon is unscored as parent_horizon', () => {
+    const specs = buildHorizonResolutionSpecs(pointInTime('7d'), {}, GENERATED_AT);
+    assert.deepEqual(specs.d7, { horizon: 'd7', timeHorizon: '7d', kind: 'unscored', reason: 'parent_horizon' });
+    assert.equal(specs.h24.kind, 'hard');
+    assert.equal(specs.d30.kind, 'hard');
+    assert.equal(buildHorizonResolutionSpecs(pointInTime('24h'), {}, GENERATED_AT).h24.reason, 'parent_horizon');
   });
 
   it('a cumulative (within-horizon) hard forecast is unscored on every horizon with a stated reason', () => {

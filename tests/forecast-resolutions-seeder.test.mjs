@@ -3183,25 +3183,29 @@ describe('projection horizon windows (#7075)', () => {
       sampleToleranceMs: HORIZON_SAMPLE_TOLERANCE_MS,
     };
   }
-  const contracts = (generatedAt) => Object.fromEntries(
-    Object.entries(PROJECTION_HORIZONS).map(([horizon, timeHorizon]) => [horizon, contract(generatedAt, horizon, timeHorizon)]),
+  // Mirrors the builder: the horizon equal to the parent's own horizon carries
+  // no contract, so a 14d parent is the fixture that exercises all three.
+  const contracts = (generatedAt, parentTimeHorizon) => Object.fromEntries(
+    Object.entries(PROJECTION_HORIZONS)
+      .filter(([, timeHorizon]) => timeHorizon !== parentTimeHorizon)
+      .map(([horizon, timeHorizon]) => [horizon, contract(generatedAt, horizon, timeHorizon)]),
   );
 
   function projected(overrides = {}) {
     const generatedAt = overrides.generatedAt ?? T0;
-    const timeHorizon = overrides.timeHorizon ?? '7d';
+    const timeHorizon = overrides.timeHorizon ?? '14d';
     return forecast({
       generatedAt,
       timeHorizon,
       deadline: generatedAt + HORIZON_MS[timeHorizon],
       projections: PROJECTIONS,
-      horizonResolutions: contracts(generatedAt),
+      horizonResolutions: contracts(generatedAt, timeHorizon),
       ...overrides,
     });
   }
 
   const horizonKeys = (ledger) => Object.keys(ledger).filter((key) => key.split('@').length === 3).sort();
-  const PARENT = `fc-hormuz@${T0 + 7 * DAY_MS}`;
+  const PARENT = `fc-hormuz@${T0 + 14 * DAY_MS}`;
 
   it('registers one window per horizon beside the parent, keyed parent@horizon, scored on the projection', () => {
     const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
@@ -3226,9 +3230,9 @@ describe('projection horizon windows (#7075)', () => {
 
   it('the same forecast at two deadlines and three horizons creates six distinct keys', () => {
     const first = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
-    const later = T0 + 8 * DAY_MS;
+    const later = T0 + 15 * DAY_MS;
     const second = processResolutionCycle(first.ledger, [snapshot(later, [projected({ generatedAt: later })])], HORMUZ(40), later);
-    const laterParent = `fc-hormuz@${later + 7 * DAY_MS}`;
+    const laterParent = `fc-hormuz@${later + 14 * DAY_MS}`;
     assert.deepEqual(horizonKeys(second.ledger), [
       `${PARENT}@d30`, `${PARENT}@d7`, `${PARENT}@h24`,
       `${laterParent}@d30`, `${laterParent}@d7`, `${laterParent}@h24`,
@@ -3243,13 +3247,29 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(horizonKeys(again.ledger), horizonKeys(once.ledger));
   });
 
+  it('a re-emission inside the parent window advances lastSeenAt only, never a horizon window probability or spec', () => {
+    const first = projected({ projections: { h24: 0.1, d7: 0.2, d30: 0.3 } });
+    const later = T0 + 23 * H;
+    const second = projected({ generatedAt: later, probability: 0.7, projections: { h24: 0.9, d7: 0.8, d30: 0.7 } });
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(later, [second])], HORMUZ(40), later);
+    assert.equal(ledger[PARENT].probability, 0.7, 'the parent window keeps its refresh semantics');
+    assert.equal(Object.keys(ledger).length, 4);
+    const row = ledger[`${PARENT}@h24`];
+    assert.equal(row.probability, 0.1, 'a later h24 claims a later deadline and cannot grade this window');
+    assert.equal(row.firstSeenProbability, 0.1);
+    assert.deepEqual(row.spec, contract(T0, 'h24', '24h'));
+    assert.equal(row.deadline, T0 + DAY_MS);
+    assert.equal(row.lastSeenAt, later);
+    assert.equal(ledger[`${PARENT}@d30`].probability, 0.3);
+  });
+
   it('horizon windows outlive the parent, finalize at their own deadlines, and never adopt the parent outcome', () => {
     const parent24h = (generatedAt) => projected({ generatedAt, timeHorizon: '24h' });
     const parentKey = `fc-hormuz@${T0 + DAY_MS}`;
     let { ledger } = processResolutionCycle({}, [snapshot(T0, [parent24h(T0)])], HORMUZ(40), T0);
     ({ ledger } = processResolutionCycle(ledger, [], HORMUZ(61), T0 + DAY_MS));
     assert.equal(ledger[parentKey].outcome, 'YES');
-    assert.equal(ledger[`${parentKey}@h24`].outcome, 'YES');
+    assert.equal(ledger[`${parentKey}@h24`], undefined, 'the parent horizon carries no projection window');
     assert.equal(ledger[`${parentKey}@d7`].status, 'pending');
     assert.equal(ledger[`${parentKey}@d30`].status, 'pending');
 
@@ -3257,7 +3277,7 @@ describe('projection horizon windows (#7075)', () => {
     ({ ledger } = processResolutionCycle(ledger, [snapshot(reemitAt, [parent24h(reemitAt)])], HORMUZ(40), reemitAt));
     const nextParent = `fc-hormuz@${reemitAt + DAY_MS}`;
     assert.ok(ledger[nextParent], 'a closed parent gets a new window; the pending horizon rows are not its open window');
-    assert.equal(Object.keys(ledger).length, 8);
+    assert.equal(Object.keys(ledger).length, 6);
     for (const horizon of ['d7', 'd30']) {
       const row = ledger[`${parentKey}@${horizon}`];
       assert.equal(row.status, 'pending');
@@ -3289,8 +3309,8 @@ describe('projection horizon windows (#7075)', () => {
 
   it('no sample inside the tolerance is UNOBSERVED once the tolerance elapses, never NO, VOID, or the parent outcome', () => {
     const parentKey = `fc-hormuz@${T0 + DAY_MS}`;
-    const key = `${parentKey}@h24`;
-    const deadline = T0 + DAY_MS;
+    const key = `${parentKey}@d7`;
+    const deadline = T0 + 7 * DAY_MS;
     let { ledger } = processResolutionCycle({}, [snapshot(T0, [projected({ timeHorizon: '24h' })])], NO_FEED, T0);
     assert.equal(ledger[key].samples.recent[0].error, 'missing_feed:supply_chain:chokepoints:v4');
     ({ ledger } = processResolutionCycle(ledger, [], NO_FEED, deadline + 12 * H));

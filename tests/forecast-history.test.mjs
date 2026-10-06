@@ -508,19 +508,20 @@ describe('projection horizon contracts persist into history (#7075)', () => {
     ]);
     attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
     const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
-    assert.deepEqual(Object.keys(entry.horizonResolutions), ['h24', 'd7', 'd30']);
-    assert.deepEqual(entry.horizonResolutions.d7, pred.horizonResolutions.d7);
-    assert.equal(entry.horizonResolutions.d7.kind, 'hard');
+    assert.deepEqual(Object.keys(entry.horizonResolutions), ['h24', 'd30'], 'only hard contracts persist; the parent horizon has none');
+    assert.deepEqual(entry.horizonResolutions.d30, pred.horizonResolutions.d30);
+    assert.equal(entry.horizonResolutions.d30.kind, 'hard');
     assert.equal(entry.horizonResolutions.h24.deadline, HARD_CONFLICT_GENERATED_AT + 24 * 60 * 60 * 1000);
+    assert.equal(pred.horizonResolutions.d7.reason, 'parent_horizon');
   });
 
-  it('an unscored horizon keeps its reason', () => {
+  it('unscored horizons stay in memory with their reason and persist nothing', () => {
     const pred = makePrediction('market', 'Middle East', 'Oil price impact from Hormuz disruption', 0.5, 0.4, '7d', [
       { type: 'commodity', value: 'Oil sensitivity: 0.9', weight: 0.3 },
     ]);
     attachResolutionSpecs([pred], { commodityQuotes: { quotes: [{ symbol: 'CL=F', price: 68.92 }] } }, HARD_CONFLICT_GENERATED_AT);
-    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
-    assert.deepEqual(entry.horizonResolutions.h24, { horizon: 'h24', timeHorizon: '24h', kind: 'unscored', reason: 'cumulative_unsupported' });
+    assert.equal(pred.horizonResolutions.h24.reason, 'cumulative_unsupported');
+    assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
   });
 
   it('a forecast without contracts persists null', () => {
