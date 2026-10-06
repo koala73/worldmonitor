@@ -872,6 +872,7 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     const caption = stripTags(tableOf(renderState(LIVE_SECTION).html).match(/<caption>[\s\S]*?<\/caption>/)[0]);
     assert.match(caption, /published/i);
     assert.match(caption, /bet_engine/);
+    assert.doesNotMatch(caption, /unpromoted/, 'the table excludes bet_engine even when promotion is on');
     assert.match(caption, /30/);
   });
 

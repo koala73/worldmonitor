@@ -756,7 +756,7 @@ function domainSection(scorecard, escapeHtml) {
     return [formatScore(row.brier), formatScore(p * (1 - p))];
   };
   return `      <div class="table-scroll"><table data-by-domain>
-        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and unpromoted bet_engine entries are left out, the same population as the forecast-card badges. A domain shows its Brier once it has ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} graded forecasts and reads Not yet measured below that. The base rate is what always answering the domain's observed yes rate would have scored, p(1-p); a Brier below it means the forecasts added information.</caption>
+        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its Brier once it has ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} graded forecasts and reads Not yet measured below that. The base rate is what always answering the domain's observed yes rate would have scored, p(1-p); a Brier below it means the forecasts added information.</caption>
         <thead><tr><th scope="col">Domain</th><th scope="col">Graded forecasts</th><th scope="col">Brier</th><th scope="col">Base rate</th></tr></thead>
         <tbody>
 ${rows.map((row) => {
