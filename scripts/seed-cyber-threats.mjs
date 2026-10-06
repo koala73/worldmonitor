@@ -383,7 +383,7 @@ function otxNextUrl(next) {
 function otxPageCoverage(payload, page) {
   if (Array.isArray(payload)) {
     if (page > 1 || payload.length > MAX_LIMIT) throw otxIncomplete();
-    return { next: null, count: payload.length };
+    return { next: null, count: null };
   }
   const rows = payload?.results;
   if (Array.isArray(rows) && rows.length > MAX_LIMIT) throw otxIncomplete();
@@ -404,11 +404,11 @@ async function providerRows(response, source, containerKeys, bareArray = false, 
     if (Array.isArray(pageRows)) {
       for (const row of pageRows) otxPage.indicators.add(row?.indicator ?? row?.ip);
     }
-    if (!next && count !== null && Array.isArray(pageRows) && otxPage.indicators.size !== count) {
+    otxPage.count = count ?? otxPage.count;
+    if (!next && otxPage.count !== null && Array.isArray(pageRows) && otxPage.indicators.size !== otxPage.count) {
       throw otxIncomplete();
     }
     otxPage.next = next;
-    otxPage.count = count ?? otxPage.count;
   }
   if (utf8JsonBytes(payload) > PROVIDER_MAX_DECODED_BYTES) return null;
   let rows;

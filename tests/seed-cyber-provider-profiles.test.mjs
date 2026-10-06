@@ -474,6 +474,23 @@ test('paginated OTX exports that never cover the advertised count stay unavailab
   }
 });
 
+test('a terminal OTX page without count is checked against the count advertised earlier', async testContext => {
+  const pages = otxPages([1000, 1], { count: 1002 });
+  delete pages['2'].count;
+  const { seed } = await producerHarness(testContext, { keys: ['OTX_API_KEY'], otxPages: pages });
+  const out = await seed.fetchOtx(14);
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, 'incomplete-page');
+});
+
+test('a bare OTX array advertises no count, so repeated indicators stay complete', async testContext => {
+  const row = { indicator: '192.0.2.61' };
+  const { seed } = await producerHarness(testContext, { keys: ['OTX_API_KEY'], otxPages: { 1: [row, row, { indicator: '192.0.2.62' }] } });
+  const out = await seed.fetchOtx(14);
+  assert.equal(out.ok, true);
+  assert.equal(out.reason, 'success');
+});
+
 test('an invalid later OTX page is an invalid payload, not a partial observation', async testContext => {
   const pages = otxPages([1000, 1000, 365]);
   pages['2'].results[5] = null;
