@@ -2370,7 +2370,7 @@
         "fullRecord": "Vollständige Bilanz"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} vs Basisrate {{base}} (n={{n}})",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs Basisrate {{base}}",
         "measuredHint": "Wie veröffentlichte {{domain}}-Prognosen bei {{n}} bewerteten Prognosen in den letzten {{days}} Tagen abgeschnitten haben. Die Basisrate ist das Ergebnis, das man durch konstante Antworten mit der beobachteten Ja-Quote des Bereichs erhalten würde. Niedriger ist besser. Dies ist die Bilanz des Bereichs, nicht dieser Prognose.",
         "unmeasured": "Noch nicht gemessen",
         "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Ein Bereich benötigt {{min}}, bevor seine Genauigkeit angezeigt wird."

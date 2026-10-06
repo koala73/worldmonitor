@@ -678,7 +678,7 @@
   "components.forecast.record.unavailable": "Unavailable right now",
   "components.forecast.record.void": "Void {{pct}}% ({{count}} of {{resolved}})",
   "components.forecast.record.voidHint": "Forecasts that resolved but could not be graded, out of {{resolved}} resolved in the window.",
-  "components.forecast.reliability.measured": "{{domain}} Brier {{score}} vs base rate {{base}} (n={{n}})",
+  "components.forecast.reliability.measured": "{{domain}} n={{n}} · Brier {{score}} vs base rate {{base}}",
   "components.forecast.reliability.measuredHint": "How published {{domain}} forecasts have scored over {{n}} graded forecasts in the last {{days}} days. The base rate is what always answering the domain's observed yes rate would have scored. Lower is better. This is the domain's record, not this forecast's.",
   "components.forecast.reliability.unmeasured": "Not yet measured",
   "components.forecast.reliability.unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain needs {{min}} before its accuracy is shown.",

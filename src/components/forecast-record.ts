@@ -107,7 +107,8 @@ export function renderReliabilityBadge(table: ReliabilityTable | null, domain: s
         t('components.forecast.reliability.unmeasured'),
         t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
       ];
-  const text = table.stale ? `${main} · ${t('components.forecast.record.stale')}` : main;
+  // Stale and n lead: the badge is one line with an ellipsis, so a narrow card cuts the tail.
+  const text = table.stale ? `${t('components.forecast.record.stale')} · ${main}` : main;
   return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(reliabilityHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
 }
 

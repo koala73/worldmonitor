@@ -15,7 +15,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { DOMAIN_RELIABILITY_MIN_SAMPLE, reliabilityHref } from '@/components/forecast-record';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 // @ts-expect-error -- untyped seeder module; this test reads one numeric constant from it.
 import { INTERVAL_MIN_SAMPLE } from '../../scripts/_forecast-scorecard.mjs';
 
@@ -128,7 +128,7 @@ describe('ForecastPanel reliability badge', () => {
     const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15)], ['conflict']);
     expect(badge!.dataset.fcReliabilityState).toBe('measured');
     // Base rate p = 15/45; always answering p scores p(1-p) = 0.2222.
-    expect(badge!.textContent).toContain('Conflict Brier 0.213 vs base rate 0.222 (n=45)');
+    expect(badge!.textContent).toBe('Conflict n=45 · Brier 0.213 vs base rate 0.222');
     expect(badge!.getAttribute('href')).toBe('/accuracy/#by-domain');
     const hint = badge!.getAttribute('aria-label') ?? '';
     expect(hint).toContain('45');
@@ -163,6 +163,9 @@ describe('ForecastPanel reliability badge', () => {
     expect(JSON.stringify(el).replace(/\{\{\w+\}\}/g, '')).not.toMatch(/base rate|domain/i);
     expect(locale('de').unmeasuredHint).not.toContain('Domain');
     expect(locale('de').unmeasuredHint).toContain('Bereich');
+    for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f) && f !== 'en.json')) {
+      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate/i);
+    }
   });
 
   it('never reads the pooled all-origin byDomain row', async () => {
@@ -206,7 +209,7 @@ describe('ForecastPanel reliability badge', () => {
     expect(below!.textContent).not.toContain('Brier');
     expect(below!.getAttribute('aria-label')).toContain('29');
     expect(at!.dataset.fcReliabilityState).toBe('measured');
-    expect(at!.textContent).toContain('Market Brier 0.210 vs base rate 0.222 (n=30)');
+    expect(at!.textContent).toBe('Market n=30 · Brier 0.210 vs base rate 0.222');
   });
 
   it('says not yet measured below the minimum and for a domain with no published row', async () => {
@@ -227,8 +230,9 @@ describe('ForecastPanel reliability badge', () => {
       ['conflict', 'cyber'],
       { stale: true },
     );
-    expect(measured!.textContent).toContain('Out of date');
-    expect(unmeasured!.textContent).toContain('Out of date');
+    // Stale and n lead, so an ellipsis on a narrow card never cuts them.
+    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · Brier 0.213 vs base rate 0.222');
+    expect(unmeasured!.textContent).toBe('Out of date · Not yet measured');
   });
 
   it('names the domain and says it is the domain record in the accessible name', async () => {

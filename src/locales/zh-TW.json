@@ -2360,7 +2360,7 @@
         "fullRecord": "完整記錄"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} vs 基準率 {{base}} (n={{n}})",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs 基準率 {{base}}",
         "measuredHint": "過去 {{days}} 天內 {{n}} 個已評分預測中，已釋出的 {{domain}} 預測的 Brier 評分。基準率是如果始終按該領域觀察到的是機率回答所得的評分。分數越低越好。這是該領域的歷史記錄，不是此預測的記錄。",
         "unmeasured": "暫未測量",
         "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分的結果。領域需要至少 {{min}} 個結果才能顯示準確度。"
