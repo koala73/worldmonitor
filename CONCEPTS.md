@@ -984,6 +984,12 @@ The instant past which a judged forecast can never again be resolved, because th
 
 The horizon exists because two spans are anchored to different clocks: required evidence is measured backward from the forecast's own deadline, while the archive's reach is measured backward from the present. As the present advances, the archive's reach slides forward while the requirement stays pinned — so coverage is lost at a computable instant and is never regained. That monotonicity is what makes crossing it a terminal state rather than a retry: an entry past its horizon is not waiting on anything. Crossing it is counted as a cost-control failure, never as a resolution, and the operational goal is to alert while entries are still short of it. A read that is merely unavailable proves nothing about the horizon and must not be treated as crossing it. See also: Judged Resolution.
 
+### Evidence Coverage Proof
+
+The record that states how far the forecast evidence archive can be trusted for a time window. Judged resolution reads the archive only when such a proof covers the entry's window; without one the archive counts as incomplete and no judge is called, even when the archive itself is healthy.
+
+There are two kinds, with different strength. A **capture proof** comes from a complete backfill and asserts that every story in the window was written to the archive; it is the only kind that may authorize pruning the older accumulator. A **continuity attestation** is rebuilt from the archive's own records and asserts only that the archive was being written to at a declared granularity throughout the window, not that every story was captured; only judging accepts it. A continuity attestation lapses across any publication gap longer than its granularity, which a capture proof does not. See also: Judged Resolution, Archive Horizon.
+
 ### Attempt Class
 
 The named reason a single judge attempt failed, recorded per attempt alongside the stage it failed at — evidence retrieval, either judge call, response normalization, agreement, or the terminal transition.

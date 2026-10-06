@@ -22,6 +22,7 @@ import {
   mapItem,
   isRoundupHeadline,
   isReportableHeadline,
+  UNEXPLAINED_PNEUMONIA_RE,
   diseaseContentMeta,
   diseasePublishTransform,
   cleanRssDescription,
@@ -39,6 +40,9 @@ const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
 // ECDC epidemiological updates: outbreak-only items (Ebola, MERS, hantavirus,
 // chikungunya, ...), including events outside the EU/EEA.
 const ECDC_EPI_UPDATES_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed';
+// ECDC news and press releases: its statements on events it is monitoring
+// (the 2026-10-06 Irkutsk pneumonia statement appeared only here).
+const ECDC_NEWS_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed';
 // CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
 // just the first topic), so each outbreak-prone disease is its own request:
 // Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
@@ -96,6 +100,7 @@ export async function fetchWhoDonApi({
 export const DISEASE_RSS_FEEDS = [
   { url: CDC_FEED, sourceName: 'CDC' },
   { url: ECDC_EPI_UPDATES_FEED, sourceName: 'ECDC' },
+  { url: ECDC_NEWS_FEED, sourceName: 'ECDC' },
   ...CIDRAP_TOPIC_IDS.map((id) => ({ url: `https://www.cidrap.umn.edu/news/${id}/rss`, sourceName: 'CIDRAP' })),
 ];
 
@@ -207,7 +212,7 @@ export async function fetchDiseaseOutbreaks() {
     .filter(item => {
       if (isRoundupHeadline(item.title)) return false;
       const text = `${item.title} ${item.desc}`.toLowerCase();
-      return diseaseKeywords.some(k => text.includes(k));
+      return diseaseKeywords.some(k => text.includes(k)) || UNEXPLAINED_PNEUMONIA_RE.test(text);
     })
     .map(mapItem)
     .filter((outbreak) => isReportableHeadline(outbreak));

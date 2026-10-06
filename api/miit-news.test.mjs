@@ -36,7 +36,8 @@ test('official MIIT listing supplies dated articles independently of Google News
 
 test('MIIT adapter rejects missing, invalid or future dates and nonofficial article links', () => {
   const rejected = [
-    row('', ARTICLE), row('2026-02-30', ARTICLE), row('2026-10-05', ARTICLE), row('2026-09-20', ARTICLE),
+    // 2026-09-18 is 15 China calendar days before NOW (2026-10-03) — outside the 14-day window.
+    row('', ARTICLE), row('2026-02-30', ARTICLE), row('2026-10-05', ARTICLE), row('2026-09-18', ARTICLE),
     row('2026-09-30', 'https://foreign.example/article.html'),
     row('2026-09-30', 'https://www.miit.gov.cn.foreign.example/art/2026/art_a.html'),
     row('2026-09-30', 'https://user@www.miit.gov.cn/zwgk/art/2026/art_a.html'),
@@ -44,6 +45,17 @@ test('MIIT adapter rejects missing, invalid or future dates and nonofficial arti
     row('2026-09-30', ARTICLE, ''),
   ].join('');
   assert.deepEqual(parseMiitNews(rejected, NOW), []);
+});
+
+test('MIIT listing keeps China-calendar fourteen-day articles past the old ms seven-day cliff', () => {
+  // Event WORLDMONITOR-17K fired at 2026-10-06T16:03Z — the first minutes of
+  // 2026-10-07 in Asia/Shanghai — when Sept 30 rows aged just past 7*86400000 ms
+  // from listing midnight +08 even though the official markup still listed them.
+  const cliff = Date.parse('2026-10-06T16:03:49Z');
+  const items = parseMiitNews(listing, cliff);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].link, ARTICLE);
+  assert.equal(items[0].date, '2026-09-29T16:00:00.000Z');
 });
 
 test('MIIT titles decode source entities and cannot terminate their RSS text section', () => {
