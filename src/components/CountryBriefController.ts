@@ -136,7 +136,7 @@ export class CountryBriefController {
       const points = response.datapoints;
       const latest = points[points.length - 1];
       const previous = points[points.length - 2];
-      this.panel.updateTariffTrends?.(latest ? { currentRate: response.effectiveTariffRate?.tariffRate ?? latest.tariffRate, trend: !previous ? 'unknown' : latest.tariffRate > previous.tariffRate ? 'rising' : latest.tariffRate < previous.tariffRate ? 'falling' : 'stable', datapoints: points.map(p => ({ year: p.year, tariffRate: p.tariffRate })) } : null);
+      this.panel.updateTariffTrends?.(latest ? { currentRate: response.effectiveTariffRate?.tariffRate ?? latest.tariffRate, effectiveTariffRate: response.effectiveTariffRate, trend: !previous ? 'unknown' : latest.tariffRate > previous.tariffRate ? 'rising' : latest.tariffRate < previous.tariffRate ? 'falling' : 'stable', datapoints: points.map(p => ({ year: p.year, tariffRate: p.tariffRate })) } : null);
     }, true);
     else this.panel.updateTariffTrends?.(null);
   }

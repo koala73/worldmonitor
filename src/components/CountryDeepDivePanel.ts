@@ -37,6 +37,7 @@ import { haversineDistanceKm } from '@/services/related-assets';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import type {
   CountryBriefPanel,
+  CountryTariffTrendsData,
   CountryIntelData,
   StockIndexData,
   CountryDeepDiveSignalDetails,
@@ -1008,21 +1009,49 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.comtradeBody.append(scope);
   }
 
-  public updateTariffTrends(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void {
+  public updateTariffTrends(data: CountryTariffTrendsData | null): void {
     if (!this.tariffBody) return;
     this.tariffBody.replaceChildren();
-    if (!data) {
+    if (!data || !Number.isFinite(data.currentRate) || data.currentRate < 0) {
       this.tariffBody.append(this.makeEmpty('No tariff data available'));
       return;
     }
     const layout = this.el('div', 'cdp-tariff-layout');
     const rate = this.el('div');
-    rate.append(this.el('div', 'cdp-measure-note', 'Effective tariff rate'), this.el('div', 'cdp-metric-hero', `${data.currentRate.toFixed(2)}%`));
+    rate.append(this.el('div', 'cdp-measure-note', data.effectiveTariffRate ? 'Effective tariff rate' : 'Reported annual tariff rate'), this.el('div', 'cdp-metric-hero', `${data.currentRate.toFixed(2)}%`));
     const direction = data.trend === 'rising' ? '↑ Rising' : data.trend === 'falling' ? '↓ Falling' : data.trend === 'stable' ? '→ Unchanged' : 'Trend not available';
     const trend = this.el('div', 'cdp-tariff-trend');
     trend.append(this.el('h4', '', direction), this.el('p', 'cdp-measure-note', 'Direction compares the two latest reported annual observations.'));
     layout.append(rate, trend);
     this.tariffBody.append(layout);
+    const provenance = this.el('div', 'cdp-measure-note');
+    provenance.style.overflowWrap = 'anywhere';
+    const effective = data.effectiveTariffRate;
+    if (effective) {
+      provenance.append(this.el('div', '', `Source: ${effective.sourceName || 'Not supplied'}`));
+      if (effective.sourceUrl) {
+        try {
+          const url = new URL(effective.sourceUrl);
+          if (url.protocol === 'https:' || url.protocol === 'http:') {
+            const link = this.el('a', '', 'Original source');
+            link.style.color = 'var(--accent)';
+            link.href = effective.sourceUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            provenance.append(link);
+          }
+        } catch {}
+      }
+      provenance.append(
+        this.el('div', '', `Observation period: ${effective.observationPeriod || 'Not supplied'}`),
+        this.el('div', '', `Source page updated: ${effective.updatedAt || 'Not supplied'}`),
+      );
+    } else {
+      const latest = data.datapoints[data.datapoints.length - 1];
+      if (latest) provenance.append(this.el('div', '', `Annual observation: ${latest.year}`));
+      provenance.append(this.el('div', '', 'Effective rate source metadata: Not supplied'));
+    }
+    this.tariffBody.append(provenance);
     if (data.datapoints.length > 0) {
       const history = this.el('details', 'cdp-tariff-history');
       history.append(this.el('summary', '', `View ${data.datapoints.length} annual observations`));
