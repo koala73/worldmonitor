@@ -2878,7 +2878,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
       base.unshift({
         label: 'Weekly Momentum',
-        value: `${delta >= 0 ? '+' : ''}${data.weekChangePercent}%`,
+        value: `${delta >= 0 ? '+' : '-'}${weeklyValue.replace(/^[+-]/, '')}%`,
         trend,
       });
     }
