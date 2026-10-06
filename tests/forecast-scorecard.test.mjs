@@ -201,14 +201,15 @@ describe('scorecard uncertainty and maturity denominators (#7072)', () => {
       judgePendingMatured: { id: 'jp', status: 'pending-judge', spec: { deadline: deadline(-2) } },
       judgePendingImmature: { id: 'ji', status: 'pending-judge', spec: { deadline: deadline(3) } },
       undated: { id: 'u', status: 'pending' },
+      nullDeadline: { id: 'nd', status: 'pending', deadline: null, spec: { deadline: null } },
     };
 
     const { funnel, totals } = computeScorecard(ledger, NOW);
 
-    assert.equal(totals.entries, 10);
+    assert.equal(totals.entries, 11);
     assert.equal(funnel.matured, 7);
     assert.equal(funnel.immature, 2);
-    assert.equal(funnel.maturityUnknown, 1);
+    assert.equal(funnel.maturityUnknown, 2, 'a null deadline is unknown, not epoch 0');
     assert.equal(funnel.matured + funnel.immature + funnel.maturityUnknown, totals.entries, 'no entry leaves the denominator');
     assert.equal(funnel.resolved, 5);
     assert.equal(funnel.scored, 3);

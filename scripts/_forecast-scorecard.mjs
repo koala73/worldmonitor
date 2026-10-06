@@ -298,7 +298,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
   // and `voidWithinSla` sits beside it so the compensating failure-state
   // increase the acceptance criteria warn about is visible rather than hidden.
   const withinSla = (entry) => {
-    const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+    const deadline = entryDeadline(entry);
     const resolvedAt = Number(entry?.resolvedAt);
     if (!Number.isFinite(deadline) || !Number.isFinite(resolvedAt)) return false;
     return resolvedAt - deadline <= slaMs;
@@ -316,7 +316,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
   const totalAttempts = instrumented.reduce((sum, entry) => sum + attemptCount(entry), 0);
 
   const pendingPastDeadline = pendingJudge.filter((entry) => {
-    const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+    const deadline = entryDeadline(entry);
     return Number.isFinite(deadline) && nowMs >= deadline;
   }).length;
 
@@ -360,6 +360,12 @@ function attemptCount(entry) {
 // their deadline, or already resolved (an early resolution is decided, so it
 // cannot sit in a numerator above its own denominator). An unresolved entry
 // with no deadline is counted apart rather than guessed into either side.
+// A null deadline is unknown, not epoch 0: Number(null) would read as long past.
+function entryDeadline(entry) {
+  const raw = entry?.deadline ?? entry?.spec?.deadline;
+  return raw == null ? NaN : Number(raw);
+}
+
 function summarizeFunnel(entries, nowMs) {
   let matured = 0;
   let immature = 0;
@@ -375,7 +381,7 @@ function summarizeFunnel(entries, nowMs) {
       if (isScoredEntry(entry)) scored += 1;
       continue;
     }
-    const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+    const deadline = entryDeadline(entry);
     if (!Number.isFinite(deadline)) {
       maturityUnknown += 1;
     } else if (deadline > nowMs) {

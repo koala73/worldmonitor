@@ -286,7 +286,8 @@ function formatPercent(value) {
 // Mean scores are different: their interval needs the per-entry scores, which
 // the public response does not carry, so the page never estimates one.
 function proportionEstimate(successes, count) {
-  const ci95 = Number.isInteger(successes) && Number.isInteger(count) ? wilsonInterval(successes, count) : null;
+  if (!Number.isInteger(successes) || !Number.isInteger(count) || successes < 0 || successes > count) return null;
+  const ci95 = wilsonInterval(successes, count);
   return ci95 ? { successes, count, ci95 } : null;
 }
 

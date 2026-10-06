@@ -13,6 +13,7 @@ import {
   SCORECARD_STALE_AFTER_HOURS,
   accuracyDatasetDownload,
   classifyAccuracyState,
+  proportionIntervals,
   renderAccuracyPage,
   renderAccuracyLlmsSection,
   selectDeclaredScorecardFields,
@@ -759,6 +760,15 @@ describe('accuracy page honesty rules', () => {
 // bounds are golden values, so a formula change cannot pass by moving both sides.
 describe('accuracy page proportion intervals', () => {
   const rowOf = (html, marker) => stripTags(html.match(new RegExp(`<tr ${marker}[\\s\\S]*?</tr>`))[0]);
+
+  it('prints no interval for counts that cannot form a proportion', () => {
+    const intervals = proportionIntervals({
+      totals: { void: 12, resolved: 10 },
+      calibration: [{ bucket: '0.9-1.0', minProbability: 0.9, maxProbability: 1, count: 4, realizedRate: 1.5 }],
+    });
+    assert.equal(intervals.void, null);
+    assert.equal(intervals.calibration['0.9-1.0'], undefined);
+  });
 
   it('promises intervals only for the rates that carry one', () => {
     const text = stripTags(renderState(LIVE_SECTION).html);
