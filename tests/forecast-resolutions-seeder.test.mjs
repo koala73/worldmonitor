@@ -29,6 +29,7 @@ import {
   pruneArchivedTerminalEntries,
   readDigestAccumulatorArchive,
   reportJudgedLaneObservability,
+  resolveJudgedEntry,
   resolvePendingJudgedEntries,
   summarizeJudgedAttemptClasses,
   judgedArchiveHorizonMs,
@@ -37,6 +38,7 @@ import {
   selectJudgedArchiveItems,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { __setForecastLlmCallOverrideForTests } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -2633,5 +2635,103 @@ describe('terminal receipt attempt history (#7068)', () => {
       row.evidence.attemptLog.map((record) => record.class),
       ['archive_unavailable', 'archive_unavailable', 'archive_unavailable'],
     );
+  });
+});
+
+describe('live judge panel', () => {
+  afterEach(() => __setForecastLlmCallOverrideForTests(null));
+
+  it('runs both judges on OpenRouter with two different model families and never calls Groq', async () => {
+    const deadline = T0 + DAY_MS;
+    const entry = {
+      id: 'fc-live-panel',
+      key: `fc-live-panel@${deadline}`,
+      title: 'Escalation risk: Freedonia',
+      domain: 'conflict',
+      region: 'Freedonia',
+      deadline,
+      spec: { kind: 'judged', deadline, question: 'Did Freedonia escalate before the deadline?' },
+    };
+    const archive = {
+      available: true,
+      coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: deadline + DAY_MS,
+      items: [{ id: 'N1', title: 'Freedonia border clash', description: 'Troops clashed at the Freedonia border.', source: 'wire.example', publishedAt: deadline - DAY_MS }],
+    };
+    const calls = [];
+    __setForecastLlmCallOverrideForTests(async (_system, _user, options = {}) => {
+      calls.push({ providerOrder: options.providerOrder, modelOverrides: options.modelOverrides });
+      return null;
+    });
+
+    await resolveJudgedEntry(entry, archive, deadline + DAY_MS, {});
+
+    assert.equal(calls.length, 2, 'two judges are called');
+    for (const call of calls) assert.deepEqual(call.providerOrder, ['openrouter']);
+    const models = calls.map((call) => call.modelOverrides?.openrouter);
+    assert.equal(new Set(models).size, 2, `judges must be different models: ${models.join(', ')}`);
+    const families = models.map((model) => String(model).split('/')[0]);
+    assert.equal(new Set(families).size, 2, `judges must be different model families: ${models.join(', ')}`);
+    assert.ok(!calls.some((call) => JSON.stringify(call).includes('groq')), 'no judge routes through Groq');
+  });
+});
+
+describe('live judge panel independence', () => {
+  const ENV_KEYS = ['FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER', 'FORECAST_LLM_MODEL_OPENROUTER', 'FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B'];
+  const saved = {};
+  afterEach(() => {
+    __setForecastLlmCallOverrideForTests(null);
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  function runWithEnv(env) {
+    for (const key of ENV_KEYS) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    Object.assign(process.env, env);
+    const deadline = T0 + DAY_MS;
+    const entry = {
+      id: 'fc-same-family',
+      key: `fc-same-family@${deadline}`,
+      title: 'Escalation risk: Freedonia',
+      domain: 'conflict',
+      region: 'Freedonia',
+      deadline,
+      spec: { kind: 'judged', deadline, question: 'Did Freedonia escalate before the deadline?' },
+    };
+    const archive = {
+      available: true,
+      coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: deadline + DAY_MS,
+      items: [{ id: 'N1', title: 'Freedonia border clash', description: 'Troops clashed at the Freedonia border.', source: 'wire.example', publishedAt: deadline - DAY_MS }],
+    };
+    const calls = [];
+    __setForecastLlmCallOverrideForTests(async (_system, _user, options = {}) => {
+      calls.push(options.modelOverrides?.openrouter);
+      return null;
+    });
+    return resolveJudgedEntry(entry, archive, deadline + DAY_MS, {}).then((result) => ({ result, calls }));
+  }
+
+  it('refuses to judge when an override puts both judges in the same model family', async () => {
+    const { result, calls } = await runWithEnv({ FORECAST_LLM_MODEL_OPENROUTER: 'openai/gpt-6-sol' });
+    assert.equal(calls.length, 0, `no judge may be called, got ${calls.join(', ')}`);
+    assert.equal(result.status, 'pending');
+    assert.equal(result.detail, 'judges_not_independent');
+  });
+
+  it('refuses to judge when judge B is overridden to judge A\'s model', async () => {
+    const { result, calls } = await runWithEnv({ FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B: 'deepseek/deepseek-v4-flash' });
+    assert.equal(calls.length, 0);
+    assert.equal(result.detail, 'judges_not_independent');
+  });
+
+  it('still judges when the overrides keep the families apart', async () => {
+    const { calls } = await runWithEnv({ FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER_B: 'google/gemini-3.8-flash' });
+    assert.deepEqual(calls, ['deepseek/deepseek-v4-flash', 'google/gemini-3.8-flash']);
   });
 });
