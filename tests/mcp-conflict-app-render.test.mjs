@@ -57,7 +57,8 @@ globalThis.fetch = async (url, opts) => {
   else if (key === 'unrest:events:v1') value = { events: [] };
   else if (key === 'risk:scores:sebuf:stale:v8') value = { ciiScores: [] };
   else if (key === 'conflict:iran-events:v1') value = { events: [] };
-  else if (key === 'seed-meta:conflict:ucdp-events' || key === 'seed-meta:unrest:events') value = { fetchedAt, recordCount: activeEvents.length };
+  else if (key === 'seed-meta:conflict:ucdp-events') value = { fetchedAt, recordCount: activeEvents.length, candidateVersion: 'controlled+partial', candidateComplete: false, annualFailedPages: 2 };
+  else if (key === 'seed-meta:unrest:events') value = { fetchedAt, recordCount: activeEvents.length };
   else throw new Error('Unexpected fixture key ' + key);
   return json({ result: value === null ? null : JSON.stringify(value) });
 };
@@ -174,7 +175,8 @@ describe('Conflict Events supplied coverage and attribution', () => {
     it(name + ' preserves coverage, loaded counts and each original publisher', async () => {
       const wire = await result(args, 'twenty');
       const envelope = wire.structuredContent.projection || wire.structuredContent;
-      envelope.conflict_source = { ucdp: { candidateComplete: false, candidateVersion: 'controlled+partial', annualFailedPages: 2 } };
+      assert.equal(envelope.conflict_source.ucdp.candidateComplete, false);
+      assert.equal(envelope.conflict_source.ucdp.annualFailedPages, 2);
       await mount(wire, doc => {
         assert.equal(doc.querySelectorAll('.evt').length, shown);
         assert.ok(doc.getElementById('foot').textContent.includes(countText));
@@ -258,8 +260,9 @@ describe('Conflict Events supplied coverage and attribution', () => {
     envelope.conflict_source = { ucdp: { candidateComplete: 'true', annualFailedPages: '2' } };
     delete envelope.data['ucdp-events'].candidateComplete;
     delete envelope.data['ucdp-events'].candidateVersion;
-    for (const count of [undefined, null, '20', -1, 1, 1.5]) {
+    for (const [count, failedPages] of [[undefined, undefined], [null, null], ['20', '2'], [-1, -1], [1, 1.5], [1.5, NaN]]) {
       envelope.data['ucdp-events'].events.count = count;
+      envelope.conflict_source.ucdp.annualFailedPages = failedPages;
       await mount(wire, doc => {
         assert.match(doc.getElementById('foot').textContent, /Summary sample: 3 UCDP events; total unknown/);
         assert.match(doc.getElementById('foot').textContent, /Candidate completeness unknown/);
