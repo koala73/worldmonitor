@@ -6,6 +6,7 @@ import {
   DIGEST_KEY,
   MARKET_ALERT_WINDOW_MS,
   MAX_ARCHIVE_HASHES,
+  PREDICTION_POLL_GAP_MAX_MS,
   READ_KEYS,
   SNAPSHOT_KEY,
   MARKET_ALERT_LEDGER_KEY,
@@ -27,11 +28,18 @@ const RUNTIME_MODE_KEY = 'correlation:runtime-mode:v1';
 
 const FED_CUT = { title: 'Will the Fed cut rates in December?', yesPrice: 30, volume: 1000, url: 'https://polymarket.com/event/fed-cut', source: 'polymarket' };
 const FED_CUT_KEY = `${FED_CUT.url}|${FED_CUT.title}`;
-const LIVE_SNAPSHOT = { timestamp: NOW - 5 * MIN, predictionChanges: { [FED_CUT_KEY]: 40 }, marketChanges: { 'CL=F': 0.4 } };
+const PREDICTIONS_FETCHED_AT = NOW - 2 * MIN;
+const LIVE_SNAPSHOT = {
+  timestamp: NOW - 5 * MIN,
+  predictionChanges: { [FED_CUT_KEY]: 40 },
+  predictionsFetchedAt: PREDICTIONS_FETCHED_AT - 10 * MIN,
+  marketChanges: { 'CL=F': 0.4 },
+};
 const OBSERVED_PREDICTIONS = { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 };
 const OBSERVED_MARKETS = { '^GSPC': 0.2, 'CL=F': 3.1, BTC: 0.5 };
+const OBSERVED_SNAPSHOT = { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, predictionsFetchedAt: PREDICTIONS_FETCHED_AT, marketChanges: OBSERVED_MARKETS };
 
-function envelope(data, fetchedAt = NOW - 2 * MIN) {
+function envelope(data, fetchedAt = PREDICTIONS_FETCHED_AT) {
   return { _seed: { fetchedAt, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 1, state: 'OK' }, data };
 }
 
@@ -153,7 +161,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(entry.entity.title, FED_CUT.title);
     assert.equal(entry.entity.url, FED_CUT.url);
     assert.ok(entry.entity.relatedTopics.includes('fed'));
-    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
+    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
   });
 
   it('a snapshot older than 15 minutes is a stale baseline', async () => {
@@ -161,7 +169,16 @@ describe('buildTick runs the shared detectors under Node', () => {
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.ledger, {});
     assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
-    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
+    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+  });
+
+  it('a snapshot in the pre-#8951 shape, without predictionsFetchedAt, is no baseline', async () => {
+    const { predictionsFetchedAt, ...merged } = LIVE_SNAPSHOT;
+    assert.equal(typeof predictionsFetchedAt, 'number');
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(merged) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(tick.ledger, {});
+    assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
+    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
   });
 
   it('a 5-minute-old snapshot is a live baseline', async () => {
@@ -176,7 +193,7 @@ describe('buildTick runs the shared detectors under Node', () => {
   it('a first tick without a digest records the observed prices as the baseline', async () => {
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.ledger, {});
-    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: OBSERVED_PREDICTIONS, marketChanges: OBSERVED_MARKETS });
+    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
   });
 
   it('discards a market payload whose fetchedAt is 45 minutes old', async () => {
@@ -191,7 +208,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     const stale = envelope({ geopolitical: [], tech: [], finance: [FED_CUT] }, NOW - 100 * MIN);
     const tick = await buildTick(rawInputs({ [PREDICTIONS_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
-    assert.deepEqual(tick.snapshot, { timestamp: NOW, predictionChanges: {}, marketChanges: OBSERVED_MARKETS });
+    assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, predictionChanges: {}, predictionsFetchedAt: null });
   });
 
   it('market rows still open during a prediction outage', async () => {
@@ -211,10 +228,61 @@ describe('buildTick runs the shared detectors under Node', () => {
   });
 
   it('the first fresh prediction poll after an outage opens no shift row', async () => {
-    const afterOutage = envelope({ ...LIVE_SNAPSHOT, predictionChanges: {} });
+    const afterOutage = envelope({ ...LIVE_SNAPSHOT, predictionsFetchedAt: null });
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: afterOutage }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
     assert.equal(tick.snapshot.predictionChanges[FED_CUT_KEY], 30);
+    assert.equal(tick.snapshot.predictionsFetchedAt, PREDICTIONS_FETCHED_AT);
+  });
+
+  it('a re-read of the same predictions poll opens no row even when its price differs', async () => {
+    const samePoll = envelope({ ...LIVE_SNAPSHOT, predictionsFetchedAt: PREDICTIONS_FETCHED_AT });
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: samePoll }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.equal(byType(tick.ledger, 'prediction_leads_news').length, 0);
+    assert.equal(tick.snapshot.predictionsFetchedAt, PREDICTIONS_FETCHED_AT);
+    assert.equal(tick.snapshot.predictionChanges[FED_CUT_KEY], 30);
+  });
+
+  it('a poll gap of 25 minutes still compares; 25 minutes and one tick does not', async () => {
+    assert.equal(PREDICTION_POLL_GAP_MAX_MS, 25 * MIN);
+    const gapOf = (gapMs) => envelope({ ...LIVE_SNAPSHOT, predictionsFetchedAt: PREDICTIONS_FETCHED_AT - gapMs });
+    const within = await buildTick(rawInputs({ [SNAPSHOT_KEY]: gapOf(PREDICTION_POLL_GAP_MAX_MS) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.equal(byType(within.ledger, 'prediction_leads_news').length, 1);
+    const beyond = await buildTick(rawInputs({ [SNAPSHOT_KEY]: gapOf(PREDICTION_POLL_GAP_MAX_MS + 1) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.equal(byType(beyond.ledger, 'prediction_leads_news').length, 0);
+    assert.equal(beyond.snapshot.predictionsFetchedAt, PREDICTIONS_FETCHED_AT);
+  });
+
+  it('a predictions-seeder stall does not read the whole gap as one shift (#8951)', async () => {
+    const T0 = NOW;
+    const inputs = (nowMs, yesPrice, fetchedAt, previous) => rawInputs({
+      [STOCKS_KEY]: envelope({ quotes: [] }, nowMs),
+      [COMMODITIES_KEY]: envelope({ quotes: [] }, nowMs),
+      [CRYPTO_KEY]: envelope({ quotes: [] }, nowMs),
+      [PREDICTIONS_KEY]: envelope({ geopolitical: [], tech: [], finance: [{ ...FED_CUT, yesPrice }] }, fetchedAt),
+      [DIGEST_KEY]: digestOf(QUIET_NEWS, nowMs),
+      [SNAPSHOT_KEY]: previous ? envelope(previous.snapshot) : null,
+      [MARKET_ALERT_LEDGER_KEY]: previous ? envelope(previous.ledger) : null,
+    });
+    const tickAt = (nowMs, yesPrice, fetchedAt, previous) => buildTick(inputs(nowMs, yesPrice, fetchedAt, previous), { nowMs, archive: EMPTY_ARCHIVE });
+    const rows = (tick) => byType(tick.ledger, 'prediction_leads_news');
+
+    let tick = await tickAt(T0, 40, T0, null);
+    assert.equal(tick.snapshot.predictionsFetchedAt, T0);
+    for (let minutes = 5; minutes <= 85; minutes += 5) {
+      tick = await tickAt(T0 + minutes * MIN, 40, T0, tick);
+      assert.equal(rows(tick).length, 0, `re-read of the T0 poll at +${minutes} min`);
+      assert.equal(tick.snapshot.predictionsFetchedAt, T0);
+    }
+    tick = await tickAt(T0 + 90 * MIN, 47, T0 + 85 * MIN, tick);
+    assert.equal(rows(tick).length, 0, 'an 85-minute poll gap is not one 5-minute shift');
+    assert.equal(tick.snapshot.predictionsFetchedAt, T0 + 85 * MIN);
+    tick = await tickAt(T0 + 95 * MIN, 47, T0 + 95 * MIN, tick);
+    assert.equal(rows(tick).length, 0, '47 against 47 is no shift');
+    tick = await tickAt(T0 + 105 * MIN, 54, T0 + 105 * MIN, tick);
+    assert.equal(rows(tick).length, 1);
+    assert.equal(rows(tick)[0].observedChange, 7);
+    assert.equal(rows(tick)[0].emittedAt, T0 + 105 * MIN);
   });
 
   it('skips emission without a fresh digest but still resolves a due entry', async () => {

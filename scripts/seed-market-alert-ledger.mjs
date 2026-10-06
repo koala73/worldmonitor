@@ -58,6 +58,8 @@ export const READ_KEYS = [
 const MIN_MS = 60 * 1000;
 const MARKET_MAX_AGE_MS = 30 * MIN_MS;
 const PREDICTION_MAX_AGE_MS = 90 * MIN_MS;
+// Two polls of the predictions seeder's live Railway cron (`*/10 * * * *`) plus jitter.
+export const PREDICTION_POLL_GAP_MAX_MS = 25 * MIN_MS;
 const DIGEST_MAX_AGE_MS = 60 * MIN_MS;
 // Three ticks: an older snapshot cannot say whether a move crossed the
 // threshold since the previous tick or drifted there over an outage.
@@ -106,7 +108,7 @@ function freshPayload(raw, key, maxAgeMs, nowMs, discarded, timestampOf = (seed)
     discarded.push({ key, reason: 'stale' });
     return null;
   }
-  return data;
+  return { data, fetchedAt: at };
 }
 
 export function mapMarkets(payloads) {
@@ -177,7 +179,22 @@ function parseLedger(value) {
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
   if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges)) return null;
-  return { timestamp: Number(data.timestamp), predictionChanges: data.predictionChanges, marketChanges: data.marketChanges };
+  if (data.predictionsFetchedAt !== null && typeof data.predictionsFetchedAt !== 'number') return null;
+  return {
+    timestamp: Number(data.timestamp),
+    predictionChanges: data.predictionChanges,
+    predictionsFetchedAt: data.predictionsFetchedAt,
+    marketChanges: data.marketChanges,
+  };
+}
+
+// A re-read of the same poll (equal fetchedAt) or a gap wider than two polls
+// cannot say the move happened since the previous tick.
+function predictionBaseline(baseline, predictionsFetchedAt) {
+  if (!baseline || predictionsFetchedAt === null || typeof baseline.predictionsFetchedAt !== 'number') return null;
+  const gap = predictionsFetchedAt - baseline.predictionsFetchedAt;
+  if (gap <= 0 || gap > PREDICTION_POLL_GAP_MAX_MS) return null;
+  return new Map(Object.entries(baseline.predictionChanges));
 }
 
 function snapshotRecords(snapshot) {
@@ -199,13 +216,15 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const runtimeMode = resolveCorrelationRuntimeMode(raw[CORRELATION_RUNTIME_MODE_KEY]);
   const previousSnapshot = parseSnapshot(raw[SNAPSHOT_KEY]);
   const baseline = previousSnapshot && nowMs - previousSnapshot.timestamp <= SNAPSHOT_MAX_AGE_MS ? previousSnapshot : null;
+  const predictionsFetchedAt = predictionsPayload?.fetchedAt ?? null;
 
-  const markets = mapMarkets([stocks, commodities, crypto]);
-  const predictions = predictionsPayload ? mapPredictions(predictionsPayload) : [];
-  const items = digest ? digestNewsItems(digest) : [];
+  const markets = mapMarkets([stocks?.data, commodities?.data, crypto?.data]);
+  const predictions = predictionsPayload ? mapPredictions(predictionsPayload.data) : [];
+  const items = digest ? digestNewsItems(digest.data) : [];
   const observed = () => ({
     timestamp: nowMs,
     predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
+    predictionsFetchedAt,
     marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
   });
 
@@ -216,7 +235,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
     signals = detectMarketAlerts({
       markets,
       predictions,
-      previousPredictionChanges: predictionsPayload && baseline ? new Map(Object.entries(baseline.predictionChanges)) : null,
+      previousPredictionChanges: predictionBaseline(baseline, predictionsFetchedAt),
       newsTopics: news.newsTopics,
       newsEntityContexts: news.newsEntityContexts,
       pipelineFlowMentions: news.pipelineFlowMentions,
@@ -240,9 +259,9 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
     snapshot: snapshot ?? observed(),
     summary: {
       inputs: {
-        stocks: stocks?.quotes?.length ?? 0,
-        commodities: commodities?.quotes?.length ?? 0,
-        crypto: crypto?.quotes?.length ?? 0,
+        stocks: stocks?.data.quotes?.length ?? 0,
+        commodities: commodities?.data.quotes?.length ?? 0,
+        crypto: crypto?.data.quotes?.length ?? 0,
         predictions: predictions.length,
         digestItems: items.length,
         runtimeMode,
