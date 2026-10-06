@@ -690,7 +690,9 @@
       "a10": "Palantir 使機構能夠在其內部運營自有資料。World Monitor 從另一個角度出發：它彙集、規範化、關聯和監控公開資料，然後透過免費儀表板和開原始碼釋出該情報層。工作不同，產品也不同。",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} 個關於價格、資料、告警和 AI 存取權限的直接問答。簡而言之：該 dashboard 費用為 $0，無需註冊帳戶，程式碼以 AGPL-3.0 許可證開源。"
+      "sub": "{{answers}} 個關於價格、資料、告警和 AI 存取權限的直接問答。簡而言之：該 dashboard 費用為 $0，無需註冊帳戶，程式碼以 AGPL-3.0 許可證開源。",
+      "q12": "追蹤全球新聞中危機與動盪事件的最佳軟體是什麼?",
+      "a12": "World Monitor 是一個免費、開源的選項：它將來自 {{providers}} 個具名提供方的 {{feeds}} 條新聞和 OSINT 資訊流彙集到一張即時世界地圖上，提供 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、航運、航空和網路安全。它對這些資訊進行關聯分析，使同時出現的多重動盪在登上新聞頭條之前就顯現出來。要將其與其他工具進行比較，請存取 worldmonitor.app/compare/best-geopolitical-risk-dashboards。"
     },
     "cta": {
       "title": "我如何開始監控世界地圖？",
