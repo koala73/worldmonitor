@@ -817,10 +817,11 @@ const QUESTION_MAX_CHARS = 240;
 const CITATION_TITLE_MAX_CHARS = 160;
 const CITATION_URL_MAX_CHARS = 500;
 // Archive links were not gated to publisher domains until #8408 merged
-// (2026-09-21T16:39:21Z). Evidence lives 15 days (FORECAST_EVIDENCE_TTL_S), so
-// a citation on an entry resolved before this instant may carry an ungated
-// link; those receipts keep the title and drop the link.
-export const PUBLIC_RECEIPT_LINKS_SINCE_MS = Date.parse('2026-09-21T16:39:21Z') + 15 * DAY_MS;
+// (2026-09-21T16:39:21Z). Evidence lives 15 days (FORECAST_EVIDENCE_TTL_S), and
+// a day more covers the deploy rollout and instances still serving the old
+// build, so a citation on an entry resolved before this instant may carry an
+// ungated link; those receipts keep the title and drop the link.
+export const PUBLIC_RECEIPT_LINKS_SINCE_MS = Date.parse('2026-09-21T16:39:21Z') + 16 * DAY_MS;
 
 // Feed keys are internal Redis names, so a receipt carries a public code.
 export const RECEIPT_SOURCE_FEEDS = Object.freeze({
@@ -928,7 +929,7 @@ function publicReceipt(entry) {
     receipt.voidReason = Object.hasOwn(RECEIPT_VOID_REASON_LABELS, evidence.reason) ? evidence.reason : 'other';
   }
   if (entry.spec?.kind === 'hard') {
-    receipt.sourceFeed = RECEIPT_SOURCE_FEEDS[entry.spec.sourceFeed] ?? 'other';
+    receipt.sourceFeed = Object.hasOwn(RECEIPT_SOURCE_FEEDS, entry.spec.sourceFeed) ? RECEIPT_SOURCE_FEEDS[entry.spec.sourceFeed] : 'other';
     if (entry.outcome !== 'VOID' && typeof evidence.metricValue === 'number' && Number.isFinite(evidence.metricValue)) {
       receipt.observedValue = evidence.metricValue;
     }

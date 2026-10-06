@@ -594,8 +594,10 @@ describe('public forecast receipts (#5092)', () => {
       const code = RECEIPT_SOURCE_FEEDS[feed];
       assert.ok(code && Object.hasOwn(RECEIPT_SOURCE_LABELS, code), `${feed} needs a public source code`);
     }
-    const [receipt] = build([hardEntry({ spec: { ...hardEntry().spec, sourceFeed: `internal:${SECRET}:v9` } })]);
-    assert.equal(receipt.sourceFeed, 'other');
+    for (const sourceFeed of [`internal:${SECRET}:v9`, '__proto__', 'constructor', 'toString']) {
+      const [receipt] = build([hardEntry({ spec: { ...hardEntry().spec, sourceFeed } })]);
+      assert.equal(receipt.sourceFeed, 'other', `${sourceFeed} is not a public feed`);
+    }
   });
 
   it('lists only the headline cohort, never shadow, synthetic or unattributed entries', () => {
@@ -640,8 +642,8 @@ describe('public forecast receipts (#5092)', () => {
     const { FORECAST_EVIDENCE_TTL_S } = await import('../scripts/_forecast-evidence-archive.mjs');
     assert.equal(
       PUBLIC_RECEIPT_LINKS_SINCE_MS,
-      Date.parse('2026-09-21T16:39:21Z') + FORECAST_EVIDENCE_TTL_S * 1000,
-      'the cutoff is the #8408 merge plus the evidence archive retention',
+      Date.parse('2026-09-21T16:39:21Z') + FORECAST_EVIDENCE_TTL_S * 1000 + DAY_MS,
+      'the cutoff is the #8408 merge plus the evidence archive retention plus a day for the rollout',
     );
     const [early, late] = [PUBLIC_RECEIPT_LINKS_SINCE_MS - 1, PUBLIC_RECEIPT_LINKS_SINCE_MS]
       .map((resolvedAt) => buildPublicReceipts([judgedEntry({ resolvedAt })], NOW)[0]);
@@ -658,6 +660,13 @@ describe('public forecast receipts (#5092)', () => {
       evidence: { ...judgedEntry().evidence, citations: [{ title: long, url: `https://example.org/${'y'.repeat(5000)}` }] },
     }));
     const receipts = build(ledger);
+    const kept = build(Array.from({ length: 500 }, (_, i) => judgedEntry({
+      resolvedAt: NOW - i,
+      spec: { kind: 'judged', question: long },
+      evidence: { ...judgedEntry().evidence, citations: [{ title: long, url: `https://example.org/${'y'.repeat(499 - 'https://example.org/'.length)}` }] },
+    })));
+    assert.equal(kept[0].citationUrl.length, 499, 'the worst kept link is just under the cap');
+    assert.ok(Buffer.byteLength(JSON.stringify(kept)) <= 24_000, `worst case with links is ${Buffer.byteLength(JSON.stringify(kept))} bytes`);
     assert.equal(receipts.length, PUBLIC_RECEIPT_LIMIT);
     assert.ok(receipts[0].question.length <= 240);
     assert.ok(receipts[0].citationTitle.length <= 160);
