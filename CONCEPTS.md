@@ -984,6 +984,12 @@ The instant past which a judged forecast can never again be resolved, because th
 
 The horizon exists because two spans are anchored to different clocks: required evidence is measured backward from the forecast's own deadline, while the archive's reach is measured backward from the present. As the present advances, the archive's reach slides forward while the requirement stays pinned — so coverage is lost at a computable instant and is never regained. That monotonicity is what makes crossing it a terminal state rather than a retry: an entry past its horizon is not waiting on anything. Crossing it is counted as a cost-control failure, never as a resolution, and the operational goal is to alert while entries are still short of it. A read that is merely unavailable proves nothing about the horizon and must not be treated as crossing it. See also: Judged Resolution.
 
+### Evidence Coverage Proof
+
+The record that certifies the evidence archive holds every item for a window. Judged resolution requires it before reading the archive at all. Without a valid proof the resolver treats the archive as incomplete and calls no judge, even when the archive itself is healthy.
+
+A proof comes from one of two sources with different authority. A complete backfill, extended by confirmed digest publications, proves capture, and only that kind may authorize pruning the older accumulator. A continuity attestation, rebuilt from the archive's own records when the oldest is old enough and no gap exceeds a declared bucket, proves activity at that granularity rather than capture of every story, so only judging may accept it. Publications extend an existing proof but cannot carry it across a gap longer than the bucket. Because the proof expires, some path must be able to create it from scratch, or one long outage blocks judging until an operator intervenes. See also: Judged Resolution, Archive Horizon.
+
 ### Attempt Class
 
 The named reason a single judge attempt failed, recorded per attempt alongside the stage it failed at — evidence retrieval, either judge call, response normalization, agreement, or the terminal transition.
