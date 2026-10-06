@@ -360,8 +360,6 @@ function providerRow(row, source) {
 async function providerRows(response, source, containerKeys, bareArray = false) {
   let payload;
   try { payload = await response.json(); } catch { return null; }
-  // Preserve known incompleteness before malformed rows or wrappers can erase
-  // it. Generic invalid payloads still follow the existing provider policy.
   if (source === 'otx') {
     const rows = Array.isArray(payload) ? payload : payload?.results;
     const hasPage = ['next', 'previous'].some(key => typeof payload?.[key] === 'string');
