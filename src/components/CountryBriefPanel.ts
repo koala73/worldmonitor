@@ -1,3 +1,4 @@
+import type { EffectiveTariffRate } from '@/generated/client/worldmonitor/trade/v1/service_client';
 import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
@@ -21,6 +22,13 @@ export interface CountryIntelData {
   fallback?: boolean;
   sources?: BriefSource[];
   evidence?: IntelBriefEvidence[];
+}
+
+export interface CountryTariffTrendsData {
+  currentRate: number;
+  trend: string;
+  datapoints: Array<{ year: number; tariffRate: number }>;
+  effectiveTariffRate?: EffectiveTariffRate;
 }
 
 export interface StockIndexData {
@@ -240,7 +248,7 @@ export interface CountryBriefPanel {
   updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
   updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
   updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
-  updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
+  updateTariffTrends?(data: CountryTariffTrendsData | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;
   updateProductImports?(data: CountryProductsResponse | null): void;
   updateCommodityVulnerabilities?(data: GetCountryVulnerabilitiesResponse | null): void;
