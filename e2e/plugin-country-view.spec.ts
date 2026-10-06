@@ -20,6 +20,8 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   const contexts: Array<{ countryCode: string; topic: string; signals?: CountrySignalCounts; sections: Array<{ section: string; state: string; coverage?: string; renderedText: string }> }> = [];
   const links: string[] = [];
   let rawMode: 'observed' | 'transient' | 'denied' | 'zero' = 'observed';
+  let rawAdvisoryLevel = 'normal';
+  let admissionFailure: string | undefined;
   let rawRetrievedAt = '2026-10-05T12:00:00.000Z';
   let releaseOrder: () => void = () => {};
   let delayOrder = Boolean(rawScenario);
@@ -72,6 +74,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     if (params.name === 'get_country_coverage') return { structuredContent: { countryCode: code, countryName: code, generatedAt: '2026-10-01T15:00:00Z', degraded: false, headlines: [{ title: `Controlled ${code} source article`, source: 'Fixture publisher', url: 'https://example.com/evidence', publishedAtMs: 1790863200000 }], events: [], sources: [{ source: 'news', state: 'ready' }, { source: 'events', state: 'unavailable' }] } };
     if (params.name === 'open_country_brief') {
       if (initialOpenError) return { isError: true, content: [{ type: 'text', text: initialOpenError }] };
+      if (admissionFailure) return { isError: true, content: [{ type: 'text', text: admissionFailure }] };
       if (code === 'US' && delayAdmission) await admissionDelayed;
       if (quotaExceeded) throw new Error('Daily MCP quota exceeded (50 requests/day). Resets at next UTC midnight.');
       const reused = admitted.has(code) && !args.refresh;
@@ -90,7 +93,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       if (rawMode === 'observed' || rawMode === 'zero') {
         sources.earthquakes = validateRawSignal('earthquakes', { earthquakes: [{ id: 'fixture-eq', place: 'United States', magnitude: 4.5, location: { latitude: 38, longitude: -77 }, occurredAt: 1791000000000, source: 'USGS', category: 'earthquake', sourceUrl: 'https://example.com/quake' }] }, time) as typeof sources.earthquakes;
         sources.outages = validateRawSignal('outages', { outages: rawMode === 'zero' ? [] : [{ id: 'fixture-outage', title: 'Controlled outage', country: geometryUnavailable ? 'Canada' : 'United States', location: geometryUnavailable ? { latitude: 45.4215, longitude: -75.6972 } : { latitude: 38, longitude: -77 }, detectedAt: 1791000000000, endedAt: 1791000300000, link: 'https://example.com/outage' }] }, time) as typeof sources.outages;
-        sources.advisories = validateRawSignal('advisories', { advisories: [{ title: 'Controlled advisory', link: 'https://example.com/advisory', source: 'US State Dept', sourceCountry: 'US', pubDate: '2026-10-01T12:00:00Z', level: 'normal', country: 'US' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'normal'])) }, time) as typeof sources.advisories;
+        sources.advisories = validateRawSignal('advisories', { advisories: [{ title: 'Controlled advisory', link: 'https://example.com/advisory', source: 'US State Dept', sourceCountry: 'US', pubDate: '2026-10-01T12:00:00Z', level: rawAdvisoryLevel, country: 'US' }], byCountry: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`C${index}`, 'normal'])) }, time) as typeof sources.advisories;
         sources.thermal = validateRawSignal('thermal', { clusters: [{ id: 'fixture-hot', countryCode: 'US', status: 'THERMAL_STATUS_SPIKE', firstDetectedAt: '2026-10-01T12:00:00Z', lastDetectedAt: '2026-10-01T14:00:00Z' }], fetchedAt: time, observationWindowHours: 24, sourceVersion: 'thermal-escalation-v1' }, time) as typeof sources.thermal;
       }
       return { structuredContent: assembleRawSignals(selectedCountry, sources, time) };
@@ -189,7 +192,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('static country tiers match the website without adding host data readers', async ({ page }, info) => {
@@ -314,6 +317,55 @@ test('country Signals reuse loaded military observations and keep missing source
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBeNull();
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBeNull();
   expect(host.admissions).toBe(4);
+});
+
+test('informational advisories remain observed without caution escalation', async ({ page }, info) => {
+  const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first');
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  host.releaseOrder();
+  host.rawInfo();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.travelAdvisoryMaxLevel).toBe('info');
+  const signals = frame.locator('[data-brief-section=signals]');
+  await expect(signals).toContainText('1 Advisory: Info');
+  await expect(signals).not.toContainText('Exercise Caution');
+  await signals.screenshot({ path: info.outputPath('info-advisory-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signals.screenshot({ path: info.outputPath('info-advisory-mobile.png') });
+});
+
+for (const denied of [true, false]) test(`admission failure ${denied ? 'clears denied' : 'preserves transient'} raw Signals`, async ({ page }, info) => {
+  const host = await installCountryHost(page, true, undefined, false, {}, undefined, 'raw-first');
+  const frame = page.frameLocator('iframe');
+  await frame.getByRole('button', { name: 'Security', exact: true }).click();
+  host.releaseOrder();
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
+  await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBe(1);
+  const sectionCalls = host.calls.filter(call => call.name === 'get_country_brief_section').length;
+  host.admissionFail(denied ? 'Controlled entitlement forbidden' : 'Controlled temporary admission failure');
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(frame.locator('#countryStatus')).toContainText(denied ? 'not authorized' : 'Controlled temporary admission failure');
+  await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBe(denied ? null : 1);
+  await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
+  expect(host.contexts.at(-1)?.signals?.isTier1).toBe(true);
+  expect(host.calls.filter(call => call.name === 'get_country_brief_section')).toHaveLength(sectionCalls);
+  const signals = frame.locator('[data-brief-section=signals]');
+  if (denied) {
+    await expect(signals).toContainText('Earthquakes unavailable');
+    await expect(signals).not.toContainText('USGS and Natural Resources Canada');
+    const downloadPromise = page.waitForEvent('download');
+    await frame.getByRole('button', { name: 'Evidence', exact: true }).click();
+    const download = await downloadPromise;
+    const exportPath = info.outputPath('denied-admission-evidence.md');
+    await download.saveAs(exportPath);
+    const exported = await readFile(exportPath, 'utf8');
+    expect(exported).not.toContain('Earthquakes: 1');
+    expect(exported).not.toContain('USGS and Natural Resources Canada');
+  }
+  await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-desktop.png`) });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-mobile.png`) });
 });
 
 test.describe('localized normal travel advice', () => {

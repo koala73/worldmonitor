@@ -6,6 +6,16 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(async () => { await initTestI18n(); });
 
+it('renders informational advice without escalating it to caution', () => {
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  Reflect.set(panel, 'signalsBody', body);
+  panel.updateSignals(countrySignalsFromMilitary('US', undefined, { earthquakes: null, outages: null, travelAdvisories: 1, travelAdvisoryMaxLevel: 'info', thermalEscalations: null }));
+  expect(body.textContent).toContain('1 Advisory: Info');
+  expect(body.textContent).not.toContain('Exercise Caution');
+  panel.hide();
+});
+
 it('renders normal travel advice without escalating it to caution', () => {
   const panel = new CountryDeepDivePanel();
   const body = document.createElement('div');

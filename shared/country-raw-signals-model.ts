@@ -38,7 +38,7 @@ export function projectRawSignals(value: RawSignalsValue, countryName: string, h
   const rows = exact(sources.advisories) ? sources.advisories.records!.filter(row => row.country === countryCode) : null;
   const rank: Record<string, number> = { 'do-not-travel': 4, reconsider: 3, caution: 2, normal: 1, info: 0 };
   let travelAdvisoryMaxLevel: string | null = null;
-  for (const row of rows ?? []) if ((rank[row.level] ?? 0) > (rank[travelAdvisoryMaxLevel ?? ''] ?? 0)) travelAdvisoryMaxLevel = row.level;
+  for (const row of rows ?? []) if (rank[row.level]! > (rank[travelAdvisoryMaxLevel ?? ''] ?? -1)) travelAdvisoryMaxLevel = row.level;
   const thermalEscalations = exact(sources.thermal) ? sources.thermal.records!.filter(row => row.countryCode === countryCode && row.status !== 'normal').length : null;
   return { earthquakes, outages, travelAdvisories: rows?.length ?? null, travelAdvisoryMaxLevel, thermalEscalations };
 }

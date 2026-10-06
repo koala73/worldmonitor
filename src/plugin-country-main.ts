@@ -193,7 +193,21 @@ async function mountPlugin(): Promise<void> {
     if (!refresh && !nextAdmission && previous && Date.parse(previous.expiresAt) > Date.now()) nextAdmission = previous;
     if (!fromHost && (refresh || !nextAdmission)) {
       status.textContent = `Opening ${name} country brief…`;
-      const result = await call('open_country_brief', { country_code: code, topic: view.topic, refresh, ...(refresh ? { request_id: view.request_id ?? crypto.randomUUID() } : {}) }, admissionSignal) as { panelRequest?: unknown };
+      const result = await call('open_country_brief', { country_code: code, topic: view.topic, refresh, ...(refresh ? { request_id: view.request_id ?? crypto.randomUUID() } : {}) }, admissionSignal).catch(error => {
+        if (error instanceof CountrySectionError && error.state === 'locked' && !admissionSignal.aborted && openedRevision === revision && panel.getCode() === code && signalSlots?.countryCode === code) {
+          signalSlots.raw = null;
+          signalCoverage = null;
+          source.clearLoadedData();
+          admissions.delete(code);
+          admission = undefined;
+          showUsage();
+          const composed = composeCountrySignals(signalSlots.base, code, name, signalSlots.military, signalSlots.militaryNotes, null,
+            hasCountryGeometry(code), (lat, lon) => isCoordinateInCountry(lat, lon, code) === true);
+          panel.updateSignals(composed.signals, composed.notes);
+          scheduleContext();
+        }
+        throw error;
+      }) as { panelRequest?: unknown };
       if (result.panelRequest !== undefined) nextAdmission = panelAdmissionSchema.parse(result.panelRequest);
       if (nextAdmission && (nextAdmission.countryCode !== code || Date.parse(nextAdmission.expiresAt) <= Date.now())) throw new Error('Country admission did not match or expired.');
     }

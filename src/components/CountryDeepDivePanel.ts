@@ -3732,6 +3732,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const advLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? t('countryBrief.chips.doNotTravel')
         : signals.travelAdvisoryMaxLevel === 'reconsider' ? t('countryBrief.chips.reconsiderTravel')
         : signals.travelAdvisoryMaxLevel === 'normal' ? t('countryBrief.chips.normalPrecautions')
+        : signals.travelAdvisoryMaxLevel === 'info' ? t('components.securityAdvisories.levels.info')
         : t('countryBrief.chips.exerciseCaution');
       chips.append(this.makeSignalChip(`⚠️ ${signals.travelAdvisories} ${t('countryBrief.chips.advisory')}: ${advLabel}`, 'advisory'));
     } else {

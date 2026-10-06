@@ -69,7 +69,17 @@ it('counts sampled advisory rows instead of the full index and ranks native leve
   const result = sample({ advisories: { advisories: [{ ...advisory, level: 'info' }], byCountry: { ...byCountry, US: 'do-not-travel' } } });
   const counts = projectRawSignals(result.value, 'United States', true, () => true);
   assert.equal(counts.travelAdvisories, 1);
-  assert.equal(counts.travelAdvisoryMaxLevel, null);
+  assert.equal(counts.travelAdvisoryMaxLevel, 'info');
+});
+
+it('ranks each observed native advisory level above unset and retains the highest selected-country level', () => {
+  const levels = ['info', 'normal', 'caution', 'reconsider', 'do-not-travel'];
+  for (const level of levels) {
+    for (const rows of [[{ ...advisory, level }], [...levels.map(candidate => ({ ...advisory, level: candidate })), { ...advisory, level: 'info' }]]) {
+      const result = sample({ advisories: { advisories: rows, byCountry } });
+      assert.equal(projectRawSignals(result.value, 'United States', true, () => true).travelAdvisoryMaxLevel, rows.length === 1 ? level : 'do-not-travel');
+    }
+  }
 });
 
 it('marks malformed rows partial and makes exact family counts unknown', () => {
