@@ -931,12 +931,12 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const view = mountWidgetHtml((await res.json()).result.contents[0].text);
     view.sendToolResult({ fires: { fireDetections: [{ region: 'Direct fire' }] } });
     assert.match(view.text('groups'), /Direct fire/);
-    assert.match(view.text('groups'), /Earthquake data is temporarily unavailable/);
+    assert.doesNotMatch(view.text('groups'), /Earthquakes|temporarily unavailable/);
     for (const projection of [null, 'Direct fire', ['Direct fire'], { places: ['Direct fire'] }]) {
       view.sendToolResult({ projection });
       assert.equal(view.nodes('groups').filter((node) => node.className === 'drow').length, 0);
-      assert.match(view.text('groups'), /Earthquake data is temporarily unavailable/);
-      assert.match(view.text('groups'), /Wildfire data is temporarily unavailable/);
+      assert.match(view.text('groups'), /Natural-hazard data is temporarily unavailable/);
+      assert.doesNotMatch(view.text('groups'), /Earthquakes|Wildfire|No natural-hazard events available/);
       assert.equal(view.text('foot'), '');
     }
   });
@@ -1218,7 +1218,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       },
       {
         uri: 'ui://worldmonitor/natural-disasters.html', hostId: 'groups',
-        missing: { data: { fires: { fireDetections: [] } } },
+        missing: { data: { earthquakes: null, fires: { fireDetections: [] } } },
         empty: { data: { earthquakes: { earthquakes: [] }, fires: { fireDetections: [] } } },
         emptyCopy: /No natural-hazard events available\./,
       },

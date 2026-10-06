@@ -94,6 +94,19 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       });
     });
   }
+  for (const [dataset, selected, excluded] of [
+    ['wildfires', 'Active Wildfires', 'Earthquakes'],
+    ['earthquakes', 'Earthquakes', 'Active Wildfires'],
+  ]) {
+    it('does not mark an excluded family unavailable for ' + dataset + ' selection', async () => {
+      const wire = await result({ dataset: [dataset] });
+      assert.deepEqual(Object.keys(wire.structuredContent.data), [dataset === 'wildfires' ? 'fires' : 'earthquakes']);
+      await mount(wire, document => {
+        assert.match(groups(document), new RegExp(selected));
+        assert.doesNotMatch(groups(document), new RegExp(excluded + '|temporarily unavailable'));
+      });
+    });
+  }
   it('preserves original earthquake and fire times distinct from the retrieval snapshot and safe source URL', async () => {
     await mount(await result(), document => {
       assert.match(groups(document), /2026-10-02T12:34:56.000Z/);
@@ -113,6 +126,17 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       assert.match(groups(document), /Event time unavailable/);
       assert.match(groups(document), /Detection time unavailable/);
       assert.doesNotMatch(groups(document), /Invalid Date/);
+    });
+  });
+  it('keeps the Canadian fire zero-date sentinel unavailable', async () => {
+    const wire = await result({ dataset: ['wildfires'] }, 'populated', sources => {
+      sources.set('wildfire:fires:v1', seeded({ fireDetections: [{ region: 'Undated Canadian fire', detectedAt: 0, brightness: 0 }] }));
+    });
+    assert.equal(wire.structuredContent.data.fires.fireDetections[0].detectedAt, 0);
+    await mount(wire, document => {
+      assert.match(groups(document), /Undated Canadian fire.*Detection time unavailable/);
+      assert.doesNotMatch(groups(document), /1970|Detected /);
+      assert.match(groups(document), /brightness 0/);
     });
   });
   it('discloses supplied provider partial and unavailable flags alongside populated lists', async () => {
@@ -160,4 +184,26 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       });
     }
   });
+  it('preserves supplied earthquake epoch zero while fire zero remains unknown', async () => {
+    const wire = await result({ dataset: ['earthquakes'] }, 'populated', sources => {
+      sources.set('seismology:earthquakes:v1', seeded({ earthquakes: [{ place: 'Epoch quake', occurredAt: 0, magnitude: 0 }] }));
+    });
+    await mount(wire, document => {
+      assert.match(groups(document), /Epoch quake.*1970-01-01T00:00:00.000Z/);
+      assert.doesNotMatch(groups(document), /Event time unavailable|Wildfire/);
+    });
+  });
+  it('distinguishes selected missing families and no selected data from authoritative empty', async () => {
+    for (const [key, label, excluded] of [['fires', 'Wildfire', 'Earthquakes'], ['earthquakes', 'Earthquake', 'Active Wildfires']]) {
+      await mount({ structuredContent: { data: { [key]: null } } }, document => {
+        assert.match(groups(document), new RegExp(label + ' data is temporarily unavailable'));
+        assert.doesNotMatch(groups(document), new RegExp(excluded + '|No natural-hazard events available'));
+      });
+    }
+    await mount({ structuredContent: { data: {} } }, document => {
+      assert.match(groups(document), /Natural-hazard data is temporarily unavailable/);
+      assert.doesNotMatch(groups(document), /No natural-hazard events available/);
+    });
+  });
+
 });

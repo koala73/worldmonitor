@@ -43,14 +43,8 @@ const RENDER = `
         ? new Date(value) : null;
       return date && Number.isFinite(date.getTime()) ? label + date.toISOString() : missing;
     }
-    function hasDataset(key) { return Object.prototype.hasOwnProperty.call(datasets, key); }
-    // Earthquakes and wildfires are the core pair: unless the payload carries
-    // only other natural events, an absent core label is a cache miss and must
-    // render as unavailable rather than disappear or read as empty.
-    var corePair = hasDataset("earthquakes") || hasDataset("fires") || !hasDataset("events");
     function group(key, label, field) {
-      var required = corePair && (key === "earthquakes" || key === "fires");
-      if (!required && !hasDataset(key)) return null;
+      if (!Object.prototype.hasOwnProperty.call(datasets, key)) return null;
       selectedCount++;
       var bucket = datasets[key] && typeof datasets[key] === "object" ? datasets[key] : null;
       var list = bucket && bucket[field];
@@ -124,7 +118,7 @@ const RENDER = `
         var firePlace = collapseWs(fire.region) || (latitude != null && longitude != null ? latitude.toFixed(2) + ", " + longitude.toFixed(2) : "detection");
         fireRow.appendChild(el("span", "dplace", firePlace));
         var brightness = num(fire.brightness);
-        var fireDetails = eventTime(fire.detectedAt, "Detected ", "Detection time unavailable");
+        var fireDetails = eventTime(fire.detectedAt === 0 ? null : fire.detectedAt, "Detected ", "Detection time unavailable");
         if (brightness != null) fireDetails += " · brightness " + Math.round(brightness);
         fireRow.appendChild(el("span", "dtime", fireDetails));
         fireView.section.appendChild(fireRow);
@@ -173,7 +167,8 @@ const RENDER = `
       counts(otherView, otherShown);
     }
 
-    if (emptyCount === selectedCount && !coverageLimited) host.appendChild(el("div", "empty", "No natural-hazard events available."));
+    if (!selectedCount) host.appendChild(el("div", "empty", "Natural-hazard data is temporarily unavailable."));
+    else if (emptyCount === selectedCount && !coverageLimited) host.appendChild(el("div", "empty", "No natural-hazard events available."));
     q("foot").textContent = envelope.cached_at
       ? "Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : "")
       : "";
