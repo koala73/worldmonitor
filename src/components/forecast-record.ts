@@ -1,5 +1,7 @@
 import type { GetForecastScorecardResponse } from '@/services/forecast';
 import { getLocale, t } from '@/services/i18n';
+import { isDesktopRuntime } from '@/services/runtime';
+import { CANONICAL_ORIGIN } from '@/config/schema-graph-ids';
 import { escapeHtml } from '@/utils/sanitize';
 
 interface GradedRecord {
@@ -90,8 +92,13 @@ function staleBadge(record: GradedRecord): string {
   return `<span class="fc-record-stale"${title}>${escapeHtml(t('components.forecast.record.stale'))}</span>`;
 }
 
+/** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
+export function recordHref(desktop: boolean): string {
+  return desktop ? `${CANONICAL_ORIGIN}accuracy/` : '/accuracy/';
+}
+
 function link(): string {
-  return `<a class="fc-record-link" href="/accuracy/">${escapeHtml(t('components.forecast.record.fullRecord'))}</a>`;
+  return `<a class="fc-record-link" href="${escapeHtml(recordHref(isDesktopRuntime()))}">${escapeHtml(t('components.forecast.record.fullRecord'))}</a>`;
 }
 
 function wrap(kind: ForecastRecord['kind'], inner: string): string {

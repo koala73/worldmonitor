@@ -463,7 +463,17 @@ export class ForecastPanel extends Panel {
       )
       .then(() => {
         this.recordPromise = null;
-        if (!this.signal.aborted) this.render();
+        if (this.signal.aborted) return;
+        // Patch the strip in place: render() rebuilds the table and would close
+        // any Analysis or Signals pane the user opened. No slot yet means the
+        // content has not committed, so nothing can be open and render() is safe.
+        const slot = this.content.querySelector<HTMLElement>('[data-fc-record-slot]');
+        if (!slot) {
+          this.render();
+          return;
+        }
+        // renderForecastRecord() escapes every interpolated value.
+        setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
       });
   }
 
@@ -520,7 +530,7 @@ export class ForecastPanel extends Panel {
           <div class="fc-filters">${filtersHtml}</div>
           <div class="fc-filters">${regionsHtml}</div>
           ${sourceHtml}
-          ${renderForecastRecord(this.record)}
+          <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
           <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
         </div>
       `, 'legacy Panel.setContent() migration'));
@@ -542,7 +552,7 @@ export class ForecastPanel extends Panel {
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-filters">${regionsHtml}</div>
         ${sourceHtml}
-        ${renderForecastRecord(this.record)}
+        <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>

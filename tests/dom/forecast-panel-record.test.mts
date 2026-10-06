@@ -17,6 +17,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
+import { recordHref } from '@/components/forecast-record';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -127,6 +128,25 @@ describe('ForecastPanel track-record strip', () => {
 
     gate.resolve(Response.json(readyScorecard()));
     await stripIn(panel, 'ready');
+  });
+
+  it('updates only the strip when the scorecard settles, so open forecast panes survive', async () => {
+    const gate = deferred<Response>();
+    stubScorecardFetch(() => gate.promise);
+
+    panel.updateForecasts([forecast()]);
+    await stripIn(panel, 'loading');
+    const row = contentOf(panel).querySelector('.fc-prob-item');
+    expect(row).not.toBeNull();
+
+    gate.resolve(Response.json(readyScorecard()));
+    await stripIn(panel, 'ready');
+    expect(row!.isConnected, 'the forecast row was not rebuilt').toBe(true);
+  });
+
+  it('links to the hosted record from the desktop app, where /accuracy/ is not bundled', () => {
+    expect(recordHref(false)).toBe('/accuracy/');
+    expect(recordHref(true)).toBe('https://www.worldmonitor.app/accuracy/');
   });
 
   it('renders the headline Brier, base-rate comparison, and void rate, each with its sample size', async () => {
