@@ -95,6 +95,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const excludeOrigins = new Set(options.skillExcludeOrigins ?? defaultExcluded);
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
+  scorecard.publishedByDomain = summarizePublishedByDomain(scored);
   scorecard.uncertainty = {
     method: `entry-level percentile bootstrap, ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
     overallBrier: brierInterval(scored, 'overall'),
@@ -230,6 +231,27 @@ function summarizeScored(entries) {
     brier: round(mean(entries.map((entry) => brier(entry)))),
     logScore: round(mean(entries.map((entry) => logScore(entry)))),
   };
+}
+
+// Per-domain accuracy over the published-origin population only, with each
+// domain's yesCount so a reader can derive its base-rate Brier. byDomain pools
+// every origin, so it cannot back a per-domain reliability claim (#5092).
+function summarizePublishedByDomain(scored) {
+  const byDomain = new Map();
+  for (const entry of scored.filter(isPublishedOriginEntry)) {
+    const domain = entry?.domain || 'unknown';
+    if (!byDomain.has(domain)) byDomain.set(domain, []);
+    byDomain.get(domain).push(entry);
+  }
+  return [...byDomain.keys()].sort().map((domain) => {
+    const entries = byDomain.get(domain);
+    return {
+      domain,
+      count: entries.length,
+      brier: round(mean(entries.map((entry) => brier(entry)))),
+      yesCount: entries.filter((entry) => entry.outcome === 'YES').length,
+    };
+  });
 }
 
 // Headline "real skill" summary: Brier/log score over scored entries whose

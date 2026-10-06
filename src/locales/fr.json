@@ -2380,8 +2380,8 @@
         "fullRecord": "Bilan complet"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} (n={{n}})",
-        "measuredHint": "Performance des prévisions {{domain}} : score de Brier sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. C'est l'historique du domaine, pas de cette prévision. 0 est parfait, 0,25 est un pile ou face, plus bas est mieux.",
+        "measured": "{{domain}} Brier {{score}} vs taux de base {{base}} (n={{n}})",
+        "measuredHint": "Score obtenu par les prévisions publiées {{domain}} sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. Le taux de base est le score qu'on obtiendrait en répondant toujours par le taux de oui observé du domaine. Plus bas est mieux. C'est l'historique du domaine, pas de cette prévision.",
         "unmeasured": "Pas encore mesuré",
         "unmeasuredHint": "Les prévisions {{domain}} ont {{n}} résultats évalués au cours des {{days}} derniers jours. Un domaine doit en avoir {{min}} avant que sa précision soit affichée."
       }

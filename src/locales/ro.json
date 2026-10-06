@@ -2380,8 +2380,8 @@
         "fullRecord": "Istoric complet"
       },
       "reliability": {
-        "measured": "{{domain}}: scor Brier {{score}} (n={{n}})",
-        "measuredHint": "Cum au fost evaluate previziunile {{domain}}: scor Brier din {{n}} previziuni evaluate în ultimele {{days}} zile. Acesta este istoricul domeniului, nu al acestei previziuni. 0 este perfect, 0,25 este o aruncare de monedă, mai mic este mai bine.",
+        "measured": "{{domain}} Brier {{score}} vs rata de bază {{base}} (n={{n}})",
+        "measuredHint": "Cum s-au clasat prognozele publicate {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} de zile. Rata de bază este ce s-ar fi obținut prin răspunsul întotdeauna cu rata observată „da\" a domeniului. Mai mic este mai bun. Acesta este istoricul domeniului, nu al acestei prognoze.",
         "unmeasured": "Încă nemăsurat",
         "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
       }

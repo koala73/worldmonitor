@@ -75,6 +75,7 @@ const LIVE_SCORECARD = Object.freeze({
   ],
   vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
   skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+  publishedByDomain: [{ domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 }, { domain: 'market', count: 60, brier: 0.13, yesCount: 22 }],
   degraded: false,
   stale: false,
   error: '',
@@ -128,8 +129,10 @@ describe('forecast scorecard field whitelist', () => {
       skill: { ...LIVE_SCORECARD.skill, promoted: true },
       byDomain: [{ ...LIVE_SCORECARD.byDomain[0], internalNote: 'x' }],
       calibration: [{ ...LIVE_SCORECARD.calibration[0], sampleIds: ['a'] }],
+      publishedByDomain: [{ domain: 'market', count: 40, brier: 0.21, yesCount: 12, origins: ['detector'] }],
     };
     const selected = selectDeclaredScorecardFields(leaky);
+    assert.deepEqual(selected.publishedByDomain, [{ domain: 'market', count: 40, brier: 0.21, yesCount: 12 }]);
     assert.equal(Object.hasOwn(selected.totals, 'judgedLane'), false);
     assert.equal(Object.hasOwn(selected.skill, 'promoted'), false);
     assert.equal(Object.hasOwn(selected.byDomain[0], 'internalNote'), false);

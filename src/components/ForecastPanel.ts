@@ -266,6 +266,7 @@ function injectStyles(): void {
     .fc-record-stale { color: #d29922; border: 1px solid rgba(210,153,34,0.35); border-radius: 3px; padding: 0 5px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .fc-record-stale[title] { cursor: help; }
     .fc-reliability { display: inline-block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-reliability-pending { min-height: calc(9px * 1.6 * var(--wm-panel-effective-scale, 1)); margin-top: 2px; }
     .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
     .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
     .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
@@ -488,6 +489,7 @@ export class ForecastPanel extends Panel {
         setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
         for (const badgeSlot of this.content.querySelectorAll<HTMLElement>('[data-fc-reliability]')) {
           const domain = badgeSlot.dataset.fcReliability ?? '';
+          badgeSlot.classList.remove('fc-reliability-pending');
           // renderReliabilityBadge() escapes every interpolated value.
           setTrustedHtml(badgeSlot, trustedHtml(renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain), 'ForecastPanel reliability badge; escaped markup from renderReliabilityBadge (#5092)'));
         }
@@ -741,7 +743,7 @@ export class ForecastPanel extends Panel {
               ${simChipHtml}
             </div>
             ${simBarHtml}
-            <div data-fc-reliability="${escapeHtml(domain)}">${renderReliabilityBadge(this.reliability, domain, catLabel)}</div>
+            <div data-fc-reliability="${escapeHtml(domain)}"${this.record.kind === 'loading' ? ' class="fc-reliability-pending"' : ''}>${renderReliabilityBadge(this.reliability, domain, catLabel)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

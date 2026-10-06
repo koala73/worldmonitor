@@ -33,6 +33,7 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'stale',
   'error',
   'skill',
+  'publishedByDomain',
 ]);
 
 // A fixed vocabulary, because the page is public: an exception message or an
@@ -70,6 +71,7 @@ const CALIBRATION_FIELDS = Object.freeze([
 ]);
 const MARKET_SKILL_FIELDS = Object.freeze(['count', 'forecastBrier', 'marketBrier', 'brierDelta']);
 const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount']);
+const PUBLISHED_DOMAIN_FIELDS = Object.freeze(['domain', 'count', 'brier', 'yesCount']);
 
 const NESTED_OBJECT_FIELDS = Object.freeze({
   totals: TOTALS_FIELDS,
@@ -81,6 +83,7 @@ const NESTED_ROW_FIELDS = Object.freeze({
   byDomain: DOMAIN_FIELDS,
   byGenerationOrigin: ORIGIN_FIELDS,
   calibration: CALIBRATION_FIELDS,
+  publishedByDomain: PUBLISHED_DOMAIN_FIELDS,
 });
 
 const ISSUE_URL = 'https://github.com/koala73/worldmonitor/issues';

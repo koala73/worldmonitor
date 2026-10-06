@@ -1987,8 +1987,8 @@
         "fullRecord": "Fullständigt facit"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} (n={{n}})",
-        "measuredHint": "Hur {{domain}}-prognoser har presterat: Brier-värde över {{n}} bedömda prognoser de senaste {{days}} dagarna. Detta är domänens meritlista, inte den här prognosens. 0 är perfekt, 0,25 är en slantsingling, lägre är bättre.",
+        "measured": "{{domain}} Brier {{score}} vs basfrekvens {{base}} (n={{n}})",
+        "measuredHint": "Hur publicerade {{domain}}-prognoser har presterat över {{n}} bedömda prognoser de senaste {{days}} dagarna. Basfrekvensen är vad man skulle ha fått genom att alltid svara ja enligt domänens observerade frekvens. Lägre är bättre. Detta är domänens historik, inte denna prognos.",
         "unmeasured": "Ännu inte mätt",
         "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
       }

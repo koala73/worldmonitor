@@ -2370,8 +2370,8 @@
         "fullRecord": "Tüm kayıt"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} (n={{n}})",
-        "measuredHint": "{{domain}} tahminlerinin performansı: Son {{days}} gün içinde {{n}} puanlanan tahmin üzerinden Brier skoru. Bu, alanın kaydıdır, bu tahmin için değil. 0 mükemmeldir, 0,25 yazı tura atmaktır, düşük daha iyidir.",
+        "measured": "{{domain}} Brier {{score}} vs taban oranı {{base}} (n={{n}})",
+        "measuredHint": "{{n}} puanlanan tahmin üzerinden son {{days}} günde yayınlanan {{domain}} tahminlerinin nasıl performans gösterdiği. Taban oranı, her zaman alanın gözlemlenen evet oranını yanıtlamanın elde edeceği puandır. Düşük değer daha iyidir. Bu, alanın sicilidir, bu tahminin değil.",
         "unmeasured": "Henüz ölçülmedi",
         "unmeasuredHint": "{{domain}} tahminleri son {{days}} gün içinde {{n}} puanlanan sonuca sahiptir. Bir alanın doğruluğunun gösterilmesi için {{min}} gereklidir."
       }

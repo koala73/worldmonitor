@@ -62,43 +62,53 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
 export const DOMAIN_RELIABILITY_MIN_SAMPLE = 30;
 
 export type DomainReliability =
-  | { kind: 'measured'; brier: number; n: number }
+  | { kind: 'measured'; brier: number; n: number; yesShare: number }
   | { kind: 'unmeasured'; n: number };
 
-/** Per-domain scorecard rows for the card badges; null when the scorecard cannot vouch for them. */
+/** Published-origin per-domain rows for the card badges; null when the scorecard cannot vouch for them. */
 export interface ReliabilityTable {
   windowDays: number;
+  stale: boolean;
   byDomain: ReadonlyMap<string, DomainReliability>;
 }
 
+/**
+ * Reads only publishedByDomain. byDomain pools shadow and synthetic origins,
+ * so a response without the published breakdown yields no badges at all. The
+ * handler fills an absent field with [], so an empty breakdown beside a graded
+ * headline cohort means a seed that predates the field, not zero samples.
+ */
 export function projectReliability(resp: GetForecastScorecardResponse): ReliabilityTable | null {
-  if (resp.degraded || resp.error) return null;
+  if (resp.degraded || resp.error || !Array.isArray(resp.publishedByDomain)) return null;
+  if (resp.publishedByDomain.length === 0 && finite(resp.skill?.count) && resp.skill.count > 0) return null;
   const byDomain = new Map<string, DomainReliability>();
-  for (const row of resp.byDomain ?? []) {
-    const n = finite(row.scored) && row.scored > 0 ? row.scored : 0;
-    byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier)
-      ? { kind: 'measured', brier: row.brier, n }
+  for (const row of resp.publishedByDomain) {
+    const n = finite(row.count) && row.count > 0 ? row.count : 0;
+    const validYes = finite(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
+    byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier) && validYes
+      ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n }
       : { kind: 'unmeasured', n });
   }
   const windowDays = finite(resp.rollingWindowDays) && resp.rollingWindowDays > 0 ? resp.rollingWindowDays : DEFAULT_WINDOW_DAYS;
-  return { windowDays, byDomain };
+  return { windowDays, stale: resp.stale === true, byDomain };
 }
 
-/** A domain the scorecard has no row for has graded nothing yet, so it reads as unmeasured with n=0. */
+/** A domain the scorecard has no published row for has graded nothing yet, so it reads as unmeasured with n=0. */
 export function renderReliabilityBadge(table: ReliabilityTable | null, domain: string, domainLabel: string): string {
   if (!table) return '';
   const r = table.byDomain.get(domain) ?? { kind: 'unmeasured', n: 0 };
   const days = table.windowDays;
-  const [text, hint] = r.kind === 'measured'
+  const [main, hint] = r.kind === 'measured'
     ? [
-        t('components.forecast.reliability.measured', { domain: domainLabel, score: r.brier.toFixed(3), n: r.n }),
+        t('components.forecast.reliability.measured', { domain: domainLabel, score: r.brier.toFixed(3), base: baseRateBrier(r.yesShare).toFixed(3), n: r.n }),
         t('components.forecast.reliability.measuredHint', { domain: domainLabel, n: r.n, days }),
       ]
     : [
         t('components.forecast.reliability.unmeasured'),
         t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
       ];
-  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(recordHref(isDesktopRuntime()))}" title="${escapeHtml(hint)}">${escapeHtml(text)}</a>`;
+  const text = table.stale ? `${main} · ${t('components.forecast.record.stale')}` : main;
+  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(recordHref(isDesktopRuntime()))}" title="${escapeHtml(hint)}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */

@@ -2360,8 +2360,8 @@
         "fullRecord": "전체 기록"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} (n={{n}})",
-        "measuredHint": "{{domain}} 예측의 성과: 지난 {{days}}일 동안 등급이 매겨진 {{n}}개 예측의 Brier 점수입니다. 이는 도메인의 기록이며, 이 예측의 기록이 아닙니다. 0은 완벽함, 0.25는 동전 던지기, 낮을수록 좋습니다.",
+        "measured": "{{domain}} Brier {{score}} vs 기준율 {{base}} (n={{n}})",
+        "measuredHint": "지난 {{days}}일간 {{n}}개의 평가된 예측에서 공개된 {{domain}} 예측들의 점수. 기준율은 항상 도메인의 관찰된 예 비율로 답변했을 때의 점수입니다. 낮을수록 좋습니다. 이것은 도메인의 기록이지, 이 예측의 기록이 아닙니다.",
         "unmeasured": "아직 측정되지 않음",
         "unmeasuredHint": "{{domain}} 예측은 지난 {{days}}일 동안 {{n}}개의 등급이 매겨진 결과가 있습니다. 도메인의 정확도를 표시하려면 {{min}}개가 필요합니다."
       }

@@ -159,6 +159,7 @@ export interface GetForecastScorecardResponse {
   stale: boolean;
   error: string;
   skill?: ScorecardSkill;
+  publishedByDomain: ScorecardPublishedDomain[];
 }
 
 export interface ScorecardTotals {
@@ -221,6 +222,13 @@ export interface ScorecardSkill {
   logScore?: number;
   excludedScored: number;
   excludedOrigins: string[];
+  yesCount: number;
+}
+
+export interface ScorecardPublishedDomain {
+  domain: string;
+  count: number;
+  brier: number;
   yesCount: number;
 }
 
