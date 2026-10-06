@@ -937,8 +937,10 @@ outcome or an idle lane resets it. The normal health classifier exposes the
 failure as `SEED_ERROR`.
 
 If the evidence coverage marker expires or its version-2 proof becomes stale,
-the resolver attempts a bounded scan
-of the dedicated archive. Recovery requires at least 14 days of valid records,
+the resolver attempts a bounded scan of the dedicated archive. Recovery allows
+30,000 records by default, compared with 15,000 for ordinary judging reads,
+within the same 25-second total deadline. An explicit archive hash-limit override
+still applies. Recovery requires at least 14 days of valid records,
 no gap longer than six hours (including the newest record to the read clock),
 matching index and record timestamps, and no truncation, duplicate hashes, or
 unreadable records. It installs a version-2 continuity marker with `SET NX` and

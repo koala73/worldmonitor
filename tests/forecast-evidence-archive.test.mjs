@@ -892,6 +892,7 @@ describe('archive continuity recovery (#8877)', () => {
 
   async function read(rows, { maxHashes = 100, persist = true, writeResult = 'OK', coverageMaxLagMs, coverage = null } = {}) {
     const calls = [];
+    const members = new Map(rows.map(row => [mod.forecastEvidenceRecordKey(row.hash), row.member]));
     const result = await seederMod.readForecastEvidenceArchive(start, now, {
       redisUrl: 'https://redis.example', redisToken: 'token', maxHashes,
       persistRecoveredCoverage: persist, coverageMaxLagMs,
@@ -899,7 +900,7 @@ describe('archive continuity recovery (#8877)', () => {
         const cmd = JSON.parse(init.body);
         calls.push(cmd);
         if (Array.isArray(cmd[0])) return response(cmd.map(([, key]) => ({
-          result: rows.find(row => mod.forecastEvidenceRecordKey(row.hash) === key)?.member ?? null,
+          result: members.get(key) ?? null,
         })));
         if (cmd[0] === 'GET') return response({ result: coverage ? JSON.stringify(coverage) : null });
         if (cmd[0] === 'SET' || cmd[0] === 'EVAL') return response({ result: writeResult });
@@ -962,6 +963,21 @@ describe('archive continuity recovery (#8877)', () => {
     assert.equal(reread.coverageRecovered, false);
     assert.equal(mod.parseForecastEvidenceCoverage({ ...proof, continuityBucketMs: 1 }), null);
     assert.equal(mod.advanceForecastEvidenceCoverage(proof, now).sourceKey, mod.FORECAST_EVIDENCE_KEY);
+  });
+
+  it('recovers the reported 15,818-record archive and validates records beyond the normal cap', async () => {
+    const rows = Array.from({ length: 15_818 }, (_, i) => {
+      const score = now - Math.floor(i * 14.25 * 24 * hour / 15_817);
+      const hash = i.toString(16).padStart(64, '0');
+      return { hash, score, member: mod.buildForecastEvidenceMember({
+        hash, title: `Story ${i}`, link: `https://news.example/${i}`, publishedAt: score,
+      }, score) };
+    });
+    assert.equal((await read(rows, { maxHashes: null })).result.available, true);
+    rows.at(-1).member = null;
+    const { result, calls } = await read(rows, { maxHashes: null });
+    assert.equal(result.available, false);
+    assert.equal(calls.some(cmd => cmd[0] === 'SET' || cmd[0] === 'EVAL'), false);
   });
 
   it('does not advance a continuity proof across a later six-hour gap', () => {

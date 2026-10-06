@@ -64,6 +64,8 @@ export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
 export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
 export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
 export const DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT = 15_000;
+// Recovery must prove the full window; the incident archive already exceeded 15,000.
+const DEFAULT_COVERAGE_RECOVERY_HASH_LIMIT = 30_000;
 export const DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS = 25_000;
 const DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS = 5_000;
 export const DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS = 14;
@@ -1807,9 +1809,6 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     ? Math.max(0, Math.floor(options.coverageMaxLagMs))
     : resolveForecastEvidenceCoverageMaxLagMs(options.env ?? process.env);
   const requestedCoverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
-  const maxHashes = Number.isFinite(options.maxHashes)
-    ? Math.max(1, Math.floor(options.maxHashes))
-    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
   const archiveTimeoutMs = Number.isFinite(options.archiveTimeoutMs)
     ? Math.max(1_000, Math.floor(options.archiveTimeoutMs))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_TIMEOUT_MS', DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS);
@@ -1847,6 +1846,10 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   let coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
   const coverageUsable = forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true);
   const needsRecovery = !coverage || (coverage.v === 2 && !coverageUsable);
+  const maxHashes = Number.isFinite(options.maxHashes)
+    ? Math.max(1, Math.floor(options.maxHashes))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT',
+      needsRecovery ? DEFAULT_COVERAGE_RECOVERY_HASH_LIMIT : DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
   const scanStartMs = needsRecovery
     ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 2 * FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
     : requestedCoverageStartMs;
