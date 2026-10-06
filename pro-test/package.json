@@ -33,6 +33,7 @@
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stream-json": "file:../vendor/stream-json",
     "vite": "^7.3.2"
   },
   "devDependencies": {
@@ -48,6 +49,7 @@
     "ws": "8.21.0",
     "shell-quote": "1.10.0",
     "metro": "0.84.6",
-    "brace-expansion@5": "^5.0.12"
+    "brace-expansion@5": "^5.0.12",
+    "stream-json": "$stream-json"
   }
 }

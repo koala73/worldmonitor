@@ -301,6 +301,7 @@
     "pmtiles": "^4.4.0",
     "preact": "^10.25.4",
     "satellite.js": "^6.0.2",
+    "stream-json": "file:vendor/stream-json",
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
@@ -338,6 +339,8 @@
       "@loaders.gl/gltf": "4.5.2",
       "@loaders.gl/textures": "4.5.2"
     },
-    "metro": "0.83.8"
+    "metro": "0.83.8",
+    "stream-json": "$stream-json",
+    "katex": "0.18.2"
   }
 }

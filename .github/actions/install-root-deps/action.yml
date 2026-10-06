@@ -8,7 +8,7 @@ runs:
       id: node-modules
       with:
         path: node_modules
-        key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**') }}
+        key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}
     - name: Install root dependencies on cache miss
       if: steps.node-modules.outputs.cache-hit != 'true'
       shell: bash
