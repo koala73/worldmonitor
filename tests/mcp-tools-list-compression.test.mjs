@@ -426,6 +426,10 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const schema = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section').outputSchema;
       const validate = new Ajv2020({ strict: false }).compile(schema);
       assert.equal(validate(result), true);
+      for (const state of ['ready', 'locked', 'unavailable']) {
+        assert.equal(validate({ state, section: 'signalsRaw' }), false,
+          `raw Signals ${state} output must include source evidence`);
+      }
       const missingFamily = structuredClone(result);
       delete missingFamily.value.sources.thermal;
       assert.equal(validate(missingFamily), false);

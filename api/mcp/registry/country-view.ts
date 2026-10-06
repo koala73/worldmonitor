@@ -151,7 +151,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
           missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4 },
         },
         required: ['countryCode', 'sources', 'missing'],
-      } } },
+      } }, required: ['value'] },
     ],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
