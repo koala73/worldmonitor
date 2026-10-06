@@ -686,8 +686,17 @@ describe('accuracy page honesty rules', () => {
       byGenerationOrigin: LIVE_SCORECARD.byGenerationOrigin.filter((row) => row.generationOrigin !== 'unknown'),
       skill: { count: 176, brier: 0.113943, logScore: 0.366094, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
     });
-    assert.match(stripTags(renderState(agedOut).html), /filed as unknown and is left out/);
-    assert.match(downloadFor(agedOut).headlineCohort.definition, /unknown and is excluded/);
+    assert.match(stripTags(renderState(agedOut).html), /filed as unknown; none was scored in this window/);
+    assert.match(downloadFor(agedOut).headlineCohort.definition, /none was scored in this window/);
+
+    // A VOID-only unknown row: the caption and the row must give one answer.
+    const voidOnly = sectionWith({
+      byGenerationOrigin: LIVE_SCORECARD.byGenerationOrigin.map((row) => (row.generationOrigin === 'unknown' ? { ...row, scored: 0, brier: undefined, logScore: undefined } : row)),
+      skill: { count: 176, brier: 0.113943, logScore: 0.366094, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+    });
+    const voidOnlyHtml = renderState(voidOnly).html;
+    assert.match(stripTags(voidOnlyHtml), /filed as unknown; none was scored in this window/);
+    assert.match(voidOnlyHtml, /<tr data-origin="unknown"><th scope="row">unknown<\/th><td>No scored entries<\/td>/);
   });
 
   it('describes the scored share of the ledger by its definition, not by its field name', () => {

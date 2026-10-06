@@ -306,20 +306,38 @@ const FAILURE_SENTENCES = Object.freeze({
   unknown: 'The capture failed for a reason this page does not classify.',
 });
 
-// Captures from before #5240 counted unknown-origin entries in the headline.
-// excludedOrigins names only origins that had scored entries in the window, so
-// its silence means "counted" only when unknown entries were scored.
-function countsUnknownOrigin(scorecard) {
+// One answer for the caption, the cohort paragraph, the origin row and the
+// download (#5240). excludedOrigins names only origins that had scored entries,
+// so it can say "excluded" or "counted" only when unknown entries were scored.
+// Captures from before #5240 counted them.
+function unknownOriginStatus(scorecard) {
   const rows = Array.isArray(scorecard?.byGenerationOrigin) ? scorecard.byGenerationOrigin : [];
-  const scoredUnknown = rows.some((row) => row?.generationOrigin === 'unknown' && row.scored > 0);
+  if (!rows.some((row) => row?.generationOrigin === 'unknown' && row.scored > 0)) return 'none-scored';
   const excluded = scorecard?.skill?.excludedOrigins;
-  return scoredUnknown && !(Array.isArray(excluded) && excluded.includes('unknown'));
+  return Array.isArray(excluded) && excluded.includes('unknown') ? 'excluded' : 'counted';
 }
 
+const UNKNOWN_ORIGIN_SENTENCES = Object.freeze({
+  counted: 'An entry that carries no origin at all is filed as unknown and is counted.',
+  excluded: 'An entry that carries no origin at all is filed as unknown and is left out: those entries predate origin tagging and cannot be attributed to a generator.',
+  'none-scored': 'An entry that carries no origin at all is filed as unknown; none was scored in this window.',
+});
+
+const UNKNOWN_ORIGIN_DEFINITIONS = Object.freeze({
+  counted: ' and is included',
+  excluded: ' and is excluded',
+  'none-scored': '; none was scored in this window',
+});
+
 function unknownOriginSentence(scorecard) {
-  return countsUnknownOrigin(scorecard)
-    ? 'An entry that carries no origin at all is filed as unknown and is counted.'
-    : 'An entry that carries no origin at all is filed as unknown and is left out: those entries predate origin tagging and cannot be attributed to a generator.';
+  return UNKNOWN_ORIGIN_SENTENCES[unknownOriginStatus(scorecard)];
+}
+
+function originCohortCell(row, excluded, status) {
+  if (row.generationOrigin === 'unknown') {
+    return { counted: 'Yes', excluded: 'No, excluded', 'none-scored': 'No scored entries' }[status];
+  }
+  return excluded.has(row.generationOrigin) ? 'No, excluded' : 'Yes';
 }
 
 function excludedCohortPhrase(skill) {
@@ -511,13 +529,14 @@ ${rows.map((row) => `          <tr data-domain="${escapeHtml(row.domain)}"><th s
       </table></div>`;
 }
 
-function originTable(rows, skill, unknownSentence, escapeHtml) {
+function originTable(rows, skill, unknownStatus, escapeHtml) {
   const excluded = new Set(Array.isArray(skill?.excludedOrigins) ? skill.excludedOrigins : []);
+  const unknownSentence = UNKNOWN_ORIGIN_SENTENCES[unknownStatus];
   return `      <div class="table-scroll"><table data-by-origin>
         <caption>Accuracy by generation origin, and whether each origin counts toward the headline cohort. ${escapeHtml(unknownSentence)}</caption>
         <thead><tr><th scope="col">Generation origin</th><th scope="col">In the headline cohort</th><th scope="col">Resolved</th><th scope="col">Scored</th><th scope="col">Voided</th><th scope="col">Brier</th><th scope="col">Log score</th></tr></thead>
         <tbody>
-${rows.map((row) => `          <tr data-origin="${escapeHtml(row.generationOrigin)}"><th scope="row">${escapeHtml(row.generationOrigin)}</th><td>${escapeHtml(excluded.has(row.generationOrigin) ? 'No, excluded' : 'Yes')}</td><td>${escapeHtml(formatCount(row.resolved))}</td><td>${escapeHtml(formatCount(row.scored))}</td><td>${escapeHtml(rateOf(row.voidRate, row.resolved, 'resolved'))}</td><td>${scoreCell(row.brier, escapeHtml)}</td><td>${scoreCell(row.logScore, escapeHtml)}</td></tr>`).join('\n')}
+${rows.map((row) => `          <tr data-origin="${escapeHtml(row.generationOrigin)}"><th scope="row">${escapeHtml(row.generationOrigin)}</th><td>${escapeHtml(originCohortCell(row, excluded, unknownStatus))}</td><td>${escapeHtml(formatCount(row.resolved))}</td><td>${escapeHtml(formatCount(row.scored))}</td><td>${escapeHtml(rateOf(row.voidRate, row.resolved, 'resolved'))}</td><td>${scoreCell(row.brier, escapeHtml)}</td><td>${scoreCell(row.logScore, escapeHtml)}</td></tr>`).join('\n')}
         </tbody>
       </table></div>`;
 }
@@ -731,7 +750,7 @@ ${calibrationTable(scorecard, escapeHtml)}
       <h2>Accuracy by domain</h2>
 ${domainTable(scorecard.byDomain, escapeHtml)}
       <h2>Accuracy by generation origin</h2>
-${originTable(scorecard.byGenerationOrigin, scorecard.skill, unknownOriginSentence(scorecard), escapeHtml)}
+${originTable(scorecard.byGenerationOrigin, scorecard.skill, unknownOriginStatus(scorecard), escapeHtml)}
 ${marketSection(scorecard.vsMarketSkill, escapeHtml)}
 ${limitsSection(omittedBuckets, escapeHtml)}
 ${relatedSection(baseUrl, tpl)}
@@ -839,7 +858,7 @@ export function accuracyDatasetDownload({ state, snapshotPath }) {
         scored: isFiniteNumber(skill.count) ? skill.count : 0,
         excludedScored: isFiniteNumber(skill.excludedScored) ? skill.excludedScored : 0,
         excludedOrigins: Array.isArray(skill.excludedOrigins) ? [...skill.excludedOrigins] : [],
-        definition: `every scored entry except those whose generationOrigin is listed in excludedOrigins; an absent origin is filed as unknown and is ${countsUnknownOrigin(state.scorecard) ? 'included' : 'excluded'}`,
+        definition: `every scored entry except those whose generationOrigin is listed in excludedOrigins; an absent origin is filed as unknown${UNKNOWN_ORIGIN_DEFINITIONS[unknownOriginStatus(state.scorecard)]}`,
       }
       : null,
     // calibrationBuckets, summarizeMarketSkill and summarizeScored all run over
