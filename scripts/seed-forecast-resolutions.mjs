@@ -1960,10 +1960,13 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   // Truncation is different: nothing is missing inside the narrowed window.
   const incomplete = malformedTombstones > 0;
   if (needsRecovery) {
+    if (truncated) {
+      console.warn(`  [forecast-resolutions] coverage recovery scan truncated at ${maxHashes} records; review FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT`);
+    }
     coverage = !incomplete && !truncated ? recoverForecastEvidenceCoverage(records, nowMs) : null;
     const refused = {
       ...base, items: [], available: false, incomplete: true, coverageComplete: false,
-      incompleteReason: 'coverage_unverified', truncated, malformedTombstones,
+      incompleteReason: truncated ? 'coverage_recovery_truncated' : 'coverage_unverified', truncated, malformedTombstones,
     };
     if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true)) return refused;
     if (options.persistRecoveredCoverage !== false) {

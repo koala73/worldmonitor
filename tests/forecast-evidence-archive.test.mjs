@@ -937,6 +937,7 @@ describe('archive continuity recovery (#8877)', () => {
       if (scenario === 'duplicate') rows[25] = rows[24];
       const { result, calls } = await read(rows, { maxHashes: scenario === 'truncated' ? 40 : 100 });
       assert.equal(result.available, false);
+      if (scenario === 'truncated') assert.equal(result.incompleteReason, 'coverage_recovery_truncated');
       assert.equal(calls.some(cmd => cmd[0] === 'SET'), false);
     });
   }
