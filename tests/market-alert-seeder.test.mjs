@@ -77,7 +77,8 @@ function rawInputs(overrides = {}) {
   };
 }
 
-const EMPTY_ARCHIVE = { readStories: async () => ({ coveredFromMs: NOW - 24 * HOUR, stories: [] }), readSourceTiers: async () => new Map() };
+const EMPTY_ARCHIVE = { readStories: async () => ({ coveredFromMs: NOW - 24 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
+const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null };
 
 function byType(ledger, type) {
   return Object.values(ledger).filter((entry) => entry.type === type);
@@ -107,11 +108,12 @@ function fakePipeline(rowFor) {
 
 const ARCHIVE_SINCE = NOW - 7 * HOUR;
 const OIL_STORY = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW - 5 * HOUR };
+const OIL_STORY_LAST_SEEN = NOW - 4 * HOUR;
 
 function archiveRows(overrides = {}) {
   const rows = {
     ZRANGE: () => ({ result: ['h0', String(NOW - 8 * HOUR)] }),
-    ZRANGEBYSCORE: () => ({ result: [OIL_STORY.hash] }),
+    ZREVRANGEBYSCORE: () => ({ result: [OIL_STORY.hash, String(OIL_STORY_LAST_SEEN)] }),
     HGETALL: () => ({ result: ['title', OIL_STORY.title, 'firstSeen', String(OIL_STORY.firstSeen)] }),
     SMEMBERS: () => ({ result: ['OilPrice.com', 'Reuters'] }),
     ...overrides,
@@ -309,7 +311,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     const [key] = Object.keys(pending);
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: emittedAt + HOUR };
     const archive = {
-      readStories: async () => ({ coveredFromMs: emittedAt - HOUR, stories: [story] }),
+      readStories: async () => ({ coveredFromMs: emittedAt - HOUR, truncated: false, stories: [story] }),
       readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, { tier: 1, source: 'Reuters' }])),
     };
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
@@ -319,6 +321,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.emitted.total, 0);
     assert.deepEqual(tick.snapshot, LIVE_SNAPSHOT);
     assert.equal(tick.scorecard.totals.hit, 1);
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 0, coveredFromMs: emittedAt - HOUR });
   });
 
   it('keeps a due entry pending and reports it unproven when the archive starts after its window opened', async () => {
@@ -327,14 +330,39 @@ describe('buildTick runs the shared detectors under Node', () => {
     const [key] = Object.keys(pending);
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: emittedAt + HOUR };
     const archive = {
-      readStories: async () => ({ coveredFromMs: emittedAt + 1, stories: [story] }),
+      readStories: async () => ({ coveredFromMs: emittedAt + 1, truncated: false, stories: [story] }),
       readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, { tier: 1, source: 'Reuters' }])),
     };
     const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
     assert.equal(tick.ledger[key].status, 'pending');
     assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 1 });
     assert.equal(tick.summary.readFailed, false);
+    assert.equal(tick.summary.truncated, false);
     assert.match(formatSummary(tick.summary), / void=0 unproven=1 \| /);
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: false, unproven: 1, coveredFromMs: emittedAt + 1 });
+  });
+
+  it('a truncated archive read scores the rows it covers and says so in the summary and scorecard', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
+    const pending = pendingCrude(emittedAt);
+    const [key] = Object.keys(pending);
+    const archive = {
+      readStories: async () => ({ coveredFromMs: emittedAt - HOUR, truncated: true, stories: [] }),
+      readSourceTiers: async () => new Map(),
+    };
+    const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
+    assert.equal(tick.ledger[key].outcome, 'MISS');
+    assert.equal(tick.summary.truncated, true);
+    assert.match(formatSummary(tick.summary), / unproven=0 archive-truncated \| /);
+    assert.deepEqual(tick.scorecard.archive, { readFailed: false, truncated: true, unproven: 0, coveredFromMs: emittedAt - HOUR });
+  });
+
+  it('a failed archive read is on the scorecard', async () => {
+    const pending = pendingCrude(NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN);
+    const archive = { readStories: async () => null, readSourceTiers: async () => new Map() };
+    const tick = await buildTick(rawInputs({ [DIGEST_KEY]: null, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
+    assert.deepEqual(tick.scorecard.archive, { ...NO_ARCHIVE_PASS, readFailed: true });
+    assert.match(formatSummary(tick.summary), / archive-read-failed \| /);
   });
 
   it('refuses a malformed ledger instead of starting an empty one', async () => {
@@ -371,6 +399,7 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.deepEqual(tick.summary.resolved, { hit: 0, miss: 0, void: 0, unproven: 0 });
     assert.equal(tick.summary.pending, 3);
     assert.match(formatSummary(tick.summary), / gated=0 held=0 new=3 re-emitted=0 \| resolved hit=0 miss=0 void=0 unproven=0 \| pending=3 /);
+    assert.deepEqual(tick.scorecard.archive, NO_ARCHIVE_PASS);
   });
 });
 
@@ -390,24 +419,25 @@ describe('readRawInputs', () => {
 });
 
 describe('createRedisArchive', () => {
-  it('reads the oldest score and the window members in one pipeline', async () => {
+  it('reads the oldest score and the window members newest-first in one pipeline', async () => {
     const pipeline = fakePipeline(archiveRows());
     const result = await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE);
     assert.deepEqual(pipeline.sent[0], [
       ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
-      ['ZRANGEBYSCORE', ACCUMULATOR_KEY, String(ARCHIVE_SINCE), '+inf', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
+      ['ZREVRANGEBYSCORE', ACCUMULATOR_KEY, '+inf', String(ARCHIVE_SINCE), 'WITHSCORES', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
     ]);
-    assert.deepEqual(result, { coveredFromMs: NOW - 8 * HOUR, stories: [OIL_STORY] });
+    assert.deepEqual(pipeline.sent[1], [['HGETALL', `story:track:v1:${OIL_STORY.hash}`]]);
+    assert.deepEqual(result, { coveredFromMs: NOW - 8 * HOUR, truncated: false, stories: [OIL_STORY] });
   });
 
   it('reports an empty accumulator as covering nothing', async () => {
-    const pipeline = fakePipeline(archiveRows({ ZRANGE: () => ({ result: [] }), ZRANGEBYSCORE: () => ({ result: [] }) }));
-    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: null, stories: [] });
+    const pipeline = fakePipeline(archiveRows({ ZRANGE: () => ({ result: [] }), ZREVRANGEBYSCORE: () => ({ result: [] }) }));
+    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: null, truncated: false, stories: [] });
   });
 
   it('skips an expired story:track row', async () => {
     const pipeline = fakePipeline(archiveRows({ HGETALL: () => ({ result: [] }) }));
-    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: NOW - 8 * HOUR, stories: [] });
+    assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: NOW - 8 * HOUR, truncated: false, stories: [] });
   });
 
   it('returns null on a ZRANGE row error', async () => {
@@ -422,13 +452,24 @@ describe('createRedisArchive', () => {
     assert.equal(value, null);
   });
 
-  it('returns null and leaves the due entries pending when the window overflows', async () => {
-    const members = Array.from({ length: MAX_ARCHIVE_HASHES + 1 }, (_, i) => `h${i}`);
-    const pipeline = fakePipeline(archiveRows({ ZRANGEBYSCORE: () => ({ result: members }) }));
+  it('keeps the newest MAX_ARCHIVE_HASHES stories when the window overflows and reports the truncation', async () => {
+    const newestFirst = Array.from({ length: MAX_ARCHIVE_HASHES + 1 }, (_, i) => [`h${i}`, String(NOW - i * MIN)]).flat();
+    const pipeline = fakePipeline(archiveRows({ ZREVRANGEBYSCORE: () => ({ result: newestFirst }) }));
     const { value, warnings } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
+    assert.deepEqual(warnings, []);
+    assert.equal(value.truncated, true);
+    assert.equal(value.coveredFromMs, NOW - (MAX_ARCHIVE_HASHES - 1) * MIN, 'the oldest kept lastSeen');
+    assert.equal(value.stories.length, MAX_ARCHIVE_HASHES);
+    assert.deepEqual([value.stories[0].hash, value.stories.at(-1).hash], ['h0', `h${MAX_ARCHIVE_HASHES - 1}`]);
+    const requested = pipeline.sent.slice(1).flat().map(([, key]) => key);
+    assert.equal(requested.length, MAX_ARCHIVE_HASHES);
+    assert.ok(!requested.includes(`story:track:v1:h${MAX_ARCHIVE_HASHES}`), 'the oldest member is dropped');
+  });
+
+  it('returns null on a malformed ZREVRANGEBYSCORE result', async () => {
+    const pipeline = fakePipeline(archiveRows({ ZREVRANGEBYSCORE: () => ({ result: 'nope' }) }));
+    const { value } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
     assert.equal(value, null);
-    assert.equal(pipeline.sent.length, 1);
-    assert.match(warnings.join('\n'), /due entries stay pending/);
   });
 
   it('reads the best source tier per hash', async () => {

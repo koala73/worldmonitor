@@ -250,10 +250,11 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};
   for (const signal of signals) byType[signal.type] = (byType[signal.type] ?? 0) + 1;
+  const archiveStatus = { readFailed: resolved.readFailed, truncated: resolved.truncated, unproven: resolved.unproven, coveredFromMs: resolved.coveredFromMs };
 
   return {
     ledger,
-    scorecard: buildScorecard(ledger, nowMs),
+    scorecard: buildScorecard(ledger, nowMs, { archive: archiveStatus }),
     snapshot: digest || !previousSnapshot ? observed(ingested.emitted) : previousSnapshot,
     summary: {
       inputs: {
@@ -270,6 +271,7 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
       updated: ingested.updated,
       resolved: { hit: resolved.hit, miss: resolved.miss, void: resolved.void, unproven: resolved.unproven },
       readFailed: resolved.readFailed,
+      truncated: resolved.truncated,
       pending: resolved.pending,
       entries: Object.keys(ledger).length,
     },
@@ -283,7 +285,8 @@ export function formatSummary(summary) {
   return `  [market-alert-ledger] inputs stocks=${inputs.stocks} commodities=${inputs.commodities} crypto=${inputs.crypto} `
     + `predictions=${inputs.predictions} digestItems=${inputs.digestItems} mode=${inputs.runtimeMode} discarded=${discarded} | `
     + `emitted=${emitted.total} (${byType}) gated=${emitted.gated} held=${emitted.held} new=${summary.created} re-emitted=${summary.updated} | `
-    + `resolved hit=${resolved.hit} miss=${resolved.miss} void=${resolved.void} unproven=${resolved.unproven}${summary.readFailed ? ' archive-read-failed' : ''} | `
+    + `resolved hit=${resolved.hit} miss=${resolved.miss} void=${resolved.void} unproven=${resolved.unproven}`
+    + `${summary.readFailed ? ' archive-read-failed' : ''}${summary.truncated ? ' archive-truncated' : ''} | `
     + `pending=${summary.pending} entries=${summary.entries}`;
 }
 
@@ -313,16 +316,24 @@ function stayPending(what) {
 
 export function createRedisArchive(pipeline = defaultRedisPipeline) {
   return {
+    // Newest first: when the window overflows, the kept stories are the
+    // newest MAX_ARCHIVE_HASHES and coveredFromMs rises to the oldest kept
+    // lastSeen, so the newest due rows still resolve. A story's lastSeen is
+    // never below its firstSeen, so every story first seen at or after
+    // coveredFromMs is in the kept set.
     async readStories(sinceMs) {
       const rows = await pipeline([
         ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
-        ['ZRANGEBYSCORE', ACCUMULATOR_KEY, String(sinceMs), '+inf', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
+        ['ZREVRANGEBYSCORE', ACCUMULATOR_KEY, '+inf', String(sinceMs), 'WITHSCORES', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
       ]);
       const oldest = arrayResult(rows?.[0]);
-      const members = arrayResult(rows?.[1]);
-      if (!oldest || !members) return stayPending(`${ACCUMULATOR_KEY} read failed`);
-      if (members.length > MAX_ARCHIVE_HASHES) return stayPending(`archive window holds more than ${MAX_ARCHIVE_HASHES} stories`);
-      const coveredFromMs = oldest.length >= 2 && Number.isFinite(Number(oldest[1])) ? Number(oldest[1]) : null;
+      const newestFirst = arrayResult(rows?.[1]);
+      if (!oldest || !newestFirst) return stayPending(`${ACCUMULATOR_KEY} read failed`);
+      const truncated = newestFirst.length > 2 * MAX_ARCHIVE_HASHES;
+      const kept = truncated ? newestFirst.slice(0, 2 * MAX_ARCHIVE_HASHES) : newestFirst;
+      const members = kept.filter((_, i) => i % 2 === 0);
+      const scoreAt = (flat, i) => (flat.length > i && Number.isFinite(Number(flat[i])) ? Number(flat[i]) : null);
+      const coveredFromMs = truncated ? scoreAt(kept, kept.length - 1) : scoreAt(oldest, 1);
       const tracks = await readStoryTracksChunked(members, pipeline, { context: 'market-alert-ledger' });
       if (!tracks) return null;
       const stories = [];
@@ -335,7 +346,7 @@ export function createRedisArchive(pipeline = defaultRedisPipeline) {
         if (typeof track.title !== 'string' || !Number.isFinite(firstSeen)) continue;
         stories.push({ hash: members[i], title: track.title, firstSeen });
       }
-      return { coveredFromMs, stories };
+      return { coveredFromMs, truncated, stories };
     },
     async readSourceTiers(hashes) {
       const tiers = new Map();

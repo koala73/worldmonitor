@@ -59,12 +59,14 @@ function ingest(ledger, signals, nowMs = NOW, baseline = QUIET_BASELINE) {
   return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], baseline });
 }
 
-function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR) {
+function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR, truncated = false) {
   return {
-    readStories: async () => ({ coveredFromMs, stories }),
+    readStories: async () => ({ coveredFromMs, truncated, stories }),
     readSourceTiers: async (hashes) => new Map(hashes.map((hash) => [hash, tiers[hash] ?? { tier: 4, source: 'unknown' }])),
   };
 }
+
+const NO_ARCHIVE_PASS = { readFailed: false, truncated: false, unproven: 0, coveredFromMs: null };
 
 describe('ingestSignals', () => {
   it('creates an id@deadline entry with the whitelisted fields', () => {
@@ -332,17 +334,24 @@ describe('resolveDueEntries', () => {
   it('leaves every due entry pending when the story read fails', async () => {
     const archive = { readStories: async () => null, readSourceTiers: async () => new Map() };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
-    assert.equal(result.readFailed, true);
+    assert.deepEqual({ readFailed: result.readFailed, truncated: result.truncated, coveredFromMs: result.coveredFromMs }, { readFailed: true, truncated: false, coveredFromMs: null });
     assert.equal(result.hit + result.miss + result.void, 0);
     assert.equal(Object.values(result.ledger)[0].status, 'pending');
   });
 
   it('leaves every due entry pending when the source read fails', async () => {
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + HOUR };
-    const archive = { readStories: async () => ({ coveredFromMs: NOW - HOUR, stories: [story] }), readSourceTiers: async () => null };
+    const archive = { readStories: async () => ({ coveredFromMs: NOW - HOUR, truncated: false, stories: [story] }), readSourceTiers: async () => null };
     const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive });
     assert.equal(result.readFailed, true);
     assert.equal(Object.values(result.ledger)[0].status, 'pending');
+  });
+
+  it('reports the archive coverage and truncation of the pass', async () => {
+    const nothingDue = await resolveDueEntries(pendingLedger(), { nowMs: dueAt - 1, archive: archiveOf([], {}, NOW - 2 * HOUR, true) });
+    assert.deepEqual({ truncated: nothingDue.truncated, coveredFromMs: nothingDue.coveredFromMs }, { truncated: false, coveredFromMs: null });
+    const truncated = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([], {}, NOW - 2 * HOUR, true) });
+    assert.deepEqual({ miss: truncated.miss, truncated: truncated.truncated, coveredFromMs: truncated.coveredFromMs }, { miss: 1, truncated: true, coveredFromMs: NOW - 2 * HOUR });
   });
 
   it('leaves an entry pending when the archive cannot prove coverage of its window', async () => {
@@ -430,17 +439,23 @@ describe('pruneLedger', () => {
 
 describe('buildScorecard', () => {
   it('lists every alert type in order with null rates when nothing is measurable', () => {
-    const card = buildScorecard({}, NOW);
+    const card = buildScorecard({}, NOW, { archive: NO_ARCHIVE_PASS });
     assert.equal(card.schemaVersion, 1);
     assert.equal(card.generatedAt, NOW);
     assert.equal(card.windowHours, 6);
     assert.equal(card.rollingWindowDays, 30);
     assert.equal(card.methodology, MARKET_ALERT_RESOLUTION_RULE);
     assert.deepEqual(card.totals, { entries: 0, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0 });
+    assert.deepEqual(card.archive, NO_ARCHIVE_PASS);
     assert.deepEqual(card.byType.map((row) => row.type), [...MARKET_ALERT_TYPES]);
     for (const row of card.byType) {
       assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, medianLeadTimeMs: null });
     }
+  });
+
+  it('carries the resolution pass archive status', () => {
+    const archive = { readFailed: true, truncated: true, unproven: 3, coveredFromMs: NOW - HOUR };
+    assert.deepEqual(buildScorecard({}, NOW, { archive }).archive, archive);
   });
 
   it('computes hitRate = hit / (hit + miss) and the median lead time over HITs', async () => {
@@ -448,7 +463,7 @@ describe('buildScorecard', () => {
     const two = ingest(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, [marketSignal('silent_divergence', WHEAT)]).ledger;
     const story = { hash: 'h1', title: 'Oil prices jump as OPEC cuts output', firstSeen: NOW + 90 * 60 * 1000 };
     const { ledger } = await resolveDueEntries(two, { nowMs: dueAt + 1, archive: archiveOf([story], { h1: { tier: 1, source: 'Reuters' } }) });
-    const card = buildScorecard(ledger, dueAt + 2);
+    const card = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS });
     assert.deepEqual(card.totals, { entries: 2, pending: 0, resolved: 2, hit: 1, miss: 1, void: 0 });
     const row = card.byType.find((r) => r.type === 'silent_divergence');
     assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, medianLeadTimeMs: 90 * 60 * 1000 });
@@ -457,10 +472,10 @@ describe('buildScorecard', () => {
   it('excludes a VOID from n and counts resolutions only inside the rolling window', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const { ledger } = await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 1, archive: archiveOf([], {}) });
-    const fresh = buildScorecard(ledger, dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 2);
+    const fresh = buildScorecard(ledger, dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 2, { archive: NO_ARCHIVE_PASS });
     assert.equal(fresh.totals.void, 1);
     assert.equal(fresh.byType[2].n, 0);
-    const old = buildScorecard(ledger, dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 1 + 31 * 24 * HOUR);
+    const old = buildScorecard(ledger, dueAt + MARKET_ALERT_EVIDENCE_EXPIRY_MS + 1 + 31 * 24 * HOUR, { archive: NO_ARCHIVE_PASS });
     assert.equal(old.totals.void, 0);
     assert.equal(old.totals.entries, 1);
   });

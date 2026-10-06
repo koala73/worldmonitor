@@ -168,8 +168,10 @@ function countPending(ledger) {
   return Object.values(ledger).filter((entry) => entry.status === 'pending').length;
 }
 
-function resolution(ledger, counts, readFailed) {
-  return { ledger: sortLedger(ledger), ...counts, pending: countPending(ledger), readFailed };
+const NO_ARCHIVE_READ = { readFailed: false, truncated: false, coveredFromMs: null };
+
+function resolution(ledger, counts, archiveStatus) {
+  return { ledger: sortLedger(ledger), ...counts, pending: countPending(ledger), ...archiveStatus };
 }
 
 /**
@@ -178,7 +180,9 @@ function resolution(ledger, counts, readFailed) {
  * next tick rather than scoring them against a partial archive. A window is
  * scored only when the archive still holds a story last seen at or before the
  * window opened, because an accumulator that expired and was rebuilt cannot
- * prove absence.
+ * prove absence. A truncated read keeps the newest stories, so `coveredFromMs`
+ * rises and the oldest due rows stay unproven until they void; the newest
+ * rows resolve first.
  */
 export async function resolveDueEntries(existing, { nowMs, archive }) {
   const ledger = { ...existing };
@@ -193,11 +197,12 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
       resolvable.push(entry);
     }
   }
-  if (resolvable.length === 0) return resolution(ledger, counts, false);
+  if (resolvable.length === 0) return resolution(ledger, counts, NO_ARCHIVE_READ);
 
   const archived = await archive.readStories(Math.min(...resolvable.map((entry) => entry.emittedAt)));
-  if (!Array.isArray(archived?.stories)) return resolution(ledger, counts, true);
-  const { coveredFromMs, stories } = archived;
+  if (!Array.isArray(archived?.stories)) return resolution(ledger, counts, { ...NO_ARCHIVE_READ, readFailed: true });
+  const { coveredFromMs, truncated, stories } = archived;
+  const archiveStatus = { readFailed: false, truncated, coveredFromMs };
   const proven = resolvable.filter((entry) => coveredFromMs != null && entry.emittedAt >= coveredFromMs);
   counts.unproven = resolvable.length - proven.length;
 
@@ -221,7 +226,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
 
   const hashes = [...new Set([...candidatesByKey.values()].flat().map((story) => story.hash))];
   const sourceTierByHash = hashes.length > 0 ? await archive.readSourceTiers(hashes) : new Map();
-  if (!(sourceTierByHash instanceof Map)) return resolution(ledger, counts, true);
+  if (!(sourceTierByHash instanceof Map)) return resolution(ledger, counts, { ...archiveStatus, readFailed: true });
 
   for (const entry of proven) {
     const candidates = candidatesByKey.get(entry.key);
@@ -242,7 +247,7 @@ export async function resolveDueEntries(existing, { nowMs, archive }) {
       counts.miss += 1;
     }
   }
-  return resolution(ledger, counts, false);
+  return resolution(ledger, counts, archiveStatus);
 }
 
 export function pruneLedger(ledger, nowMs) {
@@ -257,7 +262,8 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-export function buildScorecard(ledger, nowMs) {
+/** `archive` is the status of this tick's resolution pass, from resolveDueEntries. */
+export function buildScorecard(ledger, nowMs, { archive }) {
   const entries = Object.values(ledger);
   const since = nowMs - MARKET_ALERT_LEDGER_RETENTION_MS;
   const scored = entries.filter((entry) => entry.status === 'resolved' && entry.resolvedAt >= since);
@@ -286,6 +292,7 @@ export function buildScorecard(ledger, nowMs) {
     rollingWindowDays: MARKET_ALERT_ROLLING_WINDOW_DAYS,
     methodology: MARKET_ALERT_RESOLUTION_RULE,
     totals: { entries: entries.length, pending: totals.pending, resolved: totals.resolved, hit: totals.hit, miss: totals.miss, void: totals.void },
+    archive: { readFailed: archive.readFailed, truncated: archive.truncated, unproven: archive.unproven, coveredFromMs: archive.coveredFromMs },
     byType: MARKET_ALERT_TYPES.map((type) => ({ type, ...rowFor(type) })),
   };
 }
