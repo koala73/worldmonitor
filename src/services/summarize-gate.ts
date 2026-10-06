@@ -3,9 +3,9 @@
  *
  * summarize-article's LLM spend was premium-gated server-side (#4675/#4687)
  * but the client kept dispatching the RPC for every summarize attempt
- * regardless of entitlement — and the ollama→groq→openrouter provider
+ * regardless of entitlement — and the ollama→openrouter provider
  * fan-out routes through the SAME gated endpoint, so one attempt burned up
- * to three doomed requests (console/Sentry 401 noise on every anonymous
+ * to two doomed requests (console/Sentry 401 noise on every anonymous
  * dashboard) before landing on the browser-T5 fallback it would use anyway.
  *
  * Two mechanisms, both consulted by summarization.ts before any network

@@ -85,7 +85,7 @@
     "predictionMarkets": "Jósló piacok",
     "loadingMarkets": "Jósló piacok betöltése...",
     "infrastructure": "Infrastruktúra expozíció",
-    "briefUnavailable": "AI összefoglaló nem érhető el — konfiguráljon GROQ_API_KEY értéket a Beállítások között.",
+    "briefUnavailable": "AI összefoglaló nem érhető el — konfiguráljon OPENROUTER_API_KEY értéket a Beállítások között.",
     "cached": "Gyorsítótárban",
     "fresh": "Friss",
     "noMarkets": "Nincsenek aktív piacok ehhez az országhoz.",
@@ -868,7 +868,7 @@
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
       "predictionMarkets": "Jóslatpiacok",
-      "unavailable": "AI-összefoglaló nem elérhető — állítsd be a GROQ_API_KEY-t a Beállításoknál."
+      "unavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál."
     },
     "countryBrief": {
       "identifying": "Ország azonosítása...",
@@ -884,7 +884,7 @@
       "predictionMarkets": "Jóslatpiacok",
       "loadingMarkets": "Jóslatpiacok betöltése...",
       "infrastructure": "Infrastruktúra Expo",
-      "briefUnavailable": "AI-összefoglaló nem elérhető — állítsd be a GROQ_API_KEY-t a Beállításoknál.",
+      "briefUnavailable": "AI-összefoglaló nem elérhető — állítsd be a OPENROUTER_API_KEY-t a Beállításoknál.",
       "cached": "Gyorsítótárazott",
       "fresh": "Friss",
       "noMarkets": "Nem található jóslatpiac",
@@ -1572,7 +1572,7 @@
       "rankingStories": "Fontos történetek rangsorolása...",
       "analyzingSentiment": "Hangulatelemzés...",
       "generatingBrief": "Világösszefoglaló generálása...",
-      "infoTooltip": "<strong>AI-alapú elemzés</strong><br>• <strong>Világösszefoglaló</strong>: AI-összefoglalás (Groq/OpenRouter)<br>• <strong>Hangulat</strong>: Hírek tónusának elemzése<br>• <strong>Sebesség</strong>: Gyorsan mozgó történetek<br>• <strong>Fókuszpontok</strong>: Hírjellegzetességek korrelációja térképi jelekkel (katonai, tüntetések, kimaradások)<br><em>Csak asztal • Llama 3.3 + Fókuszpont-detektálás működteti</em>",
+      "infoTooltip": "<strong>AI-alapú elemzés</strong><br>• <strong>Világösszefoglaló</strong>: AI-összefoglalás (OpenRouter)<br>• <strong>Hangulat</strong>: Hírek tónusának elemzése<br>• <strong>Sebesség</strong>: Gyorsan mozgó történetek<br>• <strong>Fókuszpontok</strong>: Hírjellegzetességek korrelációja térképi jelekkel (katonai, tüntetések, kimaradások)<br><em>Csak asztal • Llama 3.3 + Fókuszpont-detektálás működteti</em>",
       "streamQualityLabel": "Videó minősége",
       "streamQualityDesc": "Az összes élő stream minőségének beállítása (alacsonyabb érték sávszélességet takarít meg)",
       "globeRenderScaleOptions": {
@@ -1584,7 +1584,7 @@
       },
       "mapFlashLabel": "Élő esemény impulzus",
       "mapFlashDesc": "Helyeket villan fel a térképen, amikor Breaking News érkezik",
-      "aiFlowCloudLabel": "Felhő AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Felhő AI (OpenRouter)",
       "aiFlowCloudDesc": "Címsorok küldése a felhőbe AI-összegzéshez (javasolt)",
       "aiFlowBrowserLabel": "Böngésző helyi modell",
       "aiFlowBrowserDesc": "AI futtatása helyileg a böngészőben",

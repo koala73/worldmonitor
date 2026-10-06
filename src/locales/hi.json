@@ -85,7 +85,7 @@
     "predictionMarkets": "पूर्वानुमान बाजार",
     "loadingMarkets": "पूर्वानुमान बाजार लोड कर रहे हैं...",
     "infrastructure": "बुनियादी ढांचे का प्रदर्शन",
-    "briefUnavailable": "AI ब्रीफ उपलब्ध नहीं — सेटिंग्स में GROQ_API_KEY सेट करें।",
+    "briefUnavailable": "AI ब्रीफ उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
     "cached": "कैश किए गए",
     "fresh": "ताजा",
     "noMarkets": "इस देश के लिए कोई सक्रिय बाजार नहीं।",
@@ -868,7 +868,7 @@
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",
       "predictionMarkets": "अनुमान बाजार",
-      "unavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में GROQ_API_KEY सेट करें।"
+      "unavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।"
     },
     "countryBrief": {
       "identifying": "देश पहचान रहे हैं...",
@@ -884,7 +884,7 @@
       "predictionMarkets": "अनुमान बाजार",
       "loadingMarkets": "अनुमान बाजार लोड हो रहे हैं...",
       "infrastructure": "इन्फ्रास्ट्रक्चर एक्सपोजर",
-      "briefUnavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में GROQ_API_KEY सेट करें।",
+      "briefUnavailable": "AI सारांश उपलब्ध नहीं — सेटिंग्स में OPENROUTER_API_KEY सेट करें।",
       "cached": "कैश हुआ",
       "fresh": "ताजा",
       "noMarkets": "कोई अनुमान बाजार नहीं मिला",
@@ -1572,7 +1572,7 @@
       "rankingStories": "महत्वपूर्ण कहानियों को रैंक कर रहे हैं...",
       "analyzingSentiment": "भावना विश्लेषण...",
       "generatingBrief": "विश्व संक्षेप बना रहे हैं...",
-      "infoTooltip": "<strong>एआई-चालित विश्लेषण</strong><br>• <strong>विश्व संक्षेप</strong>: AI सारांश (Groq/OpenRouter)<br>• <strong>भावना</strong>: समाचार टोन विश्लेषण<br>• <strong>गति</strong>: तेजी से बढ़ती कहानियाँ<br>• <strong>फोकल पॉइंट्स</strong>: समाचार एंटिटीज को मानचित्र संकेतों से जोड़ना (सैन्य, प्रदर्शन, व्यवधान)<br><em>केवल डेस्कटॉप · Llama 3.3 + फोकल पॉइंट डिटेक्शन से समर्थित</em>",
+      "infoTooltip": "<strong>एआई-चालित विश्लेषण</strong><br>• <strong>विश्व संक्षेप</strong>: AI सारांश (OpenRouter)<br>• <strong>भावना</strong>: समाचार टोन विश्लेषण<br>• <strong>गति</strong>: तेजी से बढ़ती कहानियाँ<br>• <strong>फोकल पॉइंट्स</strong>: समाचार एंटिटीज को मानचित्र संकेतों से जोड़ना (सैन्य, प्रदर्शन, व्यवधान)<br><em>केवल डेस्कटॉप · Llama 3.3 + फोकल पॉइंट डिटेक्शन से समर्थित</em>",
       "streamQualityLabel": "वीडियो गुणवत्ता",
       "streamQualityDesc": "सभी लाइव स्ट्रीम के लिए गुणवत्ता सेट करें (नीची गुणवत्ता बैंडविड्थ बचाती है)",
       "globeRenderScaleOptions": {
@@ -1584,7 +1584,7 @@
       },
       "mapFlashLabel": "लाइव इवेंट पल्स",
       "mapFlashDesc": "ब्रेकिंग न्यूज आने पर मानचित्र पर स्थान चमकाएं",
-      "aiFlowCloudLabel": "क्लाउड एआई (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "क्लाउड एआई (OpenRouter)",
       "aiFlowCloudDesc": "शीर्षक क्लाउड में भेजें AI सारांश के लिए (सिफारिश की गई)",
       "aiFlowBrowserLabel": "ब्राउज़र लोकल मॉडल",
       "aiFlowBrowserDesc": "अपने ब्राउज़र में AI चलाएं",

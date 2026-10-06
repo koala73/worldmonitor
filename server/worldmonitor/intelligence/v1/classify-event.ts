@@ -110,13 +110,14 @@ Return: {"level":"...","category":"..."}`;
           // 50 was never close to binding for it — and a ceiling costs nothing
           // when it is not reached.
           //
-          // The Groq fallback is `openai/gpt-oss-*`, a reasoning model. Even at
-          // `reasoning_effort: 'low'` (#7289) it spends part of the budget on
-          // hidden reasoning before emitting content, so at 50 the JSON was cut
-          // mid-key — the literal returned content was `{"level":"` — and the
-          // validator below rejected it. Measured against the live API on eight
-          // headlines, driven through THIS file's own systemPrompt and
-          // VALID_LEVELS/VALID_CATEGORIES rather than a paraphrase of them:
+          // A reasoning fallback spends part of the budget on hidden reasoning
+          // before emitting content. The former Groq `openai/gpt-oss-*` fallback
+          // (removed in #8885), even at `reasoning_effort: 'low'` (#7289), cut
+          // the JSON mid-key at 50 — the literal returned content was
+          // `{"level":"` — and the validator below rejected it. Measured against
+          // that model on eight headlines, driven through THIS file's own
+          // systemPrompt and VALID_LEVELS/VALID_CATEGORIES rather than a
+          // paraphrase of them:
           //
           //   max_tokens=50   no effort   0/8 valid   8 truncated  (pre-#7289)
           //   max_tokens=50   low         5/8 valid   3 truncated  (#7289 alone)

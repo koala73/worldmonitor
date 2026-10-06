@@ -22,9 +22,9 @@ function makeContext(headers: Record<string, string> = {}) {
   };
 }
 
-function request(mode = "brief") {
+function request(mode = "brief", provider = "openrouter") {
   return {
-    provider: "groq",
+    provider,
     headlines: ["Headline one", "Headline two"],
     mode,
     geoContext: "",
@@ -37,7 +37,7 @@ function request(mode = "brief") {
 
 beforeEach(() => {
   restoreEnv();
-  process.env.GROQ_API_KEY = "test-groq-key";
+  process.env.OPENROUTER_API_KEY = "test-openrouter-key";
   globalThis.fetch = vi.fn(async () => {
     throw new Error("non-premium summarize should not call providers");
   }) as typeof fetch;
@@ -71,20 +71,20 @@ describe("summarizeArticle handler premium mode gate", () => {
   });
 
   test("translation mode remains outside the premium summary gate", async () => {
-    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     const result = await summarizeArticle(makeContext(), request("translate"));
 
     expect(result).toMatchObject({
       fallback: true,
       status: "SUMMARIZE_STATUS_SKIPPED",
-      statusDetail: "GROQ_API_KEY not configured",
+      statusDetail: "OPENROUTER_API_KEY not configured",
     });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test("premium callers pass the summary gate", async () => {
-    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
     process.env.WORLDMONITOR_VALID_KEYS = "enterprise-test-key";
 
     const result = await summarizeArticle(
@@ -95,8 +95,23 @@ describe("summarizeArticle handler premium mode gate", () => {
     expect(result).toMatchObject({
       fallback: true,
       status: "SUMMARIZE_STATUS_SKIPPED",
-      statusDetail: "GROQ_API_KEY not configured",
+      statusDetail: "OPENROUTER_API_KEY not configured",
     });
     expect(result.error).not.toBe("Pro subscription required");
+  });
+
+  test("a stale client naming groq is skipped without a provider fetch (#8885)", async () => {
+    process.env.GROQ_API_KEY = "stale-groq-key";
+
+    const result = await summarizeArticle(makeContext(), request("translate", "groq"));
+
+    expect(result).toMatchObject({
+      summary: "",
+      provider: "groq",
+      fallback: true,
+      status: "SUMMARIZE_STATUS_SKIPPED",
+      statusDetail: "Unknown provider: groq",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

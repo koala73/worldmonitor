@@ -16,7 +16,7 @@
     "predictionMarkets": "Piețe de predicții",
     "loadingMarkets": "Se încarcă piețele de predicții...",
     "infrastructure": "Expunerea infrastructurii",
-    "briefUnavailable": "Brief AI indisponibil — configurați GROQ_API_KEY în Setări.",
+    "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
     "cached": "În cache",
     "fresh": "Proaspăt",
     "noMarkets": "Nu există piețe active pentru această țară.",
@@ -802,7 +802,7 @@
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",
       "predictionMarkets": "Piețe de predicții",
-      "unavailable": "Brief AI indisponibil — configurați GROQ_API_KEY în Setări."
+      "unavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări."
     },
     "countryBrief": {
       "identifying": "Se identifică țara...",
@@ -818,7 +818,7 @@
       "predictionMarkets": "Piețe de predicții",
       "loadingMarkets": "Se încarcă piețele de predicții...",
       "infrastructure": "Expunerea infrastructurii",
-      "briefUnavailable": "Brief AI indisponibil — configurați GROQ_API_KEY în Setări.",
+      "briefUnavailable": "Brief AI indisponibil — configurați OPENROUTER_API_KEY în Setări.",
       "cached": "În cache",
       "fresh": "Proaspăt",
       "noMarkets": "Nu au fost găsite piețe de predicție",
@@ -1433,7 +1433,7 @@
       "rankingStories": "Se clasifică poveștile importante...",
       "analyzingSentiment": "Se analizează sentimentul...",
       "generatingBrief": "Se generează un rezumat mondial...",
-      "infoTooltip": "<strong>Analiză alimentată de AI</strong><br>• <strong>World Brief</strong>: rezumat AI (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: analiza tonului știrilor<br>• <strong>Velocitate</strong>: povestiri în mișcare rapidă<br>• <strong>Puncte focale, hărți de corelare</strong> entități, hărți noi proteste, întreruperi)<br><em>Numai desktop • Powered by Llama 3.3 + Focal Point Detection</em>",
+      "infoTooltip": "<strong>Analiză alimentată de AI</strong><br>• <strong>World Brief</strong>: rezumat AI (OpenRouter)<br>• <strong>Sentiment</strong>: analiza tonului știrilor<br>• <strong>Velocitate</strong>: povestiri în mișcare rapidă<br>• <strong>Puncte focale, hărți de corelare</strong> entități, hărți noi proteste, întreruperi)<br><em>Numai desktop • Powered by Llama 3.3 + Focal Point Detection</em>",
       "streamQualityLabel": "Calitate video",
       "streamQualityDesc": "Setați calitatea pentru toate fluxurile live (lățime de bandă mai mică pentru economii)",
       "globeRenderScaleOptions": {
@@ -1445,7 +1445,7 @@
       },
       "mapFlashLabel": "Impuls eveniment live",
       "mapFlashDesc": "Flash locații pe hartă când sosesc știri de ultimă oră",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Trimiteți titluri în cloud pentru rezumat AI (recomandat)",
       "aiFlowBrowserLabel": "Model local de browser",
       "aiFlowBrowserDesc": "Rulați AI local în browserul dvs.",

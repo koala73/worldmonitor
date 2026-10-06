@@ -16,7 +16,7 @@
     "predictionMarkets": "Prognosemärkte",
     "loadingMarkets": "Prognosemärkte werden geladen...",
     "infrastructure": "Infrastrukturexposition",
-    "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen.",
+    "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
     "cached": "Zwischengespeichert",
     "fresh": "Aktuell",
     "noMarkets": "Keine aktiven Märkte für dieses Land.",
@@ -758,7 +758,7 @@
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
       "predictionMarkets": "Prognosemärkte",
-      "unavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen."
+      "unavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen."
     },
     "countryBrief": {
       "components": {
@@ -794,7 +794,7 @@
       "predictionMarkets": "Prognosemärkte",
       "loadingMarkets": "Prognosemärkte werden geladen...",
       "infrastructure": "Infrastrukturexposition",
-      "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen.",
+      "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
       "cached": "Zwischengespeichert",
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
@@ -1773,7 +1773,7 @@
     },
     "insights": {
       "noStories": "Noch keine aktuellen oder quellenübergreifenden Meldungen",
-      "infoTooltip": "<strong>KI-gestützte Analyse</strong><br>• <strong>World Brief</strong>: KI-Zusammenfassung (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Nachrichtentonanalyse<br>• <strong>Velocity</strong>: schnelllebige Meldungen<br>• <strong>Focal Points</strong>: korreliert Nachrichtenentitäten mit Kartensignalen (Militär, Proteste, Ausfälle)<br><em>Nur Desktop • Unterstützt von Llama 3.3 + Focal Point Detection</em>",
+      "infoTooltip": "<strong>KI-gestützte Analyse</strong><br>• <strong>World Brief</strong>: KI-Zusammenfassung (OpenRouter)<br>• <strong>Sentiment</strong>: Nachrichtentonanalyse<br>• <strong>Velocity</strong>: schnelllebige Meldungen<br>• <strong>Focal Points</strong>: korreliert Nachrichtenentitäten mit Kartensignalen (Militär, Proteste, Ausfälle)<br><em>Nur Desktop • Unterstützt von Llama 3.3 + Focal Point Detection</em>",
       "step": "Schritt {{step}}/{{total}}",
       "waitingForData": "Warten auf Nachrichtendaten...",
       "rankingStories": "Wichtige Meldungen werden priorisiert...",
@@ -1783,7 +1783,7 @@
       "streamQualityDesc": "Qualität für alle Live-Streams festlegen (niedriger spart Bandbreite)",
       "mapFlashLabel": "Live-Ereignispuls",
       "mapFlashDesc": "Orte auf der Karte aufblitzen lassen, wenn Eilmeldungen eintreffen",
-      "aiFlowCloudLabel": "Cloud-KI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud-KI (OpenRouter)",
       "aiFlowCloudDesc": "Schlagzeilen zur KI-Zusammenfassung an die Cloud senden (empfohlen)",
       "aiFlowBrowserLabel": "Lokales Browser-Modell",
       "aiFlowBrowserDesc": "KI lokal in Ihrem Browser ausführen",
