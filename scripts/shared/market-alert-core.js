@@ -277,6 +277,7 @@ export function detectMarketAlerts({
                 predictionShift: shift,
                 newsVelocity: newsActivity,
                 relatedTopics: related,
+                correlatedEntities: [key],
               },
             });
           }
@@ -334,6 +335,7 @@ export function detectMarketAlerts({
           data: {
             marketChange: market.change,
             newsVelocity: oldRelatedNews,
+            correlatedEntities: [market.symbol],
             explanation: `Searched: ${searchedTerms}`,
           },
         });
@@ -362,6 +364,7 @@ export function detectMarketAlerts({
           data: {
             marketChange: change,
             newsVelocity: relatedNews,
+            correlatedEntities: [market.symbol],
             relatedTopics: ['pipeline', market.display],
           },
         });

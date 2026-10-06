@@ -76,6 +76,7 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     'entity-registry.js',
     'entity-extraction-core.js',
     'market-alert-core.js',
+    'news-clustering-core.js',
   ]);
   // The attribution manifest is canonical at shared/ and is consumed by
   // repository-rooted build tooling. It is not a scripts-runtime input, so a
