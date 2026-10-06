@@ -23,6 +23,7 @@ const STYLES = `
   .story:last-child { border-bottom: none; }
   .story-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .story-title { overflow-wrap: anywhere; font-size: 14px; font-weight: 600; color: var(--fg); }
+  a.story-title { text-decoration: underline; text-underline-offset: 3px; }
   .chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
   .chip.alert { color: #fff; background: var(--severe); border-color: var(--severe); font-weight: 600; }
