@@ -4,6 +4,7 @@ import type {
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+import { selectScorecardFields } from './scorecard-fields';
 
 const REDIS_KEY = 'forecast:scorecard:v1';
 const MAX_STALE_MS = 2160 * 60 * 1000;
@@ -44,23 +45,11 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
 ): Promise<GetForecastScorecardResponse> => {
   try {
     const envelope = await getScorecardJson();
-    const data = envelope.data as Partial<GetForecastScorecardResponse> | null;
+    const data = envelope.data as Record<string, unknown> | null;
     if (!data) return markNoStoreFallbackResponse(ctx.request, emptyScorecard());
     const fetchedAt = Number(envelope.fetchedAt);
-    // Seeder observability and experiments are not part of the public proto.
-    // Select declared fields so new seed fields cannot implicitly become API fields.
     return emptyScorecard({
-      schemaVersion: data.schemaVersion ?? 1,
-      generatedAt: data.generatedAt ?? 0,
-      rollingWindowDays: data.rollingWindowDays ?? 180,
-      methodology: data.methodology ?? '',
-      totals: data.totals ?? emptyScorecard().totals,
-      overall: data.overall,
-      byDomain: data.byDomain ?? [],
-      byGenerationOrigin: data.byGenerationOrigin ?? [],
-      calibration: data.calibration ?? [],
-      vsMarketSkill: data.vsMarketSkill,
-      skill: data.skill,
+      ...selectScorecardFields(data),
       degraded: false,
       stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
       error: '',
