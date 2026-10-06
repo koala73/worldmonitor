@@ -212,6 +212,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private costShockCalcTotalLabel: HTMLElement | null = null;
   private costShockCalcPrimaryChokepoint: string | null = null;
   private costShockCalcClosureDays = 30;
+  private costShockCalcResultDays: number | null = null;
+  private costShockCalcStatus: HTMLElement | null = null;
   private costShockCalcAbort: AbortController | null = null;
   private costShockCalcDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Holds the teardown returned by the FollowButton's `attach()` mounted
@@ -1042,14 +1044,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateMultiSectorCostShock(data: MultiSectorShockResponse | null): void {
     if (!this.costShockCalcBody) return;
     this.costShockCalcBody.replaceChildren();
+    this.costShockCalcTable = null;
+    this.costShockCalcTotalLabel = null;
+    this.costShockCalcDurationLabel = null;
+    this.costShockCalcStatus = null;
+    this.costShockCalcResultDays = null;
+    this.costShockCalcPrimaryChokepoint = null;
 
-    if (!data || (!data.sectors.length && !data.unavailableReason)) {
-      this.costShockCalcBody.append(this.makeEmpty('No cost shock scenario available for this country.'));
+    if (!data || data.unavailableReason || !data.sectors.length) {
+      this.costShockCalcBody.append(this.makeEmpty(data?.unavailableReason || 'No cost shock scenario available for this country.'));
       return;
     }
 
     this.costShockCalcPrimaryChokepoint = data.chokepointId;
     this.costShockCalcClosureDays = Number.isFinite(data.closureDays) && data.closureDays > 0 ? data.closureDays : 30;
+    this.costShockCalcResultDays = this.costShockCalcClosureDays;
 
     // ── Header line: chokepoint + war risk tier badge ────────────────────
     const header = this.el('div', 'cdp-cost-shock-calc-header');
@@ -1084,6 +1093,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     sliderWrap.append(ticks);
     this.costShockCalcBody.append(sliderWrap);
+    this.costShockCalcStatus = this.el('div', 'cdp-card-footer', `Results for ${this.costShockCalcResultDays}-day calculation.`);
+    this.costShockCalcStatus.setAttribute('role', 'status');
+    this.costShockCalcStatus.setAttribute('aria-live', 'polite');
+    this.costShockCalcBody.append(this.costShockCalcStatus);
 
     // ── Table ───────────────────────────────────────────────────────────
     const table = this.el('table', 'cdp-cost-shock-calc-table');
@@ -1105,15 +1118,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     totalRow.append(this.costShockCalcTotalLabel);
     this.costShockCalcBody.append(totalRow);
 
-    if (data.unavailableReason) {
-      this.costShockCalcBody.append(this.el('div', 'cdp-card-footer', data.unavailableReason));
-    } else {
-      this.costShockCalcBody.append(
-        this.el('div', 'cdp-card-footer', 'Added cost = annual imports × (bypass freight uplift + war risk bps) × closure days / 365'),
-      );
-    }
+    this.costShockCalcBody.append(
+      this.el('div', 'cdp-card-footer', 'Added cost = annual imports × (bypass freight uplift + war risk bps) × closure days / 365'),
+    );
 
     this.renderMultiSectorShockRows(data.sectors);
+    if (Number.isFinite(data.totalAddedCost) && data.totalAddedCost >= 0) {
+      this.costShockCalcTotalLabel.textContent = this.formatMoney(data.totalAddedCost);
+    }
   }
 
   /** Render (or re-render) just the cost-shock table rows + total. */
@@ -1144,8 +1156,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.costShockCalcDurationLabel) {
       this.costShockCalcDurationLabel.textContent = `${days} day${days === 1 ? '' : 's'}`;
     }
+    this.setCostShockCalculationStatus('loading');
     this.scheduleCostShockRefetch(days);
   };
+
+  private setCostShockCalculationStatus(state: 'loading' | 'unavailable', reason?: string): void {
+    const status = this.costShockCalcStatus;
+    if (!status) return;
+    status.className = state === 'loading' ? 'cdp-loading-inline' : 'cdp-card-footer';
+    if (state === 'unavailable') status.dataset.briefState = 'unavailable';
+    else delete status.dataset.briefState;
+    const request = state === 'loading'
+      ? `Calculating ${this.costShockCalcClosureDays}-day scenario.`
+      : `${this.costShockCalcClosureDays}-day calculation unavailable.${reason ? ` ${reason}` : ''}`;
+    status.textContent = `${request} Retained ${this.costShockCalcResultDays}-day results are shown below.`;
+  }
 
   /** Debounce re-fetch by 300ms so rapid slider drags don't spam the API. */
   private scheduleCostShockRefetch(days: number): void {
@@ -1178,13 +1203,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // Abort any in-flight fetch before starting a new one.
     this.costShockCalcAbort?.abort();
     const request = this.costShockCalcAbort = new AbortController();
+    const current = () => !request.signal.aborted && this.currentCode === iso2 && this.canRequestPremium()
+      && this.costShockCalcClosureDays === days && this.costShockCalcPrimaryChokepoint === cp;
     try {
       const resp = await (this.source ? this.source.cost(iso2, cp, days, request.signal) : fetchMultiSectorCostShock(iso2, cp, days, { signal: request.signal }));
-      if (request.signal.aborted || this.currentCode !== iso2 || !this.canRequestPremium()) return;
-      if (this.costShockCalcClosureDays !== days) return; // a newer slider move superseded this
-      this.renderMultiSectorShockRows(resp.sectors);
+      if (!current()) return;
+      if (resp.unavailableReason || !resp.sectors.length || resp.closureDays !== days) {
+        this.setCostShockCalculationStatus('unavailable', resp.unavailableReason || 'No matching cost scenario returned.');
+        return;
+      }
+      this.updateMultiSectorCostShock(resp);
     } catch {
-      // Ignore — either aborted or transient network; leave prior values visible.
+      if (current()) this.setCostShockCalculationStatus('unavailable');
     }
   }
 
@@ -3703,6 +3733,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.costShockCalcTotalLabel = null;
     this.costShockCalcPrimaryChokepoint = null;
     this.costShockCalcClosureDays = 30;
+    this.costShockCalcResultDays = null;
+    this.costShockCalcStatus = null;
     this.content.replaceChildren();
   }
 
