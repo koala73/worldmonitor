@@ -14,7 +14,7 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
@@ -56,6 +56,8 @@ export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const CALIBRATION_MAP_KEY = 'forecast:calibration-map:v1';
 export const CALIBRATION_MAP_META_KEY = 'seed-meta:forecast:calibration-map';
 export const CALIBRATION_MAP_TTL_SECONDS = 90 * 24 * 60 * 60;
+// One-way: /api/health treats the map as not yet seeded until this exists.
+export const CALIBRATION_MAP_ACTIVATION_KEY = 'seed-activated:forecast:calibration-map';
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
@@ -2167,6 +2169,15 @@ function buildLiveJudgedOptions(nowMs = Date.now()) {
   };
 }
 
+async function markCalibrationMapActivated() {
+  try {
+    const { url, token } = getRedisCredentials();
+    await redisCommand(url, token, ['SET', CALIBRATION_MAP_ACTIVATION_KEY, '1']);
+  } catch (err) {
+    console.warn(`  WARN: calibration map activation marker write failed: ${err?.message || err}`);
+  }
+}
+
 async function buildLedgerForRun(calibrationRun) {
   const nowMs = Date.now();
   const [existingLedger, history, betsHistory] = await Promise.all([
@@ -2325,5 +2336,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
       skipWhenEmpty: true,
       allowMissingOnSkip: true,
     }],
+    afterPublish: async () => {
+      if (calibrationRun.map) await markCalibrationMapActivated();
+    },
   });
 }
