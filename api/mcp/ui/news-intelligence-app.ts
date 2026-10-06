@@ -159,7 +159,7 @@ const RENDER = `
       var selectionDrops = ins && ins.provenance && ins.provenance.selectionDrops;
       var dropParts = [];
       for (var dropField of [["admissibility", "admissibility"], ["sourceCap", "source cap"], ["overflow", "overflow"]]) {
-        var dropped = selectionDrops && selectionDrops[dropField[0]];
+        var dropped = selectionDrops && typeof selectionDrops === "object" && !Array.isArray(selectionDrops) ? selectionDrops[dropField[0]] : undefined;
         dropParts.push(dropField[1] + " " + (Number.isInteger(dropped) && dropped >= 0 ? dropped : "unavailable"));
       }
       footParts.push("Selection exclusions: " + dropParts.join("; ") + ".");

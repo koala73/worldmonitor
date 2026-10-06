@@ -333,6 +333,25 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
     }
   });
 
+  it('rejects malformed selection-drop containers without inventing measured zeros', async () => {
+    for (const selectionDrops of [0, false, '', 'invalid', 7, null, [], [0, 0, 0]]) {
+      const value = supplied();
+      value.data.insights.provenance = { selectionDrops };
+      for (const wire of [result(value), result(value.data, true), { content: result(value).content }]) {
+        await mount(wire, (document, send) => {
+          assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
+          assert.doesNotMatch(foot(document), /admissibility 0|source cap 0|overflow 0/);
+          value.data.insights.provenance.selectionDrops = { admissibility: 0, sourceCap: 0, overflow: 0 };
+          send(result(value));
+          assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 0; overflow 0/);
+          value.data.insights.provenance.selectionDrops = selectionDrops;
+          send(result(value));
+          assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
+        });
+      }
+    }
+  });
+
   it('keeps invalid or absent values unavailable without accepting incorrect fixture paths', async () => {
     for (const invalid of [undefined, null, '', '2', true, -1, Infinity]) {
       const value = envelope([{ ...story(0), credibilityScore: invalid, sourceTier: invalid,
