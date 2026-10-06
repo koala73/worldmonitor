@@ -81,13 +81,20 @@ export interface PredictionMarketCore {
  * identity: dated variants of one question ("... by March 31?" / "... by June
  * 30?") share long prefixes, and Polymarket rows drawn from one event share the
  * event URL, so neither the prefix nor the URL alone tells two markets apart.
- * The URL plus the full title does. The title is also stored as an alias when
- * it is unique in the snapshot, so a poll that later gains or loses a URL can
- * still find the previous price.
+ * The URL plus the full title does. Unique URL-backed titles also store a
+ * namespaced alias so a later poll that loses the URL can still find the
+ * previous price, without letting two URL-backed markets share a title key.
  */
 export function predictionMarketKey(market: Pick<PredictionMarketCore, 'title' | 'url'>): string {
   const url = market.url?.trim();
   return url ? `${url}|${market.title}` : market.title;
+}
+
+/** Internal snapshot alias for a unique URL-backed title. Not a market identity. */
+const TITLE_ALIAS_PREFIX = '\0title:';
+
+function titleAliasKey(title: string): string {
+  return `${TITLE_ALIAS_PREFIX}${title}`;
 }
 
 function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<string, number> {
@@ -100,7 +107,7 @@ function predictionChangesSnapshot(predictions: PredictionMarketCore[]): Map<str
     snapshot.set(predictionMarketKey(pred), pred.yesPrice);
     const url = pred.url?.trim();
     if (url && titleCounts.get(pred.title) === 1) {
-      snapshot.set(pred.title, pred.yesPrice);
+      snapshot.set(titleAliasKey(pred.title), pred.yesPrice);
     }
   }
   return snapshot;
@@ -114,7 +121,10 @@ function previousPredictionPrice(
   const exact = previous.get(key);
   if (exact !== undefined) return exact;
   const url = pred.url?.trim();
-  return url ? previous.get(pred.title) : undefined;
+  // URL gained: previous poll stored the URL-less title key.
+  // URL lost: previous poll stored a namespaced unique-title alias.
+  // Two URL-backed markets with the same title do not share either path.
+  return url ? previous.get(pred.title) : previous.get(titleAliasKey(pred.title));
 }
 
 export interface MarketDataCore {

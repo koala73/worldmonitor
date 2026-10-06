@@ -119,4 +119,13 @@ describe('prediction-market shift direction (#8868)', () => {
     expect(rest).toEqual([]);
     expect(signal!.data.predictionShift).toBe(-10);
   });
+
+  it('does not compare two URL-backed markets that share a title', () => {
+    const urlA = 'https://polymarket.com/event/atlantis-rates';
+    const urlB = 'https://kalshi.com/markets/atlantis-rates';
+    expect(runTwoSnapshots(
+      [{ title: MARKET, yesPrice: 40, url: urlA }],
+      [{ title: MARKET, yesPrice: 70, url: urlB }],
+    )).toEqual([]);
+  });
 });
