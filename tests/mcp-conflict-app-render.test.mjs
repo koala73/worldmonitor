@@ -21,7 +21,7 @@ const events = Array.from({ length: 8 }, (_, i) => ({
   dateStart: i === 0 ? 'unknown' : '2026-10-02T12:00:00Z',
   sourceOriginal,
 }));
-const twentyEvents = Array.from({ length: 20 }, (_, i) => ({ ...events[2], id: 'twenty-' + i, sideA: 'Twenty event ' + i }));
+const twentyEvents = Array.from({ length: 20 }, (_, eventIndex) => ({ ...events[2], id: 'twenty-' + eventIndex, sideA: 'Twenty event ' + eventIndex }));
 const largeEvents = Array.from({ length: 160 }, (_, i) => ({
   ...events[2], id: 'large-' + i, sideA: 'Large event ' + i + ' ' + 'x'.repeat(1500),
 }));
