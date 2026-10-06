@@ -3660,6 +3660,27 @@ describe('forecast quality gating', () => {
     assert.equal(hard.publishSelectionScore, judged.publishSelectionScore);
   });
 
+  it('does not let a hard state-derived forecast displace a real judged one in rebalance or backfill (#5234)', () => {
+    const candidates = [
+      ['market', 'judged', 0.9, undefined], ['market', 'judged', 0.8, undefined], ['supply_chain', 'hard', 0.01, 'state_derived'],
+    ].map(([domain, kind, priority, generationOrigin], index) => {
+      const pred = makePrediction(domain, `Region ${index}`, `Outlook ${index}`, 0.6, 0.6, '7d', []);
+      pred.id = `synthetic-hard-${index}`;
+      pred.resolution = { kind };
+      if (generationOrigin) pred.generationOrigin = generationOrigin;
+      return attachPublishSelectionContext(pred, { priority });
+    });
+    const pool = selectPublishedForecastPool(candidates, { targetCount: 2 });
+    assert.deepEqual(pool.map(pred => pred.id).sort(), ['synthetic-hard-0', 'synthetic-hard-1']);
+
+    const syntheticHard = { id: 'synthetic-hard', domain: 'supply_chain', probability: 0.7, generationOrigin: 'state_derived', resolution: { kind: 'hard' } };
+    const realJudged = { id: 'real-judged', domain: 'market', probability: 0.5, resolution: { kind: 'judged' } };
+    const selected = selectDeferredForecastForPublishBackfill([realJudged, syntheticHard], [
+      { id: 'published-market', domain: 'market', resolution: { kind: 'judged' } },
+    ], 3);
+    assert.equal(selected.id, 'real-judged');
+  });
+
   it('preserves five real domains through selection, hard rebalance, and publication', () => {
     const candidates = [];
     function add(domain, index, kind, priority) {

@@ -14138,8 +14138,11 @@ function summarizePublishFiltering(predictions, selectedPredictions = [], publis
   };
 }
 
+// Publish selection prefers hard-resolvable forecasts. A state-derived forecast
+// can carry a hard spec (#5234) without that preference applying to it, so the
+// published share of synthetic backfill does not change.
 function isHardResolvableForecast(pred) {
-  return pred?.resolution?.kind === 'hard';
+  return pred?.resolution?.kind === 'hard' && pred.generationOrigin !== 'state_derived';
 }
 
 function isRealForecastForDomainCoverage(pred) {
@@ -14320,11 +14323,7 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
   const defensePenalty = topBucketId === 'defense' && pred.marketSelectionContext?.topChannel !== 'defense_repricing'
     ? 0.018
     : 0;
-  // State-derived forecasts can carry a hard spec (#5234) without that changing
-  // how often synthetic backfill is published.
-  const resolvabilityLift = pred?.resolution?.kind === 'hard' && pred.generationOrigin !== 'state_derived'
-    ? RESOLVABLE_HARD_SELECTION_LIFT
-    : 0;
+  const resolvabilityLift = isHardResolvableForecast(pred) ? RESOLVABLE_HARD_SELECTION_LIFT : 0;
   pred.publishSelectionMemory = memoryHint ? {
     matchedBy: memoryHint.matchedBy,
     situationId: memoryHint.memory?.situationId || '',
