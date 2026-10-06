@@ -1224,8 +1224,9 @@ components:
             description: |-
                 Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
                  comparing metric_key from source_feed to threshold with operator ">=", "<="
-                 or "crosses", measured from baseline_value) or "judged" (an LLM judge answers
-                 question). kind and deadline are always set; other fields apply per kind.
+                 or "crosses") or "judged" (an LLM judge answers question). kind and deadline
+                 are always set; other fields apply per kind. baseline_value applies only to
+                 "crosses" specs. A judged spec's threshold is absent, never 0.
         GetForecastScorecardRequest:
             type: object
         GetForecastScorecardResponse:
@@ -1273,6 +1274,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ScorecardPublishedDomain'
+                uncertainty:
+                    $ref: '#/components/schemas/ScorecardUncertainty'
+                funnel:
+                    $ref: '#/components/schemas/ScorecardFunnel'
         ScorecardTotals:
             type: object
             properties:
@@ -1437,6 +1442,82 @@ components:
                 yesCount:
                     type: integer
                     format: int32
+        ScorecardUncertainty:
+            type: object
+            properties:
+                method:
+                    type: string
+                overallBrier:
+                    $ref: '#/components/schemas/ScorecardInterval'
+                skillBrier:
+                    $ref: '#/components/schemas/ScorecardInterval'
+        ScorecardInterval:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                mean:
+                    type: number
+                    format: double
+                ci95:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: '[low, high] at 95%.'
+                insufficientSample:
+                    type: boolean
+                    description: True when count is under 30.
+            description: Bootstrap interval on a mean Brier score.
+        ScorecardFunnel:
+            type: object
+            properties:
+                matured:
+                    type: integer
+                    format: int32
+                immature:
+                    type: integer
+                    format: int32
+                maturityUnknown:
+                    type: integer
+                    format: int32
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                pendingHardMatured:
+                    type: integer
+                    format: int32
+                pendingJudgeMatured:
+                    type: integer
+                    format: int32
+                resolvedOfMatured:
+                    $ref: '#/components/schemas/ScorecardProportion'
+                scoredOfMatured:
+                    $ref: '#/components/schemas/ScorecardProportion'
+            description: Matured means past deadline or resolved.
+        ScorecardProportion:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                successes:
+                    type: integer
+                    format: int32
+                rate:
+                    type: number
+                    format: double
+                ci95:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: '[low, high] at 95%.'
+            description: successes of count, with a Wilson interval.
         GetSimulationPackageRequest:
             type: object
             properties:

@@ -43694,8 +43694,9 @@ components:
             description: |-
                 Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
                  comparing metric_key from source_feed to threshold with operator ">=", "<="
-                 or "crosses", measured from baseline_value) or "judged" (an LLM judge answers
-                 question). kind and deadline are always set; other fields apply per kind.
+                 or "crosses") or "judged" (an LLM judge answers question). kind and deadline
+                 are always set; other fields apply per kind. baseline_value applies only to
+                 "crosses" specs. A judged spec's threshold is absent, never 0.
         worldmonitor_forecast_v1_GetForecastScorecardRequest:
             type: object
         worldmonitor_forecast_v1_GetForecastScorecardResponse:
@@ -43743,6 +43744,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardPublishedDomain'
+                uncertainty:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardUncertainty'
+                funnel:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardFunnel'
         worldmonitor_forecast_v1_ScorecardTotals:
             type: object
             properties:
@@ -43907,6 +43912,82 @@ components:
                 yesCount:
                     type: integer
                     format: int32
+        worldmonitor_forecast_v1_ScorecardUncertainty:
+            type: object
+            properties:
+                method:
+                    type: string
+                overallBrier:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardInterval'
+                skillBrier:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardInterval'
+        worldmonitor_forecast_v1_ScorecardInterval:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                mean:
+                    type: number
+                    format: double
+                ci95:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: '[low, high] at 95%.'
+                insufficientSample:
+                    type: boolean
+                    description: True when count is under 30.
+            description: Bootstrap interval on a mean Brier score.
+        worldmonitor_forecast_v1_ScorecardFunnel:
+            type: object
+            properties:
+                matured:
+                    type: integer
+                    format: int32
+                immature:
+                    type: integer
+                    format: int32
+                maturityUnknown:
+                    type: integer
+                    format: int32
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                pendingHardMatured:
+                    type: integer
+                    format: int32
+                pendingJudgeMatured:
+                    type: integer
+                    format: int32
+                resolvedOfMatured:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardProportion'
+                scoredOfMatured:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardProportion'
+            description: Matured means past deadline or resolved.
+        worldmonitor_forecast_v1_ScorecardProportion:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                successes:
+                    type: integer
+                    format: int32
+                rate:
+                    type: number
+                    format: double
+                ci95:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: '[low, high] at 95%.'
+            description: successes of count, with a Wilson interval.
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:

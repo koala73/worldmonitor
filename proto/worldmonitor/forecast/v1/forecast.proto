@@ -34,14 +34,13 @@ message Perspectives {
 }
 
 // kind and operator are strings, not enums, so a new value never needs a
-// proto migration to land in the 45-day history. Absent optional fields are
-// persisted as JSON null, so a judged spec's missing threshold is never read
-// as a real threshold of 0.
+// proto migration to land in the 45-day history.
 
 // Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
 // comparing metric_key from source_feed to threshold with operator ">=", "<="
-// or "crosses", measured from baseline_value) or "judged" (an LLM judge answers
-// question). kind and deadline are always set; other fields apply per kind.
+// or "crosses") or "judged" (an LLM judge answers question). kind and deadline
+// are always set; other fields apply per kind. baseline_value applies only to
+// "crosses" specs. A judged spec's threshold is absent, never 0.
 message ResolutionSpec {
   string kind = 1;
   optional string metric_key = 2;

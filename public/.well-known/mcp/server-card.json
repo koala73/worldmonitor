@@ -253,7 +253,7 @@
     },
     {
       "name": "get_forecast_scorecard",
-      "description": "Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.",
+      "description": "Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, and pending/judged resolution counts.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
