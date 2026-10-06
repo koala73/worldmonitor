@@ -219,10 +219,12 @@ describe('ForecastPanel reliability badge', () => {
     const card = await vi.waitFor(() => cardFor(panel, 'Forecast fc-1'));
     const slot = card.querySelector<HTMLElement>('[data-fc-reliability]')!;
     expect(slot.classList.contains('fc-reliability-pending')).toBe(true);
+    expect(slot.querySelector('.fc-reliability-placeholder')?.getAttribute('aria-hidden')).toBe('true');
 
     release(new Response('forbidden', { status: 403 }));
     await vi.waitFor(() => expect(slot.classList.contains('fc-reliability-pending')).toBe(false));
     expect(slot.querySelector('.fc-reliability')).toBeNull();
+    expect(slot.querySelector('.fc-reliability-placeholder')).toBeNull();
   });
 
   it('patches badges in place so an open Analysis pane stays open', async () => {
