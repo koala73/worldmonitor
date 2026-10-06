@@ -689,7 +689,8 @@
                   "zh/panels/oref-sirens",
                   "zh/panels/telegram-intel",
                   "zh/panels/x-intel",
-                  "zh/panels/fsi"
+                  "zh/panels/fsi",
+                  "zh/panels/news-market-correlation"
                 ]
               },
               {
