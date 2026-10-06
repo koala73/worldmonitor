@@ -47,8 +47,9 @@ async function producerHarness(context, options = {}) {
   }
   context.mock.method(globalThis, 'fetch', async (input, init = {}) => {
     const url = String(input);
+    const parsedUrl = new URL(url);
     calls.push(url);
-    if (url.startsWith('https://redis.fixture')) {
+    if (parsedUrl.origin === 'https://redis.fixture') {
       if (url.includes('/get/')) return Response.json({ result: redis(['GET', decodeURIComponent(url.split('/get/')[1])]) });
       const body = JSON.parse(init.body);
       writes.push(body);
@@ -64,11 +65,24 @@ async function producerHarness(context, options = {}) {
       : Response.json(options.bodies?.urlhaus ?? { urls: options.urls ?? [] });
     if (url.includes('otx.alienvault')) return Response.json(options.bodies?.otx ?? { results: options.otx ?? [] });
     if (url.includes('api.abuseipdb')) return Response.json(options.bodies?.abuseipdb ?? { data: options.abuse ?? [] });
-    if (url.includes('ipinfo.io') || url.includes('freeipapi.com')) return Response.json(options.geo ?? {});
+    if (parsedUrl.hostname === 'ipinfo.io' || parsedUrl.hostname === 'freeipapi.com') return Response.json(options.geo ?? {});
     throw new Error(`Unexpected fixture URL: ${url}`);
   });
   return { seed, writes, values, commands, calls };
 }
+
+
+test('fixture routing rejects lookalike Redis and geolocation hosts', async t => {
+  await producerHarness(t);
+  for (const url of [
+    'https://redis.fixture.attacker.invalid',
+    'https://attacker.invalid/ipinfo.io',
+    'https://ipinfo.io.attacker.invalid',
+    'https://freeipapi.com.attacker.invalid',
+  ]) {
+    await assert.rejects(fetch(url), /Unexpected fixture URL/);
+  }
+});
 
 
 const keys = ['URLHAUS_AUTH_KEY', 'OTX_API_KEY', 'ABUSEIPDB_API_KEY'];
