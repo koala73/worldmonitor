@@ -43748,6 +43748,10 @@ components:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardUncertainty'
                 funnel:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardFunnel'
+                receipts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardReceipt'
         worldmonitor_forecast_v1_ScorecardTotals:
             type: object
             properties:
@@ -43988,6 +43992,35 @@ components:
                         format: double
                         description: '[low, high] at 95%.'
             description: successes of count, with a Wilson interval.
+        worldmonitor_forecast_v1_ScorecardReceipt:
+            type: object
+            properties:
+                question:
+                    type: string
+                forecastAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                probability:
+                    type: number
+                    format: double
+                outcome:
+                    type: string
+                resolvedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                voidReason:
+                    type: string
+                sourceFeed:
+                    type: string
+                observedValue:
+                    type: number
+                    format: double
+                citationTitle:
+                    type: string
+                citationUrl:
+                    type: string
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:

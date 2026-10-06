@@ -3189,7 +3189,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, and pending/judged resolution counts.',
+    description: 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, and receipts for the newest resolved forecasts.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -3213,6 +3213,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           publishedByDomain: { type: 'array', items: { type: 'object' } },
           uncertainty: { type: ['object', 'null'] },
           funnel: { type: ['object', 'null'] },
+          receipts: { type: 'array', items: { type: 'object' } },
         },
       },
     }),

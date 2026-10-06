@@ -40,7 +40,7 @@ import {
   ingestHistory,
   samplePendingEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
-import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
@@ -135,6 +135,15 @@ describe('processResolutionCycle', () => {
       const late = forecast({ probability: 0.1, generatedAt: T0 + 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: null });
       const { ledger } = processResolutionCycle(resolved, [snapshot(T0 + 60 * 60 * 1000, [late])], resolvedFeeds, T0 + 2 * DAY_MS);
       assert.deepEqual(ledger[KEY].calibration, anchored);
+    });
+
+    it('publishes the resolved entry as a public receipt on the scorecard (#5092)', () => {
+      const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
+      const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [first])], resolvedFeeds, T0 + 2 * DAY_MS);
+      assert.equal(ledger[KEY].status, 'resolved');
+      assert.equal(scorecard.receipts.length, 1);
+      assert.deepEqual(scorecard.receipts, buildPublicReceipts(ledger, T0 + 2 * DAY_MS));
+      assert.equal(scorecard.receipts[0].sourceFeed, 'chokepoints');
     });
   });
 

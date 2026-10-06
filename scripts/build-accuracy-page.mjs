@@ -6,7 +6,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { wilsonInterval } from './_forecast-scorecard.mjs';
+import {
+  PUBLIC_RECEIPT_FIELDS,
+  RECEIPT_SOURCE_LABELS,
+  RECEIPT_VOID_REASON_LABELS,
+  wilsonInterval,
+} from './_forecast-scorecard.mjs';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
 export const ACCURACY_CONTENT_VERSION = '2026-10-06';
@@ -36,6 +41,7 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'publishedByDomain',
   'uncertainty',
   'funnel',
+  'receipts',
 ]);
 
 // A fixed vocabulary, because the page is public: an exception message or an
@@ -101,6 +107,7 @@ const NESTED_ROW_FIELDS = Object.freeze({
   byGenerationOrigin: ORIGIN_FIELDS,
   calibration: CALIBRATION_FIELDS,
   publishedByDomain: PUBLISHED_DOMAIN_FIELDS,
+  receipts: PUBLIC_RECEIPT_FIELDS,
 });
 
 const ISSUE_URL = 'https://github.com/koala73/worldmonitor/issues';
@@ -458,7 +465,7 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)}${intervalPhrase} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section) {
   const state = classifyAccuracyState(section);
@@ -640,6 +647,74 @@ function funnelSection(funnel, escapeHtml) {
         <thead><tr><th scope="col">Stage</th><th scope="col">Forecasts</th></tr></thead>
         <tbody>
 ${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}
+        </tbody>
+      </table></div>`;
+}
+
+const RECEIPT_OUTCOME_LABELS = Object.freeze({ YES: 'Happened', NO: 'Did not happen', VOID: 'Void' });
+
+function utcDate(ms) {
+  const date = new Date(isFiniteNumber(ms) ? ms : NaN);
+  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toISOString().slice(0, 10);
+}
+
+// The snapshot is a repo file a person can edit, so the page re-checks the
+// link scheme the producer already enforced.
+function httpsHref(value) {
+  try {
+    return typeof value === 'string' && new URL(value).protocol === 'https:' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function labelFor(labels, code) {
+  return Object.hasOwn(labels, code) ? labels[code] : labels.other;
+}
+
+function receiptSourceHtml(receipt, escapeHtml) {
+  if (receipt.outcome === 'VOID') {
+    return escapeHtml(labelFor(RECEIPT_VOID_REASON_LABELS, receipt.voidReason));
+  }
+  if (typeof receipt.sourceFeed === 'string') {
+    const label = labelFor(RECEIPT_SOURCE_LABELS, receipt.sourceFeed);
+    const reading = isFiniteNumber(receipt.observedValue) ? ` read ${Number(receipt.observedValue.toPrecision(8))}` : '';
+    return escapeHtml(`${label}${reading}`);
+  }
+  if (typeof receipt.citationTitle !== 'string' || !receipt.citationTitle) {
+    return escapeHtml('Judged against archived news');
+  }
+  const href = httpsHref(receipt.citationUrl);
+  const title = escapeHtml(receipt.citationTitle);
+  return `${escapeHtml('Judged against archived news: ')}${href ? `<a href="${escapeHtml(href)}" rel="nofollow noopener">${title}</a>` : title}`;
+}
+
+function receiptsSection(scorecard, escapeHtml) {
+  const heading = '      <h2>Recently resolved forecasts</h2>';
+  const { receipts } = scorecard;
+  if (!Array.isArray(receipts)) {
+    return `${heading}
+      <p>This capture does not carry per-forecast receipts.</p>`;
+  }
+  // The API defaults the field to [], so an old seed and a window where only
+  // excluded origins resolved look the same; name both rather than guess.
+  if (receipts.length === 0 && Number(scorecard.totals?.resolved) > 0) {
+    return `${heading}
+      <p>This capture carries no receipts: it predates them, or no published forecast resolved in the window.</p>`;
+  }
+  const rows = receipts.filter((receipt) => (
+    isPlainObject(receipt) && Object.hasOwn(RECEIPT_OUTCOME_LABELS, receipt.outcome) && typeof receipt.question === 'string'
+  ));
+  if (rows.length === 0) {
+    return `${heading}
+      <p>No forecast has resolved in this window yet, so there are no receipts to show.</p>`;
+  }
+  return `${heading}
+      <div class="table-scroll"><table data-forecast-receipts>
+        <caption>The ${escapeHtml(formatCount(rows.length))} most recently resolved published forecasts, newest first, leaving out experimental, synthetic and unattributed origins, voids included. The chance is the probability the forecast was scored at. A hard forecast is settled by reading a World Monitor data feed; a judged one by AI judges reading archived news, and the linked item is one they cited. Dates are UTC.</caption>
+        <thead><tr><th scope="col">Forecast</th><th scope="col">Made</th><th scope="col">Chance given</th><th scope="col">Outcome</th><th scope="col">Resolved</th><th scope="col">How it was settled</th></tr></thead>
+        <tbody>
+${rows.map((receipt) => `          <tr data-receipt-outcome="${escapeHtml(receipt.outcome)}"><th scope="row">${escapeHtml(receipt.question)}</th><td>${escapeHtml(utcDate(receipt.forecastAt))}</td><td><span data-probability-band>${escapeHtml(isFiniteNumber(receipt.probability) ? `${Number((receipt.probability * 100).toFixed(1))}%` : 'Not recorded')}</span></td><td>${escapeHtml(RECEIPT_OUTCOME_LABELS[receipt.outcome])}</td><td>${escapeHtml(utcDate(receipt.resolvedAt))}</td><td>${receiptSourceHtml(receipt, escapeHtml)}</td></tr>`).join('\n')}
         </tbody>
       </table></div>`;
 }
@@ -831,7 +906,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
         <li>${escapeHtml(bucketSentence)}</li>
         <li>No confidence intervals on the log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling the individual forecasts. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
         <li>No accuracy for the 24-hour, 7-day and 30-day projections shown in the product. Those horizons are not scored yet, so nothing here describes them. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
-        <li>No individual forecasts, resolution evidence, judge inputs or archive locations. This page publishes aggregates only.</li>
+        <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
 }
 
@@ -886,6 +961,7 @@ ${cohortSection(scorecard.skill, unknownOriginSentence(scorecard), escapeHtml)}
 ${totalsTable(scorecard.totals, intervals, escapeHtml)}
       <p>${escapeHtml(scorecard.methodology)}</p>
 ${funnelSection(scorecard.funnel, escapeHtml)}
+${receiptsSection(scorecard, escapeHtml)}
       <h2>Calibration</h2>
 ${calibrationTable(scorecard, intervals, escapeHtml)}
       <h2>Accuracy by domain</h2>
@@ -914,7 +990,7 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset }) {
     '@id': `${canonical}#dataset`,
     name: 'World Monitor forecast resolution scorecard',
     description:
-      'Aggregate accuracy of World Monitor forecasts over a rolling window: Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, and a head-to-head against liquid prediction markets. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
+      'Aggregate accuracy of World Monitor forecasts over a rolling window: Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, a head-to-head against liquid prediction markets, and receipts for the most recently resolved forecasts. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
     identifier: DATASET_IDENTIFIER,
     keywords: [
       'forecast accuracy',
