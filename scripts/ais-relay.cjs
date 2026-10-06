@@ -100,6 +100,7 @@ const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = requi
 const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
+const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -10058,18 +10059,11 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const crossings = chokepointCrossings.get(cp.name) || [];
-    const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
-    chokepointCrossings.set(cp.name, recent);
-    // `available` is the same signal seedTransitSummaries encodes by leaving
-    // todayTotal null. Both writers read this one in-memory map and both ship
-    // in a single get-chokepoint-status bundle, so without it one response
-    // carried summaries.suez.todayTotal === null next to
-    // transits["Suez Canal"].total === 0 and an agent's answer depended on
-    // which half it read. The counts stay numeric here because the documented
-    // shape of this key is {tanker, cargo, other, total}.
+    const recent = window.get(cp.name) || [];
+    // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
       cargo: recent.filter(c => c.type === 'cargo').length,
@@ -10078,10 +10072,15 @@ async function seedChokepointTransits() {
       available: recent.length > 0,
     };
   }
-  const payload = { transits, fetchedAt: now };
-  await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: Object.keys(transits).length, sourceVersion: 'chokepoint-transits' });
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
-  console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
+  const canonical = Object.entries(RELAY_NAME_TO_ID).filter(([, id]) => id);
+  const missing = canonical.filter(([name]) => !transits[name].available).map(([, id]) => id);
+  const covered = canonical.length - missing.length;
+  const transitCoverage = { covered, total: canonical.length, missing };
+  const payload = { transits, transitCoverage, fetchedAt: now };
+  const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
+  if (!ok) throw new Error('Transit count publication failed');
+  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
 /**
@@ -10167,6 +10166,7 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
   // would otherwise vanish from summaries and the RPC would render zero-state
@@ -10195,8 +10195,7 @@ async function seedTransitSummaries() {
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const crossings = chokepointCrossings.get(relayName) || [];
-        const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
+        const recent = window.get(relayName) || [];
         if (recent.length > 0) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10214,7 +10213,7 @@ async function seedTransitSummaries() {
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
     // dataAvailable is PortWatch history presence, not AIS today-counts.
-    // todayTotal comes from the in-memory 24h AIS window; an empty window is
+    // todayTotal comes from the durable 24h AIS window; an empty window is
     // unsupplied, not a published zero-traffic measurement (#7457). Leave the
     // count absent so PortWatch WoW cannot sit next to a fake 0.
     summaries[cpId] = {

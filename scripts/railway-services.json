@@ -99,6 +99,7 @@
       "shared/ai-tokens.json",
       "shared/ais-watchdog.js",
       "shared/ais-vessel-type.js",
+      "shared/chokepoint-transit-window.js",
       "shared/chokepoint-threat-levels.js",
       "shared/chokepoint-traffic-anomaly.js",
       "shared/commodities.json",
