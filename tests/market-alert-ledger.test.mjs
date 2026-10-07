@@ -1,8 +1,10 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
   MARKET_ALERT_ACTIVITY_GAP_MS,
+  MARKET_ALERT_ACTIVITY_MAX_RUNS,
   MARKET_ALERT_ACTIVITY_RETENTION_MS,
   MARKET_ALERT_BASE_RATE_RULE,
   MARKET_ALERT_EVIDENCE_EXPIRY_MS,
@@ -25,6 +27,7 @@ const HOUR = 60 * MIN;
 
 const CRUDE = { symbol: 'CL=F', name: 'Crude Oil', display: 'WTI', price: 80, change: 3.1 };
 const WHEAT = { symbol: 'ZW=F', name: 'Wheat', display: 'Wheat', price: 600, change: 2.4 };
+const AVGO = { symbol: 'AVGO', name: 'Broadcom', display: 'AVGO', price: 1500, change: 5.0 };
 const RATE_CUT = { title: 'Will the Fed cut rates in December?', yesPrice: 30, volume: 1000, url: 'https://polymarket.com/event/fed-cut' };
 
 function marketSignal(type, market, overrides = {}) {
@@ -62,6 +65,31 @@ const ALERTED = { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:C
 
 function ingest(ledger, signals, nowMs = NOW, baseline = QUIET_BASELINE) {
   return ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets: [CRUDE, WHEAT], predictions: [RATE_CUT], baseline });
+}
+
+function every(fromMinutes, toMinutes, types) {
+  const ticks = [];
+  for (let minutes = fromMinutes; minutes <= toMinutes; minutes += 5) ticks.push([minutes, types]);
+  return ticks;
+}
+
+function runTicks(ticks, market) {
+  let state = { ledger: {}, emitted: [], activity: {} };
+  for (const [minutes, types] of ticks) {
+    const tick = ingestSignals(state.ledger, types.map((type) => marketSignal(type, market)), {
+      nowMs: NOW + minutes * MIN,
+      runtimeMode: 'legacy',
+      markets: [market],
+      predictions: [],
+      baseline: { marketChanges: { [market.symbol]: market.change }, emitted: state.emitted, activity: state.activity },
+    });
+    state = { ledger: tick.ledger, emitted: tick.emitted, activity: tick.activity };
+  }
+  return state;
+}
+
+function rowsOf(ledger) {
+  return Object.values(ledger).map((entry) => [entry.type, entry.emittedAt]);
 }
 
 function archiveOf(stories, tiers, coveredFromMs = NOW - HOUR, truncated = false) {
@@ -138,10 +166,11 @@ describe('ingestSignals', () => {
     assert.equal(entries[0].emittedAt, NOW);
   });
 
-  it('opens a new window once the previous deadline has passed', () => {
+  it('opens a new window once the previous deadline is more than the gap behind', () => {
     const first = ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger;
-    const later = NOW + MARKET_ALERT_WINDOW_MS + 1;
-    const { ledger, created } = ingest(first, [marketSignal('silent_divergence', CRUDE)], later);
+    const atGap = ingest(first, [marketSignal('silent_divergence', CRUDE)], NOW + MARKET_ALERT_WINDOW_MS + MARKET_ALERT_ACTIVITY_GAP_MS);
+    assert.deepEqual({ created: atGap.created, held: atGap.held }, { created: 0, held: 1 });
+    const { ledger, created } = ingest(first, [marketSignal('silent_divergence', CRUDE)], NOW + MARKET_ALERT_WINDOW_MS + MARKET_ALERT_ACTIVITY_GAP_MS + 1);
     assert.equal(created, 1);
     assert.equal(Object.keys(ledger).length, 2);
   });
@@ -159,24 +188,52 @@ describe('ingestSignals', () => {
   });
 
   it('a move that was silent, then explained, then silent again gets one row of each kind and nothing more', () => {
-    const avgo = { symbol: 'AVGO', name: 'Broadcom', display: 'AVGO', price: 1500, change: 5.0 };
-    const timeline = [[0, 'silent_divergence'], [5, 'silent_divergence'], [360, 'explained_market_move'], [365, 'explained_market_move'], [375, 'silent_divergence']];
-    let ledger = {};
-    let emitted = [];
-    for (const [minutes, type] of timeline) {
-      const tick = ingestSignals(ledger, [marketSignal(type, avgo)], {
-        nowMs: NOW + minutes * MIN, runtimeMode: 'legacy', markets: [avgo], predictions: [], baseline: { marketChanges: { AVGO: 5.0 }, emitted },
-      });
-      ledger = tick.ledger;
-      emitted = tick.emitted;
-    }
+    const timeline = [[0, ['silent_divergence']], [5, ['silent_divergence']], [360, ['explained_market_move']], [365, ['explained_market_move']], [375, ['silent_divergence']]];
+    const { ledger, activity } = runTicks(timeline, AVGO);
     assert.deepEqual(Object.keys(ledger), [
       `explained_market_move:AVGO@${NOW + 360 * MIN + MARKET_ALERT_WINDOW_MS}`,
       `silent_divergence:AVGO@${NOW + MARKET_ALERT_WINDOW_MS}`,
     ]);
     const [explained, silent] = Object.values(ledger);
-    assert.equal(silent.lastSeenAt, NOW + 5 * MIN);
-    assert.equal(explained.lastSeenAt, NOW + 375 * MIN, 'the held silent re-emission touches the most recent row for the symbol');
+    assert.equal(silent.lastSeenAt, NOW + 375 * MIN, 'silent 15 minutes after its window closed is held and bumps its own row');
+    assert.equal(explained.lastSeenAt, NOW + 365 * MIN, 'a hold touches only its same-type row');
+    assert.deepEqual(activity, {});
+  });
+
+  it('explained for an hour, silent for six, then explained again opens one explained row and no silent row', () => {
+    const ticks = [...every(0, 60, ['explained_market_move']), ...every(65, 415, ['silent_divergence']), ...every(420, 440, ['explained_market_move'])];
+    const { ledger, activity } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW]]);
+    assert.equal(Object.values(ledger)[0].lastSeenAt, NOW + 60 * MIN, 'the last explained tick inside its window; the silent holds touch no row');
+    assert.deepEqual(activity, { AVGO: [{ since: NOW + 65 * MIN, until: NOW + 440 * MIN }] }, 'the silent holds, and the explained ticks held behind them, are one run');
+  });
+
+  it('silent every tick for ten hours but one keeps bumping the single silent row', () => {
+    const ticks = [...every(0, 395, ['silent_divergence']), [400, []], ...every(405, 600, ['silent_divergence'])];
+    const { ledger, activity } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['silent_divergence', NOW]]);
+    assert.equal(Object.values(ledger)[0].lastSeenAt, NOW + 600 * MIN);
+    assert.deepEqual(activity, {});
+  });
+
+  it('a move whose type alternates every three hours for a day opens at most one row per type', () => {
+    const ticks = [];
+    for (let hour = 0; hour < 24; hour += 3) {
+      const type = (hour / 3) % 2 === 0 ? 'explained_market_move' : 'silent_divergence';
+      ticks.push(...every(hour * 60, hour * 60 + 175, [type]));
+    }
+    const { ledger } = runTicks(ticks, AVGO);
+    const counts = {};
+    for (const entry of Object.values(ledger)) counts[entry.type] = (counts[entry.type] ?? 0) + 1;
+    for (const [type, count] of Object.entries(counts)) assert.ok(count <= 1, `${count} ${type} rows`);
+    assert.ok(Object.keys(ledger).length <= 2, `${Object.keys(ledger).length} rows in total`);
+    assert.deepEqual(counts, { explained_market_move: 1 });
+  });
+
+  it('explained resuming after a 20-minute silence opens a second explained row', () => {
+    const ticks = [...every(0, 355, ['explained_market_move']), ...every(360, 375, []), [380, ['explained_market_move']]];
+    const { ledger } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW], ['explained_market_move', NOW + 380 * MIN]]);
   });
 
   it('silent on one tick then explained on the next opens the explained row', () => {
@@ -245,24 +302,47 @@ describe('ingestSignals', () => {
 
   it('a quoted hold with no row for the symbol records a run of activity and counts as touched', () => {
     const { ledger, held, touched, activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW, ALERTED);
-    assert.deepEqual({ ledger, held, touched, activity }, { ledger: {}, held: 1, touched: 1, activity: { 'CL=F': { since: NOW, until: NOW } } });
+    assert.deepEqual({ ledger, held, touched, activity }, { ledger: {}, held: 1, touched: 1, activity: { 'CL=F': [{ since: NOW, until: NOW }] } });
+  });
+
+  it('a divergence hold whose same-type row went stale records activity and leaves the row alone', async () => {
+    const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
+    const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
+    const bumped = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, ALERTED).ledger;
+    assert.equal(Object.values(bumped)[0].lastSeenAt, dueAt + 2);
+    const later = dueAt + 2 + 20 * MIN;
+    const { ledger, held, touched, activity } = ingest(bumped, [marketSignal('silent_divergence', CRUDE)], later, { ...ALERTED, emitted: ['explained_market_move:CL=F'] });
+    assert.deepEqual({ held, touched, activity }, { held: 1, touched: 1, activity: { 'CL=F': [{ since: later, until: later }] } });
+    assert.deepEqual(ledger, bumped, 'a stale row is not stretched');
   });
 
   it('a later hold extends the run inside the continuity window and starts a new one past it', () => {
     assert.equal(MARKET_ALERT_ACTIVITY_GAP_MS, 15 * MIN);
     const run = { since: NOW, until: NOW };
-    for (const [gap, since] of [[5 * MIN, NOW], [MARKET_ALERT_ACTIVITY_GAP_MS, NOW], [20 * MIN, NOW + 20 * MIN]]) {
-      const { activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW + gap, { ...ALERTED, activity: { 'CL=F': run } });
-      assert.deepEqual(activity, { 'CL=F': { since, until: NOW + gap } }, `${gap / MIN} minutes after the last hold`);
+    const cases = [
+      [5 * MIN, [{ since: NOW, until: NOW + 5 * MIN }]],
+      [MARKET_ALERT_ACTIVITY_GAP_MS, [{ since: NOW, until: NOW + MARKET_ALERT_ACTIVITY_GAP_MS }]],
+      [20 * MIN, [run, { since: NOW + 20 * MIN, until: NOW + 20 * MIN }]],
+    ];
+    for (const [gap, runs] of cases) {
+      const { activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW + gap, { ...ALERTED, activity: { 'CL=F': [run] } });
+      assert.deepEqual(activity, { 'CL=F': runs }, `${gap / MIN} minutes after the last hold`);
     }
   });
 
-  it('carries forward runs inside the retention window and drops older ones', () => {
+  it('a ninth run drops the oldest', () => {
+    assert.equal(MARKET_ALERT_ACTIVITY_MAX_RUNS, 8);
+    const runs = Array.from({ length: MARKET_ALERT_ACTIVITY_MAX_RUNS }, (_, i) => ({ since: NOW - (9 - i) * HOUR, until: NOW - (9 - i) * HOUR + 10 * MIN }));
+    const { activity } = ingest({}, [marketSignal('silent_divergence', CRUDE)], NOW, { ...ALERTED, activity: { 'CL=F': runs } });
+    assert.deepEqual(activity, { 'CL=F': [...runs.slice(1), { since: NOW, until: NOW }] });
+  });
+
+  it('carries forward runs inside the retention window, drops older ones, and drops a symbol left with none', () => {
     assert.equal(MARKET_ALERT_ACTIVITY_RETENTION_MS, 30 * HOUR + 6 * 24 * HOUR, 'control offset + window + the six days a due row may wait for evidence');
     const kept = { since: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS };
     const dropped = { since: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - HOUR, until: NOW - MARKET_ALERT_ACTIVITY_RETENTION_MS - 1 };
-    const { activity } = ingest({}, [], NOW, { ...QUIET_BASELINE, activity: { 'CL=F': kept, 'ZW=F': dropped } });
-    assert.deepEqual(activity, { 'CL=F': kept });
+    const { activity } = ingest({}, [], NOW, { ...QUIET_BASELINE, activity: { 'CL=F': [dropped, kept], 'ZW=F': [dropped] } });
+    assert.deepEqual(activity, { 'CL=F': [kept] });
   });
 
   it('drops signals under the dashboard confidence gate and unknown types', () => {
@@ -564,29 +644,38 @@ describe('resolveDueEntries', () => {
     });
 
     it('skips the control when a closed alert for the entity was still re-emitting during it', async () => {
-      const earlierAt = NOW - 40 * HOUR;
+      const earlierAt = CONTROL.start - MARKET_ALERT_WINDOW_MS - 10 * MIN;
       const earlier = ingest({}, [marketSignal('silent_divergence', CRUDE)], earlierAt).ledger;
-      const closed = (await resolveDueEntries(earlier, { nowMs: earlierAt + MARKET_ALERT_WINDOW_MS + 1, archive: archiveOf([], {}, earlierAt - HOUR) })).ledger;
-      assert.ok(Object.values(closed)[0].deadline < CONTROL.start, 'the closed window ends before the control starts');
-      const heldAt = NOW - 22 * HOUR;
-      const touched = ingest(closed, [marketSignal('silent_divergence', CRUDE)], heldAt, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] }).ledger;
-      const ledger = ingest(touched, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
+      const closedAt = earlierAt + MARKET_ALERT_WINDOW_MS + 1;
+      let ledger = (await resolveDueEntries(earlier, { nowMs: closedAt, archive: archiveOf([], {}, earlierAt - HOUR) })).ledger;
+      assert.ok(Object.values(ledger)[0].deadline < CONTROL.start, 'the closed window ends before the control starts');
+      for (const heldAt of [closedAt + 5 * MIN, CONTROL.start]) {
+        ledger = ingest(ledger, [marketSignal('silent_divergence', CRUDE)], heldAt, { marketChanges: { 'CL=F': 3.0 }, emitted: ['silent_divergence:CL=F'] }).ledger;
+      }
+      assert.equal(Object.values(ledger)[0].lastSeenAt, CONTROL.start, 'each hold inside the gap bumps the closed row');
+      ledger = ingest(ledger, [marketSignal('silent_divergence', CRUDE)], NOW).ledger;
       const result = await resolveDueEntries(ledger, { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED) });
       const crude = Object.values(result.ledger).find((entry) => entry.emittedAt === NOW);
       assert.deepEqual(crude.control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
     });
 
     it('skips the control when a run of held activity with no row for the entity overlaps it', async () => {
-      const activity = { 'CL=F': { since: NOW - 26 * HOUR, until: NOW - 23 * HOUR } };
+      const activity = { 'CL=F': [{ since: NOW - 26 * HOUR, until: NOW - 23 * HOUR }] };
+      const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED), activity });
+      assert.deepEqual(Object.values(result.ledger)[0].control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
+    });
+
+    it('skips the control when the first of two runs overlaps it', async () => {
+      const activity = { 'CL=F': [{ since: NOW - 26 * HOUR, until: NOW - 23 * HOUR }, { since: NOW - 10 * HOUR, until: NOW - 9 * HOUR }] };
       const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED), activity });
       assert.deepEqual(Object.values(result.ledger)[0].control, { ...CONTROL, outcome: 'skipped', reason: 'overlap' });
     });
 
     it('a run that ended before the control window, started after it, or belongs to another entity does not skip it', async () => {
       for (const activity of [
-        { 'CL=F': { since: NOW - 30 * HOUR, until: CONTROL.start - 1 } },
-        { 'CL=F': { since: CONTROL.end + 1, until: NOW - 1 } },
-        { 'ZW=F': { since: NOW - 26 * HOUR, until: NOW - 23 * HOUR } },
+        { 'CL=F': [{ since: NOW - 30 * HOUR, until: CONTROL.start - 1 }] },
+        { 'CL=F': [{ since: CONTROL.end + 1, until: NOW - 1 }] },
+        { 'ZW=F': [{ since: NOW - 26 * HOUR, until: NOW - 23 * HOUR }] },
       ]) {
         const result = await resolveDueEntries(pendingLedger(), { nowMs: dueAt + 1, archive: archiveOf([controlStory], { c1: { tier: 1, source: 'Reuters' } }, COVERED), activity });
         assert.deepEqual(Object.values(result.ledger)[0].control, { ...CONTROL, outcome: 'HIT', storyHash: 'c1' }, JSON.stringify(activity));
@@ -655,7 +744,7 @@ describe('buildScorecard', () => {
     assert.deepEqual(card.archive, NO_ARCHIVE_PASS);
     assert.deepEqual(card.byType.map((row) => row.type), [...MARKET_ALERT_TYPES]);
     for (const row of card.byType) {
-      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedN: 0, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null });
+      assert.deepEqual(row, { type: row.type, pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null });
     }
   });
 
@@ -666,6 +755,12 @@ describe('buildScorecard', () => {
     );
   });
 
+  it('docs/signal-intelligence.mdx quotes both rules verbatim', () => {
+    const lines = readFileSync(new URL('../docs/signal-intelligence.mdx', import.meta.url), 'utf8').split('\n');
+    const quote = lines.find((line) => line.startsWith('> An emission resolves HIT'));
+    assert.equal(quote, `> ${MARKET_ALERT_RESOLUTION_RULE} ${MARKET_ALERT_BASE_RATE_RULE}`);
+  });
+
   it('reports the paired hit rate over the rows whose control scored, beside the base rate', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const two = ingest(ingest({}, [marketSignal('silent_divergence', WHEAT)], NOW - 2 * HOUR).ledger, [marketSignal('silent_divergence', CRUDE)]).ledger;
@@ -674,9 +769,10 @@ describe('buildScorecard', () => {
     assert.deepEqual(Object.values(ledger).map((entry) => [entry.outcome, entry.control.outcome]), [['HIT', 'MISS'], ['MISS', 'skipped']]);
     const row = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS }).byType.find((r) => r.type === 'silent_divergence');
     assert.deepEqual(
-      { n: row.n, hitRate: row.hitRate, pairedN: row.pairedN, pairedHitRate: row.pairedHitRate, baseN: row.baseN, baseHitRate: row.baseHitRate },
-      { n: 2, hitRate: 0.5, pairedN: 1, pairedHitRate: 1, baseN: 1, baseHitRate: 0 },
+      { n: row.n, hitRate: row.hitRate, pairedHitRate: row.pairedHitRate, baseN: row.baseN, baseHitRate: row.baseHitRate },
+      { n: 2, hitRate: 0.5, pairedHitRate: 1, baseN: 1, baseHitRate: 0 },
     );
+    assert.equal('pairedN' in row, false, 'baseN already counts the paired rows');
   });
 
   it('computes baseHitRate over the controls that scored HIT or MISS', async () => {
@@ -701,7 +797,7 @@ describe('buildScorecard', () => {
     const card = buildScorecard(ledger, dueAt + 2, { archive: NO_ARCHIVE_PASS });
     assert.deepEqual(card.totals, { entries: 2, pending: 0, resolved: 2, hit: 1, miss: 1, void: 0 });
     const row = card.byType.find((r) => r.type === 'silent_divergence');
-    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, pairedN: 0, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: 90 * 60 * 1000 });
+    assert.deepEqual(row, { type: 'silent_divergence', pending: 0, resolved: 2, hit: 1, miss: 1, void: 0, n: 2, hitRate: 0.5, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: 90 * 60 * 1000 });
   });
 
   it('excludes a VOID from n and counts resolutions only inside the rolling window', async () => {

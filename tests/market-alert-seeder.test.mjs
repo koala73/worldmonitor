@@ -190,22 +190,26 @@ describe('buildTick runs the shared detectors under Node', () => {
     const pending = pendingCrude(emittedAt);
     const [key] = Object.keys(pending);
     const run = { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR };
-    const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 16 * MIN, activity: { 'CL=F': run } });
+    const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 16 * MIN, activity: { 'CL=F': [run] } });
     const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
     assert.equal(tick.summary.emitted.held, 2, 'no live baseline, so the crude alerts are held');
     assert.deepEqual(tick.ledger[key].control, { start: emittedAt - 24 * HOUR, end: emittedAt - 18 * HOUR, outcome: 'skipped', reason: 'overlap' });
-    assert.deepEqual(tick.snapshot.activity, { 'CL=F': run }, 'a run is a fact about the past and outlives the baseline');
+    assert.deepEqual(tick.snapshot.activity, { 'CL=F': [run] }, 'a run is a fact about the past and outlives the baseline');
   });
 
-  it('a snapshot missing a field added by #8951 is no baseline', async () => {
-    for (const missing of ['predictionsFetchedAt', 'emitted', 'activity']) {
+  it('a snapshot missing a field added by #8951, or holding activity in its old object shape, is no baseline', async () => {
+    const shapes = ['predictionsFetchedAt', 'emitted', 'activity'].map((missing) => {
       const partial = { ...LIVE_SNAPSHOT };
       delete partial[missing];
-      const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(partial) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
-      assert.deepEqual(tick.ledger, {}, `without ${missing}`);
-      assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
-      assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+      return [`without ${missing}`, partial];
+    });
+    shapes.push(['with object-valued activity', { ...LIVE_SNAPSHOT, activity: { 'CL=F': { since: NOW - HOUR, until: NOW - 30 * MIN } } }]);
+    for (const [label, snapshot] of shapes) {
+      const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(snapshot) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+      assert.deepEqual(tick.ledger, {}, label);
+      assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 }, label);
+      assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT, label);
     }
   });
 
@@ -243,16 +247,16 @@ describe('buildTick runs the shared detectors under Node', () => {
     const held = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(cold.snapshot) }), { nowMs: NOW + 5 * MIN, archive: EMPTY_ARCHIVE });
     assert.deepEqual(held.ledger, {});
     assert.equal(held.summary.emitted.held, 2);
-    assert.deepEqual(held.snapshot.activity, { 'CL=F': { since: NOW + 5 * MIN, until: NOW + 5 * MIN } });
+    assert.deepEqual(held.snapshot.activity, { 'CL=F': [{ since: NOW + 5 * MIN, until: NOW + 5 * MIN }] });
     const still = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(held.snapshot) }), { nowMs: NOW + 10 * MIN, archive: EMPTY_ARCHIVE });
-    assert.deepEqual(still.snapshot.activity, { 'CL=F': { since: NOW + 5 * MIN, until: NOW + 10 * MIN } }, 'the run survives the snapshot round trip');
+    assert.deepEqual(still.snapshot.activity, { 'CL=F': [{ since: NOW + 5 * MIN, until: NOW + 10 * MIN }] }, 'the run survives the snapshot round trip');
   });
 
   it('a control window overlapped by recorded activity is skipped when the row resolves', async () => {
     const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
     const pending = pendingCrude(emittedAt);
     const [key] = Object.keys(pending);
-    const snapshot = { ...LIVE_SNAPSHOT, activity: { 'CL=F': { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR } } };
+    const snapshot = { ...LIVE_SNAPSHOT, activity: { 'CL=F': [{ since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR }] } };
     const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
     const tick = await buildTick(
       rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: envelope(snapshot), [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }),

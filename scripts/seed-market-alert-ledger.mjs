@@ -186,7 +186,8 @@ function parsePreviousArchive(value) {
 
 function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
-  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted) || !isPlainObject(data.activity)) return null;
+  if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted)) return null;
+  if (!isPlainObject(data.activity) || !Object.values(data.activity).every(Array.isArray)) return null;
   if (data.predictionsFetchedAt !== null && typeof data.predictionsFetchedAt !== 'number') return null;
   return {
     timestamp: Number(data.timestamp),

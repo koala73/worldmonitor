@@ -1,8 +1,8 @@
 /**
  * Market-alert ledger (#8867): the pure steps behind
- * scripts/seed-market-alert-ledger.mjs. A market alert that is new since the
- * previous tick (NEW_WHEN), or a prediction alert whose question names a topic
- * keyword, opens a six-hour window keyed `${type}:${entity}@${deadline}`; a
+ * scripts/seed-market-alert-ledger.mjs. A market alert that is new under the
+ * recency rule in ingestSignals, or a prediction alert whose question names a
+ * topic keyword, opens a six-hour window keyed `${type}:${entity}@${deadline}`; a
  * closed window is resolved against the English digest archive under
  * MARKET_ALERT_RESOLUTION_RULE, and a control window 24 hours earlier under
  * MARKET_ALERT_BASE_RATE_RULE.
@@ -34,6 +34,7 @@ export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS
 // SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot too old to
 // be a baseline is also too old to continue a run.
 export const MARKET_ALERT_ACTIVITY_GAP_MS = 15 * 60 * 1000;
+export const MARKET_ALERT_ACTIVITY_MAX_RUNS = 8;
 // A due row may wait the evidence expiry before it resolves, and its control
 // window starts an offset plus a window before that.
 export const MARKET_ALERT_ACTIVITY_RETENTION_MS = MARKET_ALERT_CONTROL_OFFSET_MS + MARKET_ALERT_WINDOW_MS + MARKET_ALERT_EVIDENCE_EXPIRY_MS;
@@ -83,21 +84,24 @@ function findOpenWindow(ledger, id, nowMs) {
   return Object.values(ledger).find((entry) => entry.status === 'pending' && entry.id === id && nowMs < entry.deadline);
 }
 
-function latestRowFor(ledger, symbol) {
+function latestRow(ledger, id) {
   return Object.values(ledger)
-    .filter((entry) => entityKeyOf(entry.id) === symbol)
+    .filter((entry) => entry.id === id)
     .reduce((latest, entry) => (latest === null || entry.emittedAt > latest.emittedAt ? entry : latest), null);
 }
 
+const withinGap = (sinceMs, nowMs) => nowMs - sinceMs <= MARKET_ALERT_ACTIVITY_GAP_MS;
+
 // The detector flips a move between explained and silent as the digest
-// changes, so a quiet-market alert is new only when nothing fired for the
-// symbol on the previous tick; the flip itself must not reopen the move.
-const quietSymbol = (baseline, symbol) => !baseline.emitted.some((id) => entityKeyOf(id) === symbol);
-const NEW_WHEN = {
-  silent_divergence: quietSymbol,
-  flow_price_divergence: quietSymbol,
-  explained_market_move: (baseline, symbol) => !baseline.emitted.includes(`explained_market_move:${symbol}`),
-};
+// changes; a quiet-market alert also needs the previous tick to have emitted
+// nothing for the symbol, so the flip itself does not reopen the move.
+const QUIET_MARKET_TYPES = new Set(['silent_divergence', 'flow_price_divergence']);
+
+function extendRuns(runs = [], nowMs) {
+  const last = runs.at(-1);
+  if (last && withinGap(last.until, nowMs)) return [...runs.slice(0, -1), { since: last.since, until: nowMs }];
+  return [...runs, { since: nowMs, until: nowMs }].slice(-MARKET_ALERT_ACTIVITY_MAX_RUNS);
+}
 
 function createEntry(signal, entity, nowMs, runtimeMode) {
   const id = `${signal.type}:${signal.data.correlatedEntities[0]}`;
@@ -121,21 +125,24 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
 }
 
 /**
- * A market signal opens a row only when NEW_WHEN says it is new against the
- * previous tick: `baseline.emitted` holds the previous tick's market ids that
- * passed the type and confidence gate, so a move that stays elevated re-emits
- * every tick without opening a fresh row every six hours, and a move that was
- * silent and then found its news gets one row of each kind. A symbol without
- * a baseline (`baseline` null, or the symbol absent from
- * `baseline.marketChanges` because its feed skipped the previous tick) is
- * held. A signal held because the symbol was alerted on the previous tick
- * bumps `lastSeenAt` on the symbol's most recent row, whatever its status, so
- * a closed window whose alert keeps firing still blocks a later control
- * window. When no row exists for the symbol (a move already elevated when the
- * seeder had no baseline), the hold is recorded in `activity` instead: a map
- * from symbol to the latest run of such holds, `{ since, until }` in ms, where
- * holds no more than MARKET_ALERT_ACTIVITY_GAP_MS apart extend one run.
- * `baseline.activity` is carried forward pruned to runs that ended inside
+ * A market signal opens a row only under the recency rule: the symbol's most
+ * recent row of the same type, whatever its status, was last seen (its
+ * deadline or `lastSeenAt`, whichever is later) more than
+ * MARKET_ALERT_ACTIVITY_GAP_MS ago, and so was the symbol's latest run of held
+ * activity, so a move that stays elevated opens one row per type however the
+ * detector flips it between explained and silent. The quiet-market types also
+ * need the previous tick to have emitted no market alert for the symbol:
+ * `baseline.emitted` holds the previous tick's market ids that passed the type
+ * and confidence gate. A symbol without a baseline (`baseline` null, or the
+ * symbol absent from `baseline.marketChanges` because its feed skipped the
+ * previous tick) is held and records nothing. A hold whose same-type row is
+ * still fresh bumps that row's `lastSeenAt`, whatever its status, so a closed
+ * window whose alert keeps firing still blocks a later control window; every
+ * other quoted hold extends or starts a run in `activity` instead, so a stale
+ * row is never stretched. `activity` maps a symbol to its newest
+ * MARKET_ALERT_ACTIVITY_MAX_RUNS runs `{ since, until }` in ms, oldest first,
+ * where holds no more than the gap apart share a run; `baseline.activity` is
+ * carried forward pruned to runs that ended inside
  * MARKET_ALERT_ACTIVITY_RETENTION_MS, long enough for the control window of
  * an emission that resolves at its deadline. `emitted` in the result is this
  * tick's gated market ids, sorted, for the next tick's baseline.
@@ -144,8 +151,12 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
   const ledger = { ...existing };
   const marketsBySymbol = new Map(markets.map((market) => [market.symbol, market]));
   const predictionsByKey = new Map(predictions.map((prediction) => [predictionMarketKey(prediction), prediction]));
-  const activity = Object.fromEntries(Object.entries(previousActivity)
-    .filter(([, run]) => run.until >= nowMs - MARKET_ALERT_ACTIVITY_RETENTION_MS));
+  // Holds read the runs as the tick began, so a symbol's outcome does not
+  // depend on the order of its signals within the tick.
+  const runs = Object.fromEntries(Object.entries(previousActivity)
+    .map(([symbol, symbolRuns]) => [symbol, symbolRuns.filter((run) => run.until >= nowMs - MARKET_ALERT_ACTIVITY_RETENTION_MS)])
+    .filter(([, symbolRuns]) => symbolRuns.length > 0));
+  const activity = { ...runs };
   const emitted = new Set();
   let created = 0;
   let updated = 0;
@@ -175,17 +186,19 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
       }
     } else {
       const quoted = baseline !== null && Object.hasOwn(baseline.marketChanges, entityKey);
-      if (!quoted || !NEW_WHEN[signal.type](baseline, entityKey)) {
+      if (!quoted) {
         held += 1;
-        if (!quoted) continue;
+        continue;
+      }
+      const latest = latestRow(ledger, id);
+      const rowFresh = latest !== null && withinGap(Math.max(latest.deadline, latest.lastSeenAt ?? 0), nowMs);
+      const runFresh = entityKey in runs && withinGap(runs[entityKey].at(-1).until, nowMs);
+      const quiet = !QUIET_MARKET_TYPES.has(signal.type) || !baseline.emitted.some((other) => entityKeyOf(other) === entityKey);
+      if (rowFresh || runFresh || !quiet) {
+        held += 1;
         touched += 1;
-        const latest = latestRowFor(ledger, entityKey);
-        if (latest) {
-          ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
-        } else {
-          const prior = activity[entityKey];
-          activity[entityKey] = { since: prior && prior.until >= nowMs - MARKET_ALERT_ACTIVITY_GAP_MS ? prior.since : nowMs, until: nowMs };
-        }
+        if (rowFresh) ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
+        else activity[entityKey] = extendRuns(activity[entityKey], nowMs);
         continue;
       }
       entity = entityForMarket(marketsBySymbol.get(entityKey));
@@ -251,8 +264,8 @@ function isWeekend(ms) {
  * control is skipped when its start is older than the evidence expiry, when
  * the emission and the control start fall on different sides of a weekend
  * in UTC, when the archive does not cover its start, or when any alert for
- * the same entity was open, still re-emitting while held, or re-emitting
- * with no row as a run in `activity` (see ingestSignals), during it.
+ * the same entity was open, still re-emitting while held, or held with no
+ * fresh row of its type as a run in `activity` (see ingestSignals), during it.
  *
  * `read` says whether the archive was read this pass (a tick with nothing
  * due reads nothing) and `readAt` is when; a failed read leaves every
@@ -304,10 +317,9 @@ export async function resolveDueEntries(existing, { nowMs, archive, activity = {
     if (isWeekend(entry.emittedAt) !== isWeekend(start)) return { start, end, outcome: 'skipped', reason: 'weekend' };
     if (coveredFromMs > start) return { start, end, outcome: 'skipped', reason: 'uncovered' };
     const entityKey = entityKeyOf(entry.id);
-    const run = activity[entityKey];
     const open = Object.values(ledger).some((other) => entityKeyOf(other.id) === entityKey
       && other.emittedAt <= end && Math.max(other.deadline, other.lastSeenAt ?? 0) >= start)
-      || (run && run.since <= end && run.until >= start);
+      || (activity[entityKey] ?? []).some((run) => run.since <= end && run.until >= start);
     if (open) return { start, end, outcome: 'skipped', reason: 'overlap' };
     return { start, end, candidates: matching(entry, start, end) };
   };
@@ -380,7 +392,6 @@ export function buildScorecard(ledger, nowMs, { archive }) {
       void: count('VOID'),
       n: hit + miss,
       hitRate: hit + miss > 0 ? hit / (hit + miss) : null,
-      pairedN: paired.length,
       pairedHitRate: paired.length > 0 ? pairedHit / paired.length : null,
       baseN: paired.length,
       baseHitRate: paired.length > 0 ? baseHit / paired.length : null,
