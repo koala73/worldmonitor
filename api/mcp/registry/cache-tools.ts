@@ -2246,9 +2246,19 @@ export const CACHE_TOOLS: ToolDef[] = [
         type: ['object', 'null'],
         properties: {
           outbreaks: { type: 'array', items: { type: 'object', properties: {
-            disease: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' },
-            cases: { type: ['number', 'null'] }, deaths: { type: ['number', 'null'] }, date: { type: 'string' },
+            id: { type: 'string', description: 'Source-derived report identifier; multiple sources may report one event.' },
+            disease: { type: 'string' }, location: { type: 'string' }, countryCode: { type: 'string' },
+            alertLevel: { type: 'string', description: 'Editorial watch, warning or alert classification, not a case-count measurement.' },
+            summary: { type: 'string' }, sourceName: { type: 'string' }, sourceUrl: { type: 'string' },
+            publishedAt: { type: 'number', description: 'Source report publication time in Unix epoch milliseconds.' },
+            lat: { type: 'number' }, lng: { type: 'number', description: 'Latitude/longitude are source locations or inferred points; both zero means unknown.' },
+            cases: { type: ['number', 'null'], description: 'Reported case count; zero, null or absence means unknown, not no cases.' },
+            country: { type: 'string', description: 'Optional legacy country field; current reports use location and countryCode.' },
+            deaths: { type: ['number', 'null'], description: 'Optional legacy count; absence is not zero.' },
+            date: { type: 'string', description: 'Optional legacy date; current reports use publishedAt.' },
           } } },
+          fetchedAt: { type: 'number', description: 'Snapshot fetch time in Unix epoch milliseconds; absent clocks remain unknown.' },
+          alertLevelMethodologyVersion: { type: 'string', description: 'Version of the editorial alert-level classifier.' },
         },
       },
       'air-quality': {
