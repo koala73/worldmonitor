@@ -72,7 +72,7 @@ export function freezeBriefContent(source: HTMLElement): HTMLElement {
       link.removeAttribute('href');
     }
   }
-  for (const details of clone.querySelectorAll<HTMLElement>('script, iframe, object, embed, .cdp-summary-only, .cdp-card-help, .resilience-widget__help, .resilience-widget__retry, .cdp-inline-action')) details.remove();
+  for (const details of clone.querySelectorAll<HTMLElement>('script, iframe, object, embed, .cdp-summary-only, .cdp-card-help, .cdp-card-help-text, .resilience-widget__help, .resilience-widget__retry, .cdp-inline-action')) details.remove();
   const controls = source.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select');
   clone.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((control, index) => {
     const original = controls[index];

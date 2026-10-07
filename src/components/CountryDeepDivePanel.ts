@@ -4159,15 +4159,27 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     card.dataset.briefSection = id;
     card.tabIndex = -1;
     const heading = this.el('h3', 'cdp-card-title', title);
+    card.append(heading);
     if (helpText) {
       const tip = this.el('button', 'cdp-card-help', '?');
+      const explanation = this.el('p', 'cdp-card-help-text cdp-measure-note', helpText);
+      explanation.id = `${card.id}-help`;
+      explanation.hidden = true;
       tip.setAttribute('title', helpText);
       tip.setAttribute('type', 'button');
       tip.setAttribute('aria-label', `About ${title}`);
+      tip.setAttribute('aria-controls', explanation.id);
+      tip.setAttribute('aria-describedby', explanation.id);
+      tip.setAttribute('aria-expanded', 'false');
+      tip.addEventListener('click', () => {
+        explanation.hidden = !explanation.hidden;
+        tip.setAttribute('aria-expanded', String(!explanation.hidden));
+      });
       heading.append(tip);
+      card.append(explanation);
     }
     const body = this.el('div', 'cdp-card-body');
-    card.append(heading, body);
+    card.append(body);
     this.sections.push({ id, title, card, body });
     return [card, body];
   }

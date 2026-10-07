@@ -10,6 +10,27 @@ function link(href: string, text = 'Source'): HTMLAnchorElement {
 }
 
 describe('Country Brief export URL policy', () => {
+  it.each([true, false])('omits section help from frozen output when hidden=%s without changing the source', hidden => {
+    const source = document.createElement('section');
+    const button = document.createElement('button'); button.className = 'cdp-card-help';
+    button.setAttribute('aria-controls', 'fixture-help');
+    button.setAttribute('aria-describedby', 'fixture-help');
+    button.setAttribute('aria-expanded', String(!hidden));
+    const explanation = document.createElement('p');
+    explanation.className = 'cdp-card-help-text'; explanation.id = 'fixture-help';
+    explanation.hidden = hidden; explanation.textContent = 'Synthetic section explanation.';
+    const body = document.createElement('div'); body.textContent = 'Retained synthetic data.';
+    body.append(link('/source'));
+    source.append(button, explanation, body);
+    const original = source.outerHTML;
+    const frozen = freezeBriefContent(source);
+    expect(frozen.textContent).not.toContain(explanation.textContent);
+    expect(frozen.querySelector('.cdp-card-help, .cdp-card-help-text, [aria-controls], [aria-describedby]')).toBeNull();
+    expect(frozen.textContent).toContain('Retained synthetic data.');
+    expect(frozen.querySelector('a')?.getAttribute('href')).toBe(`${WEB_APP_ORIGIN}/source`);
+    expect(source.outerHTML).toBe(original);
+  });
+
   it.each(['report', 'story'] as const)('uses the injected %s delivery with a bound snapshot and retained source HTML', async kind => {
     const content = document.createElement('section');
     content.textContent = 'USGS · observed unknown · retained 2026-10-06T05:57:35Z';
