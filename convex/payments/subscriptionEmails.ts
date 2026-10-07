@@ -833,6 +833,12 @@ export function buildDunningEmail(
  * concurrent reservations serialize, so no two callers get overlapping slots.
  * The cursor floors at `now`, so after any idle gap the next send fires
  * immediately instead of sleeping toward a stale future slot.
+ *
+ * Under portal-latency bunching, many actions can call this at once and
+ * Convex's in-mutation OCC retries can exhaust (WORLDMONITOR-17R / 17S).
+ * Callers MUST use `reserveResendSlotWithOccRetry` so a fresh mutation
+ * attempt (with jittered backoff) absorbs that exhaustion instead of
+ * dropping the dunning send for the tick.
  */
 export const reserveResendSlot = internalMutation({
   args: {},
@@ -849,6 +855,54 @@ export const reserveResendSlot = internalMutation({
     return slotAt;
   },
 });
+
+/** Convex permanent OCC failure after the mutation's built-in retries are spent. */
+export function isConvexOccExhaustedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("changed while this mutation was being run") &&
+    msg.includes("on every subsequent retry")
+  );
+}
+
+// Action-level ladder around reserveResendSlot. Each attempt is a fresh
+// mutation with its own OCC retry budget; jitter spreads concurrent losers
+// so they do not re-herd on the same tick (WORLDMONITOR-17R).
+export const RESEND_SLOT_OCC_MAX_ATTEMPTS = 8;
+export const RESEND_SLOT_OCC_BASE_DELAY_MS = 25;
+
+export async function reserveResendSlotWithOccRetry(
+  run: () => Promise<number>,
+  opts?: {
+    sleep?: (ms: number) => Promise<void>;
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    random?: () => number;
+  },
+): Promise<number> {
+  const maxAttempts = opts?.maxAttempts ?? RESEND_SLOT_OCC_MAX_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? RESEND_SLOT_OCC_BASE_DELAY_MS;
+  const sleep =
+    opts?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const random = opts?.random ?? Math.random;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error("reserveResendSlotWithOccRetry: maxAttempts must be a positive integer");
+  }
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      lastError = err;
+      if (!isConvexOccExhaustedError(err) || attempt === maxAttempts) throw err;
+      const delay = Math.round(
+        baseDelayMs * 2 ** (attempt - 1) * (0.5 + random()),
+      );
+      await sleep(delay);
+    }
+  }
+  throw lastError;
+}
 
 /**
  * The wait (ms) a send owes before its reserved Resend slot. Deliberately
@@ -1013,9 +1067,10 @@ export const sendDunningEmail = internalAction({
     // start-time staggering alone can't guarantee (review follow-up to
     // WORLDMONITOR-VH). The wait is intentionally uncapped (see resendPacingWaitMs)
     // so a large backlog stays serialized instead of collapsing into a burst.
-    const slotAt = await ctx.runMutation(
-      internal.payments.subscriptionEmails.reserveResendSlot,
-      {},
+    // Action-level OCC retry: portal bunching can exhaust Convex's in-mutation
+    // retries on the shared counters row (Sentry WORLDMONITOR-17R / 17S).
+    const slotAt = await reserveResendSlotWithOccRetry(() =>
+      ctx.runMutation(internal.payments.subscriptionEmails.reserveResendSlot, {}),
     );
     const waitMs = resendPacingWaitMs(slotAt, Date.now());
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));

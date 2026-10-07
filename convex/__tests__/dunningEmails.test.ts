@@ -27,6 +27,9 @@ import {
   WINBACK_MAX_AGE_MS,
   SEND_SPACING_MS,
   resendPacingWaitMs,
+  isConvexOccExhaustedError,
+  reserveResendSlotWithOccRetry,
+  RESEND_SLOT_OCC_MAX_ATTEMPTS,
 } from "../payments/subscriptionEmails";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -477,6 +480,77 @@ describe("runDunningScan windows", () => {
     expect(resendPacingWaitMs(now + bigBacklogMs, now)).toBe(bigBacklogMs);
     // Slot already elapsed (clock moved past it): no negative/oversized wait.
     expect(resendPacingWaitMs(now - 5_000, now)).toBe(0);
+  });
+
+  test("isConvexOccExhaustedError matches Convex permanent OCC failure text (WORLDMONITOR-17R)", () => {
+    const prodShape = new Error(
+      'Documents read from or written to the "counters" table changed while this mutation was being run and on every subsequent retry. Another call to this mutation changed the document with ID "doc_test".',
+    );
+    expect(isConvexOccExhaustedError(prodShape)).toBe(true);
+    expect(
+      isConvexOccExhaustedError(
+        new Error(`Uncaught Error: ${prodShape.message}`),
+      ),
+    ).toBe(true);
+    expect(isConvexOccExhaustedError(new Error("write conflict"))).toBe(false);
+    expect(isConvexOccExhaustedError(new Error("Resend 429"))).toBe(false);
+  });
+
+  test("reserveResendSlotWithOccRetry retries exhausted OCC then returns the slot (WORLDMONITOR-17R)", async () => {
+    const occ = new Error(
+      'Documents read from or written to the "counters" table changed while this mutation was being run and on every subsequent retry.',
+    );
+    let calls = 0;
+    const sleeps: number[] = [];
+    const slot = await reserveResendSlotWithOccRetry(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw occ;
+        return 1_700_000_000_000;
+      },
+      {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        random: () => 0.5,
+      },
+    );
+    expect(slot).toBe(1_700_000_000_000);
+    expect(calls).toBe(3);
+    expect(sleeps).toEqual([25, 50]);
+  });
+
+  test("reserveResendSlotWithOccRetry does not retry non-OCC failures", async () => {
+    let calls = 0;
+    await expect(
+      reserveResendSlotWithOccRetry(async () => {
+        calls += 1;
+        throw new Error("Resend 429 rate limited");
+      }),
+    ).rejects.toThrow(/Resend 429/);
+    expect(calls).toBe(1);
+  });
+
+  test("reserveResendSlotWithOccRetry rethrows after the attempt ladder is spent", async () => {
+    const occ = new Error(
+      'Documents read from or written to the "counters" table changed while this mutation was being run and on every subsequent retry.',
+    );
+    let calls = 0;
+    await expect(
+      reserveResendSlotWithOccRetry(
+        async () => {
+          calls += 1;
+          throw occ;
+        },
+        {
+          sleep: async () => {},
+          maxAttempts: 3,
+          random: () => 0,
+        },
+      ),
+    ).rejects.toThrow(/on every subsequent retry/);
+    expect(calls).toBe(3);
+    expect(calls).toBeLessThanOrEqual(RESEND_SLOT_OCC_MAX_ATTEMPTS);
   });
 });
 
