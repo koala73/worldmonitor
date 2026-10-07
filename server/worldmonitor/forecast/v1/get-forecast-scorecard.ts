@@ -1,12 +1,14 @@
 import type {
   ForecastServiceHandler,
   GetForecastScorecardResponse,
+  MarketAlertScorecard,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
-import { selectScorecardFields } from './scorecard-fields';
+import { selectMarketAlertScorecard, selectScorecardFields } from './scorecard-fields';
 
 const REDIS_KEY = 'forecast:scorecard:v1';
+const MARKET_ALERTS_KEY = 'correlation:market-alerts:scorecard:v1';
 const MAX_STALE_MS = 2160 * 60 * 1000;
 
 interface ScorecardSeedEnvelope {
@@ -46,16 +48,17 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
   ctx: ServerContext,
 ): Promise<GetForecastScorecardResponse> => {
   try {
-    const envelope = await getScorecardJson();
+    const envelope = await getSeedJson(REDIS_KEY);
+    const marketAlerts = await readMarketAlerts();
     const data = envelope.data as Record<string, unknown> | null;
-    if (!data) return markNoStoreFallbackResponse(ctx.request, emptyScorecard());
+    if (!data) return markNoStoreFallbackResponse(ctx.request, withMarketAlerts(emptyScorecard(), marketAlerts));
     const fetchedAt = Number(envelope.fetchedAt);
-    return emptyScorecard({
+    return withMarketAlerts(emptyScorecard({
       ...selectScorecardFields(data),
       degraded: false,
       stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
       error: '',
-    });
+    }), marketAlerts);
   } catch (err) {
     console.error('[forecast] getForecastScorecard getRawJson failed:', err instanceof Error ? err.message : String(err));
     return emptyScorecard({
@@ -66,8 +69,27 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
   }
 };
 
-async function getScorecardJson(): Promise<{ data: unknown | null; fetchedAt: number | null }> {
-  const raw = await getRawString(REDIS_KEY);
+// The market-alert block is a second key read on its own: a miss or a failed
+// read leaves it absent and never degrades the forecast scorecard.
+async function readMarketAlerts(): Promise<MarketAlertScorecard | undefined> {
+  try {
+    return selectMarketAlertScorecard((await getSeedJson(MARKET_ALERTS_KEY)).data);
+  } catch (err) {
+    console.error('[forecast] getForecastScorecard market-alerts read failed:', err instanceof Error ? err.message : String(err));
+    return undefined;
+  }
+}
+
+function withMarketAlerts(
+  response: GetForecastScorecardResponse,
+  marketAlerts: MarketAlertScorecard | undefined,
+): GetForecastScorecardResponse {
+  if (marketAlerts) response.marketAlerts = marketAlerts;
+  return response;
+}
+
+async function getSeedJson(key: string): Promise<{ data: unknown | null; fetchedAt: number | null }> {
+  const raw = await getRawString(key);
   if (raw == null) return { data: null, fetchedAt: null };
   const parsed = JSON.parse(raw) as unknown;
   if (isScorecardSeedEnvelope(parsed)) {

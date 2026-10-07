@@ -27,7 +27,7 @@ import {
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
-import { selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
+import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
@@ -3326,13 +3326,31 @@ export const CACHE_TOOLS: ToolDef[] = [
           receipts: { type: 'array', items: { type: 'object' } },
         },
       },
+      marketAlerts: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: 'number' },
+          windowHours: { type: 'number' },
+          rollingWindowDays: { type: 'number' },
+          methodology: { type: 'string' },
+          byType: { type: 'array', items: { type: 'object', properties: {
+            type: { type: 'string' }, n: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
+            baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' }, medianLeadTimeMs: { type: 'number' },
+          } } },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _cacheKeys: ['forecast:scorecard:v1'],
+    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1'],
+    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts' },
     _project: (data) => {
       const scorecard = data.scorecard;
       const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
-      return { ...data, scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null };
+      return {
+        ...data,
+        scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
+        marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
+      };
     },
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [

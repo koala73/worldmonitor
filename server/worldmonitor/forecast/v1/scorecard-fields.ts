@@ -1,4 +1,8 @@
-import type { GetForecastScorecardResponse } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+import type {
+  GetForecastScorecardResponse,
+  MarketAlertRow,
+  MarketAlertScorecard,
+} from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 
 // The producer-owned fields of the public scorecard. Seeder observability and
 // experiments (judgedLane, calibrationShadow, ...) share the Redis value but
@@ -94,4 +98,24 @@ export function selectScorecardFields(data: Record<string, unknown>): Partial<Sc
     if (value !== undefined) selected[field] = value;
   }
   return selected as Partial<ScorecardData>;
+}
+
+// The market-alert ledger scorecard (#8867) rides on the same response from
+// its own key. Seeder totals, archive status and per-row outcome counts stay
+// off the contract; a null row member is an optional proto field, so it is
+// omitted rather than served as null.
+export const MARKET_ALERT_FIELDS = [
+  'generatedAt', 'windowHours', 'rollingWindowDays', 'methodology', 'byType',
+] as const satisfies readonly (keyof MarketAlertScorecard)[];
+export const MARKET_ALERT_ROW_FIELDS = [
+  'type', 'n', 'hitRate', 'baseN', 'baseHitRate', 'pairedHitRate', 'medianLeadTimeMs',
+] as const satisfies readonly (keyof MarketAlertRow)[];
+
+export function selectMarketAlertScorecard(value: unknown): MarketAlertScorecard | undefined {
+  if (!isRecord(value) || typeof value.generatedAt !== 'number' || !Number.isFinite(value.generatedAt)) return undefined;
+  const selected = pickNonNull(value, MARKET_ALERT_FIELDS);
+  selected.byType = Array.isArray(value.byType)
+    ? value.byType.filter(isRecord).map((row) => pickNonNull(row, MARKET_ALERT_ROW_FIELDS))
+    : [];
+  return selected as unknown as MarketAlertScorecard;
 }

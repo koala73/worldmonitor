@@ -31,6 +31,30 @@ const DECLARED = {
   receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
 };
 
+const MARKET_ALERTS_STORED = {
+  schemaVersion: 1,
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
+  archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
+  byType: [
+    { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, n: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null },
+  ],
+};
+const MARKET_ALERTS = {
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  byType: [
+    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', n: 0, baseN: 0 },
+  ],
+};
+
 async function runTool(stored, params = {}) {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -119,5 +143,37 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
   it('declares every field it serves in outputSchema', () => {
     const declared = Object.keys(tool.outputSchema.properties.data.properties.scorecard.properties).sort();
     assert.deepEqual(declared, Object.keys(DECLARED).sort());
+  });
+
+  it('serves the market-alert scorecard from its own key, whitelisted member by member (#8867)', async () => {
+    const result = await runTool({
+      'forecast:scorecard:v1': { _seed: { fetchedAt: Date.now() }, data: DECLARED },
+      'correlation:market-alerts:scorecard:v1': { _seed: { fetchedAt: Date.now() }, data: MARKET_ALERTS_STORED },
+      'seed-meta:forecast:scorecard': { fetchedAt: Date.now() },
+    });
+
+    assert.deepEqual(result.data.scorecard, DECLARED);
+    assert.deepEqual(result.data.marketAlerts, MARKET_ALERTS);
+    const serialized = JSON.stringify(result);
+    assert.equal(serialized.includes('archive'), false);
+    assert.equal(serialized.includes('coveredFromMs'), false);
+  });
+
+  it('serves marketAlerts as null when its key is absent', async () => {
+    const result = await runTool({
+      'forecast:scorecard:v1': DECLARED,
+      'seed-meta:forecast:scorecard': { fetchedAt: Date.now() },
+    });
+    assert.equal(result.data.marketAlerts, null);
+    assert.deepEqual(result.data.scorecard, DECLARED);
+  });
+
+  it('declares the market-alert container and row members in outputSchema', () => {
+    const alerts = tool.outputSchema.properties.data.properties.marketAlerts;
+    assert.deepEqual(Object.keys(alerts.properties).sort(), Object.keys(MARKET_ALERTS).sort());
+    assert.deepEqual(
+      Object.keys(alerts.properties.byType.items.properties).sort(),
+      Object.keys(MARKET_ALERTS.byType[0]).sort(),
+    );
   });
 });

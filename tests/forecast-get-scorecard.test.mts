@@ -12,6 +12,54 @@ const originalConsoleError = console.error;
 const originalEnv = { ...process.env };
 
 const REDIS_KEY = 'forecast:scorecard:v1';
+const MARKET_ALERTS_KEY = 'correlation:market-alerts:scorecard:v1';
+
+const FORECAST_DATA = {
+  schemaVersion: 1,
+  generatedAt: 456,
+  rollingWindowDays: 180,
+  methodology: 'test methodology',
+  totals: { entries: 1, resolved: 1, pending: 0, pendingJudge: 0, scored: 1, void: 0, voidRate: 0, publicationCoverage: 1 },
+};
+
+// What seed-market-alert-ledger stores: the public block plus seeder totals,
+// archive status and per-row outcome counts that stay off the contract.
+const MARKET_ALERTS_STORED = {
+  schemaVersion: 1,
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
+  archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
+  byType: [
+    { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, n: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null },
+  ],
+};
+const MARKET_ALERTS_SERVED = {
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  byType: [
+    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', n: 0, baseN: 0 },
+  ],
+};
+
+function envelope(data: unknown) {
+  return { _seed: { fetchedAt: Date.now() }, data };
+}
+
+function serveRedis(stored: Record<string, unknown>, failing: string[] = []) {
+  globalThis.fetch = (async (input) => {
+    const key = decodeURIComponent(String(input).split('/get/')[1] ?? '');
+    if (failing.includes(key)) throw new Error(`redis unavailable for ${key}`);
+    const value = Object.hasOwn(stored, key) ? stored[key] : null;
+    return Response.json({ result: value == null ? null : JSON.stringify(value) });
+  }) as typeof fetch;
+}
 
 function makeCtx() {
   const req = new Request('https://worldmonitor.app/api/forecast/v1/get-forecast-scorecard');
@@ -168,6 +216,50 @@ describe('getForecastScorecard backend status', () => {
         `${block} children`,
       );
     }
+  });
+
+  it('serves the market-alert scorecard from its own key, whitelisted member by member (#8867)', async () => {
+    serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED) });
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.deepEqual(res.marketAlerts, MARKET_ALERTS_SERVED);
+    assert.equal(res.totals?.entries, 1);
+    assert.equal(res.degraded, false);
+  });
+
+  it('omits marketAlerts when its key is missing', async () => {
+    serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA) });
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(Object.hasOwn(res, 'marketAlerts'), false);
+    assert.equal(res.degraded, false);
+  });
+
+  it('omits marketAlerts when the stored value carries no finite generatedAt', async () => {
+    serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope({ ...MARKET_ALERTS_STORED, generatedAt: null }) });
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(Object.hasOwn(res, 'marketAlerts'), false);
+  });
+
+  it('omits marketAlerts and keeps the forecast scorecard undegraded when its read fails', async () => {
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA) }, [MARKET_ALERTS_KEY]);
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(Object.hasOwn(res, 'marketAlerts'), false);
+    assert.equal(res.degraded, false);
+    assert.equal(res.error, '');
+    assert.equal(res.totals?.entries, 1);
+    assert.equal(errors.length, 1);
+    assert.match(String(errors[0]?.[0]), /market-alerts/);
   });
 
   it('marks cached scorecards stale when the seed envelope is older than the health budget', async () => {
