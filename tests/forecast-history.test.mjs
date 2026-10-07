@@ -571,3 +571,18 @@ describe('published payload scored horizons (#7075 panel)', () => {
     assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
   });
 });
+
+describe('history projections never invent a zero (#7075 review)', () => {
+  it('keeps a missing or non-finite horizon value as null, never 0', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: undefined, d30: Number.NaN };
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(entry.projections, { h24: 0.4, d7: null, d30: null });
+  });
+
+  it('keeps a real zero', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0, d7: 0.2, d30: 0.3 };
+    assert.equal(buildHistoryForecastEntry(pred).projections.h24, 0);
+  });
+});

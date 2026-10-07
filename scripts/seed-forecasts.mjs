@@ -4945,6 +4945,10 @@ function buildCalibrationLineage(calibration) {
   };
 }
 
+function finiteOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function buildHistoryForecastEntry(pred) {
   return {
     id: pred.id,
@@ -4982,10 +4986,11 @@ function buildHistoryForecastEntry(pred) {
     // Horizon scoring grades each hard horizon contract on these values and
     // reads them only from history; the canonical published payload omits
     // them (#8967).
+    // A missing value stays null: a 0 would be graded as a real projection.
     projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
+      h24: finiteOrNull(pred.projections.h24),
+      d7: finiteOrNull(pred.projections.d7),
+      d30: finiteOrNull(pred.projections.d30),
     } : null,
     // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
     // payload emits, so Bet 2's resolver can score forecasts still in-window.

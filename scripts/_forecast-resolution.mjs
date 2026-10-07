@@ -792,14 +792,17 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
 // entry or seed prediction), never the public payload, so dropping public
 // projections (#8967) cannot change what is scored. The resolver and the
 // published scoredHorizons both use this.
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
 export function scoredHorizonKeys(forecast) {
   const contracts = forecast?.horizonResolutions;
   if (!contracts || typeof contracts !== 'object' || !isPublishedOriginEntry(forecast)) return [];
   return Object.keys(PROJECTION_HORIZONS).filter((horizon) => {
     const spec = contracts[horizon];
+    // Number(null) is 0, so a null deadline or projection would pass a coerced check.
     return spec?.kind === 'hard'
-      && Number.isFinite(Number(spec.deadline))
-      && Number.isFinite(Number(forecast.projections?.[horizon]));
+      && isFiniteNumber(spec.deadline)
+      && isFiniteNumber(forecast.projections?.[horizon]);
   });
 }
 

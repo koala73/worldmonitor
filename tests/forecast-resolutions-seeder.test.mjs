@@ -3285,6 +3285,14 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(buildPublishedForecastPayload(fc).scoredHorizons, ['h24']);
   });
 
+  it('treats a null projection or deadline as missing, not as 0 (#7075 review)', () => {
+    const fc = projected({ projections: { h24: 0.4, d7: null, d30: 0.6 } });
+    fc.horizonResolutions.d30 = { ...fc.horizonResolutions.d30, deadline: null };
+    assert.deepEqual(scoredHorizonKeys(fc), ['h24']);
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [fc])], HORMUZ(40), T0);
+    assert.deepEqual(horizonKeys(ledger).map((key) => key.split('@')[2]), ['h24']);
+  });
+
   it('re-running a cycle is idempotent', () => {
     const once = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const twice = processResolutionCycle(once.ledger, [snapshot(T0, [projected()])], HORMUZ(40), T0);
