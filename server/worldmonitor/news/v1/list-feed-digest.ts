@@ -72,6 +72,7 @@ import {
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
   buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
   forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
@@ -2702,6 +2703,7 @@ async function writeStoryTracking(
             // A blanked link never replaces a stored link for the same story (#8990).
             evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
               forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : forecastEvidenceLinkHost(representative.link),
             ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;

@@ -74,9 +74,15 @@
     "kerch",
     "novorossiysk",
     "odesa",
+    "odessa",
     "sevastopol"
    ],
-   "countries": []
+   "countries": [],
+   "exclusions": [
+    "odessa american",
+    "odessa texas",
+    "odessa tx"
+   ]
   },
   "bosporus strait": {
    "terms": [
@@ -777,8 +783,7 @@
   "AU": {
    "terms": [
     "australia",
-    "canberra",
-    "sydney"
+    "canberra"
    ],
    "demonyms": [
     "Australian",
@@ -867,8 +872,7 @@
   },
   "BG": {
    "terms": [
-    "bulgaria",
-    "sofia"
+    "bulgaria"
    ],
    "demonyms": [
     "Bulgarian",
@@ -1101,8 +1105,7 @@
   },
   "CL": {
    "terms": [
-    "chile",
-    "santiago"
+    "chile"
    ],
    "demonyms": [
     "Chilean",
@@ -1413,7 +1416,6 @@
    "terms": [
     "britain",
     "great britain",
-    "london",
     "u k",
     "uk",
     "united kingdom"
@@ -1439,24 +1441,30 @@
   },
   "GE": {
    "terms": [
+    "georgian dream",
     "tbilisi"
    ],
    "demonyms": [],
    "exclusions": [],
    "weak": [
-    "georgia"
+    "georgia",
+    "georgian"
    ],
    "coTerms": [
     "abkhazia",
     "batumi",
     "caucasus",
+    "crimea",
+    "eu",
     "georgian dream",
     "ivanishvili",
     "kobakhidze",
     "kremlin",
     "moscow",
+    "nato",
     "ossetia",
-    "tbilisi"
+    "tbilisi",
+    "ukraine"
    ]
   },
   "GG": {
@@ -1510,6 +1518,10 @@
    "exclusions": [
     "equatorial guinea",
     "guinea bissau",
+    "guinea fowl",
+    "guinea pig",
+    "guinea pigs",
+    "guinea worm",
     "papua new guinea"
    ]
   },
@@ -1661,7 +1673,6 @@
    "terms": [
     "gaza",
     "hamas",
-    "hezbollah",
     "idf",
     "israel",
     "israeli",
@@ -1769,7 +1780,8 @@
   },
   "JO": {
    "terms": [
-    "amman"
+    "amman",
+    "in jordan"
    ],
    "demonyms": [
     "Jordanian",
@@ -2024,8 +2036,7 @@
   "LY": {
    "terms": [
     "benghazi",
-    "libya",
-    "tripoli"
+    "libya"
    ],
    "demonyms": [
     "Libyan",
@@ -2377,8 +2388,7 @@
   },
   "NZ": {
    "terms": [
-    "new zealand",
-    "wellington"
+    "new zealand"
    ],
    "demonyms": [
     "New Zealander",
@@ -2409,7 +2419,6 @@
   },
   "PE": {
    "terms": [
-    "lima",
     "peru"
    ],
    "demonyms": [
@@ -2824,10 +2833,13 @@
    "coTerms": [
     "africa",
     "african",
+    "cameroon",
     "darfur",
     "deby",
+    "lake chad",
     "n djamena",
     "ndjamena",
+    "nigeria",
     "sahel",
     "sudan",
     "sudanese"
@@ -2990,6 +3002,7 @@
     "kiev",
     "kyiv",
     "odesa",
+    "odessa",
     "ukraine",
     "zelensky"
    ],
@@ -2997,7 +3010,11 @@
     "Ukrainian",
     "Ukrainians"
    ],
-   "exclusions": []
+   "exclusions": [
+    "odessa american",
+    "odessa texas",
+    "odessa tx"
+   ]
   },
   "UG": {
    "terms": [
@@ -3019,14 +3036,11 @@
   },
   "US": {
    "terms": [
-    "biden",
     "pentagon",
-    "trump",
     "u s",
     "united states",
     "united states of america",
-    "usa",
-    "washington"
+    "usa"
    ],
    "demonyms": [],
    "exclusions": [

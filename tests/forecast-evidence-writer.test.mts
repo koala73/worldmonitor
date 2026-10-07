@@ -235,7 +235,8 @@ describe('forecast evidence publication wiring (#7082)', () => {
     const payload = JSON.parse(String(evals[0][4]));
     assert.equal(payload.link, '');
     assert.equal(payload.title, 'Central bank holds rates');
-    assert.ok(!JSON.stringify(redis.calls).includes('evil.example'), 'the hostile URL never reaches Redis');
+    assert.ok(!JSON.stringify(redis.calls).includes('evil.example/phish'), 'the hostile URL never reaches Redis');
+    assert.equal(evals[0][7], 'evil.example', 'the blanked host lets the script drop a stored link on that host');
     assert.equal(redis.commandsOf((verb, key) => verb === 'ZADD' && key === 'forecast:evidence:v1').length, 1);
     const markerSets = redis.commandsOf((verb, key) => verb === 'SET' && key === 'forecast:evidence:coverage:v1');
     assert.equal(markerSets.length, 1);

@@ -268,19 +268,40 @@ export function advanceForecastEvidenceCoverage(raw, nowMs) {
  * only `lastSeen` replaced, so the index score and the record still agree for
  * coverage recovery, and the member stays within its byte budget (no JSON
  * re-encoding). Otherwise the new member is written as a plain SET would.
- * KEYS[1] record key; ARGV[1] new member, ARGV[2] TTL seconds, ARGV[3] lastSeen.
+ *
+ * Gate-policy changes: a link kept here was allowed when it was stored. If its
+ * host later leaves the allowed list, the next sighting from that host is
+ * blanked by the gate and passes the host as ARGV[4]; a stored link on that
+ * host is then dropped, not kept. A stored link whose story is never seen
+ * again from that host keeps its link until the 15-day record TTL expires.
+ *
+ * KEYS[1] record key; ARGV[1] new member, ARGV[2] TTL seconds, ARGV[3]
+ * lastSeen, ARGV[4] the blanked link's host without `www.` ('' if none).
  */
 export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT = [
   "local old = redis.call('GET', KEYS[1])",
   'if old then',
   '  local ok, rec = pcall(cjson.decode, old)',
   "  if ok and type(rec) == 'table' and type(rec.link) == 'string' and rec.link ~= '' then",
-  "    local kept, n = string.gsub(old, '\"lastSeen\":%d+}$', '\"lastSeen\":' .. ARGV[3] .. '}')",
-  "    if n == 1 then return redis.call('SET', KEYS[1], kept, 'EX', ARGV[2]) end",
+  "    local host = string.match(rec.link, '^%a[%w+.-]*://([^/:?#]+)')",
+  "    if host then host = string.gsub(string.lower(host), '^www%.', '') end",
+  "    if ARGV[4] == '' or host ~= ARGV[4] then",
+  "      local kept, n = string.gsub(old, '\"lastSeen\":%d+}$', '\"lastSeen\":' .. ARGV[3] .. '}')",
+  "      if n == 1 then return redis.call('SET', KEYS[1], kept, 'EX', ARGV[2]) end",
+  '    end',
   '  end',
   'end',
   "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
 ].join('\n');
+
+/** Lowercase host without a leading `www.`, or '' when the link does not parse. */
+export function forecastEvidenceLinkHost(link) {
+  try {
+    return new URL(String(link || '')).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
 
 /**
  * The Redis command that stores one evidence record. A member whose link was
@@ -289,14 +310,15 @@ export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT = [
  *
  * @param {string} key
  * @param {string} member
- * @param {string} link
+ * @param {string} link the link stored in `member` ('' when the gate blanked it)
  * @param {number} ttlSeconds
  * @param {number} lastSeen
+ * @param {string} [blankedHost] host of the link the gate blanked, from forecastEvidenceLinkHost
  * @returns {Array<string|number>}
  */
-export function buildForecastEvidenceRecordWrite(key, member, link, ttlSeconds, lastSeen) {
-  if (link) return ['SET', key, member, 'EX', ttlSeconds];
-  return ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', key, member, String(ttlSeconds), String(Math.floor(lastSeen))];
+export function buildForecastEvidenceRecordWrite(key, member, link, ttlSeconds, lastSeen, blankedHost = '') {
+  if (link || !Number.isSafeInteger(Math.floor(lastSeen))) return ['SET', key, member, 'EX', ttlSeconds];
+  return ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', key, member, String(ttlSeconds), String(Math.floor(lastSeen)), blankedHost];
 }
 
 /**

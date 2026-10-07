@@ -144,11 +144,12 @@ function loadJudgedSubjectTable() {
 }
 // Words that mark a report of the forecast's kind of event. They rank on-subject
 // items; they never admit an off-subject one.
-const JUDGED_EVENT_TERMS = {
+export const JUDGED_EVENT_TERMS = {
   conflict: ['attack', 'attacks', 'attacked', 'strike', 'strikes', 'airstrike', 'airstrikes', 'killed', 'kills', 'kill', 'dead', 'deaths', 'clashes', 'clash', 'fighting', 'offensive', 'shelling', 'militants', 'militant', 'troops', 'bombing', 'bomb', 'drone', 'drones', 'missile', 'missiles', 'war', 'ceasefire', 'rebels', 'insurgents', 'violence', 'casualties', 'gunmen', 'army', 'soldiers', 'raid', 'assault', 'explosion', 'escalation', 'escalates'],
   military: ['military', 'troops', 'forces', 'navy', 'naval', 'warship', 'warships', 'aircraft', 'jets', 'fighter', 'airlift', 'deployment', 'deploys', 'deployed', 'exercise', 'exercises', 'drills', 'bomber', 'bombers', 'missile', 'missiles', 'drone', 'drones', 'base', 'airspace', 'strike', 'strikes', 'carrier', 'submarine', 'army', 'air force', 'defense', 'defence', 'mobilization'],
   market: ['market', 'markets', 'oil', 'crude', 'brent', 'prices', 'price', 'bond', 'bonds', 'yields', 'currency', 'inflation', 'sanctions', 'economy', 'economic', 'stocks', 'shares', 'investors', 'rating', 'default', 'exchange rate', 'gas', 'energy', 'lng', 'debt', 'central bank', 'rial', 'lira', 'ruble', 'peso', 'dinar'],
   supply_chain: ['shipping', 'ship', 'ships', 'vessel', 'vessels', 'tanker', 'tankers', 'port', 'ports', 'cargo', 'freight', 'maritime', 'container', 'transit', 'route', 'routes', 'blockade', 'grain', 'insurance', 'strait', 'canal', 'exports', 'supply', 'pipeline', 'attack', 'attacks'],
+  infrastructure: ['outage', 'outages', 'blackout', 'blackouts', 'power', 'grid', 'electricity', 'cable', 'cables', 'pipeline', 'internet', 'telecom', 'network', 'airport', 'port', 'disruption', 'disrupted', 'sabotage', 'damaged', 'repair', 'restored', 'shutdown'],
   cyber: ['cyber', 'cyberattack', 'cyberattacks', 'hack', 'hacked', 'hackers', 'ransomware', 'breach', 'malware', 'ddos', 'espionage'],
 };
 const UNREST_EVENT_TERMS = ['protest', 'protests', 'protesters', 'demonstrators', 'riot', 'riots', 'unrest', 'clashes', 'police', 'crackdown', 'rally', 'strike', 'tear gas', 'arrests', 'coup', 'impeachment', 'resigns', 'resignation'];
@@ -790,11 +791,11 @@ function rankJudgedArchiveItems(entry, archiveItems, options = {}) {
         && publishedAt <= evidenceWindow.endMs;
     })
     .map((item, index) => {
-      const subjectInTitle = subject.matches(item.title);
+      const subjectInTitle = subject.matches(item.title, item.description);
       return {
         ...item,
         id: item.id || `N${index + 1}`,
-        onSubject: subjectInTitle || subject.matches(item.description),
+        onSubject: subjectInTitle || subject.matches(item.description, item.title),
         subjectInTitle,
         datedByDeadline: !Number.isFinite(deadline) || Number(item.publishedAt) <= deadline,
         eventRelevance: 2 * countTermHits(normalizeSubjectText(item.title), eventTerms)
@@ -820,7 +821,7 @@ export function judgedSubjectKind(label, table = loadJudgedSubjectTable()) {
 
 function resolveJudgedSubject(label, table) {
   const key = normalizeSubjectText(label);
-  if (!key || key === 'global') return { kind: 'none', terms: [], countries: [] };
+  if (!key || key === 'global') return { kind: 'none', terms: [], countries: [], exclusions: [] };
   const direct = resolveSubjectKey(key, table);
   if (direct) return direct;
   const parts = String(label).split(/[/()]/).map(normalizeSubjectText).filter(Boolean);
@@ -830,16 +831,17 @@ function resolveJudgedSubject(label, table) {
       kind: resolved.length === 1 ? resolved[0].kind : 'combined',
       terms: [...new Set(resolved.flatMap((row) => row.terms))],
       countries: [...new Set(resolved.flatMap((row) => row.countries))],
+      exclusions: [...new Set(resolved.flatMap((row) => row.exclusions))],
     };
   }
-  return { kind: 'fallback', terms: [...new Set([key, ...parts])], countries: [] };
+  return { kind: 'fallback', terms: [...new Set([key, ...parts])], countries: [], exclusions: [] };
 }
 
 function resolveSubjectKey(key, table) {
   const region = table.regions[key];
-  if (region) return { kind: 'region', terms: region.terms, countries: region.countries };
+  if (region) return { kind: 'region', terms: region.terms, countries: region.countries, exclusions: region.exclusions || [] };
   const code = table.labels[key];
-  if (code && table.countries[code]) return { kind: 'country', terms: [], countries: [code] };
+  if (code && table.countries[code]) return { kind: 'country', terms: [], countries: [code], exclusions: [] };
   return null;
 }
 
@@ -861,33 +863,59 @@ function judgedSubjectMatcher(entry) {
   const subject = resolveJudgedSubject(entry?.region, table);
   const countries = subject.countries.map((code) => table.countries[code]);
   return {
-    matches(rawText) {
+    /**
+     * `contextText` is the item's other field: an ambiguous name in the title
+     * counts when its co-term sits in the description, and the reverse.
+     */
+    matches(rawText, contextText = '') {
       const raw = String(rawText || '');
       const normalized = normalizeSubjectText(raw);
       if (!normalized) return false;
-      const padded = ` ${normalized} `;
+      const padded = removeWholePhrases(` ${normalized} `, subject.exclusions);
       if (subject.terms.some((term) => padded.includes(` ${term} `))) return true;
-      return countries.some((country) => countryMatches(country, raw, padded));
+      const context = ` ${normalizeSubjectText(`${raw} ${contextText || ''}`)} `;
+      return countries.some((country) => countryMatches(country, raw, ` ${normalized} `, context));
     },
   };
 }
 
-function countryMatches(country, raw, padded) {
+// Exclusions are whole words or phrases: "niger state" removes "Niger State",
+// never the "niger" in "Niger statement".
+function removeWholePhrases(padded, phrases = []) {
   let text = padded;
+  for (const phrase of phrases) text = text.split(` ${phrase} `).join(' ');
+  return text;
+}
+
+function countryMatches(country, raw, padded, context) {
+  const text = removeWholePhrases(padded, country.exclusions);
+  const contextText = removeWholePhrases(context, country.exclusions);
   let rawText = raw;
   for (const phrase of country.exclusions) {
-    text = text.split(phrase).join(' ');
-    rawText = rawText.replace(new RegExp(phrase.split(' ').map(escapeRegExp).join('[\\s\\-.\']+'), 'gi'), ' ');
+    rawText = rawText.replace(new RegExp(`(^|[^A-Za-z0-9])${phrase.split(' ').map(escapeRegExp).join('[\\s\\-.\']+')}`, 'gi'), '$1 ');
   }
   const has = (term) => text.includes(` ${term} `);
   if (country.terms.some(has)) return true;
   if (country.demonyms.some((demonym) => hasCasedToken(rawText, demonym))) return true;
-  if (country.codeToken && hasCasedToken(rawText, country.codeToken)) return true;
-  return Boolean(country.weak?.some(has) && country.coTerms.some(has));
+  if (country.codeToken && hasCodeToken(rawText, country.codeToken)) return true;
+  return Boolean(country.weak?.some(has) && country.coTerms.some((term) => contextText.includes(` ${term} `)));
 }
 
 function hasCasedToken(rawText, token) {
   return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(token)}(?=$|[^A-Za-z0-9])`).test(rawText);
+}
+
+// "US" as a country, not "US$5bn" and not an all-caps headline ("JOIN US").
+function hasCodeToken(rawText, token) {
+  const pattern = new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(token)}(?![A-Za-z0-9$])`, 'g');
+  for (const match of rawText.matchAll(pattern)) {
+    const start = match.index + match[1].length;
+    const before = rawText.slice(0, start).match(/([A-Za-z]+)\W*$/)?.[1] || '';
+    const after = rawText.slice(start + token.length).match(/^\W*([A-Za-z]+)/)?.[1] || '';
+    const shouting = (word) => word.length >= 2 && word === word.toUpperCase();
+    if (!shouting(before) && !shouting(after)) return true;
+  }
+  return false;
 }
 
 function escapeRegExp(value) {

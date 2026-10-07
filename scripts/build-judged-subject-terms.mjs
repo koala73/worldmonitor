@@ -25,9 +25,9 @@ const COUNTRY_CODES = JSON.parse(readFileSync(new URL('./data/country-codes.json
 // A weak term counts only when the same item also carries one of its co-terms
 // or one of the country's strong terms.
 const AMBIGUOUS = {
-  GE: { weak: ['georgia'], co: ['tbilisi', 'caucasus', 'abkhazia', 'ossetia', 'georgian dream', 'kobakhidze', 'ivanishvili', 'batumi', 'kremlin', 'moscow'] },
+  GE: { weak: ['georgia', 'georgian'], co: ['tbilisi', 'caucasus', 'abkhazia', 'ossetia', 'georgian dream', 'kobakhidze', 'ivanishvili', 'batumi', 'kremlin', 'moscow', 'ukraine', 'crimea', 'eu', 'nato'] },
   JO: { weak: ['jordan'], co: ['amman', 'hashemite', 'king abdullah', 'israel', 'israeli', 'gaza', 'west bank', 'syria', 'iraq', 'middle east', 'palestinian'] },
-  TD: { weak: ['chad'], co: ['ndjamena', 'n djamena', 'sahel', 'darfur', 'sudan', 'sudanese', 'deby', 'africa', 'african'] },
+  TD: { weak: ['chad'], co: ['ndjamena', 'n djamena', 'sahel', 'darfur', 'sudan', 'sudanese', 'deby', 'africa', 'african', 'nigeria', 'cameroon', 'lake chad'] },
   NE: { weak: ['niger'], co: ['niamey', 'sahel', 'tiani', 'junta', 'mali', 'burkina', 'ecowas', 'africa', 'african'] },
   TR: { weak: ['turkey'], co: ['ankara', 'erdogan', 'istanbul', 'kurdish', 'pkk', 'syria', 'nato', 'lira', 'turkiye'] },
   CG: { weak: ['congo'], co: ['brazzaville', 'sassou'] },
@@ -35,12 +35,23 @@ const AMBIGUOUS = {
 };
 // Further exclusions on top of country-mention's.
 const EXTRA_EXCLUSIONS = {
+  GN: ['guinea pig', 'guinea pigs', 'guinea fowl', 'guinea worm'],
   NE: ['niger state', 'niger delta', 'niger river'],
+  UA: ['odessa american', 'odessa texas', 'odessa tx'],
   US: ['latin america', 'south america', 'central america', 'north america'],
 };
 // country-codes keywords that name something else in ordinary news.
+// Capitals stay; these name a person, a US place or another country's city.
 const DROPPED_KEYWORDS = {
-  US: ['america'],
+  AU: ['sydney'],
+  BG: ['sofia'],
+  CL: ['santiago'],
+  GB: ['london'],
+  IL: ['hezbollah'],
+  LY: ['tripoli'],
+  NZ: ['wellington'],
+  PE: ['lima'],
+  US: ['america', 'washington', 'trump', 'biden'],
 };
 // Places and forms the other sources miss.
 const EXTRA_TERMS = {
@@ -48,6 +59,8 @@ const EXTRA_TERMS = {
   CD: ['m23', 'goma'],
   ET: ['addis ababa', 'tigray', 'amhara'],
   GB: ['u k', 'uk'],
+  GE: ['georgian dream'],
+  JO: ['in jordan'],
   IL: ['israeli'],
   IR: ['tehran', 'iranian'],
   KP: ['dprk', 'kim jong un'],
@@ -59,7 +72,7 @@ const EXTRA_TERMS = {
   SD: ['rsf', 'el fasher'],
   SY: ['aleppo', 'idlib'],
   TW: ['taiwan strait'],
-  UA: ['kiev', 'kharkiv', 'donbas', 'odesa'],
+  UA: ['kiev', 'kharkiv', 'donbas', 'odesa', 'odessa'],
   US: ['u s'],
   YE: ['houthi', 'houthis', 'sanaa'],
 };
@@ -70,7 +83,7 @@ const REGIONS = {
   'asia-pacific': { terms: ['asia pacific', 'indo pacific', 'south china sea', 'taiwan strait'], countries: ['TW'] },
   'baltic sea': { terms: ['baltic', 'kaliningrad', 'gulf of finland'], countries: ['EE', 'LV', 'LT'] },
   'baltic theater': { terms: ['baltic', 'nordic', 'kaliningrad'], countries: ['EE', 'LV', 'LT', 'FI', 'SE'] },
-  'black sea': { terms: ['black sea', 'crimea', 'crimean', 'odesa', 'sevastopol', 'kerch', 'novorossiysk', 'bosphorus'], countries: [] },
+  'black sea': { terms: ['black sea', 'crimea', 'crimean', 'odesa', 'odessa', 'sevastopol', 'kerch', 'novorossiysk', 'bosphorus'], exclusions: ['odessa american', 'odessa texas', 'odessa tx'], countries: [] },
   'eastern mediterranean': { terms: ['eastern mediterranean', 'east mediterranean', 'levant', 'aegean'], countries: ['CY', 'LB'] },
   europe: { terms: ['europe', 'european', 'eu'], countries: [] },
   'iran theater': { terms: ['persian gulf', 'hormuz'], countries: ['IR'] },
@@ -102,7 +115,7 @@ const REGIONS = {
   'suez canal': { terms: ['suez'], countries: [] },
 };
 const CHOKEPOINT_REGISTRY = readFileSync(new URL('../server/_shared/chokepoint-registry.ts', import.meta.url), 'utf8');
-const CHOKEPOINT_LABELS = [...CHOKEPOINT_REGISTRY.matchAll(/displayName: '([^']+)'/g)].map((match) => match[1]);
+export const CHOKEPOINT_LABELS = [...CHOKEPOINT_REGISTRY.matchAll(/displayName: '([^']+)'/g)].map((match) => match[1]);
 
 const sorted = (values) => [...new Set(values.filter(Boolean))].sort();
 
@@ -134,7 +147,11 @@ export function buildJudgedSubjectTerms() {
   const regions = {};
   for (const [label, region] of Object.entries(REGIONS)) {
     for (const code of region.countries) if (!countries[code]) throw new Error(`region ${label} names unknown country ${code}`);
-    regions[normalize(label)] = { terms: sorted(region.terms.map(normalize)), countries: sorted(region.countries) };
+    regions[normalize(label)] = {
+      terms: sorted(region.terms.map(normalize)),
+      countries: sorted(region.countries),
+      ...(region.exclusions ? { exclusions: sorted(region.exclusions.map(normalize)) } : {}),
+    };
   }
   const sortedRegions = Object.fromEntries(Object.entries(regions).sort(([a], [b]) => a.localeCompare(b)));
   const sortedLabels = Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b)));

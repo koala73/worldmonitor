@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  JUDGED_EVENT_TERMS,
   JUDGED_EVIDENCE_GRACE_MS,
   JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
   buildJudgedResolutionPrompt,
@@ -17,9 +18,11 @@ import {
   selectJudgedArchiveItems,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard, DEFAULT_JUDGED_SLA_MS } from '../scripts/_forecast-scorecard.mjs';
-import { buildForecastEvidenceRecordWrite, FORECAST_EVIDENCE_KEEP_LINK_SCRIPT } from '../scripts/_forecast-evidence-archive.mjs';
+import { buildForecastEvidenceMember, buildForecastEvidenceRecordWrite, FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, parseForecastEvidenceMember } from '../scripts/_forecast-evidence-archive.mjs';
 import { EMITTED_REGION_LABELS } from '../scripts/seed-forecasts.mjs';
-import { buildJudgedSubjectTerms } from '../scripts/build-judged-subject-terms.mjs';
+import { buildJudgedSubjectTerms, CHOKEPOINT_LABELS } from '../scripts/build-judged-subject-terms.mjs';
+import { JUDGED_DOMAINS } from '../scripts/_forecast-resolution.mjs';
+import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -112,8 +115,9 @@ describe('N2 subject matching: word boundaries, collisions and recall', () => {
   });
 
   it('has a subject entry for every region label the forecast emitter can produce', () => {
-    const uncovered = EMITTED_REGION_LABELS.filter((label) => judgedSubjectKind(label) === 'fallback');
+    const uncovered = [...EMITTED_REGION_LABELS, ...CHOKEPOINT_LABELS].filter((label) => judgedSubjectKind(label) === 'fallback');
     assert.deepEqual(uncovered, []);
+    assert.ok(CHOKEPOINT_LABELS.includes('Strait of Malacca'), 'chokepoint display names are part of the emitter set');
     assert.ok(EMITTED_REGION_LABELS.includes('Western Pacific'));
     assert.ok(EMITTED_REGION_LABELS.includes('Burkina Faso'), 'CII country names are part of the emitter set');
   });
@@ -213,7 +217,7 @@ describe('N7 a blanked link never replaces a stored link', () => {
     const linked = buildForecastEvidenceRecordWrite('forecast:evidence:record:v1:h', '{"link":"https://a"}', 'https://a', 1_296_000, 7);
     assert.deepEqual(linked, ['SET', 'forecast:evidence:record:v1:h', '{"link":"https://a"}', 'EX', 1_296_000]);
     const blanked = buildForecastEvidenceRecordWrite('forecast:evidence:record:v1:h', '{"link":""}', '', 1_296_000, 7);
-    assert.deepEqual(blanked, ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', 'forecast:evidence:record:v1:h', '{"link":""}', '1296000', '7']);
+    assert.deepEqual(blanked, ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', 'forecast:evidence:record:v1:h', '{"link":""}', '1296000', '7', '']);
   });
 });
 
@@ -222,5 +226,159 @@ describe('N8 the required start follows a late generation', () => {
     const entry = entryFor('Syria', { generatedAt: DEADLINE - 3 * DAY_MS });
     assert.equal(judgedArchiveWindowForEntry(entry, JUDGED_AT).requiredStartMs, DEADLINE - 3 * DAY_MS);
     assert.equal(judgedArchiveHorizonMs(entry), DEADLINE - 3 * DAY_MS + JUDGED_EVIDENCE_MAX_LOOKBACK_MS);
+  });
+});
+
+describe('review round 2: event terms for every judged domain (NB1)', () => {
+  it('gives every judged domain event words, so an absence NO can seal', () => {
+    for (const domain of [...JUDGED_DOMAINS, 'conflict', 'market', 'supply_chain', 'political']) {
+      assert.ok(JUDGED_EVENT_TERMS[domain]?.length > 0, `${domain} has no event words`);
+    }
+  });
+
+  it('seals an infrastructure absence NO on outage coverage', async () => {
+    const absence = async () => ({ provider: 'p', model: 'm', outcome: 'NO', basis: 'absence', citations: [{ id: 'A', quote: 'Chile item A' }], rationale: 'fixture' });
+    const items = ['A', 'B', 'C'].map((id) => item(id, `Chile item ${id}: grid operator restores power after outage`));
+    const result = await resolveJudgedEntry(entryFor('Chile', { domain: 'infrastructure' }), archiveOf(items), JUDGED_AT, { judgeModels: [absence, absence] });
+    assert.equal(result.outcome, 'NO');
+  });
+});
+
+describe('review round 2: matching rules (NB2-NB5, NB8)', () => {
+  it('strips an exclusion only as a whole phrase', () => {
+    assert.deepEqual(shownIds('Niger', [item('statement', 'Niger statement on Mali junta')]), ['statement']);
+  });
+
+  it('accepts a weak name in one field with its co-term in the other', () => {
+    assert.deepEqual(shownIds('Georgia', [item('split', 'Georgia arrests opposition leaders', 'Moscow condemns the move')]), ['split']);
+  });
+
+  it('keeps the true positives the ambiguity rules dropped', () => {
+    assert.deepEqual(shownIds('Jordan', [item('jo', 'ShinyHunters hacker detained in Jordan')]), ['jo']);
+    assert.deepEqual(shownIds('Chad', [item('td', 'Terrorism, kidnapping choke trade lifeline linking Nigeria, Chad, Cameroon')]), ['td']);
+    assert.deepEqual(shownIds('Georgia', [
+      item('ge', 'Georgia joins pro-Ukraine UN statement as Foreign Minister speaks at Crimea Platform summit'),
+      item('demonym', 'Georgian Dream wins vote'),
+    ]), ['demonym', 'ge']);
+    assert.deepEqual(shownIds('Black Sea', [
+      item('port', 'Odessa port hit by drones'),
+      item('texas', 'Oil prices rise', 'Odessa American'),
+    ]), ['port']);
+    assert.deepEqual(shownIds('Ukraine', [item('port', 'Odessa port hit by drones'), item('texas', 'Odessa, Texas council votes')]), ['port']);
+  });
+
+  it('drops keywords and tokens that name something else', () => {
+    assert.deepEqual(shownIds('United States', [
+      item('denzel', 'Denzel Washington wins award'),
+      item('trump', 'Trump says Iran talks are close'),
+      item('join', 'JOIN US FOR THE LAUNCH'),
+      item('dollar', 'Firm raises US$5bn'),
+      item('real', 'US Navy shoots down drones'),
+    ]), ['real']);
+    assert.deepEqual(shownIds('United Kingdom', [item('jack', 'Jack London novel adapted')]), []);
+    assert.deepEqual(shownIds('Bulgaria', [item('sofia', 'Sofia Coppola new film')]), []);
+    assert.deepEqual(shownIds('Libya', [item('lb', 'Clashes in Tripoli, Lebanon')]), []);
+    assert.deepEqual(shownIds('Guinea', [item('pet', 'Guinea pig cafe opens in Conakry')]), ['pet']);
+    assert.deepEqual(shownIds('Guinea', [item('pet', 'Guinea pig owners share tips')]), []);
+    assert.deepEqual(shownIds('Israel/Gaza', [item('lb', 'Hezbollah, FPM try to contain fallout')]), []);
+  });
+
+  it('matches region terms on whole words only', () => {
+    assert.deepEqual(shownIds('Europe', [item('museum', 'Museum reopens after flood'), item('eu', 'EU agrees new sanctions')]), ['eu']);
+    assert.deepEqual(shownIds('Israel/Gaza', [item('mid', 'Midfielder signs new deal'), item('idf', 'IDF strikes Gaza City')]), ['idf']);
+  });
+});
+
+/** Runs FORECAST_EVIDENCE_KEEP_LINK_SCRIPT in a Lua 5.3 VM against a Redis double (same pattern as digest-lastgood-script.test.mjs). */
+function runKeepLinkScript(command, initial = {}) {
+  const store = new Map(Object.entries(initial));
+  const ttls = new Map();
+  const [verb, script, numKeys, ...rest] = command;
+  if (verb !== 'EVAL') {
+    store.set(rest[0] ?? numKeys, script);
+    return { store, ttls };
+  }
+  const keys = rest.slice(0, Number(numKeys));
+  const argv = rest.slice(Number(numKeys));
+  const L = lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(L);
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    const args = [];
+    for (let i = 1; i <= lua.lua_gettop(S); i += 1) args.push(to_jsstring(lua.lua_tostring(S, i)));
+    const [name, key, value, ex, ttl] = args;
+    if (name === 'GET') {
+      if (store.has(key)) lua.lua_pushstring(S, to_luastring(store.get(key))); else lua.lua_pushnil(S);
+      return 1;
+    }
+    if (name === 'SET') {
+      store.set(key, value);
+      if (ex === 'EX') ttls.set(key, Number(ttl));
+      lua.lua_pushstring(S, to_luastring('OK'));
+      return 1;
+    }
+    throw new Error(`redis double: unimplemented ${name}`);
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('call'));
+  lua.lua_setglobal(L, to_luastring('redis'));
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(to_jsstring(lua.lua_tostring(S, 1)));
+    } catch {
+      return lauxlib.luaL_error(S, to_luastring('cjson: invalid JSON'));
+    }
+    lua.lua_createtable(S, 0, 1);
+    for (const [field, value] of Object.entries(parsed)) {
+      if (typeof value === 'string') lua.lua_pushstring(S, to_luastring(value));
+      else if (typeof value === 'number') lua.lua_pushnumber(S, value);
+      else continue;
+      lua.lua_setfield(S, -2, to_luastring(field));
+    }
+    return 1;
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('decode'));
+  lua.lua_setglobal(L, to_luastring('cjson'));
+  for (const [name, values] of [['KEYS', keys], ['ARGV', argv]]) {
+    lua.lua_createtable(L, values.length, 0);
+    values.forEach((value, index) => {
+      lua.lua_pushstring(L, to_luastring(String(value)));
+      lua.lua_seti(L, -2, index + 1);
+    });
+    lua.lua_setglobal(L, to_luastring(name));
+  }
+  assert.equal(lauxlib.luaL_loadstring(L, to_luastring(script)), lua.LUA_OK, 'script compiles');
+  const status = lua.lua_pcall(L, 0, 1, 0);
+  assert.equal(status, lua.LUA_OK, status === lua.LUA_OK ? '' : to_jsstring(lua.lua_tostring(L, -1)));
+  return { store, ttls };
+}
+
+describe('review round 2: the keep-link script itself (NB7, NB8)', () => {
+  const hash = 'a'.repeat(64);
+  const key = `forecast:evidence:record:v1:${hash}`;
+  const member = (link, lastSeen, title = 'Story') => buildForecastEvidenceMember({ hash, title, link, description: 'body / text', publishedAt: 1_000 }, lastSeen);
+  const write = (lastSeen, blankedHost = '') => buildForecastEvidenceRecordWrite(key, member('', lastSeen, 'Gated copy'), '', 1_296_000, lastSeen, blankedHost);
+
+  it('keeps a stored link and moves only lastSeen', () => {
+    const { store, ttls } = runKeepLinkScript(write(9), { [key]: member('https://www.reuters.com/x', 1) });
+    const { record, malformed } = parseForecastEvidenceMember(store.get(key));
+    assert.equal(malformed, false);
+    assert.equal(record.link, 'https://www.reuters.com/x');
+    assert.equal(record.title, 'Story');
+    assert.equal(record.lastSeen, 9);
+    assert.equal(ttls.get(key), 1_296_000);
+  });
+
+  it('stores the blanked member when nothing, a blank record or garbage was stored', () => {
+    for (const initial of [{}, { [key]: member('', 1) }, { [key]: 'not json' }]) {
+      const { store } = runKeepLinkScript(write(9), initial);
+      assert.equal(parseForecastEvidenceMember(store.get(key)).record.title, 'Gated copy');
+    }
+  });
+
+  it('drops a stored link whose host the gate now blanks', () => {
+    const { store } = runKeepLinkScript(write(9, 'reuters.com'), { [key]: member('https://www.reuters.com/x', 1) });
+    assert.equal(parseForecastEvidenceMember(store.get(key)).record.link, '');
   });
 });
