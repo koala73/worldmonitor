@@ -2126,6 +2126,12 @@
         "stale": "Out of date",
         "staleHint": "Last graded {{date}}. The grader has not run since, so these numbers are older than they should be.",
         "fullRecord": "Full record"
+      },
+      "reliability": {
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs base rate {{base}}",
+        "measuredHint": "How published {{domain}} forecasts have scored over {{n}} graded forecasts in the last {{days}} days. The base rate is what always answering the domain's observed yes rate would have scored. Lower is better. This is the domain's record, not this forecast's.",
+        "unmeasured": "Not yet measured",
+        "unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain needs {{min}} before its accuracy is shown."
       }
     },
     "escalationCorrelation": {

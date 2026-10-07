@@ -1,7 +1,21 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { INTERVAL_MIN_SAMPLE, computeScorecard, wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
+import {
+  DEFAULT_ROLLING_WINDOW_DAYS,
+  DEFAULT_SKILL_EXCLUDED_ORIGINS,
+  INTERVAL_MIN_SAMPLE,
+  PUBLIC_RECEIPT_FIELDS,
+  PUBLIC_RECEIPT_LINKS_SINCE_MS,
+  PUBLIC_RECEIPT_LIMIT,
+  RECEIPT_SOURCE_FEEDS,
+  RECEIPT_SOURCE_LABELS,
+  RECEIPT_VOID_REASON_LABELS,
+  buildPublicReceipts,
+  computeScorecard,
+  wilsonInterval,
+} from '../scripts/_forecast-scorecard.mjs';
+import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -136,6 +150,32 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.skill.brier, 0.04);
     const unknownRow = scorecard.byGenerationOrigin.find((row) => row.generationOrigin === 'unknown');
     assert.equal(unknownRow.scored, 2);
+  });
+
+  it('breaks the published-origin cohort down by domain, holding out shadow, synthetic and unattributed entries', () => {
+    const absent = resolved({ probability: 0.9, outcome: 'NO', domain: 'market' });
+    delete absent.generationOrigin;
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.8, outcome: 'YES', domain: 'market', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.4, outcome: 'NO', domain: 'market', generationOrigin: 'detector' }),
+      c: resolved({ probability: 0.3, outcome: 'NO', domain: 'conflict', generationOrigin: 'detector' }),
+      d: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'bet_engine' }),
+      e: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'state_derived' }),
+      f: absent,
+      g: resolved({ probability: 0.5, outcome: 'VOID', domain: 'market', generationOrigin: 'detector' }),
+      h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine' }),
+    }, NOW, { promoteBetEngine: true });
+
+    assert.equal(scorecard.schemaVersion, 2, 'schema 2 marks a seed that carries publishedByDomain');
+    assert.deepEqual(scorecard.publishedByDomain, [
+      { domain: 'conflict', count: 1, brier: 0.09, yesCount: 0 },
+      { domain: 'market', count: 2, brier: 0.1, yesCount: 1 },
+    ]);
+    assert.equal(scorecard.byDomain.find((row) => row.domain === 'market').scored, 5, 'byDomain still pools every origin');
+    // Documented divergence (#8952): promotion adds bet_engine to the headline
+    // skill cohort (a, b, c, d, h) but never to the published-domain rows.
+    assert.equal(scorecard.skill.count, 5);
+    assert.equal(scorecard.publishedByDomain.some((row) => row.domain === 'cyber'), false);
   });
 
   it('reports skill.yesCount as 0, not absent, when nothing real in the cohort came true', () => {
@@ -353,5 +393,288 @@ describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
     const on = computeScorecard(ledger, NOW, { promoteBetEngine: true });
     assert.equal(on.skill.count, 2); // promoted
     assert.deepEqual(on.skill.excludedOrigins, []);
+  });
+});
+
+describe('projection horizon lane (#7075)', () => {
+  function horizonRow(horizon, overrides = {}) {
+    const deadline = overrides.deadline ?? NOW - 2 * DAY_MS;
+    return resolved({
+      id: 'fc-h',
+      key: `fc-h@1@${horizon}`,
+      parentKey: 'fc-h@1',
+      timeHorizon: PROJECTION_HORIZONS[horizon],
+      domain: 'supply_chain',
+      deadline,
+      spec: { kind: 'hard', horizon, semantics: 'point_in_time', window: 'at-deadline', deadline },
+      ...overrides,
+    });
+  }
+  const pendingRow = (horizon, deadline) => horizonRow(horizon, { status: 'pending', outcome: undefined, resolvedAt: undefined, deadline });
+
+  it('keeps horizon rows out of every forecast metric and reports them in their own section', () => {
+    const ledger = {
+      a: resolved({ probability: 0.8, outcome: 'YES' }),
+      b: resolved({ probability: 0.4, outcome: 'NO' }),
+      h1: horizonRow('d7', { probability: 0.9, outcome: 'YES' }),
+      h2: horizonRow('d7', { probability: 0.2, outcome: 'NO' }),
+      h3: horizonRow('d7', { probability: 0.5, outcome: 'UNOBSERVED' }),
+      h4: horizonRow('d7', { probability: 0.5, outcome: 'VOID' }),
+      h5: pendingRow('h24', NOW + DAY_MS),
+      h6: pendingRow('d30', NOW - DAY_MS),
+    };
+    const scorecard = computeScorecard(ledger, NOW);
+    assert.equal(scorecard.totals.entries, 2);
+    assert.equal(scorecard.totals.scored, 2);
+    assert.equal(scorecard.overall.brier, 0.1);
+    assert.equal(scorecard.skill.count, 2);
+    assert.equal(scorecard.funnel.matured, 2);
+    assert.equal(scorecard.uncertainty.overallBrier.count, 2);
+    assert.deepEqual(scorecard.byDomain.map((row) => row.domain), ['market']);
+
+    assert.equal(scorecard.projections.semantics, 'point_in_time');
+    assert.equal(scorecard.projections.minSample, INTERVAL_MIN_SAMPLE);
+    assert.deepEqual(scorecard.projections.byHorizon, [
+      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
+      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, yes: 1, no: 1, unobserved: 1, void: 1, brier: null, insufficientSample: true },
+      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
+    ]);
+  });
+
+  it('reports the section with zero rows on an empty ledger, in the builder order', () => {
+    const { byHorizon } = computeScorecard({}, NOW).projections;
+    assert.deepEqual(byHorizon.map((row) => row.horizon), Object.keys(PROJECTION_HORIZONS));
+    assert.ok(byHorizon.every((row) => row.registered === 0 && row.brier === null));
+  });
+
+  it('reports a horizon Brier only once that horizon reaches the minimum sample', () => {
+    const rows = (count) => Object.fromEntries(Array.from({ length: count }, (_, i) => [
+      `h${i}`,
+      horizonRow('d7', { id: `fc-${i}`, key: `fc-${i}@1@d7`, probability: 0.5, outcome: i % 2 ? 'YES' : 'NO' }),
+    ]));
+    const d7 = (count) => computeScorecard(rows(count), NOW).projections.byHorizon.find((row) => row.horizon === 'd7');
+
+    const below = d7(INTERVAL_MIN_SAMPLE - 1);
+    assert.equal(below.scored, INTERVAL_MIN_SAMPLE - 1);
+    assert.equal(below.brier, null);
+    assert.equal(below.insufficientSample, true);
+
+    const at = d7(INTERVAL_MIN_SAMPLE);
+    assert.equal(at.insufficientSample, false);
+    assert.equal(at.brier.count, INTERVAL_MIN_SAMPLE);
+    assert.equal(at.brier.mean, 0.25);
+    assert.ok(at.brier.ci95);
+  });
+});
+
+describe('public forecast receipts (#5092)', () => {
+  // After the publisher-link cutoff, so judged citations may carry a link.
+  const NOW = Date.parse('2026-11-01T00:00:00Z');
+  const SECRET = 'SECRET-SENTINEL';
+  const hardEntry = (overrides = {}) => ({
+    id: `commodity:${SECRET}`,
+    key: `commodity:${SECRET}@1`,
+    status: 'resolved',
+    outcome: 'NO',
+    domain: 'market',
+    title: 'The Brent crude oil price: rise to 104.89 USD/bbl?',
+    generationOrigin: 'legacy_detector',
+    probability: 0.35,
+    generatedAt: NOW - 5 * DAY_MS,
+    firstSeenAt: NOW - 5 * DAY_MS,
+    resolvedAt: NOW - DAY_MS,
+    spec: {
+      kind: 'hard',
+      metricKey: `market:commodities-bootstrap:v1|price(symbol==${SECRET})`,
+      sourceFeed: 'market:commodities-bootstrap:v1',
+      question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-10-06?',
+    },
+    passes: [{ name: 'ensemble_inside_view', probability: 0.35, rationale: SECRET }],
+    samples: { count: 1, recent: [{ ts: 1, value: 100.75 }] },
+    evidence: { metricValue: 100.75, comparison: SECRET, metricKey: SECRET, resolvedAt: NOW - DAY_MS },
+    receiptArchiveKey: `seed-data/${SECRET}.json`,
+    receiptArchivedAt: NOW,
+    ...overrides,
+  });
+  const judgedEntry = (overrides = {}) => ({
+    id: `fc-conflict-${SECRET}`,
+    key: `fc-conflict-${SECRET}@2`,
+    status: 'resolved',
+    outcome: 'YES',
+    domain: 'conflict',
+    title: 'Active armed conflict: Nigeria',
+    generationOrigin: 'legacy_detector',
+    probability: 0.7,
+    generatedAt: NOW - 30 * DAY_MS,
+    resolvedAt: NOW - 2 * DAY_MS,
+    spec: { kind: 'judged', question: 'Within the 30d horizon, did Nigeria see escalated armed conflict?' },
+    judgeAttemptLog: [{ attempt: 1, reason: SECRET }],
+    evidence: {
+      kind: 'judged',
+      reason: 'dual_model_agreement',
+      judgedBy: [{ provider: SECRET, model: SECRET, outcome: 'YES' }],
+      judgments: [{ provider: SECRET, rationale: SECRET, citations: [] }],
+      citations: [{
+        id: 'N510',
+        title: 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC',
+        url: 'https://www.bbc.co.uk/news/world-africa-1',
+        publishedAt: NOW - 3 * DAY_MS,
+        quote: SECRET,
+      }],
+      archive: [{ id: 'N1', title: SECRET, url: `https://example.org/${SECRET}` }],
+    },
+    ...overrides,
+  });
+
+  const build = (ledger, ...rest) => buildPublicReceipts(ledger, NOW, ...rest);
+
+  it('publishes only whitelisted members, never rationale, archive, keys or metric paths', () => {
+    const receipts = build({ a: hardEntry(), b: judgedEntry() });
+    assert.equal(receipts.length, 2);
+    for (const receipt of receipts) {
+      for (const field of Object.keys(receipt)) {
+        assert.ok(PUBLIC_RECEIPT_FIELDS.includes(field), `unlisted receipt field ${field}`);
+      }
+    }
+    assert.doesNotMatch(JSON.stringify(receipts), new RegExp(SECRET));
+  });
+
+  it('lists resolved entries newest first, bounded, and skips open ones', () => {
+    const ledger = {};
+    for (let i = 0; i < PUBLIC_RECEIPT_LIMIT + 5; i++) {
+      ledger[`r${i}`] = hardEntry({ resolvedAt: NOW - i * 1000 });
+    }
+    ledger.open = hardEntry({ status: 'pending', outcome: undefined, resolvedAt: NOW + 1000 });
+    const receipts = build(ledger);
+    assert.equal(receipts.length, PUBLIC_RECEIPT_LIMIT);
+    assert.equal(receipts[0].resolvedAt, NOW);
+    for (let i = 1; i < receipts.length; i++) {
+      assert.ok(receipts[i - 1].resolvedAt >= receipts[i].resolvedAt, 'newest first');
+    }
+  });
+
+  it('shapes a hard receipt from the feed vocabulary and the observed value', () => {
+    const [receipt] = build([hardEntry()]);
+    assert.deepEqual(receipt, {
+      question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-10-06?',
+      forecastAt: NOW - 5 * DAY_MS,
+      probability: 0.35,
+      outcome: 'NO',
+      resolvedAt: NOW - DAY_MS,
+      sourceFeed: 'commodity-prices',
+      observedValue: 100.75,
+    });
+  });
+
+  it('shapes a judged receipt from the agreed citation, https links only', () => {
+    const [receipt] = build([judgedEntry()]);
+    assert.equal(receipt.sourceFeed, undefined);
+    assert.equal(receipt.citationTitle, 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC');
+    assert.equal(receipt.citationUrl, 'https://www.bbc.co.uk/news/world-africa-1');
+    for (const url of ['javascript:alert(1)', 'http://plain.example/a', 'https://user:pw@host.example/a', 'not a url']) {
+      const [unsafe] = build([judgedEntry({
+        evidence: { ...judgedEntry().evidence, citations: [{ title: 'Headline', url }] },
+      })]);
+      assert.equal(unsafe.citationTitle, 'Headline', 'the cited item title survives without a link');
+      assert.equal(unsafe.citationUrl, undefined, `${url} must not be published as a link`);
+    }
+  });
+
+  it('keeps VOIDs with a fixed-vocabulary reason and no citation', () => {
+    const receipts = build([
+      judgedEntry({ outcome: 'VOID', evidence: { ...judgedEntry().evidence, reason: 'beyond_archive_horizon' } }),
+      hardEntry({ outcome: 'VOID', evidence: { reason: 'no_establishable_metric', metricKey: SECRET } }),
+      hardEntry({ outcome: 'VOID', resolvedAt: NOW - 3 * DAY_MS, evidence: { reason: `${SECRET} free text` } }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.voidReason), ['no_establishable_metric', 'beyond_archive_horizon', 'other']);
+    assert.equal(receipts[1].citationTitle, undefined, 'a VOID was not settled by any cited item');
+    assert.equal(receipts[0].observedValue, undefined);
+    for (const receipt of receipts) assert.ok(Object.hasOwn(RECEIPT_VOID_REASON_LABELS, receipt.voidReason));
+  });
+
+  it('maps every resolution feed to a public source code, and anything else to other', async () => {
+    const { RESOLUTION_FEED_KEYS } = await import('../scripts/_forecast-resolution.mjs');
+    for (const feed of RESOLUTION_FEED_KEYS) {
+      const code = RECEIPT_SOURCE_FEEDS[feed];
+      assert.ok(code && Object.hasOwn(RECEIPT_SOURCE_LABELS, code), `${feed} needs a public source code`);
+    }
+    for (const sourceFeed of [`internal:${SECRET}:v9`, '__proto__', 'constructor', 'toString']) {
+      const [receipt] = build([hardEntry({ spec: { ...hardEntry().spec, sourceFeed } })]);
+      assert.equal(receipt.sourceFeed, 'other', `${sourceFeed} is not a public feed`);
+    }
+  });
+
+  it('lists only the headline cohort, never shadow, synthetic or unattributed entries', () => {
+    const receipts = build([
+      hardEntry({ generationOrigin: 'bet_engine', resolvedAt: NOW - 1 }),
+      hardEntry({ generationOrigin: 'state_derived', resolvedAt: NOW - 2 }),
+      hardEntry({ generationOrigin: undefined, resolvedAt: NOW - 3 }),
+      hardEntry({ resolvedAt: NOW - 4 }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - 4]);
+  });
+
+  it('leaves projection horizon windows out, as every forecast-window reader does', () => {
+    const receipts = build([
+      hardEntry({ spec: { ...hardEntry().spec, horizon: '7d' }, resolvedAt: NOW - 1 }),
+      hardEntry({ resolvedAt: NOW - 2 }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - 2]);
+  });
+
+  it('publishes the probability the scorer used, clamped to [0, 1]', () => {
+    const receipts = build([hardEntry({ probability: -0.2, resolvedAt: NOW - 1 }), hardEntry({ probability: 1.4, resolvedAt: NOW - 2 })]);
+    assert.deepEqual(receipts.map((receipt) => receipt.probability), [0, 1]);
+  });
+
+  it('keeps shadow bet-engine entries out even when the headline promotes them', () => {
+    assert.equal(build([hardEntry({ generationOrigin: 'bet_engine' })], { promoteBetEngine: true }).length, 0);
+    for (const origin of DEFAULT_SKILL_EXCLUDED_ORIGINS) {
+      assert.equal(build([hardEntry({ generationOrigin: origin })]).length, 0, `${origin} must not be a receipt`);
+    }
+  });
+
+  it('lists only entries resolved inside the rolling window', () => {
+    const receipts = build([
+      hardEntry({ resolvedAt: NOW - 400 * DAY_MS }),
+      hardEntry({ resolvedAt: NOW - (DEFAULT_ROLLING_WINDOW_DAYS - 1) * DAY_MS }),
+    ]);
+    assert.deepEqual(receipts.map((receipt) => receipt.resolvedAt), [NOW - (DEFAULT_ROLLING_WINDOW_DAYS - 1) * DAY_MS]);
+  });
+
+  it('drops citation links that could predate the publisher-link gate, keeping the title', async () => {
+    const { FORECAST_EVIDENCE_TTL_S } = await import('../scripts/_forecast-evidence-archive.mjs');
+    assert.equal(
+      PUBLIC_RECEIPT_LINKS_SINCE_MS,
+      Date.parse('2026-09-21T16:39:21Z') + FORECAST_EVIDENCE_TTL_S * 1000 + DAY_MS,
+      'the cutoff is the #8408 merge plus the evidence archive retention plus a day for the rollout',
+    );
+    const [early, late] = [PUBLIC_RECEIPT_LINKS_SINCE_MS - 1, PUBLIC_RECEIPT_LINKS_SINCE_MS]
+      .map((resolvedAt) => buildPublicReceipts([judgedEntry({ resolvedAt })], NOW)[0]);
+    assert.equal(early.citationUrl, undefined);
+    assert.equal(early.citationTitle, 'Dozens of people abducted in attacks on villages in Nigeria, police say - BBC');
+    assert.equal(late.citationUrl, 'https://www.bbc.co.uk/news/world-africa-1');
+  });
+
+  it('stays bounded when every text field is at its worst', () => {
+    const long = `<script>${'x'.repeat(5000)}`;
+    const ledger = Array.from({ length: 500 }, (_, i) => judgedEntry({
+      resolvedAt: NOW - i,
+      spec: { kind: 'judged', question: long },
+      evidence: { ...judgedEntry().evidence, citations: [{ title: long, url: `https://example.org/${'y'.repeat(5000)}` }] },
+    }));
+    const receipts = build(ledger);
+    const kept = build(Array.from({ length: 500 }, (_, i) => judgedEntry({
+      resolvedAt: NOW - i,
+      spec: { kind: 'judged', question: long },
+      evidence: { ...judgedEntry().evidence, citations: [{ title: long, url: `https://example.org/${'y'.repeat(499 - 'https://example.org/'.length)}` }] },
+    })));
+    assert.equal(kept[0].citationUrl.length, 499, 'the worst kept link is just under the cap');
+    assert.ok(Buffer.byteLength(JSON.stringify(kept)) <= 24_000, `worst case with links is ${Buffer.byteLength(JSON.stringify(kept))} bytes`);
+    assert.equal(receipts.length, PUBLIC_RECEIPT_LIMIT);
+    assert.ok(receipts[0].question.length <= 240);
+    assert.ok(receipts[0].citationTitle.length <= 160);
+    assert.equal(receipts[0].citationUrl, undefined, 'an over-long URL is dropped, not truncated into a different link');
+    assert.ok(Buffer.byteLength(JSON.stringify(receipts)) <= 16_000);
   });
 });

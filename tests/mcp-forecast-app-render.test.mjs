@@ -394,3 +394,80 @@ describe('forecast MCP analysis parity', () => {
     assert.equal(doc.querySelector('details').open, false);
   });
 });
+
+describe('published reliability and original evidence continuity', () => {
+  const reliability = (changes = {}) => ({ status: 'ready', windowDays: 90, stale: false, freshnessUnknown: false, capturedAt: '2026-10-07T00:00:00Z', asOf: '2026-10-06T23:00:00Z', byDomain: [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }], ...changes });
+  const compact = (reliabilityValue = reliability()) => ({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'reliability-panel' }, data: { ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]).data, reliability: reliabilityValue } });
+  const caseReply = (win, request) => hostReply(win, request.id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
+  function openCase(win, doc) { const details = doc.querySelector('#list details'); details.open = true; details.dispatchEvent(new win.Event('toggle')); return details; }
+  it('refreshes source warnings and snapshot clocks while preserving pending then loaded Analysis', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const details = openCase(win, doc);
+    const request = messages.find(message => message.params?.name === 'get_forecast_case');
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.find(message => message.params?.name === 'get_forecast_theaters'));
+    const theaterNode = doc.getElementById('theaters').firstChild;
+    const changed = compact(); changed.cached_at = '2026-10-07T01:00:00Z'; changed.stale = true;
+    Object.assign(changed.data.predictions, { stale: true, degraded: true, error: 'source_failure' });
+    send(changed);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T01:00:00Z.*Forecast source degraded.*stale cache.*source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.match(details.textContent, /Loading original case/);
+    caseReply(win, request);
+    const recovered = compact(); recovered.cached_at = '2026-10-07T02:00:00Z'; send(recovered);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T02:00:00Z/);
+    assert.doesNotMatch(doc.getElementById('foot').textContent, /degraded|stale cache|source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.match(details.textContent, /Supporting observation/);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 2);
+  });
+  it('matches website measured/stale/unmeasured text, baseline, accessible hint and accuracy destination', async () => {
+    const { doc, send } = await mount(compact()); let badge = doc.querySelector('.fc-reliability');
+    assert.equal(badge?.textContent, 'Energy n=45 · Brier 0.213 vs base rate 0.240');
+    assert.equal(badge.getAttribute('href'), 'https://www.worldmonitor.app/accuracy/#by-domain');
+    assert.match(badge.getAttribute('aria-label'), /45.*90/); assert.equal(badge.hasAttribute('title'), false);
+    send(compact(reliability({ stale: true }))); badge = doc.querySelector('.fc-reliability');
+    assert.match(badge.textContent, /^Out of date · Energy n=45/);
+    send(compact(reliability({ stale: true, byDomain: [{ domain: 'energy', kind: 'unmeasured', n: 29 }] })));
+    assert.equal(doc.querySelector('.fc-reliability').textContent, 'Out of date · Not yet measured');
+    send(compact({ status: 'unavailable' })); assert.equal(doc.querySelector('.fc-reliability'), null);
+  });
+  it('preserves pending then loaded Analysis and original theaters across reliability-only updates and filters', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const details = openCase(win, doc); const request = messages.find(message => message.params?.name === 'get_forecast_case');
+    doc.getElementById('load-theaters').click(); const theaterRequest = messages.find(message => message.params?.name === 'get_forecast_theaters');
+    send(compact(reliability({ stale: true })));
+    assert.ok(doc.querySelector('#list details') === details, 'identical list/generation/token must retain the live Analysis node'); assert.equal(details.open, true);
+    caseReply(win, request); theaterReply(win, theaterRequest);
+    assert.match(details.textContent, /Supporting observation/); assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    const domain = doc.getElementById('domain'); domain.value = 'energy'; domain.dispatchEvent(new win.Event('change'));
+    const filtered = openCase(win, doc); const theaterNode = doc.getElementById('theaters').firstChild;
+    send(compact(reliability({ byDomain: [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.3, yesShare: 0.4 }] })));
+    assert.ok(doc.querySelector('#list details') === filtered, 'reliability-only filter update retains Analysis node'); assert.equal(filtered.open, true); assert.match(filtered.textContent, /Supporting observation/);
+    assert.equal(doc.getElementById('domain').value, 'energy'); assert.ok(doc.getElementById('theaters').firstChild === theaterNode, 'reliability-only update retains theater node');
+    assert.match(doc.querySelector('.fc-reliability').textContent, /Brier 0.300/); assert.equal(messages.filter(message => message.method === 'tools/call').length, 2);
+  });
+  for (const change of ['list', 'generation', 'token']) it(`replaces ${change} provenance and rejects the previous pending original-case response`, async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const original = openCase(win, doc); const request = messages.find(m => m.params?.name === 'get_forecast_case');
+    const next = compact();
+    if (change === 'list') next.data.predictions.predictions[0].title = 'Changed effective list';
+    if (change === 'generation') next.data.predictions.generatedAt += 1;
+    if (change === 'token') next.panelRequest.token = 'replacement-panel';
+    send(next); const replacement = openCase(win, doc); assert.notEqual(replacement, original);
+    caseReply(win, request); assert.doesNotMatch(replacement.textContent, /Supporting observation/);
+    assert.equal(messages.filter(m => m.params?.name === 'get_forecast_case').length, 2);
+  });
+  it('does not reuse a loaded dossier after the signed token changes and keeps hostile labels as text', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win); openCase(win, doc);
+    caseReply(win, messages.find(m => m.params?.name === 'get_forecast_case'));
+    const next = compact(); next.panelRequest.token = 'replacement-panel'; send(next);
+    const details = openCase(win, doc); assert.doesNotMatch(details.textContent, /Supporting observation/);
+    assert.equal(messages.filter(m => m.params?.name === 'get_forecast_case').length, 2);
+    const hostile = compact(reliability({ byDomain: [{ domain: '<img src=x onerror=alert(1)>', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }] }));
+    hostile.data.predictions.predictions[0].domain = '<img src=x onerror=alert(1)>'; send(hostile);
+    assert.equal(doc.querySelector('#list img'), null); assert.match(doc.querySelector('.fc-reliability').textContent, /<img/);
+  });
+});

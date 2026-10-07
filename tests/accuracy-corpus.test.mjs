@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ACCURACY_CONTENT_VERSION,
+  ACCURACY_DOMAIN_LABELS,
   ACCURACY_FAILURE_CODES,
   ACCURACY_PAGE_PATH,
   SCORECARD_DECLARED_FIELDS,
@@ -28,7 +29,7 @@ const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'
 // against a real funnel — 96 entries awaiting a judge and a `political` domain
 // with nothing scored are the states the page must not round away.
 const LIVE_SCORECARD = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: 1789020144012,
   rollingWindowDays: 180,
   methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.',
@@ -75,6 +76,11 @@ const LIVE_SCORECARD = Object.freeze({
   ],
   vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
   skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+  publishedByDomain: [
+    { domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 },
+    { domain: 'market', count: 60, brier: 0.13, yesCount: 22 },
+    { domain: 'political', count: 12, brier: 0.2, yesCount: 4 },
+  ],
   degraded: false,
   stale: false,
   error: '',
@@ -97,6 +103,35 @@ const sectionWith = (scorecardOverrides = {}, sectionOverrides = {}) => ({
   scorecard: { ...LIVE_SCORECARD, ...scorecardOverrides },
   ...sectionOverrides,
 });
+
+// Issue #7072: the scorecard now carries a bootstrap interval on each mean
+// Brier and the matured-to-scored funnel. Bounds on a mean score cannot be
+// recomputed from published counts, so the page prints the producer's and only
+// when the interval covers the same population as the score beside it.
+const UNCERTAINTY = Object.freeze({
+  method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072',
+  overallBrier: { count: 490, mean: 0.192435, ci95: [0.178214, 0.207013], insufficientSample: false },
+  skillBrier: { count: 180, mean: 0.117824, ci95: [0.098461, 0.139207], insufficientSample: false },
+});
+const FUNNEL = Object.freeze({
+  matured: 820,
+  immature: 130,
+  maturityUnknown: 8,
+  resolved: 772,
+  scored: 490,
+  pendingHardMatured: 12,
+  pendingJudgeMatured: 36,
+  resolvedOfMatured: { count: 820, successes: 772, rate: 0.941463, ci95: [0.923243, 0.955567] },
+  scoredOfMatured: { count: 820, successes: 490, rate: 0.597561, ci95: [0.563617, 0.630595] },
+});
+// Issue #5092: the newest resolved forecasts, as the seeder publishes them.
+const RECEIPTS = Object.freeze([
+  { question: 'Will the Brent crude oil price rise to at least 104.89 USD/bbl by 2026-09-09?', forecastAt: Date.parse('2026-09-05T12:00:00Z'), probability: 0.35, outcome: 'NO', resolvedAt: Date.parse('2026-09-10T03:00:00Z'), sourceFeed: 'commodity-prices', observedValue: 100.75 },
+  { question: 'Within the 30d horizon, did Nigeria see escalated armed conflict?', forecastAt: Date.parse('2026-08-10T00:00:00Z'), probability: 0.7, outcome: 'YES', resolvedAt: Date.parse('2026-09-09T22:00:00Z'), citationTitle: 'Dozens abducted in attacks on villages in Nigeria - BBC', citationUrl: 'https://www.bbc.co.uk/news/world-africa-1' },
+  { question: 'Within the 30d horizon, did Syria see escalated armed conflict?', forecastAt: Date.parse('2026-08-09T00:00:00Z'), probability: 0.697, outcome: 'VOID', resolvedAt: Date.parse('2026-09-09T21:00:00Z'), voidReason: 'beyond_archive_horizon' },
+  { question: 'Will cyber threat reports rise <img src=x onerror=alert(1)>?', forecastAt: Date.parse('2026-09-01T00:00:00Z'), probability: 0.6, outcome: 'YES', resolvedAt: Date.parse('2026-09-08T00:00:00Z'), sourceFeed: 'cyber-threats', observedValue: 41 },
+]);
+const WITH_INTERVALS = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL, receipts: RECEIPTS });
 
 describe('forecast scorecard field whitelist', () => {
   it('declares exactly the fields proto GetForecastScorecardResponse declares', () => {
@@ -128,8 +163,10 @@ describe('forecast scorecard field whitelist', () => {
       skill: { ...LIVE_SCORECARD.skill, promoted: true },
       byDomain: [{ ...LIVE_SCORECARD.byDomain[0], internalNote: 'x' }],
       calibration: [{ ...LIVE_SCORECARD.calibration[0], sampleIds: ['a'] }],
+      publishedByDomain: [{ domain: 'market', count: 40, brier: 0.21, yesCount: 12, origins: ['detector'] }],
     };
     const selected = selectDeclaredScorecardFields(leaky);
+    assert.deepEqual(selected.publishedByDomain, [{ domain: 'market', count: 40, brier: 0.21, yesCount: 12 }]);
     assert.equal(Object.hasOwn(selected.totals, 'judgedLane'), false);
     assert.equal(Object.hasOwn(selected.skill, 'promoted'), false);
     assert.equal(Object.hasOwn(selected.byDomain[0], 'internalNote'), false);
@@ -615,13 +652,14 @@ describe('accuracy page honesty rules', () => {
     assert.match(text, /80-90/);
   });
 
-  it('marks an unscored domain as insufficient sample rather than leaving a cell empty', () => {
+  it('marks a domain below the sample floor as not yet measured rather than leaving a cell empty', () => {
     const { html } = renderState(LIVE_SECTION);
     const row = html.match(/<tr data-domain="political">[\s\S]*?<\/tr>/)[0];
     assert.equal((row.match(/<td[^>]*>\s*<\/td>/g) || []).length, 0, 'an empty cell reads as a measured zero');
-    assert.equal((row.match(/Insufficient sample/g) || []).length, 2, 'both score columns must be marked');
-    const scoredRow = html.match(/<tr data-domain="cyber">[\s\S]*?<\/tr>/)[0];
-    assert.doesNotMatch(scoredRow, /Insufficient sample/);
+    assert.equal((row.match(/Not yet measured/g) || []).length, 2, 'both score columns must be marked');
+    assert.doesNotMatch(row, /0\.200/, 'a below-floor Brier is never printed');
+    const scoredRow = html.match(/<tr data-domain="conflict">[\s\S]*?<\/tr>/)[0];
+    assert.doesNotMatch(scoredRow, /Not yet measured/);
   });
 
   it('labels every table and comparison with the population it covers', () => {
@@ -714,7 +752,7 @@ describe('accuracy page honesty rules', () => {
   it('explains the unscored horizons and the absent score intervals without leaning on issue numbers', () => {
     const { html } = renderState(LIVE_SECTION);
     const text = stripTags(html);
-    assert.match(text, /No confidence intervals on the Brier and log scores/i);
+    assert.match(text, /No confidence intervals on the log scores/i);
     assert.match(text, /24h|24-hour/i);
     assert.doesNotMatch(text, /±/, 'an interval must never be invented');
     // A tracking link may follow as supporting detail, but no sentence may
@@ -738,10 +776,10 @@ describe('accuracy page honesty rules', () => {
     assert.match(html, /<caption>/, 'every data table needs a caption');
   });
 
-  it('publishes aggregates only, with no receipt, evidence or judge-input surface', () => {
-    const { html } = renderState(LIVE_SECTION);
-    const download = downloadFor(LIVE_SECTION);
-    for (const forbidden of [/betEngine/, /judgedLane/, /r2:\/\//, /forecastId/, /evidenceKey/, /receipt/i]) {
+  it('publishes no evidence store, judge input or internal key surface', () => {
+    const { html } = renderState(WITH_INTERVALS);
+    const download = downloadFor(WITH_INTERVALS);
+    for (const forbidden of [/betEngine/, /judgedLane/, /r2:\/\//, /forecastId/, /evidenceKey/, /rationale/, /judgments/, /metricKey/, /seed-data\//]) {
       assert.doesNotMatch(html, forbidden, `the page must not publish ${forbidden}`);
       assert.doesNotMatch(JSON.stringify(download), forbidden, `the distribution must not publish ${forbidden}`);
     }
@@ -750,7 +788,7 @@ describe('accuracy page honesty rules', () => {
   it('whitelists the distribution rather than spreading the captured payload', () => {
     const leaky = {
       ...LIVE_SECTION,
-      scorecard: { ...LIVE_SCORECARD, betEngine: { count: 299 }, judgedLane: 'shadow' },
+      scorecard: { ...WITH_INTERVALS.scorecard, betEngine: { count: 299 }, judgedLane: 'shadow' },
     };
     const { html } = renderState(leaky);
     const download = downloadFor(leaky);
@@ -781,7 +819,7 @@ describe('accuracy page honesty rules', () => {
     assert.equal(download.source, SNAPSHOT_PATH);
     assert.match(download.license, /^https:\/\//);
     assert.deepEqual(download.confidenceIntervals.proportions, { published: true, method: 'wilson-95' });
-    assert.equal(download.confidenceIntervals.meanScores.published, false);
+    assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
     assert.equal(download.horizonProjections.scored, false);
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
@@ -796,6 +834,87 @@ describe('accuracy page honesty rules', () => {
 // Issue #7072: every binomial proportion on the page carries a Wilson 95%
 // interval derived from the two counts the page already publishes. Expected
 // bounds are golden values, so a formula change cannot pass by moving both sides.
+describe('accuracy page published-origin domain table (#8952)', () => {
+  const tableOf = (html) => html.match(/<table data-by-domain>[\s\S]*?<\/table>/)?.[0] ?? null;
+  const rowText = (html, domain) => stripTags(html.match(new RegExp(`<tr data-domain="${domain}">[\\s\\S]*?</tr>`))[0]);
+
+  it('renders publishedByDomain under an anchor, with Brier and base rate p(1-p)', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(html, /<h2 id="by-domain">Accuracy by domain<\/h2>/);
+    const table = tableOf(html);
+    assert.ok(table, 'the published domain table renders');
+    assert.deepEqual([...table.matchAll(/<tr data-domain="([^"]+)"/g)].map(([, d]) => d), ['conflict', 'market', 'political']);
+    // conflict: p = 30/120, p(1-p) = 0.1875.
+    assert.match(rowText(html, 'conflict'), /Conflict\s*120\s*0\.110\s*0\.188/);
+    // market: p = 22/60, p(1-p) = 0.2322.
+    assert.match(rowText(html, 'market'), /Market\s*60\s*0\.130\s*0\.232/);
+  });
+
+  it('labels rows with the same human domain names the card badge uses', () => {
+    const { html } = renderState(sectionWith({
+      publishedByDomain: [
+        { domain: 'supply_chain', count: 40, brier: 0.2, yesCount: 10 },
+        { domain: 'infrastructure', count: 40, brier: 0.2, yesCount: 10 },
+        { domain: 'geopolitical', count: 40, brier: 0.2, yesCount: 10 },
+      ],
+    }));
+    const headers = [...tableOf(html).matchAll(/<th scope="row">([^<]+)<\/th>/g)].map(([, label]) => label);
+    assert.deepEqual(headers, ['Supply Chain', 'Infra', 'Geopolitical']);
+    const panel = read('src/components/ForecastPanel.ts');
+    const badgeLabels = Object.fromEntries([...panel.match(/const DOMAIN_LABELS[^{]*\{([\s\S]*?)\};/)[1].matchAll(/(\w+):\s*'([^']+)'/g)].map(([, k, v]) => [k, v]));
+    delete badgeLabels.all;
+    assert.deepEqual(ACCURACY_DOMAIN_LABELS, badgeLabels, 'the page and the badge must share domain labels');
+  });
+
+  it('treats a non-integer yesCount as not yet measured, matching the badge', () => {
+    const { html } = renderState(sectionWith({ publishedByDomain: [{ domain: 'conflict', count: 40, brier: 0.2, yesCount: 10.5 }] }));
+    assert.match(rowText(html, 'conflict'), /Not yet measured/);
+  });
+
+  it('drops the pooled all-origin domain table from the page', () => {
+    const { html } = renderState(LIVE_SECTION);
+    const table = tableOf(html);
+    assert.doesNotMatch(table, /data-domain="cyber"|data-domain="energy"/, 'domains with only pooled rows do not appear');
+    assert.doesNotMatch(table, /0\.241727|0\.242|272/, 'the pooled market row is not printed');
+    assert.equal((html.match(/<table data-by-domain/g) || []).length, 1);
+  });
+
+  it('applies the badge sample floor: n=29 is not yet measured, n=30 is measured', () => {
+    const { html } = renderState(sectionWith({
+      publishedByDomain: [
+        { domain: 'conflict', count: 29, brier: 0.2, yesCount: 10 },
+        { domain: 'market', count: 30, brier: 0.21, yesCount: 10 },
+      ],
+    }));
+    assert.match(rowText(html, 'conflict'), /29\s*Not yet measured\s*Not yet measured/);
+    assert.match(rowText(html, 'market'), /30\s*0\.210\s*0\.222/);
+  });
+
+  it('names its population and its sample rule in the caption', () => {
+    const caption = stripTags(tableOf(renderState(LIVE_SECTION).html).match(/<caption>[\s\S]*?<\/caption>/)[0]);
+    assert.match(caption, /published/i);
+    assert.match(caption, /bet_engine/);
+    assert.doesNotMatch(caption, /unpromoted/, 'the table excludes bet_engine even when promotion is on');
+    assert.match(caption, /30/);
+  });
+
+  it('says so instead of a table when the scorecard predates the published breakdown', () => {
+    const { publishedByDomain: _omit, ...legacy } = LIVE_SCORECARD;
+    for (const scorecard of [{ ...legacy, schemaVersion: 1 }, { ...LIVE_SCORECARD, schemaVersion: 1 }]) {
+      const { html } = renderState({ ...LIVE_SECTION, scorecard });
+      assert.match(html, /<h2 id="by-domain">/);
+      assert.equal(tableOf(html), null);
+      assert.match(stripTags(html), /predates the published-origin domain breakdown/);
+    }
+  });
+
+  it('says no published forecast is graded yet when the breakdown is empty', () => {
+    const { html } = renderState(sectionWith({ publishedByDomain: [] }));
+    assert.equal(tableOf(html), null);
+    assert.match(stripTags(html), /No published forecast has been graded in any domain/);
+  });
+});
+
 describe('accuracy page proportion intervals', () => {
   const rowOf = (html, marker) => stripTags(html.match(new RegExp(`<tr ${marker}[\\s\\S]*?</tr>`))[0]);
 
@@ -827,10 +946,9 @@ describe('accuracy page proportion intervals', () => {
 
   it('puts a Wilson interval beside each domain and origin void rate, and none on an empty denominator', () => {
     const { html } = renderState(LIVE_SECTION);
-    assert.match(rowOf(html, 'data-domain="political"'), /100\.0% of 6 resolved 61\.0% to 100\.0%/);
     assert.match(rowOf(html, 'data-origin="bet_engine"'), /0\.0% of 299 resolved 0\.0% to 1\.3%/);
-    const empty = sectionWith({ byDomain: [{ domain: 'macro', resolved: 0, scored: 0, void: 0, voidRate: 0 }] });
-    assert.match(rowOf(renderState(empty).html, 'data-domain="macro"'), /No interval/);
+    const empty = sectionWith({ byGenerationOrigin: [{ generationOrigin: 'macro_engine', resolved: 0, scored: 0, void: 0, voidRate: 0 }] });
+    assert.match(rowOf(renderState(empty).html, 'data-origin="macro_engine"'), /No interval/);
   });
 
   it('publishes the same intervals in the distribution, with their counts', () => {
@@ -840,6 +958,254 @@ describe('accuracy page proportion intervals', () => {
     assert.deepEqual(intervals.calibration['0-10'], { successes: 0, count: 40, ci95: [0, 0.087622] });
     assert.deepEqual(intervals.byDomain.political, { successes: 6, count: 6, ci95: [0.609666, 1] });
     assert.equal(Object.hasOwn(intervals.calibration, '70-80'), false, 'an empty bucket has no estimate');
+  });
+});
+
+describe('accuracy page forecast receipts (#5092)', () => {
+  const receiptsOf = (html) => {
+    const table = html.match(/<table data-forecast-receipts>[\s\S]*?<\/table>/);
+    return table ? table[0] : null;
+  };
+
+  it('whitelists receipt rows down to their declared members', () => {
+    const selected = selectDeclaredScorecardFields({
+      ...WITH_INTERVALS.scorecard,
+      receipts: [{ ...RECEIPTS[0], key: 'commodity:BZ=F@1', rationale: 'judge text', evidence: { metricKey: 'x' } }],
+    });
+    assert.deepEqual(selected.receipts, [RECEIPTS[0]]);
+  });
+
+  it('renders the receipts newest first with what was forecast, when, the chance, the outcome and the source', () => {
+    const table = receiptsOf(renderState(WITH_INTERVALS).html);
+    assert.ok(table, 'the receipts must be a real table');
+    assert.match(table, /<caption>[^<]*published forecasts[^<]*experimental, synthetic and unattributed origins[^<]*<\/caption>/);
+    const head = stripTags(table.match(/<thead>[\s\S]*?<\/thead>/)[0]);
+    assert.match(head, /Forecast Made Chance given Outcome Resolved How it was settled/);
+    const rows = [...table.matchAll(/<tr data-receipt-outcome="([A-Z]+)">([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual(rows.map(([, outcome]) => outcome), ['NO', 'YES', 'VOID', 'YES']);
+    const text = rows.map(([, , cells]) => stripTags(cells).trim());
+    assert.match(text[0], /Brent crude .* 2026-09-05 35% Did not happen 2026-09-10 Commodity prices read 100\.75/);
+    assert.match(text[1], /Nigeria .* 2026-08-10 70% Happened 2026-09-09 Judged against archived news: Dozens abducted in attacks on villages in Nigeria - BBC/);
+    assert.match(text[2], /Syria .* 69\.7% Void 2026-09-09 The news archive no longer covered the question window/);
+  });
+
+  it('escapes attacker-controllable text and links only https citations', () => {
+    const hostile = sectionWith({
+      receipts: [
+        RECEIPTS[3],
+        { ...RECEIPTS[1], citationTitle: 'Headline "><script>x</script>', citationUrl: 'javascript:alert(1)' },
+      ],
+    });
+    const table = receiptsOf(renderState(hostile).html);
+    assert.doesNotMatch(table, /<img|<script|javascript:/);
+    assert.match(table, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.equal((table.match(/<a /g) || []).length, 0, 'a non-https citation is printed without a link');
+    const linked = receiptsOf(renderState(WITH_INTERVALS).html);
+    assert.match(linked, /<a href="https:\/\/www\.bbc\.co\.uk\/news\/world-africa-1" rel="nofollow noopener">/);
+  });
+
+  it('reads unknown codes in plain words and drops rows with an unknown outcome', () => {
+    const odd = sectionWith({
+      receipts: [
+        { ...RECEIPTS[0], sourceFeed: 'internal-feed' },
+        { ...RECEIPTS[2], voidReason: 'something_new' },
+        { ...RECEIPTS[0], outcome: 'MAYBE' },
+        { ...RECEIPTS[0], sourceFeed: 'toString' },
+        { ...RECEIPTS[2], voidReason: 'constructor' },
+      ],
+    });
+    const text = stripTags(receiptsOf(renderState(odd).html));
+    assert.match(text, /A World Monitor data feed read 100\.75/);
+    assert.match(text, /Void 2026-09-09 Could not be resolved/);
+    assert.doesNotMatch(text, /internal-feed|something_new|MAYBE|function|native code/);
+    assert.equal(text.match(/A World Monitor data feed read 100\.75/g).length, 2, 'an inherited key is not a label');
+    assert.equal(text.match(/Could not be resolved/g).length, 2);
+  });
+
+  it('shows an empty state when the capture carries no resolved forecasts', () => {
+    const { html } = renderState(sectionWith({ receipts: [], totals: { ...LIVE_SCORECARD.totals, resolved: 0 } }));
+    assert.equal(receiptsOf(html), null);
+    assert.match(stripTags(html), /No forecast has resolved in this window yet/);
+  });
+
+  it('says the receipts are not carried when the field is absent', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.equal(receiptsOf(html), null);
+    assert.match(stripTags(html), /This capture does not carry per-forecast receipts\./);
+    assert.doesNotMatch(stripTags(html), /No forecast has resolved|refresh adds/);
+  });
+
+  it('names both causes of an empty list beside resolved forecasts instead of guessing one', () => {
+    // The API defaults the field to [], so an old seed and a window where only
+    // excluded origins resolved look the same.
+    const text = stripTags(renderState(sectionWith({ receipts: [] })).html);
+    assert.match(text, /This capture carries no receipts: it predates them, or no published forecast resolved in the window\./);
+    assert.doesNotMatch(text, /does not carry per-forecast receipts/);
+  });
+
+  it('does not tell LLM readers the page publishes aggregates only', () => {
+    const llms = renderAccuracyLlmsSection(WITH_INTERVALS);
+    assert.doesNotMatch(llms, /aggregates only|no individual forecasts/);
+    assert.match(llms, /receipts for the most recently resolved published forecasts/);
+  });
+
+  it('prints an out-of-range receipt date as not recorded instead of failing the build', () => {
+    const damaged = sectionWith({ receipts: [{ ...RECEIPTS[0], forecastAt: 1e20, resolvedAt: -1e20 }] });
+    const text = stripTags(receiptsOf(renderState(damaged).html));
+    assert.match(text, /35% Did not happen Not recorded/);
+    assert.match(text, /Brent crude .* Not recorded 35%/);
+  });
+
+  it('publishes the receipts in the distribution as captured', () => {
+    assert.deepEqual(downloadFor(WITH_INTERVALS).scorecard.receipts, RECEIPTS);
+  });
+});
+
+describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
+  const tileOf = (html, label) => stripTags(html.match(new RegExp(`<div class="metric"><span>${label}</span>[\\s\\S]*?</div>`))[0]);
+  const funnelOf = (html) => {
+    const table = html.match(/<table data-maturity-funnel>[\s\S]*?<\/table>/);
+    return table ? stripTags(table[0]) : null;
+  };
+
+  it('whitelists both blocks down to their declared members, keeping a null interval', () => {
+    const selected = selectDeclaredScorecardFields({
+      ...WITH_INTERVALS.scorecard,
+      uncertainty: { ...UNCERTAINTY, skillBrier: null, draws: [0.1], overallBrier: { ...UNCERTAINTY.overallBrier, scope: 'overall' } },
+      funnel: { ...FUNNEL, entryIds: ['a'], scoredOfMatured: { ...FUNNEL.scoredOfMatured, sampleIds: ['b'] } },
+    });
+    assert.deepEqual(selected.uncertainty, { ...UNCERTAINTY, skillBrier: null });
+    assert.deepEqual(selected.funnel, FUNNEL);
+  });
+
+  it('prints the headline Brier interval in the result sentence and beside both Brier tiles', () => {
+    const { html } = renderState(WITH_INTERVALS);
+    const sentence = stripTags(html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/)[1]);
+    assert.match(sentence, /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\) across 180 scored forecasts/);
+    assert.match(tileOf(html, 'Brier score, headline cohort'), /180 scored forecasts, 95% interval 0\.098 to 0\.139/);
+    assert.match(tileOf(html, 'Brier score, every scored entry'), /490 scored forecasts, 95% interval 0\.178 to 0\.207/);
+    assert.match(renderAccuracyLlmsSection(WITH_INTERVALS), /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\)/);
+  });
+
+  it('shows a not-measurable interval when it is null, absent, or over a different population', () => {
+    const cases = [
+      sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: null, overallBrier: null } }),
+      LIVE_SECTION,
+      sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, count: 179 }, overallBrier: { ...UNCERTAINTY.overallBrier, ci95: [0.2] } } }),
+    ];
+    for (const section of cases) {
+      const { html } = renderState(section);
+      assert.match(tileOf(html, 'Brier score, headline cohort'), /95% interval not measurable/);
+      assert.match(tileOf(html, 'Brier score, every scored entry'), /95% interval not measurable/);
+      assert.doesNotMatch(stripTags(html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/)[1]), /interval/);
+    }
+  });
+
+  it('refuses an interval whose mean or bounds cannot belong to the printed score', () => {
+    for (const skillBrier of [
+      { ...UNCERTAINTY.skillBrier, mean: 0.2 },
+      { ...UNCERTAINTY.skillBrier, ci95: [-0.01, 0.139207] },
+      { ...UNCERTAINTY.skillBrier, ci95: [0.098461, 1.2] },
+      {},
+    ]) {
+      const section = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null, skillBrier } });
+      assert.match(tileOf(renderState(section).html, 'Brier score, headline cohort'), /95% interval not measurable/);
+      assert.equal(downloadFor(section).confidenceIntervals.meanScores.brier.published, false);
+    }
+  });
+
+  it('treats a one-forecast interval as not measurable, since it has zero width', () => {
+    const single = sectionWith({
+      overall: { ...LIVE_SCORECARD.overall, count: 1 },
+      uncertainty: { ...UNCERTAINTY, overallBrier: { count: 1, mean: 0.04, ci95: [0.04, 0.04], insufficientSample: true } },
+    });
+    assert.match(tileOf(renderState(single).html, 'Brier score, every scored entry'), /1 scored forecasts, 95% interval not measurable/);
+  });
+
+  it('flags an interval resting on fewer forecasts than the producer trusts', () => {
+    const small = sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } });
+    assert.match(tileOf(renderState(small).html, 'Brier score, headline cohort'), /95% interval 0\.098 to 0\.139, small sample/);
+  });
+
+  it('renders the funnel from matured to resolved to scored with Wilson intervals', () => {
+    const text = funnelOf(renderState(WITH_INTERVALS).html);
+    assert.ok(text, 'the funnel must be a real table');
+    assert.match(text, /Past their deadline or resolved 820/);
+    assert.match(text, /Resolved 94\.1% of 820 due or resolved forecasts \(772 forecasts\), 95% interval 92\.3% to 95\.6%/);
+    assert.match(text, /Graded 59\.8% of 820 due or resolved forecasts \(490 forecasts\), 95% interval 56\.4% to 63\.1%/);
+    assert.match(text, /Past their deadline, still open 12/);
+    assert.match(text, /Past their deadline, awaiting a judge 36/);
+    assert.match(text, /Not yet due, unresolved 130/);
+    assert.match(text, /No recorded deadline 8/);
+  });
+
+  it('prints a denominator with every funnel percentage', () => {
+    const text = funnelOf(withoutIntervals(renderState(WITH_INTERVALS).html));
+    for (const match of text.matchAll(/\d[\d.]*%/g)) {
+      assert.match(text.slice(match.index, match.index + 40), /% of [\d,]+/);
+    }
+  });
+
+  it('shows the funnel rates as not measurable when nothing has matured', () => {
+    const empty = {
+      ...FUNNEL, matured: 0, resolved: 0, scored: 0, pendingHardMatured: 0, pendingJudgeMatured: 0, resolvedOfMatured: null, scoredOfMatured: null,
+    };
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: empty })).html);
+    assert.match(text, /Resolved Not measurable/);
+    assert.match(text, /Graded Not measurable/);
+  });
+
+  it('shows a missing stage count as not measurable rather than zero', () => {
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: {} })).html);
+    assert.doesNotMatch(text, /\b0\b/);
+    assert.match(text, /Past their deadline or resolved Not measurable/);
+    assert.match(text, /Resolved Not measurable/);
+  });
+
+  it('derives both funnel rates from the stage counts it prints, not from a disagreeing rate object', () => {
+    const disagreeing = {
+      ...FUNNEL,
+      resolvedOfMatured: { count: 100, successes: 50, rate: 0.5, ci95: [0.4, 0.6] },
+      scoredOfMatured: { count: 100, successes: 10, rate: 0.1, ci95: [0.05, 0.17] },
+    };
+    const text = funnelOf(renderState(sectionWith({ uncertainty: UNCERTAINTY, funnel: disagreeing })).html);
+    assert.match(text, /Resolved 94\.1% of 820 due or resolved forecasts \(772 forecasts\)/);
+    assert.match(text, /Graded 59\.8% of 820 due or resolved forecasts \(490 forecasts\)/);
+  });
+
+  it('says the funnel is not carried rather than drawing zeros for an older capture', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.equal(funnelOf(html), null);
+    assert.match(stripTags(html), /This capture does not carry the maturity funnel yet/);
+  });
+
+  it('describes which mean scores carry an interval, on the page and in the distribution', () => {
+    const text = stripTags(renderState(WITH_INTERVALS).html);
+    assert.match(text, /No confidence intervals on the log scores/);
+    const download = downloadFor(WITH_INTERVALS);
+    assert.equal(download.confidenceIntervals.meanScores.brier.published, true);
+    assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
+    assert.equal(downloadFor(LIVE_SECTION).confidenceIntervals.meanScores.brier.published, false);
+    const bothNull = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null, skillBrier: null } });
+    assert.equal(downloadFor(bothNull).confidenceIntervals.meanScores.brier.published, false, 'a method with no interval publishes nothing');
+    const unrendered = sectionWith({
+      uncertainty: {
+        ...UNCERTAINTY,
+        overallBrier: { ...UNCERTAINTY.overallBrier, count: 489 },
+        skillBrier: { ...UNCERTAINTY.skillBrier, ci95: [0.2] },
+      },
+    });
+    assert.equal(downloadFor(unrendered).confidenceIntervals.meanScores.brier.published, false, 'an interval the page refuses to print is not published');
+    const collapsed = sectionWith({
+      skill: { count: 0, excludedScored: 40, excludedOrigins: ['bet_engine', 'state_derived'] },
+      overall: { count: 40, brier: 0.2, logScore: 0.6 },
+      uncertainty: { ...UNCERTAINTY, overallBrier: { count: 40, mean: 0.2, ci95: [0.15, 0.25], insufficientSample: false }, skillBrier: null },
+    });
+    assert.equal(classifyAccuracyState(collapsed).coverage, 'insufficient');
+    assert.doesNotMatch(renderState(collapsed).html, /95% interval 0\.150 to 0\.250/, 'an insufficient cohort renders no tiles');
+    assert.equal(downloadFor(collapsed).confidenceIntervals.meanScores.brier.published, false, 'the download claims only an interval the page printed');
+    const skillOnly = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null } });
+    assert.equal(downloadFor(skillOnly).confidenceIntervals.meanScores.brier.published, true);
   });
 });
 

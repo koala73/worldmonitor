@@ -44,11 +44,13 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   const allEntries = normalizeLedger(ledger);
-  const entries = allEntries.filter((entry) => {
+  const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
     return !Number.isFinite(resolvedAt) || resolvedAt >= minResolvedAt;
-  });
+  };
+  const entries = allEntries.filter((entry) => !isHorizonEntry(entry) && inWindow(entry));
+  const horizonEntries = allEntries.filter((entry) => isHorizonEntry(entry) && inWindow(entry));
 
   const resolved = entries.filter((entry) => entry?.status === 'resolved');
   const scored = resolved.filter(isScoredEntry);
@@ -57,7 +59,8 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const pendingJudge = entries.filter((entry) => entry?.status === 'pending-judge');
 
   const scorecard = {
-    schemaVersion: 1,
+    // 2: carries publishedByDomain (#5092).
+    schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
     methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.',
@@ -76,6 +79,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
     funnel: summarizeFunnel(entries, nowMs),
+    projections: summarizeProjectionHorizons(horizonEntries, nowMs),
   };
 
   const overall = summarizeScored(scored);
@@ -92,6 +96,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const excludeOrigins = new Set(options.skillExcludeOrigins ?? defaultExcluded);
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
+  scorecard.publishedByDomain = summarizePublishedByDomain(scored);
   scorecard.uncertainty = {
     method: `entry-level percentile bootstrap, ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
     overallBrier: brierInterval(scored, 'overall'),
@@ -189,6 +194,13 @@ export function isScoredEntry(entry) {
     && Number.isFinite(Number(entry.probability));
 }
 
+// Projection horizon windows (#7075) share the ledger with forecast windows
+// under `<parentKey>@<horizon>` keys. Every forecast-window reader partitions
+// on this so a projection never enters a forecast metric, fit, or cohort.
+export function isHorizonEntry(entry) {
+  return typeof entry?.spec?.horizon === 'string';
+}
+
 function outcomeNumber(entry) {
   return entry.outcome === 'YES' ? 1 : 0;
 }
@@ -220,6 +232,31 @@ function summarizeScored(entries) {
     brier: round(mean(entries.map((entry) => brier(entry)))),
     logScore: round(mean(entries.map((entry) => logScore(entry)))),
   };
+}
+
+// Per-domain accuracy over the published-origin population only, with each
+// domain's yesCount so a reader can derive its base-rate Brier. byDomain pools
+// every origin, so it cannot back a per-domain reliability claim (#5092).
+// isPublishedOriginEntry excludes bet_engine even when promoteBetEngine
+// (FORECAST_PROMOTE_BET_ENGINE, off in production) adds it to the headline
+// skill cohort, so the card badges and /accuracy/ domain table stay on
+// published forecasts until promotion is decided for them too (#8952).
+function summarizePublishedByDomain(scored) {
+  const byDomain = new Map();
+  for (const entry of scored.filter(isPublishedOriginEntry)) {
+    const domain = entry?.domain || 'unknown';
+    if (!byDomain.has(domain)) byDomain.set(domain, []);
+    byDomain.get(domain).push(entry);
+  }
+  return [...byDomain.keys()].sort().map((domain) => {
+    const entries = byDomain.get(domain);
+    return {
+      domain,
+      count: entries.length,
+      brier: round(mean(entries.map((entry) => brier(entry)))),
+      yesCount: entries.filter((entry) => entry.outcome === 'YES').length,
+    };
+  });
 }
 
 // Headline "real skill" summary: Brier/log score over scored entries whose
@@ -504,6 +541,45 @@ function marketProbability(entry) {
   return clampProbability(n > 1 ? n / 100 : n);
 }
 
+// Pinned to PROJECTION_HORIZONS (_forecast-resolution.mjs) by the scorecard test.
+const PROJECTION_HORIZON_ORDER = ['h24', 'd7', 'd30'];
+
+// Per-horizon projection lane (#7075). Reported beside the forecast scorecard,
+// never pooled into it: a Brier appears for a horizon only once that horizon
+// alone reaches the interval sample floor, so an early read cannot be mistaken
+// for measured skill.
+function summarizeProjectionHorizons(entries, nowMs) {
+  const byHorizon = PROJECTION_HORIZON_ORDER.map((horizon) => {
+    const group = entries.filter((entry) => entry?.spec?.horizon === horizon);
+    const resolved = group.filter((entry) => entry?.status === 'resolved');
+    const scored = resolved.filter(isScoredEntry);
+    const maturedPending = group.filter((entry) => {
+      if (entry?.status === 'resolved') return false;
+      const deadline = entryDeadline(entry);
+      return Number.isFinite(deadline) && deadline <= nowMs;
+    });
+    return {
+      horizon,
+      registered: group.length,
+      matured: resolved.length + maturedPending.length,
+      resolved: resolved.length,
+      scored: scored.length,
+      yes: scored.filter((entry) => entry.outcome === 'YES').length,
+      no: scored.filter((entry) => entry.outcome === 'NO').length,
+      unobserved: resolved.filter((entry) => entry?.outcome === 'UNOBSERVED').length,
+      void: resolved.filter((entry) => entry?.outcome === 'VOID').length,
+      brier: scored.length >= INTERVAL_MIN_SAMPLE ? brierInterval(scored, `projection:${horizon}`) : null,
+      insufficientSample: scored.length < INTERVAL_MIN_SAMPLE,
+    };
+  });
+  return {
+    semantics: 'point_in_time',
+    minSample: INTERVAL_MIN_SAMPLE,
+    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only at or above ${INTERVAL_MIN_SAMPLE} scored windows and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID.`,
+    byHorizon,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Calibration shadow metrics and activation gate (#7070).
 //
@@ -730,6 +806,160 @@ export function evaluateActivationGate(shadow, modeByDomain, context = {}, optio
     domains,
     context,
   };
+}
+
+// Public receipts (#5092): the newest resolved entries, reduced to members a
+// signed-out reader may see. Each receipt is built member by member, never
+// spread from the ledger, so judge rationale, archive contents, ledger keys and
+// metric paths have no route to the page.
+export const PUBLIC_RECEIPT_LIMIT = 20;
+export const PUBLIC_RECEIPT_FIELDS = Object.freeze([
+  'question', 'forecastAt', 'probability', 'outcome', 'resolvedAt',
+  'voidReason', 'sourceFeed', 'observedValue', 'citationTitle', 'citationUrl',
+]);
+const QUESTION_MAX_CHARS = 240;
+const CITATION_TITLE_MAX_CHARS = 160;
+const CITATION_URL_MAX_CHARS = 500;
+// Archive links were not gated to publisher domains until #8408 merged
+// (2026-09-21T16:39:21Z). Evidence lives 15 days (FORECAST_EVIDENCE_TTL_S), and
+// a day more covers the deploy rollout and instances still serving the old
+// build, so a citation on an entry resolved before this instant may carry an
+// ungated link; those receipts keep the title and drop the link.
+export const PUBLIC_RECEIPT_LINKS_SINCE_MS = Date.parse('2026-09-21T16:39:21Z') + 16 * DAY_MS;
+
+// Feed keys are internal Redis names, so a receipt carries a public code.
+export const RECEIPT_SOURCE_FEEDS = Object.freeze({
+  'conflict:ucdp-events:v1': 'ucdp-events',
+  'conflict:acled-resolution:v1:all:0:0': 'acled-events',
+  'unrest:events-resolution:v1': 'unrest-events',
+  'cyber:threats-bootstrap:v2': 'cyber-threats',
+  'supply_chain:chokepoints:v4': 'chokepoints',
+  'supply_chain:shipping:v2': 'shipping-rates',
+  'prediction:markets-bootstrap:v1': 'prediction-markets',
+  'prediction:markets-resolution:v1': 'prediction-market-settlements',
+  'intelligence:gpsjam:v2': 'gps-jamming',
+  'infra:outages:v1': 'internet-outages',
+  'market:stocks-bootstrap:v1': 'stock-prices',
+  'market:commodities-bootstrap:v1': 'commodity-prices',
+  'market:sectors:v2': 'sector-performance',
+  'market:gulf-quotes:v1': 'gulf-markets',
+  'market:etf-flows:v1': 'etf-flows',
+  'market:crypto:v1': 'crypto-prices',
+  'market:stablecoins:v1': 'stablecoins',
+  'economic:bis:eer:v1': 'bis-exchange-rates',
+  'economic:bis:policy:v1': 'bis-policy-rates',
+  'correlation:cards-bootstrap:v1': 'correlation-cards',
+  'energy:eia-petroleum:v1': 'eia-petroleum',
+  'economic:fred:v1:FEDFUNDS:0': 'fred',
+  'economic:fred:v1:UNRATE:0': 'fred',
+  'economic:fred:v1:CPIAUCSL:0': 'fred',
+  'economic:fred:v1:DGS10:0': 'fred',
+});
+export const RECEIPT_SOURCE_LABELS = Object.freeze({
+  'ucdp-events': 'UCDP conflict events',
+  'acled-events': 'ACLED conflict events',
+  'unrest-events': 'Protest and unrest events',
+  'cyber-threats': 'Cyber threat reports',
+  chokepoints: 'Shipping chokepoint status',
+  'shipping-rates': 'Shipping rates',
+  'prediction-markets': 'Prediction-market prices',
+  'prediction-market-settlements': 'Prediction-market settlements',
+  'gps-jamming': 'GPS jamming reports',
+  'internet-outages': 'Internet outage reports',
+  'stock-prices': 'Stock prices',
+  'commodity-prices': 'Commodity prices',
+  'sector-performance': 'Sector performance',
+  'gulf-markets': 'Gulf market quotes',
+  'etf-flows': 'ETF flows',
+  'crypto-prices': 'Crypto prices',
+  stablecoins: 'Stablecoin data',
+  'bis-exchange-rates': 'BIS exchange rates',
+  'bis-policy-rates': 'BIS policy rates',
+  'correlation-cards': 'Market correlation signals',
+  'eia-petroleum': 'EIA petroleum data',
+  fred: 'FRED economic data',
+  other: 'A World Monitor data feed',
+});
+export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
+  no_establishable_metric: 'The feed had no reading for this question',
+  value_source_never_settled: 'The feed never published a settled value',
+  count_source_window_not_retained: 'The feed no longer held the question window',
+  unsupported_window: 'The question could not be checked against its feed',
+  unsupported_metric_key: 'The question could not be checked against its feed',
+  not_hard_spec: 'The question could not be checked against its feed',
+  missing_threshold: 'The question was missing a threshold',
+  missing_deadline: 'The question was missing a deadline',
+  missing_generated_at: 'The forecast was missing its start date',
+  beyond_archive_horizon: 'The news archive no longer covered the question window',
+  no_archive_evidence: 'The news archive had nothing on the subject',
+  all_judges_void: 'Both judges found the evidence insufficient',
+  judge_disagreement: 'The judges disagreed',
+  judge_retry_exhausted: 'The judges returned no verdict',
+  other: 'Could not be resolved',
+});
+const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);
+
+function publicText(value, maxChars) {
+  const text = String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text;
+}
+
+function publicHttpsUrl(value) {
+  if (typeof value !== 'string' || value.length > CITATION_URL_MAX_CHARS) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function publicReceipt(entry) {
+  const forecastAt = Number(entry.generatedAt ?? entry.firstSeenAt);
+  const probability = Number(entry.probability);
+  const resolvedAt = Number(entry.resolvedAt);
+  const question = publicText(entry.spec?.question || entry.title, QUESTION_MAX_CHARS);
+  if (!RECEIPT_OUTCOMES.has(entry.outcome) || !question) return null;
+  if (![forecastAt, probability, resolvedAt].every(Number.isFinite)) return null;
+  const receipt = {
+    question,
+    forecastAt,
+    probability: Math.round(clampProbability(probability) * 1000) / 1000,
+    outcome: entry.outcome,
+    resolvedAt,
+  };
+  const evidence = entry.evidence ?? {};
+  if (entry.outcome === 'VOID') {
+    receipt.voidReason = Object.hasOwn(RECEIPT_VOID_REASON_LABELS, evidence.reason) ? evidence.reason : 'other';
+  }
+  if (entry.spec?.kind === 'hard') {
+    receipt.sourceFeed = Object.hasOwn(RECEIPT_SOURCE_FEEDS, entry.spec.sourceFeed) ? RECEIPT_SOURCE_FEEDS[entry.spec.sourceFeed] : 'other';
+    if (entry.outcome !== 'VOID' && typeof evidence.metricValue === 'number' && Number.isFinite(evidence.metricValue)) {
+      receipt.observedValue = evidence.metricValue;
+    }
+  } else if (entry.outcome !== 'VOID') {
+    const citation = (Array.isArray(evidence.citations) ? evidence.citations : [])
+      .find((row) => publicText(row?.title, CITATION_TITLE_MAX_CHARS));
+    if (citation) {
+      receipt.citationTitle = publicText(citation.title, CITATION_TITLE_MAX_CHARS);
+      const url = resolvedAt >= PUBLIC_RECEIPT_LINKS_SINCE_MS ? publicHttpsUrl(citation.url) : undefined;
+      if (url) receipt.citationUrl = url;
+    }
+  }
+  return receipt;
+}
+
+// Published-origin forecast windows inside the rolling window: shadow,
+// synthetic and unattributed origins never become receipts.
+export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMIT } = {}) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  return normalizeLedger(ledger)
+    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && isPublishedOriginEntry(entry)
+      && Number(entry.resolvedAt) >= minResolvedAt)
+    .map(publicReceipt)
+    .filter(Boolean)
+    .sort((a, b) => b.resolvedAt - a.resolvedAt || a.question.localeCompare(b.question))
+    .slice(0, limit);
 }
 
 function mean(values) {

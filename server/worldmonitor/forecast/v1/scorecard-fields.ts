@@ -16,14 +16,82 @@ export const SCORECARD_DATA_FIELDS = [
   'calibration',
   'vsMarketSkill',
   'skill',
+  'publishedByDomain',
+  'uncertainty',
+  'funnel',
+  'receipts',
 ] as const satisfies readonly (keyof GetForecastScorecardResponse)[];
 
 export type ScorecardData = Pick<GetForecastScorecardResponse, typeof SCORECARD_DATA_FIELDS[number]>;
 
+const INTERVAL_FIELDS = ['count', 'mean', 'ci95', 'insufficientSample'] as const;
+const PROPORTION_FIELDS = ['count', 'successes', 'rate', 'ci95'] as const;
+
+// The two #7072 blocks are filtered member by member, matching
+// SCORECARD_NESTED_OBJECT_FIELDS and SCORECARD_NESTED_CHILD_FIELDS in
+// scripts/build-accuracy-page.mjs (a test pins the parity). The producer writes
+// null for an interval or rate it cannot compute; the contract types those as
+// optional messages, so null is omitted here. Older blocks pass through as-is.
+export const SCORECARD_BLOCK_FIELDS = {
+  uncertainty: {
+    fields: ['method', 'overallBrier', 'skillBrier'],
+    children: { overallBrier: INTERVAL_FIELDS, skillBrier: INTERVAL_FIELDS },
+  },
+  funnel: {
+    fields: [
+      'matured', 'immature', 'maturityUnknown', 'resolved', 'scored', 'pendingHardMatured', 'pendingJudgeMatured',
+      'resolvedOfMatured', 'scoredOfMatured',
+    ],
+    children: { resolvedOfMatured: PROPORTION_FIELDS, scoredOfMatured: PROPORTION_FIELDS },
+  },
+} as const;
+
+type BlockName = keyof typeof SCORECARD_BLOCK_FIELDS;
+
+// Mirrors PUBLIC_RECEIPT_FIELDS in scripts/_forecast-scorecard.mjs (a test pins
+// the parity), so a seeder row carrying anything else is trimmed here too.
+export const RECEIPT_FIELDS = [
+  'question', 'forecastAt', 'probability', 'outcome', 'resolvedAt',
+  'voidReason', 'sourceFeed', 'observedValue', 'citationTitle', 'citationUrl',
+] as const;
+
+function selectReceipts(value: unknown): unknown {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(isRecord).map((row) => pickNonNull(row, RECEIPT_FIELDS));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickNonNull(value: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (value[field] != null) out[field] = value[field];
+  }
+  return out;
+}
+
+function selectBlock(block: BlockName, value: unknown): unknown {
+  if (!isRecord(value)) return undefined;
+  const { fields, children } = SCORECARD_BLOCK_FIELDS[block];
+  const out = pickNonNull(value, fields);
+  for (const [child, childFields] of Object.entries(children)) {
+    if (!(child in out)) continue;
+    if (isRecord(out[child])) out[child] = pickNonNull(out[child] as Record<string, unknown>, childFields);
+    else delete out[child];
+  }
+  return out;
+}
+
 export function selectScorecardFields(data: Record<string, unknown>): Partial<ScorecardData> {
   const selected: Record<string, unknown> = {};
   for (const field of SCORECARD_DATA_FIELDS) {
-    if (data[field] != null) selected[field] = data[field];
+    if (data[field] == null) continue;
+    const value = field === 'receipts'
+      ? selectReceipts(data[field])
+      : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
+    if (value !== undefined) selected[field] = value;
   }
   return selected as Partial<ScorecardData>;
 }

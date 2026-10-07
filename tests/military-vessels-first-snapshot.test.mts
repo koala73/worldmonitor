@@ -14,6 +14,8 @@ type AisPosition = { mmsi: string; name: string; lat: number; lon: number; shipT
 type RuntimeGlobals = typeof globalThis & {
   __aisRegister?: (callback: (data: AisPosition) => void) => Promise<void>;
   __usniVessels?: Array<Record<string, unknown>>;
+  __candidateMode?: string;
+  __rosterMode?: string;
 };
 
 const runtime = globalThis as RuntimeGlobals;
@@ -34,13 +36,14 @@ function stubs() {
             export function unregisterAisCallback() {}
             export function isAisConfigured() { return true; }
             export function initAisStream() {}
+            export function getAisCandidateDataState() { return {mode: globalThis.__candidateMode ?? 'live', timestamp:Date.now(),offline:false}; }
           ` };
         }
         if (args.path === 'stub:usni') {
           return { loader: 'js', contents: `
-            export async function fetchUSNIFleetReport() {
+            export async function fetchUSNIFleetObservation() {
               const vessels = globalThis.__usniVessels;
-              return vessels ? { vessels } : null;
+              return {report:vessels ? { vessels,articleDate:'2026-10-05' } : null,dataState:{mode:globalThis.__rosterMode ?? (vessels ? 'live' : 'unavailable'),timestamp:Date.now(),offline:false}};
             }
             export function mergeUSNIWithAIS(vessels, report, clusters) {
               return { vessels: [...vessels, ...report.vessels], clusters };
@@ -59,7 +62,7 @@ function stubs() {
 }
 
 type Harness = {
-  fetchMilitaryVessels(): Promise<{ vessels: Array<{ id: string; mmsi: string }> }>;
+  fetchMilitaryVessels(): Promise<{ vessels: Array<{ id: string; mmsi: string }>; negativeEvidenceConfirmed: boolean; dataState: { mode: string }; coverageNotes: string[] }>;
   disconnectMilitaryVesselStream(): void;
 };
 
@@ -88,6 +91,8 @@ before(async () => {
 afterEach(() => {
   delete runtime.__aisRegister;
   delete runtime.__usniVessels;
+  delete runtime.__candidateMode;
+  delete runtime.__rosterMode;
 });
 
 async function loadHarness(): Promise<Harness> {
@@ -111,7 +116,10 @@ test('the first snapshot includes AIS contacts delivered by the first candidate 
 
 test('a candidate poll that never settles does not hold the snapshot', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  runtime.__aisRegister = () => new Promise<void>(() => {});
+  runtime.__candidateMode = 'unavailable';
+  runtime.__usniVessels = [];
+  let deliver!: (data: AisPosition) => void;
+  runtime.__aisRegister = (callback) => { deliver = callback; return new Promise<void>(() => {}); };
   const harness = await loadHarness();
 
   let settled = false;
@@ -122,9 +130,15 @@ test('a candidate poll that never settles does not hold the snapshot', async (t)
   await flush();
   assert.equal(settled, false, 'the snapshot waits for candidates until the cap');
   t.mock.timers.tick(1);
-  const { vessels } = await pending;
+  const snapshot = await pending;
 
-  assert.deepEqual(vessels, []);
+  assert.deepEqual(snapshot.vessels, []);
+  assert.equal(snapshot.negativeEvidenceConfirmed, false, 'first-poll timeout is not confirmed absence');
+  runtime.__candidateMode = 'live';
+  deliver(lawEnforcementVessel);
+  const recovered = await harness.fetchMilitaryVessels();
+  assert.deepEqual(recovered.vessels.map(v => v.mmsi), ['366999001']);
+  assert.equal(recovered.negativeEvidenceConfirmed, true, 'a later accepted live candidate and live roster recover confirmation');
   harness.disconnectMilitaryVesselStream();
 });
 
@@ -163,4 +177,17 @@ test('the vessel cap keeps hull-numbered roster ships ahead of generic AIS conta
   assert.equal(vessels.length, 500);
   assert.ok(vessels.some((v) => v.id === 'usni-DDG-51'), 'the roster destroyer must survive the cap');
   harness.disconnectMilitaryVesselStream();
+});
+
+for (const candidateMode of ['live','cached','unavailable']) {
+ test(`empty vessel confirmation requires current candidate and current roster (${candidateMode})`,async()=>{
+  runtime.__aisRegister=async()=>{};runtime.__usniVessels=[];Object.assign(globalThis,{__candidateMode:candidateMode,__rosterMode:'live'});const h=await loadHarness();
+  try {const result=await h.fetchMilitaryVessels() as any;assert.equal(result.negativeEvidenceConfirmed,candidateMode==='live');assert.deepEqual(result.vessels,[]);}finally{h.disconnectMilitaryVesselStream();delete (globalThis as any).__candidateMode;delete (globalThis as any).__rosterMode;}
+ });
+}
+test('cached empty USNI cannot confirm a current empty AIS sample',async()=>{
+ runtime.__aisRegister=async()=>{};runtime.__usniVessels=[];Object.assign(globalThis,{__candidateMode:'live',__rosterMode:'cached'});const h=await loadHarness();try{const r=await h.fetchMilitaryVessels() as any;assert.equal(r.negativeEvidenceConfirmed,false);assert.match(r.coverageNotes.join(' '),/cached/);}finally{h.disconnectMilitaryVesselStream();delete (globalThis as any).__candidateMode;delete (globalThis as any).__rosterMode;}
+});
+test('both source observations unavailable carry unavailable state rather than certified empty',async()=>{
+ runtime.__aisRegister=async()=>{};Object.assign(globalThis,{__candidateMode:'unavailable',__rosterMode:'unavailable'});const h=await loadHarness();try{const r=await h.fetchMilitaryVessels() as any;assert.equal(r.dataState.mode,'unavailable');assert.equal(r.negativeEvidenceConfirmed,false);}finally{h.disconnectMilitaryVesselStream();delete (globalThis as any).__candidateMode;delete (globalThis as any).__rosterMode;}
 });

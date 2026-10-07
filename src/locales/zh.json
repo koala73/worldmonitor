@@ -2358,6 +2358,12 @@
         "stale": "数据过期",
         "staleHint": "最近一次评分于 {{date}}。此后评分程序未再运行，因此这些数字比应有的更旧。",
         "fullRecord": "完整记录"
+      },
+      "reliability": {
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs 基准率 {{base}}",
+        "measuredHint": "过去 {{days}} 天内 {{n}} 个已评分预测中，已发布的 {{domain}} 预测的 Brier 评分。基准率是如果始终按该领域观察到的是概率回答所得的评分。分数越低越好。这是该领域的历史记录，不是此预测的记录。",
+        "unmeasured": "暂未测量",
+        "unmeasuredHint": "{{domain}} 预测在过去 {{days}} 天内有 {{n}} 个已评分的结果。领域需要至少 {{min}} 个结果才能显示准确度。"
       }
     },
     "escalationCorrelation": {

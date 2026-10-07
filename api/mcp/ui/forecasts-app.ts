@@ -11,6 +11,8 @@ const STYLES = `
   .fc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .fc-title { font-size: 13px; color: var(--fg); min-width: 0; }
   .fc-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .fc-reliability { display: block; width: fit-content; max-width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .fc-reliability:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .fc-meta { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
@@ -60,12 +62,46 @@ const RENDER = `
     var host = q("list");
     var generation = node.generatedAt == null ? "" : String(node.generatedAt);
     var cases = renderData.forecastCases || (renderData.forecastCases = { generation: "", cache: new Map(), pending: new Map(), targets: new Map(), serial: 0 });
-    cases.pending.forEach(function (cancel) { cancel(); });
-    cases.pending.clear();
-    if (cases.generation !== generation) { cases.cache.clear(); cases.generation = generation; }
     var panel = object(data.panelRequest);
+    var listKey = JSON.stringify([preds, generation, text(panel.token), state.available, total]);
+    var reliability = object(d.reliability);
+    function badge(domain) {
+      if (reliability.status !== "ready" || !Array.isArray(reliability.byDomain)) return null;
+      var row = reliability.byDomain.find(function (value) { return value && value.domain === domain; });
+      if (!row) return null;
+      var label = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : "Forecast";
+      var measured = row.kind === "measured" && number(row.brier) != null && number(row.yesShare) != null;
+      var main = measured ? label + " n=" + row.n + " · Brier " + row.brier.toFixed(3) + " vs base rate " + (row.yesShare * (1 - row.yesShare)).toFixed(3) : "Not yet measured";
+      if (reliability.stale) main = "Out of date · " + main;
+      var link = el("a", "fc-reliability", main);
+      link.href = "https://www.worldmonitor.app/accuracy/#by-domain"; link.target = "_blank"; link.rel = "noopener noreferrer";
+      link.setAttribute("aria-label", main + ". " + label + ": " + row.n + " published outcomes over " + reliability.windowDays + " days." + (reliability.freshnessUnknown ? " Freshness unknown." : ""));
+      return link;
+    }
+    var source = [];
+    var generatedAt = timestamp(node.generatedAt);
+    if (generatedAt) source.push("Generated: " + generatedAt);
+    if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
+    if (node.degraded) source.push("Forecast source degraded");
+    if (data.stale || node.stale) source.push("stale cache");
+    if (text(node.error)) source.push(text(node.error).split("_").join(" "));
+    q("foot").textContent = source.join(" · ");
+    if (cases.listKey === listKey && cases.updateReliability) {
+      cases.updateReliability(reliability); reportSize(); return;
+    }
+    cases.pending.forEach(function (cancel) { cancel(); });
+    cases.pending.clear(); cases.cache.clear(); cases.generation = generation; cases.listKey = listKey;
+    cases.updateReliability = function (value) {
+      reliability = value;
+      host.querySelectorAll(".fc").forEach(function (fc) {
+        var old = fc.querySelector(".fc-reliability");
+        var next = badge(fc.getAttribute("data-forecast-domain"));
+        if (old) { if (next) old.replaceWith(next); else old.remove(); }
+        else if (next) fc.insertBefore(next, fc.querySelector("details"));
+      });
+    };
     var theaterState = renderData.forecastTheaters || (renderData.forecastTheaters = { key: "", value: null, error: "", pending: false, cancel: null, serial: 0 });
-    var theaterKey = generation + "|" + text(panel.token);
+    var theaterKey = listKey;
     if (theaterState.key !== theaterKey) {
       if (theaterState.cancel) theaterState.cancel();
       theaterState.key = theaterKey; theaterState.value = null; theaterState.error = "";
@@ -356,6 +392,7 @@ const RENDER = `
     }
     function appendForecast(p) {
       var fc = el("article", "fc");
+      fc.setAttribute("data-forecast-domain", text(p.domain));
       var head = el("div", "fc-head");
       head.appendChild(el("span", "fc-title", text(p.title) || "Forecast"));
       var pr = num(p.probability);
@@ -375,6 +412,8 @@ const RENDER = `
         meta.appendChild(el("span", "chip", label + " · " + (adjustment > 0 ? "+" : "−") + Math.round(Math.abs(adjustment) * 100) + "%"));
       }
       if (meta.childNodes.length) fc.appendChild(meta);
+      var reliabilityBadge = badge(text(p.domain));
+      if (reliabilityBadge) fc.appendChild(reliabilityBadge);
       var bar = probabilityBar(pct);
       if (bar) fc.appendChild(bar);
       var details = el("details");
@@ -421,14 +460,6 @@ const RENDER = `
     options("domain", "domain", "All domains");
     options("region", "region", "All regions");
     renderList();
-    var source = [];
-    var generatedAt = timestamp(node.generatedAt);
-    if (generatedAt) source.push("Generated: " + generatedAt);
-    if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
-    if (node.degraded) source.push("Forecast source degraded");
-    if (data.stale || node.stale) source.push("stale cache");
-    if (text(node.error)) source.push(text(node.error).split("_").join(" "));
-    q("foot").textContent = source.join(" · ");
     renderTheaters();
 `;
 

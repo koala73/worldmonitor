@@ -33,6 +33,7 @@ import {
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE, UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
+import { buildAppHtml } from '../api/mcp/ui/shell.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const originalFetch = globalThis.fetch;
@@ -173,6 +174,9 @@ function mountWidgetHtml(html) {
 
   return {
     posted,
+    sendMessage(msg, fromParent = true) {
+      listeners.get('message')({ source: fromParent ? parent : {}, data: { jsonrpc: '2.0', ...msg } });
+    },
     sendToolResult(structuredContent) {
       listeners.get('message')({
         source: parent,
@@ -768,8 +772,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       assert.match(html, /function showError/, `${uri}: must route soft errors to a visible showError() path`);
       // The detector MUST run before renderData in safeRender — otherwise a
       // blank/empty-success dashboard renders before the error is caught.
-      assert.match(html, /softError\(data\)[\s\S]*renderData\(data\)/,
-        `${uri}: safeRender must check softError(data) before calling renderData(data)`);
+      assert.match(html, /softError\(data\)[\s\S]*renderData\(data, renderContext\)/,
+        `${uri}: safeRender must check softError(data) before calling renderData(data, renderContext)`);
     }
   });
 
@@ -1904,5 +1908,69 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     );
     assert.equal(card.capabilities?.resources, true,
       'server-card.json::capabilities.resources must be true (wire-card parity)');
+  });
+});
+
+describe('shared MCP shell notification origin', () => {
+  const html = buildAppHtml({
+    title: 'Controlled origin case', appName: 'controlled-origin-case', styles: '',
+    body: '<div id="empty"></div><div id="card"><p id="capture"></p><p id="panel-usage"></p></div>',
+    renderBody: 'setText("capture", JSON.stringify({data:data,origin:typeof renderContext === "undefined" ? "missing" : renderContext.kind}));',
+  });
+  const value = { brief: 'Claim [1].', sources: [{ title: 'One', source: 'Wire', url: 'https://example.invalid/one' }] };
+  const content = v => [{ type: 'text', text: JSON.stringify(v) }];
+  const attribution = { data: value, _attribution: { sources: [{ name: 'Controlled wire' }] } };
+  const cases = [
+    ['attribution wrapper', { structuredContent: attribution, content: content(attribution) }, attribution, 'unknown'],
+    ['ordinary structured', { structuredContent: value, content: content(value) }, value, 'ordinary-structured'],
+    ['equal text fallback', { content: content(value) }, value, 'text-fallback'],
+    ['genuine wrapped projection', { structuredContent: { projection: value }, content: content(value) }, { projection: value }, 'projection-wrapped'],
+    ['structured preference', { structuredContent: value, content: content({ brief: 'Conflicting' }) }, value, 'ordinary-structured'],
+    ['structured array', { structuredContent: [], content: content(value) }, [], 'unknown'],
+    ['structured scalar falls back', { structuredContent: 7, content: content(value) }, value, 'text-fallback'],
+    ['null falls back', { structuredContent: null, content: content(value) }, value, 'text-fallback'],
+    ['bad JSON then valid text', { content: [{ type: 'text', text: 'bad json' }, ...content(value)] }, value, 'text-fallback'],
+    ['missing result fields', {}, null, 'unknown'],
+    ['text array', { content: content([]) }, [], 'text-fallback'],
+    ['text scalar', { content: content(7) }, 7, 'text-fallback'],
+  ];
+  for (const [name, result, data, origin] of cases) it(`passes per-notification render origin for ${name}`, () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+    const actual = JSON.parse(view.text('capture'));
+    assert.deepEqual(actual.data, data);
+    assert.equal(actual.origin, origin);
+  });
+  it('accepts the existing direct params tool-result form with exact data and origin', () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { structuredContent: value, content: content({ brief: 'Conflicting' }) } });
+    assert.deepEqual(JSON.parse(view.text('capture')), { data: value, origin: 'ordinary-structured' });
+  });
+  it('resets origin on replacements and ignores foreign-source notifications', () => {
+    const view = mountWidgetHtml(html);
+    for (const [, result, data, origin] of cases) {
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+      assert.deepEqual(JSON.parse(view.text('capture')), { data, origin });
+    }
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: value } } }, false);
+    assert.equal(view.text('capture'), before);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: content(value) } });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'text-fallback');
+  });
+  it('preserves initialization, usage and soft-error behavior', () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ id: 1, result: { hostCapabilities: {}, hostContext: {} } });
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/initialized'));
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: {
+      structuredContent: value,
+      _meta: { 'worldmonitor/usage': { unit: 'requests', remaining: 0, limit: 50, resetsAt: '2026-10-08T00:00:00Z' } },
+    } } });
+    assert.match(view.text('panel-usage'), /0 of 50 requests remaining/);
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: { _budget_exceeded: true } } } });
+    assert.equal(view.text('capture'), before);
+    assert.match(view.text('empty'), /too large/);
+    assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
   });
 });

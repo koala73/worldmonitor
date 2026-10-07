@@ -273,8 +273,9 @@ test('public algorithms docs describe flow_drop the way the detector actually wo
   // FLOW_DROP_KEYWORDS hit within the same cluster. Two other surfaces already
   // described it correctly - docs/signal-intelligence.mdx and the SIGNAL_CONTEXT
   // copy in src/utils/analysis-constants.ts - which is what makes the algorithms
-  // row an outlier rather than a difference of emphasis.
-  const detector = readRepo('src/services/analysis-core.ts');
+  // row an outlier rather than a difference of emphasis. The detector lives in
+  // shared/market-alert-core.js (#8867).
+  const detector = readRepo('shared/market-alert-core.js');
   assert.match(detector, /const hasPipeline = titles\.some\(title => includesKeyword\(title, PIPELINE_KEYWORDS\)\)/);
   assert.match(detector, /const hasFlowDrop = titles\.some\(title => includesKeyword\(title, FLOW_DROP_KEYWORDS\)\)/);
   assert.doesNotMatch(detector, /ETF/);

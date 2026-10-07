@@ -1,4 +1,5 @@
 import type { MilitaryVessel, MilitaryVesselCluster, MilitaryVesselType } from '@/types';
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { createCircuitBreaker } from '@/utils';
 import {
   KNOWN_NAVAL_VESSELS,
@@ -11,9 +12,10 @@ import {
   unregisterAisCallback,
   isAisConfigured,
   initAisStream,
+  getAisCandidateDataState,
   type AisPositionData,
 } from './maritime';
-import { fetchUSNIFleetReport, mergeUSNIWithAIS } from './usni-fleet';
+import { fetchUSNIFleetObservation, mergeUSNIWithAIS } from './usni-fleet';
 
 // In-memory vessel tracking
 const trackedVessels = new Map<string, MilitaryVessel>();
@@ -613,15 +615,23 @@ async function awaitFirstCandidates(): Promise<void> {
 /**
  * Main function to get military vessels
  */
-export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
-
-  return breaker.execute(async () => {
+export async function fetchMilitaryVessels(): Promise<VesselSnapshot & {
+  dataState: BreakerDataState;
+  negativeEvidenceConfirmed: boolean;
+  coverageNotes: string[];
+}> {
+  const fallback: VesselSnapshot = { vessels: [], clusters: [] };
+  let completed: VesselSnapshot | undefined;
+  let completedState: BreakerDataState | undefined;
+  let negativeEvidenceConfirmed = false;
+  let coverageNotes: string[] = [];
+  const result = await breaker.execute(async () => {
     // Initialize stream if not running
     if (!isTracking && isAisConfigured()) {
       initMilitaryVesselStream();
     }
     // Start the roster fetch before the candidate wait so the two overlap.
-    const usniPending = fetchUSNIFleetReport();
+    const usniPending = fetchUSNIFleetObservation();
     usniPending.catch(() => {}); // Rejection is handled by the merge below.
     await awaitFirstCandidates();
 
@@ -633,19 +643,44 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
     // Generate AIS-only clusters
     const aisClusters = clusterVessels(vessels);
 
-    // Merge with USNI Fleet Tracker data (non-blocking)
+    const candidateState = getAisCandidateDataState();
+    coverageNotes = [candidateState.mode === 'live'
+      ? 'AIS counts use the current relay candidate sample. They are bounded observations, not global coverage.'
+      : 'Current AIS candidate coverage is unavailable or cached. Retained positive positions are previous observations.'];
+    let sample: VesselSnapshot = { vessels, clusters: aisClusters };
+    let rosterLive = false;
     try {
-      const usniReport = await usniPending;
-      if (usniReport && usniReport.vessels.length > 0) {
-        const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
-        return limitVesselSnapshot(merged);
+      const { report, dataState } = await usniPending;
+      rosterLive = report !== null && dataState.mode === 'live' && !dataState.offline;
+      negativeEvidenceConfirmed = candidateState.mode === 'live' && !candidateState.offline
+        && dataState.mode === 'live' && !dataState.offline && report !== null;
+      coverageNotes.push(report
+        ? `USNI fleet report ${report.articleDate}. Regions and homeports are approximate locations, not live positions.${dataState.mode !== 'live' ? ' The roster is cached; it cannot confirm current absence.' : ''}`
+        : 'USNI fleet roster unavailable; current absence is unconfirmed.');
+      if (report && report.vessels.length > 0) {
+        sample = limitVesselSnapshot(mergeUSNIWithAIS(vessels, report, aisClusters));
       }
     } catch (e) {
       console.warn('[Military Vessels] USNI merge failed, using AIS only:', (e as Error).message);
+      coverageNotes.push('USNI fleet roster unavailable; current absence is unconfirmed.');
     }
 
-    return { vessels, clusters: aisClusters };
-  }, { vessels: [], clusters: [] });
+    completed = sample;
+    completedState = candidateState.mode === 'live' || rosterLive
+      ? { mode: 'live', timestamp: Date.now(), offline: false }
+      : sample.vessels.length > 0
+        ? { mode: 'cached', timestamp: null, offline: candidateState.offline }
+        : { mode: 'unavailable', timestamp: null, offline: candidateState.offline };
+    return completed;
+  }, fallback);
+  const ownResult = result === completed;
+  const dataState: BreakerDataState = result === fallback
+    ? { mode: 'unavailable', timestamp: null, offline: breaker.getDataState().offline }
+    : ownResult && completedState
+      ? completedState
+      : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
+  return { ...result, dataState, negativeEvidenceConfirmed: ownResult && negativeEvidenceConfirmed,
+    coverageNotes: ownResult ? coverageNotes : ['Military vessel sample is unavailable or cached; current absence is unconfirmed.'] };
 }
 
 /**

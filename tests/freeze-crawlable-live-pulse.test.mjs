@@ -207,6 +207,20 @@ function countryPayload() {
       ],
       vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
       skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+      publishedByDomain: [{ domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 }, { domain: 'market', count: 60, brier: 0.13, yesCount: 22 }],
+      uncertainty: {
+        method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072',
+        overallBrier: { count: 490, mean: 0.192435, ci95: [0.178214, 0.207013], insufficientSample: false },
+        skillBrier: null,
+      },
+      funnel: {
+        matured: 820, immature: 130, maturityUnknown: 8, resolved: 772, scored: 490, pendingHardMatured: 12, pendingJudgeMatured: 36,
+        resolvedOfMatured: { count: 820, successes: 772, rate: 0.941463, ci95: [0.923243, 0.955567] },
+        scoredOfMatured: { count: 820, successes: 490, rate: 0.597561, ci95: [0.563617, 0.630595] },
+      },
+      receipts: [
+        { question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75, key: 'internal-ledger-key' },
+      ],
       degraded: false,
       stale: false,
       error: '',
@@ -723,7 +737,8 @@ describe('freeze crawlable live pulse coverage gates', () => {
       [...SCORECARD_DECLARED_FIELDS].sort(),
       'the committed snapshot must carry the declared surface and nothing else',
     );
-    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane/);
+    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane|internal-ledger-key/);
+    assert.equal(section.scorecard.receipts[0].observedValue, 100.75);
     const state = classifyAccuracyState(section);
     assert.equal(state.availability, 'ok');
     assert.equal(state.coverage, 'measurable');

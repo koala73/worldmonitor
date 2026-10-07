@@ -86,6 +86,8 @@ vi.mock('@/services/security-advisories', async (importOriginal) => ({
   fetchSecurityAdvisories: mocks.fetchSecurityAdvisories,
 }));
 
+vi.mock('@/services/cached-theater-posture',()=>({fetchCachedTheaterPosture:async()=>null}));
+
 vi.mock('@/services/usni-fleet', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/usni-fleet')>(),
   fetchUSNIFleetReport: mocks.fetchUSNIFleetReport,
@@ -322,7 +324,8 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
   });
 
   it('invokes refreshOpenCountryTimeline after loadMilitary assigns tracks', async () => {
-    mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [] });
+    mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [],dataState:{mode:'cached',timestamp:1000,offline:false} });
+    vesselsModule.fetchMilitaryVessels.mockResolvedValueOnce({vessels:[],clusters:[],dataState:{mode:'live',timestamp:2000,offline:false},negativeEvidenceConfirmed:false,coverageNotes:['partial roster']} as never);
     const { loader, ctx, refreshOpenCountryMilitary, refreshOpenCountryTimeline } = await makeLoader();
     refreshOpenCountryTimeline.mockImplementation(() => {
       expect(ctx.intelligenceCache.military).toEqual({
@@ -330,6 +333,10 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
         flightClusters: [],
         vessels: [],
         vesselClusters: [],
+        flightDataState: {mode:'cached',timestamp:1000,offline:false},
+        vesselDataState: {mode:'live',timestamp:2000,offline:false},
+        vesselNegativeEvidenceConfirmed: false,
+        vesselCoverageNotes: ['partial roster'],
       });
     });
 
@@ -341,7 +348,8 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
   });
 
   it('invokes refreshOpenCountryTimeline after the intelligence military path assigns cache', async () => {
-    mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [] });
+    mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [],dataState:{mode:'cached',timestamp:1000,offline:false} });
+    vesselsModule.fetchMilitaryVessels.mockResolvedValueOnce({vessels:[],clusters:[],dataState:{mode:'live',timestamp:2000,offline:false},negativeEvidenceConfirmed:false,coverageNotes:['partial roster']} as never);
     const { loader, ctx, refreshOpenCountryMilitary, refreshOpenCountryTimeline } = await makeLoader();
     refreshOpenCountryTimeline.mockImplementation(() => {
       expect(ctx.intelligenceCache.military).toEqual({
@@ -349,6 +357,10 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
         flightClusters: [],
         vessels: [],
         vesselClusters: [],
+        flightDataState: {mode:'cached',timestamp:1000,offline:false},
+        vesselDataState: {mode:'live',timestamp:2000,offline:false},
+        vesselNegativeEvidenceConfirmed: false,
+        vesselCoverageNotes: ['partial roster'],
       });
     });
 
@@ -358,4 +370,11 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     expect(refreshOpenCountryMilitary).toHaveBeenCalledOnce();
     expect(ctx.intelligenceCache.military?.flights).toEqual([flight]);
   });
+  it('warm military cache retains observation metadata and performs no new source reads',async()=>{
+    const {loader,ctx}=await makeLoader();
+    const cached={flights:[flight],flightClusters:[],vessels:[],vesselClusters:[],flightDataState:{mode:'cached' as const,timestamp:1000,offline:false},vesselDataState:{mode:'unavailable' as const,timestamp:null,offline:false},vesselNegativeEvidenceConfirmed:false,vesselCoverageNotes:['retained partial']};
+    ctx.intelligenceCache.military=cached;await loader.loadMilitary();
+    expect(ctx.intelligenceCache.military).toBe(cached);expect(mocks.fetchMilitaryFlights).not.toHaveBeenCalled();expect(vesselsModule.fetchMilitaryVessels).not.toHaveBeenCalled();expect(ctx.intelligenceCache.military?.vesselCoverageNotes).toEqual(['retained partial']);
+  });
+
 });

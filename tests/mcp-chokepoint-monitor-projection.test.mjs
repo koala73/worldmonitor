@@ -153,3 +153,141 @@ describe('Chokepoint Monitor current resource and private legacy read', () => {
     } finally { globalThis.fetch = original; }
   });
 });
+
+
+describe('Chokepoint Monitor supplied display truth', () => {
+  it('keeps blank supplied risk unknown after mounting the supplied row', async () => {
+    await mount(result(payload({ malacca: row({ riskLevel: '' }) })), document => {
+      assert.equal(rows(document).length, 1, 'Supplied row must mount before semantic assertion');
+      assert.match(rows(document)[0].textContent, /Malacca/);
+      assert.equal(rows(document)[0].querySelector('.risk').textContent, 'Unknown');
+    });
+  });
+  it('keeps missing and malformed risk neutral while preserving explicit risk values', async () => {
+    for (const riskLevel of [undefined, null, false, 0, {}, [], '', '  ', 'unsupported', '<img src=x>']) {
+      await mount(result(payload({ malacca: row({ riskLevel }) })), document => {
+        const badge = rows(document)[0].querySelector('.risk');
+        assert.equal(badge.textContent, 'Unknown');
+        assert.equal(badge.style.color, document.defaultView.getComputedStyle(document.documentElement).getPropertyValue('--muted').trim());
+      });
+    }
+    for (const riskLevel of ['normal', 'high', 'critical', 'severe', 'moderate', 'elevated', 'warning', 'low']) {
+      await mount(result(payload({ controlled: row({ riskLevel }) })), document => {
+        assert.equal(rows(document)[0].querySelector('.risk').textContent, riskLevel);
+      });
+    }
+  });
+  it('uses strict rolling counts and availability flags without coercing unknown values to zero', async () => {
+    for (const value of [undefined, null, false, true, '', '0', '18', -1, 1.5, NaN, Infinity]) {
+      await mount(result(payload({ controlled: row({ todayTotal: value, todayTanker: value }) })), document => {
+        const stats = rows(document)[0].querySelectorAll('.cstat');
+        assert.equal(stats[0].querySelector('.k').textContent, 'Last 24 hours');
+        assert.equal(stats[0].querySelector('.v').textContent, '—');
+        assert.equal(stats[2].querySelector('.v').textContent, '—');
+        assert.doesNotMatch(rows(document)[0].textContent, /Transits today/);
+      });
+    }
+    for (const todayCountsAvailable of [undefined, true, false, null, 'true', 1]) {
+      await mount(result(payload({ controlled: row({ todayTotal: 0, todayTanker: 0, todayCountsAvailable }) })), document => {
+        const values = rows(document)[0].querySelectorAll('.cstat .v');
+        const expected = todayCountsAvailable === undefined || todayCountsAvailable === true ? '0' : '—';
+        assert.equal(values[0].textContent, expected);
+        assert.equal(values[2].textContent, expected);
+      });
+    }
+  });
+  it('separates PortWatch history from positive AIS counts and requires explicit history for change', async () => {
+    for (const dataAvailable of [false, undefined, null, 'true', 1]) {
+      await mount(result(payload({ hormuz: row({ todayTotal: 42, todayTanker: 11, dataAvailable, wowChangePct: -80 }) })), document => {
+        const supplied = rows(document)[0];
+        assert.equal(supplied.querySelector('.cstat .v').textContent, '42');
+        assert.equal(supplied.querySelectorAll('.cstat .v')[1].textContent, '—');
+        assert.match(supplied.textContent, dataAvailable === false ? /PortWatch history unavailable/ : /PortWatch history unknown/);
+      });
+    }
+    for (const wowChangePct of [null, false, '', '12.5']) {
+      await mount(result(payload({ controlled: row({ wowChangePct }) })), document => {
+        assert.equal(rows(document)[0].querySelectorAll('.cstat .v')[1].textContent, '—');
+      });
+    }
+  });
+  it('shows supplied coverage and original fetch clocks separately from EIA baseline and snapshot', async () => {
+    const full = payload({ malacca: row({ riskLevel: '' }), hormuz: row({ todayTotal: 2, todayTanker: 0 }) });
+    full.cached_at = '2026-04-05T18:19:45.192Z';
+    full.freshnessUnknown = true;
+    full.data['transit-summaries'].fetchedAt = 1791316073219;
+    full.data.chokepoint_transits = { transits: {}, fetchedAt: 1791316125447,
+      transitCoverage: { covered: 5, total: 13, missing: ['suez', 'malacca_strait', 'bab_el_mandeb', 'panama', 'cape_of_good_hope', 'korea_strait', 'kerch_strait', 'lombok_strait'] } };
+    full.data['chokepoint-baselines'] = { referenceYear: 2023, updatedAt: '2026-04-05T18:19:44.514Z', source: 'EIA World Oil Transit Chokepoints' };
+    for (const [wire, hasEnvelope] of [[result(full), true], [{ content: result(full).content }, true], [result(full, true), true], [result(full.data, true), false]]) {
+      await mount(wire, document => {
+        assert.equal(rows(document).length, 2);
+        assert.match(document.getElementById('coverage').textContent, /^AIS coverage: 5\/13 · Missing: Suez, Malacca strait/);
+        assert.match(footer(document), /Summary fetched: 2026-10-06T19:47:53.219Z/);
+        assert.match(footer(document), /AIS fetched: 2026-10-06T19:48:45.447Z/);
+        assert.match(footer(document), /Baseline: EIA World Oil Transit Chokepoints · Reference year: 2023 · Updated: 2026-04-05T18:19:44.514Z/);
+        if (!hasEnvelope) assert.doesNotMatch(footer(document), /Snapshot:|Freshness:/);
+      });
+    }
+    await mount(result(full), document => {
+      assert.match(footer(document), /Snapshot: 2026-04-05T18:19:45.192Z \(stale\)/);
+      assert.match(footer(document), /Freshness: Unknown/);
+    });
+  });
+  it('does not infer coverage from mounted routes and rejects invalid coverage bounds and clocks', async () => {
+    for (const transitCoverage of [undefined, null, {}, { covered: null, total: 13 }, { covered: false, total: 13 },
+      { covered: '5', total: 13 }, { covered: 5, total: 0 }, { covered: -1, total: 13 }, { covered: 14, total: 13 }, { covered: 5.5, total: 13 }]) {
+      const full = payload();
+      full.data.chokepoint_transits = { fetchedAt: false, transitCoverage };
+      full.data['transit-summaries'].fetchedAt = null;
+      full.data['chokepoint-baselines'] = { referenceYear: false, updatedAt: 'bad', source: '<img src=x>' };
+      full.cached_at = 'bad';
+      await mount(result(full), document => {
+        assert.match(document.getElementById('coverage').textContent, /^AIS coverage: Unknown/);
+        assert.match(footer(document), /Summary fetched: Unknown/);
+        assert.match(footer(document), /AIS fetched: Unknown/);
+        assert.match(footer(document), /Reference year: Unknown · Updated: Unknown/);
+        assert.match(footer(document), /Snapshot: Unknown/);
+        assert.equal(document.querySelectorAll('#foot img').length, 0);
+      });
+    }
+    const full = payload();
+    full.data.chokepoint_transits = { transitCoverage: { covered: 0, total: 13, missing: [] } };
+    await mount(result(full), document => { assert.match(document.getElementById('coverage').textContent, /^AIS coverage: 0\/13/); });
+  });
+  it('accepts supplied ISO and epoch clocks while keeping invalid clock values unknown', async () => {
+    for (const fetchedAt of [1791316125447, '1791316125447', '2026-10-06T19:48:45.447Z']) {
+      const full = payload();
+      full.data['transit-summaries'].fetchedAt = fetchedAt;
+      full.data['chokepoint-baselines'] = { referenceYear: '2023' };
+      await mount(result(full), document => {
+        assert.match(footer(document), /Summary fetched: 2026-10-06T19:48:45.447Z/);
+        assert.match(footer(document), /Reference year: 2023/);
+      });
+    }
+    for (const fetchedAt of [undefined, false, true, null, '', '0', 0, -1, 'bad', {}, []]) {
+      const full = payload();
+      full.data['transit-summaries'].fetchedAt = fetchedAt;
+      await mount(result(full), document => { assert.match(footer(document), /Summary fetched: Unknown/); });
+    }
+  });
+  it('clears omitted coverage and clocks on replacement projections without acquiring data', async () => {
+    const full = payload();
+    full.freshnessUnknown = true;
+    full.data.chokepoint_transits = { fetchedAt: 1791316125447, transitCoverage: { covered: 5, total: 13, missing: ['suez'] } };
+    full.data['chokepoint-baselines'] = { referenceYear: 2023, updatedAt: '2026-04-05T18:19:44.514Z' };
+    await mount(result(full), async (document, send) => {
+      assert.match(document.getElementById('coverage').textContent, /5\/13/);
+      send(result({ 'transit-summaries': { summaries: { suez: row() } } }, true));
+      assert.equal(rows(document).length, 1);
+      assert.equal(document.getElementById('coverage').textContent, '');
+      assert.equal(footer(document), 'Summary fetched: Unknown');
+      for (const replacement of [null, {}, 'no data', []]) {
+        send(result(replacement, true));
+        assert.equal(document.getElementById('coverage').textContent, '');
+        assert.equal(footer(document), '');
+        assert.equal(rows(document).length, 0);
+      }
+    });
+  });
+});
