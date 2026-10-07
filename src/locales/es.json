@@ -2414,7 +2414,9 @@
           "market_price_not_outcome": "El feed mostraba el precio del mercado, no cómo se resolvió el mercado",
           "judged_evidence_unreliable": "Excluido de la puntuación mientras se corrigen las pruebas de los jueces",
           "other": "No se pudo resolver",
-          "judged_old_selection": "Resuelto con un método de evidencia posteriormente considerado no confiable"
+          "judged_old_selection": "Resuelto con un método de evidencia posteriormente considerado no confiable",
+          "late_read": "El feed no se leyó lo bastante cerca de la fecha límite",
+          "feed_unavailable": "El feed de datos no estuvo disponible después de la fecha límite"
         }
       },
       "horizons": {

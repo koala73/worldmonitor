@@ -11,6 +11,7 @@ import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 
 const NOW = Date.parse('2026-07-12T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE = NOW + 4 * DAY_MS; // 2026-07-16
 
 // Unwrapped shape (the seeder unwraps {_seed,data} before templates see it).
@@ -175,7 +176,7 @@ describe('commodity resolution hardening (review fixes)', () => {
     const { ledger, key, deadline } = wtiEntryInLedger();
     // Cycle 1: post-deadline but the feed still holds a STALE quote (asOf 2 days
     // pre-deadline) whose price 69.0 would score YES.
-    const cycle1 = deadline + DAY_MS;
+    const cycle1 = deadline + HOUR_MS;
     const staleFeed = { [COMMODITY_FEED]: shapeResolutionFeed(COMMODITY_FEED, {
       _seed: { fetchedAt: deadline - 2 * DAY_MS },
       data: { quotes: [{ symbol: 'CL=F', price: 69.0, change: -0.5 }] },
@@ -185,7 +186,8 @@ describe('commodity resolution hardening (review fixes)', () => {
     assert.equal(ledger[key].status, 'pending'); // gate held the stale cycle
 
     // Cycle 2: the feed freshens (asOf post-deadline) to 70.5, which scores NO.
-    const cycle2 = deadline + 2 * DAY_MS;
+    // It must land within one resolver cycle of the deadline (#8990).
+    const cycle2 = deadline + DAY_MS;
     const freshFeed = { [COMMODITY_FEED]: shapeResolutionFeed(COMMODITY_FEED, {
       _seed: { fetchedAt: cycle2 },
       data: { quotes: [{ symbol: 'CL=F', price: 70.5, change: -0.5 }] },

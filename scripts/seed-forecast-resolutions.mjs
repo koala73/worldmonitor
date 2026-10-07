@@ -20,6 +20,7 @@ import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } fr
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
+import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
@@ -1645,6 +1646,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   // After the window correction, so a duplicate keeps duplicate_window
   // whichever of the two corrections reaches a ledger first.
   voidOldSelectionJudgedResolutions(ledger, nowMs);
+  correctLateReads(ledger, nowMs);
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
 }
@@ -2118,9 +2120,54 @@ export function voidOldSelectionJudgedResolutions(ledger, nowMs) {
   return voided;
 }
 
+// Until #8990 a live at-deadline read had no lateness bound, so a window the
+// resolver reached days after its deadline was graded on that day's price.
+// Each run corrects those rows after the duplicate voids. A row whose read
+// landed more than LATE_READ_MAX_LAG_MS after the deadline is graded again
+// on the first on-time reading any window of the same metric sampled, the
+// reading the bounded resolver would have used, or sealed VOID late_read when
+// the ledger holds none. The replaced outcome and evidence are kept. A
+// corrected row reads on time or is VOID, so re-running changes nothing.
+export function correctLateReads(ledger, nowMs) {
+  const samplesByMetric = new Map();
+  for (const entry of Object.values(ledger)) {
+    const metricKey = entry?.spec?.metricKey;
+    if (!metricKey || !entry.samples?.recent?.length) continue;
+    if (!samplesByMetric.has(metricKey)) samplesByMetric.set(metricKey, []);
+    samplesByMetric.get(metricKey).push(...entry.samples.recent);
+  }
+  for (const entry of Object.values(ledger)) {
+    if (!isLateLiveRead(entry)) continue;
+    const superseded = { supersededOutcome: entry.outcome, supersededEvidence: entry.evidence };
+    const timely = firstTimelySample(samplesByMetric.get(entry.spec.metricKey), Number(entry.deadline));
+    if (timely) {
+      const result = resolveHardSpec(entry, null, [timely], Number(entry.resolvedAt));
+      entry.outcome = result.outcome;
+      entry.evidence = { ...result.evidence, envelopeAware: true, ...superseded, regradedAt: nowMs };
+      continue;
+    }
+    entry.evidence = {
+      reason: LATE_READ_VOID_REASON,
+      metricKey: entry.spec.metricKey,
+      resolvedAt: entry.resolvedAt,
+      maxReadLagMs: LATE_READ_MAX_LAG_MS,
+      ...superseded,
+      voidedAt: nowMs,
+    };
+    entry.outcome = 'VOID';
+  }
+}
+
+function isLateLiveRead(entry) {
+  if (entry?.status !== 'resolved' || (entry.outcome !== 'YES' && entry.outcome !== 'NO')) return false;
+  if (entry.spec?.kind !== 'hard' || isHorizonEntry(entry) || !isLivePointRead(entry.spec)) return false;
+  const readTs = Number(entry.evidence?.readTs ?? entry.resolvedAt);
+  return readTs - Number(entry.deadline) > LATE_READ_MAX_LAG_MS;
+}
+
 // Rows corrected after their receipt reached R2 (#5233 envelope voids,
-// #8990 duplicate voids, old-selection judged voids and rescores) are written
-// again so R2 holds the correction. R2 writes are serial at about 450 ms (p90
+// #8990 duplicate voids, old-selection judged voids, late-read corrections and
+// rescores) are written again so R2 holds the correction. R2 writes are serial at about 450 ms (p90
 // about 780 ms), and the whole run has a 150 s fetch phase, so each run
 // rewrites at most this many stale receipts, oldest first: 50 x 780 ms is about
 // 40 s, which leaves the run's own 20 to 60 s of feed reads and judge calls
@@ -2143,7 +2190,7 @@ export function collectUnarchivedReceipts(ledger, { rearchiveLimit = RECEIPT_REA
     }));
 }
 
-const CORRECTION_VOID_REASONS = new Set([ENVELOPE_BUG_VOID_REASON, DUPLICATE_WINDOW_VOID_REASON, JUDGED_OLD_SELECTION_VOID_REASON]);
+const CORRECTION_VOID_REASONS = new Set([ENVELOPE_BUG_VOID_REASON, DUPLICATE_WINDOW_VOID_REASON, JUDGED_OLD_SELECTION_VOID_REASON, LATE_READ_VOID_REASON]);
 
 // Durable: derived from the correction stamps, so it holds until a later
 // archive write stamps receiptArchivedAt after the correction.
@@ -2153,6 +2200,7 @@ export function receiptNeedsRearchive(entry) {
   const reason = entry.evidence?.reason;
   const correctedAt = Math.max(
     CORRECTION_VOID_REASONS.has(reason) ? Number(entry.evidence.voidedAt) || 0 : 0,
+    Number(entry.evidence?.regradedAt) || 0,
     Number(entry.rescore?.rescoredAt) || 0,
   );
   return archivedAt < correctedAt;

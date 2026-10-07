@@ -3477,7 +3477,7 @@ describe('projection horizon windows (#7075)', () => {
 
     const lateRead = deadline + horizonSampleToleranceMs('7d') + H;
     const { ledger: final, receipts } = processResolutionCycle(ledger, [], HORMUZ(61), lateRead);
-    assert.equal(final[parentKey].outcome, 'YES', 'the parent window reads the late live feed');
+    assert.equal(final[parentKey].evidence.reason, 'feed_unavailable', 'the feed was down for a cycle past the parent deadline, so the parent is never graded on a later read (#8990)');
     const row = final[key];
     assert.equal(row.status, 'resolved');
     assert.equal(row.outcome, 'UNOBSERVED');
@@ -3573,6 +3573,12 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     const { ledger } = processResolutionCycle({ [current.key]: structuredClone(current), [unversioned.key]: structuredClone(unversioned) }, [], {}, T0 + DAY_MS);
     assert.deepEqual(ledger[current.key].spec, current.spec);
     assert.deepEqual([ledger[unversioned.key].spec.threshold, ledger[unversioned.key].spec.ruleVersion, ledger[unversioned.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
+  });
+
+  it('keeps the original emission count when a row that already recorded it migrates again', () => {
+    const remigrated = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: 7, rule: GPS_RESOLUTION_RULE, ruleVersion: GPS_RESOLUTION_RULE_VERSION - 1, supersededThreshold: 59 } });
+    const { ledger } = processResolutionCycle({ [remigrated.key]: structuredClone(remigrated) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual([ledger[remigrated.key].spec.threshold, ledger[remigrated.key].spec.ruleVersion, ledger[remigrated.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
   });
 
   it('migrates a legacy emission read from history as it opens its window', () => {

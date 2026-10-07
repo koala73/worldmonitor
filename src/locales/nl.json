@@ -2021,7 +2021,9 @@
           "market_price_not_outcome": "De feed toonde de marktprijs, niet hoe de markt is afgewikkeld",
           "judged_evidence_unreliable": "Buiten de score gehouden zolang het bewijs voor de beoordelaars wordt hersteld",
           "other": "Kon niet worden beslist",
-          "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn"
+          "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn",
+          "late_read": "De feed is niet dicht genoeg bij de deadline uitgelezen",
+          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar"
         }
       },
       "horizons": {
