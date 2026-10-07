@@ -155,6 +155,8 @@ describe('ForecastPanel reliability badge', () => {
     // A block link spans the label column; fit-content keeps blank space beside it unclickable.
     expect(rule).toMatch(/width:\s*fit-content/);
     expect(rule).toMatch(/max-width:\s*100%/);
+    // Size containment gives the badge a zero intrinsic width, so fit-content collapses it to 0px.
+    expect(rule).not.toMatch(/contain:/);
   });
 
   it('treats a non-integer yesCount as unmeasured, matching the /accuracy/ table', async () => {
