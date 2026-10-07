@@ -92,7 +92,7 @@ describe('N2 subject matching: word boundaries, collisions and recall', () => {
       item('border', 'Chad closes its border with Sudan'),
     ]), ['border']);
     assert.deepEqual(shownIds('Niger', [
-      item('state', "Miners die in Nigeria's Niger State"),
+      item('state', "Miners die in Nigeria's Niger State as Sahel heat rises"),
       item('junta', 'Niger junta expels French envoy'),
     ]), ['junta']);
     assert.deepEqual(shownIds('Guinea', [
