@@ -594,7 +594,7 @@ export function hasPreLineageAnchor(entry) {
   const calibration = entry?.calibration;
   if (!Number.isFinite(Number(calibration?.marketPrice))) return false;
   if (entry?.spec?.sourceFeed === MARKET_SETTLEMENT_FEED) return false;
-  return !Number.isFinite(Number(calibration.marketBlendedProbability));
+  return !Number.isFinite(calibration.marketBlendedProbability);
 }
 
 function marketProbability(entry) {

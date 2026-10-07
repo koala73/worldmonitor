@@ -363,6 +363,13 @@ describe('market comparisons read only anchors that price the forecast question 
     assert.ok(!hasPreLineageAnchor(marketBet()));
     assert.ok(!hasPreLineageAnchor(resolved({})));
   });
+
+  it('treats a null or blank blend as missing lineage', () => {
+    for (const marketBlendedProbability of [null, '', '0.33']) {
+      const entry = lineage({ calibration: { ...lineage().calibration, marketBlendedProbability } });
+      assert.ok(hasPreLineageAnchor(entry), JSON.stringify(marketBlendedProbability));
+    }
+  });
 });
 
 describe('scorecard uncertainty and maturity denominators (#7072)', () => {
