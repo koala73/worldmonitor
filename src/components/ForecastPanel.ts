@@ -6,6 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { FORECAST_ACCURACY_AUDIT } from '../../shared/forecast-accuracy-audit';
 import { projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
@@ -792,6 +793,8 @@ export class ForecastPanel extends Panel {
     const domain   = f.domain || 'conflict';
     const catColor = DOMAIN_COLORS[domain] || '#7d8590';
     const catLabel = DOMAIN_LABELS[domain] || domain;
+    // The audit badge needs no scorecard data (#8990), so only a scored badge waits for the request.
+    const badgePending = this.record.kind === 'loading' && !FORECAST_ACCURACY_AUDIT;
     const probColor = pct >= 60 ? '#3fb950' : pct >= 40 ? '#d29922' : '#e05252';
     const trendText  = f.trend === 'rising' ? '↑ rising' : f.trend === 'falling' ? '↓ falling' : '→ stable';
     const trendColor = f.trend === 'rising' ? '#3fb950' : f.trend === 'falling' ? '#e05252' : '#7d8590';
@@ -818,7 +821,7 @@ export class ForecastPanel extends Panel {
             </div>
             ${simBarHtml}
             ${this.renderScoredHorizons(f)}
-            <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
+            <div class="fc-card-meta${badgePending ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${badgePending ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

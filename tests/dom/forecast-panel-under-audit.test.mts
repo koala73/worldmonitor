@@ -115,6 +115,18 @@ describe('ForecastPanel under the accuracy audit (#8990)', () => {
     }
   });
 
+  it('shows the badge before the scorecard answers, since it needs no data from it', async () => {
+    stubScorecard(() => new Promise<Response>(() => {}));
+    panel.updateForecasts(['cyber', 'conflict'].map((domain, i) => forecast(`fc-${i}`, domain)));
+    const root = contentOf(panel);
+    await vi.waitFor(() => expect(root.querySelectorAll('.fc-prob-item')).toHaveLength(2));
+    expect(root.querySelector('[data-fc-record]')!.getAttribute('data-fc-record')).toBe('under-audit');
+    expect(root.querySelector('.fc-reliability-pending')).toBeNull();
+    const badges = root.querySelectorAll<HTMLAnchorElement>('a.fc-reliability');
+    expect(badges).toHaveLength(2);
+    for (const badge of badges) expect(badge.dataset.fcReliabilityState).toBe('under-audit');
+  });
+
   it('shows the notice even when the scorecard request fails', async () => {
     const root = await render(async () => new Response('boom', { status: 500 }));
     expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('under-audit');
