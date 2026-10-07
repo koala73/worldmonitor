@@ -178,8 +178,7 @@ const SHARED_BRIDGE_HEAD = `
     }
   });
   window.addEventListener("pagehide", function () {
-    if (sourceLinkRequest) clearTimeout(sourceLinkRequest.timer);
-    sourceLinkRequest = null;
+    if (sourceLinkRequest) finishSourceLink(sourceLinkRequest.id, "");
   });
 
   // ---- shared render helpers (widget renderBody uses these) ----

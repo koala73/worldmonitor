@@ -193,8 +193,18 @@ describe('Shared shell original source host actions', () => {
       assert.equal(timers[1].cleared, false);
       win.dispatchEvent(new win.Event('pagehide'));
       assert.equal(timers[1].cleared, true);
+      assert.equal(status(document), '');
+      assert.equal(document.getElementById('source-link-status').hidden, true);
+      win.dispatchEvent(new win.Event('pageshow'));
+      timers[1].callback();
       reply({ id: second.id, error: { code: -32603, message: 'Closed view' } });
-      assert.notEqual(status(document), 'The host could not open this source link.');
+      assert.equal(status(document), '');
+      click(document, win);
+      const restored = links(posted)[2];
+      assert.notEqual(restored.id, second.id);
+      assert.equal(status(document), 'Requesting this source link from the host.');
+      reply({ id: restored.id, result: {} });
+      assert.equal(status(document), '');
     });
   });
 
