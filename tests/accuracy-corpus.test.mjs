@@ -143,8 +143,8 @@ const MARKET_ALERTS = Object.freeze({
   rollingWindowDays: 30,
   methodology: 'An emission resolves HIT when a tracked story names the same entity within six hours.',
   byType: [
-    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
-    { type: 'prediction-market', n: 0, baseN: 0 },
+    { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', scored: 0, baseN: 0 },
   ],
 });
 
@@ -968,7 +968,7 @@ describe('accuracy page published-origin domain table (#8952)', () => {
 describe('accuracy page market-alert hit rates (#8867)', () => {
   const HOUR = 3_600_000;
   const row = (type, overrides = {}) => ({
-    type, n: 40, hitRate: 0.625, baseN: 32, baseHitRate: 0.25, pairedHitRate: 0.59375, medianLeadTimeMs: 2.5 * HOUR, ...overrides,
+    type, scored: 40, hitRate: 0.625, baseN: 32, baseHitRate: 0.25, pairedHitRate: 0.59375, medianLeadTimeMs: 2.5 * HOUR, ...overrides,
   });
   const withAlerts = (byType, overrides = {}) => sectionWith({
     marketAlerts: { ...MARKET_ALERTS, methodology: buildScorecard({}, 0, { archive: {} }).methodology, byType, ...overrides },
@@ -992,9 +992,9 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
 
   it('applies the n>=30 floor separately to the hit rate and to the paired comparison', () => {
     const { html } = renderState(withAlerts([
-      row('explained_market_move', { n: 29, baseN: 29 }),
-      row('silent_divergence', { n: 30, baseN: 29 }),
-      row('flow_price_divergence', { n: 30, baseN: 30 }),
+      row('explained_market_move', { scored: 29, baseN: 29 }),
+      row('silent_divergence', { scored: 30, baseN: 29 }),
+      row('flow_price_divergence', { scored: 30, baseN: 30 }),
     ]));
     const [, , belowHit, belowPaired, belowBase, belowLead] = cellsOf(html, 'explained_market_move');
     assert.deepEqual([belowHit, belowPaired, belowBase, belowLead], Array(4).fill('Not yet measurable'));
@@ -1006,10 +1006,10 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
   });
 
   it('publishes nothing measured for prediction_leads_news until its control windows scored', () => {
-    const unpaired = renderState(withAlerts([row('prediction_leads_news', { n: 120, baseN: 12 })])).html;
+    const unpaired = renderState(withAlerts([row('prediction_leads_news', { scored: 120, baseN: 12 })])).html;
     assert.deepEqual(cellsOf(unpaired, 'prediction_leads_news').slice(2), Array(4).fill('Not yet measurable'));
     assert.doesNotMatch(tableOf(unpaired), /62\.5%|25\.0%|2 h 30 min/);
-    const paired = renderState(withAlerts([row('prediction_leads_news', { n: 120, baseN: 30 })])).html;
+    const paired = renderState(withAlerts([row('prediction_leads_news', { scored: 120, baseN: 30 })])).html;
     assert.deepEqual(cellsOf(paired, 'prediction_leads_news').slice(2), [
       '62.5% of 120 alerts', '59.4% of 30 alerts', '25.0% of 30 earlier windows', '2 h 30 min',
     ]);
@@ -1021,6 +1021,13 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
       'Not yet measurable', 'Not yet measurable', 'Not yet measurable', 'Not yet measurable',
     ]);
     assert.doesNotMatch(html, /undefined|NaN/);
+  });
+
+  it('describes alerts raised with related news as well as alerts raised without it', () => {
+    const intro = stripTags(renderState(withAlerts([row('silent_divergence')])).html.match(/<h2 id="market-alerts">[\s\S]*?<\/h2>\s*<p>([\s\S]*?)<\/p>/)[1]);
+    assert.match(intro, /no news/);
+    assert.match(intro, /related news is already out/);
+    assert.doesNotMatch(intro, /news does not explain the move yet/);
   });
 
   it('quotes the ledger resolution and base-rate rules verbatim', () => {

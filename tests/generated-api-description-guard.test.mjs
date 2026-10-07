@@ -383,3 +383,21 @@ describe('generated OpenAPI description guard for high-risk documentation claims
     }
   });
 });
+
+// sebuf v0.11.1 renders format=json by passing its YAML through a YAML 1.1
+// converter, so a proto field named n, y, no, yes, on or off is emitted as the
+// property "false" or "true" in docs/api/*.openapi.json (#8867).
+describe('per-service OpenAPI JSON property names', () => {
+  it('never carries a YAML 1.1 boolean in place of a field name', () => {
+    const offenders = [];
+    for (const file of readdirSync(apiDir).filter((name) => name.endsWith('.openapi.json'))) {
+      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      for (const [schemaName, schema] of Object.entries(spec.components?.schemas ?? {})) {
+        for (const property of Object.keys(schema.properties ?? {})) {
+          if (property === 'true' || property === 'false') offenders.push(`${file}:${schemaName}.${property}`);
+        }
+      }
+    }
+    assert.deepEqual(offenders, []);
+  });
+});

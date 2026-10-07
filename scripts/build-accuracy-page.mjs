@@ -93,7 +93,7 @@ const PROPORTION_FIELDS = Object.freeze(['count', 'successes', 'rate', 'ci95']);
 // Mirrors MARKET_ALERT_FIELDS and MARKET_ALERT_ROW_FIELDS in
 // server/worldmonitor/forecast/v1/scorecard-fields.ts (a test pins the parity).
 const MARKET_ALERT_FIELDS = Object.freeze(['generatedAt', 'windowHours', 'rollingWindowDays', 'methodology', 'byType']);
-const MARKET_ALERT_ROW_FIELDS = Object.freeze(['type', 'n', 'hitRate', 'baseN', 'baseHitRate', 'pairedHitRate', 'medianLeadTimeMs']);
+const MARKET_ALERT_ROW_FIELDS = Object.freeze(['type', 'scored', 'hitRate', 'baseN', 'baseHitRate', 'pairedHitRate', 'medianLeadTimeMs']);
 
 export const SCORECARD_NESTED_OBJECT_FIELDS = Object.freeze({
   totals: TOTALS_FIELDS,
@@ -852,9 +852,9 @@ function formatLeadTime(ms) {
 function marketAlertCells(row) {
   const compared = isMeasurableCount(row.baseN) && isRate(row.pairedHitRate) && isRate(row.baseHitRate);
   const published = compared || !CONTROL_GATED_ALERT_TYPES.has(row.type);
-  const hit = published && isMeasurableCount(row.n) && isRate(row.hitRate);
+  const hit = published && isMeasurableCount(row.scored) && isRate(row.hitRate);
   return [
-    hit ? rateOf(row.hitRate, row.n, 'alerts') : NOT_YET_MEASURABLE,
+    hit ? rateOf(row.hitRate, row.scored, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.pairedHitRate, row.baseN, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.baseHitRate, row.baseN, 'earlier windows') : NOT_YET_MEASURABLE,
     hit && isFiniteNumber(row.medianLeadTimeMs) && row.medianLeadTimeMs >= 0 ? formatLeadTime(row.medianLeadTimeMs) : NOT_YET_MEASURABLE,
@@ -870,7 +870,7 @@ function marketAlertsSection(marketAlerts, escapeHtml) {
   const hours = isFiniteNumber(marketAlerts.windowHours) ? marketAlerts.windowHours : 6;
   const days = isFiniteNumber(marketAlerts.rollingWindowDays) ? marketAlerts.rollingWindowDays : 30;
   const generated = isFiniteNumber(marketAlerts.generatedAt) ? ` and were generated ${formatUtcDateTime(marketAlerts.generatedAt)}` : '';
-  const intro = `      <p>World Monitor raises a market alert when a market or a prediction market moves and the news does not explain the move yet. Each alert is checked ${escapeHtml(formatCount(hours))} hours later. It counts as a hit if an established news outlet published a story about the same company, commodity or topic in that time. The same check also runs on the same market for a stretch of the same length one day earlier, when no alert was raised, and that gives the base rate. An alert type is useful only when its hit rate is clearly above the base rate on the same alerts. The figures cover the last ${escapeHtml(formatCount(days))} days${escapeHtml(generated)}.</p>`;
+  const intro = `      <p>World Monitor raises a market alert when a market or a prediction market makes an unusual move. Some alerts fire when there is no news behind the move, and one type fires when related news is already out. Each alert is checked ${escapeHtml(formatCount(hours))} hours later. It counts as a hit if an established news outlet published a new story about the same company, commodity or topic in that time. The same check also runs on the same market for a stretch of the same length one day earlier, when no alert was raised, and that gives the base rate. An alert type is useful only when its hit rate is clearly above the base rate on the same alerts. The figures cover the last ${escapeHtml(formatCount(days))} days${escapeHtml(generated)}.</p>`;
   const rules = `      <h3>How an alert is scored</h3>
       <p>${escapeHtml(MARKET_ALERT_RESOLUTION_RULE)}</p>
       <p>${escapeHtml(MARKET_ALERT_BASE_RATE_RULE)}</p>`;
@@ -886,7 +886,7 @@ ${intro}
         <caption>Market-alert hit rates by alert type. Each figure is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts are behind it and reads Not yet measurable below that, the same rule as the domain table. The two comparison columns count only the alerts whose earlier window could also be checked, so both rates describe the same alerts. Prediction-market alerts are shown only once their earlier windows have been checked, because the topic words in a prediction question turn up in the news often anyway.</caption>
         <thead><tr><th scope="col">Alert type</th><th scope="col">Alerts scored</th><th scope="col">News followed</th><th scope="col">News followed, compared alerts</th><th scope="col">News a day earlier, same markets</th><th scope="col">Typical wait for the news (median)</th></tr></thead>
         <tbody>
-${marketAlerts.byType.map((row) => `          <tr data-alert-type="${escapeHtml(row.type)}"><th scope="row">${escapeHtml(MARKET_ALERT_TYPE_LABELS[row.type] ?? row.type)}</th><td>${escapeHtml(formatCount(row.n))}</td>${marketAlertCells(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('\n')}
+${marketAlerts.byType.map((row) => `          <tr data-alert-type="${escapeHtml(row.type)}"><th scope="row">${escapeHtml(MARKET_ALERT_TYPE_LABELS[row.type] ?? row.type)}</th><td>${escapeHtml(formatCount(row.scored))}</td>${marketAlertCells(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('\n')}
         </tbody>
       </table></div>
 ${rules}`;

@@ -291,7 +291,7 @@ export interface MarketAlertScorecard {
 
 export interface MarketAlertRow {
   type: string;
-  n: number;
+  scored: number;
   hitRate?: number;
   baseN: number;
   baseHitRate?: number;

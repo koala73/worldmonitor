@@ -53,8 +53,8 @@ const MARKET_ALERTS_SERVED = {
   rollingWindowDays: 30,
   methodology: 'market-alert methodology',
   byType: [
-    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
-    { type: 'prediction-market', n: 0, baseN: 0 },
+    { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', scored: 0, baseN: 0 },
   ],
 };
 
@@ -254,6 +254,32 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.degraded, false);
   });
 
+  it('serves the median lead time as a whole number of milliseconds, as int64 declares', async () => {
+    const stored = { ...MARKET_ALERTS_STORED, byType: [{ ...MARKET_ALERTS_STORED.byType[0], medianLeadTimeMs: 1000.5 }] };
+    serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope(stored) });
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(res.marketAlerts?.byType[0]?.medianLeadTimeMs, 1001);
+  });
+
+  it('starts both Redis reads before either answers', async () => {
+    const events: string[] = [];
+    const stored: Record<string, unknown> = { [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED) };
+    globalThis.fetch = (async (input) => {
+      const key = decodeURIComponent(String(input).split('/get/')[1] ?? '');
+      events.push(`start ${key}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      events.push(`end ${key}`);
+      return Response.json({ result: JSON.stringify(stored[key]) });
+    }) as typeof fetch;
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.deepEqual(events.slice(0, 2).sort(), [`start ${MARKET_ALERTS_KEY}`, `start ${REDIS_KEY}`]);
+    assert.deepEqual(res.marketAlerts, MARKET_ALERTS_SERVED);
+  });
+
   it('omits marketAlerts when its key is missing', async () => {
     serveRedis({ [REDIS_KEY]: envelope(FORECAST_DATA) });
 
@@ -331,6 +357,9 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.error, 'forecast_scorecard_backend_unavailable');
     assert.equal(res.generatedAt, 0);
     assert.equal(res.totals?.entries, 0);
-    assert.deepEqual(errors, [['[forecast] getForecastScorecard getRawJson failed:', 'redis unavailable']]);
+    assert.deepEqual(errors, [
+      ['[forecast] getForecastScorecard market-alerts read failed:', 'redis unavailable'],
+      ['[forecast] getForecastScorecard getRawJson failed:', 'redis unavailable'],
+    ]);
   });
 });

@@ -1425,7 +1425,7 @@ components:
             description: |-
                 Headline Brier/log score over scored entries that are neither synthetic
                  backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
-                 means everything scored was synthetic.
+                 means every scored entry was excluded.
         ScorecardPublishedDomain:
             type: object
             properties:
@@ -1570,9 +1570,10 @@ components:
             properties:
                 type:
                     type: string
-                n:
+                scored:
                     type: integer
                     format: int32
+                    description: Alerts resolved HIT or MISS.
                 hitRate:
                     type: number
                     format: double
@@ -1654,9 +1655,7 @@ components:
                     description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
-                    description: |-
-                        Set when run_id was supplied but the latest outcome is returned instead;
-                         says whether that run expired or its lookup failed.
+                    description: Set when run_id was supplied but the latest outcome is returned instead.
                 error:
                     type: string
                     description: |-

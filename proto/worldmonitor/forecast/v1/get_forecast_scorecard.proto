@@ -62,7 +62,7 @@ message ScorecardMarketSkill {
 
 // Headline Brier/log score over scored entries that are neither synthetic
 // backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
-// means everything scored was synthetic.
+// means every scored entry was excluded.
 message ScorecardSkill {
   int32 count = 1;
   optional double brier = 2;
@@ -134,7 +134,8 @@ message ScorecardReceipt {
 // One market-alert type's rolling hit rate beside its base rate.
 message MarketAlertRow {
   string type = 1;
-  int32 n = 2;
+  // Alerts resolved HIT or MISS.
+  int32 scored = 2;
   optional double hit_rate = 3;
   int32 base_n = 4;
   optional double base_hit_rate = 5;

@@ -50,8 +50,8 @@ const MARKET_ALERTS = {
   rollingWindowDays: 30,
   methodology: 'market-alert methodology',
   byType: [
-    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
-    { type: 'prediction-market', n: 0, baseN: 0 },
+    { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', scored: 0, baseN: 0 },
   ],
 };
 

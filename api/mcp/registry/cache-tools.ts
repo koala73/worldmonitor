@@ -3334,7 +3334,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           rollingWindowDays: { type: 'number' },
           methodology: { type: 'string' },
           byType: { type: 'array', items: { type: 'object', properties: {
-            type: { type: 'string' }, n: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
+            type: { type: 'string' }, scored: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
             baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' }, medianLeadTimeMs: { type: 'number' },
           } } },
         },

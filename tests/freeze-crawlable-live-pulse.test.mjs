@@ -231,8 +231,8 @@ function countryPayload() {
         totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
         archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
         byType: [
-          { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, n: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
-          { type: 'prediction-market', n: 0, baseN: 0 },
+          { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, scored: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+          { type: 'prediction-market', scored: 0, baseN: 0 },
         ],
       },
       degraded: false,
@@ -759,8 +759,8 @@ describe('freeze crawlable live pulse coverage gates', () => {
       rollingWindowDays: 30,
       methodology: MARKET_ALERT_METHODOLOGY,
       byType: [
-        { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
-        { type: 'prediction-market', n: 0, baseN: 0 },
+        { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+        { type: 'prediction-market', scored: 0, baseN: 0 },
       ],
     }, 'the market-alert block survives capture whitelisted member by member (#8867)');
     const state = classifyAccuracyState(section);

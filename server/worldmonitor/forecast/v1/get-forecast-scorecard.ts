@@ -50,8 +50,7 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
   ctx: ServerContext,
 ): Promise<GetForecastScorecardResponse> => {
   try {
-    const envelope = await getSeedJson(REDIS_KEY);
-    const marketAlerts = await readMarketAlerts();
+    const [envelope, marketAlerts] = await Promise.all([getSeedJson(REDIS_KEY), readMarketAlerts()]);
     const data = envelope.data as Record<string, unknown> | null;
     if (!data) return markNoStoreFallbackResponse(ctx.request, withMarketAlerts(emptyScorecard(), marketAlerts));
     const fetchedAt = Number(envelope.fetchedAt);
