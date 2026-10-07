@@ -2063,7 +2063,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     const nowMs = T_DEADLINE + 2;
     let judgeCalls = 0;
     const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
-    const withheld = judged({ generationOrigin: 'state_derived', stateBucketId: 'sovereign_risk', domain: 'market', title: 'Sovereign risk repricing from Freedonia state' });
+    const withheld = judged({ generationOrigin: 'state_derived', stateBucketId: 'sovereign_risk', domain: 'market', title: 'Retitled pressure from Freedonia state' });
     const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges, maxJudgedEntries: 0 }, {}, [snapshot(T0, [withheld])]);
 
     const row = rowOf(result);

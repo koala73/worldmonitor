@@ -13,6 +13,7 @@ import {
   RECEIPT_VOID_REASON_LABELS,
   buildPublicReceipts,
   computeScorecard,
+  isWithheldEntry,
   wilsonInterval,
 } from '../scripts/_forecast-scorecard.mjs';
 import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
@@ -172,6 +173,8 @@ describe('computeScorecard', () => {
 
     const scorecard = computeScorecard(ledger, NOW);
 
+    const withheld = Object.fromEntries(Object.entries(ledger).map(([key, entry]) => [key, isWithheldEntry(entry)]));
+    assert.deepEqual(withheld, { a: false, byBucket: true, energyBucket: false, legacyUnknown: true, detectorTitle: false });
     assert.equal(scorecard.totals.resolved, 3);
     assert.equal(scorecard.totals.void, 2);
     assert.equal(scorecard.byGenerationOrigin.some((row) => row.generationOrigin === 'unknown'), false);
