@@ -2087,7 +2087,7 @@
       "infoTooltip": "<strong>BTC rendszer</strong> Összetett jellemző irányítópult a Bitcoin pozicionálásához és a kockázati étvágyhoz:<ul><li><strong>Likviditás</strong>: Nettó Fed likviditás proxy</li><li><strong>Áramlás</strong>: BTC vs QQQ 5 napos hozam</li><li><strong>Rendszer</strong>: QQQ vs XLP rotáció (kockázat kapcsolva/ki)</li><li><strong>BTC trend</strong>: Ár vs SMA50/200, Mayer többszörös</li><li><strong>Hash ráta</strong>: 30 napos hálózati hash változás</li><li><strong>Félelem és mohóság</strong>: Piaci sentiment index</li></ul>Ez a panel a pozicionáláshoz és a rendszerhez szól, nem a széles makro adatokhoz."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li><li>Kalibrálva az előrejelzési piacok alapértékei alapján, ahol elérhető</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat.",
+      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat.",
       "record": {
         "label": "Eddigi eredmények",
         "labelHint": "Hogyan szerepeltek a közzétett előrejelzések az eldőlésük után az elmúlt {{days}} napban. Vigye az egeret egy szám fölé, hogy lássa, mit jelent.",
@@ -2143,6 +2143,11 @@
       "horizons": {
         "label": "Pontszáma további horizontokon: {{list}}",
         "hint": "A főcím valószínűsége az előrejelzés saját horizontján kerül értékelésre. Az egyes horizontok vetülete szintén értékelésre kerül a forrásfeed alapján, az előrejelzéshez először közétett érték alapján. A vetület értékei nem jelennek meg, mert az aktuális érték eltérhet az értékelt értéktől."
+      },
+      "audit": {
+        "label": "Pontosság auditálás alatt",
+        "hint": "Auditálás alatt {{date}} óta. Az audit hibákat talált az előrejelzések értékelésében. A pontszámokat a javítások idejére visszavontuk. Az előrejelzéseket továbbra is közzétesszük és rögzítjük.",
+        "unverified": "Rögzített kimenetel, nem ellenőrzött, miközben a pontosság auditálás alatt áll."
       }
     },
     "escalationCorrelation": {

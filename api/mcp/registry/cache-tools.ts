@@ -30,6 +30,7 @@ import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shar
 import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
+import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -556,9 +557,15 @@ function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
   return history;
 }
 
-function forecastReliability(data: Record<string, unknown>, domains: string[]) {
+/**
+ * While the audit switch is set (#8990) no domain score leaves this tool:
+ * status reads unavailable, byDomain is empty, and underAudit says why. The
+ * freshness fields stay, so the badge's clock contract is unchanged.
+ */
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
   const raw = data.scorecard;
-  const unavailable = { status: 'unavailable' };
+  const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
+  const unavailable = { status: 'unavailable', ...underAudit };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable;
   const card = raw as Record<string, unknown>;
   if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
@@ -573,10 +580,14 @@ function forecastReliability(data: Record<string, unknown>, domains: string[]) {
   const meta = data.scorecardMeta;
   const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
   const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
-  return {
-    status: 'ready', windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
+  const clock = {
+    windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
     stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
     asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+  };
+  if (audit) return { status: 'unavailable', ...underAudit, ...clock, byDomain: [] };
+  return {
+    status: 'ready', ...clock,
     byDomain: [...new Set(domains)].filter(domain => domain !== 'bet_engine').map(domain => {
       const row = rows.get(domain);
       const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
@@ -586,6 +597,26 @@ function forecastReliability(data: Record<string, unknown>, domains: string[]) {
         ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount }
         : { domain, kind: 'unmeasured', n: sampleCount };
     }),
+  };
+}
+
+const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.';
+
+/** While the audit switch is set (#8990) the first sentence, the one tools/list keeps, is the notice. */
+export function forecastScorecardDescription(audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
+  return audit
+    ? `Under audit since ${audit.since} (issue ${audit.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
+    : FORECAST_SCORECARD_DESCRIPTION;
+}
+
+/** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+  const scorecard = data.scorecard;
+  const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
+  return {
+    underAudit: audit ? { since: audit.since, issue: audit.issue, reason: audit.reason } : null,
+    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
+    marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
   };
 }
 
@@ -3242,7 +3273,11 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: { forecastId: { type: 'string' }, outcome: { type: 'string', enum: ['YES', 'NO', 'VOID'] }, voidReason: { type: 'string', enum: [...FORECAST_VOID_REASONS] } },
         required: ['forecastId', 'outcome'],
       } },
-      reliability: { type: 'object', properties: { status: { type: 'string', enum: ['ready', 'unavailable'] }, byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } } } },
+      reliability: { type: 'object', properties: {
+        status: { type: 'string', enum: ['ready', 'unavailable'] },
+        underAudit: { type: 'object', description: 'Present while forecast accuracy is under audit; domain scores are withheld.', properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } } },
+        byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } },
+      } },
       predictions: {
         type: ['object', 'null'],
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
@@ -3337,13 +3372,18 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.',
+    description: forecastScorecardDescription(),
     inputSchema: {
       type: 'object',
       properties: {},
       required: [],
     },
     outputSchema: cacheEnvelope({
+      underAudit: {
+        type: ['object', 'null'],
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict.',
+        properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
+      },
       scorecard: {
         type: ['object', 'null'],
         properties: {
@@ -3382,14 +3422,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1'],
     _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts' },
-    _project: (data) => {
-      const scorecard = data.scorecard;
-      const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
-      return {
-        scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
-        marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
-      };
-    },
+    _project: (data) => projectForecastScorecard(data),
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",

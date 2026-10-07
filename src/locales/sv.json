@@ -1970,7 +1970,7 @@
       "unscored": "Narrativa scenarier, ej bedömda för noggrannhet."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI-prognoser</strong> AI-genererade sannolikhetsuppskattningar för geopolitiska och ekonomiska händelser:<ul><li>Täckning över domäner: konflikt, marknader, försörjningskedjor, cyber, politik</li><li>Varje prognos visar uppskattad sannolikhet, konfidensnivå och tidshoriont</li><li>Kalibrerad mot prediktionsmarknadsbaser där tillgängligt</li></ul>Prognoser uppdateras när nya efterrättelsetecken kommer in. Filtrera efter domän med flikarna ovan.",
+      "infoTooltip": "<strong>AI-prognoser</strong> AI-genererade sannolikhetsuppskattningar för geopolitiska och ekonomiska händelser:<ul><li>Täckning över domäner: konflikt, marknader, försörjningskedjor, cyber, politik</li><li>Varje prognos visar uppskattad sannolikhet, konfidensnivå och tidshoriont</li></ul>Prognoser uppdateras när nya efterrättelsetecken kommer in. Filtrera efter domän med flikarna ovan.",
       "record": {
         "label": "Facit hittills",
         "labelHint": "Hur de publicerade prognoserna bedömdes när de avgjorts, under de senaste {{days}} dagarna. Håll muspekaren över ett tal för att se vad det betyder.",
@@ -2026,6 +2026,11 @@
       "horizons": {
         "label": "Också bedömt vid: {{list}}",
         "hint": "Huvudsannolikheten graderas vid prognosens egen horisont. Projektionen vid var och en av dessa horisonter graderas också mot dess källfeed, med det värde som först publicerades för denna prognos. Projektionsvärden visas inte eftersom det aktuella värdet kan skilja sig från det graderade."
+      },
+      "audit": {
+        "label": "Noggrannhet under granskning",
+        "hint": "Under granskning sedan {{date}}. En granskning upptäckte fel i hur prognoser bedömdes. Poängen är återkallade medan korrigeringar görs. Prognoser fortsätter att publiceras och registreras.",
+        "unverified": "Registrerat utfall, inte verifierat medan noggrannheten är under granskning."
       }
     },
     "escalationCorrelation": {

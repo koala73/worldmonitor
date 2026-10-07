@@ -2363,7 +2363,7 @@
       "unscored": "Scenari narrativi, non valutati per accuratezza."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li><li>Calibrata su baseline di prediction market dove disponibili</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto.",
+      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto.",
       "record": {
         "label": "Storico dei risultati",
         "labelHint": "Come sono state valutate le previsioni pubblicate una volta risolte, negli ultimi {{days}} giorni. Passa il cursore su un numero per vedere cosa significa.",
@@ -2419,6 +2419,11 @@
       "horizons": {
         "label": "Valutato anche a: {{list}}",
         "hint": "La probabilità in evidenza è valutata all'orizzonte proprio della previsione. La proiezione a ciascuno di questi orizzonti è valutata anch'essa, rispetto al suo feed di origine, usando il valore pubblicato per primo per questa previsione. I valori di proiezione non sono mostrati perché il valore attuale può differire da quello valutato."
+      },
+      "audit": {
+        "label": "Precisione in revisione",
+        "hint": "In revisione dal {{date}}. Una revisione ha riscontrato errori nel calcolo dei punteggi delle previsioni. I punteggi sono stati ritirati mentre si apportano le correzioni. Le previsioni continuano ad essere pubblicate e registrate.",
+        "unverified": "Esito registrato, non verificato mentre la precisione è in revisione."
       }
     },
     "escalationCorrelation": {

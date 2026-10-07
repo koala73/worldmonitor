@@ -1970,7 +1970,7 @@
       "unscored": "Narratieve scenario's, niet beoordeeld op nauwkeurigheid."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li><li>Gekalibreerd tegen voorspellingsmarkt basislijnen waar beschikbaar</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven.",
+      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven.",
       "record": {
         "label": "Staat van dienst",
         "labelHint": "Hoe de gepubliceerde voorspellingen scoorden nadat ze waren beslist, over de laatste {{days}} dagen. Beweeg over een getal om te zien wat het betekent.",
@@ -2026,6 +2026,11 @@
       "horizons": {
         "label": "Ook gescoord op: {{list}}",
         "hint": "De kans in de kop wordt beoordeeld op de eigen horizon van de prognose. De projectie op elk van deze horizons wordt ook beoordeeld, tegen de bronfeed, met de waarde die voor deze prognose eerst is gepubliceerd. Projectiewaarden worden niet weergegeven omdat de huidige waarde kan afwijken van de beoordeelde waarde."
+      },
+      "audit": {
+        "label": "Nauwkeurigheid wordt geaudit",
+        "hint": "Wordt sinds {{date}} geaudit. Een audit vond fouten in de manier waarop voorspellingen werden gescoord. De scores zijn ingetrokken terwijl correcties worden doorgevoerd. Voorspellingen worden nog steeds gepubliceerd en vastgelegd.",
+        "unverified": "Vastgelegde uitkomst, niet geverifieerd zolang de nauwkeurigheid wordt geaudit."
       }
     },
     "escalationCorrelation": {

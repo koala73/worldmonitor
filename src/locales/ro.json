@@ -2363,7 +2363,7 @@
       "unscored": "Scenarii narative, nenotate pentru acuratețe."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus.",
+      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus.",
       "record": {
         "label": "Istoricul rezultatelor",
         "labelHint": "Cum au fost punctate prognozele publicate după ce s-au rezolvat, în ultimele {{days}} de zile. Treceți cursorul peste un număr pentru a vedea ce înseamnă.",
@@ -2419,6 +2419,11 @@
       "horizons": {
         "label": "De asemenea, evaluat la: {{list}}",
         "hint": "Probabilitatea titlului este evaluată la orizontul propriu al prognozei. Proiecția la fiecare dintre aceste orizonturi este de asemenea evaluată, comparată cu sursa sa de feed, folosind valoarea publicată pentru prima dată pentru această prognoză. Valorile proiecției nu sunt afișate deoarece valoarea curentă poate diferi de cea evaluată."
+      },
+      "audit": {
+        "label": "Precizie sub audit",
+        "hint": "Sub audit din {{date}}. Un audit a identificat erori în modul în care au fost evaluate previziunile. Scorurile sunt retrase în timp ce se fac corecții. Previziunile continuă să fie publicate și înregistrate.",
+        "unverified": "Rezultat înregistrat, neverificat cât timp precizia este sub audit."
       }
     },
     "escalationCorrelation": {

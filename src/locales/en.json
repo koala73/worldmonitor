@@ -2111,7 +2111,7 @@
       "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
+      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
       "record": {
         "label": "Track record",
         "labelHint": "How the published forecasts scored once they resolved, over the last {{days}} days. Hover a number for what it means.",
@@ -2132,6 +2132,11 @@
         "measuredHint": "How published {{domain}} forecasts have scored over {{n}} graded forecasts in the last {{days}} days. The base rate is what always answering the domain's observed yes rate would have scored. Lower is better. This is the domain's record, not this forecast's.",
         "unmeasured": "Not yet measured",
         "unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain needs {{min}} before its accuracy is shown."
+      },
+      "audit": {
+        "label": "Accuracy under audit",
+        "hint": "Under audit since {{date}}. An audit found errors in how forecasts were scored. The scores are withdrawn while corrections are made. Forecasts are still being published and recorded.",
+        "unverified": "Recorded outcome, not verified while accuracy is under audit."
       },
       "resolution": {
         "last": "Last: {{outcome}}",

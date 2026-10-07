@@ -253,7 +253,7 @@
     },
     {
       "name": "get_forecast_scorecard",
-      "description": "Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.",
+      "description": "Under audit since 2026-10-07 (issue 8990): scores are unreliable and withdrawn while corrections are made. Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

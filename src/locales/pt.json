@@ -1978,7 +1978,7 @@
       "unscored": "Cenários narrativos, não classificados quanto à precisão."
     },
     "forecast": {
-      "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li><li>Calibrada em relação aos baselines dos mercados de previsão quando disponível</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima.",
+      "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima.",
       "record": {
         "label": "Histórico de acertos",
         "labelHint": "Como as previsões publicadas pontuaram depois de resolvidas, nos últimos {{days}} dias. Passe o cursor sobre um número para ver o que significa.",
@@ -2034,6 +2034,11 @@
       "horizons": {
         "label": "Também pontuado em: {{list}}",
         "hint": "A probabilidade da manchete é avaliada no horizonte próprio da previsão. A projeção em cada um desses horizontes também é avaliada, em relação ao seu feed de origem, usando o valor publicado inicialmente para esta previsão. Os valores de projeção não são exibidos porque o valor atual pode diferir do avaliado."
+      },
+      "audit": {
+        "label": "Precisão em auditoria",
+        "hint": "Em auditoria desde {{date}}. Uma auditoria encontrou erros na forma como as previsões foram pontuadas. As pontuações foram suspensas enquanto as correções são feitas. As previsões continuam sendo publicadas e registradas.",
+        "unverified": "Resultado registrado, não verificado enquanto a precisão está em auditoria."
       }
     },
     "escalationCorrelation": {

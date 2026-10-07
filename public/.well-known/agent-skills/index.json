@@ -35,7 +35,7 @@
       "type": "skill-md",
       "description": "Retrieve probabilistic forecasts and their scorecard context. Use when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-forecast-signals/SKILL.md",
-      "digest": "sha256:7b733d2cbb0929d1f660ff2de3c2eeec01c336d669961c2726860605ed0cab0c"
+      "digest": "sha256:1e1270974fc39e0ee9d0f86cbf1d7d23486a1170d66769c5d61afecd38091635"
     },
     {
       "name": "check-sanctions-pressure",

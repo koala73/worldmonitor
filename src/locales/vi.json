@@ -2343,7 +2343,7 @@
       "unscored": "Các kịch bản tường thuật, không được đánh giá về độ chính xác."
     },
     "forecast": {
-      "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li><li>Hiệu chỉnh theo so sánh đường cơ sở của thị trường dự đoán nếu có</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên.",
+      "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên.",
       "record": {
         "label": "Thành tích",
         "labelHint": "Các dự báo đã công bố được chấm điểm thế nào sau khi có kết quả, trong {{days}} ngày qua. Di chuột lên một con số để xem ý nghĩa.",
@@ -2399,6 +2399,11 @@
       "horizons": {
         "label": "Cũng được chấm điểm tại: {{list}}",
         "hint": "Xác suất tiêu đề được đánh giá tại đường chân trời của chính dự báo. Phép chiếu tại mỗi đường chân trời này cũng được đánh giá, so với feed nguồn của nó, sử dụng giá trị được công bố lần đầu cho dự báo này. Các giá trị phép chiếu không được hiển thị vì giá trị hiện tại có thể khác với giá trị được đánh giá."
+      },
+      "audit": {
+        "label": "Độ chính xác đang được kiểm toán",
+        "hint": "Đang được kiểm toán kể từ {{date}}. Một cuộc kiểm toán phát hiện lỗi trong cách chấm điểm dự báo. Các điểm số đã được rút lại trong khi việc chỉnh sửa đang được thực hiện. Các dự báo vẫn đang được công bố và ghi lại.",
+        "unverified": "Kết quả ghi lại, chưa được xác minh trong khi độ chính xác đang được kiểm toán."
       }
     },
     "escalationCorrelation": {

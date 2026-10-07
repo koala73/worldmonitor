@@ -6,6 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { FORECAST_ACCURACY_AUDIT } from '../../shared/forecast-accuracy-audit';
 import { projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
@@ -314,6 +315,7 @@ function injectStyles(): void {
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
     .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
     .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
+    .fc-res-slot[data-unverified] .fc-res-chip, .fc-res-slot[data-unverified] .fc-res-mark { color: var(--text-secondary, #7d8590); }
     .fc-res-history { display: inline-flex; gap: 2px; letter-spacing: 0.02em; }
     .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     .fc-horizons { margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); }
@@ -791,6 +793,8 @@ export class ForecastPanel extends Panel {
     const domain   = f.domain || 'conflict';
     const catColor = DOMAIN_COLORS[domain] || '#7d8590';
     const catLabel = DOMAIN_LABELS[domain] || domain;
+    // The audit badge needs no scorecard data (#8990), so only a scored badge waits for the request.
+    const badgePending = this.record.kind === 'loading' && !FORECAST_ACCURACY_AUDIT;
     const probColor = pct >= 60 ? '#3fb950' : pct >= 40 ? '#d29922' : '#e05252';
     const trendText  = f.trend === 'rising' ? '↑ rising' : f.trend === 'falling' ? '↓ falling' : '→ stable';
     const trendColor = f.trend === 'rising' ? '#3fb950' : f.trend === 'falling' ? '#e05252' : '#7d8590';
@@ -817,7 +821,7 @@ export class ForecastPanel extends Panel {
             </div>
             ${simBarHtml}
             ${this.renderScoredHorizons(f)}
-            <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
+            <div class="fc-card-meta${badgePending ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${badgePending ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

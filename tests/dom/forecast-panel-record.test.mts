@@ -21,6 +21,9 @@ import { recordHref } from '@/components/forecast-record';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
+// Pins the lifted state; forecast-panel-under-audit.test.mts pins the audited one (#8990).
+vi.mock('../../shared/forecast-accuracy-audit', () => ({ FORECAST_ACCURACY_AUDIT: null }));
+
 const SCORECARD_PATH = '/api/forecast/v1/get-forecast-scorecard';
 
 function readyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
