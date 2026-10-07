@@ -680,6 +680,50 @@ describe('market anchor event-class equivalence (#7071)', () => {
     assert.equal(entry.calibration.drift, pred.calibration.drift);
   });
 
+  // Labelled on 2026-10-07 (#8990). Forecast side: production forecast titles,
+  // regions, and horizons. Market side: every market the pre-#7071 matcher
+  // attached to them, each settling inside the forecast window so only the
+  // subject and event-class gates can reject it. Six are market-copy forecasts
+  // paired with their own source market, where a 40/60 blend is the identity.
+  for (const [domain, region, title, timeHorizon, marketTitle] of [
+    ['market', 'Europe', 'Will UK annual GDP growth in 2026 be between 1% and 2%?', '30d', 'Will UK annual GDP growth in 2026 be between 1% and 2%?'],
+    ['political', 'Middle East', 'Israel x Iran ceasefire continues through October 31?', '30d', 'Israel x Iran ceasefire continues through October 31?'],
+    ['political', 'Middle East', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['political', 'Americas', 'How much will the US acquire Greenland for?: $0 / No Acquisition', '30d', 'How much will the US acquire Greenland for?: $0 / No Acquisition'],
+    ['political', 'Europe', 'Will the ECB announce no change at the October 2026 meeting?', '30d', 'Will the ECB announce no change at the October 2026 meeting?'],
+    ['political', 'Americas', 'Will Utah use a new congressional map for the 2026 United States midterm elections?', '30d', 'Will Utah use a new congressional map for the 2026 United States midterm elections?'],
+    ['cyber', 'China', 'Cyber threat concentration: China', '7d', 'Will China invade Taiwan by December 31, 2027?'],
+    ['cyber', 'United States', 'Cyber threat concentration: United States', '7d', 'Will Utah use a new congressional map for the 2026 United States midterm elections?'],
+    ['market', 'Iran', 'Sovereign risk repricing from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['market', 'Iran', 'Energy repricing risk from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['market', 'Iran', 'FX stress from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['conflict', 'Iran', 'Escalation risk: Iran', '7d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['supply_chain', 'Persian Gulf', 'GPS interference in Persian Gulf shipping zone', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'USA-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Military posture escalation: Middle East', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Unknown-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Elevated military air activity near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+  ]) {
+    it(`rejects the pre-#7071 anchor "${title}" <= "${marketTitle}" even when it settles in window`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { timeHorizon, yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  for (const [domain, region, title, marketTitle] of [
+    ['conflict', 'Iran', 'Escalation risk: Iran', 'Will Israel strike Iran by October 13?'],
+    ['conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a major new offensive in Ukraine by October 13?'],
+    ['supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', 'Strait of Hormuz closed to shipping by October 13?'],
+    ['supply_chain', 'Kerch Strait', 'Supply chain disruption: Kerch Strait', 'Kerch Strait shipping halted by October 13?'],
+  ]) {
+    it(`anchors the production forecast "${title}" to the same-question market "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration?.marketTitle, marketTitle);
+      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+    });
+  }
+
   it('matches the reviewed anchor set on the frozen production replay', () => {
     const fixture = JSON.parse(readFileSync(new URL('./fixtures/forecast-market-anchor-replay.json', import.meta.url), 'utf8'));
     const emittedAt = Date.parse(fixture.capturedAt);
