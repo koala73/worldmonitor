@@ -142,6 +142,14 @@ describe('ghost windows (#8990 item 4)', () => {
     assert.equal(again.scorecard.totals.scored, 1);
   });
 
+  it('treats a stored row without its own key field by its ledger key', () => {
+    const open = processResolutionCycle({}, history, chokepointFeed(40), T0 + 6 * DAY_MS + HOUR_MS).ledger;
+    const resolved = processResolutionCycle(open, history, chokepointFeed(70), T0 + 7 * DAY_MS + HOUR_MS).ledger;
+    const keyless = Object.fromEntries(Object.entries(resolved).map(([key, { key: _key, ...entry }]) => [key, entry]));
+    const ledger = ingestHistory(keyless, history, T0 + 7 * DAY_MS + 2 * HOUR_MS);
+    assert.deepEqual(Object.keys(ledger), Object.keys(resolved));
+  });
+
   it('re-ingesting the same history any number of times yields the same ledger', () => {
     const open = processResolutionCycle({}, history, chokepointFeed(40), T0 + 6 * DAY_MS + HOUR_MS).ledger;
     const resolved = processResolutionCycle(open, history, chokepointFeed(70), T0 + 7 * DAY_MS + HOUR_MS).ledger;

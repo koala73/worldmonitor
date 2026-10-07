@@ -1587,7 +1587,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     const key = freeWindowKey(ledger, id, deadline, questionKey);
     if (!key) continue;
     ledger[key] = { ...candidate, key };
-    windows.add(ledger[key], questionKey);
+    windows.add(key, ledger[key], questionKey);
     registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
   }
 
@@ -1637,19 +1637,19 @@ export function windowQuestionKey(entry) {
 // so re-reading history cannot reopen it.
 function indexQuestionWindows(ledger) {
   const byId = new Map();
-  const add = (entry, questionKey = windowQuestionKey(entry)) => {
+  const add = (key, entry, questionKey = windowQuestionKey(entry)) => {
     if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry)) return;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
-    byId.get(entry.id).push({ entry, questionKey });
+    byId.get(entry.id).push({ key, entry, questionKey });
   };
-  for (const entry of Object.values(ledger)) add(entry);
+  for (const [key, entry] of Object.entries(ledger)) add(key, entry);
   return {
     add,
     covering(id, questionKey, generatedAt) {
       const match = (byId.get(id) || [])
-        .filter(({ entry, questionKey: key }) => key === questionKey && windowCovers(entry, generatedAt))
-        .sort((a, b) => Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.entry.key.localeCompare(b.entry.key))[0];
-      return match?.entry.key ?? null;
+        .filter((window) => window.questionKey === questionKey && windowCovers(window.entry, generatedAt))
+        .sort(byEmission)[0];
+      return match?.key ?? null;
     },
   };
 }
@@ -1658,6 +1658,11 @@ function indexQuestionWindows(ledger) {
 // deadline tracks the venue's endDate and can move back before the window's
 // emission once the market closes, so it covers every later emission of the
 // same question, not a [generatedAt, deadline) span.
+// Ledger map keys identify windows; a stored row need not repeat its key.
+function byEmission(a, b) {
+  return Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.key.localeCompare(b.key);
+}
+
 function windowCovers(entry, generatedAt) {
   if (Number(entry.generatedAt) > generatedAt) return false;
   return entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY || generatedAt < Number(entry.deadline);
@@ -1704,7 +1709,7 @@ function indexEmissions(snapshots, nowMs) {
 export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { historyRead = true } = {}) {
   const byId = new Map();
   const horizonByParent = new Map();
-  for (const entry of Object.values(ledger)) {
+  for (const [key, entry] of Object.entries(ledger)) {
     if (!entry?.id) continue;
     if (isHorizonEntry(entry)) {
       if (!horizonByParent.has(entry.parentKey)) horizonByParent.set(entry.parentKey, []);
@@ -1713,12 +1718,12 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
     }
     if (isDuplicateWindow(entry)) continue;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
-    byId.get(entry.id).push({ entry, questionKey: windowQuestionKey(entry) });
+    byId.get(entry.id).push({ key, entry, questionKey: windowQuestionKey(entry) });
   }
 
   let duplicates = 0;
   for (const windows of byId.values()) {
-    windows.sort((a, b) => Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.entry.key.localeCompare(b.entry.key));
+    windows.sort(byEmission);
     const kept = [];
     for (const window of windows) {
       const keeper = kept.find(({ entry, questionKey }) => questionKey === window.questionKey && windowCovers(entry, Number(window.entry.generatedAt)));
@@ -1726,8 +1731,8 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
         kept.push(window);
         continue;
       }
-      for (const entry of [window.entry, ...(horizonByParent.get(window.entry.key) || [])]) {
-        voidDuplicateWindow(entry, keeper.entry.key, nowMs);
+      for (const entry of [window.entry, ...(horizonByParent.get(window.key) || [])]) {
+        voidDuplicateWindow(entry, keeper.key, nowMs);
         duplicates += 1;
       }
     }
