@@ -78,6 +78,14 @@ export function isLivePointRead(spec) {
     && periodFeedMaxLagMs(parsed?.feedKey || spec?.sourceFeed) == null;
 }
 
+// Why a live point read found nothing on time: the feed is down, the feed no
+// longer carries the metric, or the feed holds a reading taken too late.
+function missedLiveReadReason(parsed, feedData) {
+  if (feedData == null) return FEED_UNAVAILABLE_VOID_REASON;
+  if (Number.isFinite(extractMetricValue(parsed, feedData))) return LATE_READ_VOID_REASON;
+  return parsed.fn === 'price' || parsed.fn === 'value' ? 'value_source_never_settled' : 'no_establishable_metric';
+}
+
 // The first finite reading taken on time: at or after the deadline and within
 // one resolver cycle of it.
 export function firstTimelySample(samples, deadline) {
@@ -152,8 +160,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     const timely = firstTimelySample(samples, deadline);
     if (timely) return compareResult(timely.value, spec, entry, parsed, nowMs, { readTs: timely.ts });
     if (nowMs - deadline > LATE_READ_MAX_LAG_MS) {
-      const reason = feedData == null ? FEED_UNAVAILABLE_VOID_REASON : LATE_READ_VOID_REASON;
-      return voidResult(reason, entry, spec, parsed, nowMs, { maxReadLagMs: LATE_READ_MAX_LAG_MS });
+      return voidResult(missedLiveReadReason(parsed, feedData), entry, spec, parsed, nowMs, { maxReadLagMs: LATE_READ_MAX_LAG_MS });
     }
   }
 

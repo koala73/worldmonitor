@@ -9,7 +9,7 @@ import {
   receiptNeedsRearchive,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts } from '../scripts/_forecast-scorecard.mjs';
-import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { isLivePointRead, shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const MINUTE_MS = 60 * 1000;
@@ -140,6 +140,31 @@ describe('a live at-deadline read more than one resolver cycle late (#8990)', ()
     assert.equal(onlyRow(result.ledger).outcome, 'YES');
   });
 
+  it('keeps grading a daily FRED series dated by its observation day', async () => {
+    const FRED = 'economic:fred:v1:DGS10:0';
+    const fredBet = bet(EMIT, at('2026-07-17T05:00:00Z'), {
+      metricKey: `${FRED}|value(metric==DGS10)`, sourceFeed: FRED, threshold: 4.5, baselineValue: 4.2,
+      question: 'Will the 10-year Treasury yield rise to at least 4.5%?',
+    });
+    const fredFeed = (date, value) => shapeResolutionFeeds({ [FRED]: { series: { observations: [{ date: '2026-07-10', value: '4.2' }, { date, value: String(value) }] } } });
+    const { ledger, history } = await openWindow(fredBet, ['2026-07-16', '2026-07-17', '2026-07-18', '2026-07-19', '2026-07-20'], () => fredFeed('2026-07-16', 4.3));
+    assert.equal(onlyRow(ledger).status, 'pending', 'FRED has not published the deadline day');
+    // The 07-17 observation publishes on Monday 07-20, four days after the deadline.
+    const result = await run(ledger, history, fredFeed('2026-07-17', 4.6), at('2026-07-21T06:02:00Z'));
+    assert.equal(onlyRow(result.ledger).outcome, 'YES');
+  });
+
+  it('names a symbol the feed dropped as never settled, not as a late read', async () => {
+    const otherSymbol = (fetchedAt) => shapeResolutionFeeds({ [COMMODITY_FEED]: { _seed: { fetchedAt }, data: { quotes: [{ symbol: 'CL=F', price: 70 }] } } });
+    const { ledger, history } = await openWindow(brentBet(EMIT, DEADLINE), pendingRuns, (fetchedAt) => brentFeed(88, fetchedAt));
+    const dropped = await run(ledger, history, otherSymbol(at('2026-07-19T05:52:00Z')), at('2026-07-19T06:02:00Z'));
+    assert.equal(onlyRow(dropped.ledger).evidence?.reason, undefined, 'pending while the symbol may return');
+    const result = await run(dropped.ledger, history, otherSymbol(at('2026-07-20T05:52:00Z')), at('2026-07-20T06:02:00Z'));
+    const row = onlyRow(result.ledger);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'value_source_never_settled');
+  });
+
   it('keeps grading a market settlement adjudicated days after the deadline', async () => {
     const { ledger, history } = await openWindow(settlementBet(EMIT, DEADLINE), pendingRuns, () => shapeResolutionFeeds({ [SETTLEMENT_FEED]: { records: [] } }));
     const result = await run(ledger, history, settlementFeed(100, '2026-07-28T00:00:00Z'), at('2026-07-29T06:02:00Z'));
@@ -219,6 +244,17 @@ describe('a GPS-jamming read: one snapshot per UTC day, published a day later (#
     assert.equal(waiting.status, 'pending');
     const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 11), down);
     assert.equal(row.evidence.reason, 'feed_unavailable');
+  });
+});
+
+describe('feed classes (#8990)', () => {
+  const pointRead = (feed, expr) => ({ window: 'at-deadline', metricKey: `${feed}|${expr}`, sourceFeed: feed });
+  it('bounds only feeds whose reading is the value when fetched', () => {
+    assert.equal(isLivePointRead(pointRead(COMMODITY_FEED, 'price(symbol==BZ=F)')), true);
+    assert.equal(isLivePointRead(pointRead('supply_chain:chokepoints:v4', 'riskScore(route==Suez)')), true);
+    for (const feed of ['intelligence:gpsjam:v2', EIA_FEED, SETTLEMENT_FEED, 'economic:fred:v1:DGS10:0', 'economic:fred:v1:CPIAUCSL:0']) {
+      assert.equal(isLivePointRead(pointRead(feed, 'value(metric==x)')), false, `${feed} dates its own readings`);
+    }
   });
 });
 
@@ -339,7 +375,19 @@ describe('rows already graded on a late read (#8990)', () => {
     id: 'bet:eia',
     spec: { kind: 'hard', metricKey: `${EIA_FEED}|value(metric==brent)`, operator: 'crosses', threshold: 90, baselineValue: 85, window: 'at-deadline', deadline: eiaDeadline, sourceFeed: EIA_FEED, question: 'EIA Brent to 90?' },
   };
-  const legacy = Object.fromEntries([late, witness, orphan, eiaLate].map((entry) => [entry.key, entry]));
+  // Another symbol on the same feed, read on time for the orphan's deadline.
+  const otherSymbol = {
+    ...row(`commodity:CL=F:WTI@${orphanDeadline}`, orphanDeadline, 72, 70, {
+      samples: { count: 1, recent: [{ ts: orphanDeadline + HOUR_MS, value: 73 }] },
+      outcome: 'YES',
+      resolvedAt: orphanDeadline + HOUR_MS + MINUTE_MS,
+      evidence: { metricValue: 73, readTs: orphanDeadline + HOUR_MS, resolvedAt: orphanDeadline + HOUR_MS + MINUTE_MS },
+      receiptArchivedAt: orphanDeadline + 2 * HOUR_MS,
+    }),
+    id: 'commodity:CL=F:WTI',
+    spec: { kind: 'hard', metricKey: `${COMMODITY_FEED}|price(symbol==CL=F)`, operator: 'crosses', threshold: 72, baselineValue: 70, window: 'at-deadline', deadline: orphanDeadline, sourceFeed: COMMODITY_FEED, question: 'Will WTI reach 72?' },
+  };
+  const legacy = Object.fromEntries([late, witness, orphan, eiaLate, otherSymbol].map((entry) => [entry.key, entry]));
 
   it('re-grades on the ledger\'s first reading after the deadline and keeps what it replaced', async () => {
     const { ledger } = await run(legacy, HISTORY, {}, NOW);
@@ -354,7 +402,7 @@ describe('rows already graded on a late read (#8990)', () => {
     assert.equal(receiptNeedsRearchive(corrected), true);
   });
 
-  it('voids a late row the ledger holds no on-time reading for', async () => {
+  it('voids a late row the ledger holds no on-time reading for, ignoring other symbols on its feed', async () => {
     const { ledger } = await run(legacy, HISTORY, {}, NOW);
     const voided = ledger[orphan.key];
     assert.equal(voided.outcome, 'VOID');
@@ -370,6 +418,7 @@ describe('rows already graded on a late read (#8990)', () => {
     const { ledger } = await run(legacy, HISTORY, {}, NOW);
     assert.deepEqual(ledger[witness.key], { ...witness });
     assert.deepEqual(ledger[eiaLate.key], { ...eiaLate });
+    assert.deepEqual(ledger[otherSymbol.key], { ...otherSymbol });
   });
 
   it('is idempotent and queues each corrected receipt for re-archive once', async () => {
