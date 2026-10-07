@@ -132,19 +132,56 @@ const RECEIPTS = Object.freeze([
   { question: 'Will cyber threat reports rise <img src=x onerror=alert(1)>?', forecastAt: Date.parse('2026-09-01T00:00:00Z'), probability: 0.6, outcome: 'YES', resolvedAt: Date.parse('2026-09-08T00:00:00Z'), sourceFeed: 'cyber-threats', observedValue: 41 },
 ]);
 const WITH_INTERVALS = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL, receipts: RECEIPTS });
+// Issue #8867: the market-alert ledger's rolling hit rates, as the RPC serves
+// them after its own whitelist.
+const MARKET_ALERTS = Object.freeze({
+  generatedAt: Date.parse('2026-09-10T20:00:00Z'),
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'An emission resolves HIT when a tracked story names the same entity within six hours.',
+  byType: [
+    { type: 'market', n: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', n: 0, baseN: 0 },
+  ],
+});
+
+function protoMessageFields(messageName) {
+  const proto = read('proto/worldmonitor/forecast/v1/get_forecast_scorecard.proto');
+  const block = proto.match(new RegExp(`message ${messageName} \\{([\\s\\S]*?)\\n\\}`))[1];
+  return [...block.matchAll(/^\s*(?:optional |repeated )?[A-Za-z0-9_.]+ ([a-z0-9_]+) = \d+/gm)]
+    .map(([, name]) => name.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase()));
+}
 
 describe('forecast scorecard field whitelist', () => {
   it('declares exactly the fields proto GetForecastScorecardResponse declares', () => {
-    const proto = read('proto/worldmonitor/forecast/v1/get_forecast_scorecard.proto');
-    const responseBlock = proto.match(/message GetForecastScorecardResponse \{([\s\S]*?)\n\}/)[1];
-    const declared = [...responseBlock.matchAll(/^\s*(?:optional |repeated )?[A-Za-z0-9_.]+ ([a-z0-9_]+) = \d+/gm)]
-      .map(([, name]) => name.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase()));
+    const declared = protoMessageFields('GetForecastScorecardResponse');
     assert.ok(declared.length > 10, 'the proto parse must actually find fields');
     assert.deepEqual(
       [...SCORECARD_DECLARED_FIELDS].sort(),
       declared.sort(),
       'the published field list must track the proto, or an undeclared seeder field can reach the page',
     );
+  });
+
+  it('whitelists the market-alert block to the members proto MarketAlertScorecard and MarketAlertRow declare (#8867)', () => {
+    const containerFields = protoMessageFields('MarketAlertScorecard');
+    const rowFields = protoMessageFields('MarketAlertRow');
+    assert.ok(containerFields.length > 3 && rowFields.length > 5, 'the proto parse must actually find fields');
+    const numbered = (fields) => Object.fromEntries(fields.map((field, index) => [field, index + 1]));
+    const selected = selectDeclaredScorecardFields({
+      ...LIVE_SCORECARD,
+      marketAlerts: {
+        ...numbered([...containerFields, 'schemaVersion', 'totals', 'archive']),
+        byType: [numbered([...rowFields, 'pending', 'resolved', 'hit', 'miss', 'void'])],
+      },
+    });
+    assert.deepEqual(Object.keys(selected.marketAlerts).sort(), containerFields.sort());
+    assert.deepEqual(Object.keys(selected.marketAlerts.byType[0]).sort(), rowFields.sort());
+  });
+
+  it('yields no marketAlerts key for a payload captured before the block existed', () => {
+    const selected = selectDeclaredScorecardFields(LIVE_SCORECARD);
+    assert.equal(Object.hasOwn(selected, 'marketAlerts'), false);
   });
 
   it('drops the undeclared betEngine object the handler passes through', () => {
@@ -788,17 +825,27 @@ describe('accuracy page honesty rules', () => {
   it('whitelists the distribution rather than spreading the captured payload', () => {
     const leaky = {
       ...LIVE_SECTION,
-      scorecard: { ...WITH_INTERVALS.scorecard, betEngine: { count: 299 }, judgedLane: 'shadow' },
+      scorecard: {
+        ...WITH_INTERVALS.scorecard,
+        betEngine: { count: 299 },
+        judgedLane: 'shadow',
+        marketAlerts: {
+          ...MARKET_ALERTS,
+          archive: { coveredFromMs: 1 },
+          byType: MARKET_ALERTS.byType.map((row) => ({ ...row, pending: 1 })),
+        },
+      },
     };
     const { html } = renderState(leaky);
     const download = downloadFor(leaky);
-    assert.doesNotMatch(html, /betEngine|judgedLane|shadow/);
-    assert.doesNotMatch(JSON.stringify(download), /betEngine|judgedLane|shadow/);
+    assert.doesNotMatch(html, /betEngine|judgedLane|shadow|coveredFromMs/);
+    assert.doesNotMatch(JSON.stringify(download), /betEngine|judgedLane|shadow|coveredFromMs/);
     assert.deepEqual(
       Object.keys(download.scorecard).sort(),
       [...SCORECARD_DECLARED_FIELDS].sort(),
       'the distribution carries the declared surface and nothing else',
     );
+    assert.deepEqual(download.scorecard.marketAlerts, MARKET_ALERTS);
   });
 
   it('describes its own three facts and provenance in the distribution', () => {

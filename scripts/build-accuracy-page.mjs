@@ -43,6 +43,7 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'uncertainty',
   'funnel',
   'receipts',
+  'marketAlerts',
 ]);
 
 // A fixed vocabulary, because the page is public: an exception message or an
@@ -88,6 +89,10 @@ const FUNNEL_FIELDS = Object.freeze([
   'resolvedOfMatured', 'scoredOfMatured',
 ]);
 const PROPORTION_FIELDS = Object.freeze(['count', 'successes', 'rate', 'ci95']);
+// Mirrors MARKET_ALERT_FIELDS and MARKET_ALERT_ROW_FIELDS in
+// server/worldmonitor/forecast/v1/scorecard-fields.ts (a test pins the parity).
+const MARKET_ALERT_FIELDS = Object.freeze(['generatedAt', 'windowHours', 'rollingWindowDays', 'methodology', 'byType']);
+const MARKET_ALERT_ROW_FIELDS = Object.freeze(['type', 'n', 'hitRate', 'baseN', 'baseHitRate', 'pairedHitRate', 'medianLeadTimeMs']);
 
 export const SCORECARD_NESTED_OBJECT_FIELDS = Object.freeze({
   totals: TOTALS_FIELDS,
@@ -96,12 +101,17 @@ export const SCORECARD_NESTED_OBJECT_FIELDS = Object.freeze({
   skill: SKILL_FIELDS,
   uncertainty: UNCERTAINTY_FIELDS,
   funnel: FUNNEL_FIELDS,
+  marketAlerts: MARKET_ALERT_FIELDS,
 });
 // Members that are themselves objects. The producer writes null for an
 // interval it cannot compute, and null is kept: it is the not-measurable state.
 export const SCORECARD_NESTED_CHILD_FIELDS = Object.freeze({
   uncertainty: { overallBrier: INTERVAL_FIELDS, skillBrier: INTERVAL_FIELDS },
   funnel: { resolvedOfMatured: PROPORTION_FIELDS, scoredOfMatured: PROPORTION_FIELDS },
+});
+// Members that are row lists, picked row by row.
+export const SCORECARD_NESTED_ROW_CHILD_FIELDS = Object.freeze({
+  marketAlerts: { byType: MARKET_ALERT_ROW_FIELDS },
 });
 const NESTED_ROW_FIELDS = Object.freeze({
   byDomain: DOMAIN_FIELDS,
@@ -172,6 +182,11 @@ export function selectDeclaredScorecardFields(payload) {
         if (!Object.hasOwn(nested, child) || nested[child] === null) continue;
         const picked = pickFields(nested[child], childFields);
         if (picked) nested[child] = picked;
+        else delete nested[child];
+      }
+      for (const [child, rowFields] of Object.entries(SCORECARD_NESTED_ROW_CHILD_FIELDS[field] ?? {})) {
+        if (!Object.hasOwn(nested, child)) continue;
+        if (Array.isArray(nested[child])) nested[child] = nested[child].map((row) => pickFields(row, rowFields)).filter(Boolean);
         else delete nested[child];
       }
       out[field] = nested;

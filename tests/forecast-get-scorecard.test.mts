@@ -3,8 +3,18 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import forecastRoute from '../api/forecast/v1/[rpc].ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
-import { SCORECARD_DECLARED_FIELDS, SCORECARD_NESTED_CHILD_FIELDS, SCORECARD_NESTED_OBJECT_FIELDS } from '../scripts/build-accuracy-page.mjs';
-import { RECEIPT_FIELDS, SCORECARD_BLOCK_FIELDS } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
+import {
+  SCORECARD_DECLARED_FIELDS,
+  SCORECARD_NESTED_CHILD_FIELDS,
+  SCORECARD_NESTED_OBJECT_FIELDS,
+  selectDeclaredScorecardFields,
+} from '../scripts/build-accuracy-page.mjs';
+import {
+  MARKET_ALERT_FIELDS,
+  MARKET_ALERT_ROW_FIELDS,
+  RECEIPT_FIELDS,
+  SCORECARD_BLOCK_FIELDS,
+} from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
 
 const originalFetch = globalThis.fetch;
@@ -175,22 +185,22 @@ describe('getForecastScorecard backend status', () => {
       degraded: false, stale: false, error: '',
     };
     const { fetchImpl } = createRedisFetch({});
+    const stored: Record<string, unknown> = {
+      [REDIS_KEY]: envelope({
+        ...data,
+        uncertainty: { ...data.uncertainty, skillBrier: null, draws: [0.1], overallBrier: { ...data.uncertainty.overallBrier, scope: 'overall' } },
+        funnel: { ...data.funnel, entryIds: ['a'], resolvedOfMatured: { ...data.funnel.resolvedOfMatured, sampleIds: ['b'] } },
+        receipts: data.receipts.map((row) => ({ ...row, key: 'ledger-key', rationale: 'judge text' })),
+        judgedLane: { pendingJudge: 3 },
+        betEngine: { count: 1, vsBaseRate: { brierDelta: 0.02 }, deviationSkill: { count: 1 } },
+        futureInternalMetric: { syntheticMarker: 'not-part-of-response' },
+      }),
+      [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED),
+    };
     globalThis.fetch = async (input, init) => {
       const url = String(input);
-      if (url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`)) {
-        return Response.json({ result: JSON.stringify({
-          _seed: { fetchedAt: Date.now() },
-          data: {
-            ...data,
-            uncertainty: { ...data.uncertainty, skillBrier: null, draws: [0.1], overallBrier: { ...data.uncertainty.overallBrier, scope: 'overall' } },
-            funnel: { ...data.funnel, entryIds: ['a'], resolvedOfMatured: { ...data.funnel.resolvedOfMatured, sampleIds: ['b'] } },
-            receipts: data.receipts.map((row) => ({ ...row, key: 'ledger-key', rationale: 'judge text' })),
-            judgedLane: { pendingJudge: 3 },
-            betEngine: { count: 1, vsBaseRate: { brierDelta: 0.02 }, deviationSkill: { count: 1 } },
-            futureInternalMetric: { syntheticMarker: 'not-part-of-response' },
-          },
-        }) });
-      }
+      const key = decodeURIComponent(url.split('/get/')[1] ?? '');
+      if (Object.hasOwn(stored, key)) return Response.json({ result: JSON.stringify(stored[key]) });
       assert.equal(new URL(url).origin, 'https://fake-upstash.example', 'all I/O must stay in the mock');
       return fetchImpl(input, init);
     };
@@ -200,7 +210,23 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(response.status, 200);
     const serialized = await response.json();
     assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS].sort());
-    assert.deepEqual(serialized, data, 'every declared field must survive the real gateway and serializer, and a null interval is omitted');
+    assert.deepEqual(
+      serialized,
+      { ...data, marketAlerts: MARKET_ALERTS_SERVED },
+      'every declared field must survive the real gateway and serializer, and a null interval is omitted',
+    );
+  });
+
+  it('filters the market-alert block with the member lists the /accuracy/ page keeps', () => {
+    const numbered = (fields: readonly string[]) => Object.fromEntries(fields.map((field, index) => [field, index + 1]));
+    const selected = selectDeclaredScorecardFields({
+      marketAlerts: {
+        ...numbered([...MARKET_ALERT_FIELDS, 'schemaVersion', 'totals', 'archive']),
+        byType: [numbered([...MARKET_ALERT_ROW_FIELDS, 'pending', 'resolved', 'hit', 'miss', 'void'])],
+      },
+    });
+    assert.deepEqual(Object.keys(selected.marketAlerts).sort(), [...MARKET_ALERT_FIELDS].sort());
+    assert.deepEqual(Object.keys(selected.marketAlerts.byType[0]).sort(), [...MARKET_ALERT_ROW_FIELDS].sort());
   });
 
   it('filters receipt rows with the member list the producer publishes', () => {
