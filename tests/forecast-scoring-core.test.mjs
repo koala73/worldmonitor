@@ -328,6 +328,24 @@ describe('existing ledger correction (#8990)', () => {
     assert.deepEqual(twice, once);
   });
 
+  it('opens a question\'s window from its earliest emission even when a later snapshot carries it', () => {
+    const early = brent(T0 + DAY_MS, 110.01, 115, 0.5);
+    const late = brent(T0 + 3 * DAY_MS, 110.01, 115, 0.6);
+    const ledger = ingestHistory({}, [snap(T0 + 3 * DAY_MS, [late]), snap(T0 + 4 * DAY_MS, [early])], T0 + 4 * DAY_MS + HOUR_MS);
+    assert.deepEqual(Object.keys(ledger), [`commodity:BZ=F@${T0 + 5 * DAY_MS}`], 'no voided duplicate is minted for the later emission');
+  });
+
+  it('converges in one run when a newly opened window precedes an existing one of its question', () => {
+    const OCT_2 = T0 + 2 * DAY_MS;
+    const OCT_5 = T0 + 5 * DAY_MS;
+    const earlier = ingestHistory({}, [snap(T0, [brent(T0, 136.47, 120, 0.3)])], T0)[`commodity:BZ=F@${T0 + 4 * DAY_MS}`];
+    const later = ingestHistory({}, [snap(OCT_5, [brent(OCT_5, 110.01, 115, 0.6)])], OCT_5)[`commodity:BZ=F@${OCT_5 + 4 * DAY_MS}`];
+    const history = [snap(T0, [brent(T0, 136.47, 120, 0.3)]), snap(OCT_2, [brent(OCT_2, 110.01, 115, 0.5)]), snap(OCT_5, [brent(OCT_5, 110.01, 115, 0.6)])];
+    const once = ingestHistory({ [earlier.key]: earlier, [later.key]: later }, history, OCT_5 + HOUR_MS);
+    assert.equal(once[later.key].duplicateOf, `commodity:BZ=F@${OCT_2 + 4 * DAY_MS}`);
+    assert.deepEqual(ingestHistory(once, history, OCT_5 + 2 * HOUR_MS), once);
+  });
+
   it('lets an emission a voided duplicate once absorbed open its own window', () => {
     const late = chokepoint(T0 + 7 * DAY_MS + 30 * 60 * 1000, 0.45);
     const ledger = ingestHistory(legacy, [snap(late.generatedAt, [late])], late.generatedAt + HOUR_MS);
@@ -367,6 +385,31 @@ describe('existing ledger correction (#8990)', () => {
     assert.equal(row.baselineProbability, 0.4);
     assert.equal('passes' in row, false);
     assert.deepEqual(row.rescore.superseded, { passes: [{ probability: 0.7 }], probabilitySource: 'ensemble' });
+  });
+
+  it('restores a window\'s opening fields from its first emission when history still holds it', () => {
+    const generatedAt = T0;
+    const opening = { ...brent(generatedAt, 87.43, 85.3, 0.4), baselineProbability: 0.4, probabilitySource: 'ensemble', passes: [{ probability: 0.4 }], calibration: { marketPrice: 55 } };
+    const resolvedRow = {
+      ...ingestHistory({}, [snap(generatedAt, [opening])], generatedAt)[`commodity:BZ=F@${generatedAt + 4 * DAY_MS}`],
+      status: 'resolved', outcome: 'YES', resolvedAt: generatedAt + 4 * DAY_MS + HOUR_MS, evidence: { metricValue: 88 },
+      probability: 0.7, passes: [{ probability: 0.7 }], calibration: { marketPrice: 71 }, lastSeenAt: generatedAt + DAY_MS,
+    };
+    const ledger = ingestHistory({ [resolvedRow.key]: resolvedRow }, [snap(generatedAt, [opening])], generatedAt + 5 * DAY_MS);
+    const row = ledger[resolvedRow.key];
+    assert.equal(row.probability, 0.4);
+    assert.equal(row.probabilitySource, 'ensemble', 'an ensemble that landed on the base rate is still an ensemble');
+    assert.deepEqual(row.passes, [{ probability: 0.4 }]);
+    assert.deepEqual(row.calibration, { marketPrice: 55 });
+    assert.equal(row.rescore.restoredFromHistory, true);
+    assert.deepEqual(row.rescore.superseded, { passes: [{ probability: 0.7 }], calibration: { marketPrice: 71 } });
+    assert.deepEqual(ingestHistory(ledger, [snap(generatedAt, [opening])], generatedAt + 6 * DAY_MS), ledger);
+  });
+
+  it('leaves a row the fixed code re-sighted untouched', () => {
+    const current = base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, lastSeenAt: T0 + 3 * DAY_MS, lastSeenProbability: 0.5, calibration: { marketPrice: 0.9 }, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
+    const ledger = ingestHistory({ [current.key]: current }, [], NOW);
+    assert.deepEqual(ledger[current.key], current);
   });
 
   it('never rescores a VOID row', () => {

@@ -1543,12 +1543,17 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   // Envelope voids first (#5233), so the window correction never rescores a
   // row that the same run then voids.
   voidEnvelopeBugResolutions(ledger, nowMs);
-  correctLedgerWindows(ledger, nowMs);
-  const windows = indexQuestionWindows(ledger);
   const snapshots = [...(historySnapshots || [])]
     .filter(Boolean)
     .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
+  const openingEmissions = indexEmissions(snapshots, nowMs);
+  correctLedgerWindows(ledger, nowMs, openingEmissions);
+  const windows = indexQuestionWindows(ledger);
 
+  // Emission order, not snapshot order: a later snapshot can carry an earlier
+  // emission, and the window a question opens must be the one its earliest
+  // emission opens, as correctLedgerWindows assumes.
+  const emissions = [];
   for (const snapshot of snapshots) {
     const snapshotAt = Number(snapshot.generatedAt || nowMs);
     for (const forecast of snapshot.predictions || []) {
@@ -1558,29 +1563,37 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
       const deadline = Number(spec.deadline);
       const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
       if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
-
-      const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
-      const questionKey = windowQuestionKey(candidate);
-      const coveringKey = windows.covering(id, questionKey, generatedAt);
-      if (coveringKey) {
-        const window = ledger[coveringKey];
-        if (window.status === 'pending' || window.status === 'pending-judge') {
-          recordSighting(window, forecast, snapshotAt);
-          registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
-        }
-        continue;
-      }
-      // A window opened after its deadline would be read from whatever the
-      // feed or archive holds now, not at the deadline.
-      if (deadline < nowMs) continue;
-      const key = freeWindowKey(ledger, id, deadline, questionKey);
-      if (!key) continue;
-      ledger[key] = { ...candidate, key };
-      windows.add(ledger[key], questionKey);
-      registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
+      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt });
     }
   }
+  emissions.sort((a, b) => a.generatedAt - b.generatedAt || a.snapshotAt - b.snapshotAt);
 
+  for (const { forecast, spec, id, deadline, generatedAt, snapshotAt } of emissions) {
+    const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
+    const questionKey = windowQuestionKey(candidate);
+    const coveringKey = windows.covering(id, questionKey, generatedAt);
+    if (coveringKey) {
+      const window = ledger[coveringKey];
+      if (window.status === 'pending' || window.status === 'pending-judge') {
+        recordSighting(window, forecast, snapshotAt);
+        registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
+      }
+      continue;
+    }
+    // A window opened after its deadline would be read from whatever the
+    // feed or archive holds now, not at the deadline.
+    if (deadline < nowMs) continue;
+    const key = freeWindowKey(ledger, id, deadline, questionKey);
+    if (!key) continue;
+    ledger[key] = { ...candidate, key };
+    windows.add(ledger[key], questionKey);
+    registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
+  }
+
+  // A window opened this run for an emission the old code had absorbed into
+  // another question can precede an existing window of its own question, so
+  // the correction runs again and the ledger converges in one run.
+  correctLedgerWindows(ledger, nowMs, openingEmissions);
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
 }
@@ -1673,7 +1686,21 @@ const SIGHTING_FIELDS = ['passes', 'calibration', 'uncalibratedProbability'];
 // question is a duplicate, so it and its horizon windows are VOID. Any kept
 // window whose probability is not its first-seen one is rescored. Both steps
 // leave a corrected row alone, so re-running changes nothing.
-export function correctLedgerWindows(ledger, nowMs) {
+// Each emission in the history read, by id and emission time, so the
+// correction can restore a window's opening fields exactly.
+function indexEmissions(snapshots, nowMs) {
+  const emissions = new Map();
+  for (const snapshot of snapshots) {
+    for (const forecast of snapshot.predictions || []) {
+      const generatedAt = Number(forecast?.generatedAt || forecast?.createdAt || snapshot.generatedAt || nowMs);
+      const key = `${forecast?.id}|${generatedAt}`;
+      if (forecast?.id && !emissions.has(key)) emissions.set(key, forecast);
+    }
+  }
+  return emissions;
+}
+
+export function correctLedgerWindows(ledger, nowMs, emissions = new Map()) {
   const byId = new Map();
   const horizonByParent = new Map();
   for (const entry of Object.values(ledger)) {
@@ -1708,28 +1735,45 @@ export function correctLedgerWindows(ledger, nowMs) {
   let rescored = 0;
   for (const entry of Object.values(ledger)) {
     if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID' || entry.rescore) continue;
-    if (rescoreToFirstSeen(entry, nowMs)) rescored += 1;
+    if (rescoreToFirstSeen(entry, nowMs, emissions.get(`${entry.id}|${Number(entry.generatedAt)}`))) rescored += 1;
   }
   return { duplicates, rescored };
 }
 
-// The old updateOpenWindow overwrote the probability and its sighting fields
+// The old updateOpenWindow overwrote the probability and its opening fields
 // on every sighting of equal or higher provenance rank. A row whose
-// probability moved is rescored to its first-seen value and its sighting
-// fields move under `rescore`. Its base rate does not depend on the sighting
-// and stays. When the first-seen value equals that base rate, the window
-// opened on the base-rate placeholder, so the row says so; otherwise the
-// later provenance is kept, since the old rank guard only ever upgraded it.
-// A row the old code saw again without moving its probability keeps its
-// provenance and passes, which produced that same probability, and only its
-// market anchor and lineage move.
-function rescoreToFirstSeen(entry, nowMs) {
+// probability moved, or that the old code saw again, is restored to its
+// first emission. When that emission is still in the history read, its
+// provenance, base rate, passes, market anchor and lineage come back exactly
+// (every bet row's first emission is in the bet history). Otherwise the
+// fields are inferred: the later sighting's passes, anchor and lineage move
+// under `rescore`, the base rate stays, and a first-seen value equal to the
+// base rate marks a window that opened on the placeholder. A re-sighted row
+// whose probability did not move keeps its provenance and passes, which
+// produced that same probability, and only its anchor and lineage move.
+const OPENING_FIELDS = ['probabilitySource', 'baselineProbability', 'passes', 'calibration', 'uncalibratedProbability'];
+
+function rescoreToFirstSeen(entry, nowMs, firstEmission) {
   const first = Number(entry.firstSeenProbability);
   if (!Number.isFinite(first)) return false;
   const probabilityMoved = Number(entry.probability) !== first;
+  if (!probabilityMoved && !sightedBeforeFix(entry)) return false;
+  if (firstEmission && Number(firstEmission.probability) === first) {
+    const opened = createEntry(entry.id, firstEmission, firstEmission.resolution || {}, entry.generatedAt, entry.firstSeenAt, entry.deadline);
+    const changed = OPENING_FIELDS.filter((field) => JSON.stringify(entry[field]) !== JSON.stringify(opened[field]));
+    if (!probabilityMoved && !changed.length) return false;
+    const superseded = Object.fromEntries(changed.map((field) => [field, field in entry ? entry[field] : null]));
+    entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, restoredFromHistory: true, rescoredAt: nowMs };
+    for (const field of changed) {
+      if (opened[field] === undefined) delete entry[field];
+      else entry[field] = opened[field];
+    }
+    entry.probability = first;
+    return true;
+  }
   const fields = probabilityMoved ? SIGHTING_FIELDS : ['calibration', 'uncalibratedProbability'];
   const superseded = Object.fromEntries(fields.filter((field) => field in entry).map((field) => [field, entry[field]]));
-  if (!probabilityMoved && !(sightedBeforeFix(entry) && Object.keys(superseded).length)) return false;
+  if (!probabilityMoved && !Object.keys(superseded).length) return false;
   if (probabilityMoved && 'probabilitySource' in entry) superseded.probabilitySource = entry.probabilitySource;
   entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
   for (const field of fields) delete entry[field];
