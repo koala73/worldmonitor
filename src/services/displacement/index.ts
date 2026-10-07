@@ -1,8 +1,15 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { GetDisplacementSummaryResponse as ProtoResponse, CountryDisplacement as ProtoCountry, DisplacementFlow as ProtoFlow } from '@/generated/client/worldmonitor/displacement/v1/service_client';
+import type {
+  GetDisplacementSummaryResponse as ProtoResponse,
+  CountryDisplacement as ProtoCountry,
+  DisplacementFlow as ProtoFlow,
+} from '@/generated/client/worldmonitor/displacement/v1/service_client';
 import { createCircuitBreaker, getCSSColor } from '@/utils';
 import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
+import { EMPTY_INTERNAL_DISPLACEMENT, toInternalDisplacementData, type InternalDisplacementData } from './internal';
+
+export * from './internal';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 
@@ -140,6 +147,22 @@ export async function fetchUnhcrPopulation(): Promise<UnhcrFetchResult> {
     ok: data !== emptyResult && data.countries.length > 0,
     data,
   };
+}
+
+// ─── Internal displacement (IOM DTM) ───
+
+const internalBreaker = createCircuitBreaker<InternalDisplacementData>({
+  name: 'IOM DTM Displacement',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+export async function fetchInternalDisplacement(): Promise<InternalDisplacementData> {
+  return internalBreaker.execute(async () => {
+    const response = await new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) })
+      .getInternalDisplacement({ countryCode: '' });
+    return toInternalDisplacementData(response);
+  }, EMPTY_INTERNAL_DISPLACEMENT, { shouldCache: (r) => r.operations.length > 0 });
 }
 
 // ─── Presentation helpers (copied verbatim from legacy src/services/unhcr.ts) ───

@@ -4983,11 +4983,7 @@ components:
                         - PERIOD_CHANGE_BASIS_UNSPECIFIED
                         - publisher_reported
                         - derived_from_prior_period_level
-                    description: |-
-                        Basis for the decision-grade period-over-period change. The custom JSON
-                         values preserve the lowercase strings already present in Redis and consumed
-                         by downstream matchers while exposing a closed taxonomy to generated clients
-                         and OpenAPI.
+                    description: Basis for the decision-grade period-over-period change.
                 priorPeriodValue:
                     type: number
                     format: double
@@ -5088,11 +5084,8 @@ components:
                         - WAR_RISK_TIER_CRITICAL
                         - WAR_RISK_TIER_WAR_ZONE
                     description: |-
-                        *
-                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
-                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
-                         threatLevel from ChokepointConfig, making it available to clients for badges
-                         and bypass corridor scoring.
+                        War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat
+                         classification. Free field (no PRO gate).
                 navigationalWarningsAvailable:
                     type: boolean
                     description: |-
@@ -5248,23 +5241,11 @@ components:
                          "portwatch-counts" for vessel-count coverage. FLOW_SOURCE_UNSPECIFIED means
                          the cached estimate carried a basis this taxonomy does not list, which the
                          endpoint reports rather than passing through undeclared.
-
-                         Carries the per-value semantics because an enum-typed field takes its
-                         generated OpenAPI description from the enum, not from the field. The custom
-                         JSON values preserve the strings seed-chokepoint-flows.mjs already writes to
-                         energy:chokepoint-flows:v1, so promoting this taxonomy out of prose changes
-                         no wire value.
                 hazardAlertLevel:
                     type: string
                     description: |-
                         Nearest active GDACS hazard alert level within the configured radius:
                          "RED", "ORANGE", or empty string when no nearby alert applies.
-
-                         Deliberately an open string rather than a closed enum like source: the
-                         empty string is a real published value here, and the pinned sebuf codegen
-                         drops an empty (sebuf.http.enum_value), so "" cannot be expressed as an
-                         enum's JSON name. Verified at both the zero and a non-zero value; see
-                         #6106 before retrying.
                 hazardAlertName:
                     type: string
                     description: |-
@@ -5609,11 +5590,8 @@ components:
                         - WAR_RISK_TIER_CRITICAL
                         - WAR_RISK_TIER_WAR_ZONE
                     description: |-
-                        *
-                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
-                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
-                         threatLevel from ChokepointConfig, making it available to clients for badges
-                         and bypass corridor scoring.
+                        War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat
+                         classification. Free field (no PRO gate).
         BypassOption:
             type: object
             properties:
@@ -5655,11 +5633,8 @@ components:
                         - WAR_RISK_TIER_CRITICAL
                         - WAR_RISK_TIER_WAR_ZONE
                     description: |-
-                        *
-                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
-                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
-                         threatLevel from ChokepointConfig, making it available to clients for badges
-                         and bypass corridor scoring.
+                        War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat
+                         classification. Free field (no PRO gate).
                 notes:
                     type: string
         GetCountryCostShockRequest:
@@ -5709,11 +5684,8 @@ components:
                         - WAR_RISK_TIER_CRITICAL
                         - WAR_RISK_TIER_WAR_ZONE
                     description: |-
-                        *
-                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
-                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
-                         threatLevel from ChokepointConfig, making it available to clients for badges
-                         and bypass corridor scoring.
+                        War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat
+                         classification. Free field (no PRO gate).
                 hasEnergyModel:
                     type: boolean
                     description: Whether supply_deficit_pct and coverage_days are modelled (true) or unavailable (false)
@@ -5959,11 +5931,8 @@ components:
                         - WAR_RISK_TIER_CRITICAL
                         - WAR_RISK_TIER_WAR_ZONE
                     description: |-
-                        *
-                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
-                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
-                         threatLevel from ChokepointConfig, making it available to clients for badges
-                         and bypass corridor scoring.
+                        War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat
+                         classification. Free field (no PRO gate).
                 sectors:
                     type: array
                     items:

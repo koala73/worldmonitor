@@ -1321,7 +1321,9 @@
         "medium": "中等",
         "news": "新聞",
         "undisclosed": "未披露",
-        "stake": "股份"
+        "stake": "股份",
+        "internallyDisplaced": "名國內流離失所者",
+        "sourceIomDtm": "來源：IOM DTM"
       },
       "layerHelp": {
         "title": "地圖圖層指南",
@@ -1736,6 +1738,7 @@
       "total": "總計",
       "origins": "來源國",
       "hosts": "收容國",
+      "internal": "國內",
       "badges": {
         "crisis": "危機",
         "high": "高",
@@ -1744,6 +1747,8 @@
       "country": "國家",
       "status": "狀態",
       "count": "數量",
+      "latestRound": "最新一輪",
+      "internalNote": "IOM DTM：國內流離失所者，每項行動的最新一輪調查。同一國家的行動可能重疊，因此不作加總。",
       "infoTooltip": "<strong>UNHCR流離失所資料</strong>來自UNHCR的全球難民、尋求庇護者和國內流離失所者統計。<ul><li><strong>來源國</strong>：人們逃離的國家</li><li><strong>收容國</strong>：接收難民的國家</li><li>危機標誌：>100萬 | 高：>50萬流離失所</li></ul>資料每年更新。CC BY 4.0許可。"
     },
     "climate": {

@@ -7,4 +7,5 @@ await runBundle('health', [
   { label: 'Disease-Outbreaks', script: 'seed-disease-outbreaks.mjs', seedMetaKey: 'health:disease-outbreaks', canonicalKey: 'health:disease-outbreaks:v1', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'VPD-Tracker', script: 'seed-vpd-tracker.mjs', seedMetaKey: 'health:vpd-tracker', canonicalKey: 'health:vpd-tracker:realtime:v1', completionMetaKey: 'seed-completion:health:vpd-tracker', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Displacement', script: 'seed-displacement-summary.mjs', seedMetaKey: 'displacement:summary', intervalMs: DAY, timeoutMs: 300_000 },
+  { label: 'DTM-Displacement', script: 'seed-dtm-displacement.mjs', seedMetaKey: 'displacement:dtm', canonicalKey: 'displacement:dtm:v1', completionMetaKey: 'seed-completion:displacement:dtm', intervalMs: DAY, timeoutMs: 180_000 },
 ]);

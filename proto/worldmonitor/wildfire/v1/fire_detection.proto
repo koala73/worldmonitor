@@ -53,10 +53,11 @@ message FireDetection {
   string agency_fire_id = 14;
   // Reporting agency code (e.g. "BC", "AB", "ON"). Empty for FIRMS.
   string agency_code = 15;
+  // Named to match the key the seeder actually emits: a proto field the payload
+  // never populates is worse than no field. (Detached: kept out of the public spec.)
+
   // Reported fire size in HECTARES. 0 when unknown or not applicable — FIRMS
-  // detections report radiative power, not area. Named to match the key the
-  // seeder actually emits: a proto field the payload never populates is worse
-  // than no field, because consumers see it in the schema and get nothing.
+  // detections report radiative power, not area.
   double fire_size = 16;
 }
 

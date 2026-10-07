@@ -634,7 +634,9 @@
         "medium": "gemiddeld",
         "news": "Nieuws",
         "undisclosed": "Niet openbaar gemaakt",
-        "stake": "inzet"
+        "stake": "inzet",
+        "internallyDisplaced": "binnenlands ontheemden",
+        "sourceIomDtm": "Bron: IOM DTM"
       },
       "layerHelp": {
         "title": "Gids voor kaartlagen",
@@ -1076,6 +1078,7 @@
       "total": "Totaal",
       "origins": "Oorsprong",
       "hosts": "Gastheren",
+      "internal": "Intern",
       "badges": {
         "crisis": "CRISIS",
         "high": "HOOG",
@@ -1084,6 +1087,8 @@
       "country": "Land",
       "status": "Status",
       "count": "Graaf",
+      "latestRound": "Laatste ronde",
+      "internalNote": "IOM DTM: binnenlands ontheemden, laatste onderzoeksronde per operatie. Operaties in één land kunnen overlappen en worden daarom niet opgeteld.",
       "infoTooltip": "<strong>UNHCR-ontheemdingsgegevens</strong> Wereldwijde aantallen vluchtelingen, asielzoekers en IDP's van UNHCR.<ul><li><strong>Herkomst</strong>: landen waar mensen vluchten VANUIT</li><li><strong>Hosts</strong>: gastlanden voor vluchtelingen</li><li>Crisisbadges: >1 miljoen | Hoog: >500.000 ontheemden</li></ul>Gegevens worden jaarlijks bijgewerkt. CC BY 4.0-licentie."
     },
     "populationExposure": {

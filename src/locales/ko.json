@@ -1321,7 +1321,9 @@
         "medium": "보통",
         "news": "뉴스",
         "undisclosed": "비공개",
-        "stake": "지분"
+        "stake": "지분",
+        "internallyDisplaced": "명 국내 실향민",
+        "sourceIomDtm": "출처: IOM DTM"
       },
       "layerHelp": {
         "title": "지도 레이어 가이드",
@@ -1736,6 +1738,7 @@
       "total": "합계",
       "origins": "출발국",
       "hosts": "수용국",
+      "internal": "국내",
       "badges": {
         "crisis": "위기",
         "high": "높음",
@@ -1744,6 +1747,8 @@
       "country": "국가",
       "status": "상태",
       "count": "인원",
+      "latestRound": "최신 회차",
+      "internalNote": "IOM DTM: 국내 실향민, 작전별 최신 조사 회차. 한 국가 내 작전은 서로 겹칠 수 있어 합산하지 않습니다.",
       "infoTooltip": "<strong>UNHCR 실향민 데이터</strong> UNHCR의 전 세계 난민, 망명 신청자, 국내 실향민 통계.<ul><li><strong>출발국</strong>: 사람들이 떠나는 국가</li><li><strong>수용국</strong>: 난민을 수용하는 국가</li><li>위기 배지: >1M | 높음: >500K 실향</li></ul>데이터는 연간 업데이트됩니다. CC BY 4.0 라이선스."
     },
     "climate": {

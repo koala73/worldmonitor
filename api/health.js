@@ -518,6 +518,7 @@ const STANDALONE_KEYS = {
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
   displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
+  dtmDisplacement:       'displacement:dtm:v1',
   acledIntel:            'conflict:acled:v1:all:0:0',
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
@@ -1470,6 +1471,9 @@ const SEED_META = {
   // a truncated cbr.ru body still parses into a handful of well-formed rows, so
   // a shrunken table must surface as COVERAGE_PARTIAL rather than OK.
   cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320, minRecordCount: 31 },
+  // IOM DTM operations (seed-dtm-displacement.mjs, daily health bundle).
+  // 48h = two missed ticks; round age is checked by maxContentAgeMin.
+  dtmDisplacement:   { key: 'seed-meta:displacement:dtm',             maxStaleMin: 2880, minRecordCount: 15 },
   bocValet:          {
     key: 'seed-meta:economic:boc-valet',
     maxStaleMin: 4320,
@@ -1994,6 +1998,10 @@ const ON_DEMAND_KEYS = new Set([
   // unactionable EMPTY/CRIT for up to a day. seed-cbr-rates.mjs SETs the durable
   // marker after its first successful publish; from then on it is strict forever.
   'cbrRates',
+  // Same bridge for IOM DTM: the reader ships before seed-bundle-health's next
+  // daily tick publishes. seed-dtm-displacement.mjs SETs the marker after its
+  // first successful publish.
+  'dtmDisplacement',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
   // national-statistics seeders: bocValet (#6616) and statcanWds (#6676).
   // Softening lifts once the durable activation marker exists.
@@ -2128,6 +2136,8 @@ const ACTIVATION_MARKERS = {
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
+  // Written by scripts/seed-dtm-displacement.mjs in runSeed's afterPublish hook.
+  dtmDisplacement: 'seed-activated:displacement:dtm',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.

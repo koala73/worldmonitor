@@ -1142,7 +1142,9 @@
         "medium": "średni",
         "news": "Aktualności",
         "undisclosed": "Nieujawnione",
-        "stake": "stawka"
+        "stake": "stawka",
+        "internallyDisplaced": "wewnętrznie przesiedlonych",
+        "sourceIomDtm": "Źródło: IOM DTM"
       },
       "layerHelp": {
         "title": "Przewodnik po warstwach mapy",
@@ -1516,6 +1518,7 @@
       "total": "Całkowity",
       "origins": "Początki",
       "hosts": "Zastępy niebieskie",
+      "internal": "Wewnętrzni",
       "badges": {
         "crisis": "KRYZYS",
         "high": "WYSOKI",
@@ -1524,6 +1527,8 @@
       "country": "Kraj",
       "status": "Status",
       "count": "Liczyć",
+      "latestRound": "Ostatnia runda",
+      "internalNote": "IOM DTM: osoby wewnętrznie przesiedlone, ostatnia runda badania dla każdej operacji. Operacje w jednym kraju mogą się nakładać, dlatego nie są sumowane.",
       "infoTooltip": "<strong>Dane UNHCR dotyczące przesiedleń</strong> Globalna liczba uchodźców, osób ubiegających się o azyl i osób wewnętrznie przesiedlonych z UNHCR.<ul><li><strong>Początki</strong>: Kraje, z których uciekają ludzie FROM</li><li><strong>Goście</strong>: Kraje przyjmujące uchodźców</li><li>Odznaki kryzysowe: >1M | Wysoki: >500 tys. wysiedlonych</li></ul>Dane są aktualizowane co roku. Licencja CC BY 4.0."
     },
     "populationExposure": {

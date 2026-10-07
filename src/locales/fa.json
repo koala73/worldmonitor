@@ -1466,7 +1466,9 @@
         "medium": "medium",
         "news": "News",
         "undisclosed": "Undisclosed",
-        "stake": "stake"
+        "stake": "stake",
+        "internallyDisplaced": "آواره داخلی",
+        "sourceIomDtm": "منبع: IOM DTM"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1882,6 +1884,7 @@
       "total": "Total",
       "origins": "Origins",
       "hosts": "Hosts",
+      "internal": "داخلی",
       "badges": {
         "crisis": "CRISIS",
         "high": "HIGH",
@@ -1890,6 +1893,8 @@
       "country": "Country",
       "status": "Status",
       "count": "Count",
+      "latestRound": "آخرین دور",
+      "internalNote": "IOM DTM: آوارگان داخلی، آخرین دور پیمایش برای هر عملیات. عملیات‌های یک کشور ممکن است همپوشانی داشته باشند، بنابراین با هم جمع نمی‌شوند.",
       "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
     },
     "climate": {

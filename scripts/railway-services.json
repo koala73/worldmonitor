@@ -693,6 +693,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_china-macro-contract.mjs",
       "scripts/_china-news-coverage.mjs",
+      "scripts/_content-age-helpers.mjs",
       "scripts/_disease-outbreaks-helpers.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
@@ -703,6 +704,7 @@
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
       "scripts/data/country-centroids.json",
+      "scripts/data/dtm-admin1-points.json",
       "scripts/data/outbreak-places.json",
       "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
@@ -714,11 +716,13 @@
       "scripts/seed-china-coverage-health.mjs",
       "scripts/seed-disease-outbreaks.mjs",
       "scripts/seed-displacement-summary.mjs",
+      "scripts/seed-dtm-displacement.mjs",
       "scripts/seed-health-air-quality.mjs",
       "scripts/seed-vpd-tracker.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/geo-extract.mjs"
+      "scripts/shared/geo-extract.mjs",
+      "scripts/shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-9-seed-bundle-health"
   },

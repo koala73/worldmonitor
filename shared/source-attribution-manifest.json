@@ -3311,6 +3311,20 @@
       ]
     },
     {
+      "host": "dtmapi.iom.int",
+      "provider": "dtmapi.iom.int",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit dtmapi.iom.int and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-dtm-displacement.mjs"
+        }
+      ]
+    },
+    {
       "host": "dw.com",
       "provider": "dw.com",
       "kind": "feed",

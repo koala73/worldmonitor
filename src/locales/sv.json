@@ -634,7 +634,9 @@
         "medium": "medel",
         "news": "Nyheter",
         "undisclosed": "Ej avslöjad",
-        "stake": "insats"
+        "stake": "insats",
+        "internallyDisplaced": "internflyktingar",
+        "sourceIomDtm": "Källa: IOM DTM"
       },
       "layerHelp": {
         "title": "Kartlagerguide",
@@ -1076,6 +1078,7 @@
       "total": "Totalt",
       "origins": "Ursprung",
       "hosts": "Värdar",
+      "internal": "Internt",
       "badges": {
         "crisis": "KRIS",
         "high": "HÖG",
@@ -1084,6 +1087,8 @@
       "country": "Land",
       "status": "Status",
       "count": "Räkna",
+      "latestRound": "Senaste omgång",
+      "internalNote": "IOM DTM: internflyktingar, senaste undersökningsomgång per insats. Insatser i samma land kan överlappa, så de summeras inte.",
       "infoTooltip": "<strong>UNHCR fördrivningsdata</strong> Globala flyktingar, asylsökande och internflyktingar från UNHCR.<ul><li><strong>Ursprung</strong>: Länder som människor flyr FROM</li><li><strong>värdar__PH_1:värdar__PH_1 flyktingar</li><li>Krismärken: >1M | Hög: >500K förskjutna</li></ul>Datauppdateringar årligen. CC BY 4.0-licens."
     },
     "populationExposure": {

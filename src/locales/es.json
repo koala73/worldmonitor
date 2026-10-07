@@ -1176,7 +1176,9 @@
         "medium": "medio",
         "news": "Noticias",
         "undisclosed": "No revelado",
-        "stake": "apostar"
+        "stake": "apostar",
+        "internallyDisplaced": "desplazados internos",
+        "sourceIomDtm": "Fuente: IOM DTM"
       },
       "layerHelp": {
         "title": "Guía de capas de mapas",
@@ -1604,6 +1606,7 @@
       "total": "Total",
       "origins": "Orígenes",
       "hosts": "Anfitriones",
+      "internal": "Internos",
       "badges": {
         "crisis": "CRISIS",
         "high": "ALTO",
@@ -1612,6 +1615,8 @@
       "country": "País",
       "status": "Estado",
       "count": "Contar",
+      "latestRound": "Última ronda",
+      "internalNote": "IOM DTM: personas desplazadas internas, última ronda de encuesta por operación. Las operaciones de un mismo país pueden solaparse, por lo que no se suman.",
       "infoTooltip": "<strong>Datos de desplazamiento del ACNUR</strong> Conteos globales de refugiados, solicitantes de asilo y desplazados internos del ACNUR.<ul><li><strong>Orígenes</strong>: Países de los que huye la gente</li><li><strong>Anfitriones</strong>: Países que acogen refugiados</li><li>Insignias de crisis: >1M | Alto: >500K desplazados</li></ul>Actualizaciones de datos anualmente. Licencia CC BY 4.0."
     },
     "populationExposure": {

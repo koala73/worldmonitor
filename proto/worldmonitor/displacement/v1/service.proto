@@ -4,9 +4,10 @@ package worldmonitor.displacement.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/displacement/v1/get_displacement_summary.proto";
+import "worldmonitor/displacement/v1/get_internal_displacement.proto";
 import "worldmonitor/displacement/v1/get_population_exposure.proto";
 
-// DisplacementService provides APIs for global displacement and refugee data from UNHCR.
+// DisplacementService provides APIs for global displacement and refugee data from UNHCR and IOM DTM.
 service DisplacementService {
   option (sebuf.http.service_config) = {base_path: "/api/displacement/v1"};
 
@@ -15,6 +16,11 @@ service DisplacementService {
   // snapshot is unavailable/degraded, not that global displacement is zero.
   rpc GetDisplacementSummary(GetDisplacementSummaryRequest) returns (GetDisplacementSummaryResponse) {
     option (sebuf.http.config) = {path: "/get-displacement-summary", method: HTTP_METHOD_GET};
+  }
+
+  // IDPs by region from IOM DTM, latest survey round per operation.
+  rpc GetInternalDisplacement(GetInternalDisplacementRequest) returns (GetInternalDisplacementResponse) {
+    option (sebuf.http.config) = {path: "/get-internal-displacement", method: HTTP_METHOD_GET};
   }
 
   // GetPopulationExposure returns country population data or estimates population within a radius.

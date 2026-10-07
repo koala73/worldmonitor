@@ -1327,7 +1327,9 @@
         "medium": "mediu",
         "news": "Știri",
         "undisclosed": "Nedezvăluită",
-        "stake": "participație"
+        "stake": "participație",
+        "internallyDisplaced": "strămutați intern",
+        "sourceIomDtm": "Sursa: IOM DTM"
       },
       "layerHelp": {
         "title": "Ghid pentru straturi de hartă",
@@ -1744,6 +1746,7 @@
       "total": "Total",
       "origins": "Țări de origine",
       "hosts": "Țări gazdă",
+      "internal": "Interni",
       "badges": {
         "crisis": "CRIZĂ",
         "high": "RIDICAT",
@@ -1752,6 +1755,8 @@
       "country": "Ţară",
       "status": "Stare",
       "count": "Număr",
+      "latestRound": "Ultima rundă",
+      "internalNote": "IOM DTM: persoane strămutate intern, ultima rundă de evaluare pentru fiecare operațiune. Operațiunile dintr-o țară se pot suprapune, așa că nu sunt adunate.",
       "infoTooltip": "<strong>Datele ICNUR privind strămutarea</strong> Refugiații, solicitanții de azil și IDP la nivel global de la UNHCR.<ul><li><strong>Origini</strong>: Țările din care oamenii fug</li><li><strong>Gazde</strong>: Țările care găzduiesc refugiați</li><li>Insigne de criză: >1 milion | Ridicat: >500.000 deplasați</li></ul>Datele se actualizează anual. Licență CC BY 4.0."
     },
     "climate": {

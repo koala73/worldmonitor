@@ -1318,7 +1318,9 @@
         "medium": "střední",
         "news": "Zprávy",
         "undisclosed": "Nezveřejněno",
-        "stake": "podíl"
+        "stake": "podíl",
+        "internallyDisplaced": "vnitřně vysídlených",
+        "sourceIomDtm": "Zdroj: IOM DTM"
       },
       "layerHelp": {
         "title": "Průvodce mapovými vrstvami",
@@ -1727,6 +1729,7 @@
       "total": "Celkem",
       "origins": "Původy",
       "hosts": "Hostitelé",
+      "internal": "Vnitřní",
       "badges": {
         "crisis": "KRIZE",
         "high": "VYSOKÁ",
@@ -1735,6 +1738,8 @@
       "country": "Země",
       "status": "Stav",
       "count": "Počet",
+      "latestRound": "Poslední kolo",
+      "internalNote": "IOM DTM: vnitřně vysídlené osoby, poslední kolo průzkumu pro každou operaci. Operace v jedné zemi se mohou překrývat, proto se nesčítají.",
       "infoTooltip": "<strong>Data o vysídlení UNHCR</strong> Globální počty uprchlíků, žadatelů o azyl a IDP (vnitřně přesídlených) od UNHCR.<ul><li><strong>Původy</strong>: Země, ze kterých lidé utíkají</li><li><strong>Hostitelé</strong>: Země hostící uprchlíky</li><li>Odznaky krizí: >1M | Vysoká: >500K vysídlených</li></ul>Data se aktualizují ročně. Licence CC BY 4.0."
     },
     "climate": {

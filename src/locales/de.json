@@ -1173,7 +1173,9 @@
         "medium": "mittel",
         "news": "Nachricht",
         "undisclosed": "Nicht bekannt gegeben",
-        "stake": "Anteil"
+        "stake": "Anteil",
+        "internallyDisplaced": "Binnenvertriebene",
+        "sourceIomDtm": "Quelle: IOM DTM"
       },
       "layerHelp": {
         "title": "Leitfaden zu Kartenebenen",
@@ -1601,6 +1603,7 @@
       "total": "Gesamt",
       "origins": "Herkunftsländer",
       "hosts": "Aufnahmeländer",
+      "internal": "Binnen",
       "badges": {
         "crisis": "KRISE",
         "high": "HOCH",
@@ -1609,6 +1612,8 @@
       "country": "Land",
       "status": "Status",
       "count": "Anzahl",
+      "latestRound": "Letzte Runde",
+      "internalNote": "IOM DTM: Binnenvertriebene, letzte Erhebungsrunde je Einsatz. Einsätze in einem Land können sich überschneiden und werden daher nicht addiert.",
       "infoTooltip": "<strong>UNHCR-Vertreibungsdaten</strong> Weltweite Flüchtlings-, Asylbewerber- und Binnenvertriebenenzahlen vom UNHCR.<ul><li><strong>Herkunftsländer</strong>: Länder, aus denen Menschen fliehen</li><li><strong>Aufnahmeländer</strong>: Länder, die Flüchtlinge aufnehmen</li><li>Kennzeichnung Krise: >1 Mio. | Hoch: >500.000 Vertriebene</li></ul>Daten werden jährlich aktualisiert. Lizenz CC BY 4.0."
     },
     "populationExposure": {

@@ -1018,9 +1018,7 @@ components:
                     format: int32
                     description: |-
                         Number of unique sources reporting this story in the CURRENT digest
-                         cycle (batch corroboration from fuzzy story clustering, #4919;
-                         defaults to 1 for unclustered items). The cross-cycle Redis source
-                         set (story:sources:v1) feeds importance scoring, not this field.
+                         cycle; 1 for unclustered items.
                 phase:
                     type: string
                     enum:

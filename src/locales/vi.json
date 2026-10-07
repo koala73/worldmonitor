@@ -1321,7 +1321,9 @@
         "medium": "trung bình",
         "news": "Tin tức",
         "undisclosed": "Không công bố",
-        "stake": "cổ phần"
+        "stake": "cổ phần",
+        "internallyDisplaced": "người di tản trong nước",
+        "sourceIomDtm": "Nguồn: IOM DTM"
       },
       "layerHelp": {
         "title": "Hướng dẫn Lớp Bản đồ",
@@ -1736,6 +1738,7 @@
       "total": "Tổng",
       "origins": "Nguồn gốc",
       "hosts": "Nước tiếp nhận",
+      "internal": "Trong nước",
       "badges": {
         "crisis": "KHỦNG HOẢNG",
         "high": "CAO",
@@ -1744,6 +1747,8 @@
       "country": "Quốc gia",
       "status": "Tình trạng",
       "count": "Số lượng",
+      "latestRound": "Vòng gần nhất",
+      "internalNote": "IOM DTM: người di tản trong nước, vòng khảo sát gần nhất của mỗi hoạt động. Các hoạt động trong cùng một quốc gia có thể chồng lấn nên không được cộng dồn.",
       "infoTooltip": "<strong>Dữ liệu Di dời UNHCR</strong> Số liệu người tị nạn, xin tị nạn và di dời nội bộ toàn cầu từ UNHCR.<ul><li><strong>Nguồn gốc</strong>: Quốc gia người dân bỏ đi</li><li><strong>Nước tiếp nhận</strong>: Quốc gia tiếp nhận người tị nạn</li><li>Nhãn khủng hoảng: >1 triệu | Cao: >500 nghìn người di dời</li></ul>Dữ liệu cập nhật hàng năm. Giấy phép CC BY 4.0."
     },
     "climate": {

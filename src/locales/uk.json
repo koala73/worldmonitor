@@ -1474,7 +1474,9 @@
         "medium": "medium",
         "news": "News",
         "undisclosed": "Undisclosed",
-        "stake": "stake"
+        "stake": "stake",
+        "internallyDisplaced": "внутрішньо переміщених",
+        "sourceIomDtm": "Джерело: IOM DTM"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1892,6 +1894,7 @@
       "total": "Total",
       "origins": "Origins",
       "hosts": "Hosts",
+      "internal": "Внутрішні",
       "badges": {
         "crisis": "CRISIS",
         "high": "HIGH",
@@ -1900,6 +1903,8 @@
       "country": "Country",
       "status": "Status",
       "count": "Count",
+      "latestRound": "Останній раунд",
+      "internalNote": "IOM DTM: внутрішньо переміщені особи, останній раунд опитування для кожної операції. Операції в одній країні можуть перетинатися, тому їх не підсумовують.",
       "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
     },
     "climate": {

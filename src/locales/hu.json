@@ -1466,7 +1466,9 @@
         "medium": "közepes",
         "news": "Hírek",
         "undisclosed": "Nem nyilvánosított",
-        "stake": "részesedés"
+        "stake": "részesedés",
+        "internallyDisplaced": "belső menekült",
+        "sourceIomDtm": "Forrás: IOM DTM"
       },
       "layerHelp": {
         "title": "Térképrétegek útmutatója",
@@ -1882,6 +1884,7 @@
       "total": "Összesen",
       "origins": "Származási helyek",
       "hosts": "Befogadó országok",
+      "internal": "Belső",
       "badges": {
         "crisis": "VÁLSÁG",
         "high": "MAGAS",
@@ -1890,6 +1893,8 @@
       "country": "Ország",
       "status": "Állapot",
       "count": "Szám",
+      "latestRound": "Legutóbbi forduló",
+      "internalNote": "IOM DTM: belső menekültek, műveletenként a legutóbbi felmérési forduló. Egy ország műveletei átfedhetik egymást, ezért nem adjuk össze őket.",
       "infoTooltip": "<strong>UNHCR Displazációs adatok</strong> Globális menekült, menedékkérelmező és IDP számok az UNHCR-től.<ul><li><strong>Származási helyek</strong>: Országok, ahonnan az emberek menekülnek</li><li><strong>Befogadó országok</strong>: Menekülteket befogadó országok</li><li>Válság jelvények: >1M | Magas: >500K elhelyezkedett</li></ul>Az adatok évente frissülnek. CC BY 4.0 licenc."
     },
     "climate": {

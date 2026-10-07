@@ -160,6 +160,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
+  ["GET /api/displacement/v1/get-internal-displacement",
+    "deferred-to-future-tool: pure-read of the seeded IOM DTM snapshot (displacement:dtm:v1). Region-level IDP counts per operation would widen get_displacement_data's UNHCR country shape; add them to that tool in a follow-up instead of a second displacement tool."],
   ["GET /api/market/v1/get-price-history",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/market/v1/get-insider-transactions",

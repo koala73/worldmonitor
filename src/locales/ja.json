@@ -1321,7 +1321,9 @@
         "medium": "中程度",
         "news": "ニュース",
         "undisclosed": "非公開",
-        "stake": "出資比率"
+        "stake": "出資比率",
+        "internallyDisplaced": "人の国内避難民",
+        "sourceIomDtm": "出典：IOM DTM"
       },
       "layerHelp": {
         "title": "マップレイヤーガイド",
@@ -1736,6 +1738,7 @@
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
+      "internal": "国内",
       "badges": {
         "crisis": "危機",
         "high": "高",
@@ -1744,6 +1747,8 @@
       "country": "国",
       "status": "ステータス",
       "count": "人数",
+      "latestRound": "最新ラウンド",
+      "internalNote": "IOM DTM：国内避難民。各オペレーションの最新調査ラウンド。同じ国のオペレーションは重複することがあるため、合算していません。",
       "infoTooltip": "<strong>UNHCR避難民データ</strong> UNHCRによる世界の難民、庇護申請者、国内避難民の数。<ul><li><strong>出身国</strong>: 人々が逃れる元の国</li><li><strong>受入国</strong>: 難民を受け入れている国</li><li>危機バッジ: 100万人超 | 高: 50万人超の避難民</li></ul>データは年次更新。CC BY 4.0ライセンス。"
     },
     "climate": {

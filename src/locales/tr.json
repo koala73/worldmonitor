@@ -1324,7 +1324,9 @@
         "medium": "orta",
         "news": "Haber",
         "undisclosed": "Aciklanmamis",
-        "stake": "pay"
+        "stake": "pay",
+        "internallyDisplaced": "ülke içinde yerinden edilmiş",
+        "sourceIomDtm": "Kaynak: IOM DTM"
       },
       "layerHelp": {
         "title": "Harita Katmanlari Rehberi",
@@ -1740,6 +1742,7 @@
       "total": "Toplam",
       "origins": "Cikis Ulkeleri",
       "hosts": "Ev Sahibi Ulkeler",
+      "internal": "Ülke içi",
       "badges": {
         "crisis": "KRIZ",
         "high": "YUKSEK",
@@ -1748,6 +1751,8 @@
       "country": "Ulke",
       "status": "Durum",
       "count": "Sayi",
+      "latestRound": "Son tur",
+      "internalNote": "IOM DTM: ülke içinde yerinden edilmiş kişiler, her operasyonun en son anket turu. Aynı ülkedeki operasyonlar örtüşebileceği için toplanmaz.",
       "infoTooltip": "<strong>UNHCR Yerinden Edilme Verileri</strong> UNHCR'den kuresel multeci, siginmaci ve ulke ici yerinden edilmis sayilari.<ul><li><strong>Cikis Ulkeleri</strong>: Insanlarin kactigi ulkeler</li><li><strong>Ev Sahibi Ulkeler</strong>: Multecileri barindiran ulkeler</li><li>Kriz rozeti: >1M | Yuksek: >500K yerinden edilmis</li></ul>Veriler yillik guncellenir. CC BY 4.0 lisansi."
     },
     "climate": {

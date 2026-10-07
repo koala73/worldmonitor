@@ -53,7 +53,7 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { DisplacementFlow } from '@/services/displacement';
+import type { DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
@@ -645,6 +645,7 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
+  private internalDisplacement: InternalDisplacementData | null = null;
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
@@ -2291,6 +2292,10 @@ export class DeckGLMap {
     // Displacement flows arc layer
     if (mapLayers.displacement && this.displacementFlows.length > 0) {
       layers.push(this.createDisplacementArcsLayer());
+    }
+    if (mapLayers.displacement && this.internalDisplacement) {
+      if (this.internalDisplacement.routes.length > 0) layers.push(this.createInternalDisplacementRoutesLayer(this.internalDisplacement.routes));
+      if (this.internalDisplacement.regions.length > 0) layers.push(this.createInternalDisplacementRegionsLayer(this.internalDisplacement.regions));
     }
 
     // Climate anomalies heatmap layer
@@ -5129,6 +5134,10 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'internal-displacement-regions-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}, ${text(obj.countryName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
+      case 'internal-displacement-routes-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.originName)} → ${text(obj.destinationName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
       case 'gps-jamming-layer':
         return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · aircraft affected: ${numericLabel(obj.pct, 1)}%<br/>H3: ${text(obj.h3)}</div>` };
       case 'cable-advisories-layer': {
@@ -6634,6 +6643,42 @@ export class DeckGLMap {
     });
   }
 
+  // IOM DTM internally displaced people by region. Area scales with the count.
+  private createInternalDisplacementRegionsLayer(regions: InternalDisplacementRegion[]): ScatterplotLayer<InternalDisplacementRegion> {
+    const light = getCurrentTheme() === 'light';
+    return new ScatterplotLayer<InternalDisplacementRegion>({
+      id: 'internal-displacement-regions-layer',
+      data: regions,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.sqrt(d.idps) * 60,
+      radiusMinPixels: 3,
+      radiusMaxPixels: 40,
+      getFillColor: light ? [190, 90, 20, 120] : [255, 150, 60, 110],
+      getLineColor: light ? [150, 60, 10, 220] : [255, 190, 120, 200],
+      stroked: true,
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
+  private createInternalDisplacementRoutesLayer(routes: InternalDisplacementRoute[]): ArcLayer<InternalDisplacementRoute> {
+    const top = routes.slice(0, 150);
+    const maxCount = Math.max(1, ...top.map((d) => d.idps));
+    const light = getCurrentTheme() === 'light';
+    return new ArcLayer<InternalDisplacementRoute>({
+      id: 'internal-displacement-routes-layer',
+      data: top,
+      getSourcePosition: (d) => [d.originLon, d.originLat],
+      getTargetPosition: (d) => [d.destinationLon, d.destinationLat],
+      getSourceColor: light ? [150, 60, 10, 200] : [255, 190, 120, 170],
+      getTargetColor: light ? [190, 90, 20, 230] : [255, 120, 40, 210],
+      getWidth: (d) => Math.max(1, (d.idps / maxCount) * 6),
+      widthMinPixels: 1,
+      widthMaxPixels: 6,
+      pickable: true,
+    });
+  }
+
   private createClimateHeatmapLayer(): ScatterplotLayer<ClimateAnomaly> {
     return new ScatterplotLayer<ClimateAnomaly>({
       id: 'climate-heatmap-layer',
@@ -7307,6 +7352,11 @@ export class DeckGLMap {
 
   public setDisplacementFlows(flows: DisplacementFlow[]): void {
     this.displacementFlows = flows;
+    this.render();
+  }
+
+  public setInternalDisplacement(data: InternalDisplacementData): void {
+    this.internalDisplacement = data;
     this.render();
   }
 

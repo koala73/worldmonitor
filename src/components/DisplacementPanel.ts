@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement } from '@/services/displacement';
+import type { UnhcrSummary, CountryDisplacement, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
@@ -10,10 +10,11 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
 
-type DisplacementTab = 'origins' | 'hosts';
+type DisplacementTab = 'origins' | 'hosts' | 'internal';
 
 export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
+  private internalData: InternalDisplacementData | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
   private followedOnlyChip: FollowedOnlyChipHandle | null = null;
@@ -90,6 +91,11 @@ export class DisplacementPanel extends Panel {
     this.renderContent();
   }
 
+  public setInternalData(data: InternalDisplacementData): void {
+    this.internalData = data;
+    this.renderContent();
+  }
+
   public hasData(): boolean {
     return this.data !== null;
   }
@@ -117,8 +123,22 @@ export class DisplacementPanel extends Panel {
       <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
         <button class="panel-tab ${this.activeTab === 'origins' ? 'active' : ''}" data-tab="origins" role="tab" aria-selected="${this.activeTab === 'origins'}" id="disp-tab-origins" aria-controls="disp-tab-panel">${t('components.displacement.origins')}</button>
         <button class="panel-tab ${this.activeTab === 'hosts' ? 'active' : ''}" data-tab="hosts" role="tab" aria-selected="${this.activeTab === 'hosts'}" id="disp-tab-hosts" aria-controls="disp-tab-panel">${t('components.displacement.hosts')}</button>
+        ${this.internalData ? `<button class="panel-tab ${this.activeTab === 'internal' ? 'active' : ''}" data-tab="internal" role="tab" aria-selected="${this.activeTab === 'internal'}" id="disp-tab-internal" aria-controls="disp-tab-panel">${t('components.displacement.internal')}</button>` : ''}
       </div>
     `;
+
+    if (this.activeTab === 'internal' && this.internalData) {
+      this.setSafeContent(unsafeRawHtml(`
+        <div class="disp-panel-content">
+          <div class="disp-stats-grid">${statsHtml}</div>
+          ${tabsHtml}
+          <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-internal">
+            ${this.renderInternalTable(this.internalData.operations)}
+          </div>
+        </div>
+      `, 'legacy Panel.setContent() migration'));
+      return;
+    }
 
     let countries: CountryDisplacement[];
     if (this.activeTab === 'origins') {
@@ -197,6 +217,42 @@ export class DisplacementPanel extends Panel {
         </div>
       </div>
     `, 'legacy Panel.setContent() migration'));
+  }
+
+  // One row per IOM DTM operation. Operations in a country can overlap, so
+  // rows are never added up into a country total.
+  private renderInternalTable(allOperations: InternalDisplacementOperation[]): string {
+    let operations = allOperations;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      operations = operations.filter(op => {
+        const code = toIso2(op.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+    if (operations.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const rows = operations.slice(0, 40).map(op => `<tr class="disp-row" data-lat="${op.lat ?? ''}" data-lon="${op.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(op.countryName)}<div class="disp-operation">${escapeHtml(op.operation)}</div></td>
+          <td class="disp-round">${escapeHtml(op.reportingDate)}</td>
+          <td class="disp-count">${formatPopulation(op.totalIdps)}</td>
+        </tr>`).join('');
+    return `
+        <table class="disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col">${t('components.displacement.latestRound')}</th>
+              <th scope="col">${t('components.displacement.idps')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.internalNote'))}</div>`;
   }
 
   public override destroy(): void {

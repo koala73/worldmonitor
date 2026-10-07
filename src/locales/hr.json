@@ -1474,7 +1474,9 @@
         "medium": "srednje",
         "news": "Vijesti",
         "undisclosed": "Neobjavljen",
-        "stake": "udjel"
+        "stake": "udjel",
+        "internallyDisplaced": "interno raseljenih",
+        "sourceIomDtm": "Izvor: IOM DTM"
       },
       "layerHelp": {
         "title": "Vodič slojeva mape",
@@ -1891,6 +1893,7 @@
       "total": "Ukupno",
       "origins": "Zemlje porijekla",
       "hosts": "Zemlje domaćina",
+      "internal": "Unutarnji",
       "badges": {
         "crisis": "KRIZA",
         "high": "VISOKO",
@@ -1899,6 +1902,8 @@
       "country": "Država",
       "status": "Stanje",
       "count": "Broj",
+      "latestRound": "Posljednji krug",
+      "internalNote": "IOM DTM: interno raseljene osobe, posljednji krug istraživanja po operaciji. Operacije u jednoj zemlji mogu se preklapati, pa se ne zbrajaju.",
       "infoTooltip": "<strong>UNHCR podaci o raseljenju</strong> Globalni brojevi izbjeglica, tražitelja azila i interno raseljenih osoba od UNHCR-a.<ul><li><strong>Zemlje porijekla</strong>: Zemlje iz kojih ljudi bježe</li><li><strong>Zemlje domaćina</strong>: Zemlje koje gošće izbjeglice</li><li>Znakovi krize: >1M | Visoko: >500K raseljenih</li></ul>Podaci se ažuriraju godišnje. CC BY 4.0 licenca."
     },
     "climate": {
