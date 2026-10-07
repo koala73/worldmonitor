@@ -869,8 +869,8 @@ function marketAlertsSection(marketAlerts, escapeHtml) {
   }
   const hours = isFiniteNumber(marketAlerts.windowHours) ? marketAlerts.windowHours : 6;
   const days = isFiniteNumber(marketAlerts.rollingWindowDays) ? marketAlerts.rollingWindowDays : 30;
-  const generated = isFiniteNumber(marketAlerts.generatedAt) ? ` These figures were generated ${formatUtcDateTime(marketAlerts.generatedAt)}.` : '';
-  const intro = `      <p>World Monitor raises a market alert when a market or a prediction market moves and the news does not explain the move yet. Each alert is checked ${escapeHtml(formatCount(hours))} hours later. It counts as a hit if an established news outlet published a story about the same company, commodity or topic in that time. The same check also runs on the same market for a stretch of the same length one day earlier, when no alert was raised, and that gives the base rate. An alert type is useful only when its hit rate is clearly above the base rate on the same alerts. The figures cover the last ${escapeHtml(formatCount(days))} days.${escapeHtml(generated)}</p>`;
+  const generated = isFiniteNumber(marketAlerts.generatedAt) ? ` and were generated ${formatUtcDateTime(marketAlerts.generatedAt)}` : '';
+  const intro = `      <p>World Monitor raises a market alert when a market or a prediction market moves and the news does not explain the move yet. Each alert is checked ${escapeHtml(formatCount(hours))} hours later. It counts as a hit if an established news outlet published a story about the same company, commodity or topic in that time. The same check also runs on the same market for a stretch of the same length one day earlier, when no alert was raised, and that gives the base rate. An alert type is useful only when its hit rate is clearly above the base rate on the same alerts. The figures cover the last ${escapeHtml(formatCount(days))} days${escapeHtml(generated)}.</p>`;
   const rules = `      <h3>How an alert is scored</h3>
       <p>${escapeHtml(MARKET_ALERT_RESOLUTION_RULE)}</p>
       <p>${escapeHtml(MARKET_ALERT_BASE_RATE_RULE)}</p>`;
