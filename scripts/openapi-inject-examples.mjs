@@ -842,7 +842,8 @@ function getInternalDisplacementExample() {
         destinationLocation: kassala,
       }],
     }],
-    fetchedAt: 1717200000000,
+    // After the 2026-07-31 round: a snapshot cannot predate its newest round.
+    fetchedAt: 1785542400000,
     dataAvailable: true,
   };
 }

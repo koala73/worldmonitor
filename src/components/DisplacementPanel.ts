@@ -41,7 +41,8 @@ export class DisplacementPanel extends Panel {
         return;
       }
       const row = (e.target as HTMLElement).closest<HTMLElement>('.disp-row');
-      if (row) {
+      // An empty attribute means the row has no location; Number('') is 0.
+      if (row?.dataset.lat && row.dataset.lon) {
         const lat = Number(row.dataset.lat);
         const lon = Number(row.dataset.lon);
         if (Number.isFinite(lat) && Number.isFinite(lon)) this.onCountryClick?.(lat, lon);
@@ -101,7 +102,11 @@ export class DisplacementPanel extends Panel {
   }
 
   private renderContent(): void {
-    if (!this.data) return;
+    // UNHCR and IOM DTM load independently; either one is enough to render.
+    if (!this.data) {
+      if (this.internalData) this.renderInternalOnly(this.internalData);
+      return;
+    }
 
     const g = this.data.globalTotals;
 
@@ -214,6 +219,20 @@ export class DisplacementPanel extends Panel {
         ${tabsHtml}
         <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-${this.activeTab}">
           ${tableHtml}
+        </div>
+      </div>
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderInternalOnly(internal: InternalDisplacementData): void {
+    this.activeTab = 'internal';
+    this.setSafeContent(unsafeRawHtml(`
+      <div class="disp-panel-content">
+        <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
+          <button class="panel-tab active" data-tab="internal" role="tab" aria-selected="true" id="disp-tab-internal" aria-controls="disp-tab-panel">${t('components.displacement.internal')}</button>
+        </div>
+        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-internal">
+          ${this.renderInternalTable(internal.operations)}
         </div>
       </div>
     `, 'legacy Panel.setContent() migration'));

@@ -55,7 +55,7 @@ message GetInternalDisplacementRequest {
   string country_code = 1 [
     (sebuf.http.query) = {name: "country_code"},
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).string.pattern = "^[A-Za-z]{3}$"
+    (buf.validate.field).string.pattern = "^(?:|[A-Za-z]{3})$"
   ];
 }
 

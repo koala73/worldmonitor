@@ -50,18 +50,24 @@ async function dtmGet(path, apiKey) {
 
 // DTM mostly uses OCHA P-codes (SD11), but some operations prefix the ISO3
 // code instead of ISO2 (COD54 for CD54, NGA026 for NG026) or pad the region
-// number to three digits (BJ002 for BJ02). Regions whose code is not in the
-// COD points (Burundi's pre-2025 provinces) stay unplaced.
-export function resolveAdmin1Point(pcode, points = admin1Points) {
+// number to three digits (BJ002 for BJ02). Returns the OCHA form, so aliases of
+// one region share a key. Regions whose code is not in the COD points
+// (Burundi's pre-2025 provinces) have no canonical form and stay unplaced.
+export function canonicalPcode(pcode, points = admin1Points) {
   if (!pcode) return null;
-  if (points[pcode]) return points[pcode];
+  if (points[pcode]) return pcode;
   const match = /^([A-Z]{2,3})(\d+)$/.exec(pcode);
   const iso2 = match && (match[1].length === 2 ? match[1] : iso3ToIso2[match[1]]);
   if (!iso2) return null;
   for (const digits of [match[2], match[2].replace(/^0/, ''), match[2].padStart(3, '0')]) {
-    if (points[iso2 + digits]) return points[iso2 + digits];
+    if (points[iso2 + digits]) return iso2 + digits;
   }
   return null;
+}
+
+export function resolveAdmin1Point(pcode, points = admin1Points) {
+  const canonical = canonicalPcode(pcode, points);
+  return canonical ? points[canonical] : null;
 }
 
 const toLocation = (point) => (point ? { latitude: point[0], longitude: point[1] } : undefined);
@@ -111,13 +117,14 @@ export function buildOperations(rows, { points = admin1Points } = {}) {
     const reason = normalizeReason(row.displacementReason);
     op.reasons.set(reason, (op.reasons.get(reason) ?? 0) + idps);
 
-    const regionKey = isKnownPcode(row.admin1Pcode) ? row.admin1Pcode : '';
+    const canonical = (pcode) => canonicalPcode(pcode, points) ?? pcode;
+    const regionKey = isKnownPcode(row.admin1Pcode) ? canonical(row.admin1Pcode) : '';
     const region = op.regions.get(regionKey) ?? { pcode: regionKey, name: regionKey ? (row.admin1Name || regionKey) : 'Not specified', idps: 0 };
     region.idps += idps;
     op.regions.set(regionKey, region);
 
-    const origin = row.idpOriginAdmin1Pcode;
-    if (regionKey && isKnownPcode(origin) && origin !== regionKey) {
+    const origin = isKnownPcode(row.idpOriginAdmin1Pcode) ? canonical(row.idpOriginAdmin1Pcode) : '';
+    if (regionKey && origin && origin !== regionKey) {
       const flowKey = `${origin}>${regionKey}`;
       const flow = op.flows.get(flowKey) ?? {
         originPcode: origin,

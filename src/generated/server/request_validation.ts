@@ -953,7 +953,7 @@ export const GENERATED_MESSAGE_RULES = {
       "countryCode": {
         "kind": "string",
         "ignore": "IGNORE_IF_ZERO_VALUE",
-        "stringPattern": "^[A-Za-z]{3}$",
+        "stringPattern": "^(?:|[A-Za-z]{3})$",
         "stringMaxBytes": 65536
       }
     }

@@ -71,6 +71,16 @@ describe('buildOperations', () => {
     assert.deepEqual(ops[0].regions[0].location, { latitude: 1.44, longitude: 28.93 });
   });
 
+  it('publishes the canonical OCHA P-code so aliases of one region merge', () => {
+    const ops = buildOperations([
+      row({ admin0Pcode: 'COD', operation: 'Countrywide monitoring', admin1Pcode: 'COD54', idpOriginAdmin1Pcode: 'COD61' }),
+      row({ admin0Pcode: 'COD', operation: 'Countrywide monitoring', admin1Pcode: 'CD54', idpOriginAdmin1Pcode: 'CD61', numPresentIdpInd: 10 }),
+      row({ admin0Pcode: 'COD', operation: 'Ituri', admin1Pcode: 'CD54', idpOriginAdmin1Pcode: 'CD61' }),
+    ], { points: { ...POINTS, CD61: [0.5, 29.1] } });
+    assert.deepEqual(ops.map((op) => op.regions.map((r) => [r.pcode, r.idps])), [[['CD54', 1010]], [['CD54', 1000]]]);
+    assert.deepEqual(ops.map((op) => op.flows.map((f) => `${f.originPcode}>${f.destinationPcode}:${f.idps}`)), [['CD61>CD54:1010'], ['CD61>CD54:1000']]);
+  });
+
   it('builds region-to-region flows and drops same-region and unknown-origin rows', () => {
     const [op] = buildOperations([
       row(),

@@ -6448,7 +6448,7 @@ paths:
                   example: "SDN"
                   schema:
                     type: string
-                    pattern: '^[A-Za-z]{3}$'
+                    pattern: '^(?:|[A-Za-z]{3})$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -6464,7 +6464,7 @@ paths:
                         application/json:
                             example:
                                 "dataAvailable": true
-                                "fetchedAt": 1717200000000
+                                "fetchedAt": 1785542400000
                                 "operations":
                                     - "countryCode": "SDN"
                                       "countryName": "Sudan"
@@ -41075,7 +41075,7 @@ components:
             properties:
                 countryCode:
                     type: string
-                    pattern: ^[A-Za-z]{3}$
+                    pattern: ^(?:|[A-Za-z]{3})$
                     description: ISO 3166-1 alpha-3, such as SDN. Empty returns all.
         worldmonitor_displacement_v1_GetInternalDisplacementResponse:
             type: object
@@ -54540,7 +54540,7 @@ components:
                          may key off this field.
             description: |-
                 RunScenarioResponse carries the enqueued job id. Clients poll
-                 GetScenarioStatus with this id until status != "pending". A successful
+                 GetScenarioStatus with this id until status is "done" or "failed". A successful
                  enqueue returns HTTP 202 Accepted with a Location header pointing at
                  GetScenarioStatus; treat any 2xx as success.
         worldmonitor_scenario_v1_GetScenarioStatusRequest:

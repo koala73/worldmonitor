@@ -193,7 +193,7 @@ paths:
                   example: "SDN"
                   schema:
                     type: string
-                    pattern: '^[A-Za-z]{3}$'
+                    pattern: '^(?:|[A-Za-z]{3})$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -209,7 +209,7 @@ paths:
                         application/json:
                             example:
                                 "dataAvailable": true
-                                "fetchedAt": 1717200000000
+                                "fetchedAt": 1785542400000
                                 "operations":
                                     - "countryCode": "SDN"
                                       "countryName": "Sudan"
@@ -803,7 +803,7 @@ components:
             properties:
                 countryCode:
                     type: string
-                    pattern: ^[A-Za-z]{3}$
+                    pattern: ^(?:|[A-Za-z]{3})$
                     description: ISO 3166-1 alpha-3, such as SDN. Empty returns all.
         GetInternalDisplacementResponse:
             type: object

@@ -32,7 +32,7 @@ message RunScenarioRequest {
 // (Detached: kept out of the public spec.)
 
 // RunScenarioResponse carries the enqueued job id. Clients poll
-// GetScenarioStatus with this id until status != "pending". A successful
+// GetScenarioStatus with this id until status is "done" or "failed". A successful
 // enqueue returns HTTP 202 Accepted with a Location header pointing at
 // GetScenarioStatus; treat any 2xx as success.
 message RunScenarioResponse {
