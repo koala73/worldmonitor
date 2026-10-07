@@ -290,6 +290,10 @@ jobs:
           node scripts/generate-docs-page-dates.mjs
           node scripts/generate-docs-page-dates.mjs --check
           node --test tests/docs-page-dates.test.mjs
+      - name: Every English docs page has a zh translation
+        # Docs-only PRs skip the unit shards, so without this step a missing
+        # docs/zh mirror surfaces only as a red main after merge (#8968).
+        run: node --test tests/docs-i18n-parity.test.mjs
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
