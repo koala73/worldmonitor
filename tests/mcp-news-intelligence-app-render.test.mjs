@@ -33,6 +33,8 @@ async function mount(wire, callback) {
     win.document.write(NEWS_INTELLIGENCE_APP_HTML);
     win.eval('window.parent').postMessage = message => posted.push(message);
     win.fetch = async () => { reads++; throw new Error('Unexpected data read'); };
+    const navigations = [];
+    win.open = (...args) => { navigations.push(args); return null; };
     win.eval(win.document.querySelector('script').textContent);
     const send = value => win.dispatchEvent(new win.MessageEvent('message', {
       source: win.eval('window.parent'),
@@ -40,8 +42,12 @@ async function mount(wire, callback) {
     }));
     send(wire);
     await win.happyDOM.waitUntilComplete();
-    await callback(win.document, send);
+    const reply = (data, source = win.eval('window.parent')) => win.dispatchEvent(new win.MessageEvent('message', {
+      source, data: { jsonrpc: '2.0', ...data },
+    }));
+    await callback(win.document, send, { win, posted, reply });
     assert.equal(reads, 0);
+    assert.equal(navigations.length, 0);
     assert.equal(posted.filter(message => ['tools/call', 'ui/call-tool'].includes(message?.method)).length, 0);
   } finally {
     await win.happyDOM.close();
@@ -49,6 +55,177 @@ async function mount(wire, callback) {
 }
 const rows = document => document.querySelectorAll('.story');
 const foot = document => document.getElementById('foot').textContent;
+
+describe('Shared shell original source host actions', () => {
+  const url = 'https://www.bbc.co.uk/news/articles/crly09gz7ew4o?at_medium=RSS&at_campaign=rss';
+  const wire = { ...result(envelope([{ ...story(0), primaryLink: url }]), true),
+    _meta: { 'worldmonitor/usage': { unit: 'requests', limit: 50, remaining: 41, resetsAt: '2026-10-07T00:00:00Z' } },
+  };
+  const click = (document, win, target = document.querySelector('.story-title')) => {
+    const event = new win.Event('click', { bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
+  };
+  const links = posted => posted.filter(message => message.method === 'ui/open-link');
+  const status = document => document.getElementById('source-link-status')?.textContent ?? '';
+  const clock = win => {
+    const timers = [];
+    const set = win.setTimeout.bind(win), clear = win.clearTimeout.bind(win);
+    win.setTimeout = (callback, delay, ...args) => {
+      if (delay !== 30_000) return set(callback, delay, ...args);
+      const timer = { callback, cleared: false }; timers.push(timer); return timer;
+    };
+    win.clearTimeout = timer => {
+      if (timers.includes(timer)) timer.cleared = true;
+      else clear(timer);
+    };
+    return timers;
+  };
+
+  it('sends the original nested citation to the advertised host and retains loaded observations', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const before = document.getElementById('list').textContent;
+      const footer = foot(document);
+      const usage = document.getElementById('panel-usage').textContent;
+      const anchor = document.querySelector('.story-title');
+      const nested = document.createElement('span'); anchor.append(nested);
+      const event = click(document, win, nested);
+      assert.equal(links(posted).length, 1, 'the original citation must request the host open-link action');
+      assert.equal(event.defaultPrevented, true);
+      assert.equal(links(posted)[0].params.url, url);
+      assert.equal(anchor.getAttribute('href'), url);
+      const request = links(posted)[0];
+      assert.notEqual(request.id, 1);
+      assert.equal(document.getElementById('source-link-status').getAttribute('role'), 'status');
+      click(document, win);
+      assert.equal(links(posted).length, 1, 'repeated clicks cannot accumulate pending requests');
+      for (const [data, source] of [
+        [{ id: request.id, result: {} }, {}],
+        [{ id: request.id, result: {}, jsonrpc: '1.0' }, win.eval('window.parent')],
+        [{ id: 'unrelated-id', result: {} }, win.eval('window.parent')],
+      ]) {
+        reply(data, source);
+        assert.equal(status(document), 'Requesting this source link from the host.');
+      }
+      reply({ id: request.id, result: {} });
+      assert.equal(status(document), '');
+      assert.equal(document.getElementById('list').textContent, before);
+      assert.equal(foot(document), footer);
+      assert.equal(document.getElementById('panel-usage').textContent, usage);
+      click(document, win);
+      assert.equal(links(posted).length, 2);
+      assert.notEqual(links(posted)[1].id, request.id);
+      reply({ id: links(posted)[1].id, result: {} });
+    });
+  });
+
+  it('prevents silent navigation before initialization and in an unsupported host', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      for (const capabilities of [null, {}, { openLinks: false }, { openLinks: true }, { openLinks: 'yes' }, { openLinks: [] }, { openLinks: null }]) {
+        if (capabilities !== null) reply({ id: 1, result: { hostCapabilities: capabilities } });
+        assert.equal(click(document, win).defaultPrevented, true);
+        assert.equal(links(posted).length, 0);
+        assert.equal(status(document), 'Opening source links is unavailable in this host.');
+        assert.notEqual(document.getElementById('card').style.display, 'none');
+      }
+    });
+  });
+
+  it('reports host errors and malformed results without erasing source data, then permits retry', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const before = document.getElementById('list').textContent;
+      const usage = document.getElementById('panel-usage').textContent;
+      for (const outcome of [{ error: { code: -32603, message: 'Controlled failure' } }, { result: { isError: true } }, { result: null }, { result: 'invalid' }, { result: [] }, {}, { error: { code: -32603, message: 'Controlled failure' }, result: {} }]) {
+        click(document, win);
+        const request = links(posted).at(-1);
+        assert.ok(request, 'source-link errors require a correlated host request');
+        reply({ id: request.id, ...outcome });
+        assert.equal(status(document), 'The host could not open this source link.');
+        assert.equal(document.getElementById('list').textContent, before);
+        assert.equal(document.getElementById('panel-usage').textContent, usage);
+        assert.equal(document.getElementById('source-link-status').getAttribute('role'), 'status');
+        assert.notEqual(document.getElementById('card').style.display, 'none');
+      }
+    });
+  });
+
+  it('reports a missing host response and failed transport without silent fallback', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const before = document.getElementById('list').textContent;
+      const usage = document.getElementById('panel-usage').textContent;
+      const timers = clock(win);
+      click(document, win);
+      assert.equal(timers.length, 1, 'an unanswered source action must have a bounded host deadline');
+      timers[0].callback();
+      assert.equal(timers[0].cleared, true);
+      assert.equal(status(document), 'The host did not respond to this source link.');
+      win.eval('window.parent').postMessage = () => { throw new Error('Controlled transport failure'); };
+      click(document, win);
+      assert.equal(status(document), 'The host could not open this source link.');
+      assert.equal(timers[1].cleared, true);
+      assert.equal(document.getElementById('list').textContent, before);
+      assert.equal(document.getElementById('panel-usage').textContent, usage);
+      assert.notEqual(document.getElementById('card').style.display, 'none');
+    });
+  });
+
+  it('ignores notification-only and stale replies, clears actual timers and cleans up on pagehide', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const timers = clock(win);
+      click(document, win);
+      const first = links(posted)[0];
+      assert.ok(first);
+      reply({ id: first.id, method: 'ui/notifications/size-changed', params: {} });
+      assert.equal(status(document), 'Requesting this source link from the host.');
+      assert.equal(timers[0].cleared, false);
+      reply({ id: first.id, result: {} });
+      assert.equal(timers[0].cleared, true);
+      click(document, win);
+      const second = links(posted)[1];
+      assert.notEqual(first.id, second.id);
+      reply({ id: first.id, error: { code: -32603, message: 'Stale error' } });
+      timers[0].callback();
+      assert.equal(status(document), 'Requesting this source link from the host.');
+      assert.equal(timers[1].cleared, false);
+      win.dispatchEvent(new win.Event('pagehide'));
+      assert.equal(timers[1].cleared, true);
+      reply({ id: second.id, error: { code: -32603, message: 'Closed view' } });
+      assert.notEqual(status(document), 'The host could not open this source link.');
+    });
+  });
+
+  it('accepts a synchronous host acknowledgement after pending state is established', async () => {
+    await mount(wire, (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const timers = clock(win);
+      win.eval('window.parent').postMessage = message => {
+        posted.push(message);
+        if (message.method === 'ui/open-link') reply({ id: message.id, result: {} });
+      };
+      for (let i = 0; i < 2; i++) {
+        assert.equal(click(document, win).defaultPrevented, true);
+        assert.equal(status(document), '');
+        assert.equal(timers[i].cleared, true);
+      }
+      assert.equal(links(posted).length, 2);
+      assert.notEqual(links(posted)[0].id, links(posted)[1].id);
+    });
+  });
+
+  it('keeps non HTTP titles and non-anchor controls outside the host-link action', async () => {
+    for (const invalid of ['javascript:alert(1)', '/relative-article']) await mount(result(envelope([{ ...story(0), primaryLink: invalid }])), (document, send, { win, posted, reply }) => {
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      assert.equal(document.querySelector('.story-title[href]'), null);
+      assert.equal(click(document, win).defaultPrevented, false);
+      assert.equal(links(posted).length, 0);
+      assert.equal(status(document), '');
+    });
+  });
+});
 
 describe('News Intelligence accepted projections', () => {
   it('preserves full, direct-data and text controls with original source warnings and supplied snapshots', async () => {
