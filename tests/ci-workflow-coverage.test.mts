@@ -1069,12 +1069,41 @@ describe('CI workflow coverage', () => {
       assert.match(job, /\n {4}timeout-minutes: 20\n/);
       assert.match(
         job,
-        /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx (?:-y "playwright@\$v" |playwright )install-deps chromium/,
+        /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
       );
+      // install-deps runs only when ldd finds a library a Playwright browser
+      // cannot resolve. An unconditional install would download ~32 MB of
+      // fonts and Mesa upgrades on every run.
+      const installDeps = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { id?: string }) => step.id === 'playwright-install-deps');
+      assert.match(installDeps.run, /ldd "\$browser" \| grep 'not found'[\s\S]*exit 0[\s\S]*npx playwright install-deps chromium/);
+      assert.match(installDeps.run, /missing="no Playwright browser binary found"/, 'a missing browser binary must fall through to install-deps');
       assert.match(
         job,
         /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
       );
+    }
+  });
+
+  it('installs the locale font subset from a package cache in every browser job', () => {
+    const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
+    const steps = action.runs.steps;
+    const download = steps.find((step: { name?: string }) => step.name === 'Download browser font packages on cache miss');
+    const packages = download.run.match(/packages=\(([^)]+)\)/)[1].trim().split(/\s+/);
+    assert.deepEqual(packages, ['fonts-wqy-zenhei', 'fonts-tlwg-loma-otf', 'fonts-lohit-deva']);
+    const keyStep = steps.find((step: { id?: string }) => step.id === 'font-key');
+    for (const pkg of packages) {
+      assert.ok(keyStep.run.includes(pkg), `the font cache key must change when ${pkg} leaves the list`);
+    }
+    assert.equal(download.if, "steps.font-debs.outputs.cache-hit != 'true'");
+    assert.equal(steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/cache/save@')).if, download.if);
+    for (const jobName of ['variant-smoke-shards', 'variant-smoke-pro-webmcp']) {
+      const fonts = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { uses?: string }) => step.uses === './.github/actions/install-browser-fonts');
+      assert.ok(fonts, `${jobName} must install the browser fonts`);
+      assert.equal(fonts['continue-on-error'], true, `${jobName}: a font install failure must not fail the job`);
     }
   });
 

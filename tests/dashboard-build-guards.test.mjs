@@ -94,9 +94,9 @@ describe('built-output guard contract', () => {
       'the prehydration spec must fail when /pro output is absent, not silently skip',
     );
     // public/pro/ is built output since #6898. The build may share a parallel
-    // group with the apt pass, but the only step allowed between it and the
-    // focused spec is the apt repair, which builds nothing. Anything else could
-    // leave the browser checks reading missing or stale bytes from another build.
+    // group with the font install, but no step may sit between that group and
+    // the focused spec. Anything there could leave the browser checks reading
+    // missing or stale bytes from another build.
     const buildIndex = proJobSteps.findIndex((step) => (step.parallel ?? [step])
       .some((inner) => inner.name === 'Build /pro artifacts for prehydration browser checks' && inner.run === 'npm run build:pro'));
     const prehydrationIndex = proJobSteps.findIndex((step) => step.id === 'prehydration');
@@ -105,8 +105,8 @@ describe('built-output guard contract', () => {
     assert.ok(buildIndex < prehydrationIndex, 'the /pro build must run before the prehydration browser checks');
     assert.deepEqual(
       proJobSteps.slice(buildIndex + 1, prehydrationIndex).map((step) => step.name),
-      ['Repair Playwright install after OS-deps timeout'],
-      'only the apt repair may sit between the /pro build and the prehydration browser checks',
+      [],
+      'no step may sit between the /pro build and the prehydration browser checks',
     );
   });
 
