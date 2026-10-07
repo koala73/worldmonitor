@@ -400,6 +400,29 @@ describe('published reliability and original evidence continuity', () => {
   const compact = (reliabilityValue = reliability()) => ({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'reliability-panel' }, data: { ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]).data, reliability: reliabilityValue } });
   const caseReply = (win, request) => hostReply(win, request.id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
   function openCase(win, doc) { const details = doc.querySelector('#list details'); details.open = true; details.dispatchEvent(new win.Event('toggle')); return details; }
+  it('refreshes source warnings and snapshot clocks while preserving pending then loaded Analysis', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const details = openCase(win, doc);
+    const request = messages.find(message => message.params?.name === 'get_forecast_case');
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.find(message => message.params?.name === 'get_forecast_theaters'));
+    const theaterNode = doc.getElementById('theaters').firstChild;
+    const changed = compact(); changed.cached_at = '2026-10-07T01:00:00Z'; changed.stale = true;
+    Object.assign(changed.data.predictions, { stale: true, degraded: true, error: 'source_failure' });
+    send(changed);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T01:00:00Z.*Forecast source degraded.*stale cache.*source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.match(details.textContent, /Loading original case/);
+    caseReply(win, request);
+    const recovered = compact(); recovered.cached_at = '2026-10-07T02:00:00Z'; send(recovered);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T02:00:00Z/);
+    assert.doesNotMatch(doc.getElementById('foot').textContent, /degraded|stale cache|source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.match(details.textContent, /Supporting observation/);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 2);
+  });
   it('matches website measured/stale/unmeasured text, baseline, accessible hint and accuracy destination', async () => {
     const { doc, send } = await mount(compact()); let badge = doc.querySelector('.fc-reliability');
     assert.equal(badge?.textContent, 'Energy n=45 · Brier 0.213 vs base rate 0.240');

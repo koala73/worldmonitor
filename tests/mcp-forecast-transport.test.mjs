@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DEFAULT_ROLLING_WINDOW_DAYS } from '../scripts/_forecast-scorecard.mjs';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
@@ -102,6 +104,15 @@ describe('bounded forecast list and original case transport', () => {
 describe('published forecast reliability transport', () => {
   const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
   const project = (scorecard, predictions = full) => opening._postFilter({ predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+  it('matches the website and producer window fallback for missing or invalid windows', () => {
+    const website = readFileSync(new URL('../src/components/forecast-record.ts', import.meta.url), 'utf8');
+    const websiteWindowDays = Number(website.match(/const DEFAULT_WINDOW_DAYS = (\d+);/)?.[1]);
+    assert.equal(websiteWindowDays, DEFAULT_ROLLING_WINDOW_DAYS);
+    for (const rollingWindowDays of [undefined, null, 0, -1, NaN, Infinity, '90']) {
+      assert.equal(project({ schemaVersion: 2, publishedByDomain: [row()], rollingWindowDays }).windowDays, websiteWindowDays);
+    }
+    assert.equal(project({ schemaVersion: 2, publishedByDomain: [row()], rollingWindowDays: 90 }).windowDays, 90);
+  });
   it('projects only loaded published domains with the website sample and base-rate rules', () => {
     const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [row(), row('conflict'), row('bet_engine')], byDomain: [row('energy', { brier: 0.001 })], receipts: ['private'], skill: 0.99 };
     const reliability = project(scorecard);

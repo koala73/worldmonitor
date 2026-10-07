@@ -78,6 +78,14 @@ const RENDER = `
       link.setAttribute("aria-label", main + ". " + label + ": " + row.n + " published outcomes over " + reliability.windowDays + " days." + (reliability.freshnessUnknown ? " Freshness unknown." : ""));
       return link;
     }
+    var source = [];
+    var generatedAt = timestamp(node.generatedAt);
+    if (generatedAt) source.push("Generated: " + generatedAt);
+    if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
+    if (node.degraded) source.push("Forecast source degraded");
+    if (data.stale || node.stale) source.push("stale cache");
+    if (text(node.error)) source.push(text(node.error).split("_").join(" "));
+    q("foot").textContent = source.join(" · ");
     if (cases.listKey === listKey && cases.updateReliability) {
       cases.updateReliability(reliability); reportSize(); return;
     }
@@ -452,14 +460,6 @@ const RENDER = `
     options("domain", "domain", "All domains");
     options("region", "region", "All regions");
     renderList();
-    var source = [];
-    var generatedAt = timestamp(node.generatedAt);
-    if (generatedAt) source.push("Generated: " + generatedAt);
-    if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
-    if (node.degraded) source.push("Forecast source degraded");
-    if (data.stale || node.stale) source.push("stale cache");
-    if (text(node.error)) source.push(text(node.error).split("_").join(" "));
-    q("foot").textContent = source.join(" · ");
     renderTheaters();
 `;
 
