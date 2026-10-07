@@ -9,7 +9,7 @@ const PANEL = '#panelsGrid .panel[data-panel="forecast"]';
 const STACK_BELOW = 440;
 
 const FORECASTS = [
-  { id: 'fc-e2e-1', title: 'Will the ECB announce no change at the October 2026 meeting of its Governing Council?', domain: 'political', probability: 0.89, trend: 'stable' },
+  { id: 'fc-e2e-1', title: 'Will the ECB announce no change at the October 2026 meeting of its Governing Council?', domain: 'political', probability: 0.89, trend: 'stable', scoredHorizons: ['h24', 'd7', 'd30'] },
   { id: 'fc-e2e-2', title: 'Active armed conflict: Ukraine', domain: 'conflict', probability: 0.62, trend: 'rising', simulationAdjustment: 0.05, simPathConfidence: 0.8 },
   { id: 'fc-e2e-3', title: 'Supply chain disruption risk: Strait of Hormuz shipping lanes', domain: 'supply_chain', probability: 0.34, trend: 'falling' },
   { id: 'fc-e2e-4', title: 'Cyber threat concentration: France', domain: 'cyber', probability: 0.16, trend: 'stable' },
@@ -41,7 +41,7 @@ const SCORECARD = {
   error: '',
 };
 
-interface CardMeasure { title: number; badge: number; past: number; h: number }
+interface CardMeasure { title: number; badge: number; horizons: number | null; past: number; h: number }
 interface TableMeasure { tableContent: number; display: string; cards: CardMeasure[] }
 
 function measure(page: Page): Promise<TableMeasure> {
@@ -56,7 +56,10 @@ function measure(page: Page): Promise<TableMeasure> {
         row.scrollWidth - row.clientWidth,
         ...['.fc-bar-wrap', '.fc-prob-pct', '.fc-trend-text', '.fc-domain-tag'].map((s) => item.querySelector(s)!.getBoundingClientRect().right - right),
       );
-      return { title: width(item.querySelector('.fc-forecast-title')), badge: width(item.querySelector('.fc-reliability')), past, h: item.getBoundingClientRect().height };
+      const horizons = item.querySelector('.fc-horizons > summary');
+      const labelRight = item.querySelector('.fc-prob-label')!.getBoundingClientRect().right;
+      const horizonsPast = horizons ? horizons.getBoundingClientRect().right - labelRight : 0;
+      return { title: width(item.querySelector('.fc-forecast-title')), badge: width(item.querySelector('.fc-reliability')), horizons: horizons ? width(horizons) : null, past: Math.max(past, horizonsPast), h: item.getBoundingClientRect().height };
     });
     return { tableContent: table.clientWidth, display: getComputedStyle(panel.querySelector('.fc-prob-row')!).display, cards };
   }, PANEL);
@@ -73,6 +76,7 @@ const SIZES = [
 test('forecast rows keep titles readable and data inside the row at every panel width', async ({ browser }, testInfo) => {
   test.setTimeout(300_000);
   const modes = new Set<string>();
+  let horizonCards = 0;
   for (const size of SIZES) {
     const context = await browser.newContext({ viewport: { width: size.width, height: 900 }, colorScheme: 'dark' });
     const page = await context.newPage();
@@ -101,9 +105,11 @@ test('forecast rows keep titles readable and data inside the row at every panel 
 
     const label = `${size.name} (table ${loaded.tableContent}px)`;
     modes.add(loaded.display);
+    horizonCards += loaded.cards.filter((card) => card.horizons !== null).length;
     loaded.cards.forEach((card, i) => {
       expect(card.title, `${label} card ${i} title`).toBeGreaterThanOrEqual(50);
       expect(card.badge, `${label} card ${i} badge`).toBeGreaterThan(0);
+      if (card.horizons !== null) expect(card.horizons, `${label} card ${i} scored horizons`).toBeGreaterThanOrEqual(50);
       expect(card.past, `${label} card ${i} overflow`).toBeLessThanOrEqual(0.5);
       expect(Math.abs(card.h - loading.cards[i]!.h), `${label} card ${i} height shift`).toBeLessThanOrEqual(0.5);
     });
@@ -122,5 +128,6 @@ test('forecast rows keep titles readable and data inside the row at every panel 
 
     await context.close();
   }
+  expect(horizonCards, 'a card with scored horizons was measured').toBeGreaterThan(0);
   expect([...modes].sort(), 'both the stacked and the four-column layouts were exercised').toEqual(['flex', 'grid']);
 });
