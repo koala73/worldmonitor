@@ -43,6 +43,7 @@ import {
 } from './_forecast-evidence-archive.mjs';
 import { readFileSync } from 'node:fs';
 import { JUDGED_EVIDENCE_GRACE_MS } from './_forecast-scorecard.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
 
 export { JUDGED_EVIDENCE_GRACE_MS };
 
@@ -1914,6 +1915,23 @@ function migratePendingCountEntry(entry, options = {}) {
     }
   }
   migratePendingCountEntryToJudged(entry, options);
+  migratePendingGpsRule(entry);
+}
+
+// GPS rows emitted before the persistence rule carry the emission-day hex
+// count as their threshold. None was ever scored on it (every GPS row
+// resolved before #8990 is VOID), so each pending row moves to the current
+// rule before it can resolve, and keeps its old threshold for audit.
+// Re-running is a no-op.
+function migratePendingGpsRule(entry) {
+  const spec = entry.spec;
+  if (parseMetricKey(spec.metricKey)?.fn !== 'hexCount') return;
+  if (spec.rule === GPS_RESOLUTION_RULE && spec.ruleVersion === GPS_RESOLUTION_RULE_VERSION) return;
+  if (spec.supersededThreshold === undefined) spec.supersededThreshold = spec.threshold;
+  spec.operator = '>=';
+  spec.threshold = GPS_ZONE_MIN_HEXES;
+  spec.rule = GPS_RESOLUTION_RULE;
+  spec.ruleVersion = GPS_RESOLUTION_RULE_VERSION;
 }
 
 // Families whose count-resolution feed is unavailable (empty without ACLED

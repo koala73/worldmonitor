@@ -46,6 +46,7 @@ import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../s
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildPublishedForecastPayload, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GRACE = JUDGED_EVIDENCE_GRACE_MS;
@@ -3552,6 +3553,37 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     assert.deepEqual(next[voided.key], voided);
     assert.equal(next[pending.key].outcome, 'YES');
     assert.equal(next[pending.key].evidence.metricValue, 5);
+  });
+
+  it('rewrites a pending emission-count row to the persistence rule once, keeping the old threshold for audit', () => {
+    const legacy = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: 59 } });
+    const ruleFields = (spec) => [spec.threshold, spec.rule, spec.ruleVersion, spec.supersededThreshold];
+    const first = processResolutionCycle({ [legacy.key]: structuredClone(legacy) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual(ruleFields(first.ledger[legacy.key].spec), [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, 59]);
+    const second = processResolutionCycle(first.ledger, [], {}, T0 + 2 * DAY_MS);
+    assert.deepEqual(second.ledger[legacy.key].spec, first.ledger[legacy.key].spec);
+    const resolved = processResolutionCycle(second.ledger, [], feeds, deadline + DAY_MS);
+    assert.equal(resolved.ledger[legacy.key].outcome, 'YES', '5 hexes meet the floor though the emission count was 59');
+    assert.equal(resolved.ledger[legacy.key].evidence.comparison, `5 >= ${GPS_ZONE_MIN_HEXES}`);
+  });
+
+  it('leaves a row on the current rule as emitted and migrates one that lacks the rule version', () => {
+    const current = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: GPS_ZONE_MIN_HEXES, rule: GPS_RESOLUTION_RULE, ruleVersion: GPS_RESOLUTION_RULE_VERSION } });
+    const unversioned = gpsRow(T0 + 1, { id: 'fc-gps-unversioned', status: 'pending', spec: { ...pending.spec, deadline: deadline + 1, threshold: 59, rule: GPS_RESOLUTION_RULE } });
+    const { ledger } = processResolutionCycle({ [current.key]: structuredClone(current), [unversioned.key]: structuredClone(unversioned) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual(ledger[current.key].spec, current.spec);
+    assert.deepEqual([ledger[unversioned.key].spec.threshold, ledger[unversioned.key].spec.ruleVersion, ledger[unversioned.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
+  });
+
+  it('migrates a legacy emission read from history as it opens its window', () => {
+    const emission = {
+      id: pending.id, domain: 'supply_chain', region: 'Eastern Mediterranean', title: pending.title, probability: 0.5,
+      timeHorizon: '7d', generationOrigin: 'legacy_detector', generatedAt: T0, signals: [],
+      resolution: { ...pending.spec, threshold: 59, question: null, baselineValue: null },
+    };
+    const { ledger } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [emission] }], {}, T0 + 1);
+    const [opened] = Object.values(ledger);
+    assert.deepEqual([opened.spec.threshold, opened.spec.rule, opened.spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, 59]);
   });
 
   it('stamps a stale post-deadline read with its snapshot day, so the deadline-day count still decides', () => {

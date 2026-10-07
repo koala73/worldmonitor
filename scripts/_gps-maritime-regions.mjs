@@ -11,6 +11,14 @@ export const MARITIME_REGIONS = Object.freeze({
   'Baltic Sea': { latRange: [52, 65], lonRange: [10, 32] },
 });
 
+// The detector emits a zone at this many hexes, and a GPS forecast resolves
+// YES when the zone still holds this many on the deadline-day snapshot. The
+// rule and its version ride on every spec so a row read under an older rule
+// (#8990: the emission-day count) can never be scored as if it were this one.
+export const GPS_ZONE_MIN_HEXES = 3;
+export const GPS_RESOLUTION_RULE = 'persistence';
+export const GPS_RESOLUTION_RULE_VERSION = 1;
+
 export function hexesInMaritimeRegion(hexes, bounds) {
   return hexes.filter((h) => {
     const lat = h.lat || h.latitude || 0;

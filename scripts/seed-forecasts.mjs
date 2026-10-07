@@ -25,7 +25,7 @@ import {
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
-import { MARITIME_REGIONS, hexesInMaritimeRegion } from './_gps-maritime-regions.mjs';
+import { GPS_ZONE_MIN_HEXES, MARITIME_REGIONS, hexesInMaritimeRegion } from './_gps-maritime-regions.mjs';
 // Queue / outcome / runId constants live in the shared shim so the
 // HTTP-trigger handler (server/_shared/simulation-queue.ts) and this
 // seeder agree on the Redis schema. See #3734 + docs/plans/2026-05-18-
@@ -2116,7 +2116,7 @@ function detectGpsJammingScenarios(inputs) {
 
   for (const [region, bounds] of Object.entries(MARITIME_REGIONS)) {
     const inRegion = hexesInMaritimeRegion(zones, bounds);
-    if (inRegion.length < 3) continue;
+    if (inRegion.length < GPS_ZONE_MIN_HEXES) continue;
     predictions.push(makePrediction(
       'supply_chain', region,
       `GPS interference in ${region} shipping zone`,
