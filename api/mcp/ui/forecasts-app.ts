@@ -66,6 +66,14 @@ const RENDER = `
     var listKey = JSON.stringify([preds, generation, text(panel.token), state.available, total]);
     var reliability = object(d.reliability);
     function badge(domain) {
+      var audit = object(reliability.underAudit);
+      if (text(audit.since)) {
+        var held = el("a", "fc-reliability", "Accuracy under audit");
+        held.href = "https://www.worldmonitor.app/accuracy/"; held.target = "_blank"; held.rel = "noopener noreferrer";
+        held.setAttribute("aria-label", "Accuracy under audit since " + text(audit.since) + ". Scores are withdrawn while scoring errors are corrected.");
+        held.setAttribute("data-fc-reliability-state", "under-audit");
+        return held;
+      }
       if (reliability.status !== "ready" || !Array.isArray(reliability.byDomain)) return null;
       var row = reliability.byDomain.find(function (value) { return value && value.domain === domain; });
       if (!row) return null;

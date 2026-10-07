@@ -304,7 +304,9 @@ export function isEligibleForecastEvidence(variant, lang) {
  *
  * Returns null only when a required field is missing or when the record is
  * still over budget with no description at all — a genuinely malformed
- * upstream the caller should count.
+ * upstream the caller should count. An empty link is not missing: the digest's
+ * publisher-link gate blanks links it will not store (#8398), and the story is
+ * still evidence. Counting those as drops froze the coverage marker (#8990).
  *
  * @param {{hash?: unknown, title?: unknown, link?: unknown, description?: unknown, publishedAt?: unknown}} track
  * @param {number} lastSeen
@@ -317,7 +319,7 @@ export function buildForecastEvidenceMember(track, lastSeen) {
   const description = typeof track.description === 'string' ? track.description : '';
   const publishedAt = Number(track.publishedAt);
 
-  if (!isForecastEvidenceHash(hash) || !title || !link || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
+  if (!isForecastEvidenceHash(hash) || !title || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
     return null;
   }
 

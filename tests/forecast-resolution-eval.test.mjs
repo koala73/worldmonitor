@@ -601,7 +601,7 @@ describe('resolveHardSpec', () => {
     assert.equal(crossDown.evidence.comparison, '28 crosses 30 from 60');
   });
 
-  it('resolves at-endDate yesPrice from production market baselines without inverting settlement', () => {
+  it('never grades a bootstrap yesPrice read: the feed carries the crowd price, not the outcome (#5233)', () => {
     const e = entry({
       spec: {
         kind: 'hard',
@@ -615,48 +615,14 @@ describe('resolveHardSpec', () => {
       },
       deadline: START + DAY_MS,
     });
-
-    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 98 }] }, {
-      recent: [
-        { ts: START, value: 72 },
-        { ts: START + DAY_MS - 5, value: 3 },
-      ],
-    }, START + DAY_MS);
-
-    assert.equal(yes.outcome, 'YES');
-    assert.equal(yes.evidence.metricValue, 98);
-
-    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 2 }] }, {
-      recent: [
-        { ts: START, value: 72 },
-        { ts: START + DAY_MS - 5, value: 98 },
-      ],
-    }, START + DAY_MS);
-
-    assert.equal(no.outcome, 'NO');
-    assert.equal(no.evidence.metricValue, 2);
-  });
-
-  it('keeps prediction-market yesPrice settlement flip-resistant around the 50 line', () => {
-    const e = entry({
-      spec: {
-        kind: 'hard',
-        metricKey: 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)',
-        operator: 'crosses',
-        threshold: 50,
-        baselineValue: 90,
-        window: 'at-endDate',
-        deadline: START + DAY_MS,
-        sourceFeed: 'prediction:markets-bootstrap:v1',
-      },
-      deadline: START + DAY_MS,
-    });
-
-    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 51 }] }, {}, START + DAY_MS);
-    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 49 }] }, {}, START + DAY_MS);
-
-    assert.equal(yes.outcome, 'YES');
-    assert.equal(no.outcome, 'NO');
+    for (const yesPrice of [98, 51, 49, 2]) {
+      const result = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice }] }, {
+        recent: [{ ts: START + DAY_MS - 5, value: yesPrice }],
+      }, START + DAY_MS);
+      assert.equal(result.outcome, 'VOID', `yesPrice ${yesPrice}`);
+      assert.equal(result.evidence.reason, 'market_price_not_outcome');
+    }
+    assert.equal(resolveHardSpec(e, {}, {}, START + DAY_MS - 1).status, 'pending', 'still pending before endDate');
   });
 
   it('is deterministic and every VOID carries a reason', () => {

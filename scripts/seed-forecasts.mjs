@@ -9,7 +9,7 @@ import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
+import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { alignPriorToPublication, applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
@@ -4945,6 +4945,10 @@ function buildCalibrationLineage(calibration) {
   };
 }
 
+function finiteOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function buildHistoryForecastEntry(pred) {
   return {
     id: pred.id,
@@ -4979,14 +4983,14 @@ function buildHistoryForecastEntry(pred) {
       effect: cascade.effect,
       probability: cascade.probability,
     })),
-    // Persist projections into the 45-day history too (#4933 audit gap —
-    // canonical payload already emits them at :5100; history was the only
-    // store dropping them, so the per-horizon curve a future multi-horizon
-    // Brier needs was lost). Mirror the canonical payload's shape.
+    // Horizon scoring grades each hard horizon contract on these values and
+    // reads them only from history; the canonical published payload omits
+    // them (#8967).
+    // A missing value stays null: a 0 would be graded as a real projection.
     projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
+      h24: finiteOrNull(pred.projections.h24),
+      d7: finiteOrNull(pred.projections.d7),
+      d30: finiteOrNull(pred.projections.d30),
     } : null,
     // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
     // payload emits, so Bet 2's resolver can score forecasts still in-window.
@@ -5629,6 +5633,11 @@ function buildHorizonResolutionsOutputBlock(horizonResolutions) {
   return Object.keys(block).length ? block : null;
 }
 
+function scoredHorizonsBlock(pred) {
+  const scored = scoredHorizonKeys(pred);
+  return scored.length ? { scoredHorizons: scored } : {};
+}
+
 function buildPublishedForecastPayload(pred) {
   return {
     id: pred.id,
@@ -5670,12 +5679,8 @@ function buildPublishedForecastPayload(pred) {
       regional: pred.perspectives.regional || '',
       contrarian: pred.perspectives.contrarian || '',
     } : null,
-    projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
-    } : null,
     resolution: buildResolutionOutputBlock(pred.resolution),
+    ...scoredHorizonsBlock(pred),
     caseFile: slimForecastCaseForPublish(pred.caseFile),
     simulationAdjustment: Number(pred.simulationAdjustment || 0),
     simPathConfidence: Number(pred.simPathConfidence || 0),

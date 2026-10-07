@@ -65,4 +65,43 @@ describe('ForecastPanel horizon projections (#7075)', () => {
     }
     expect(html).not.toMatch(/\b(24h|7d|30d)\s*:?\s*\d+%/);
   });
+
+  it('names the horizons that have a scorer, never a mutable projection value, with a note on how they are graded', () => {
+    const panel = new ForecastPanel();
+    document.body.appendChild(panel.getElement());
+
+    const scored = { ...forecastWithProjections(), scoredHorizons: ['h24', 'd30'] } as unknown as Forecast;
+    panel.updateForecasts([scored], { generatedAt: 1_790_000_000_000 });
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    const line = panel.getElement().querySelector<HTMLDetailsElement>('details.fc-horizons');
+    expect(line, 'scored horizons disclosure').not.toBeNull();
+    expect(line!.querySelector('summary')?.textContent).toBe('Also scored at: 24h, 30d');
+    // The ledger grades the value first published for each window; the payload
+    // carries the current projection, which can differ, so no value is shown.
+    for (const projected of ['37%', '71%', '53%']) expect(line!.textContent).not.toContain(projected);
+    // A native disclosure opens on tap and from the keyboard, unlike a title tooltip.
+    const hint = line!.querySelector('.fc-horizons-hint')?.textContent ?? '';
+    expect(hint).toMatch(/first published/);
+    expect(hint).toMatch(/own horizon/);
+    expect(hint).not.toMatch(/not graded at all/);
+    expect(line!.hasAttribute('title')).toBe(false);
+
+    const toggleRow = panel.getElement().querySelector<HTMLElement>('.fc-toggle-row')!;
+    const before = toggleRow.style.display;
+    line!.querySelector<HTMLElement>('summary')!.click();
+    expect(toggleRow.style.display, 'opening the hint leaves the card action row alone').toBe(before);
+  });
+
+  it('ignores unknown horizon names', () => {
+    const panel = new ForecastPanel();
+    document.body.appendChild(panel.getElement());
+
+    const odd = { ...forecastWithProjections(), scoredHorizons: ['<img src=x>', 'd30'] } as unknown as Forecast;
+    panel.updateForecasts([odd], { generatedAt: 1_790_000_000_000 });
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(panel.getElement().querySelector('.fc-horizons summary')?.textContent).toBe('Also scored at: 30d');
+    expect(panel.getElement().querySelector('img')).toBeNull();
+  });
 });

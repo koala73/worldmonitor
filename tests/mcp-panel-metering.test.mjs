@@ -1409,7 +1409,8 @@ describe('paid prediction panel through the MCP handler', () => {
 describe('public forecast reliability cache and completed output', () => {
   const now = Date.parse('2026-10-07T00:00:00Z');
   const predictions = { generatedAt: now, predictions: [{ id: 'reliability-case', domain: 'energy', region: 'Europe', title: 'Controlled forecast', probability: 0.4 }] };
-  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 45, brier: 0.213, yesCount: 18 }] };
+  const familyOutcomes = [{ forecastId: 'reliability-case', outcome: 'YES' }, { forecastId: 'reliability-case', outcome: 'VOID', voidReason: 'judge_disagreement' }];
+  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 45, brier: 0.213, yesCount: 18 }], familyOutcomes };
   const originals = new WeakMap();
   async function fixture(testContext, values) {
     if (!originals.has(testContext)) originals.set(testContext, { beforeFetch: globalThis.fetch, beforeEnv: { ...process.env }, beforeNow: Date.now });
@@ -1436,11 +1437,34 @@ describe('public forecast reliability cache and completed output', () => {
     const first = await fixtureContext.invoke({});
     assert.deepEqual([...new Set(fixtureContext.reads)].sort(), Object.keys(values()).sort(), 'opening must read predictions and independent optional scorecard data/meta');
     assert.equal(first.structuredContent.data.reliability.status, 'unavailable');
+    assert.equal(Object.hasOwn(first.structuredContent.data, 'familyOutcomes'), false);
     assert.equal(first.structuredContent.stale, false, 'optional scorecard failure must not relabel fresh predictions');
     const readCount = fixtureContext.reads.length; const writes = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'); const replay = await fixtureContext.invoke({ panel_request: first.structuredContent.panelRequest.token });
     assert.deepEqual(replay.structuredContent.data.reliability, first.structuredContent.data.reliability);
     assert.deepEqual(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'), writes, 'replay must not rewrite the snapshot or extend its expiry');
     assert.equal(fixtureContext.reads.length, readCount); assert.equal(fixtureContext.pipe.count, 1);
+  });
+  it('saves public family history with the exact opening and replays without reads, allocation or expiry changes', async testContext => {
+    const context = await fixture(testContext, values()); const first = await context.invoke({});
+    assert.deepEqual(first.structuredContent.data.familyOutcomes, familyOutcomes);
+    assert.deepEqual([...new Set(context.reads)].sort(), Object.keys(values()).sort());
+    const count = context.reads.length; const writes = context.pipe.ops.flat().filter(op => op[0] === 'SET');
+    context.values['forecast:scorecard:v1'] = { ...scorecard, familyOutcomes: [{ forecastId: 'reliability-case', outcome: 'NO' }] };
+    context.values['forecast:predictions:v2'] = { ...predictions, predictions: [] }; context.advance(120000);
+    const replay = await context.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    const { panelRequest, ...savedOpening } = first.structuredContent;
+    assert.equal(panelRequest.panel, 'forecasts');
+    assert.deepEqual(replay.structuredContent, savedOpening, 'saved full opening is exact; the existing replay contract omits the receipt');
+    assert.equal(context.reads.length, count); assert.equal(context.pipe.count, 1);
+    assert.deepEqual(context.pipe.ops.flat().filter(op => op[0] === 'SET'), writes, 'no snapshot rewrite or expiry extension');
+  });
+  it('admits a realistic 30-card five-window opening under the same fixed completed budget', async testContext => {
+    const rows = Array.from({ length: 30 }, (unusedValue, forecastIndex) => ({ ...predictions.predictions[0], id: `family-${forecastIndex}` }));
+    const history = rows.flatMap(row => Array.from({ length: 5 }, (unusedValue, windowIndex) => ({ forecastId: row.id, outcome: windowIndex % 2 ? 'VOID' : 'YES', ...(windowIndex % 2 ? { voidReason: 'judge_disagreement' } : {}) })));
+    const context = await fixture(testContext, { ...values(), 'forecast:predictions:v2': { ...predictions, predictions: rows }, 'forecast:scorecard:v1': { ...scorecard, familyOutcomes: history } });
+    const first = await context.invoke({}); assert.equal(first.isError, undefined); assert.equal(first.structuredContent._budget_exceeded, undefined);
+    assert.equal(first.structuredContent.data.familyOutcomes.length, 150); assert.ok(Buffer.byteLength(JSON.stringify(first.structuredContent)) < 131072);
+    assert.equal(context.pipe.count, 1); assert.deepEqual([...new Set(context.reads)].sort(), Object.keys(values()).sort());
   });
   it('rejects required missing/null/unreadable predictions despite healthy optional data, but accepts readable empty predictions', async testContext => {
     for (const bad of [null, 'unreadable', { _seed: { fetchedAt: now }, data: null }]) {
@@ -1472,11 +1496,12 @@ describe('public forecast reliability cache and completed output', () => {
     const old = tool._execute; testContext.after(() => { tool._execute = old; });
     let target = 131072;
     tool._execute = async (unusedArguments, unusedOptions, unusedContext, execution) => {
-      const value = { data: { predictions }, panelRequest: execution.panelRequest, notice: 'é', attribution: 'Fixture source', padding: '' };
+      const value = { data: { predictions, familyOutcomes }, panelRequest: execution.panelRequest, notice: 'é', attribution: 'Fixture source', padding: '' };
       value.padding = 'x'.repeat(target - Buffer.byteLength(JSON.stringify(value)));
       assert.equal(Buffer.byteLength(JSON.stringify(value)), target); return value;
     };
     const first = await fixtureContext.invoke({}); assert.equal(first.structuredContent._budget_exceeded, undefined);
+    assert.deepEqual(first.structuredContent.data.familyOutcomes, familyOutcomes);
     target = 131073; const before = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length;
     const second = await fixtureContext.invoke({ refresh: true, request_id: 'ee947e6a-4a49-4f7d-9c44-0dc6cdd7c041' });
     assert.equal(second.structuredContent._budget_exceeded, true);

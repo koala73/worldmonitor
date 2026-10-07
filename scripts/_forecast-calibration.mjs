@@ -50,7 +50,9 @@ export const CALIBRATION_MAP_SCHEMA_VERSION = 1;
 // Bumping this is the only refit path: a persisted map with another code
 // version is replaced on the next resolver run, which also restarts the
 // forward cohort at the new fittedAt.
-export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v1';
+// v2 refits without the cyber and outage rows voided under #5233; v1 fit cyber
+// to 0.01 from outcomes the resolver could not read.
+export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v2';
 export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 export const CALIBRATION_MIN_TOTAL_SAMPLE = 60;
 export const CALIBRATION_MIN_DOMAIN_SAMPLE = 30;
@@ -111,12 +113,16 @@ function hasPreLineageAnchor(entry) {
   return Number.isFinite(Number(calibration?.marketPrice)) && !Number.isFinite(Number(calibration?.marketBlendedProbability));
 }
 
-/** Scored published-origin entries resolved inside the rolling window ending at nowMs. */
+/**
+ * Scored published-origin entries resolved inside the rolling window ending at nowMs.
+ * A row rescored to its first-seen probability (#8990) lost the raw value
+ * that came with that probability, so it has no fit input.
+ */
 export function selectFitCohort(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   return ledgerEntries(ledger).filter((entry) => {
-    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry)) return false;
+    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
     const resolvedAt = Number(entry.resolvedAt);
     const emittedAt = emissionTime(entry);
     return Number.isFinite(resolvedAt) && resolvedAt >= minResolvedAt && resolvedAt <= nowMs

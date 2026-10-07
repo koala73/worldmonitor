@@ -11,6 +11,10 @@ import {
   RECEIPT_SOURCE_FEEDS,
   RECEIPT_SOURCE_LABELS,
   RECEIPT_VOID_REASON_LABELS,
+  FAMILY_OUTCOME_FAMILY_LIMIT,
+  FAMILY_OUTCOME_LIMIT,
+  PUBLIC_FAMILY_OUTCOME_FIELDS,
+  buildFamilyOutcomes,
   buildPublicReceipts,
   computeScorecard,
   isWithheldEntry,
@@ -372,8 +376,22 @@ describe('scorecard uncertainty and maturity denominators (#7072)', () => {
 
 describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
   function betEngineEntry(overrides) {
-    return resolved({ generationOrigin: 'bet_engine', ...overrides });
+    return resolved({ generationOrigin: 'bet_engine', probabilitySource: 'ensemble', ...overrides });
   }
+
+  it('keeps windows that opened on the base-rate placeholder out of the skill comparisons (#8990)', () => {
+    const scorecard = computeScorecard({
+      a: betEngineEntry({ probability: 0.8, outcome: 'YES', baselineProbability: 0.4, calibration: { marketPrice: 60 } }),
+      b: betEngineEntry({ probability: 0.4, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'base_rate', calibration: { marketPrice: 70 } }),
+      c: betEngineEntry({ probability: 0.3, outcome: 'NO', baselineProbability: 0.4, probabilitySource: undefined, calibration: { marketPrice: 70 } }),
+      d: betEngineEntry({ probability: 0.2, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'ensemble_partial', calibration: { marketPrice: 70 } }),
+    }, NOW);
+    assert.equal(scorecard.betEngine.count, 4, 'every bet window is still scored');
+    assert.equal(scorecard.betEngine.ensembleCount, 2);
+    assert.equal(scorecard.betEngine.vsBaseRate.count, 2);
+    assert.equal(scorecard.betEngine.vsMarketSkill.count, 2);
+    assert.equal(scorecard.betEngine.deviationSkill.count, 2);
+  });
 
   it('exposes a bet_engine-scoped slice with calibration + brier, isolated from legacy', () => {
     const scorecard = computeScorecard({
@@ -725,5 +743,118 @@ describe('public forecast receipts (#5092)', () => {
     assert.ok(receipts[0].citationTitle.length <= 160);
     assert.equal(receipts[0].citationUrl, undefined, 'an over-long URL is dropped, not truncated into a different link');
     assert.ok(Buffer.byteLength(JSON.stringify(receipts)) <= 16_000);
+  });
+});
+
+describe('buildFamilyOutcomes (#5092 card chips)', () => {
+  const win = (id, resolvedAt, outcome, extra = {}) => ({
+    id, key: `${id}@${resolvedAt}`, status: 'resolved', outcome, resolvedAt, deadline: resolvedAt,
+    probability: 0.6, domain: 'conflict', generationOrigin: 'legacy_detector', ...extra,
+  });
+  const open = (id, extra = {}) => ({
+    id, key: `${id}@open`, status: 'pending', probability: 0.6, domain: 'conflict',
+    generationOrigin: 'legacy_detector', deadline: NOW + 5 * DAY_MS, ...extra,
+  });
+
+  it('lists the newest resolved windows of each live published family, newest first', () => {
+    const ledger = [
+      open('fam-a'),
+      win('fam-a', NOW - 3 * DAY_MS, 'NO'),
+      win('fam-a', NOW - DAY_MS, 'YES'),
+      win('fam-a', NOW - 2 * DAY_MS, 'VOID', { evidence: { reason: 'no_archive_evidence' } }),
+      open('fam-b', { status: 'pending-judge' }),
+      win('fam-b', NOW - DAY_MS, 'VOID', { evidence: { reason: 'raw internal reason' } }),
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [
+      { forecastId: 'fam-a', outcome: 'YES' },
+      { forecastId: 'fam-a', outcome: 'VOID', voidReason: 'no_archive_evidence' },
+      { forecastId: 'fam-a', outcome: 'NO' },
+      { forecastId: 'fam-b', outcome: 'VOID', voidReason: 'other' },
+    ]);
+  });
+
+  it('keeps out families with no open window, unpublished origins, horizon children and windows outside the rolling window', () => {
+    const ledger = [
+      win('closed', NOW - DAY_MS, 'YES'),
+      open('shadow', { generationOrigin: 'bet_engine' }),
+      win('shadow', NOW - DAY_MS, 'YES', { generationOrigin: 'bet_engine' }),
+      open('synthetic', { generationOrigin: 'state_derived' }),
+      win('synthetic', NOW - DAY_MS, 'NO', { generationOrigin: 'state_derived' }),
+      open('fam'),
+      win('fam', NOW - DAY_MS, 'YES', { parentKey: 'fam@x', spec: { horizon: '24h' } }),
+      win('fam', NOW - (DEFAULT_ROLLING_WINDOW_DAYS + 1) * DAY_MS, 'NO'),
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), []);
+  });
+
+  it('puts the later window first when one cycle resolves two windows at the same instant', () => {
+    const at = NOW - DAY_MS;
+    const ledger = [
+      open('fam'),
+      { ...win('fam', at, 'NO'), key: 'fam@1', deadline: NOW - 3 * DAY_MS },
+      { ...win('fam', at, 'YES'), key: 'fam@2', deadline: NOW - 2 * DAY_MS },
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW).map((row) => row.outcome), ['YES', 'NO']);
+  });
+
+  it('keeps the five newest windows of a family, newest first', () => {
+    assert.equal(FAMILY_OUTCOME_LIMIT, 5);
+    assert.deepEqual([...PUBLIC_FAMILY_OUTCOME_FIELDS], ['forecastId', 'outcome', 'voidReason']);
+    const newestFirst = ['YES', 'NO', 'NO', 'VOID', 'YES', 'NO', 'YES', 'YES'];
+    const ledger = [
+      open('fam'),
+      ...newestFirst.map((outcome, i) => win('fam', NOW - (i + 1) * DAY_MS, outcome, { evidence: { reason: 'judge_disagreement' } })),
+    ].reverse();
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [
+      { forecastId: 'fam', outcome: 'YES' },
+      { forecastId: 'fam', outcome: 'NO' },
+      { forecastId: 'fam', outcome: 'NO' },
+      { forecastId: 'fam', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'fam', outcome: 'YES' },
+    ]);
+  });
+
+  it('names the withheld seal instead of folding it into other', () => {
+    const ledger = [open('fam'), win('fam', NOW - DAY_MS, 'VOID', { evidence: { reason: 'withheld_unpublished' } })];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [{ forecastId: 'fam', outcome: 'VOID', voidReason: 'withheld_unpublished' }]);
+  });
+
+  it('checks the origin of every window, not only the open one', () => {
+    const ledger = [
+      open('fam'),
+      win('fam', NOW - DAY_MS, 'NO', { generationOrigin: undefined }),
+      win('fam', NOW - 2 * DAY_MS, 'YES', { generationOrigin: 'unknown' }),
+      win('fam', NOW - 3 * DAY_MS, 'NO', { generationOrigin: 'bet_engine' }),
+      win('fam', NOW - 4 * DAY_MS, 'VOID', { generationOrigin: 'state_derived', evidence: { reason: 'other' } }),
+      win('fam', NOW - 5 * DAY_MS, 'YES'),
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [{ forecastId: 'fam', outcome: 'YES' }]);
+  });
+
+  it(`keeps the ${FAMILY_OUTCOME_FAMILY_LIMIT} most recently published families`, () => {
+    const total = FAMILY_OUTCOME_FAMILY_LIMIT + 6;
+    const id = (i) => `fam-${String(i).padStart(2, '0')}`;
+    const ledger = Array.from({ length: total }, (_, i) => [
+      open(id(i), { lastSeenAt: NOW - (total - i) * 60_000 }),
+      win(id(i), NOW - DAY_MS, 'YES'),
+    ]).flat();
+    const kept = new Set(buildFamilyOutcomes(ledger, NOW).map((row) => row.forecastId));
+    assert.deepEqual([...kept].sort(), Array.from({ length: FAMILY_OUTCOME_FAMILY_LIMIT }, (_, i) => id(i + 6)));
+  });
+
+  it('stays inside its byte budget for a worst-case ledger', () => {
+    const families = 400;
+    const ledger = Array.from({ length: families }, (_, f) => {
+      const id = `fc-infrastructure-${f.toString(16).padStart(8, '0')}`;
+      return [
+        open(id, { lastSeenAt: NOW - f }),
+        ...Array.from({ length: 30 }, (_, w) => win(id, NOW - (w + 1) * 3_600_000, 'VOID', { evidence: { reason: 'count_source_window_not_retained' } })),
+      ];
+    }).flat();
+    const rows = buildFamilyOutcomes(ledger, NOW);
+    assert.equal(rows.length, FAMILY_OUTCOME_FAMILY_LIMIT * FAMILY_OUTCOME_LIMIT);
+    const bytes = Buffer.byteLength(JSON.stringify(rows));
+    console.log(`familyOutcomes worst case: ${bytes} bytes`);
+    assert.ok(bytes <= 14_000, `${bytes} bytes`);
   });
 });

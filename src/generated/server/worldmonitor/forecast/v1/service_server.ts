@@ -32,12 +32,14 @@ export interface Forecast {
   createdAt: number;
   updatedAt: number;
   perspectives?: Perspectives;
+  /** @deprecated */
   projections?: Projections;
   caseFile?: ForecastCase;
   simulationAdjustment: number;
   simPathConfidence: number;
   demotedBySimulation: boolean;
   resolution?: ResolutionSpec;
+  scoredHorizons: string[];
 }
 
 export interface ForecastSignal {
@@ -163,6 +165,8 @@ export interface GetForecastScorecardResponse {
   uncertainty?: ScorecardUncertainty;
   funnel?: ScorecardFunnel;
   receipts: ScorecardReceipt[];
+  marketAlerts?: MarketAlertScorecard;
+  familyOutcomes: ScorecardFamilyOutcome[];
 }
 
 export interface ScorecardTotals {
@@ -278,6 +282,30 @@ export interface ScorecardReceipt {
   observedValue?: number;
   citationTitle: string;
   citationUrl: string;
+}
+
+export interface MarketAlertScorecard {
+  generatedAt: number;
+  windowHours: number;
+  rollingWindowDays: number;
+  methodology: string;
+  byType: MarketAlertRow[];
+}
+
+export interface MarketAlertRow {
+  type: string;
+  scored: number;
+  hitRate?: number;
+  baseN: number;
+  baseHitRate?: number;
+  pairedHitRate?: number;
+  medianLeadTimeMs?: number;
+}
+
+export interface ScorecardFamilyOutcome {
+  forecastId: string;
+  outcome: string;
+  voidReason: string;
 }
 
 export interface GetSimulationPackageRequest {

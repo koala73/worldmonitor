@@ -194,7 +194,8 @@ crons.daily(
 );
 
 // Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
-// failure reminders and the 30-day winback (at most one step per
+// failure reminders, retries of unsent day-0 notices and cancellation
+// confirmations, and the 30-day winback (at most one step per
 // subscription per tick; every send re-validates live state). 14:30 UTC =
 // ~10:30am ET, inside US business hours so a reply/complaint gets seen the
 // same day, and 90 minutes after the broadcast ramp runner (13:00) so the

@@ -2353,7 +2353,7 @@
       "unscored": "Anlatı senaryoları, doğruluk açısından değerlendirilmez."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin.",
+      "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin.",
       "record": {
         "label": "Geçmiş performans",
         "labelHint": "Yayımlanan tahminlerin son {{days}} günde sonuçlandıktan sonra nasıl puanlandığı. Anlamını görmek için bir sayının üzerine gelin.",
@@ -2374,6 +2374,46 @@
         "measuredHint": "{{n}} puanlanan tahmin üzerinden son {{days}} günde yayınlanan {{domain}} tahminlerinin nasıl performans gösterdiği. Taban oranı, her zaman alanın gözlemlenen evet oranını yanıtlamanın elde edeceği puandır. Düşük değer daha iyidir. Bu, alanın sicilidir, bu tahminin değil.",
         "unmeasured": "Henüz ölçülmedi",
         "unmeasuredHint": "{{domain}} tahminleri son {{days}} gün içinde {{n}} puanlanan sonuca sahiptir. Bir alanın doğruluğunun gösterilmesi için {{min}} gereklidir."
+      },
+      "resolution": {
+        "last": "Son: {{outcome}}",
+        "lastSr": "Bu tahminin önceki penceresi {{outcome}} olarak sonuçlandı.",
+        "history": "Son pencereler, en yenisi ilk: {{list}}",
+        "outcome": {
+          "yes": "EVET",
+          "no": "HAYIR",
+          "void": "GEÇERSİZ"
+        },
+        "void": {
+          "no_establishable_metric": "Akış bu soru için veri sunmadı",
+          "value_source_never_settled": "Akış hiçbir zaman kesinleştirilmiş değer yayınlamadı",
+          "count_source_window_not_retained": "Akış artık soru penceresini tutmuyordu",
+          "unsupported_window": "Soru kendi akışıyla doğrulanamadı",
+          "unsupported_metric_key": "Soru kendi akışıyla doğrulanamadı",
+          "not_hard_spec": "Soru kendi akışıyla doğrulanamadı",
+          "missing_threshold": "Soruda eşik değeri yoktu",
+          "missing_deadline": "Soruda son tarih yoktu",
+          "missing_generated_at": "Tahminde başlangıç tarihi yoktu",
+          "beyond_archive_horizon": "Haber arşivi artık soru penceresini kapsamıyordu",
+          "no_archive_evidence": "Haber arşivinde konu hakkında hiçbir şey yoktu",
+          "all_judges_void": "Her iki hakim de kanıtları yetersiz buldu",
+          "judge_disagreement": "Hakimler anlaşamadı",
+          "judge_retry_exhausted": "Hakimler karar vermedi",
+          "withheld_unpublished": "Bu tür tahminler artık yayımlanmıyor",
+          "resolver_envelope_bug": "Doğru okuyamadığımız bir veri akışına göre puanlandı",
+          "market_price_not_outcome": "Akış piyasa fiyatını gösterdi, piyasanın nasıl sonuçlandığını değil",
+          "judged_evidence_unreliable": "Hakemlerin kanıtları düzeltilene kadar puanlamadan çıkarıldı",
+          "other": "Sonuçlandırılamadı"
+        }
+      },
+      "horizons": {
+        "label": "Ayrıca puanlandı: {{list}}",
+        "hint": "Ana başlık olasılığı, tahmin kendi ufku üzerinden puanlandırılır. Bu ufukların her birindeki projeksiyon da puanlandırılır, kendi kaynak feed'ine karşı, bu tahmin için ilk yayınlanan değer kullanılarak. Projeksiyon değerleri gösterilmez çünkü mevcut değer puanlandırılan değerden farklı olabilir."
+      },
+      "audit": {
+        "label": "Doğruluk denetim altında",
+        "hint": "{{date}} tarihinden beri denetim altında. Bir denetim, tahminlerin puanlandırılma şeklinde hatalar buldu. Düzeltmeler yapılırken puanlar geri çekilmiştir. Tahminler yine de yayınlanıyor ve kaydediliyor.",
+        "unverified": "Kaydedilen sonuç, doğruluk denetim altındayken doğrulanmadı."
       }
     },
     "escalationCorrelation": {

@@ -191,8 +191,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: calibration map (#7070) written by seed-forecast-resolutions and read by seed-forecasts while its activation gate is eligible; the published probabilities reach MCP through the forecast tools, and its forward evaluation is internal to the scorecard, so no MCP tool.'],
   ['correlation:market-alerts:ledger:v1',
     'operational: raw per-alert working ledger (#8867) written by seed-market-alert-ledger, surfaced through health and summarized by correlation:market-alerts:scorecard:v1; the row-level evidence is not a queryable MCP slice.'],
-  ['correlation:market-alerts:scorecard:v1',
-    'operational: rolling market-alert scorecard (#8867) consumed by health and operators; no MCP tool until the /accuracy/ transport is chosen in a follow-up.'],
   ['forecast:bets:history:v1',
     'operational: shadow bet-engine stream (#5233) written by seed-forecast-bets and ingested by the resolver into the get_forecast_scorecard bet_engine slice. Not a user-facing queryable slice (shadow, never in forecast:predictions:v2), so no MCP tool.'],
   ['forecast:funnel:health:v1',

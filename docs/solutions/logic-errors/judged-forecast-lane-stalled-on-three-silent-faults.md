@@ -48,7 +48,7 @@ Three fixes, one per fault.
 
    Before #8880 deployed, the marker was restored once by operator attestation after the same continuity check by hand.
 
-3. **Lane alarms (#8880).** `buildJudgedLaneHealthPatch` writes lane health into the resolver's seed metadata from `afterPublish`. It raises `coverage_unverified_with_overdue_entries`, `archive_unreadable_with_overdue_entries`, and `no_scored_within_sla_for_3_runs`. The stall counter advances only on runs where the lane had overdue or resolved entries, and it resets on a scored-within-SLA outcome or an idle run. An idle lane does not alarm, and historic successes or VOIDs cannot mask a stall.
+3. **Lane alarms (#8880).** `buildJudgedLaneHealthPatch` writes lane health into the resolver's seed metadata from `afterPublish`. It raises `coverage_unverified_with_overdue_entries`, `archive_unreadable_with_overdue_entries`, and `no_scored_within_sla_for_3_runs`. The stall counter advances only on runs where the lane had overdue or resolved entries, and it resets on a scored-within-SLA outcome or an idle run. An idle lane does not alarm, and historic successes or VOIDs cannot mask a stall. Since 2026-10-07 the stall is a quality field (`quality.noScoredWithinSlaRuns`) and no longer sets `status: error`; only the two input-read reasons degrade health, because health measures whether the resolver runs, not how well it scores.
 
 Proof of recovery: the 06:01 UTC `seed-forecast-resolutions` run on 2026-10-06 reached both OpenRouter judges with no new `judge_unavailable` attempts and resolved 21 entries (recorded on #8877).
 
