@@ -162,7 +162,7 @@ The seeder runs approximately **hourly**. The key is allowed up to **90 minutes*
 
 Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, publication coverage, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
 
-State-derived market forecasts in the `sovereign_risk`, `rates_inflation` and `fx_stress` buckets are not published, because no feed can check them (issue #5234). Their earlier rows stay in `forecast:resolutions:v1`, but the scorecard leaves them out of every figure it reports, including the VOID rate. State-derived `energy` and `freight` forecasts are still published and resolve on a price or chokepoint feed.
+State-derived market forecasts in the `sovereign_risk`, `rates_inflation` and `fx_stress` buckets are not published, because no feed can check them (issue #5234). Their earlier rows stay in `forecast:resolutions:v1`, but the scorecard leaves them out of every figure it reports, including the VOID rate. State-derived `energy` and `freight` forecasts are still published. They resolve on a price or chokepoint feed when that feed has a matching value at emission, and go to the judges otherwise.
 
 ### Judged-lane evidence horizon
 
