@@ -1928,7 +1928,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   if (coveragePayload?.error) throw new Error('Redis coverage marker read failed');
   let coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
   const coverageUsable = forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs, true);
-  const needsRecovery = !coverage || (coverage.v === 2 && !coverageUsable);
+  const needsRecovery = !coverageUsable;
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT',
@@ -1936,21 +1936,6 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   const scanStartMs = needsRecovery
     ? nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 2 * FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS
     : requestedCoverageStartMs;
-  if (!needsRecovery && !coverageUsable) {
-    return {
-      ...base,
-      coverageStartMs: coverage?.coverageStartMs,
-      coverageEndMs: coverage?.coverageEndMs,
-      coverageComplete: false,
-      incomplete: true,
-      incompleteReason: coverage ? 'coverage_window_incomplete' : 'coverage_unverified',
-      cutoverVerified: Boolean(coverage),
-      coverageLagMs: coverage ? nowMs - coverage.coverageEndMs : undefined,
-      coverageMaxLagMs,
-      items: [],
-      available: false,
-    };
-  }
 
   const zsetPayload = await requestRedis(url, [
     'ZREVRANGEBYSCORE',
