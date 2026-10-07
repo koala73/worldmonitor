@@ -1833,6 +1833,38 @@ describe('accuracy record under audit (#8990)', () => {
     assert.match(post, /> \*\*Update, October 7, 2026\.\*\* An audit found errors in how these forecasts were scored[^\n]*The figures in this post are not reliable\.[^\n]*\(https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990\)/);
   });
 
+  // Hand-written public surfaces that describe the record. Each must stay true in both states, so none may
+  // state a score as a verdict or promise that the page carries scores while the switch is set.
+  const STATIC_SURFACES = [
+    'README.md',
+    'public/llms.txt',
+    'public/llms-full.txt',
+    'public/.well-known/mcp/server-card.json',
+    'public/.well-known/agent-skills/check-forecast-signals/SKILL.md',
+    'docs/methodology/cii-risk-scores.mdx',
+    'docs/zh/methodology/cii-risk-scores.mdx',
+    'docs/agent-skills.mdx',
+    'docs/mcp-overview.mdx',
+    'blog-site/src/content/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.md',
+  ];
+  const CLAIM_PHRASES = [
+    /carries\s+the\s+Brier/i,
+    /how well World Monitor forecasts have scored/i,
+    /republishes the current scores/i,
+    /ledger currently reads/i,
+    /headline cohort scores a Brier/i,
+    /graded and published/i,
+    /载有 Brier/,
+  ];
+
+  it('keeps every static surface free of score claims while the switch is set', () => {
+    assert.ok(FORECAST_ACCURACY_AUDIT, 'this guard only means something while the audit is on');
+    for (const path of STATIC_SURFACES) {
+      const text = read(path);
+      for (const phrase of CLAIM_PHRASES) assert.doesNotMatch(text, phrase, `${path} states accuracy as a verdict`);
+    }
+  });
+
   it('restores the full record when the switch is lifted', () => {
     const { html, shell } = renderState(FULL, { audit: LIFTED });
     assert.doesNotMatch(html, /data-accuracy-audit|Under audit since|data-receipts-unverified|data-market-alerts-audit-scope/);

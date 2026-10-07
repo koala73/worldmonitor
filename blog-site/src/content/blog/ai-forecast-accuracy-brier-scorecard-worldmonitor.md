@@ -87,8 +87,8 @@ No. Once a forecast enters the resolution ledger, its probability and claim are 
 
 **Where can I see or query the scorecard?**
 
-The standing record lives at [the forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/), which republishes the current scores, calibration and sample sizes; the figures quoted in this post are a July 2026 snapshot and the ledger has grown a lot since. It is also in the forecast panel on the dashboard, and programmatically via the `get_forecast_scorecard` MCP tool or the forecast REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference).
+The standing record lives at [the forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/), which publishes the forecast track record and its methodology; the figures quoted in this post are a July 2026 snapshot and are not reliable (see the update above). It is also in the forecast panel on the dashboard, and programmatically via the `get_forecast_scorecard` MCP tool or the forecast REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference).
 
 ---
 
-**Anyone can make predictions. The ledger currently reads Brier 0.202 over 32 scored calls, overconfident in the middle, beaten by the market head-to-head — published anyway, because a scorecard only counts if you print it before it flatters you.**
+**Anyone can make predictions. In July 2026 the ledger read Brier 0.202 over 32 scored calls, overconfident in the middle, beaten by the market head-to-head — published anyway, because a scorecard only counts if you print it before it flatters you.**

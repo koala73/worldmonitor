@@ -112,7 +112,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Extended LLM Documentation](https://www.worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
 - [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
-- [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing record of how well World Monitor forecasts have scored — Brier and log scores, calibration buckets, per-domain and per-origin breakdowns, void rates, and the sample size behind every published figure, with a machine-readable JSON distribution
+- [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing forecast-resolution record: the forecast track record, its current status and methodology, and a machine-readable JSON distribution
 - [Machine-Readable Pricing](https://www.worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://www.worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
