@@ -1970,7 +1970,7 @@
       "unscored": "Narrativa scenarier, ej bedömda för noggrannhet."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI-prognoser</strong> AI-genererade sannolikhetsuppskattningar för geopolitiska och ekonomiska händelser:<ul><li>Täckning över domäner: konflikt, marknader, försörjningskedjor, cyber, politik</li><li>Varje prognos visar uppskattad sannolikhet, konfidensnivå och tidshoriont</li><li>Kalibrerad mot prediktionsmarknadsbaser där tillgängligt</li></ul>Prognoser uppdateras när nya efterrättelsetecken kommer in. Filtrera efter domän med flikarna ovan.",
+      "infoTooltip": "<strong>AI-prognoser</strong> AI-genererade sannolikhetsuppskattningar för geopolitiska och ekonomiska händelser:<ul><li>Täckning över domäner: konflikt, marknader, försörjningskedjor, cyber, politik</li><li>Varje prognos visar uppskattad sannolikhet, konfidensnivå och tidshoriont</li></ul>Prognoser uppdateras när nya efterrättelsetecken kommer in. Filtrera efter domän med flikarna ovan.",
       "record": {
         "label": "Facit hittills",
         "labelHint": "Hur de publicerade prognoserna bedömdes när de avgjorts, under de senaste {{days}} dagarna. Håll muspekaren över ett tal för att se vad det betyder.",
@@ -1991,6 +1991,49 @@
         "measuredHint": "Hur publicerade {{domain}}-prognoser har presterat över {{n}} bedömda prognoser de senaste {{days}} dagarna. Basfrekvensen är vad man skulle ha fått genom att alltid svara ja enligt domänens observerade frekvens. Lägre är bättre. Detta är domänens historik, inte denna prognos.",
         "unmeasured": "Ännu inte mätt",
         "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
+      },
+      "resolution": {
+        "last": "Senast: {{outcome}}",
+        "lastSr": "Den förra perioden för denna prognos avgjordes som {{outcome}}.",
+        "history": "Senaste perioder, nyast först: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEJ",
+          "void": "OGILTIG"
+        },
+        "void": {
+          "no_establishable_metric": "Källan hade inget mätvärde för denna fråga",
+          "value_source_never_settled": "Källan publicerade aldrig ett slutgiltigt värde",
+          "count_source_window_not_retained": "Källan behöll inte längre frågeperioden",
+          "unsupported_window": "Frågan kunde inte kontrolleras mot sin källa",
+          "unsupported_metric_key": "Frågan kunde inte kontrolleras mot sin källa",
+          "not_hard_spec": "Frågan kunde inte kontrolleras mot sin källa",
+          "missing_threshold": "Frågan saknade ett tröskelvärde",
+          "missing_deadline": "Frågan saknade en tidsgräns",
+          "missing_generated_at": "Prognosen saknade sitt startdatum",
+          "beyond_archive_horizon": "Nyhetsarkivet täckte inte längre frågeperioden",
+          "no_archive_evidence": "Nyhetsarkivet hade inget om ämnet",
+          "all_judges_void": "Båda domarna fann bevisen otillräckliga",
+          "judge_disagreement": "Domarna var oeniga",
+          "judge_retry_exhausted": "Domarna återkom utan dom",
+          "withheld_unpublished": "Den här typen av prognos publiceras inte längre",
+          "resolver_envelope_bug": "Bedömd mot en datakälla som vi inte kunde läsa korrekt",
+          "market_price_not_outcome": "Källan visade marknadspriset, inte hur marknaden avgjordes",
+          "judged_evidence_unreliable": "Undantagen från poängsättning medan domarnas underlag rättas",
+          "other": "Kunde inte avgöras",
+          "judged_old_selection": "Bedömd med en bevismetod som senare visade sig opålitlig",
+          "late_read": "Källan lästes inte tillräckligt nära tidsfristen",
+          "feed_unavailable": "Dataflödet var inte tillgängligt efter tidsfristen"
+        }
+      },
+      "horizons": {
+        "label": "Också bedömt vid: {{list}}",
+        "hint": "Huvudsannolikheten graderas vid prognosens egen horisont. Projektionen vid var och en av dessa horisonter graderas också mot dess källfeed, med det värde som först publicerades för denna prognos. Projektionsvärden visas inte eftersom det aktuella värdet kan skilja sig från det graderade."
+      },
+      "audit": {
+        "label": "Noggrannhet under granskning",
+        "hint": "Under granskning sedan {{date}}. En granskning upptäckte fel i hur prognoser bedömdes. Poängen är återkallade medan korrigeringar görs. Prognoser fortsätter att publiceras och registreras.",
+        "unverified": "Registrerat utfall, inte verifierat medan noggrannheten är under granskning."
       }
     },
     "escalationCorrelation": {

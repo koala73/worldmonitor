@@ -1970,7 +1970,7 @@
       "unscored": "Narratieve scenario's, niet beoordeeld op nauwkeurigheid."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li><li>Gekalibreerd tegen voorspellingsmarkt basislijnen waar beschikbaar</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven.",
+      "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven.",
       "record": {
         "label": "Staat van dienst",
         "labelHint": "Hoe de gepubliceerde voorspellingen scoorden nadat ze waren beslist, over de laatste {{days}} dagen. Beweeg over een getal om te zien wat het betekent.",
@@ -1991,6 +1991,49 @@
         "measuredHint": "Hoe gepubliceerde {{domain}}-prognoses hebben gescoord over {{n}} geclassificeerde prognoses in de afgelopen {{days}} dagen. Het basispercentage is wat je zou scoren door altijd het waargenomen ja-percentage van het domein te antwoorden. Lager is beter. Dit is het record van het domein, niet van deze prognose.",
         "unmeasured": "Nog niet gemeten",
         "unmeasuredHint": "{{domain}} voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. Een domein heeft minimaal {{min}} nodig voordat de nauwkeurigheid wordt weergegeven."
+      },
+      "resolution": {
+        "last": "Laatste: {{outcome}}",
+        "lastSr": "Het vorige venster van deze voorspelling is beslist als {{outcome}}.",
+        "history": "Recente vensters, nieuwste eerst: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEE",
+          "void": "ONGELDIG"
+        },
+        "void": {
+          "no_establishable_metric": "De feed had geen waarde voor deze vraag",
+          "value_source_never_settled": "De feed heeft nooit een vastgestelde waarde gepubliceerd",
+          "count_source_window_not_retained": "De feed bewaarde het vraagvenster niet meer",
+          "unsupported_window": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "unsupported_metric_key": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "not_hard_spec": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "missing_threshold": "De vraag miste een drempel",
+          "missing_deadline": "De vraag miste een deadline",
+          "missing_generated_at": "De voorspelling miste de startdatum",
+          "beyond_archive_horizon": "Het nieuwsarchief dekte het vraagvenster niet meer",
+          "no_archive_evidence": "Het nieuwsarchief had niets over het onderwerp",
+          "all_judges_void": "Beide beoordelaars vonden het bewijs onvoldoende",
+          "judge_disagreement": "De beoordelaars waren het niet eens",
+          "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
+          "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
+          "resolver_envelope_bug": "Beoordeeld tegen een datafeed die we niet correct konden lezen",
+          "market_price_not_outcome": "De feed toonde de marktprijs, niet hoe de markt is afgewikkeld",
+          "judged_evidence_unreliable": "Buiten de score gehouden zolang het bewijs voor de beoordelaars wordt hersteld",
+          "other": "Kon niet worden beslist",
+          "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn",
+          "late_read": "De feed is niet dicht genoeg bij de deadline uitgelezen",
+          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar"
+        }
+      },
+      "horizons": {
+        "label": "Ook gescoord op: {{list}}",
+        "hint": "De kans in de kop wordt beoordeeld op de eigen horizon van de prognose. De projectie op elk van deze horizons wordt ook beoordeeld, tegen de bronfeed, met de waarde die voor deze prognose eerst is gepubliceerd. Projectiewaarden worden niet weergegeven omdat de huidige waarde kan afwijken van de beoordeelde waarde."
+      },
+      "audit": {
+        "label": "Nauwkeurigheid wordt geaudit",
+        "hint": "Wordt sinds {{date}} geaudit. Een audit vond fouten in de manier waarop voorspellingen werden gescoord. De scores zijn ingetrokken terwijl correcties worden doorgevoerd. Voorspellingen worden nog steeds gepubliceerd en vastgelegd.",
+        "unverified": "Vastgelegde uitkomst, niet geverifieerd zolang de nauwkeurigheid wordt geaudit."
       }
     },
     "escalationCorrelation": {

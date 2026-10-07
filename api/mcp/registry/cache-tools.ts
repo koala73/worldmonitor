@@ -27,9 +27,10 @@ import {
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
-import { selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
+import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
+import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -524,9 +525,48 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
   return presented;
 }
 
-function forecastReliability(data: Record<string, unknown>, domains: string[]) {
+const FORECAST_VOID_REASONS = new Set([
+  'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained',
+  'unsupported_window', 'unsupported_metric_key', 'not_hard_spec', 'missing_threshold',
+  'missing_deadline', 'missing_generated_at', 'beyond_archive_horizon', 'no_archive_evidence',
+  'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'other',
+  'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'judged_old_selection',
+  'late_read', 'feed_unavailable',
+]);
+
+function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
   const raw = data.scorecard;
-  const unavailable = { status: 'unavailable' };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const card = raw as Record<string, unknown>;
+  if (card.degraded || card.error || !Array.isArray(card.familyOutcomes)) return undefined;
+  const rows = selectScorecardFields(card).familyOutcomes;
+  if (!Array.isArray(rows)) return undefined;
+  const retained = new Set(ids.slice(0, 30));
+  const counts = new Map<string, number>();
+  const history: { forecastId: string; outcome: string; voidReason?: string }[] = [];
+  for (const row of rows) {
+    if (typeof row.forecastId !== 'string' || !row.forecastId || !retained.has(row.forecastId)
+      || !['YES', 'NO', 'VOID'].includes(row.outcome)) continue;
+    const count = counts.get(row.forecastId) ?? 0;
+    if (count >= 5) continue;
+    counts.set(row.forecastId, count + 1);
+    history.push({ forecastId: row.forecastId, outcome: row.outcome,
+      ...(row.outcome === 'VOID' ? { voidReason: FORECAST_VOID_REASONS.has(row.voidReason) ? row.voidReason : 'other' } : {}),
+    });
+    if (history.length === 150) break;
+  }
+  return history;
+}
+
+/**
+ * While the audit switch is set (#8990) no domain score leaves this tool:
+ * status reads unavailable, byDomain is empty, and underAudit says why. The
+ * freshness fields stay, so the badge's clock contract is unchanged.
+ */
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+  const raw = data.scorecard;
+  const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
+  const unavailable = { status: 'unavailable', ...underAudit };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable;
   const card = raw as Record<string, unknown>;
   if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
@@ -541,10 +581,14 @@ function forecastReliability(data: Record<string, unknown>, domains: string[]) {
   const meta = data.scorecardMeta;
   const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
   const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
-  return {
-    status: 'ready', windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
+  const clock = {
+    windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
     stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
     asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+  };
+  if (audit) return { status: 'unavailable', ...underAudit, ...clock, byDomain: [] };
+  return {
+    status: 'ready', ...clock,
     byDomain: [...new Set(domains)].filter(domain => domain !== 'bet_engine').map(domain => {
       const row = rows.get(domain);
       const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
@@ -554,6 +598,26 @@ function forecastReliability(data: Record<string, unknown>, domains: string[]) {
         ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount }
         : { domain, kind: 'unmeasured', n: sampleCount };
     }),
+  };
+}
+
+const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.';
+
+/** While the audit switch is set (#8990) the first sentence, the one tools/list keeps, is the notice. */
+export function forecastScorecardDescription(audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
+  return audit
+    ? `Under audit since ${audit.since} (issue ${audit.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
+    : FORECAST_SCORECARD_DESCRIPTION;
+}
+
+/** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+  const scorecard = data.scorecard;
+  const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
+  return {
+    underAudit: audit ? { since: audit.since, issue: audit.issue, reason: audit.reason } : null,
+    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
+    marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
   };
 }
 
@@ -2183,9 +2247,19 @@ export const CACHE_TOOLS: ToolDef[] = [
         type: ['object', 'null'],
         properties: {
           outbreaks: { type: 'array', items: { type: 'object', properties: {
-            disease: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' },
-            cases: { type: ['number', 'null'] }, deaths: { type: ['number', 'null'] }, date: { type: 'string' },
+            id: { type: 'string', description: 'Source-derived report identifier; multiple sources may report one event.' },
+            disease: { type: 'string' }, location: { type: 'string' }, countryCode: { type: 'string' },
+            alertLevel: { type: 'string', description: 'Editorial watch, warning or alert classification, not a case-count measurement.' },
+            summary: { type: 'string' }, sourceName: { type: 'string' }, sourceUrl: { type: 'string' },
+            publishedAt: { type: 'number', description: 'Source report publication time in Unix epoch milliseconds, or fetch time when the source date is missing or invalid; this field alone does not confirm publication time.' },
+            lat: { type: 'number' }, lng: { type: 'number', description: 'Latitude/longitude are source locations or inferred points; both zero means unknown.' },
+            cases: { type: ['number', 'null'], description: 'Reported case count; zero, null or absence means unknown, not no cases.' },
+            country: { type: 'string', description: 'Optional legacy country field; current reports use location and countryCode.' },
+            deaths: { type: ['number', 'null'], description: 'Optional legacy count; absence is not zero.' },
+            date: { type: 'string', description: 'Optional legacy date; current reports use publishedAt.' },
           } } },
+          fetchedAt: { type: 'number', description: 'Snapshot fetch time in Unix epoch milliseconds; absent clocks remain unknown.' },
+          alertLevelMethodologyVersion: { type: 'string', description: 'Version of the editorial alert-level classifier.' },
         },
       },
       'air-quality': {
@@ -3206,7 +3280,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     outputSchema: (() => {
       const schema = cacheEnvelope({
-      reliability: { type: 'object', properties: { status: { type: 'string', enum: ['ready', 'unavailable'] }, byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } } } },
+      familyOutcomes: { type: 'array', maxItems: 150, items: { type: 'object', additionalProperties: false,
+        properties: { forecastId: { type: 'string' }, outcome: { type: 'string', enum: ['YES', 'NO', 'VOID'] }, voidReason: { type: 'string', enum: [...FORECAST_VOID_REASONS] } },
+        required: ['forecastId', 'outcome'],
+      } },
+      reliability: { type: 'object', properties: {
+        status: { type: 'string', enum: ['ready', 'unavailable'] },
+        underAudit: { type: 'object', description: 'Present while forecast accuracy is under audit; domain scores are withheld.', properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } } },
+        byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } },
+      } },
       predictions: {
         type: ['object', 'null'],
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
@@ -3248,7 +3330,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
         const node = data.predictions as { predictions?: unknown[] } | null;
         const domains = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'domain' in value && typeof value.domain === 'string' ? [value.domain] : []);
-        return { predictions: data.predictions, reliability: forecastReliability(data, domains) };
+        const ids = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' ? [value.id] : []);
+        const familyOutcomes = forecastFamilyOutcomes(data, ids);
+        return { predictions: data.predictions, reliability: forecastReliability(data, domains), ...(familyOutcomes === undefined ? {} : { familyOutcomes }) };
       }
       return { predictions: data.predictions };
     },
@@ -3299,13 +3383,18 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, and receipts for the newest resolved forecasts.',
+    description: forecastScorecardDescription(),
     inputSchema: {
       type: 'object',
       properties: {},
       required: [],
     },
     outputSchema: cacheEnvelope({
+      underAudit: {
+        type: ['object', 'null'],
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict.',
+        properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
+      },
       scorecard: {
         type: ['object', 'null'],
         properties: {
@@ -3324,16 +3413,27 @@ export const CACHE_TOOLS: ToolDef[] = [
           uncertainty: { type: ['object', 'null'] },
           funnel: { type: ['object', 'null'] },
           receipts: { type: 'array', items: { type: 'object' } },
+          familyOutcomes: { type: 'array', items: { type: 'object' } },
+        },
+      },
+      marketAlerts: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: 'number' },
+          windowHours: { type: 'number' },
+          rollingWindowDays: { type: 'number' },
+          methodology: { type: 'string' },
+          byType: { type: 'array', items: { type: 'object', properties: {
+            type: { type: 'string' }, scored: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
+            baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' }, medianLeadTimeMs: { type: 'number' },
+          } } },
         },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _cacheKeys: ['forecast:scorecard:v1'],
-    _project: (data) => {
-      const scorecard = data.scorecard;
-      const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
-      return { ...data, scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null };
-    },
+    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1'],
+    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts' },
+    _project: (data) => projectForecastScorecard(data),
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",

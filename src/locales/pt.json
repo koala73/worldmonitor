@@ -1978,7 +1978,7 @@
       "unscored": "Cenários narrativos, não classificados quanto à precisão."
     },
     "forecast": {
-      "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li><li>Calibrada em relação aos baselines dos mercados de previsão quando disponível</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima.",
+      "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima.",
       "record": {
         "label": "Histórico de acertos",
         "labelHint": "Como as previsões publicadas pontuaram depois de resolvidas, nos últimos {{days}} dias. Passe o cursor sobre um número para ver o que significa.",
@@ -1999,6 +1999,49 @@
         "measuredHint": "Como as previsões publicadas de {{domain}} pontuaram em {{n}} previsões avaliadas nos últimos {{days}} dias. A taxa base é o que sempre responder a taxa de \"sim\" observada do domínio teria pontuado. Quanto menor, melhor. Este é o histórico do domínio, não desta previsão.",
         "unmeasured": "Ainda não medido",
         "unmeasuredHint": "As previsões de {{domain}} têm {{n}} resultados avaliados nos últimos {{days}} dias. Um domínio precisa de {{min}} antes que sua precisão seja exibida."
+      },
+      "resolution": {
+        "last": "Último: {{outcome}}",
+        "lastSr": "A janela anterior desta previsão foi resolvida como {{outcome}}.",
+        "history": "Janelas recentes, mais novas primeiro: {{list}}",
+        "outcome": {
+          "yes": "SIM",
+          "no": "NÃO",
+          "void": "ANULADO"
+        },
+        "void": {
+          "no_establishable_metric": "O feed não tinha leitura para esta pergunta",
+          "value_source_never_settled": "O feed nunca publicou um valor definitivo",
+          "count_source_window_not_retained": "O feed não mantinha mais a janela da pergunta",
+          "unsupported_window": "A pergunta não pôde ser verificada contra seu feed",
+          "unsupported_metric_key": "A pergunta não pôde ser verificada contra seu feed",
+          "not_hard_spec": "A pergunta não pôde ser verificada contra seu feed",
+          "missing_threshold": "A pergunta estava sem um limite",
+          "missing_deadline": "A pergunta estava sem uma data limite",
+          "missing_generated_at": "A previsão estava sem sua data de início",
+          "beyond_archive_horizon": "O arquivo de notícias não cobria mais a janela da pergunta",
+          "no_archive_evidence": "O arquivo de notícias não tinha nada sobre o assunto",
+          "all_judges_void": "Ambos os juízes consideraram as evidências insuficientes",
+          "judge_disagreement": "Os juízes discordaram",
+          "judge_retry_exhausted": "Os juízes não retornaram um veredicto",
+          "withheld_unpublished": "Este tipo de previsão não é mais publicado",
+          "resolver_envelope_bug": "Avaliado com base em um feed de dados que não conseguimos ler corretamente",
+          "market_price_not_outcome": "O feed mostrava o preço de mercado, não como o mercado foi resolvido",
+          "judged_evidence_unreliable": "Excluído da pontuação enquanto as evidências dos juízes são corrigidas",
+          "other": "Não pôde ser resolvido",
+          "judged_old_selection": "Julgado com um método de evidência posteriormente considerado não confiável",
+          "late_read": "O feed não foi lido perto o bastante do prazo",
+          "feed_unavailable": "O feed de dados ficou indisponível após o prazo"
+        }
+      },
+      "horizons": {
+        "label": "Também pontuado em: {{list}}",
+        "hint": "A probabilidade da manchete é avaliada no horizonte próprio da previsão. A projeção em cada um desses horizontes também é avaliada, em relação ao seu feed de origem, usando o valor publicado inicialmente para esta previsão. Os valores de projeção não são exibidos porque o valor atual pode diferir do avaliado."
+      },
+      "audit": {
+        "label": "Precisão em auditoria",
+        "hint": "Em auditoria desde {{date}}. Uma auditoria encontrou erros na forma como as previsões foram pontuadas. As pontuações foram suspensas enquanto as correções são feitas. As previsões continuam sendo publicadas e registradas.",
+        "unverified": "Resultado registrado, não verificado enquanto a precisão está em auditoria."
       }
     },
     "escalationCorrelation": {

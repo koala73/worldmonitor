@@ -733,11 +733,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.122 across 239 scored forecasts, against 0.25 for answering 0.5 to everything.
+Under audit since 2026-10-07. An audit found three errors in how forecasts were scored. Some outcomes were recorded as "did not happen" without reading the data that decides them. Some forecasts were counted more than once. Some were scored at a probability other than the one published. The scores previously shown on that page were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.
 
-Captured 2026-10-05.
-
-This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.
+The audit's findings and fixes are tracked at https://github.com/koala73/worldmonitor/issues/8990.
 
 <a id="corpus-chokepoint-methodology"></a>
 ## Chokepoint methodology

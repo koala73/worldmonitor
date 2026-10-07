@@ -7,10 +7,17 @@ export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
 
-// Service level for the judged lane (#7068): how long after its deadline a
-// judged entry may take to reach a terminal state and still count as on time.
-// Two days leaves room for one retry cycle on the daily cadence while staying
-// well inside the archive horizon.
+// Reports published up to 18h after a judged deadline are admissible, and an
+// entry is not judged before they can exist (#8990). Of the 23 post-deadline
+// citations in the scored judged rows, 11 were 2-14h late; the next was 30h
+// late and reported a later development.
+export const JUDGED_EVIDENCE_GRACE_MS = 18 * 60 * 60 * 1000;
+
+// Service level for the judged lane (#7068): how long after it becomes
+// judgeable (deadline plus the reporting grace) a judged entry may take to
+// reach a terminal state and still count as on time. The clock starts at the
+// first instant the lane may judge, so the grace never eats the retry room:
+// two days is two daily runs, a first attempt and one retry, at any deadline.
 export const DEFAULT_JUDGED_SLA_MS = 2 * DAY_MS;
 
 // Origins whose scored entries are held OUT of the headline skill Brier:
@@ -40,10 +47,31 @@ export function isPublishedOriginEntry(entry) {
   return !DEFAULT_SKILL_EXCLUDED_ORIGINS.includes(generationOriginOf(entry));
 }
 
+// State-derived market buckets withdrawn from publication until they have a
+// checkable question (#5234). The rows stay in the ledger; no published figure
+// counts them. Rows written before stateBucketId existed are matched on the
+// title buildStateDerivedForecastTitle gave each bucket, including rows that
+// predate origin tagging.
+export const WITHHELD_STATE_BUCKETS = Object.freeze(['sovereign_risk', 'rates_inflation', 'fx_stress']);
+const WITHHELD_STATE_DERIVED_TITLE = /^(Sovereign risk repricing|Inflation and rates pressure|FX stress) from /;
+
+export function isWithheldEntry(entry) {
+  if (typeof entry?.stateBucketId === 'string') return WITHHELD_STATE_BUCKETS.includes(entry.stateBucketId);
+  return ['state_derived', 'unknown'].includes(generationOriginOf(entry))
+    && entry?.domain === 'market'
+    && WITHHELD_STATE_DERIVED_TITLE.test(entry?.title || '');
+}
+
+// A window the resolver reopened from an emission another window had already
+// absorbed (#8990). It is VOID and kept for audit; it was never a question.
+export function isDuplicateWindow(entry) {
+  return typeof entry?.duplicateOf === 'string';
+}
+
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
-  const allEntries = normalizeLedger(ledger);
+  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry) && !isDuplicateWindow(entry));
   const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
@@ -63,7 +91,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
-    methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.',
+    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}`,
     totals: {
       entries: entries.length,
       resolved: resolved.length,
@@ -122,15 +150,25 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       slice.brier = sliceOverall.brier;
       slice.logScore = sliceOverall.logScore;
     }
-    const sliceMarket = summarizeMarketSkill(betEngineScored);
+    // The skill comparisons measure the ensemble, so they read only windows
+    // that opened on an ensemble probability. A window that opened on the
+    // base-rate placeholder is still scored above, but it would compare the
+    // base rate with itself (#8990).
+    const ensembleScored = betEngineScored.filter(isEnsembleScored);
+    slice.ensembleCount = ensembleScored.length;
+    const sliceMarket = summarizeMarketSkill(ensembleScored);
     if (sliceMarket) slice.vsMarketSkill = sliceMarket;
-    const baseline = summarizeBaselineSkill(betEngineScored);
+    const baseline = summarizeBaselineSkill(ensembleScored);
     if (baseline) slice.vsBaseRate = baseline;
-    const deviation = summarizeDeviationSkill(betEngineScored);
+    const deviation = summarizeDeviationSkill(ensembleScored);
     if (deviation) slice.deviationSkill = deviation;
     scorecard.betEngine = slice;
   }
   return scorecard;
+}
+
+function isEnsembleScored(entry) {
+  return typeof entry?.probabilitySource === 'string' && entry.probabilitySource.startsWith('ensemble');
 }
 
 // Ensemble-vs-recorded-base-rate Brier comparison (#5525 KTD5). Only entries
@@ -197,6 +235,16 @@ export function isScoredEntry(entry) {
 // Projection horizon windows (#7075) share the ledger with forecast windows
 // under `<parentKey>@<horizon>` keys. Every forecast-window reader partitions
 // on this so a projection never enters a forecast metric, fit, or cohort.
+// The #5233 correction travels with the numbers it changed: a frozen capture
+// taken before the resolver voided those rows carries no note.
+function envelopeBugNote(voided) {
+  const count = voided.filter((entry) => entry?.evidence?.reason === 'resolver_envelope_bug').length;
+  if (!count) return '';
+  return count === 1
+    ? ' 1 forecast scored against a data feed we could not read correctly is voided and left out of every score (issue #5233).'
+    : ` ${count} forecasts scored against a data feed we could not read correctly are voided and left out of every score (issue #5233).`;
+}
+
 export function isHorizonEntry(entry) {
   return typeof entry?.spec?.horizon === 'string';
 }
@@ -343,7 +391,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     const deadline = entryDeadline(entry);
     const resolvedAt = Number(entry?.resolvedAt);
     if (!Number.isFinite(deadline) || !Number.isFinite(resolvedAt)) return false;
-    return resolvedAt - deadline <= slaMs;
+    return resolvedAt - (deadline + JUDGED_EVIDENCE_GRACE_MS) <= slaMs;
   };
   const scoredWithinSla = judgedResolved.filter((entry) => isScoredEntry(entry) && withinSla(entry)).length;
   const voidWithinSla = judgedResolved.filter((entry) => entry?.outcome === 'VOID' && withinSla(entry)).length;
@@ -359,7 +407,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
 
   const pendingPastDeadline = pendingJudge.filter((entry) => {
     const deadline = entryDeadline(entry);
-    return Number.isFinite(deadline) && nowMs >= deadline;
+    return Number.isFinite(deadline) && nowMs >= deadline + JUDGED_EVIDENCE_GRACE_MS;
   }).length;
 
   return {
@@ -534,7 +582,23 @@ function summarizeMarketSkill(scored) {
   };
 }
 
+// The feed a market bet settles on: its anchor is the question's own market.
+export const MARKET_SETTLEMENT_FEED = 'prediction:markets-resolution:v1';
+
+// An anchor without lineage was chosen by the pre-#7071 matcher, which paired
+// forecasts with unrelated markets ("Cyber threat concentration: Taiwan" with
+// "Will China invade Taiwan by 2027?"). Its price belongs to another question,
+// so no market comparison may read it. A market bet carries no lineage because
+// its market is the question.
+export function hasPreLineageAnchor(entry) {
+  const calibration = entry?.calibration;
+  if (!Number.isFinite(Number(calibration?.marketPrice))) return false;
+  if (entry?.spec?.sourceFeed === MARKET_SETTLEMENT_FEED) return false;
+  return !Number.isFinite(calibration.marketBlendedProbability);
+}
+
 function marketProbability(entry) {
+  if (hasPreLineageAnchor(entry)) return NaN;
   const raw = entry?.calibration?.marketPrice;
   const n = Number(raw);
   if (!Number.isFinite(n)) return NaN;
@@ -755,7 +819,8 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
 
 /**
  * The #7070 activation gate. Reports eligibility and every failing reason;
- * nothing reads `eligible` to change a published probability. Coverage, VOID
+ * seed-forecasts publishes calibrated probabilities only while `eligible`
+ * holds for the current map. Coverage, VOID
  * and origin mix ride beside the verdict (from `context`) so a cohort that
  * looks better only because its selection changed is visible next to it.
  */
@@ -895,6 +960,13 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   all_judges_void: 'Both judges found the evidence insufficient',
   judge_disagreement: 'The judges disagreed',
   judge_retry_exhausted: 'The judges returned no verdict',
+  withheld_unpublished: 'This kind of forecast is no longer published',
+  resolver_envelope_bug: 'Scored against a data feed we could not read correctly',
+  market_price_not_outcome: 'The feed showed the market price, not how the market resolved',
+  judged_evidence_unreliable: "Held out of scoring while the judges' evidence is being fixed",
+  judged_old_selection: 'Judged with an evidence method later found unreliable',
+  late_read: 'The feed was not read close enough to the deadline',
+  feed_unavailable: 'The data feed was unavailable after the deadline',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);
@@ -949,12 +1021,51 @@ function publicReceipt(entry) {
   return receipt;
 }
 
+// Card chips (#5092): for each published family (forecast id) with an open
+// window, its newest resolved windows, newest first. A live card is the open
+// window, so these are the family's earlier outcomes, never the card's own.
+// Open windows outlive the snapshot that published them, so the families are
+// capped, keeping those seen most recently: the current snapshot's cards come
+// first (#5092 review: production held 55 open families for a 15-card panel).
+export const FAMILY_OUTCOME_LIMIT = 5;
+export const FAMILY_OUTCOME_FAMILY_LIMIT = 24;
+export const PUBLIC_FAMILY_OUTCOME_FIELDS = Object.freeze(['forecastId', 'outcome', 'voidReason']);
+
+export function buildFamilyOutcomes(ledger, nowMs, { limit = FAMILY_OUTCOME_LIMIT } = {}) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  const windows = normalizeLedger(ledger).filter((entry) => entry && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && isPublishedOriginEntry(entry));
+  const lastSeenById = new Map();
+  for (const entry of windows) {
+    if (entry.status !== 'pending' && entry.status !== 'pending-judge') continue;
+    lastSeenById.set(entry.id, Math.max(lastSeenById.get(entry.id) ?? 0, Number(entry.lastSeenAt) || 0));
+  }
+  const byFamily = new Map();
+  for (const entry of windows) {
+    if (entry.status !== 'resolved' || !lastSeenById.has(entry.id) || !RECEIPT_OUTCOMES.has(entry.outcome)) continue;
+    const resolvedAt = Number(entry.resolvedAt);
+    if (!Number.isFinite(resolvedAt) || resolvedAt < minResolvedAt) continue;
+    if (!byFamily.has(entry.id)) byFamily.set(entry.id, []);
+    byFamily.get(entry.id).push(entry);
+  }
+  const families = [...byFamily.keys()]
+    .sort((a, b) => lastSeenById.get(b) - lastSeenById.get(a) || (a < b ? -1 : 1))
+    .slice(0, FAMILY_OUTCOME_FAMILY_LIMIT)
+    .sort();
+  return families.flatMap((id) => byFamily.get(id)
+    // One cycle can settle two overdue windows at the same instant; the later deadline is the newer window.
+    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt) || Number(b.deadline) - Number(a.deadline))
+    .slice(0, limit)
+    .map((entry) => (entry.outcome === 'VOID'
+      ? { forecastId: id, outcome: 'VOID', voidReason: Object.hasOwn(RECEIPT_VOID_REASON_LABELS, entry.evidence?.reason) ? entry.evidence.reason : 'other' }
+      : { forecastId: id, outcome: entry.outcome })));
+}
+
 // Published-origin forecast windows inside the rolling window: shadow,
 // synthetic and unattributed origins never become receipts.
 export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMIT } = {}) {
   const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
   return normalizeLedger(ledger)
-    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && isPublishedOriginEntry(entry)
+    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && isPublishedOriginEntry(entry)
       && Number(entry.resolvedAt) >= minResolvedAt)
     .map(publicReceipt)
     .filter(Boolean)

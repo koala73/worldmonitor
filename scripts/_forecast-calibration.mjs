@@ -3,7 +3,9 @@
 // A CalibrationMap is data: per-domain monotone knots fitted by
 // pool-adjacent-violators over individual resolved YES/NO published-origin
 // ledger entries. `applyCalibration` is the only interpretation of that data.
-// The map is shadow-only: nothing here changes a published probability.
+// `decideCalibrationPublication` runs the same rule on every seeder run: the
+// seeder publishes calibrated probabilities only while the activation gate is
+// eligible for the current map and the kill switch is off.
 //
 // No wall-clock reads: every time is injected.
 
@@ -12,6 +14,7 @@ import {
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   evaluateActivationGate,
   generationOriginOf,
+  hasPreLineageAnchor,
   isHorizonEntry,
   isPublishedOriginEntry,
   isScoredEntry,
@@ -48,7 +51,9 @@ export const CALIBRATION_MAP_SCHEMA_VERSION = 1;
 // Bumping this is the only refit path: a persisted map with another code
 // version is replaced on the next resolver run, which also restarts the
 // forward cohort at the new fittedAt.
-export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v1';
+// v2 refits without the cyber and outage rows voided under #5233; v1 fit cyber
+// to 0.01 from outcomes the resolver could not read.
+export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v2';
 export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 export const CALIBRATION_MIN_TOTAL_SAMPLE = 60;
 export const CALIBRATION_MIN_DOMAIN_SAMPLE = 30;
@@ -75,12 +80,14 @@ export function emissionTime(entry) {
   return Number.isFinite(firstSeenAt) ? firstSeenAt : NaN;
 }
 
-// The stored `probability` IS the post-blend value; #7071 lineage on the
-// calibration object names it explicitly when an anchor applied.
+// The post-blend value before any published calibration: the stage the map
+// is fitted on and applied to. A calibrated publication keeps it as
+// `uncalibratedProbability`; otherwise #7071 lineage names it when an anchor
+// applied, and the stored `probability` is it.
 export function sourceProbability(entry) {
-  const blended = Number(entry?.calibration?.marketBlendedProbability);
-  const value = Number.isFinite(blended) ? blended : Number(entry?.probability);
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
+  const value = [entry?.uncalibratedProbability, entry?.calibration?.marketBlendedProbability, entry?.probability]
+    .find((candidate) => typeof candidate === 'number' && Number.isFinite(candidate));
+  return value === undefined ? NaN : Math.max(0, Math.min(1, value));
 }
 
 function domainOf(entry) {
@@ -99,20 +106,16 @@ function round6(value) {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-// An anchor without lineage was chosen by the pre-#7071 matcher, which paired
-// forecasts with unrelated markets, so its blended probability is not an
-// input the current seeder can produce.
-function hasPreLineageAnchor(entry) {
-  const calibration = entry?.calibration;
-  return Number.isFinite(Number(calibration?.marketPrice)) && !Number.isFinite(Number(calibration?.marketBlendedProbability));
-}
-
-/** Scored published-origin entries resolved inside the rolling window ending at nowMs. */
+/**
+ * Scored published-origin entries resolved inside the rolling window ending at nowMs.
+ * A row rescored to its first-seen probability (#8990) lost the raw value
+ * that came with that probability, so it has no fit input.
+ */
 export function selectFitCohort(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   return ledgerEntries(ledger).filter((entry) => {
-    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry)) return false;
+    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
     const resolvedAt = Number(entry.resolvedAt);
     const emittedAt = emissionTime(entry);
     return Number.isFinite(resolvedAt) && resolvedAt >= minResolvedAt && resolvedAt <= nowMs
@@ -297,8 +300,8 @@ export function evaluateCalibrationCohort(entries, map, context = {}, options = 
     .filter((entry) => isScoredEntry(entry) && isPublishedOriginEntry(entry))
     .map((entry) => {
       const domain = domainOf(entry);
-      const raw = Math.max(0, Math.min(1, Number(entry.probability)));
-      return { domain, y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, sourceProbability(entry)) };
+      const raw = sourceProbability(entry);
+      return { domain, y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, raw) };
     });
   const modeByDomain = modeByDomainOf(map);
   const forward = summarizeCalibrationShadow(rows, modeByDomain, options);
@@ -356,5 +359,110 @@ export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
     nonIdentityDomains: Object.keys(map.domains).filter((domain) => map.domains[domain].mode !== 'identity').sort(),
     forward,
     activationGate,
+  };
+}
+
+/**
+ * @typedef {'calibrated' | 'raw'} PublicationMode
+ * @typedef {'gate_eligible' | 'force_raw' | 'read_failed' | 'no_map' | 'map_code_version' | 'no_gate' | 'gate_stale' | 'gate_map_mismatch' | 'gate_ineligible'} PublicationReason
+ * @typedef {{
+ *   eligible: boolean,
+ *   reasons: string[],
+ *   forwardCount: number,
+ *   brierDeltaUpper: number | null,
+ *   domains: { domain: string, count: number, brierDeltaUpper: number | null }[],
+ * }} PublicationGate
+ * @typedef {{ mode: PublicationMode, reason: PublicationReason, mapVersion: string | null, gate: PublicationGate | null }} CalibrationPublicationDecision
+ * @typedef {{ at: number, from: PublicationMode, to: PublicationMode, reason: PublicationReason, gate: PublicationGate | null }} CalibrationFlip
+ * @typedef {CalibrationPublicationDecision & { decidedAt: number, lastFlip: CalibrationFlip | null }} CalibrationPublicationRecord
+ */
+
+export const CALIBRATION_FORCE_RAW_ENV = 'FORECAST_CALIBRATION_FORCE_RAW';
+// The resolver runs daily; a verdict older than two runs is not current.
+export const CALIBRATION_GATE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+function publicationGate(gate) {
+  if (!gate || typeof gate !== 'object') return null;
+  return {
+    eligible: gate.eligible === true,
+    reasons: Array.isArray(gate.reasons) ? [...gate.reasons] : [],
+    forwardCount: gate.forwardCount ?? 0,
+    brierDeltaUpper: gate.overall?.brierDeltaUpper ?? null,
+    domains: (gate.domains ?? []).map(({ domain, count, brierDeltaUpper }) => ({ domain, count, brierDeltaUpper })),
+  };
+}
+
+/**
+ * Stateless: the same inputs always give the same mode, and the previous mode
+ * is never an input. `shadow` is the scorecard's calibrationShadow block and
+ * `gateGeneratedAt` the scorecard's generatedAt.
+ * @returns {CalibrationPublicationDecision}
+ */
+export function decideCalibrationPublication(map, shadow, { forceRaw = false, readFailed = false, nowMs = NaN, gateGeneratedAt = NaN } = {}) {
+  const gate = publicationGate(shadow?.activationGate);
+  const decide = (mode, reason) => ({ mode, reason, mapVersion: map?.version ?? null, gate });
+  if (forceRaw) return decide('raw', 'force_raw');
+  if (readFailed) return decide('raw', 'read_failed');
+  if (!map) return decide('raw', 'no_map');
+  if (map.codeVersion !== CALIBRATION_CODE_VERSION) return decide('raw', 'map_code_version');
+  if (!gate) return decide('raw', 'no_gate');
+  if (!(nowMs - gateGeneratedAt <= CALIBRATION_GATE_MAX_AGE_MS)) return decide('raw', 'gate_stale');
+  // A verdict on another map says nothing about this one.
+  if (shadow.mapVersion !== map.version) return decide('raw', 'gate_map_mismatch');
+  if (!gate.eligible) return decide('raw', 'gate_ineligible');
+  return decide('calibrated', 'gate_eligible');
+}
+
+/**
+ * Audit record for a decision. A missing previous record reads as raw, since
+ * every publication before activation was raw.
+ * @returns {{ flipped: boolean, record: CalibrationPublicationRecord }}
+ */
+export function recordCalibrationPublication(previous, decision, nowMs) {
+  const previousMode = previous?.mode === 'calibrated' ? 'calibrated' : 'raw';
+  const flipped = previousMode !== decision.mode;
+  const lastFlip = flipped
+    ? { at: nowMs, from: previousMode, to: decision.mode, reason: decision.reason, gate: decision.gate }
+    : previous?.lastFlip ?? null;
+  return { flipped, record: { ...decision, decidedAt: nowMs, lastFlip } };
+}
+
+/**
+ * Applies the map to post-blend probabilities in place, for the population it
+ * was fitted on. A moved forecast keeps its post-blend value as
+ * `uncalibratedProbability`, which the fit and the shadow read back.
+ * Returns how many forecasts moved.
+ */
+export function applyPublishedCalibration(predictions, map, decision) {
+  if (decision?.mode !== 'calibrated' || !map) return 0;
+  let moved = 0;
+  for (const pred of predictions) {
+    if (!isPublishedOriginEntry(pred)) continue;
+    const raw = pred.probability;
+    const calibrated = Math.round(applyCalibration(map, domainOf(pred), raw) * 1000) / 1000;
+    if (!Number.isFinite(calibrated) || calibrated === raw) continue;
+    pred.uncalibratedProbability = raw;
+    pred.probability = calibrated;
+    moved += 1;
+  }
+  return moved;
+}
+
+/**
+ * Re-expresses the prior run's probabilities on this run's scale, so a trend
+ * or change summary across a flip (or a refit) compares like with like
+ * instead of reporting the change of method as a move.
+ */
+export function alignPriorToPublication(prior, map, decision) {
+  if (!Array.isArray(prior?.predictions)) return prior;
+  const scratch = prior.predictions.map((prev) => {
+    const raw = typeof prev?.uncalibratedProbability === 'number' ? prev.uncalibratedProbability : prev?.probability;
+    const { uncalibratedProbability: _dropped, ...rest } = prev ?? {};
+    return { ...rest, probability: raw };
+  });
+  applyPublishedCalibration(scratch, map, decision);
+  return {
+    ...prior,
+    predictions: scratch.map(({ uncalibratedProbability: _dropped, ...rest }) => rest),
   };
 }

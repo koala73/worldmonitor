@@ -2353,7 +2353,7 @@
       "unscored": "Narrative Szenarien, nicht auf Genauigkeit bewertet."
     },
     "forecast": {
-      "infoTooltip": "<strong>KI-Prognosen</strong> KI-generierte Wahrscheinlichkeitsschätzungen für geopolitische und wirtschaftliche Ereignisse:<ul><li>Bereichsübergreifende Abdeckung: Konflikte, Märkte, Lieferkette, Cyber, Politik</li><li>Jede Prognose zeigt geschätzte Wahrscheinlichkeit, Konfidenzgrad und Zeithorizont</li><li>Kalibriert an den Basiswerten von Prognosemärkten, wo verfügbar</li></ul>Prognosen werden aktualisiert, wenn neue Aufklärungssignale eintreffen. Filtern Sie nach Bereich mit den Registerkarten oben.",
+      "infoTooltip": "<strong>KI-Prognosen</strong> KI-generierte Wahrscheinlichkeitsschätzungen für geopolitische und wirtschaftliche Ereignisse:<ul><li>Bereichsübergreifende Abdeckung: Konflikte, Märkte, Lieferkette, Cyber, Politik</li><li>Jede Prognose zeigt geschätzte Wahrscheinlichkeit, Konfidenzgrad und Zeithorizont</li></ul>Prognosen werden aktualisiert, wenn neue Aufklärungssignale eintreffen. Filtern Sie nach Bereich mit den Registerkarten oben.",
       "record": {
         "label": "Bilanz",
         "labelHint": "Wie die veröffentlichten Prognosen nach ihrer Auflösung in den letzten {{days}} Tagen abgeschnitten haben. Zeiger auf eine Zahl halten, um ihre Bedeutung zu sehen.",
@@ -2374,6 +2374,49 @@
         "measuredHint": "Wie veröffentlichte {{domain}}-Prognosen bei {{n}} bewerteten Prognosen in den letzten {{days}} Tagen abgeschnitten haben. Die Basisrate ist das Ergebnis, das man durch konstante Antworten mit der beobachteten Ja-Quote des Bereichs erhalten würde. Niedriger ist besser. Dies ist die Bilanz des Bereichs, nicht dieser Prognose.",
         "unmeasured": "Noch nicht gemessen",
         "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Ein Bereich benötigt {{min}}, bevor seine Genauigkeit angezeigt wird."
+      },
+      "resolution": {
+        "last": "Zuletzt: {{outcome}}",
+        "lastSr": "Das vorherige Fenster dieser Prognose wurde mit {{outcome}} aufgelöst.",
+        "history": "Letzte Fenster, neueste zuerst: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEIN",
+          "void": "UNGÜLTIG"
+        },
+        "void": {
+          "no_establishable_metric": "Der Feed hatte keinen Messwert für diese Frage",
+          "value_source_never_settled": "Der Feed veröffentlichte keinen festgestellten Wert",
+          "count_source_window_not_retained": "Der Feed behielt das Fragefenster nicht mehr",
+          "unsupported_window": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "unsupported_metric_key": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "not_hard_spec": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "missing_threshold": "Der Frage fehlte ein Schwellenwert",
+          "missing_deadline": "Der Frage fehlte eine Frist",
+          "missing_generated_at": "Der Prognose fehlte das Startdatum",
+          "beyond_archive_horizon": "Das Nachrichtenarchiv deckte das Fragefenster nicht mehr ab",
+          "no_archive_evidence": "Das Nachrichtenarchiv hatte nichts zum Thema",
+          "all_judges_void": "Beide Bewerter fanden die Evidenz unzureichend",
+          "judge_disagreement": "Die Bewerter waren sich uneinig",
+          "judge_retry_exhausted": "Die Bewerter gaben kein Urteil ab",
+          "withheld_unpublished": "Diese Art von Prognose wird nicht mehr veröffentlicht",
+          "resolver_envelope_bug": "Gegen einen Datenfeed bewertet, den wir nicht korrekt lesen konnten",
+          "market_price_not_outcome": "Der Feed zeigte den Marktpreis, nicht wie der Markt aufgelöst wurde",
+          "judged_evidence_unreliable": "Von der Bewertung ausgenommen, solange die Belege der Gutachter überarbeitet werden",
+          "other": "Konnte nicht aufgelöst werden",
+          "judged_old_selection": "Bewertet mit einer später als unzuverlässig befundenen Nachweismethode",
+          "late_read": "Der Feed wurde nicht nah genug an der Frist ausgelesen",
+          "feed_unavailable": "Der Datenfeed war nach der Frist nicht verfügbar"
+        }
+      },
+      "horizons": {
+        "label": "Auch bewertet bei: {{list}}",
+        "hint": "Die Schlagzeilen-Wahrscheinlichkeit wird am eigenen Zeithorizont der Prognose bewertet. Die Projektion an jedem dieser Horizonte wird ebenfalls bewertet, anhand ihres Quell-Feeds, unter Verwendung des zuerst für diese Prognose veröffentlichten Wertes. Projektionswerte werden nicht angezeigt, da der aktuelle Wert vom bewerteten abweichen kann."
+      },
+      "audit": {
+        "label": "Genauigkeit wird überprüft",
+        "hint": "Wird seit {{date}} überprüft. Eine Überprüfung hat Fehler bei der Bewertung von Prognosen gefunden. Die Bewertungen werden zurückgezogen, während Korrekturen vorgenommen werden. Prognosen werden weiterhin veröffentlicht und aufgezeichnet.",
+        "unverified": "Aufgezeichnetes Ergebnis, nicht verifiziert, solange die Genauigkeit überprüft wird."
       }
     },
     "escalationCorrelation": {

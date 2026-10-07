@@ -20,6 +20,7 @@ import {
   refreshPublishedNarratives,
   selectPublishedForecastPool,
   deriveStateDrivenForecasts,
+  getStateDerivedAllowedBuckets,
   extractNewsClusterItems,
   selectUrgentCriticalNewsCandidates,
   validateCriticalSignalFrames,
@@ -99,6 +100,7 @@ import {
   runTheaterSimulation,
   __setForecastLlmCallOverrideForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { buildResolutionSpec } from '../scripts/_forecast-resolution.mjs';
 
 import {
   resolveR2StorageConfig,
@@ -1240,6 +1242,78 @@ describe('state-driven domain derivation', () => {
     assert.equal(redSeaCluster.forecastIds.includes(indiaFx.id), false);
     assert.deepEqual(indiaCluster.sourceStateIds, ['state-india-fx']);
     assert.deepEqual(redSeaCluster.sourceStateIds, ['state-red-sea-maritime']);
+  });
+
+  it('publishes a state-derived bucket only when its forecast carries a checkable spec (#5234)', () => {
+    const inputs = {
+      commodityQuotes: { quotes: [{ symbol: 'CL=F', name: 'WTI Crude', price: 80 }] },
+      chokepoints: { chokepoints: [{ name: 'Kerch Strait', region: 'Kerch Strait', riskScore: 70 }] },
+    };
+    for (const domain of ['market', 'supply_chain']) {
+      const allowed = getStateDerivedAllowedBuckets(domain);
+      assert.ok(allowed.length > 0, `${domain} keeps at least one state-derived bucket`);
+      for (const bucketId of allowed) {
+        const pred = makePrediction(domain, 'Black Sea', `${bucketId} from Black Sea maritime disruption state`, 0.5, 0.5, domain === 'market' ? '30d' : '7d', [
+          { type: 'market_transmission', value: 'x', weight: 0.24 },
+        ]);
+        pred.generationOrigin = 'state_derived';
+        pred.stateDerivation = { bucketId };
+        assert.equal(buildResolutionSpec(pred, inputs, Date.parse('2026-10-01T00:00:00Z')).kind, 'hard', `${domain}/${bucketId} resolves on a feed`);
+      }
+      for (const bucketId of ['sovereign_risk', 'rates_inflation', 'fx_stress']) {
+        assert.equal(allowed.includes(bucketId), false, `${domain}/${bucketId} has no checkable question and stays unpublished`);
+      }
+    }
+  });
+
+  it('emits no market forecast from a state whose only transmission reaches unverifiable buckets (#5234)', () => {
+    const stateUnit = {
+      id: 'state-andes-governance',
+      label: 'Andes governance pressure state',
+      stateKind: 'governance_pressure',
+      dominantRegion: 'Americas',
+      dominantDomain: 'political',
+      regions: ['Americas'],
+      domains: ['political', 'conflict'],
+      actors: ['Regional governments'],
+      branchKinds: ['base_case'],
+      signalTypes: ['sovereign_stress', 'fx_stress', 'risk_off_rotation'],
+      sourceSituationIds: ['sit-andes'],
+      situationIds: ['sit-andes'],
+      situationCount: 2,
+      forecastIds: ['fc-andes'],
+      forecastCount: 2,
+      avgProbability: 0.7,
+      avgConfidence: 0.65,
+      topSignals: [{ type: 'sovereign_stress', count: 3 }, { type: 'fx_stress', count: 2 }],
+      sampleTitles: ['Governance pressure: Andes'],
+    };
+    const signal = (id, type) => ({ id, type, sourceType: 'critical_news', region: 'Americas', macroRegion: 'Americas', strength: 0.8, confidence: 0.7, label: type });
+    const edge = (targetBucketId, targetLabel, channel) => ({
+      sourceSituationId: stateUnit.id, sourceLabel: stateUnit.label, targetBucketId, targetLabel, channel,
+      strength: 0.8, confidence: 0.7, supportingSignalIds: ['sig-sov', 'sig-fx', 'sig-risk'],
+    });
+    const derived = deriveStateDrivenForecasts({
+      existingPredictions: [],
+      stateUnits: [stateUnit],
+      worldSignals: { signals: [signal('sig-sov', 'sovereign_stress'), signal('sig-fx', 'fx_stress'), signal('sig-risk', 'risk_off_rotation')] },
+      marketTransmission: {
+        edges: [
+          edge('sovereign_risk', 'Sovereign Risk', 'sovereign_stress'),
+          edge('fx_stress', 'FX Stress', 'fx_stress'),
+          edge('rates_inflation', 'Rates & Inflation', 'policy_rate_pressure'),
+        ],
+      },
+      marketState: {
+        buckets: [
+          { id: 'sovereign_risk', label: 'Sovereign Risk', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+          { id: 'fx_stress', label: 'FX Stress', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+          { id: 'rates_inflation', label: 'Rates & Inflation', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+        ],
+      },
+      marketInputCoverage: { commodities: 16, gulfQuotes: 12, shippingRates: 4, fredSeries: 12, bisExchange: 12, bisPolicy: 12, correlationCards: 3 },
+    });
+    assert.deepEqual(derived, [], 'no forecast and no backfill fallback for buckets without a checkable question');
   });
 });
 

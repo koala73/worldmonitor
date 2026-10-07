@@ -25,6 +25,7 @@
 
 import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeResolutionFeeds } from './_forecast-resolution-eval.mjs';
 import { isPublishedOriginEntry } from './_forecast-scorecard.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
 
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
@@ -183,15 +184,16 @@ export const SIGNAL_TO_HARD_FAMILY = {
 
 // Domains whose forecasts are ALWAYS judged (R3), regardless of what signals
 // they carry. Domain is the claim's SUBJECT; signals are only evidence.
-// Political unrest and cyber concentration now have country/date feeds with a
-// direct count metric. Military still lacks a stable theater id, while the
-// legacy infrastructure family only measured outage presence rather than its
-// claimed cascade risk (#5330). Keep both judged until they carry a crisp,
-// claim-aligned metric identity.
+// Military still lacks a stable theater id, while the legacy infrastructure
+// family only measured outage presence rather than its claimed cascade risk
+// (#5330). Cyber's feed keeps country-bearing records for under a day, so a
+// 7-day count read once daily measures the deadline's hour, not the window
+// (#5233). Keep all three judged until they carry a crisp, claim-aligned metric
+// identity.
 // This gate is checked AFTER the state_derived origin check and the
 // prediction_market exemption, and BEFORE the general SIGNAL_TO_HARD_FAMILY
 // lookup.
-export const JUDGED_DOMAINS = new Set(['infrastructure', 'military']);
+export const JUDGED_DOMAINS = new Set(['infrastructure', 'military', 'cyber']);
 
 // Which hard families a forecast's DOMAIN permits (R3, by-domain constraint).
 // Domain is the claim's SUBJECT; signals are only evidence. A market-domain
@@ -524,6 +526,9 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
+    // Unreachable for emission while cyber is in JUDGED_DOMAINS (#5233); kept
+    // for the judged question's threshold and for the per-cycle accumulation
+    // that would let a hard cyber count return.
     case 'cyber': {
       const tally = firstFiniteSignalCount(pred, new Set(['cyber']));
       if (!Number.isFinite(tally)) return null;
@@ -559,13 +564,17 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       };
     }
     case 'gps': {
+      // The forecast states interference in the zone, so it resolves on the
+      // detector's own emission floor, not on the emission-day count (#8990).
       const hexes = firstFiniteSignalCount(pred, new Set(['gps_jamming']));
       if (!Number.isFinite(hexes)) return null;
       return {
         metricKey: `intelligence:gpsjam:v2|hexCount(region==${pred.region})`,
         operator: '>=',
-        threshold: Math.max(1, Math.round(hexes)),
+        threshold: GPS_ZONE_MIN_HEXES,
         window: FAMILY_WINDOW[family],
+        rule: GPS_RESOLUTION_RULE,
+        ruleVersion: GPS_RESOLUTION_RULE_VERSION,
       };
     }
     case 'market': {
@@ -657,6 +666,12 @@ function buildQuestion(pred) {
   if (domain === 'political') {
     return `Within the ${horizon} horizon, did ${region} experience a materially elevated level of civil unrest or political instability versus its recent baseline, consistent with "${title}"?`;
   }
+  if (domain === 'cyber') {
+    const metrics = deriveHardMetrics(pred, 'cyber', {});
+    if (metrics) {
+      return `Within the ${horizon} horizon after this forecast, did public threat-intelligence sources report at least ${metrics.threshold} new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to ${region}?`;
+    }
+  }
   return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
 }
 
@@ -703,6 +718,7 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}, metrics 
     deadline,
     sourceFeed,
     question: null,
+    ...(metrics.rule ? { rule: metrics.rule, ruleVersion: metrics.ruleVersion } : {}),
   };
 }
 
@@ -786,6 +802,26 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
 // origins (the headline's excluded set; makePrediction always stamps the
 // origin) carry no contract: the lane measures the published population, and
 // the resolver applies the same gate at registration.
+// The horizons the resolver registers a scoring window for, in horizon order:
+// a hard contract with a finite deadline on a published-origin forecast that
+// carries a finite projection for it. Reads the internal forecast (history
+// entry or seed prediction), never the public payload, so dropping public
+// projections (#8967) cannot change what is scored. The resolver and the
+// published scoredHorizons both use this.
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
+export function scoredHorizonKeys(forecast) {
+  const contracts = forecast?.horizonResolutions;
+  if (!contracts || typeof contracts !== 'object' || !isPublishedOriginEntry(forecast)) return [];
+  return Object.keys(PROJECTION_HORIZONS).filter((horizon) => {
+    const spec = contracts[horizon];
+    // Number(null) is 0, so a null deadline or projection would pass a coerced check.
+    return spec?.kind === 'hard'
+      && isFiniteNumber(spec.deadline)
+      && isFiniteNumber(forecast.projections?.[horizon]);
+  });
+}
+
 export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
   const specs = {};
   const excludedOrigin = !isPublishedOriginEntry(pred);
@@ -817,6 +853,7 @@ export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options =
       sourceFeed: spec.sourceFeed,
       deadline: spec.deadline,
       sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
+      ...(spec.rule && { rule: spec.rule, ruleVersion: spec.ruleVersion }),
     };
   }
   return specs;

@@ -309,10 +309,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const body = id === 'energy' && this.hostedAtlasBody ? this.energyBody! : section.body;
     const notice = state === 'locked' ? this.makeProLocked(reason) : this.makeEmpty(reason);
     notice.dataset.briefState = state;
+    body.querySelector('.cdp-refresh-failure')?.remove();
     const previous = briefSectionState({ id, title: '', card, body });
     if (state === 'unavailable' && previous === 'ready') {
       notice.textContent = `${reason} Previously loaded observations remain visible.`;
-      body.querySelector('.cdp-refresh-failure')?.remove();
       notice.classList.add('cdp-refresh-failure');
       body.append(notice);
     } else body.replaceChildren(notice);

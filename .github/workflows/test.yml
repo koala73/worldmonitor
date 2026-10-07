@@ -290,6 +290,10 @@ jobs:
           node scripts/generate-docs-page-dates.mjs
           node scripts/generate-docs-page-dates.mjs --check
           node --test tests/docs-page-dates.test.mjs
+      - name: Every English docs page has a zh translation
+        # Docs-only PRs skip the unit shards, so without this step a missing
+        # docs/zh mirror surfaces only as a red main after merge (#8968).
+        run: node --test tests/docs-i18n-parity.test.mjs
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
@@ -312,14 +316,17 @@ jobs:
         # Three shards, not two (#7805): after #7769 split the browser job,
         # unit-shard (2) became the Test wall at 5m45s, of which ~2 min is
         # setup and builds every shard repeated and ~3 min is test:data. The
-        # builds now run once in unit-built-output. The
+        # builds now run once in unit-built-output. Four, not three: the
+        # test:data step saturates the runner's CPU, so a fourth runner is the
+        # cheapest way to get more parallelism. Three paired benchmark runs took
+        # the slowest shard from 236-269s to 176-186s. The
         # sharder balances by measured durations and is generic in the count,
         # so the denominator on the test:data step below is the only other
         # place this number lives. tests/ci-test-selection.test.mjs pins that
         # denominator to this matrix's length, and tests/data-test-shards.test.mjs
         # reads the matrix and proves the shards together run the inventory
         # exactly once.
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -341,27 +348,30 @@ jobs:
             package-lock.json
             pro-test/package-lock.json
             blog-site/package-lock.json
-      - uses: ./.github/actions/install-root-deps
+      # The dependency restore is a cache download and the Redis install is an
+      # apt pass. Neither reads the other's output, so they run side by side.
+      - parallel:
+          - uses: ./.github/actions/install-root-deps
+          # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+          # archive's Lua runs against a real server: the relay harness stubs the
+          # EVAL and the proxy command-gate test only matches the script TEXT. That
+          # suite self-skips when the binaries are absent, so without this step the
+          # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+          # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+          # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
+          - name: Install Redis for the archive Lua suite
+            run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
         # Needed so blog-seo-contract can load astro.config.mjs.
         run: npm run ci:blog-site
-      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
-      # archive's Lua runs against a real server: the relay harness stubs the
-      # EVAL and the proxy command-gate test only matches the script TEXT. That
-      # suite self-skips when the binaries are absent, so without this step the
-      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
-      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
-      # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
-      - name: Install Redis for the archive Lua suite
-        run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
       - name: Data tests without built output
         # No build here: the unit-built-output job builds dist/ and public/pro/
         # once and runs every suite that names them. The marker stays set, so a
         # guarded suite that lands in a shard fails instead of skipping.
         env:
           WM_EXPECT_BUILT_OUTPUT: '1'
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/3 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/4 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -789,7 +799,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        # Four shards. The specs run with two Playwright workers that keep the
+        # runner's CPU 81-85% busy, and four workers only bought ~15% with more
+        # flaky retries, so more runners is where the time comes from. The spec
+        # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
+        # measured test-seconds, ~197s each. Re-balance them from the per-test
+        # durations in the list reporter output when a spec grows.
+        shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.browser == 'true'
@@ -803,16 +819,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - uses: ./.github/actions/install-root-deps
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright chromium
-        id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Use Ubuntu repositories for browser OS libraries
         # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
         # failures must not prevent their installation on this disposable runner.
@@ -822,26 +828,61 @@ jobs:
             'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
             'Dir::Etc::sourceparts "-";' \
             | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
-      - run: npx playwright install --with-deps chromium
+      # The dependency restore and the font install run side by side. Neither
+      # reads the other's output.
+      - parallel:
+          - uses: ./.github/actions/install-root-deps
+          - name: Install browser fonts
+            # Fonts change only how non-Latin text renders in the evidence
+            # screenshots, so a failed font install warns instead of failing.
+            uses: ./.github/actions/install-browser-fonts
+            timeout-minutes: 4
+            continue-on-error: true
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       # The cache restores only browser binaries (~/.cache/ms-playwright), not
-      # the OS libraries --with-deps installs — and runners are fresh VMs, so a
-      # cache hit on an image that no longer ships a needed lib would fail at
-      # chromium launch. Exactly one apt pass runs either way: --with-deps on a
-      # miss (above), install-deps alone on a hit.
+      # OS libraries, and runners are fresh VMs. The hosted image already
+      # resolves every library the browsers link, so install-deps (~32 MB of
+      # fonts and Mesa upgrades, once 158s on a slow mirror) runs only when a
+      # browser binary is missing one, e.g. after an image change. The fonts the
+      # shipped locales need come from install-browser-fonts.
       #
       # install-deps has hung on apt for the full 15-minute job budget (PR
       # #6923 run 32156387036), cancelling the smoke tests before they started.
       # Cap the apt step and fall back to a full --with-deps install instead of
       # letting a stuck mirror redden the required gate.
-      - name: Install Playwright OS libraries
+      - name: Install Playwright OS libraries a browser is missing
         id: playwright-install-deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 8
         continue-on-error: true
-        run: npx playwright install-deps chromium
+        run: |
+          shopt -s nullglob
+          browsers=(
+            ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+            ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome
+          )
+          missing=""
+          [ "${#browsers[@]}" -gt 0 ] || missing="no Playwright browser binary found"
+          for browser in "${browsers[@]}"; do
+            missing+="$(ldd "$browser" | grep 'not found' || true)"
+          done
+          if [ -z "$missing" ]; then
+            echo "Every Playwright browser library resolves on this image; install-deps skipped."
+            exit 0
+          fi
+          echo "::warning title=Playwright OS libraries::Installing OS libraries for: $missing"
+          npx playwright install-deps chromium
       - name: Repair Playwright install after OS-deps timeout
-        if: steps.playwright-cache.outputs.cache-hit == 'true' && steps.playwright-install-deps.outcome == 'failure'
+        if: steps.playwright-install-deps.outcome == 'failure'
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -961,26 +1002,42 @@ jobs:
             'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
             'Dir::Etc::sourceparts "-";' \
             | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       # The cache restores only browser binaries (~/.cache/ms-playwright), not
-      # the OS libraries --with-deps installs — and runners are fresh VMs, so a
-      # cache hit on an image that no longer ships a needed lib would fail at
-      # chromium launch. Exactly one apt pass runs either way: --with-deps on a
-      # miss (above), install-deps alone on a hit.
+      # OS libraries, and runners are fresh VMs. The hosted image already
+      # resolves every library the browsers link, so install-deps (~32 MB of
+      # fonts and Mesa upgrades, once 158s on a slow mirror) runs only when a
+      # browser binary is missing one, e.g. after an image change. The fonts the
+      # shipped locales need come from install-browser-fonts.
       #
       # install-deps has hung on apt for the full 15-minute job budget (PR
       # #6923 run 32156387036), cancelling the smoke tests before they started.
       # Cap the apt step and fall back to a full --with-deps install instead of
       # letting a stuck mirror redden the required gate.
-      - name: Install Playwright OS libraries
+      - name: Install Playwright OS libraries a browser is missing
         id: playwright-install-deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 8
         continue-on-error: true
-        run: npx playwright install-deps chromium
+        run: |
+          shopt -s nullglob
+          browsers=(
+            ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+            ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome
+          )
+          missing=""
+          [ "${#browsers[@]}" -gt 0 ] || missing="no Playwright browser binary found"
+          for browser in "${browsers[@]}"; do
+            missing+="$(ldd "$browser" | grep 'not found' || true)"
+          done
+          if [ -z "$missing" ]; then
+            echo "Every Playwright browser library resolves on this image; install-deps skipped."
+            exit 0
+          fi
+          echo "::warning title=Playwright OS libraries::Installing OS libraries for: $missing"
+          npx playwright install-deps chromium
       - name: Repair Playwright install after OS-deps timeout
-        if: steps.playwright-cache.outputs.cache-hit == 'true' && steps.playwright-install-deps.outcome == 'failure'
+        if: steps.playwright-install-deps.outcome == 'failure'
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -1000,11 +1057,20 @@ jobs:
           done
           sudo dpkg --configure -a || true
           npx playwright install --with-deps chromium
-      - name: Build /pro artifacts for prehydration browser checks
-        # public/pro/ is built output since #6898. Keep this explicit and
-        # immediately before the focused spec so the browser checks cannot run
-        # against missing or stale bytes from another build.
-        run: npm run build:pro
+      # The font install runs beside the /pro build, which takes ~29s of CPU
+      # while the font step mostly waits on the cache or the network.
+      - parallel:
+          - name: Install browser fonts
+            # Fonts change only how non-Latin text renders in the evidence
+            # screenshots, so a failed font install warns instead of failing.
+            uses: ./.github/actions/install-browser-fonts
+            timeout-minutes: 4
+            continue-on-error: true
+          - name: Build /pro artifacts for prehydration browser checks
+            # public/pro/ is built output since #6898. Keep this explicit and
+            # immediately before the focused specs so the browser checks cannot
+            # run against missing or stale bytes from another build.
+            run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         run: npm run test:e2e:prehydration

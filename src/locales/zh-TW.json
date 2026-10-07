@@ -2343,7 +2343,7 @@
       "unscored": "敘事情景，未經準確性評估。"
     },
     "forecast": {
-      "infoTooltip": "<strong>AI 預測</strong> AI 生成的地緣政治和經濟事件機率估計：<ul><li>跨域覆蓋：衝突、市場、供應鏈、網路安全、政治</li><li>每個預測顯示估計機率、置信度和時間範圍</li><li>根據預測市場基線進行校準（如可用）</li></ul>預測在新情報訊號到達時更新。使用上方標籤按域篩選。",
+      "infoTooltip": "<strong>AI 預測</strong> AI 生成的地緣政治和經濟事件機率估計：<ul><li>跨域覆蓋：衝突、市場、供應鏈、網路安全、政治</li><li>每個預測顯示估計機率、置信度和時間範圍</li></ul>預測在新情報訊號到達時更新。使用上方標籤按域篩選。",
       "record": {
         "label": "歷史戰績",
         "labelHint": "過去{{days}}天內，已公開的預測在結果確定後的得分情況。將滑鼠懸停在數字上可檢視其含義。",
@@ -2364,6 +2364,49 @@
         "measuredHint": "過去 {{days}} 天內 {{n}} 個已評分預測中，已釋出的 {{domain}} 預測的 Brier 評分。基準率是如果始終按該領域觀察到的是機率回答所得的評分。分數越低越好。這是該領域的歷史記錄，不是此預測的記錄。",
         "unmeasured": "暫未測量",
         "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分的結果。領域需要至少 {{min}} 個結果才能顯示準確度。"
+      },
+      "resolution": {
+        "last": "上次：{{outcome}}",
+        "lastSr": "該預測的上一個時間視窗已有結果：{{outcome}}。",
+        "history": "最近的時間視窗，最新的優先：{{list}}",
+        "outcome": {
+          "yes": "是",
+          "no": "否",
+          "void": "作廢"
+        },
+        "void": {
+          "no_establishable_metric": "該資料來源對此問題沒有讀數",
+          "value_source_never_settled": "該資料來源從未釋出已結算的數值",
+          "count_source_window_not_retained": "該資料來源不再保留該問題的時間視窗",
+          "unsupported_window": "無法根據其資料來源檢查該問題",
+          "unsupported_metric_key": "無法根據其資料來源檢查該問題",
+          "not_hard_spec": "無法根據其資料來源檢查該問題",
+          "missing_threshold": "該問題缺少閾值",
+          "missing_deadline": "該問題缺少截止日期",
+          "missing_generated_at": "該預測缺少開始日期",
+          "beyond_archive_horizon": "新聞存檔不再涵蓋該問題的時間視窗",
+          "no_archive_evidence": "新聞存檔中沒有相關內容",
+          "all_judges_void": "兩位裁定者都認為證據不足",
+          "judge_disagreement": "裁定者意見不一致",
+          "judge_retry_exhausted": "裁定者未作出裁決",
+          "withheld_unpublished": "此類預測已不再發布",
+          "resolver_envelope_bug": "依據我們未能正確讀取的資料來源評分",
+          "market_price_not_outcome": "資料來源顯示的是市場價格，而不是市場的最終結果",
+          "judged_evidence_unreliable": "在修正裁判所用證據期間暫不計分",
+          "other": "無法確定結果",
+          "judged_old_selection": "依據一種後來被認定不可靠的取證方法作出裁定",
+          "late_read": "未能在足夠接近截止時間時讀取資料來源",
+          "feed_unavailable": "資料來源在截止日期後不可用"
+        }
+      },
+      "horizons": {
+        "label": "同時評分於：{{list}}",
+        "hint": "頭條機率按預測自身的時間範圍評分。以下各時間範圍的投射值也會評分：按該預測首次公佈的值，與其資料來源對照。由於當前值可能與評分所用的值不同，因此不顯示投射值。"
+      },
+      "audit": {
+        "label": "準確性審計中",
+        "hint": "自 {{date}} 起審計中。審計發現預測評分方式存在錯誤。評分已撤回，正在進行更正。預測仍在釋出和記錄中。",
+        "unverified": "記錄的結果，準確性審計期間未驗證。"
       }
     },
     "escalationCorrelation": {

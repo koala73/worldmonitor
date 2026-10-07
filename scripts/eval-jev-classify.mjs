@@ -24,7 +24,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import {
-  JEV_ENDPOINT, JEV_MODEL, THREAT_LEVELS, buildJevRequest, parseJevAnswers, hasNonLatinLetters,
+  jevEndpoint, JEV_MODEL, THREAT_LEVELS, buildJevRequest, parseJevAnswers, hasNonLatinLetters,
 } from '../shared/jev-classify.js';
 import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
 
@@ -122,7 +122,7 @@ async function loadLabelledTitles() {
 async function callJev(titles) {
   const t0 = performance.now();
   for (let attempt = 0; ; attempt++) {
-    const r = await fetch(JEV_ENDPOINT, {
+    const r = await fetch(jevEndpoint(process.env), {
       method: 'POST',
       headers: { Authorization: `Bearer ${TYPESAFE_API_KEY}`, 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-Eval/1.0' },
       body: JSON.stringify(buildJevRequest(titles)),

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import ts from 'typescript';
+import { runInNewContext } from 'node:vm';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 import { countrySignalsFromMilitary } from '../src/services/country-signals';
@@ -412,6 +414,86 @@ function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement):
 }
 
 describe('country evidence bundle export', () => {
+  for (const [component, methodName] of [['CountryDeepDivePanel', 'exportEvidenceBundle'], ['CountryBriefPage', 'exportBrief']]) {
+    for (const state of [
+      { name: 'no loaded brief', brief: null, original: null, cached: null },
+      { name: 'loaded brief with absent original clock', brief: 'Controlled assessment', original: undefined, cached: true },
+      { name: 'known cached original clock', brief: 'Controlled retained assessment', original: '2026-10-05T09:00:00Z', cached: true },
+      { name: 'known fresh original clock', brief: 'Controlled fresh assessment', original: '2026-10-05T09:00:00Z', cached: false },
+    ]) {
+      it(`${component} preserves original clock semantics for ${state.name}`, async () => {
+        const exports = await loadExportUtils();
+        const exportClock = '2026-10-06T12:00:00.000Z';
+        const originalUrl = 'https://www.bbc.co.uk/news/articles/crly09gz7ew4o?at_medium=RSS&at_campaign=rss';
+        const source = readFileSync(resolve(process.cwd(), `src/components/${component}.ts`), 'utf8');
+        const ast = ts.createSourceFile(`${component}.ts`, source, ts.ScriptTarget.Latest, true);
+        let method: ts.MethodDeclaration | undefined;
+        const visit = (node: ts.Node): void => {
+          if (ts.isMethodDeclaration(node) && node.name.getText(ast) === methodName) method = node;
+          ts.forEachChild(node, visit);
+        };
+        visit(ast);
+        assert.ok(method);
+        class ExportDate extends Date {
+          constructor(value?: string | number) { super(value ?? exportClock); }
+        }
+        let legacyArtifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']> | undefined;
+        const compiled = ts.transpileModule(`class ActualExportCaller { ${method.getText(ast)} }; ActualExportCaller.prototype.${methodName};`, {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+        }).outputText;
+        const invoke = runInNewContext(compiled, {
+          Date: ExportDate,
+          countryEvidenceMarkdownArtifact: exports.countryEvidenceMarkdownArtifact,
+          exportCountryEvidenceMarkdown: (input: Parameters<ExportUtils['countryEvidenceMarkdownArtifact']>[0]) => {
+            legacyArtifact = exports.countryEvidenceMarkdownArtifact(input);
+          },
+        });
+        const snapshot = {
+          currentName: 'Canada', currentCode: 'CA', currentBrief: state.brief,
+          currentBriefGeneratedAt: state.original, currentBriefCached: state.cached,
+          currentHeadlines: [{ title: 'Controlled BBC source', source: 'BBC', link: originalUrl, pubDate: '2026-10-06T08:00:00Z' }],
+          signalCoverageNotes: [], canExportEvidenceBundle: () => true,
+          downloadText: async (artifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']>) => artifact,
+        };
+        const before = JSON.stringify(snapshot);
+        const returned = await invoke.call(snapshot, component === 'CountryBriefPage' ? 'evidence-md' : new AbortController().signal);
+        const artifact = component === 'CountryBriefPage' ? legacyArtifact : returned;
+        assert.ok(artifact);
+        assert.equal(JSON.stringify(snapshot), before);
+        assert.ok(artifact.content.includes(`Bundle generated at: ${exportClock}`));
+        assert.ok(artifact.content.includes(`Exported at: ${exportClock}`));
+        assert.ok(artifact.content.includes('Published at: 2026-10-06T08:00:00.000Z'));
+        assert.ok(artifact.content.includes('Freshness: 4h old at export.'));
+        assert.ok(artifact.content.includes(originalUrl));
+        assert.equal(artifact.mimeType, 'text/markdown;charset=utf-8');
+        assert.equal(artifact.filename, 'country-evidence-CA-2026-10-06T12-00-00-000Z.md');
+        if (state.original) {
+          assert.ok(artifact.content.includes(`Brief generated at: 2026-10-05T09:00:00.000Z (${state.cached ? 'cached' : 'fresh'})`));
+          assert.ok(!artifact.content.includes('Brief generation timestamp unavailable.'));
+        } else {
+          assert.doesNotMatch(artifact.content, /Brief generated at:/, 'Unknown original brief clock must not use the export clock');
+          assert.ok(artifact.content.includes('Brief generation timestamp unavailable.'));
+        }
+        assert.equal(artifact.content.includes('## Intelligence Brief'), Boolean(state.brief));
+        if (state.brief) assert.ok(artifact.content.includes(state.brief));
+      });
+    }
+  }
+
+  it('keeps absent, null, empty and invalid original factory clocks unavailable', async () => {
+    const exports = await loadExportUtils();
+    for (const original of [{}, { briefGeneratedAt: null }, { briefGeneratedAt: '' }, { briefGeneratedAt: 'invalid' }]) {
+      const input = { country: 'Canada', code: 'CA', generatedAt: '2026-10-06T12:00:00Z', exportedAt: '2026-10-06T12:00:00Z', ...original };
+      const before = JSON.stringify(input);
+      const bundle = Reflect.apply(exports.buildCountryEvidenceBundle, undefined, [input]);
+      assert.equal(bundle.briefGeneratedAt, undefined);
+      assert.equal(bundle.generatedAt, '2026-10-06T12:00:00.000Z');
+      assert.equal(bundle.exportedAt, '2026-10-06T12:00:00.000Z');
+      assert.ok(bundle.freshnessNotes.includes('Brief generation timestamp unavailable.'));
+      assert.equal(JSON.stringify(input), before);
+    }
+  });
+
   it('keeps cyber unknown without an admitted source and separates retained generation from export time', async () => {
     const signals = countrySignalsFromMilitary('FR');
     assert.equal(signals.cyberThreats, null);

@@ -471,6 +471,34 @@ test('WHO briefings come from the UN Geneva newsroom feed', async (t) => {
 
 // The CDC newsroom feed mixes outbreak notices with obituaries, conference
 // notes and surveillance reports; only items naming a known disease count.
+// Two sources reporting the same event are two reports; the disease+country
+// dedup used to keep only the newest, so the WHO briefing (2026-10-06) hid
+// CIDRAP's earlier Irkutsk story. Within one source, the newest still wins.
+test('dedup keeps one item per source for the same disease and country', async (t) => {
+  const day = (n) => new Date(Date.now() - n * 86_400_000).toUTCString();
+  const iso = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+  const cidrapXml = `<?xml version="1.0"?><rss><channel>
+    <item><title>Suspected plague incident leaves 1 dead in Siberia, Russia</title><link>https://www.cidrap.umn.edu/plague/new</link><description>d</description><pubDate>${day(2)}</pubDate></item>
+    <item><title>Plague case suspected in Siberia, Russia</title><link>https://www.cidrap.umn.edu/plague/old</link><description>d</description><pubDate>${day(4)}</pubDate></item>
+  </channel></rss>`;
+  const unogXml = `<feed><entry><title>Irkutsk suspected plague death - WHO</title><link href="https://www.unognewsroom.org/story/en/1/plague"/><updated>${iso(1)}</updated><summary>Russia plague.</summary></entry></feed>`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url === 'https://www.cidrap.umn.edu/news/88/rss') return new Response(cidrapXml, { status: 200 });
+    if (url === 'http://www.unognewsroom.org/feed') return new Response(unogXml, { status: 200 });
+    if (url.endsWith('.js')) return new Response('not found', { status: 404 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const plague = outbreaks.filter((o) => o.disease === 'Plague' && o.countryCode === 'RU').map((o) => o.sourceUrl).sort();
+  assert.deepEqual(plague, [
+    'https://www.cidrap.umn.edu/plague/new',
+    'https://www.unognewsroom.org/story/en/1/plague',
+  ]);
+});
+
 test('CDC items without a known disease are dropped', () => {
   const cdc = (title) => mapItem(rssNormalizeItem({ title, link: 'https://www.cdc.gov/x', desc: '', pubDate: 'Wed, 10 Sep 2026 12:00:00 GMT', sourceName: 'CDC' }));
   assert.equal(isReportableHeadline(cdc('We extend our deepest condolences to Suzy’s family'), NOW), false);

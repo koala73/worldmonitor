@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { FORECAST_EVIDENCE_MAX_LOOKBACK_MS } from '../scripts/_forecast-evidence-archive.mjs';
+import { FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, FORECAST_EVIDENCE_MAX_LOOKBACK_MS } from '../scripts/_forecast-evidence-archive.mjs';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
 const nowMs = 1_750_000_000_000;
@@ -131,7 +131,7 @@ function storyItem(overrides: Record<string, unknown> = {}) {
   return {
     // Reuters World + reuters.com is a curated family pair. After #8398 the
     // evidence archive rides storyTrackLinkForPersist, so a news.example
-    // fixture is blanked (no server-known host) and the member is dropped.
+    // fixture is blanked (no server-known host) and archived without a link.
     source: 'Reuters World',
     originPublisher: 'Reuters World',
     title: 'Central bank holds rates',
@@ -216,27 +216,40 @@ describe('forecast evidence publication wiring (#7082)', () => {
     assert.equal(payload.link, 'https://www.reuters.com/world/europe/x-123');
   });
 
-  it('does not archive a hostile off-publisher link the persist gate blanks (#8398)', async () => {
+  it('archives a story whose hostile link the persist gate blanks, without the link (#8398, #8990)', async () => {
     // The evidence member is a second stored copy of the link, with no
     // story:track dependency. A raw representative.link would keep a
-    // phishing URL the track row blanks; the persist gate must drop it
-    // here too (empty link makes the member unbuildable).
+    // phishing URL the track row blanks, so the member carries the blanked
+    // link. The story itself is still evidence, and dropping it froze the
+    // coverage marker on every digest build (#8990).
     const redis = await runWriter({
       coverage,
       items: [storyItem({ link: 'https://evil.example/phish' })],
     });
-    assert.deepEqual(
-      redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:')),
-      [],
-    );
-    assert.deepEqual(
-      redis.commandsOf((verb, key) => verb === 'ZADD' && key === 'forecast:evidence:v1'),
-      [],
-    );
+    assert.deepEqual(redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:')), []);
+    // Written through the keep-link script, so a stored link for the story survives (#8990).
+    const evals = redis.commandsOf((verb) => verb === 'EVAL')
+      .filter((command) => String(command[3]).startsWith('forecast:evidence:record:v1:'));
+    assert.equal(evals.length, 1);
+    assert.equal(evals[0][1], FORECAST_EVIDENCE_KEEP_LINK_SCRIPT);
+    const payload = JSON.parse(String(evals[0][4]));
+    assert.equal(payload.link, '');
+    assert.equal(payload.title, 'Central bank holds rates');
+    assert.ok(!JSON.stringify(redis.calls).includes('evil.example/phish'), 'the hostile URL never reaches Redis');
+    assert.equal(evals[0][7], 'evil.example', 'the blanked host lets the script drop a stored link on that host');
+    assert.equal(redis.commandsOf((verb, key) => verb === 'ZADD' && key === 'forecast:evidence:v1').length, 1);
     const markerSets = redis.commandsOf((verb, key) => verb === 'SET' && key === 'forecast:evidence:coverage:v1');
-    assert.equal(markerSets.length, 1, 'the marker is still re-SET to refresh its TTL');
+    assert.equal(markerSets.length, 1);
     const written = JSON.parse(String(markerSets[0][2]));
-    assert.equal(written.coverageEndMs, coverage.coverageEndMs, 'hostile-link drop blocks the coverage advance');
+    assert.ok(written.coverageEndMs > coverage.coverageEndMs, 'a blanked link does not block the coverage advance');
+  });
+
+  it('passes the host the ingest gate blanked to the keep-link script (#8990)', async () => {
+    const redis = await runWriter({ coverage, items: [storyItem({ link: '', blankedLinkHost: 'gated.example' })] });
+    const evals = redis.commandsOf((verb) => verb === 'EVAL')
+      .filter((command) => String(command[3]).startsWith('forecast:evidence:record:v1:'));
+    assert.equal(evals.length, 1);
+    assert.equal(evals[0][7], 'gated.example');
   });
 
   it('writes NOTHING to the archive from a preview deployment', async () => {
@@ -261,7 +274,7 @@ describe('forecast evidence publication wiring (#7082)', () => {
     // recovery would need another backfill run.
     const redis = await runWriter({
       coverage,
-      items: [storyItem(), storyItem({ link: '', title: 'Unbuildable' })],
+      items: [storyItem(), storyItem({ publishedAt: Number.NaN, title: 'Unbuildable' })],
     });
     const markerSets = redis.commandsOf((verb, key) => verb === 'SET' && key === 'forecast:evidence:coverage:v1');
     assert.equal(markerSets.length, 1, 'the marker is re-SET to refresh its TTL');

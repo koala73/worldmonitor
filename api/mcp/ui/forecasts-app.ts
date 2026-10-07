@@ -13,6 +13,17 @@ const STYLES = `
   .fc-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
   .fc-reliability { display: block; width: fit-content; max-width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--muted); margin-top: 6px; }
   .fc-reliability:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fc-family-history { margin-top: 8px; font-size: 12px; }
+  .fc-family-history details { margin-top: 0; }
+  .fc-res-history { display: inline-flex; gap: 4px; margin-left: 8px; }
+  .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: var(--up); }
+  .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: var(--down); }
+  .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--muted); }
+  .fc-family-history[data-unverified="true"] .fc-res-chip,
+  .fc-family-history[data-unverified="true"] .fc-res-mark { color: var(--muted); }
+  .fc-res-reasons { color: var(--muted); font-size: 11px; }
+  .fc-horizons-hint { color: var(--muted); font-size: 11px; }
+  .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
   .fc-meta { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
@@ -65,7 +76,86 @@ const RENDER = `
     var panel = object(data.panelRequest);
     var listKey = JSON.stringify([preds, generation, text(panel.token), state.available, total]);
     var reliability = object(d.reliability);
+    var voidLabels = {
+      no_establishable_metric: "The feed had no reading for this question",
+      value_source_never_settled: "The feed never published a settled value",
+      count_source_window_not_retained: "The feed no longer held the question window",
+      unsupported_window: "The question could not be checked against its feed",
+      unsupported_metric_key: "The question could not be checked against its feed",
+      not_hard_spec: "The question could not be checked against its feed",
+      missing_threshold: "The question was missing a threshold",
+      missing_deadline: "The question was missing a deadline",
+      missing_generated_at: "The forecast was missing its start date",
+      beyond_archive_horizon: "The news archive no longer covered the question window",
+      no_archive_evidence: "The news archive had nothing on the subject",
+      all_judges_void: "Both judges found the evidence insufficient",
+      judge_disagreement: "The judges disagreed",
+      judge_retry_exhausted: "The judges returned no verdict",
+      withheld_unpublished: "This kind of forecast is no longer published",
+      resolver_envelope_bug: "Scored against a data feed we could not read correctly",
+      market_price_not_outcome: "The feed showed the market price, not how the market resolved",
+      judged_evidence_unreliable: "Held out of scoring while the judges' evidence is being fixed",
+      judged_old_selection: "Judged with an evidence method later found unreliable",
+      late_read: "The feed was not read close enough to the deadline",
+      feed_unavailable: "The data feed was unavailable after the deadline",
+      other: "Could not be resolved"
+    };
+    function indexHistory(rows) {
+      var result = new Map();
+      var ids = new Set(preds.slice(0, 30).map(function (prediction) { return prediction.id; }));
+      if (!Array.isArray(rows)) return result;
+      rows.slice(0, 150).forEach(function (row) {
+        if (!row || typeof row !== "object" || Array.isArray(row) || typeof row.forecastId !== "string" || !row.forecastId || !ids.has(row.forecastId) || ["YES", "NO", "VOID"].indexOf(row.outcome) < 0) return;
+        var windows = result.get(row.forecastId) || [];
+        if (windows.length >= 5) return;
+        windows.push({ outcome: row.outcome, voidReason: row.outcome === "VOID" ? (typeof row.voidReason === "string" && Object.prototype.hasOwnProperty.call(voidLabels, row.voidReason) ? row.voidReason : "other") : "" });
+        result.set(row.forecastId, windows);
+      });
+      return result;
+    }
+    var familyHistory = indexHistory(d.familyOutcomes);
+    function updateHistory(fc) {
+      var old = fc.querySelector(".fc-family-history");
+      var windows = familyHistory.get(fc.getAttribute("data-forecast-id")) || [];
+      var unverified = !!text(object(reliability.underAudit).since);
+      var key = JSON.stringify([windows, unverified]);
+      if (old && old.getAttribute("data-history") === key) return;
+      if (!windows.length) { if (old) old.remove(); return; }
+      var wasOpen = !!(old && old.querySelector("details") && old.querySelector("details").open);
+      var slot = el("div", "fc-family-history"); slot.setAttribute("data-history", key);
+      if (unverified) slot.setAttribute("data-unverified", "true");
+      var row = el("span");
+      var last = el("span", "fc-res-chip", "Last: " + windows[0].outcome);
+      last.setAttribute("data-outcome", windows[0].outcome);
+      last.setAttribute("aria-label", "The previous window of this forecast resolved " + windows[0].outcome + ".");
+      if (unverified) {
+        var warning = "Recorded outcome, not verified while accuracy is under audit.";
+        last.setAttribute("aria-label", last.getAttribute("aria-label") + " " + warning);
+        last.setAttribute("title", warning);
+      }
+      row.appendChild(last);
+      if (windows.length > 1) {
+        var marks = el("span", "fc-res-history"); marks.setAttribute("aria-hidden", "true");
+        windows.forEach(function (windowOutcome) { var mark = el("span", "fc-res-mark", { YES: "✓", NO: "✗", VOID: "∅" }[windowOutcome.outcome]); mark.setAttribute("data-outcome", windowOutcome.outcome); marks.appendChild(mark); });
+        row.appendChild(marks);
+      }
+      var sentence = "Recent windows, newest first: " + windows.map(function (windowOutcome) { return windowOutcome.outcome + (windowOutcome.outcome === "VOID" ? " (" + voidLabels[windowOutcome.voidReason] + ")" : ""); }).join(", ");
+      if (windows.some(function (windowOutcome) { return windowOutcome.outcome === "VOID"; })) {
+        var disclosure = el("details", "fc-res-void"); disclosure.open = wasOpen;
+        var summary = el("summary"); summary.appendChild(row); disclosure.appendChild(summary);
+        disclosure.appendChild(el("p", "fc-res-reasons", sentence)); disclosure.ontoggle = reportSize; slot.appendChild(disclosure);
+      } else { slot.appendChild(row); slot.appendChild(el("span", "fc-sr-only", sentence)); }
+      if (old) old.replaceWith(slot); else fc.appendChild(slot);
+    }
     function badge(domain) {
+      var audit = object(reliability.underAudit);
+      if (text(audit.since)) {
+        var held = el("a", "fc-reliability", "Accuracy under audit");
+        held.href = "https://www.worldmonitor.app/accuracy/"; held.target = "_blank"; held.rel = "noopener noreferrer";
+        held.setAttribute("aria-label", "Accuracy under audit since " + text(audit.since) + ". Scores are withdrawn while scoring errors are corrected.");
+        held.setAttribute("data-fc-reliability-state", "under-audit");
+        return held;
+      }
       if (reliability.status !== "ready" || !Array.isArray(reliability.byDomain)) return null;
       var row = reliability.byDomain.find(function (value) { return value && value.domain === domain; });
       if (!row) return null;
@@ -86,18 +176,20 @@ const RENDER = `
     if (data.stale || node.stale) source.push("stale cache");
     if (text(node.error)) source.push(text(node.error).split("_").join(" "));
     q("foot").textContent = source.join(" · ");
-    if (cases.listKey === listKey && cases.updateReliability) {
-      cases.updateReliability(reliability); reportSize(); return;
+    if (cases.listKey === listKey && cases.updateMetadata) {
+      cases.updateMetadata(reliability, d.familyOutcomes); reportSize(); return;
     }
     cases.pending.forEach(function (cancel) { cancel(); });
     cases.pending.clear(); cases.cache.clear(); cases.generation = generation; cases.listKey = listKey;
-    cases.updateReliability = function (value) {
+    cases.updateMetadata = function (value, rows) {
       reliability = value;
+      familyHistory = indexHistory(rows);
       host.querySelectorAll(".fc").forEach(function (fc) {
         var old = fc.querySelector(".fc-reliability");
         var next = badge(fc.getAttribute("data-forecast-domain"));
         if (old) { if (next) old.replaceWith(next); else old.remove(); }
         else if (next) fc.insertBefore(next, fc.querySelector("details"));
+        updateHistory(fc);
       });
     };
     var theaterState = renderData.forecastTheaters || (renderData.forecastTheaters = { key: "", value: null, error: "", pending: false, cancel: null, serial: 0 });
@@ -393,6 +485,7 @@ const RENDER = `
     function appendForecast(p) {
       var fc = el("article", "fc");
       fc.setAttribute("data-forecast-domain", text(p.domain));
+      fc.setAttribute("data-forecast-id", text(p.id));
       var head = el("div", "fc-head");
       head.appendChild(el("span", "fc-title", text(p.title) || "Forecast"));
       var pr = num(p.probability);
@@ -431,6 +524,19 @@ const RENDER = `
         reportSize();
       };
       fc.appendChild(details);
+      if (Array.isArray(p.scoredHorizons)) {
+        var horizonNames = [["h24", "24h"], ["d7", "7d"], ["d30", "30d"]]
+          .filter(function (entry) { return p.scoredHorizons.indexOf(entry[0]) >= 0; })
+          .map(function (entry) { return entry[1]; });
+        if (horizonNames.length) {
+          var horizons = el("details", "fc-horizons");
+          horizons.appendChild(el("summary", "", "Also scored at: " + horizonNames.join(", ")));
+          horizons.appendChild(el("p", "fc-horizons-hint", "The headline probability is graded at the forecast's own horizon. The projection at each of these horizons is graded too, against its source feed, using the value first published for this forecast. Projection values are not shown because the current value can differ from the graded one."));
+          horizons.ontoggle = reportSize;
+          fc.appendChild(horizons);
+        }
+      }
+      updateHistory(fc);
       host.appendChild(fc);
     }
     function options(id, field, all) {

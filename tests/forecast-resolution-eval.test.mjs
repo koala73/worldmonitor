@@ -9,7 +9,11 @@ import {
   resolveHardSpec,
   extractMetricObservation,
   extractMetricValue,
+  shapeResolutionFeed,
 } from '../scripts/_forecast-resolution-eval.mjs';
+import { attachResolutionSpecs, buildHorizonResolutionSpecs } from '../scripts/_forecast-resolution.mjs';
+import { MARITIME_REGIONS, detectGpsJammingScenarios, normalizeGpsJamming } from '../scripts/seed-forecasts.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const START = Date.parse('2026-07-07T00:00:00Z');
@@ -601,7 +605,7 @@ describe('resolveHardSpec', () => {
     assert.equal(crossDown.evidence.comparison, '28 crosses 30 from 60');
   });
 
-  it('resolves at-endDate yesPrice from production market baselines without inverting settlement', () => {
+  it('never grades a bootstrap yesPrice read: the feed carries the crowd price, not the outcome (#5233)', () => {
     const e = entry({
       spec: {
         kind: 'hard',
@@ -615,48 +619,14 @@ describe('resolveHardSpec', () => {
       },
       deadline: START + DAY_MS,
     });
-
-    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 98 }] }, {
-      recent: [
-        { ts: START, value: 72 },
-        { ts: START + DAY_MS - 5, value: 3 },
-      ],
-    }, START + DAY_MS);
-
-    assert.equal(yes.outcome, 'YES');
-    assert.equal(yes.evidence.metricValue, 98);
-
-    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 2 }] }, {
-      recent: [
-        { ts: START, value: 72 },
-        { ts: START + DAY_MS - 5, value: 98 },
-      ],
-    }, START + DAY_MS);
-
-    assert.equal(no.outcome, 'NO');
-    assert.equal(no.evidence.metricValue, 2);
-  });
-
-  it('keeps prediction-market yesPrice settlement flip-resistant around the 50 line', () => {
-    const e = entry({
-      spec: {
-        kind: 'hard',
-        metricKey: 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)',
-        operator: 'crosses',
-        threshold: 50,
-        baselineValue: 90,
-        window: 'at-endDate',
-        deadline: START + DAY_MS,
-        sourceFeed: 'prediction:markets-bootstrap:v1',
-      },
-      deadline: START + DAY_MS,
-    });
-
-    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 51 }] }, {}, START + DAY_MS);
-    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 49 }] }, {}, START + DAY_MS);
-
-    assert.equal(yes.outcome, 'YES');
-    assert.equal(no.outcome, 'NO');
+    for (const yesPrice of [98, 51, 49, 2]) {
+      const result = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice }] }, {
+        recent: [{ ts: START + DAY_MS - 5, value: yesPrice }],
+      }, START + DAY_MS);
+      assert.equal(result.outcome, 'VOID', `yesPrice ${yesPrice}`);
+      assert.equal(result.evidence.reason, 'market_price_not_outcome');
+    }
+    assert.equal(resolveHardSpec(e, {}, {}, START + DAY_MS - 1).status, 'pending', 'still pending before endDate');
   });
 
   it('is deterministic and every VOID carries a reason', () => {
@@ -719,5 +689,118 @@ describe('extractMetricObservation present() semantics (#void-triage)', () => {
     const res = resolveHardSpec(entry, { outages: [{ country: 'Iraq' }] }, samples, now + 1);
     assert.equal(res.status, 'resolved');
     assert.equal(res.outcome, 'NO');
+  });
+});
+
+describe('gpsjam hexCount measures what the GPS detector measured (#8990)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const hex = (lat, lon, level = 'high') => ({ h3: `84${lat}${lon}`, lat, lon, level, region: 'other', pct: level === 'high' ? 40 : 5 });
+  // Live v2 shape: one daily snapshot of single medium/high res-4 hexes, slug
+  // regions, no count field.
+  const snapshot = (date, hexes) => ({ date, fetchedAt: `${date}T16:00:00.000Z`, source: 'gpsjam.org', hexes });
+  const HEXES = [
+    hex(34, 33), hex(36, 28, 'medium'), // Eastern Mediterranean, interior
+    hex(33, 30), hex(37, 30, 'medium'), hex(35, 25), hex(34, 37, 'medium'), // Eastern Mediterranean, one on each box edge
+    hex(26, 52), hex(27, 50, 'medium'), hex(30, 48), // Persian Gulf only
+    hex(21, 50), // inside both the Red Sea and Persian Gulf boxes
+    hex(0, 0), hex(55, 70), // outside every box
+  ];
+  const parsedFor = (region) => parseMetricKey(`${GPS_FEED}|hexCount(region==${region})`);
+
+  it('buckets single hexes into the detector boxes, both interference levels, zero-count boxes included', () => {
+    const shaped = shapeResolutionFeed(GPS_FEED, snapshot('2026-10-06', HEXES));
+    const counts = Object.fromEntries(Object.keys(MARITIME_REGIONS).map((region) => [region, extractMetricValue(parsedFor(region), shaped)]));
+    assert.deepEqual(counts, {
+      'Eastern Mediterranean': 6,
+      'Red Sea': 1,
+      'Persian Gulf': 4,
+      'Black Sea': 0,
+      'Baltic Sea': 0,
+    });
+  });
+
+  it('reads the same counts through a seed envelope', () => {
+    const raw = snapshot('2026-10-06', HEXES);
+    const enveloped = { _seed: { fetchedAt: Date.parse('2026-10-06T16:00:00Z') }, data: raw };
+    assert.deepEqual(shapeResolutionFeed(GPS_FEED, enveloped), shapeResolutionFeed(GPS_FEED, raw));
+  });
+
+  it('stamps each region with the snapshot date as asOf', () => {
+    const obs = extractMetricObservation(parsedFor('Eastern Mediterranean'), shapeResolutionFeed(GPS_FEED, snapshot('2026-10-06', HEXES)));
+    assert.deepEqual(obs, { value: 6, asOf: Date.parse('2026-10-06') });
+  });
+
+  it('matches the detector count for every region the detector emits', () => {
+    const raw = snapshot('2026-10-06', HEXES);
+    const predictions = detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(raw) });
+    assert.deepEqual(predictions.map((p) => p.region).sort(), ['Eastern Mediterranean', 'Persian Gulf']);
+    const shaped = shapeResolutionFeed(GPS_FEED, raw);
+    for (const prediction of predictions) {
+      const detected = Number(prediction.signals[0].value.split(' ')[0]);
+      assert.equal(extractMetricValue(parsedFor(prediction.region), shaped), detected, prediction.region);
+    }
+  });
+
+  it('the detector emits a zone at the shared floor and not below it', () => {
+    const zone = (count) => ({ hexes: Array.from({ length: count }, () => hex(35, 30)) });
+    const emitted = (count) => detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(zone(count)) }).map((p) => p.region);
+    assert.equal(GPS_ZONE_MIN_HEXES, 3);
+    assert.deepEqual(emitted(GPS_ZONE_MIN_HEXES), ['Eastern Mediterranean']);
+    assert.deepEqual(emitted(GPS_ZONE_MIN_HEXES - 1), []);
+  });
+
+  it('an emitted GPS forecast resolves on the detector floor: YES while the zone holds it, NO once it drops below', () => {
+    const emittedAt = Date.parse('2026-10-06T18:00:00Z');
+    const predictions = detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(snapshot('2026-10-05', HEXES)) });
+    const [forecast] = attachResolutionSpecs(predictions.filter((p) => p.region === 'Eastern Mediterranean'), {}, emittedAt);
+    const spec = forecast.resolution;
+    assert.equal(spec.metricKey, `${GPS_FEED}|hexCount(region==Eastern Mediterranean)`);
+    assert.deepEqual([spec.operator, spec.threshold, spec.rule, spec.ruleVersion], ['>=', GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION]);
+    const ledgerEntry = { id: forecast.id, generatedAt: emittedAt, deadline: spec.deadline, spec };
+    const atDeadline = spec.deadline + 30 * 60 * 1000;
+    const deadlineDate = new Date(spec.deadline).toISOString().slice(0, 10);
+    const withEasternMed = (count) => shapeResolutionFeed(GPS_FEED, snapshot(deadlineDate, Array.from({ length: count }, () => hex(35, 30))));
+
+    const held = resolveHardSpec(ledgerEntry, withEasternMed(GPS_ZONE_MIN_HEXES), null, atDeadline);
+    assert.equal(held.status, 'resolved');
+    assert.equal(held.outcome, 'YES', 'fewer hexes than at emission still meets the floor');
+    assert.equal(held.evidence.metricValue, GPS_ZONE_MIN_HEXES);
+
+    const faded = resolveHardSpec(ledgerEntry, withEasternMed(GPS_ZONE_MIN_HEXES - 1), null, atDeadline);
+    assert.equal(faded.outcome, 'NO');
+    assert.equal(faded.evidence.metricValue, GPS_ZONE_MIN_HEXES - 1);
+  });
+
+  it('a GPS forecast\'s horizon windows carry the same rule, so the ledger never re-migrates them', () => {
+    const [prediction] = detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(snapshot('2026-10-05', HEXES)) });
+    const horizons = buildHorizonResolutionSpecs(prediction, {}, Date.parse('2026-10-06T18:00:00Z'));
+    const hard = Object.values(horizons).filter((spec) => spec.kind === 'hard');
+    assert.ok(hard.length > 0);
+    for (const spec of hard) assert.deepEqual([spec.threshold, spec.rule, spec.ruleVersion], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION], spec.horizon);
+  });
+
+  it('waits for the snapshot covering the deadline day, and VOIDs if it never arrives', () => {
+    const deadline = Date.parse('2026-10-13T12:00:00Z');
+    const ledgerEntry = entry({
+      generatedAt: deadline - 7 * DAY_MS,
+      deadline,
+      spec: { kind: 'hard', metricKey: `${GPS_FEED}|hexCount(region==Eastern Mediterranean)`, operator: '>=', threshold: 4, window: 'at-deadline', sourceFeed: GPS_FEED, deadline },
+    });
+    const stale = shapeResolutionFeed(GPS_FEED, snapshot('2026-10-12', HEXES));
+    const pending = resolveHardSpec(ledgerEntry, stale, null, deadline + DAY_MS);
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.evidence.reason, 'value_source_not_settled');
+    const never = resolveHardSpec(ledgerEntry, stale, null, deadline + 11 * DAY_MS);
+    assert.equal(never.outcome, 'VOID');
+    assert.equal(never.evidence.reason, 'value_source_never_settled');
+  });
+
+  it('a feed without a hexes array still yields no metric rather than a fabricated 0', () => {
+    assert.ok(Number.isNaN(extractMetricValue(parsedFor('Baltic Sea'), shapeResolutionFeed(GPS_FEED, { date: '2026-10-06' }))));
+  });
+
+  it('the detector and the resolver share one box definition', async () => {
+    const shared = await import('../scripts/_gps-maritime-regions.mjs');
+    assert.equal(MARITIME_REGIONS, shared.MARITIME_REGIONS);
   });
 });

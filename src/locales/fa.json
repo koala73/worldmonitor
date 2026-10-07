@@ -2090,7 +2090,7 @@
       "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
+      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
       "record": {
         "label": "کارنامه",
         "labelHint": "پیش‌بینی‌های منتشرشده پس از مشخص‌شدن نتیجه، در {{days}} روز گذشته چه امتیازی گرفتند. برای دیدن معنی هر عدد، نشانگر را روی آن نگه دارید.",
@@ -2111,6 +2111,49 @@
         "measuredHint": "نحوه عملکرد پیش‌بینی‌های منتشرشده {{domain}} در {{n}} پیش‌بینی تصحیح‌شده در {{days}} روز اخیر. نرخ پایه همان امتیازی است که پاسخ دائمی با نرخ مشاهده‌شده حوزه می‌دهد. کم‌تر بهتر است. این رکورد حوزه است، نه این پیش‌بینی.",
         "unmeasured": "هنوز اندازه‌گیری نشده",
         "unmeasuredHint": "پیش‌بینی‌های {{domain}} {{n}} نتیجه تصحیح‌شده در {{days}} روز گذشته داشته‌اند. یک دامنه نیاز به {{min}} نتیجه دارد تا دقت آن نمایش داده شود."
+      },
+      "resolution": {
+        "last": "آخرین: {{outcome}}",
+        "lastSr": "پنجره قبلی این پیش‌بینی با {{outcome}} حل شد.",
+        "history": "پنجره‌های اخیر، جدیدترین ابتدا: {{list}}",
+        "outcome": {
+          "yes": "بلی",
+          "no": "خیر",
+          "void": "باطل"
+        },
+        "void": {
+          "no_establishable_metric": "فید هیچ داده‌ای برای این پرسش نداشت",
+          "value_source_never_settled": "فید هرگز مقدار حتمی را منتشر نکرد",
+          "count_source_window_not_retained": "فید دیگر پنجره پرسش را نگه‌داری نمی‌کند",
+          "unsupported_window": "پرسش را نمی‌شد در برابر فید آن بررسی کرد",
+          "unsupported_metric_key": "پرسش را نمی‌شد در برابر فید آن بررسی کرد",
+          "not_hard_spec": "پرسش را نمی‌شد در برابر فید آن بررسی کرد",
+          "missing_threshold": "پرسش دارای حد آستانه نبود",
+          "missing_deadline": "پرسش مهلت زمانی نداشت",
+          "missing_generated_at": "پیش‌بینی تاریخ شروع خود را نداشت",
+          "beyond_archive_horizon": "بایگانی اخبار دیگر پنجره پرسش را پوشش نمی‌داد",
+          "no_archive_evidence": "بایگانی اخبار موردی درباره موضوع نداشت",
+          "all_judges_void": "هر دو داور شواهد را ناکافی یافتند",
+          "judge_disagreement": "داوران با هم توافق نداشتند",
+          "judge_retry_exhausted": "داوران حکمی صادر نکردند",
+          "withheld_unpublished": "این نوع پیش‌بینی دیگر منتشر نمی‌شود",
+          "resolver_envelope_bug": "بر اساس فید داده‌ای امتیازدهی شد که نتوانستیم آن را درست بخوانیم",
+          "market_price_not_outcome": "فید قیمت بازار را نشان می‌داد، نه نحوه تسویه بازار را",
+          "judged_evidence_unreliable": "تا زمان اصلاح شواهد داوران، از امتیازدهی کنار گذاشته شده است",
+          "other": "نتیجه‌ای تعیین نشد",
+          "judged_old_selection": "داوری با روشی برای گزینش شواهد که بعداً نامعتبر شناخته شد",
+          "late_read": "فید به اندازه کافی نزدیک به موعد خوانده نشد",
+          "feed_unavailable": "فید داده‌ها پس از موعد در دسترس نبود"
+        }
+      },
+      "horizons": {
+        "label": "همچنین در این افق‌ها نمره‌گذاری شده: {{list}}",
+        "hint": "احتمال عنوان در افق زمانی پیش‌بینی خود نمره‌گذاری می‌شود. پیش‌بینی در هر یک از این افق‌ها نیز مقابل خوراک منبع خود نمره‌گذاری می‌شود، با استفاده از مقدار اول منتشرشده برای این پیش‌بینی. مقادیر پیش‌بینی نمایش داده نمی‌شوند زیرا مقدار فعلی می‌تواند با مقدار نمره‌گذاری‌شده متفاوت باشد."
+      },
+      "audit": {
+        "label": "دقت در حال بررسی",
+        "hint": "از {{date}} در حال بررسی است. یک بررسی خطاهایی در نحوه امتیازدهی پیش‌بینی‌ها یافت. امتیازها تا انجام اصلاحات پس گرفته شده‌اند. پیش‌بینی‌ها همچنان منتشر و ثبت می‌شوند.",
+        "unverified": "نتیجه ثبت‌شده، تأییدنشده تا زمانی که دقت در حال بررسی است."
       }
     },
     "escalationCorrelation": {

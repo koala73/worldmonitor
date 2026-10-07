@@ -47,7 +47,7 @@ function assertRisk(doc) {
   assert.equal(doc.querySelectorAll('#components .comp').length, 4);
   assert.match(text(doc, 'components'), /Domestic unrest44.*Armed conflict88.*Security & mobility65.*Information environment71/);
   assert.equal(text(doc, 'advisory'), 'do not travel');
-  assert.equal(text(doc, 'sanctions'), '3417 OFAC-listed');
+  assert.equal(text(doc, 'sanctions'), '3417 sanctions listings');
   assert.equal(text(doc, 'trend'), 'Rising');
   assert.equal(text(doc, 'foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
 }
@@ -61,6 +61,20 @@ function assertUnknownScore(doc) {
 }
 
 describe('Country Risk exported HTML projections', () => {
+  it('uses a source-neutral qualifier for a SEMA-only positive country count', async () => {
+    for (const [count, expected] of [[1, '1 sanctions listing'], [2, '2 sanctions listings']]) {
+      const semaOnlyRisk = { ...risk, sanctionsCount: count, sanctionsActive: true };
+      for (const result of [wire(semaOnlyRisk), wire(semaOnlyRisk, true), textWire(semaOnlyRisk)]) {
+        const view = await mount(result);
+        assert.equal(text(view.doc, 'country'), 'Russia');
+        assert.equal(text(view.doc, 'sanctions'), expected);
+        assert.doesNotMatch(text(view.doc, 'sanctions'), /OFAC/);
+        assert.equal(text(view.doc, 'foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+        assert.equal(view.requests(), 0);
+        assert.ok(view.messages.every(message => ['ui/initialize', 'ui/notifications/size-changed'].includes(message.method)));
+      }
+    }
+  });
   it('uses canonical CII headline levels at every boundary and for the captured Ukraine score', async () => {
     const source = readFileSync(new URL('../src/services/cached-risk-scores.ts', import.meta.url), 'utf8');
     const mapper = source.match(/function getScoreLevel\(score: number\):[^{]+\{[\s\S]*?\n\}/);
@@ -109,7 +123,7 @@ describe('Country Risk exported HTML projections', () => {
       const view = await mount(wire({ ...risk, advisoryLevel: advisory }));
       assert.equal(text(view.doc, 'advisory'), '—');
       assert.equal(text(view.doc, 'cii'), '78');
-      assert.equal(text(view.doc, 'sanctions'), '3417 OFAC-listed');
+      assert.equal(text(view.doc, 'sanctions'), '3417 sanctions listings');
     });
   }
   it('retains outage, healthy untracked, zero and unknown numeric semantics under projections', async () => {
@@ -136,7 +150,7 @@ describe('Country Risk exported HTML projections', () => {
     view.send(wire({ ...risk, cii: { combinedScore: null, components: { newsActivity: null, ciiContribution: '', geoConvergence: [], militaryActivity: false } }, fetchedAt: 0 }, true));
     assertUnknownScore(view.doc);
     assert.equal(text(view.doc, 'country'), 'Russia');
-    assert.equal(text(view.doc, 'sanctions'), '3417 OFAC-listed');
+    assert.equal(text(view.doc, 'sanctions'), '3417 sanctions listings');
     assert.equal(text(view.doc, 'advisory'), 'do not travel');
     view.send(wire(risk, true));
     assertRisk(view.doc);

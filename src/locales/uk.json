@@ -2100,7 +2100,7 @@
       "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
+      "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
       "record": {
         "label": "Послужний список",
         "labelHint": "Як оцінювалися опубліковані прогнози після їх розв'язання за останні {{days}} днів. Наведіть курсор на число, щоб дізнатися, що воно означає.",
@@ -2121,6 +2121,49 @@
         "measuredHint": "Як опубліковані прогнози {{domain}} набрали балів на {{n}} оцінених прогнозах протягом останніх {{days}} днів. Базова ставка — це те, що набрала б відповідь, яка завжди відповідала б спостережуваній частоті «так» в домені. Менше — краще. Це рекорд домену, а не цього прогнозу.",
         "unmeasured": "Ще не виміряно",
         "unmeasuredHint": "Прогнози {{domain}} мають {{n}} оцінених результатів за останні {{days}} днів. Домену потрібно {{min}}, перш ніж буде показана його точність."
+      },
+      "resolution": {
+        "last": "Останнє: {{outcome}}",
+        "lastSr": "Попереднє вікно цього прогнозу завершилось як {{outcome}}.",
+        "history": "Недавні вікна, найновіші спочатку: {{list}}",
+        "outcome": {
+          "yes": "ТАК",
+          "no": "НІ",
+          "void": "СКАСОВАНО"
+        },
+        "void": {
+          "no_establishable_metric": "Джерело не мало показника для цього питання",
+          "value_source_never_settled": "Джерело ніколи не опублікувало остаточне значення",
+          "count_source_window_not_retained": "Джерело більше не зберігало вікно питання",
+          "unsupported_window": "Питання не вдалося перевірити за його джерелом",
+          "unsupported_metric_key": "Питання не вдалося перевірити за його джерелом",
+          "not_hard_spec": "Питання не вдалося перевірити за його джерелом",
+          "missing_threshold": "У питанні бракувало порогового значення",
+          "missing_deadline": "У питанні бракувало крайнього терміну",
+          "missing_generated_at": "У прогнозі бракувало дати початку",
+          "beyond_archive_horizon": "Архів новин більше не охоплював вікно питання",
+          "no_archive_evidence": "Архів новин не мав інформації на цю тему",
+          "all_judges_void": "Обидва судді вважали докази недостатніми",
+          "judge_disagreement": "Судді не дійшли згоди",
+          "judge_retry_exhausted": "Судді не винесли рішення",
+          "withheld_unpublished": "Прогнози цього типу більше не публікуються",
+          "resolver_envelope_bug": "Оцінено за джерелом даних, яке ми не змогли правильно прочитати",
+          "market_price_not_outcome": "Джерело показувало ринкову ціну, а не те, чим завершився ринок",
+          "judged_evidence_unreliable": "Виключено з оцінювання, доки виправляються матеріали для суддів",
+          "other": "Не вдалося визначити результат",
+          "judged_old_selection": "Оцінено методом доказування, який пізніше виявився ненадійним",
+          "late_read": "Джерело даних не було прочитано достатньо близько до терміну",
+          "feed_unavailable": "Джерело даних було недоступне після терміну"
+        }
+      },
+      "horizons": {
+        "label": "Також оцінено в: {{list}}",
+        "hint": "Основна ймовірність оцінюється на власному горизонті прогнозу. Проекція на кожному з цих горизонтів також оцінюється щодо свого джерела даних, використовуючи значення, вперше опубліковане для цього прогнозу. Значення проекцій не показуються, оскільки поточне значення може відрізнятися від оціненого."
+      },
+      "audit": {
+        "label": "Точність на аудиті",
+        "hint": "На аудиті з {{date}}. Під час аудиту виявлено помилки в оцінюванні прогнозів. Оцінки вилучені під час внесення коригувань. Прогнози все ще публікуються та записуються.",
+        "unverified": "Записаний результат, не перевірений під час аудиту точності."
       }
     },
     "escalationCorrelation": {

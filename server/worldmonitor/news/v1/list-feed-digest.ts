@@ -71,6 +71,8 @@ import {
   accumulatorPruneBounds,
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
+  buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
   forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
@@ -518,6 +520,9 @@ export interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
+  // the evidence writer drop a stored link on a host the gate now rejects.
+  blankedLinkHost?: string;
   publishedAt: number;
   isAlert: boolean;
   level: ThreatLevel;
@@ -1089,6 +1094,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     if (forDigest) parsedTotal++;
 
     let link: string;
+    let blankedLinkHost = '';
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
@@ -1192,6 +1198,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
         `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
           `host="${linkHostnameForLog(link)}"`,
       );
+      blankedLinkHost = forecastEvidenceLinkHost(link);
       link = '';
     }
 
@@ -1201,6 +1208,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       originPublisherTrusted,
       title,
       link,
+      ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
       level: threat.level,
@@ -2682,11 +2690,12 @@ async function writeStoryTracking(
         // story:track — the member is a second stored copy of the link, so
         // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
+          const evidenceLink = storyTrackLinkForPersist(representative);
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: storyTrackLinkForPersist(representative),
+              link: evidenceLink,
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -2697,7 +2706,11 @@ async function writeStoryTracking(
             // representative fields live in a self-contained, independently
             // retained record key, so refreshing one story cannot create a
             // second index member or crowd unique evidence out of the cap.
-            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            // A blanked link never replaces a stored link for the same story (#8990).
+            evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
+              forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : (representative.blankedLinkHost || forecastEvidenceLinkHost(representative.link)),
+            ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
           } else {

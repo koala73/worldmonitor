@@ -8,7 +8,6 @@ import {
   HORIZON_MS,
   CONFLICT_COUNT_SOURCE_FEED,
   UNREST_COUNT_SOURCE_FEED,
-  CYBER_COUNT_SOURCE_FEED,
   RESOLUTION_FEED_KEYS,
   SIGNAL_TO_HARD_FAMILY,
   JUDGED_DOMAINS,
@@ -174,9 +173,9 @@ describe('buildResolutionSpec — conflict is judged (#5136)', () => {
     assert.equal(spec.kind, 'judged');
   });
 
-  it('the reclassification is scoped — cyber (populated feed) still emits a hard spec', () => {
+  it('the reclassification is scoped — a populated chokepoint feed still emits a hard spec', () => {
     const spec = buildResolutionSpec(
-      pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] }),
+      pred({ domain: 'supply_chain', region: 'Strait of Hormuz', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
       {},
       GENERATED_AT,
     );
@@ -310,7 +309,7 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
   });
 
-  it('a cyber volume forecast resolves to the cyber threat count feed', () => {
+  it('a cyber volume forecast is judged: its feed cannot answer a 7-day count (#5233)', () => {
     const forecast = pred({
       domain: 'cyber',
       region: 'Estonia',
@@ -318,9 +317,8 @@ describe('buildResolutionSpec — feed mapping per family', () => {
       signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, CYBER_COUNT_SOURCE_FEED);
-    assert.equal(spec.metricKey, `${CYBER_COUNT_SOURCE_FEED}|count(country==Estonia)`);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.sourceFeed, null);
   });
 
   it('the legacy infrastructure cascade detector is retired from publication', () => {
@@ -518,8 +516,22 @@ describe('buildResolutionSpec — domain-specific hard and judged families', () 
 });
 
 describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
+  it('a judged cyber forecast asks a question naming the country, threshold and window (#5233)', () => {
+    const spec = buildResolutionSpec(pred({
+      domain: 'cyber', region: 'Estonia', title: 'Cyber threat concentration: Estonia', timeHorizon: '7d',
+      signals: [{ type: 'cyber', value: '40 threats (malware)', weight: 0.5 }],
+    }), {}, GENERATED_AT);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.question, 'Within the 7d horizon after this forecast, did public threat-intelligence sources report at least 15 new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to Estonia?');
+  });
+
+  it('a judged cyber forecast without a threat tally keeps the generic question', () => {
+    const spec = buildResolutionSpec(pred({ domain: 'cyber', region: 'Estonia', title: 'Cyber threat concentration: Estonia', timeHorizon: '7d' }), {}, GENERATED_AT);
+    assert.equal(spec.question, 'Will "Cyber threat concentration: Estonia" (cyber, Estonia) resolve YES within its 7d horizon?');
+  });
+
   it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
-    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['infrastructure', 'military']);
+    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['cyber', 'infrastructure', 'military']);
   });
 
   it('a political-domain forecast carrying a cii signal yields judged, never a hard conflict spec', () => {
@@ -647,7 +659,6 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
   const fixtures = [
     pred({ id: 'conflict', domain: 'conflict', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] }),
     pred({ id: 'political', domain: 'political', region: 'Venezuela', signals: [{ type: 'unrest_events', value: '4 unrest events', weight: 0.3 }] }),
-    pred({ id: 'cyber', domain: 'cyber', region: 'Estonia', signals: [{ type: 'cyber', value: '10 threats', weight: 0.5 }] }),
     pred({ id: 'supply_chain', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
     pred({ id: 'gps', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'gps_jamming', value: '5 jamming hexes', weight: 0.5 }] }),
     pred({ id: 'pm', domain: 'market', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] }),
@@ -1073,12 +1084,13 @@ describe('extraction gate shadow (#7067)', () => {
   }
 
   const RAW_FEEDS = {
-    [GPS_FEED]: { hexes: [{ region: 'Persian Gulf', hexCount: 14 }] },
+    // Live gpsjam shape: single hexes; the Gulf of Guinea has no detector box.
+    [GPS_FEED]: { date: '2023-11-14', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
     [COMMODITY_FEED]: { _seed: { fetchedAt: GENERATED_AT }, data: { quotes: [{ symbol: 'CL=F', price: 70.1 }] } },
   };
 
   it('reads each hard spec sourceFeed once and skips judged specs', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast(), pred({ domain: 'military' })]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast(), pred({ domain: 'military' })]);
     assert.deepEqual(extractionShadowFeedKeys(forecasts).sort(), [GPS_FEED, COMMODITY_FEED].sort());
   });
 
@@ -1093,14 +1105,14 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('negative control: an absent geography extracts non-finite and is marked would-downgrade', () => {
-    const [forecast] = attached([gpsForecast('Baltic Sea')]);
+    const [forecast] = attached([gpsForecast('Gulf of Guinea')]);
     const [verdict] = evaluateExtractionShadow([forecast], RAW_FEEDS);
     assert.deepEqual(verdict, {
-      id: 'fc-gps-Baltic Sea',
+      id: 'fc-gps-Gulf of Guinea',
       outcome: 'fail',
       family: 'gps',
       domain: 'supply_chain',
-      metricKey: `${GPS_FEED}|hexCount(region==Baltic Sea)`,
+      metricKey: `${GPS_FEED}|hexCount(region==Gulf of Guinea)`,
       reason: 'metric_not_found',
       value: null,
     });
@@ -1127,14 +1139,14 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('count specs are skipped: the resolver tallies events instead of extracting a record', () => {
-    const [forecast] = attached([pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] })]);
-    const [verdict] = evaluateExtractionShadow([forecast], { [CYBER_COUNT_SOURCE_FEED]: { threats: [] } });
+    const [forecast] = attachResolutionSpecs([pred({ domain: 'conflict', region: 'Mali', timeHorizon: '7d', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] })], COMMODITY_INPUTS, GENERATED_AT, { conflictCountFeedAvailable: true });
+    const [verdict] = evaluateExtractionShadow([forecast], { [CONFLICT_COUNT_SOURCE_FEED]: { events: [] } });
     assert.equal(verdict.outcome, 'skipped');
     assert.equal(verdict.reason, 'count_resolved_by_tally');
   });
 
   it('shadow mode never changes the attached spec', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]);
     const specs = forecasts.map((forecast) => forecast.resolution);
     const before = JSON.stringify(forecasts);
     const verdicts = evaluateExtractionShadow(forecasts, RAW_FEEDS);
@@ -1151,7 +1163,7 @@ describe('extraction gate shadow (#7067)', () => {
       }
       return value;
     };
-    const forecasts = deepFreeze(attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]));
+    const forecasts = deepFreeze(attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]));
     const feeds = deepFreeze(structuredClone(RAW_FEEDS));
     const originalFetch = globalThis.fetch;
     const originalNow = Date.now;
@@ -1169,7 +1181,7 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('summarizes verdicts into per-outcome, per-family, and per-domain counters', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]);
     const summary = summarizeExtractionShadow(evaluateExtractionShadow(forecasts, RAW_FEEDS));
     assert.deepEqual(summary, {
       total: 3,

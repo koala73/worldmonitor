@@ -123,6 +123,25 @@ function mountWidgetHtml(html) {
     setAttribute(name, value) {
       this.attributes[name] = String(value);
     }
+    getAttribute(name) {
+      return this.attributes[name] ?? null;
+    }
+    querySelectorAll(selector) {
+      const matches = [];
+      const visit = (node) => {
+        for (const child of node.childNodes) {
+          if (selector.startsWith('.')
+            ? child.className.split(/\s+/).includes(selector.slice(1))
+            : child.tagName.toLowerCase() === selector.toLowerCase()) matches.push(child);
+          visit(child);
+        }
+      };
+      visit(this);
+      return matches;
+    }
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] ?? null;
+    }
     getBoundingClientRect() {
       return { height: 240 };
     }
@@ -137,6 +156,11 @@ function mountWidgetHtml(html) {
   const document = {
     documentElement,
     getElementById: (id) => byId.get(id) ?? null,
+    createTextNode: (text) => {
+      const node = new TestElement('#text');
+      node.textContent = text;
+      return node;
+    },
     createElement: (tag) => {
       const node = new TestElement(tag);
       created.push(node);
@@ -439,7 +463,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters-v2.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
@@ -667,25 +691,49 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // CSP / dark-mode / bridge contract. Generalises the single-widget check to
   // the whole ui:// registry read back off the wire.
   // -------------------------------------------------------------------------
-  it('FORECAST: advertises one versioned shell and preserves the saved original URI as a public read alias', async () => {
+  it('FORECAST: advertises v4 and preserves prior URIs as public quota-free read aliases', async () => {
+    const uri = 'ui://worldmonitor/forecasts-v4.html';
+    const aliases = ['ui://worldmonitor/forecasts-v3.html', 'ui://worldmonitor/forecasts-v2.html', 'ui://worldmonitor/forecasts.html'];
     const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const resources = (await listRes.json()).result.resources;
-    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts-v3.html').length, 1);
-    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts.html').length, 0, 'saved alias must not create another advertised resource');
-    const currentRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v3.html')));
+    assert.equal(resources.filter(resource => resource.uri === uri).length, 1, 'v4 must identify the current Forecast renderer');
+    for (const alias of aliases) assert.equal(resources.filter(resource => resource.uri === alias).length, 0);
+    assert.equal(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')._uiResourceUri, uri);
+    const listedTools = (await (await handler(envKeyReq({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} }))).json()).result.tools;
+    const forecastTool = listedTools.find(tool => tool.name === 'get_forecast_predictions');
+    assert.equal(forecastTool._meta.ui.resourceUri, uri);
+    assert.equal(forecastTool._meta['ui/resourceUri'], uri);
+    const currentRes = await handler(anonReq(readBody(uri)));
     const current = (await currentRes.json()).result.contents[0];
-    const legacyRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts.html')));
-    const legacy = (await legacyRes.json()).result.contents[0];
-    assert.equal(current.uri, 'ui://worldmonitor/forecasts-v3.html');
-    assert.equal(legacy.uri, 'ui://worldmonitor/forecasts.html', 'read responses must preserve the requested URI');
-    assert.equal(legacy.text, current.text, 'saved alias must serve the current forecast renderer');
-    assert.equal(legacy.mimeType, current.mimeType);
-    const previousRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v2.html')));
-    const previous = (await previousRes.json()).result.contents[0];
-    assert.equal(previous.uri, 'ui://worldmonitor/forecasts-v2.html');
-    assert.equal(previous.text, current.text);
-    assert.equal(resources.filter(resource => resource.uri === previous.uri).length, 0);
-    assert.deepEqual(legacy._meta, current._meta);
+    assert.equal(current.uri, uri);
+    assert.match(current.text, /Accuracy under audit/);
+    assert.match(current.text, /data-unverified/);
+    assert.match(current.text, /familyOutcomes/);
+    assert.match(current.text, /scoredHorizons/);
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (String(args[0]) !== 'https://fake.upstash.io/pipeline') reads++;
+      return mockFetch(...args);
+    };
+    try {
+      for (const requested of [uri, ...aliases]) {
+        for (const request of [anonReq(readBody(requested)), proReq('POST', readBody(requested))]) {
+          const response = await mcpHandler(request, deps);
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.error, undefined);
+          const content = body.result.contents[0];
+          assert.equal(content.uri, requested);
+          assert.equal(content.text, current.text);
+          assert.equal(content.mimeType, current.mimeType);
+          assert.deepEqual(content._meta, current._meta);
+        }
+      }
+    } finally { globalThis.fetch = mockFetch; }
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
     assert.match(resources.find(resource => resource.uri === current.uri).description, /original case/);
   });
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
@@ -761,7 +809,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
     ];
     for (const uri of shellWidgets) {
       const res = await handler(envKeyReq(readBody(uri)));
@@ -858,7 +906,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html',
+        uri: 'ui://worldmonitor/forecasts-v4.html',
         hostId: 'list',
         raw: { data: { predictions: { predictions: [{
           title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
@@ -962,7 +1010,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         ] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [
           { title: 'Unknown forecast', probability: null },
           { title: 'Fraction forecast', probability: 0.25 },
@@ -1043,7 +1091,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('country'), 'Russia');
     // The original defect: sanctionsExposure did not exist, so this printed
     // "None" for a country carrying 3417 active designations.
-    assert.equal(view.text('sanctions'), '3417 OFAC-listed');
+    assert.equal(view.text('sanctions'), '3417 sanctions listings');
     // cii is a CiiScore object, never a bare number.
     assert.equal(view.text('cii'), '78');
     assert.equal(view.text('level'), 'High');
@@ -1196,7 +1244,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
       },
     ];
@@ -1973,4 +2021,198 @@ describe('shared MCP shell notification origin', () => {
     assert.match(view.text('empty'), /too large/);
     assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
   });
+});
+
+
+describe('shared MCP notification failures', () => {
+  const brief = {
+  "countryCode": "CA",
+  "countryName": "Canada",
+  "brief": "Controlled current assessment [E1]. Unresolved [E2].",
+  "model": "hidden-fixture-model",
+  "generatedAt": 1791288000000,
+  "sources": [
+    {
+      "source": "Controlled Wire",
+      "title": "Original source",
+      "url": "https://example.com/original?q=1",
+      "publishedAt": "2026-10-06T08:00:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1",
+      "label": "Controlled indicator",
+      "value": "2.3%",
+      "asOf": "2026-10-05T11:00:00Z",
+      "url": "https://example.com/data"
+    }
+  ],
+  "groundingStories": [
+    {
+      "title": "Distinct grounding",
+      "publishedAt": "2026-10-06T07:00:00Z"
+    }
+  ]
+};
+  async function mountedBrief() {
+    const response = await buildUiResourceRead(1, 'ui://worldmonitor/country-brief-v3.html', {});
+    const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+    view.sendToolResult(brief);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    assert.match(view.text('brief'), /Controlled current assessment/);
+    assert.match(view.text('sources'), /Original source/);
+    assert.match(view.text('evidence'), /Controlled indicator/);
+    assert.match(view.text('foot'), /^Generated /);
+    return view;
+  }
+  it('renders a valid nonempty dedicated brief baseline', async () => { await mountedBrief(); });
+  it('shows the standard strict MCP failure after a valid brief', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: {
+      isError: true, content: [{ type: 'text', text: 'Controlled upstream failed' }],
+    } } });
+    assert.equal(view.text('empty'), 'Controlled upstream failed');
+    assert.equal(view.nodes('card')[0].style.display, 'none');
+  });
+  it('advertises only the Country Brief content the dedicated card displays', () => {
+    const resource = UI_RESOURCE_LIST_RESPONSE.find(r => r.uri === 'ui://worldmonitor/country-brief-v3.html');
+    assert.doesNotMatch(resource.description, /framework lens/);
+    assert.match(resource.description, /paragraphs/);
+    assert.match(resource.description, /grounding sources/);
+    assert.match(resource.description, /cited WorldMonitor data/);
+  });
+  it('uses strict failure precedence and preserves specific existing soft errors', async () => {
+    const cases = [
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: 'Controlled denial' }] }, 'Controlled denial'],
+      [{ isError: true, structuredContent: { error: 'Specific failure' }, content: [{ type: 'text', text: 'Conflicting failure' }] }, 'Specific failure'],
+      [{ isError: true, content: [{ type: 'text', text: '{"error":"Parsed failure"}' }] }, 'Parsed failure'],
+      [{ isError: true, structuredContent: { _budget_exceeded: true }, content: [{ type: 'text', text: 'Conflict' }] }, /too large/],
+      [{ isError: true, content: [{ type: 'text', text: '{"_jmespath_error":"Bad projection"}' }] }, /projection could not/],
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: '{"error":"Literal JSON"}' }] }, '{"error":"Literal JSON"}'],
+    ];
+    for (const [result, expected] of cases) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+      if (typeof expected === 'string') assert.equal(view.text('empty'), expected);
+      else assert.match(view.text('empty'), expected);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+      assert.match(view.text('brief'), /Controlled current assessment/);
+    }
+  });
+  it('chooses the first usable text and a fixed fallback for unusable content', async () => {
+    for (const content of [undefined, [], [{ type: 'image', text: 'Wrong type' }], [{ type: 'text', text: '\u0000 \n\t' }]]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content } });
+      assert.equal(view.text('empty'), 'Tool request failed.');
+    }
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true,
+      structuredContent: { error: '\u0000 \t' },
+      content: [{ type: 'text', text: '\u0000 \n' }, { type: 'text', text: '  Later usable text  ' }, { type: 'text', text: 'Unused' }],
+    } } });
+    assert.equal(view.text('empty'), 'Later usable text');
+    for (const text of ['7', '[]', JSON.stringify(brief)]) {
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text }] } });
+      assert.equal(view.text('empty'), text);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+    }
+  });
+  it('cleans and bounds every error-message path and keeps hostile markup literal', async () => {
+    const message = ' \u0000<img src=x onerror="bad()">' + 'x'.repeat(1100) + '\u007f ';
+    const expected = message.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 1000);
+    for (const fields of [
+      { content: [{ type: 'text', text: message }] },
+      { structuredContent: { error: message } },
+      { content: [{ type: 'text', text: JSON.stringify({ error: message }) }] },
+    ]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true, ...fields } } });
+      assert.equal(view.text('empty'), expected);
+      assert.equal(view.text('empty').length, 1000);
+      assert.ok(!view.created.some(node => ['IMG', 'SCRIPT'].includes(node.tagName)));
+    }
+  });
+  it('retains accepted DOM on failure and recovers through ordinary and non-strict results', async () => {
+    const view = await mountedBrief();
+    const ids = ['brief', 'sources', 'evidence', 'foot'];
+    const accepted = ids.map(id => view.nodes(id).slice());
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } });
+    ids.forEach((id, i) => {
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, accepted[i].length, id + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, accepted[i][index], id + ': accepted node identity survives'));
+    });
+    for (const flag of [undefined, false, 'true']) {
+      const recovery = { ...brief, brief: 'Controlled recovery.' };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: flag, structuredContent: recovery } } });
+      assert.equal(view.nodes('card')[0].style.display, 'block');
+      assert.equal(view.nodes('empty')[0].style.display, 'none');
+      assert.equal(view.text('brief'), 'Controlled recovery.');
+    }
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.match(view.text('brief'), /Controlled current assessment/);
+  });
+  it('preserves parent association, both params forms, initialization and size', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } }, false);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    view.sendMessage({ id: 1, result: { hostCapabilities: {}, hostContext: { theme: 'dark' } } });
+    for (const wrapped of [false, true]) {
+      const result = { isError: true, content: [{ type: 'text', text: 'Association failure' }] };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: wrapped ? { result } : result });
+      assert.equal(view.text('empty'), 'Association failure');
+    }
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/initialized'));
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/size-changed'));
+    assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
+  });
+  it('recomputes notification origin after a failure without changing ordinary extraction', () => {
+    const html = buildAppHtml({ title: 'Origin', appName: 'origin', styles: '',
+      body: '<div id="empty"></div><div id="card"><p id="capture"></p></div>',
+      renderBody: 'setText("capture", JSON.stringify({data:data,origin:renderContext.kind}));' });
+    const view = mountWidgetHtml(html);
+    view.sendToolResult(brief);
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, structuredContent: brief } });
+    assert.equal(view.text('capture'), before);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'text-fallback');
+    view.sendToolResult({ projection: brief });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'projection-wrapped');
+  });
+  it('preserves valid nonempty baselines and error/recovery across all eight shared-shell cards', async () => {
+    const world = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-world-brief-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const chokepoints = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-chokepoint-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const cases = [
+      ['country-brief-v3', 'brief', brief, /Controlled current assessment/],
+      ['world-brief-v2', 'brief', world, /First claim/],
+      ['news-intelligence-v2', 'list', { data: { insights: { topStories: [{ primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)', category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE' }] } } }, /Port disruption expands/],
+      ['chokepoint-monitor-v2', 'rows', chokepoints, /Hormuz strait/],
+      ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
+      ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
+      ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],
+      ['forecasts-v4', 'list', { data: { predictions: { predictions: [{ title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global' }] } } }, /Oil remains above/],
+    ];
+    for (const [name, id, payload, token] of cases) {
+      const response = await buildUiResourceRead(1, 'ui://worldmonitor/' + name + '.html', {});
+      const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+      view.sendToolResult(payload);
+      assert.match(view.text(id), token, name + ': baseline must actually render');
+      const before = view.nodes(id).slice();
+      const footer = view.text('foot');
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text: 'Controlled fleet failure' }] } });
+      assert.equal(view.text('empty'), 'Controlled fleet failure', name);
+      assert.equal(view.nodes('card')[0].style.display, 'none', name);
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, before.length, name + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, before[index], name + ': accepted node identity survives'));
+      assert.equal(view.text('foot'), footer, name + ': existing footer survives');
+      view.sendToolResult(payload);
+      assert.equal(view.nodes('card')[0].style.display, 'block', name);
+      assert.equal(view.nodes('empty')[0].style.display, 'none', name);
+      assert.match(view.text(id), token, name);
+    }
+  });
+
 });

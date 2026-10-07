@@ -10,13 +10,15 @@ import { readFileSync } from 'node:fs';
 // settlement grace can never disagree with the template's declared cadence.
 import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
 import { finiteObservations } from './_bet-templates-macro.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { MARITIME_REGIONS, hexesInMaritimeRegion } from './_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
-// Default grace for a scalar feed to publish a deadline-period reading before
-// we give up and VOID. Live feeds (for example commodities) should not retain a
-// missing/stale observation indefinitely.
+// Default grace before a missing reading VOIDs: a count feed that stays down
+// past its settlement lag, or a scalar record that never settles. A live point
+// read reaches LATE_READ_MAX_LAG_MS first.
 export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
 // EIA's weekly petroleum observation date trails publication by roughly one
 // week. A deadline just after the covered period may therefore need the next
@@ -26,6 +28,8 @@ export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // endDate; the settlement loader then needs a run to capture it. Pend up to
 // this long past the deadline for the adjudicated record before VOIDing.
 export const MARKET_SETTLEMENT_FEED_KEY = 'prediction:markets-resolution:v1';
+const MARKET_BOOTSTRAP_FEED_KEY = 'prediction:markets-bootstrap:v1';
+const GPS_JAM_FEED_KEY = 'intelligence:gpsjam:v2';
 export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // FRED (#5525 KTD4): monthly series observations are dated the FIRST of the
 // reference month and publish ~2 weeks after the month ENDS, so the first
@@ -35,12 +39,61 @@ export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 export const FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
 export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 
-function valueSettlementMaxLagMs(feedKey) {
+// gpsjam publishes one snapshot per UTC day, dated by its `date` field.
+// seed-gpsjam runs every 8h and day D's snapshot first lands at its 08:00
+// tick on D+1, so the 06:00 resolver run on D+2 is the first to hold it: 54h
+// after the start of D. The bound adds one resolver cycle, for a snapshot
+// gpsjam.org publishes after that tick, plus an hour of run-start jitter.
+// Measured from the start of the deadline's UTC day.
+export const GPS_JAM_SNAPSHOT_MAX_LAG_MS = 3 * DAY_MS + 7 * 60 * 60 * 1000;
+
+// Feeds that date each reading by its own period, snapshot day or the venue's
+// adjudication, so a read days after the deadline still reports the
+// deadline's period. null for a live feed, whose reading is the value at the
+// moment it was fetched.
+function periodFeedMaxLagMs(feedKey) {
+  if (feedKey === GPS_JAM_FEED_KEY) return GPS_JAM_SNAPSHOT_MAX_LAG_MS;
   if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (feedKey === MARKET_SETTLEMENT_FEED_KEY) return MARKET_SETTLEMENT_MAX_LAG_MS;
   if (FRED_MONTHLY_FEED_KEYS.has(feedKey)) return FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (FRED_DAILY_FEED_KEYS.has(feedKey)) return FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS;
-  return VALUE_SETTLEMENT_MAX_LAG_MS;
+  return null;
+}
+
+function valueSettlementMaxLagMs(feedKey) {
+  return periodFeedMaxLagMs(feedKey) ?? VALUE_SETTLEMENT_MAX_LAG_MS;
+}
+
+// A live point read happens on the first resolver run after the deadline. The
+// resolver runs once a day (cron `0 6 * * *`); its runs start between 06:00
+// and 06:05 UTC, so that read lands at most one cycle plus a few minutes after
+// the deadline. The hour absorbs the start jitter. A missed run puts the next
+// read past the bound, and the price it reads is no longer the deadline's.
+export const LATE_READ_MAX_LAG_MS = DAY_MS + 60 * 60 * 1000;
+export const LATE_READ_VOID_REASON = 'late_read';
+export const FEED_UNAVAILABLE_VOID_REASON = 'feed_unavailable';
+
+export function isLivePointRead(spec) {
+  const parsed = parseMetricKey(spec?.metricKey);
+  return (spec?.window === 'at-deadline' || spec?.window === 'at-endDate')
+    && periodFeedMaxLagMs(parsed?.feedKey || spec?.sourceFeed) == null;
+}
+
+// Why a live point read found nothing on time: the feed is down, the feed no
+// longer carries the metric, or the feed holds a reading taken too late.
+function missedLiveReadReason(parsed, feedData) {
+  if (feedData == null) return FEED_UNAVAILABLE_VOID_REASON;
+  if (Number.isFinite(extractMetricValue(parsed, feedData))) return LATE_READ_VOID_REASON;
+  return parsed.fn === 'price' || parsed.fn === 'value' ? 'value_source_never_settled' : 'no_establishable_metric';
+}
+
+// The first finite reading taken on time: at or after the deadline and within
+// one resolver cycle of it.
+export function firstTimelySample(samples, deadline) {
+  return normalizeSamples(samples)
+    .map(normalizeSample)
+    .filter((sample) => sample && Number.isFinite(sample.value) && sample.ts >= deadline && sample.ts - deadline <= LATE_READ_MAX_LAG_MS)
+    .sort((a, b) => a.ts - b.ts)[0] || null;
 }
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
@@ -91,20 +144,41 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     return { status: 'pending', evidence: { reason: 'deadline_not_reached', deadline } };
   }
 
+  // The bootstrap feed lists only open markets and clips yesPrice to [10, 90],
+  // so a read at endDate is the crowd's price, never the market's outcome
+  // (#5233). Bets read the settlement feed instead.
+  if (parsed.fn === 'yesPrice' && (spec.sourceFeed === MARKET_BOOTSTRAP_FEED_KEY || parsed.feedKey === MARKET_BOOTSTRAP_FEED_KEY)) {
+    return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
+  }
+
+  const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
+  if (isPointWindow && (parsed.feedKey || spec.sourceFeed) === GPS_JAM_FEED_KEY) {
+    const snapshot = resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec);
+    if (snapshot) return snapshot;
+  }
+
+  if (isLivePointRead(spec)) {
+    const timely = firstTimelySample(samples, deadline);
+    if (timely) return compareResult(timely.value, spec, entry, parsed, nowMs, { readTs: timely.ts });
+    if (nowMs - deadline > LATE_READ_MAX_LAG_MS) {
+      return voidResult(missedLiveReadReason(parsed, feedData), entry, spec, parsed, nowMs, { maxReadLagMs: LATE_READ_MAX_LAG_MS });
+    }
+  }
+
   // Settlement gate for scalar `value`/`price` reads at a POINT window
   // (at-deadline). Like count(), a premature or STALE read scores a false
   // YES/NO: a period feed (EIA weekly, dated by `asOf`) may still hold the prior
   // period's value, and a live feed kept warm through a fetch failure
   // (commodities, whose shaper stamps each quote with the envelope
   // `_seed.fetchedAt` as `asOf`) may hold a quote dated days before the
-  // deadline. Only resolve once the matched record is dated on/after the
-  // deadline day; pend until then, VOID if it never settles. Records with no
+  // deadline. gpsjam hexCount reads one daily snapshot dated by its day. Only
+  // resolve once the matched record is dated on/after the deadline day; pend
+  // until then, VOID if it never settles. Records with no
   // timestamp fall through (cannot gate). within-horizon is exempt — it resolves
   // from the asOf-stamped sample timeline, not the current feed record.
-  const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
   const isSettlementYesPrice = parsed.fn === 'yesPrice'
     && (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY);
-  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || isSettlementYesPrice)) {
+  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || parsed.fn === 'hexCount' || isSettlementYesPrice)) {
     const settle = valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec);
     if (settle) return settle;
   }
@@ -115,7 +189,10 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     if (nowMs < sealAfter) {
       return { status: 'pending', evidence: { reason: 'count_settlement_lag', deadline, sealAfter } };
     }
+    // Count records are dated and the coverage gate below refuses a pruned
+    // window, so only a feed that stays down needs a bound.
     if (feedData == null) {
+      if (nowMs >= sealAfter + VALUE_SETTLEMENT_MAX_LAG_MS) return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
       return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
     }
     const generatedAt = Number(entry?.generatedAt ?? entry?.firstSeenAt);
@@ -172,7 +249,19 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     const sample = selectFirstSampleAtOrAfter(samples, deadline);
     const feedValue = extractMetricValue(parsed, feedData);
     if (feedData == null && !sample) {
+      if (nowMs >= deadline + valueSettlementMaxLagMs(parsed.feedKey || spec.sourceFeed)) {
+        return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
+      }
       return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
+    }
+    // The settlement gate accepts any quote from the deadline's UTC day. A
+    // live quote fetched earlier that day is not the deadline's; the next
+    // run's quote still lands inside LATE_READ_MAX_LAG_MS.
+    if (!sample && isLivePointRead(spec)) {
+      const { asOf } = extractMetricObservation(parsed, feedData);
+      if (Number.isFinite(asOf) && asOf < deadline) {
+        return { status: 'pending', evidence: { reason: 'awaiting_post_deadline_read', deadline, asOf } };
+      }
     }
     const value = sample && Number.isFinite(sample.value) ? sample.value : feedValue;
     const readTs = sample?.ts ?? nowMs;
@@ -260,6 +349,38 @@ function nearestFiniteSample(samples, deadline) {
   return nearest;
 }
 
+// A daily-snapshot read grades on the snapshot dated the deadline's UTC day,
+// sampled earlier or still in the feed. A later-dated snapshot means that day
+// was replaced unread. Returns null when the feed has no reading for the
+// metric, so the caller's no-metric path applies.
+function resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec) {
+  const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
+  const onDeadlineDay = (ts) => ts >= deadlineDay && ts < deadlineDay + DAY_MS;
+  // A dated snapshot's sample is stamped with its day, a UTC midnight. The
+  // sampler stamps an undated reading with the run time instead, and that
+  // reading cannot be shown to be the deadline day's.
+  const sampled = normalizeSamples(samples)
+    .map(normalizeSample)
+    .find((sample) => sample && Number.isFinite(sample.value) && sample.ts === deadlineDay);
+  if (sampled) return compareResult(sampled.value, spec, entry, parsed, nowMs, { readTs: sampled.ts });
+  const pastBound = nowMs >= deadlineDay + GPS_JAM_SNAPSHOT_MAX_LAG_MS;
+  if (feedData == null) {
+    if (pastBound) return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
+    return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
+  }
+  const { value, asOf } = extractMetricObservation(parsed, feedData);
+  if (!Number.isFinite(value)) return null;
+  if (!Number.isFinite(asOf)) {
+    // A count with no snapshot day cannot be shown to be the deadline day's.
+    if (pastBound) return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
+    return { status: 'pending', evidence: { reason: 'value_source_undated', deadline } };
+  }
+  if (onDeadlineDay(asOf)) return compareResult(value, spec, entry, parsed, nowMs, { readTs: asOf });
+  if (asOf >= deadlineDay + DAY_MS) return voidResult(LATE_READ_VOID_REASON, entry, spec, parsed, nowMs, { asOf });
+  if (pastBound) return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
+  return { status: 'pending', evidence: { reason: 'value_source_not_settled', deadline, asOf } };
+}
+
 // Freshness gate for a scalar `value` read: is the matched record dated on or
 // after the deadline day? Returns null when settled (or when the record carries
 // no usable timestamp, so we can't gate — fall through to normal resolution),
@@ -308,7 +429,7 @@ function valueFromRecord(fn, record) {
     case 'yesPrice':
       return firstFinite(record.yesPrice, record.yes_price, record.price, record.probability);
     case 'hexCount':
-      return firstFinite(record.hexCount, record.hex_count, record.hexes, record.count);
+      return firstFinite(record.hexCount);
     case 'price':
       return firstFinite(record.price, record.last, record.value);
     case 'value':
@@ -396,13 +517,28 @@ export function shapeResolutionFeed(key, data) {
     const latest = finite[finite.length - 1];
     return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
   }
+  if (key === GPS_JAM_FEED_KEY) {
+    // gpsjam holds one daily snapshot of single res-4 hexes. The GPS detector
+    // counts the hexes inside each shipping-zone box, so expose one record per
+    // box with that count, dated by the snapshot day for the settlement gate.
+    const d = unwrapEnvelope(data).data;
+    if (!Array.isArray(d?.hexes)) return d;
+    return Object.entries(MARITIME_REGIONS).map(([region, bounds]) => ({
+      region,
+      hexCount: hexesInMaritimeRegion(d.hexes, bounds).length,
+      asOf: d.date,
+    }));
+  }
   if (key === MARKET_SETTLEMENT_FEED_KEY) {
     // Settlement feed (#5525 KTD2): records already carry {market, slug,
     // yesPrice, asOf} — expose the array directly.
     const d = data?.data ?? data;
     return Array.isArray(d?.records) ? d.records : (Array.isArray(d) ? d : []);
   }
-  return data;
+  // Contract-mode seeds store {_seed, data:{threats|outages|...}}. iterateRecords
+  // descends only into arrays, so a raw envelope yields no records and every
+  // count reads 0 (#5233). Legacy bare values pass through unchanged.
+  return unwrapEnvelope(data).data;
 }
 
 // The resolver's keyed feed view: each successfully read key mapped to its

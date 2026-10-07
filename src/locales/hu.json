@@ -2087,7 +2087,7 @@
       "infoTooltip": "<strong>BTC rendszer</strong> Összetett jellemző irányítópult a Bitcoin pozicionálásához és a kockázati étvágyhoz:<ul><li><strong>Likviditás</strong>: Nettó Fed likviditás proxy</li><li><strong>Áramlás</strong>: BTC vs QQQ 5 napos hozam</li><li><strong>Rendszer</strong>: QQQ vs XLP rotáció (kockázat kapcsolva/ki)</li><li><strong>BTC trend</strong>: Ár vs SMA50/200, Mayer többszörös</li><li><strong>Hash ráta</strong>: 30 napos hálózati hash változás</li><li><strong>Félelem és mohóság</strong>: Piaci sentiment index</li></ul>Ez a panel a pozicionáláshoz és a rendszerhez szól, nem a széles makro adatokhoz."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li><li>Kalibrálva az előrejelzési piacok alapértékei alapján, ahol elérhető</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat.",
+      "infoTooltip": "<strong>AI Előrejelzések</strong> Mesterséges intelligencia által generált valószínűségi becslések geopolitikai és gazdasági eseményekre:<ul><li>Több területet lefedő előrejelzések: konfliktus, piacok, ellátási lánc, kibervédelem, politika</li><li>Minden előrejelzés becsült valószínűséget, megbízhatósági szintet és időhorizontot mutat</li></ul>Az előrejelzések frissülnek, ahogy új híreszerzési jelek érkeznek. A szűréshez használja a fenti lapokat.",
       "record": {
         "label": "Eddigi eredmények",
         "labelHint": "Hogyan szerepeltek a közzétett előrejelzések az eldőlésük után az elmúlt {{days}} napban. Vigye az egeret egy szám fölé, hogy lássa, mit jelent.",
@@ -2108,6 +2108,49 @@
         "measuredHint": "Hogy a közzétett {{domain}} előrejelzések {{n}} értékelt előrejelzésből teljesítettek az utolsó {{days}} napban. Az alapráta az, amit a tartomány megfigyelt igen aránya alapján mindig válaszolva kapnánk. Alacsonyabb jobb. Ez a tartomány nyilvántartása, nem ennek az előrejelzésnek a nyilvántartása.",
         "unmeasured": "Még nem mért",
         "unmeasuredHint": "A(z) {{domain}} előrejelzéseknek {{n}} értékelt eredménye van az elmúlt {{days}} napban. Egy tartománynak {{min}} eredményre van szüksége ahhoz, hogy a pontossága megjelenjen."
+      },
+      "resolution": {
+        "last": "Utolsó: {{outcome}}",
+        "lastSr": "Ennek az előrejelzésnek az előző időszaka {{outcome}} eredménnyel zárult.",
+        "history": "Legutóbbi időszakok, legújabb először: {{list}}",
+        "outcome": {
+          "yes": "IGEN",
+          "no": "NEM",
+          "void": "SEMMIS"
+        },
+        "void": {
+          "no_establishable_metric": "A feed nem adott értéket erre a kérdésre",
+          "value_source_never_settled": "A feed soha nem közölt végleges értéket",
+          "count_source_window_not_retained": "A feed már nem tárolt adatot az időszakhoz",
+          "unsupported_window": "A kérdés nem ellenőrizhető a feed alapján",
+          "unsupported_metric_key": "A kérdés nem ellenőrizhető a feed alapján",
+          "not_hard_spec": "A kérdés nem ellenőrizhető a feed alapján",
+          "missing_threshold": "A kérdésből hiányzott egy küszöbérték",
+          "missing_deadline": "A kérdésből hiányzott egy határidő",
+          "missing_generated_at": "Az előrejelzésből hiányzott a kezdési dátuma",
+          "beyond_archive_horizon": "A hírarchívum már nem fedte le a kérdés időszakát",
+          "no_archive_evidence": "A hírarchívumban nem volt semmi a témáról",
+          "all_judges_void": "Mindkét bíráló elégtelennek találta a bizonyítékot",
+          "judge_disagreement": "A bírálók nem értettek egyet",
+          "judge_retry_exhausted": "A bírálók nem hoztak döntést",
+          "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
+          "resolver_envelope_bug": "Olyan adatforrás alapján értékelve, amelyet nem tudtunk helyesen beolvasni",
+          "market_price_not_outcome": "A feed a piaci árat mutatta, nem azt, hogyan zárult a piac",
+          "judged_evidence_unreliable": "Kizárva az értékelésből, amíg a bírák bizonyítékait javítjuk",
+          "other": "Nem lehetett eldönteni",
+          "judged_old_selection": "Később megbízhatatlannak bizonyult bizonyítékgyűjtési módszerrel bírálták el",
+          "late_read": "A feedet nem olvastuk le elég közel a határidőhöz",
+          "feed_unavailable": "Az adatfeed a határidő után nem volt elérhető"
+        }
+      },
+      "horizons": {
+        "label": "Pontszáma további horizontokon: {{list}}",
+        "hint": "A főcím valószínűsége az előrejelzés saját horizontján kerül értékelésre. Az egyes horizontok vetülete szintén értékelésre kerül a forrásfeed alapján, az előrejelzéshez először közétett érték alapján. A vetület értékei nem jelennek meg, mert az aktuális érték eltérhet az értékelt értéktől."
+      },
+      "audit": {
+        "label": "Pontosság auditálás alatt",
+        "hint": "Auditálás alatt {{date}} óta. Az audit hibákat talált az előrejelzések értékelésében. A pontszámokat a javítások idejére visszavontuk. Az előrejelzéseket továbbra is közzétesszük és rögzítjük.",
+        "unverified": "Rögzített kimenetel, nem ellenőrzött, miközben a pontosság auditálás alatt áll."
       }
     },
     "escalationCorrelation": {
