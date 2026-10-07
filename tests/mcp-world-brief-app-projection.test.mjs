@@ -123,6 +123,20 @@ describe('World Brief original citation association', () => {
       assert.equal(view.reads(),0);
     });
   }
+  for (const url of ['javascript:alert(1)', '']) {
+    it(`keeps rejected ordinary citations literal without shifting the later source for ${JSON.stringify(url)}`, async () => {
+      const brief = 'Zero [0]. Outside [3]. Unusable [1]. Valid later [2].';
+      const view = await mount(wire({ ...value, brief, summary: brief, sources: [{ ...value.sources[0], url }, value.sources[1]] }));
+      assert.equal(view.doc.querySelector('#brief .para').textContent, brief);
+      const links = [...view.doc.querySelectorAll('#brief a')];
+      assert.deepEqual(links.map(link => ({ text: link.textContent, href: link.href, target: link.target, rel: link.rel })), [
+        { text: '[2]', href: value.sources[1].url, target: '_blank', rel: 'noopener noreferrer' },
+      ]);
+      assert.deepEqual([...view.doc.querySelectorAll('#sources a')].map(link => link.href), [value.sources[1].url]);
+      assert.equal(view.reads(), 0);
+      assert.ok(view.messages.every(message => message.method === 'ui/notifications/size-changed'));
+    });
+  }
   it('prefers structured content and never borrows prior origin or sources', async () => {
     const view=await mount({ ...wire(value), content:[{type:'text',text:JSON.stringify({brief:'Conflicting'})}] });
     assertSeparate(view.doc);assert.equal(view.doc.querySelectorAll('#brief a').length,2);
