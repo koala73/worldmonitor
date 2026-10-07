@@ -40,6 +40,29 @@ const RENDER = `
     var emptyCount = 0;
     var coverageLimited = false;
 
+    var detailCoverage = envelope.transportCoverage;
+    if (detailCoverage && detailCoverage.count_scope === "post_filter_snapshot" && Array.isArray(detailCoverage.details)) {
+      var detailLabels = { conePolygon: "Cone points", forecastTrack: "Forecast track points", pastTrack: "Past track points", events: "Regional events", warnings: "Regional warnings" };
+      var displayedCounts = {};
+      detailCoverage.details.forEach(function (detail) {
+        if (!detail || typeof detail !== "object" || !Object.prototype.hasOwnProperty.call(detailLabels, detail.field)
+          || ["geometry_simplified", "output_budget"].indexOf(detail.omission_reason) < 0) return;
+        if (typeof detail.original_count !== "number" || !Number.isSafeInteger(detail.original_count) || detail.original_count < 0
+          || typeof detail.returned_count !== "number" || !Number.isSafeInteger(detail.returned_count)
+          || detail.returned_count < 0 || detail.returned_count > detail.original_count) return;
+        var count = displayedCounts[detail.field] || { original: 0, returned: 0 };
+        count.original += detail.original_count; count.returned += detail.returned_count;
+        displayedCounts[detail.field] = count;
+      });
+      if (Object.keys(displayedCounts).length) {
+        warning(host, "Some detail was simplified or omitted for display. Full original detail is not loaded.");
+        Object.keys(displayedCounts).forEach(function (field) {
+          var count = displayedCounts[field];
+          host.appendChild(el("div", "dcounts", detailLabels[field] + ": " + count.returned + " displayed from " + count.original + " original items."));
+        });
+      }
+    }
+
     function eventTime(value, label, missing) {
       var date = typeof value === "number" || typeof value === "string" && value.trim()
         ? new Date(value) : null;

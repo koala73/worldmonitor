@@ -1452,7 +1452,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_natural_disasters',
     _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage.',
+    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage. Oversized paid panels may simplify or omit public geometry and regional detail, with explicit transportCoverage counts; API allowance reads retain full detail.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1470,7 +1470,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       earthquakes: {
         type: ['object', 'null'],
         properties: {
@@ -1512,7 +1513,25 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
         },
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+        type: 'object', required: ['count_scope', 'details'], properties: {
+          count_scope: { const: 'post_filter_snapshot' },
+          details: { type: 'array', items: { type: 'object', required: [
+            'dataset', 'collection', 'event_id', 'event_index', 'field', 'state', 'original_count',
+            'returned_count', 'omitted_count', 'omission_reason', 'geometry_simplified',
+          ], properties: {
+            dataset: { const: 'events' }, collection: { type: 'string' },
+            event_id: { type: ['string', 'null'] }, event_index: { type: ['integer', 'null'], minimum: 0 },
+            field: { type: 'string' }, state: { const: 'available' },
+            original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
+            omitted_count: { type: 'integer', minimum: 0 },
+            omission_reason: { enum: ['geometry_simplified', 'output_budget'] }, geometry_simplified: { type: 'boolean' },
+            original_ring_count: { type: 'integer', minimum: 0 }, returned_ring_count: { type: 'integer', minimum: 0 },
+          } } },
+        },
+      } } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const minMag = argNum(params.min_magnitude);

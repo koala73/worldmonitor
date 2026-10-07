@@ -83,6 +83,29 @@ async function mount(wire, check) {
 const groups = document => document.getElementById('groups').textContent;
 
 describe('Natural Disasters actual-handler resource source truth', () => {
+  it('shows explicit detail limits and counts safely without changing source dates, links or recovery', async () => {
+    const wire = await result();
+    const coverage = { count_scope: 'post_filter_snapshot', details: [
+      { field: 'conePolygon', original_count: 1900, returned_count: 96, omission_reason: 'geometry_simplified' },
+      { field: 'forecastTrack', original_count: 400, returned_count: 0, omission_reason: 'output_budget' },
+      { field: '<img src=x onerror=alert(1)>', original_count: 9, returned_count: 0, omission_reason: 'output_budget' },
+      { field: 'warnings', original_count: null, returned_count: 0, omission_reason: 'output_budget' },
+    ] };
+    wire.structuredContent.transportCoverage = coverage;
+    wire.content[0].text = JSON.stringify(wire.structuredContent);
+    await mount(wire, async (document, send) => {
+      assert.match(groups(document), /Some detail was simplified or omitted for display/);
+      assert.match(groups(document), /Cone points: 96 displayed from 1900 original items/);
+      assert.match(groups(document), /Forecast track points: 0 displayed from 400 original items/);
+      assert.doesNotMatch(groups(document), /Regional warnings: 0|img src|No natural-hazard events available/);
+      assert.equal(document.querySelector('img'), null);
+      assert.match(groups(document), /2026-10-02T12:34:56.000Z/);
+      assert.equal(document.querySelector('.dplace').getAttribute('href'), sourceUrl);
+      const recovered = await result(); await send(recovered);
+      assert.doesNotMatch(groups(document), /Some detail was simplified|original items/);
+    });
+  });
+
   for (const args of [{ dataset: ['other'], active_only: true }, { active_only: true },
     { dataset: ['other'], active_only: true, summary: true, jmespath: '@' }]) {
     it('renders populated other hazards with selected scope ' + JSON.stringify(args), async () => {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { admitCountryPanel, authorizePanelRead, PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { countryActivityQueries } from '../shared/country-activity-query.ts';
@@ -1515,4 +1516,185 @@ describe('public forecast reliability cache and completed output', () => {
     assert.equal(summarized.structuredContent._budget_exceeded, true, 'summary must not admit the oversized complete production cache document');
     assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'summary must not save oversized full public predictions');
   });
+});
+
+
+describe('bounded public Natural paid panel presentation', () => {
+  let handler, sources, fetched, originalLimiter, snapshot, eventBucket;
+  const bytes = value => Buffer.byteLength(JSON.stringify(value));
+  const cyclone = id => ({ id, title: 'Controlled cyclone ' + id, category: 'severeStorms',
+    categoryTitle: 'Tropical Cyclone', lat: 20, lon: 120, date: snapshot - 30000,
+    sourceName: 'NHC', sourceUrl: 'https://www.nhc.noaa.gov/', closed: false,
+    forecastTrack: [], pastTrack: [], conePolygon: [{ points: Array.from({ length: 1900 }, (_, i) => ({
+      lon: 120 + Math.sin(i / 1900 * Math.PI * 2), lat: 20 + Math.cos(i / 1900 * Math.PI * 2),
+    })) }], });
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_natural_disasters', args)), deps);
+    const body = await response.json();
+    assert.equal(body.error, undefined);
+    return body.result;
+  };
+  beforeEach(async () => {
+    snapshot = Date.now();
+    Object.assign(process.env, { MCP_INTERNAL_HMAC_SECRET: HMAC_SECRET, MCP_TELEMETRY: 'false',
+      UPSTASH_REDIS_REST_URL: 'https://natural-presentation.invalid', UPSTASH_REDIS_REST_TOKEN: 'fixture-only' });
+    delete process.env.LOCAL_API_MODE;
+    originalLimiter = Ratelimit.slidingWindow;
+    Ratelimit.slidingWindow = () => () => ({ limit: async () => ({ success: true, limit: 100, remaining: 99,
+      reset: snapshot + 60000, pending: Promise.resolve() }) });
+    const decisions = [{ source: 'Controlled source', status: 'blocked', reason: 'FETCH_FAILED', optional: false,
+      requestCount: 1, checkedAt: snapshot - 1000 }];
+    eventBucket = { events: ['a', 'b', 'c'].map(cyclone), fetchedAt: snapshot, dataAvailable: true,
+      westernPacific: { events: [], evaluatedAt: snapshot, latestObservationAt: snapshot - 1000,
+        dataAvailable: false, sourceDecisions: decisions },
+      hkoWarnings: { warnings: [], evaluatedAt: snapshot, latestObservationAt: snapshot - 1000,
+        dataAvailable: false, sourceDecisions: decisions } };
+    const seeded = data => ({ _seed: { fetchedAt: snapshot, state: 'OK' }, data });
+    sources = new Map([
+      ['seismology:earthquakes:v1', seeded({ earthquakes: [{ id: 'quake', magnitude: 5, place: 'Controlled quake',
+        occurredAt: snapshot - 2000, sourceUrl: 'https://example.org/quake' }] })],
+      ['wildfire:fires:v1', seeded({ fireDetections: [{ id: 'fire', region: 'Controlled fire', detectedAt: snapshot - 3000 }],
+        _firmsState: 'ok', _firmsCount: 1, _firmsPartial: false, _firmsFailedCalls: 0, _firmsErrorCode: null })],
+      ['natural:events:v1', seeded(eventBucket)],
+      ['seed-meta:seismology:earthquakes', { fetchedAt: snapshot, sourceState: 'ok' }],
+    ]);
+    fetched = [];
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.origin, 'https://natural-presentation.invalid', 'no provider requests');
+      assert.ok(url.pathname.startsWith('/get/'));
+      const key = decodeURIComponent(url.pathname.slice(5)); fetched.push(key);
+      assert.ok(sources.has(key), key);
+      return Response.json({ result: JSON.stringify(sources.get(key)) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch; Ratelimit.slidingWindow = originalLimiter;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('fits two producer-shaped cones in actual dispatch without changing source rows or paid usage', async () => {
+    const original = structuredClone(eventBucket);
+    const { deps, pipe } = makeProDeps();
+    const wire = await invoke(deps, { limit: 2 });
+    const payload = wire.structuredContent;
+    assert.notEqual(payload._budget_exceeded, true, 'paid Natural must present useful rows within its fixed budget');
+    assert.equal(Buffer.byteLength(wire.content[0].text), bytes(payload));
+    assert.ok(bytes(payload) <= 131072);
+    assert.equal(payload.data.events.events.length, 2);
+    assert.equal(payload.panelRequest.usage.remaining, 49); assert.equal(pipe.count, 1);
+    for (const [index, row] of payload.data.events.events.entries()) {
+      const { conePolygon, ...rest } = row;
+      const { conePolygon: originalCone, ...expected } = original.events[index];
+      assert.deepEqual(rest, expected); assert.ok(conePolygon[0].points.length <= 96);
+      const coverage = payload.transportCoverage.details.find(item => item.event_id === row.id && item.field === 'conePolygon');
+      assert.equal(coverage.original_count, 1900); assert.equal(coverage.returned_count, conePolygon[0].points.length);
+      assert.equal(coverage.original_ring_count, 1); assert.equal(coverage.geometry_simplified, true);
+    }
+    assert.deepEqual(payload.data.events.westernPacific, original.westernPacific);
+    assert.deepEqual(payload.data.events.hkoWarnings, original.hkoWarnings);
+    assert.deepEqual(eventBucket, original);
+    assert.equal(payload.data.fires._firmsCount, 1);
+  });
+  it('omits oversized tracks and samples declared regional detail with exact counts and intact health', async () => {
+    const track = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index, windKt: 60, timestamp: snapshot - index }));
+    for (const event of eventBucket.events) { event.forecastTrack = track; event.pastTrack = track; }
+    const regional = Array.from({ length: 20 }, (_, i) => ({ id: 'regional-' + i, date: snapshot - i,
+      sourceUrl: 'https://example.org/regional/' + i, description: 'x'.repeat(10000), forecastTrack: track }));
+    eventBucket.westernPacific.events = regional;
+    eventBucket.hkoWarnings.warnings = regional.map(({ forecastTrack, ...row }) => row);
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps(); const wire = await invoke(deps, { limit: 2 }); const payload = wire.structuredContent;
+    assert.notEqual(payload._budget_exceeded, true); assert.ok(bytes(payload) <= 131072);
+    for (const row of payload.data.events.events) {
+      assert.equal(row.forecastTrack, undefined); assert.equal(row.pastTrack, undefined); assert.equal(row.conePolygon, undefined);
+      const coverage = payload.transportCoverage.details.find(item => item.event_id === row.id && item.field === 'forecastTrack');
+      assert.deepEqual([coverage.original_count, coverage.returned_count, coverage.omitted_count], [5000, 0, 5000]);
+    }
+    for (const [key, field] of [['westernPacific', 'events'], ['hkoWarnings', 'warnings']]) {
+      const region = payload.data.events[key]; assert.equal(Object.keys(region).length, 5);
+      assert.equal(region[field].count, 20); assert.equal(region[field].sample.length, 3);
+      const { [field]: ignored, ...health } = region;
+      const { [field]: originalList, ...originalHealth } = original[key]; assert.deepEqual(health, originalHealth);
+      for (const [index, row] of region[field].sample.entries()) {
+        assert.equal(row.id, originalList[index].id); assert.equal(row.date, originalList[index].date);
+        assert.equal(row.sourceUrl, originalList[index].sourceUrl);
+      }
+      const coverage = payload.transportCoverage.details.find(item => item.collection === 'events.' + key && item.field === field);
+      assert.deepEqual([coverage.original_count, coverage.returned_count, coverage.omitted_count], [20, 3, 17]);
+      assert.equal(coverage.event_id, null); assert.equal(coverage.event_index, null);
+    }
+    assert.deepEqual(eventBucket, original);
+  });
+  it('preserves source decisions and coverage through summary and caller projection', async () => {
+    eventBucket.westernPacific.events = Array.from({ length: 20 }, (_, id) => ({ id: String(id), description: 'x'.repeat(15000) }));
+    const { deps } = makeProDeps(); const wire = await invoke(deps, { limit: 2, summary: true, jmespath: '@' });
+    const payload = wire.structuredContent.projection;
+    assert.notEqual(wire.structuredContent._budget_exceeded, true);
+    assert.equal(payload.data.events.events.count, 2);
+    assert.equal(payload.data.events.westernPacific.events.count, 20);
+    assert.equal(payload.data.events.westernPacific.events.sample.length, 3);
+    assert.deepEqual(payload.data.events.westernPacific.sourceDecisions, eventBucket.westernPacific.sourceDecisions);
+    assert.equal(payload.data.events.westernPacific.evaluatedAt, snapshot);
+    assert.equal(payload.data.events.hkoWarnings.latestObservationAt, snapshot - 1000);
+    assert.ok(payload.transportCoverage.details.some(item => item.omitted_count > 0));
+    assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+  });
+  it('keeps raw snapshots in storage and re-presents cached repeats within one allocation', async () => {
+    for (const key of ['westernPacific', 'hkoWarnings']) {
+      eventBucket[key].dataAvailable = true; eventBucket[key].sourceDecisions[0].status = 'accepted';
+    }
+    const { deps, pipe } = makeProDeps(); const first = (await invoke(deps, { limit: 2 })).structuredContent;
+    const before = fetched.length; const token = first.panelRequest.token;
+    const saved = await authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { limit: 2 }, token);
+    assert.equal(saved.cached.data.events.events[0].conePolygon[0].points.length, 1900);
+    assert.equal(saved.cached.transportCoverage, undefined);
+    const repeatedWire = await invoke(deps, { limit: 2, panel_request: token });
+    const repeat = repeatedWire.structuredContent;
+    assert.notEqual(repeat._budget_exceeded, true);
+    assert.equal(repeat.panelRequest, undefined, 'explicit reads keep the existing receipt shape');
+    assert.equal(pipe.count, 1); assert.equal(fetched.length, before);
+    assert.deepEqual(repeat.transportCoverage, first.transportCoverage);
+    assert.equal(repeat.cached_at, first.cached_at);
+  });
+  it('preserves full API geometry and news map scope without panel presentation', async () => {
+    const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
+      tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
+    }, validUntil: Date.now() + 86400000 }) });
+    const projected = (await invoke(api.deps, { limit: 2, jmespath: 'data.events.events[0].conePolygon[0].points | length(@)' })).structuredContent;
+    assert.equal(projected.projection, 1900);
+    const raw = (await invoke(api.deps, { limit: 2 })).structuredContent;
+    assert.equal(raw._budget_exceeded, true); assert.equal(raw.budget_bytes, 131072);
+    const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
+    const news = makeProDeps(); const grant = await admitNewsPanel(context, budget, news.pipe.pipeline, {});
+    const mapped = (await invoke(news.deps, { dataset: ['other'], limit: 1, panel_request: grant.token })).structuredContent;
+    assert.equal(mapped.data.events.events[0].conePolygon[0].points.length, 1900);
+    assert.equal(mapped.transportCoverage, undefined); assert.equal(news.pipe.count, 1);
+  });
+  it('preserves main list limits, filters and genuine protected-content budget failures', async () => {
+    eventBucket.events.forEach((row, index) => { row.magnitude = 6; row.closed = index === 2; });
+    for (const [args, count] of [[{}, 3], [{ limit: 0 }, 3], [{ limit: 2 }, 2],
+      [{ dataset: ['other'], active_only: true, min_magnitude: 5 }, 2]]) {
+      const { deps } = makeProDeps(); const payload = (await invoke(deps, args)).structuredContent;
+      assert.notEqual(payload._budget_exceeded, true); assert.equal(payload.data.events.events.length, count);
+      if (args.dataset) assert.deepEqual(Object.keys(payload.data), ['events']);
+    }
+    eventBucket.events[0].description = 'protected'.repeat(20000);
+    const { deps } = makeProDeps(); const failed = (await invoke(deps, { limit: 2 })).structuredContent;
+    assert.equal(failed._budget_exceeded, true); assert.equal(failed.budget_bytes, 131072);
+    assert.equal(eventBucket.events[0].description.length, 180000);
+  });
+  it('keeps fitting, missing, null and malformed public detail unchanged and never mutates input', async () => {
+    const { presentNaturalDisastersPanel } = await import('../api/mcp/_natural-disasters-reuse.ts');
+    const fitting = { data: { events: { events: [{ id: 'small', conePolygon: null, forecastTrack: [], pastTrack: 'unknown' }] } } };
+    assert.equal(presentNaturalDisastersPanel(fitting, 131072), fitting);
+    const raw = { data: { events: { events: [cyclone('known'), { id: 'unknown', conePolygon: [{ points: 'invalid' }],
+      forecastTrack: null, opaque: ['retained'] }, { id: 'missing', pastTrack: [] }] } }, panelRequest: { token: 'controlled-token' } };
+    const original = structuredClone(raw); const shown = presentNaturalDisastersPanel(raw, 10000);
+    assert.deepEqual(shown.data.events.events.slice(1), original.data.events.events.slice(1));
+    assert.deepEqual(raw, original); assert.equal(shown.panelRequest.token, 'controlled-token');
+    assert.ok(shown.transportCoverage.details.every(item => item.event_id === 'known'));
+  });
+
 });
