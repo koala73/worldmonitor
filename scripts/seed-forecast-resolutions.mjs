@@ -209,6 +209,7 @@ function promoteBetEngineEnabled() {
 
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
+  voidEnvelopeBugResolutions(ingested);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   // Drop terminal entries that are already receipted to R2 and outside the
@@ -222,6 +223,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
 
 export async function processResolutionCycleWithJudges(existingLedger, historySnapshots, feedsByKey, newsArchive, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
+  voidEnvelopeBugResolutions(ingested);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
@@ -1572,10 +1574,46 @@ export function resolveDueEntries(ledger, feedsByKey, nowMs) {
     entry.outcome = result.outcome;
     entry.resolvedAt = nowMs;
     entry.sealedAt = nowMs;
-    entry.evidence = result.evidence;
+    entry.evidence = isHorizonEntry(entry) ? result.evidence : { ...result.evidence, envelopeAware: true };
     receipts.push({ key, entry: cloneJson(entry), resolvedAt: nowMs });
   }
   return receipts;
+}
+
+// Until #5233 the resolver read these contract-mode feeds as raw seed
+// envelopes, found no records, and scored every count() and present() as 0.
+// Those outcomes measured the reader, not the world. A row is mis-resolved when
+// it carries that zero and lacks the envelopeAware stamp the fixed reader puts
+// on every hard resolution; a genuine zero read after the fix keeps its outcome.
+// Re-running is a no-op: a voided row is no longer YES or NO.
+export const ENVELOPE_BUG_VOID_REASON = 'resolver_envelope_bug';
+const ENVELOPE_BUG_FEEDS = new Set(['cyber:threats-bootstrap:v2', 'infra:outages:v1']);
+
+function isEnvelopeBugResolution(entry) {
+  return entry?.status === 'resolved'
+    && (entry.outcome === 'YES' || entry.outcome === 'NO')
+    && entry.spec?.kind === 'hard'
+    && !isHorizonEntry(entry)
+    && ENVELOPE_BUG_FEEDS.has(entry.spec.sourceFeed)
+    && entry.evidence?.metricValue === 0
+    && entry.evidence?.envelopeAware !== true;
+}
+
+export function voidEnvelopeBugResolutions(ledger) {
+  let voided = 0;
+  for (const entry of Object.values(ledger)) {
+    if (!isEnvelopeBugResolution(entry)) continue;
+    entry.evidence = {
+      reason: ENVELOPE_BUG_VOID_REASON,
+      metricKey: entry.spec.metricKey,
+      resolvedAt: entry.resolvedAt,
+      supersededOutcome: entry.outcome,
+      supersededEvidence: entry.evidence,
+    };
+    entry.outcome = 'VOID';
+    voided += 1;
+  }
+  return voided;
 }
 
 export function collectUnarchivedReceipts(ledger) {

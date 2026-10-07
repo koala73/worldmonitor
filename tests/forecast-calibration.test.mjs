@@ -85,8 +85,8 @@ describe('golden fit on the frozen published-origin ledger', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT);
     assert.deepEqual(map, {
       schemaVersion: 1,
-      version: `forecast-calibration-pav-v1@${FIT_AT}`,
-      codeVersion: 'forecast-calibration-pav-v1',
+      version: `forecast-calibration-pav-v2@${FIT_AT}`,
+      codeVersion: 'forecast-calibration-pav-v2',
       fittedAt: FIT_AT,
       fitWindow: { from: 1783494135407, to: FIT_AT },
       cohortFilter: {

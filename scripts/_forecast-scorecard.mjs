@@ -912,6 +912,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   judge_disagreement: 'The judges disagreed',
   judge_retry_exhausted: 'The judges returned no verdict',
   withheld_unpublished: 'This kind of forecast is no longer published',
+  resolver_envelope_bug: 'Scored against a feed the resolver could not read; voided on 2026-10-07',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

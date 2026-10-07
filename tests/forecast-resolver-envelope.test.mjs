@@ -1,8 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { processResolutionCycle } from '../scripts/seed-forecast-resolutions.mjs';
+import { ENVELOPE_BUG_VOID_REASON, processResolutionCycle, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
 import { evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
+import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -88,5 +89,94 @@ describe('resolver reads contract-mode seed envelopes (#5233)', () => {
     const [verdict] = evaluateExtractionShadow([{ ...infraIraq, resolution: infraIraq.resolution }], { [INFRA_FEED]: envelope(infraOutages) });
     assert.equal(verdict.outcome, 'pass');
     assert.equal(verdict.value, 1);
+  });
+});
+
+// Shapes copied from production rows resolved before the fix.
+function preFixRow(id, sourceFeed, metricKey, outcome, evidence) {
+  return {
+    id,
+    key: `${id}@${T0 + 7 * DAY_MS}`,
+    domain: sourceFeed.startsWith('cyber') ? 'cyber' : 'infrastructure',
+    region: 'Romania',
+    title: `Forecast ${id}`,
+    timeHorizon: '7d',
+    generationOrigin: 'legacy_detector',
+    spec: { kind: 'hard', deadline: T0 + 7 * DAY_MS, metricKey, operator: '>=', threshold: 8, window: 'within-horizon', sourceFeed },
+    probability: 0.174,
+    generatedAt: T0,
+    firstSeenAt: T0,
+    deadline: T0 + 7 * DAY_MS,
+    status: 'resolved',
+    samples: { count: 0, recent: [] },
+    outcome,
+    resolvedAt: T0 + 8 * DAY_MS,
+    sealedAt: T0 + 8 * DAY_MS,
+    evidence: { metricKey, resolvedAt: T0 + 8 * DAY_MS, ...evidence },
+    receiptArchivedAt: T0 + 8 * DAY_MS,
+  };
+}
+
+function preFixLedger() {
+  const rows = [
+    preFixRow('fc-cyber-zero', CYBER_FEED, `${CYBER_FEED}|count(country==Romania)`, 'NO', { metricValue: 0, comparison: '0 >= 8', sampleSpan: { count: 0 } }),
+    preFixRow('fc-infra-zero', INFRA_FEED, `${INFRA_FEED}|present(country==Iraq)`, 'NO', { metricValue: 0, comparison: '0 >= 1', sampleSpan: { count: 3 } }),
+    preFixRow('fc-infra-void', INFRA_FEED, `${INFRA_FEED}|present(country==Iraq)`, 'VOID', { reason: 'no_establishable_metric' }),
+    preFixRow('fc-ucdp-zero', 'conflict:ucdp-events:v1', 'conflict:ucdp-events:v1|count(country==Mali)', 'NO', { metricValue: 0, comparison: '0 >= 8' }),
+    preFixRow('fc-cyber-postfix', CYBER_FEED, `${CYBER_FEED}|count(country==Romania)`, 'NO', { metricValue: 0, comparison: '0 >= 8', envelopeAware: true }),
+  ];
+  return Object.fromEntries(rows.map((row) => [row.key, row]));
+}
+
+describe('voidEnvelopeBugResolutions (#5233)', () => {
+  it('voids only zero reads of the enveloped feeds that the old reader resolved', () => {
+    const before = preFixLedger();
+    const ledger = structuredClone(before);
+    assert.equal(voidEnvelopeBugResolutions(ledger), 2);
+    const byId = Object.fromEntries(Object.values(ledger).map((row) => [row.id, row]));
+    for (const id of ['fc-cyber-zero', 'fc-infra-zero']) {
+      const original = Object.values(before).find((row) => row.id === id);
+      assert.equal(byId[id].outcome, 'VOID', id);
+      assert.deepEqual(byId[id].evidence, {
+        reason: ENVELOPE_BUG_VOID_REASON,
+        metricKey: original.spec.metricKey,
+        resolvedAt: original.resolvedAt,
+        supersededOutcome: 'NO',
+        supersededEvidence: original.evidence,
+      });
+      assert.equal(byId[id].resolvedAt, original.resolvedAt, 'the row stays in the same rolling window');
+    }
+    for (const id of ['fc-infra-void', 'fc-ucdp-zero', 'fc-cyber-postfix']) {
+      assert.deepEqual(byId[id], Object.values(before).find((row) => row.id === id), id);
+    }
+  });
+
+  it('is idempotent', () => {
+    const once = preFixLedger();
+    voidEnvelopeBugResolutions(once);
+    const twice = structuredClone(once);
+    assert.equal(voidEnvelopeBugResolutions(twice), 0);
+    assert.deepEqual(twice, once);
+  });
+
+  it('keeps a genuine zero the fixed reader resolves, across later cycles', () => {
+    const feeds = shapeResolutionFeeds({ [CYBER_FEED]: envelope({ threats: [{ id: 'x', country: 'DE', firstSeenAt: T0 + DAY_MS }] }) });
+    const first = processResolutionCycle({}, [{ generatedAt: T0, predictions: [cyberRomania] }], feeds, T0 + 8 * DAY_MS);
+    const second = processResolutionCycle(first.ledger, [], feeds, T0 + 9 * DAY_MS);
+    const row = resolvedRow(second.ledger, 'fc-cyber-ro');
+    assert.equal(row.outcome, 'NO');
+    assert.equal(row.evidence.metricValue, 0);
+    assert.equal(row.evidence.envelopeAware, true);
+  });
+
+  it('runs inside the resolver cycle and drops the rows from the scored cohort', () => {
+    const nowMs = T0 + 10 * DAY_MS;
+    const before = computeScorecard(preFixLedger(), nowMs);
+    const { ledger, scorecard } = processResolutionCycle(preFixLedger(), [], {}, nowMs);
+    assert.equal(before.totals.scored - scorecard.totals.scored, 2);
+    assert.equal(scorecard.totals.void - before.totals.void, 2);
+    const receipt = buildPublicReceipts(ledger, nowMs).find((row) => row.voidReason === ENVELOPE_BUG_VOID_REASON);
+    assert.ok(receipt, 'a voided row is published as a receipt with its reason');
+    assert.equal(RECEIPT_VOID_REASON_LABELS[receipt.voidReason], 'Scored against a feed the resolver could not read; voided on 2026-10-07');
   });
 });

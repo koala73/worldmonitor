@@ -50,7 +50,9 @@ export const CALIBRATION_MAP_SCHEMA_VERSION = 1;
 // Bumping this is the only refit path: a persisted map with another code
 // version is replaced on the next resolver run, which also restarts the
 // forward cohort at the new fittedAt.
-export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v1';
+// v2 refits without the cyber and outage rows voided under #5233; v1 fit cyber
+// to 0.01 from outcomes the resolver could not read.
+export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v2';
 export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 export const CALIBRATION_MIN_TOTAL_SAMPLE = 60;
 export const CALIBRATION_MIN_DOMAIN_SAMPLE = 30;
