@@ -971,8 +971,6 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 perspectives:
                     $ref: '#/components/schemas/Perspectives'
-                projections:
-                    $ref: '#/components/schemas/Projections'
                 caseFile:
                     $ref: '#/components/schemas/ForecastCase'
                 simulationAdjustment:
@@ -1040,26 +1038,6 @@ components:
                     type: string
                 contrarian:
                     type: string
-        Projections:
-            type: object
-            properties:
-                h24:
-                    type: number
-                    format: double
-                    description: Projected 24-hour probability.
-                d7:
-                    type: number
-                    format: double
-                    description: Projected 7-day probability.
-                d30:
-                    type: number
-                    format: double
-                    description: Projected 30-day probability.
-            description: |-
-                Bounded presentation-path probabilities from domain curves.
-                 Market forecasts are peak-anchored, so the value at the forecast's own
-                 time_horizon can differ from the headline probability;
-                 non-market forecasts preserve their emitted horizon as anchor.
         ForecastCase:
             type: object
             properties:

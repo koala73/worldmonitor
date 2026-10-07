@@ -404,10 +404,16 @@ describe('forecast resolution spec round-trip (U3)', () => {
 
     const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
     assert.ok(!('resolution' in payload));
-    // projections default: absent projections -> null in both builders
-    // (pre-existing sibling convention, unchanged).
     assert.strictEqual(historyEntry.projections, null);
-    assert.strictEqual(payload.projections, null);
+    assert.ok(!('projections' in payload));
+  });
+
+  it('projections stay in the history entry for horizon scoring and never reach the published payload (#8967)', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.61, d7: 0.66, d30: 0.72 };
+    assert.deepEqual(buildHistoryForecastEntry(pred).projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('projections' in payload), 'forecast:predictions:v2 must not publish projections');
   });
 
   it('canonical payload emits a camelCase resolution object for a spec\'d forecast, omits it otherwise', () => {

@@ -4979,10 +4979,9 @@ function buildHistoryForecastEntry(pred) {
       effect: cascade.effect,
       probability: cascade.probability,
     })),
-    // Persist projections into the 45-day history too (#4933 audit gap —
-    // canonical payload already emits them at :5100; history was the only
-    // store dropping them, so the per-horizon curve a future multi-horizon
-    // Brier needs was lost). Mirror the canonical payload's shape.
+    // History is the only store for projections (#8967): horizon scoring
+    // grades each hard horizon contract on these values, and the public
+    // payload no longer carries them.
     projections: pred.projections ? {
       h24: Number(pred.projections.h24 || 0),
       d7: Number(pred.projections.d7 || 0),
@@ -5669,11 +5668,6 @@ function buildPublishedForecastPayload(pred) {
       strategic: pred.perspectives.strategic || '',
       regional: pred.perspectives.regional || '',
       contrarian: pred.perspectives.contrarian || '',
-    } : null,
-    projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
     } : null,
     resolution: buildResolutionOutputBlock(pred.resolution),
     caseFile: slimForecastCaseForPublish(pred.caseFile),

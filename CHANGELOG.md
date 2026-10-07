@@ -6,6 +6,18 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **Forecast `projections` field removed** (2026-10-07; #8967).
+  `GET /api/forecast/v1/get-forecasts`, the `forecast:predictions:v2` payload, and
+  the `get_forecast_predictions` and `get_forecast_case` MCP tools no longer
+  return `projections` (`h24`, `d7`, `d30`) on a forecast. The values were
+  unscored editorial curves, not probabilities, and four of five domains broke
+  the probability law (a 30-day value below the 24-hour value for the same
+  event). The proto reserves `Forecast` field 17 and the name `projections`, and
+  the `Projections` message is deleted. **Migration:** read `probability` with
+  `timeHorizon`; no per-horizon value replaces it. Horizon scoring (#7075) is
+  unchanged: the seeder still computes the values and keeps them in its internal
+  history, where the outcome ledger grades each point-in-time horizon contract.
+
 - **YouTube channel live detection is retired** (#8167; #5503). It scraped
   youtube.com channel pages through a residential proxy, which #5503 flagged as
   a YouTube Terms of Service violation. On
