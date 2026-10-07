@@ -1054,8 +1054,9 @@ components:
                     type: number
                     format: double
             description: |-
-                Deprecated (#8967): never populated. The seeder keeps these unscored
-                 horizon curves internal for horizon scoring.
+                Deprecated (#8967): newly seeded payloads omit it; a payload cached
+                 before the change may carry it until the next seed-forecasts run. The
+                 seeder keeps these unscored horizon curves internal for horizon scoring.
         ForecastCase:
             type: object
             properties:
