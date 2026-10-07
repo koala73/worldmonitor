@@ -3,6 +3,7 @@ import { getLocale, t } from '@/services/i18n';
 import { isDesktopRuntime } from '@/services/runtime';
 import { CANONICAL_ORIGIN } from '@/config/schema-graph-ids';
 import { escapeHtml } from '@/utils/sanitize';
+import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
 
 interface GradedRecord {
   stale: boolean;
@@ -93,8 +94,30 @@ export function projectReliability(resp: GetForecastScorecardResponse): Reliabil
   return { windowDays, stale: resp.stale === true, byDomain };
 }
 
-/** A domain the scorecard has no published row for has graded nothing yet, so it reads as unmeasured with n=0. */
-export function renderReliabilityBadge(table: ReliabilityTable | null, domain: string, domainLabel: string): string {
+/** `since` is a calendar date, so it is formatted in UTC; a local zone west of UTC would print the day before. */
+function auditHint(audit: ForecastAccuracyAudit): string {
+  const since = new Date(`${audit.since}T00:00:00Z`);
+  let date: string;
+  try {
+    date = since.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  } catch {
+    date = audit.since;
+  }
+  return t('components.forecast.audit.hint', { date });
+}
+
+/** While the audit switch is set (#8990) the badge carries no score, whatever the scorecard says. */
+export function renderReliabilityBadge(
+  table: ReliabilityTable | null,
+  domain: string,
+  domainLabel: string,
+  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
+): string {
+  if (audit) {
+    const text = t('components.forecast.audit.label');
+    return `<a class="fc-reliability" data-fc-reliability-state="under-audit" href="${escapeHtml(recordHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${auditHint(audit)}`)}">${escapeHtml(text)}</a>`;
+  }
+  // A domain the scorecard has no published row for has graded nothing yet, so it reads as unmeasured with n=0.
   if (!table) return '';
   const r = table.byDomain.get(domain) ?? { kind: 'unmeasured', n: 0 };
   const days = table.windowDays;
@@ -155,15 +178,24 @@ const RES_GAP = '<span class="fc-res-gap" aria-hidden="true">&nbsp;</span>';
  * restores one the reader left open. The slot always holds two line boxes (chip, then history), filled with
  * invisible gaps when absent, so a narrow card is the same height while loading, with history, and without.
  */
-export function renderResolutionChips(history: FamilyHistory | null, forecastId: string, open = false): string {
+export function renderResolutionChips(
+  history: FamilyHistory | null,
+  forecastId: string,
+  open = false,
+  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
+): string {
   const windows = history?.get(forecastId);
   if (!windows?.length) return `<span class="fc-res-slot">${RES_GAP}${RES_GAP}</span>`;
   const reasonOf = (w: FamilyWindow) => (w.outcome === 'VOID' ? t(`components.forecast.resolution.void.${w.voidReason}`) : '');
   const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
   const reason = reasonOf(last);
-  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${reason ? ` title="${escapeHtml(reason)}"` : ''}>`
+  // Under audit the outcome is still shown, but as a recorded value, not a verified grade (#8990).
+  const unverified = audit ? t('components.forecast.audit.unverified') : '';
+  const title = [reason, unverified].filter(Boolean).join(' ');
+  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${title ? ` title="${escapeHtml(title)}"` : ''}>`
     + `<span aria-hidden="true">${escapeHtml(t('components.forecast.resolution.last', { outcome: outcomeWord(last.outcome) }))}</span>`
-    + `<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }))}</span></span>`;
+    + `<span class="fc-sr-only">${escapeHtml([t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }), unverified].filter(Boolean).join(' '))}</span></span>`;
+  const slot = audit ? '<span class="fc-res-slot" data-unverified>' : '<span class="fc-res-slot">';
   const disclosed = windows.some((w) => w.outcome === 'VOID');
   const sentence = t('components.forecast.resolution.history', {
     list: windows.map((w) => (reasonOf(w) ? `${outcomeWord(w.outcome)} (${reasonOf(w)})` : outcomeWord(w.outcome))).join(', '),
@@ -175,8 +207,8 @@ export function renderResolutionChips(history: FamilyHistory | null, forecastId:
   const row = windows.length < 2
     ? `${chip}${RES_GAP}`
     : `${chip}<span class="fc-res-history">${marks}${disclosed ? '' : `<span class="fc-sr-only">${escapeHtml(sentence)}</span>`}</span>`;
-  if (!disclosed) return `<span class="fc-res-slot">${row}</span>`;
-  return `<span class="fc-res-slot"><details class="fc-res-void"${open ? ' open' : ''}><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details></span>`;
+  if (!disclosed) return `${slot}${row}</span>`;
+  return `${slot}<details class="fc-res-void"${open ? ' open' : ''}><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details></span>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
@@ -231,7 +263,13 @@ function wrap(kind: ForecastRecord['kind'], inner: string): string {
   return `<div class="fc-record" data-fc-record="${kind}" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">${inner}</div>`;
 }
 
-export function renderForecastRecord(record: ForecastRecord): string {
+export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
+  if (audit) {
+    const hint = auditHint(audit);
+    return `<div class="fc-record" data-fc-record="under-audit" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">`
+      + `${label()}<span class="fc-record-note fc-record-audit" title="${escapeHtml(hint)}">${escapeHtml(t('components.forecast.audit.label'))}</span>`
+      + `<span class="fc-sr-only">${escapeHtml(hint)}</span>${link()}</div>`;
+  }
   switch (record.kind) {
     case 'loading':
       return wrap('loading', `${label()}${note(t('common.loading'))}`);

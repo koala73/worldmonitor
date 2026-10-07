@@ -2419,6 +2419,11 @@
       "horizons": {
         "label": "De asemenea, evaluat la: {{list}}",
         "hint": "Probabilitatea titlului este evaluată la orizontul propriu al prognozei. Proiecția la fiecare dintre aceste orizonturi este de asemenea evaluată, comparată cu sursa sa de feed, folosind valoarea publicată pentru prima dată pentru această prognoză. Valorile proiecției nu sunt afișate deoarece valoarea curentă poate diferi de cea evaluată."
+      },
+      "audit": {
+        "label": "Precizie sub audit",
+        "hint": "Sub audit din {{date}}. Un audit a identificat erori în modul în care au fost evaluate previziunile. Scorurile sunt retrase în timp ce se fac corecții. Previziunile continuă să fie publicate și înregistrate.",
+        "unverified": "Rezultat înregistrat, neverificat cât timp precizia este sub audit."
       }
     },
     "escalationCorrelation": {

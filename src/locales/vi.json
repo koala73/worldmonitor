@@ -2399,6 +2399,11 @@
       "horizons": {
         "label": "Cũng được chấm điểm tại: {{list}}",
         "hint": "Xác suất tiêu đề được đánh giá tại đường chân trời của chính dự báo. Phép chiếu tại mỗi đường chân trời này cũng được đánh giá, so với feed nguồn của nó, sử dụng giá trị được công bố lần đầu cho dự báo này. Các giá trị phép chiếu không được hiển thị vì giá trị hiện tại có thể khác với giá trị được đánh giá."
+      },
+      "audit": {
+        "label": "Độ chính xác đang được kiểm toán",
+        "hint": "Đang được kiểm toán kể từ {{date}}. Một cuộc kiểm toán phát hiện lỗi trong cách chấm điểm dự báo. Các điểm số đã được rút lại trong khi việc chỉnh sửa đang được thực hiện. Các dự báo vẫn đang được công bố và ghi lại.",
+        "unverified": "Kết quả ghi lại, chưa được xác minh trong khi độ chính xác đang được kiểm toán."
       }
     },
     "escalationCorrelation": {

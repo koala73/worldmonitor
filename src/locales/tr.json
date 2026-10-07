@@ -2409,6 +2409,11 @@
       "horizons": {
         "label": "Ayrıca puanlandı: {{list}}",
         "hint": "Ana başlık olasılığı, tahmin kendi ufku üzerinden puanlandırılır. Bu ufukların her birindeki projeksiyon da puanlandırılır, kendi kaynak feed'ine karşı, bu tahmin için ilk yayınlanan değer kullanılarak. Projeksiyon değerleri gösterilmez çünkü mevcut değer puanlandırılan değerden farklı olabilir."
+      },
+      "audit": {
+        "label": "Doğruluk denetim altında",
+        "hint": "{{date}} tarihinden beri denetim altında. Bir denetim, tahminlerin puanlandırılma şeklinde hatalar buldu. Düzeltmeler yapılırken puanlar geri çekilmiştir. Tahminler yine de yayınlanıyor ve kaydediliyor.",
+        "unverified": "Kaydedilen sonuç, doğruluk denetim altındayken doğrulanmadı."
       }
     },
     "escalationCorrelation": {

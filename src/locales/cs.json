@@ -2429,6 +2429,11 @@
       "horizons": {
         "label": "Také skórováno v: {{list}}",
         "hint": "Hlavní pravděpodobnost je hodnocena v horizontu předpovědi. Projekce v každém z těchto horizontů je také hodnocena proti své zdrojové položce za použití hodnoty, která byla pro tuto předpověď poprvé zveřejněna. Hodnoty projekcí nejsou zobrazeny, protože aktuální hodnota se může lišit od hodnocené."
+      },
+      "audit": {
+        "label": "Přesnost v auditu",
+        "hint": "V auditu od {{date}}. Audit zjistil chyby v hodnocení prognóz. Skóre jsou stažena, dokud nebudou provedeny opravy. Prognózy se dál publikují a zaznamenávají.",
+        "unverified": "Zaznamenaný výsledek, neověřený, dokud probíhá audit přesnosti."
       }
     },
     "escalationCorrelation": {

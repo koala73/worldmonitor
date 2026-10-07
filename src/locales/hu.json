@@ -2143,6 +2143,11 @@
       "horizons": {
         "label": "Pontszáma további horizontokon: {{list}}",
         "hint": "A főcím valószínűsége az előrejelzés saját horizontján kerül értékelésre. Az egyes horizontok vetülete szintén értékelésre kerül a forrásfeed alapján, az előrejelzéshez először közétett érték alapján. A vetület értékei nem jelennek meg, mert az aktuális érték eltérhet az értékelt értéktől."
+      },
+      "audit": {
+        "label": "Pontosság auditálás alatt",
+        "hint": "Auditálás alatt {{date}} óta. Az audit hibákat talált az előrejelzések értékelésében. A pontszámokat a javítások idejére visszavontuk. Az előrejelzéseket továbbra is közzétesszük és rögzítjük.",
+        "unverified": "Rögzített kimenetel, nem ellenőrzött, miközben a pontosság auditálás alatt áll."
       }
     },
     "escalationCorrelation": {

@@ -2026,6 +2026,11 @@
       "horizons": {
         "label": "Också bedömt vid: {{list}}",
         "hint": "Huvudsannolikheten graderas vid prognosens egen horisont. Projektionen vid var och en av dessa horisonter graderas också mot dess källfeed, med det värde som först publicerades för denna prognos. Projektionsvärden visas inte eftersom det aktuella värdet kan skilja sig från det graderade."
+      },
+      "audit": {
+        "label": "Noggrannhet under granskning",
+        "hint": "Under granskning sedan {{date}}. En granskning upptäckte fel i hur prognoser bedömdes. Poängen är återkallade medan korrigeringar görs. Prognoser fortsätter att publiceras och registreras.",
+        "unverified": "Registrerat utfall, inte verifierat medan noggrannheten är under granskning."
       }
     },
     "escalationCorrelation": {

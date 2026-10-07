@@ -434,6 +434,15 @@ describe('published reliability and original evidence continuity', () => {
     assert.equal(doc.querySelector('.fc-reliability').textContent, 'Out of date · Not yet measured');
     send(compact({ status: 'unavailable' })); assert.equal(doc.querySelector('.fc-reliability'), null);
   });
+  it('shows "Accuracy under audit" with no number while the audit switch withholds the scores (#8990)', async () => {
+    const audited = { status: 'unavailable', underAudit: { since: '2026-10-07', issue: 8990, reason: 'Scoring errors.' }, windowDays: 90, stale: false, freshnessUnknown: false, byDomain: [] };
+    const { doc } = await mount(compact(audited)); const badge = doc.querySelector('.fc-reliability');
+    assert.equal(badge?.textContent, 'Accuracy under audit');
+    assert.equal(badge.getAttribute('href'), 'https://www.worldmonitor.app/accuracy/');
+    assert.equal(badge.getAttribute('data-fc-reliability-state'), 'under-audit');
+    assert.match(badge.getAttribute('aria-label'), /since 2026-10-07/);
+    assert.doesNotMatch(badge.getAttribute('aria-label'), /Brier|\d\.\d{3}/);
+  });
   it('preserves pending then loaded Analysis and original theaters across reliability-only updates and filters', async () => {
     const { win, doc, messages, send } = await mount(compact()); enableTools(win);
     const details = openCase(win, doc); const request = messages.find(message => message.params?.name === 'get_forecast_case');

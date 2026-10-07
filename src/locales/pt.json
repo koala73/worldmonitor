@@ -2034,6 +2034,11 @@
       "horizons": {
         "label": "Também pontuado em: {{list}}",
         "hint": "A probabilidade da manchete é avaliada no horizonte próprio da previsão. A projeção em cada um desses horizontes também é avaliada, em relação ao seu feed de origem, usando o valor publicado inicialmente para esta previsão. Os valores de projeção não são exibidos porque o valor atual pode diferir do avaliado."
+      },
+      "audit": {
+        "label": "Precisão em auditoria",
+        "hint": "Em auditoria desde {{date}}. Uma auditoria encontrou erros na forma como as previsões foram pontuadas. As pontuações foram suspensas enquanto as correções são feitas. As previsões continuam sendo publicadas e registradas.",
+        "unverified": "Resultado registrado, não verificado enquanto a precisão está em auditoria."
       }
     },
     "escalationCorrelation": {

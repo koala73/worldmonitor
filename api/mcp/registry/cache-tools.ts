@@ -30,6 +30,7 @@ import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shar
 import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
+import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -524,9 +525,15 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
   return presented;
 }
 
-function forecastReliability(data: Record<string, unknown>, domains: string[]) {
+/**
+ * While the audit switch is set (#8990) no domain score leaves this tool:
+ * status reads unavailable, byDomain is empty, and underAudit says why. The
+ * freshness fields stay, so the badge's clock contract is unchanged.
+ */
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
   const raw = data.scorecard;
-  const unavailable = { status: 'unavailable' };
+  const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
+  const unavailable = { status: 'unavailable', ...underAudit };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable;
   const card = raw as Record<string, unknown>;
   if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
@@ -541,10 +548,14 @@ function forecastReliability(data: Record<string, unknown>, domains: string[]) {
   const meta = data.scorecardMeta;
   const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
   const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
-  return {
-    status: 'ready', windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
+  const clock = {
+    windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
     stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
     asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+  };
+  if (audit) return { status: 'unavailable', ...underAudit, ...clock, byDomain: [] };
+  return {
+    status: 'ready', ...clock,
     byDomain: [...new Set(domains)].filter(domain => domain !== 'bet_engine').map(domain => {
       const row = rows.get(domain);
       const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
@@ -3299,7 +3310,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.',
+    description: `${FORECAST_ACCURACY_AUDIT ? `Under audit since ${FORECAST_ACCURACY_AUDIT.since} (issue ${FORECAST_ACCURACY_AUDIT.issue}): scores are unreliable and withdrawn while corrections are made. ` : ''}Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.`,
     inputSchema: {
       type: 'object',
       properties: {},

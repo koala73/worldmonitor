@@ -2026,6 +2026,11 @@
       "horizons": {
         "label": "Ook gescoord op: {{list}}",
         "hint": "De kans in de kop wordt beoordeeld op de eigen horizon van de prognose. De projectie op elk van deze horizons wordt ook beoordeeld, tegen de bronfeed, met de waarde die voor deze prognose eerst is gepubliceerd. Projectiewaarden worden niet weergegeven omdat de huidige waarde kan afwijken van de beoordeelde waarde."
+      },
+      "audit": {
+        "label": "Nauwkeurigheid wordt geaudit",
+        "hint": "Wordt sinds {{date}} geaudit. Een audit vond fouten in de manier waarop voorspellingen werden gescoord. De scores zijn ingetrokken terwijl correcties worden doorgevoerd. Voorspellingen worden nog steeds gepubliceerd en vastgelegd.",
+        "unverified": "Vastgelegde uitkomst, niet geverifieerd zolang de nauwkeurigheid wordt geaudit."
       }
     },
     "escalationCorrelation": {

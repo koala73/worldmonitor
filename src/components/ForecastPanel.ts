@@ -314,6 +314,7 @@ function injectStyles(): void {
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
     .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
     .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
+    .fc-res-slot[data-unverified] .fc-res-chip, .fc-res-slot[data-unverified] .fc-res-mark { color: var(--text-secondary, #7d8590); }
     .fc-res-history { display: inline-flex; gap: 2px; letter-spacing: 0.02em; }
     .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     .fc-horizons { margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); }

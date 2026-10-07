@@ -2409,6 +2409,11 @@
       "horizons": {
         "label": "Auch bewertet bei: {{list}}",
         "hint": "Die Schlagzeilen-Wahrscheinlichkeit wird am eigenen Zeithorizont der Prognose bewertet. Die Projektion an jedem dieser Horizonte wird ebenfalls bewertet, anhand ihres Quell-Feeds, unter Verwendung des zuerst für diese Prognose veröffentlichten Wertes. Projektionswerte werden nicht angezeigt, da der aktuelle Wert vom bewerteten abweichen kann."
+      },
+      "audit": {
+        "label": "Genauigkeit wird überprüft",
+        "hint": "Wird seit {{date}} überprüft. Eine Überprüfung hat Fehler bei der Bewertung von Prognosen gefunden. Die Bewertungen werden zurückgezogen, während Korrekturen vorgenommen werden. Prognosen werden weiterhin veröffentlicht und aufgezeichnet.",
+        "unverified": "Aufgezeichnetes Ergebnis, nicht verifiziert, solange die Genauigkeit überprüft wird."
       }
     },
     "escalationCorrelation": {

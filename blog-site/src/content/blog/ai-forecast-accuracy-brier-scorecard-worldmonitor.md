@@ -6,7 +6,7 @@ keywords: "AI forecast accuracy, Brier score forecasting, geopolitical forecast 
 audience: "Forecasters, superforecasting community, quant researchers, skeptical analysts, AI evaluation researchers"
 heroImage: "/blog/images/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-10-07"
 ---
 
 Every AI product now makes predictions. Almost none of them tell you their error rate.
@@ -27,6 +27,8 @@ From the resolved ledger, the scorecard computes the metrics forecasting researc
 The scoring runs over a rolling window with judged and pending counts visible, so you can see not just how good the record is but how much record there is.
 
 ## The actual scorecard, as of July 22, 2026
+
+> **Update, October 7, 2026.** An audit found errors in how these forecasts were scored, including outcomes recorded without reading their data. The figures in this post are not reliable. The findings and fixes are tracked in [issue #8990](https://github.com/koala73/worldmonitor/issues/8990).
 
 A post about publishing your numbers should publish the numbers. These were pulled from the live `get_forecast_scorecard` endpoint while writing, over the current 180-day rolling window:
 

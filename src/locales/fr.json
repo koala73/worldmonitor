@@ -2419,6 +2419,11 @@
       "horizons": {
         "label": "Également noté à : {{list}}",
         "hint": "La probabilité du titre est notée à l'horizon propre de la prévision. La projection à chacun de ces horizons est également notée, par rapport à son feed source, en utilisant la valeur publiée en premier pour cette prévision. Les valeurs de projection ne sont pas affichées car la valeur actuelle peut différer de celle notée."
+      },
+      "audit": {
+        "label": "Exactitude en audit",
+        "hint": "En audit depuis {{date}}. Un audit a révélé des erreurs dans la notation des prévisions. Les scores sont retirés pendant que les corrections sont apportées. Les prévisions continuent d'être publiées et enregistrées.",
+        "unverified": "Résultat enregistré, non vérifié pendant que l'exactitude est en audit."
       }
     },
     "escalationCorrelation": {

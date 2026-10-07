@@ -2146,6 +2146,11 @@
       "horizons": {
         "label": "Pia alama zilizotolewa katika: {{list}}",
         "hint": "Uwezekano wa kichwa ni alama iliyopeana katika mlangoni wa utabiri. Makadirio katika kila moja ya miradi hii pia alama iliyopeana, ikabadilishwa na chanzo chake cha mwili, kwa kutumia thamani iliyochapishwa kwa mara ya kwanza kwa utabiri huu. Thamani za makadirio hazijafanyiwa wazi kwa sababu thamani ya sasa inaweza kuwa tofauti na ile iliyoalama."
+      },
+      "audit": {
+        "label": "Usahihi unakaguliwa",
+        "hint": "Inakaguliwa tangu {{date}}. Ukaguzi ulipata makosa katika jinsi utabiri ulivyopewa alama. Alama zimeondolewa wakati marekebisho yanafanywa. Utabiri bado unachapishwa na kurekodiwa.",
+        "unverified": "Matokeo yaliyorekodiwa, hayajathibitishwa wakati usahihi unakaguliwa."
       }
     },
     "escalationCorrelation": {
