@@ -2095,7 +2095,11 @@ describe('shared MCP notification failures', () => {
     const ids = ['brief', 'sources', 'evidence', 'foot'];
     const accepted = ids.map(id => view.nodes(id).slice());
     view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } });
-    ids.forEach((id, i) => assert.deepEqual(view.nodes(id), accepted[i]));
+    ids.forEach((id, i) => {
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, accepted[i].length, id + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, accepted[i][index], id + ': accepted node identity survives'));
+    });
     for (const flag of [undefined, false, 'true']) {
       const recovery = { ...brief, brief: 'Controlled recovery.' };
       view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: flag, structuredContent: recovery } } });
@@ -2157,7 +2161,9 @@ describe('shared MCP notification failures', () => {
       view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text: 'Controlled fleet failure' }] } });
       assert.equal(view.text('empty'), 'Controlled fleet failure', name);
       assert.equal(view.nodes('card')[0].style.display, 'none', name);
-      assert.deepEqual(view.nodes(id), before, name + ': accepted DOM survives');
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, before.length, name + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, before[index], name + ': accepted node identity survives'));
       assert.equal(view.text('foot'), footer, name + ': existing footer survives');
       view.sendToolResult(payload);
       assert.equal(view.nodes('card')[0].style.display, 'block', name);
