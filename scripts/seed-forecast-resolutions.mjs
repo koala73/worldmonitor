@@ -2426,6 +2426,9 @@ async function dryRun() {
     readBetsHistory(200).catch(() => []),
   ]);
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
+  // The live run fits the calibration map after the cycle has voided these
+  // rows; the preview must fit the same ledger.
+  voidEnvelopeBugResolutions(preLedger);
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = { ...buildLiveJudgedOptions(nowMs), persistRecoveredCoverage: false };
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
