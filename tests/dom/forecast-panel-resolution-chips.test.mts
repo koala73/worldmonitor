@@ -234,6 +234,13 @@ describe('ForecastPanel resolution chips', () => {
     const badge = rule('.fc-card-meta .fc-reliability');
     expect(badge).toMatch(/flex:\s*1 1 \d+(\.\d+)?em/);
     expect(badge).toMatch(/max-width:\s*max-content/);
+    // A label column narrower than one chip clips the chip inside the column instead of spilling over the probability bar.
+    for (const selector of ['.fc-res-chip, .fc-res-history', '.fc-res-void']) {
+      expect(rule(selector), selector).toMatch(/min-width:\s*0/);
+      expect(rule(selector), selector).not.toMatch(/flex:\s*none/);
+    }
+    expect(rule('.fc-res-chip, .fc-res-history')).toMatch(/overflow:\s*hidden/);
+    expect(rule('.fc-res-void > summary'), 'chip and history wrap inside the disclosure too').toMatch(/flex-wrap:\s*wrap/);
   });
 
   it('patches chips in place beside the badge, on the same line slot', async () => {
