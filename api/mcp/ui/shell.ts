@@ -126,6 +126,8 @@ const SHARED_BRIDGE_HEAD = `
   "use strict";
   var parentWin = window.parent;
   var hostCapabilities = {};
+  var sourceLinkRequest = null;
+  var sourceLinkSerial = 0;
 
   function post(msg) {
     try { parentWin.postMessage(msg, "*"); } catch (e) { /* host gone */ }
@@ -133,6 +135,52 @@ const SHARED_BRIDGE_HEAD = `
   function notify(method, params) {
     post({ jsonrpc: "2.0", method: method, params: params || {} });
   }
+
+  function showSourceLinkStatus(text) {
+    var notice = q("source-link-status");
+    if (!notice) {
+      notice = el("p");
+      notice.id = "source-link-status";
+      notice.setAttribute("role", "status");
+      q("root").appendChild(notice);
+    }
+    notice.textContent = text;
+    notice.hidden = !text;
+    reportSize();
+  }
+  function finishSourceLink(id, text) {
+    if (!sourceLinkRequest || sourceLinkRequest.id !== id) return;
+    clearTimeout(sourceLinkRequest.timer);
+    sourceLinkRequest = null;
+    showSourceLinkStatus(text);
+  }
+  window.addEventListener("click", function (event) {
+    var link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!link) return;
+    var url = httpUrl(link.getAttribute("href"));
+    if (!url) return;
+    event.preventDefault();
+    if (sourceLinkRequest) return;
+    if (!hostCapabilities.openLinks || typeof hostCapabilities.openLinks !== "object" || Array.isArray(hostCapabilities.openLinks)) {
+      showSourceLinkStatus("Opening source links is unavailable in this host.");
+      return;
+    }
+    var id = "source-link-" + ++sourceLinkSerial;
+    sourceLinkRequest = { id: id, timer: null };
+    sourceLinkRequest.timer = setTimeout(function () {
+      finishSourceLink(id, "The host did not respond to this source link.");
+    }, 30000);
+    showSourceLinkStatus("Requesting this source link from the host.");
+    try {
+      parentWin.postMessage({ jsonrpc: "2.0", id: id, method: "ui/open-link", params: { url: url } }, "*");
+    } catch (e) {
+      finishSourceLink(id, "The host could not open this source link.");
+    }
+  });
+  window.addEventListener("pagehide", function () {
+    if (sourceLinkRequest) clearTimeout(sourceLinkRequest.timer);
+    sourceLinkRequest = null;
+  });
 
   // ---- shared render helpers (widget renderBody uses these) ----
   function q(id) { return document.getElementById(id); }
@@ -323,6 +371,14 @@ function renderBridgeTail(appName: string): string {
     if (event.source !== parentWin) return;
     var msg = event.data;
     if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
+
+    if (sourceLinkRequest && msg.id === sourceLinkRequest.id) {
+      if (msg.method && !("result" in msg) && !("error" in msg)) return;
+      var result = msg.result;
+      var failed = msg.error || !result || typeof result !== "object" || Array.isArray(result) || result.isError === true;
+      finishSourceLink(msg.id, failed ? "The host could not open this source link." : "");
+      return;
+    }
 
     if (msg.id === 1 && msg.result) {
       hostCapabilities = msg.result.hostCapabilities && typeof msg.result.hostCapabilities === "object" ? msg.result.hostCapabilities : {};
