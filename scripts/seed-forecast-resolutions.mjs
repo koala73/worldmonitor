@@ -244,6 +244,11 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
     if (entry?.status !== 'pending-judge' || !isWithheldEntry(entry)) continue;
     const result = resolvedJudgedResult('VOID', 'withheld_unpublished', entry, [], [], nowMs);
     recordJudgedTerminalAttempt(entry, result, nowMs);
+    result.evidence = pruneUndefined({
+      ...result.evidence,
+      attemptLog: cloneJson(entry.judgeAttemptLog),
+      attemptClasses: summarizeAttemptLogClasses(entry.judgeAttemptLog),
+    });
     sealJudgedEntry(entry, result, nowMs);
     receipts.push({ key, entry: cloneJson(entry), resolvedAt: nowMs });
   }

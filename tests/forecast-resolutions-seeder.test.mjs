@@ -2072,6 +2072,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     assert.equal(row.outcome, 'VOID');
     assert.equal(row.evidence.reason, 'withheld_unpublished');
     assert.equal(row.judgeAttemptLog.at(-1).stage, 'terminal');
+    assert.equal(row.evidence.attemptLog.at(-1).reason, 'withheld_unpublished', 'the receipt carries the sealing attempt');
     assert.equal(result.scorecard.totals.resolved, 0, 'the scorecard still leaves the withheld row out');
   });
 
