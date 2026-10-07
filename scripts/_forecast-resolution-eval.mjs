@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
 import { finiteObservations } from './_bet-templates-macro.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { MARITIME_REGIONS, hexesInMaritimeRegion } from './_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
@@ -28,6 +29,7 @@ export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // this long past the deadline for the adjudicated record before VOIDing.
 export const MARKET_SETTLEMENT_FEED_KEY = 'prediction:markets-resolution:v1';
 const MARKET_BOOTSTRAP_FEED_KEY = 'prediction:markets-bootstrap:v1';
+const GPS_JAM_FEED_KEY = 'intelligence:gpsjam:v2';
 export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // FRED (#5525 KTD4): monthly series observations are dated the FIRST of the
 // reference month and publish ~2 weeks after the month ENDS, so the first
@@ -170,13 +172,14 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   // period's value, and a live feed kept warm through a fetch failure
   // (commodities, whose shaper stamps each quote with the envelope
   // `_seed.fetchedAt` as `asOf`) may hold a quote dated days before the
-  // deadline. Only resolve once the matched record is dated on/after the
-  // deadline day; pend until then, VOID if it never settles. Records with no
+  // deadline. gpsjam hexCount reads one daily snapshot dated by its day. Only
+  // resolve once the matched record is dated on/after the deadline day; pend
+  // until then, VOID if it never settles. Records with no
   // timestamp fall through (cannot gate). within-horizon is exempt — it resolves
   // from the asOf-stamped sample timeline, not the current feed record.
   const isSettlementYesPrice = parsed.fn === 'yesPrice'
     && (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY);
-  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || isSettlementYesPrice)) {
+  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || parsed.fn === 'hexCount' || isSettlementYesPrice)) {
     const settle = valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec);
     if (settle) return settle;
   }
@@ -427,7 +430,7 @@ function valueFromRecord(fn, record) {
     case 'yesPrice':
       return firstFinite(record.yesPrice, record.yes_price, record.price, record.probability);
     case 'hexCount':
-      return firstFinite(record.hexCount, record.hex_count, record.hexes, record.count);
+      return firstFinite(record.hexCount);
     case 'price':
       return firstFinite(record.price, record.last, record.value);
     case 'value':
@@ -514,6 +517,18 @@ export function shapeResolutionFeed(key, data) {
     const finite = finiteObservations(d);
     const latest = finite[finite.length - 1];
     return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
+  }
+  if (key === GPS_JAM_FEED_KEY) {
+    // gpsjam holds one daily snapshot of single res-4 hexes. The GPS detector
+    // counts the hexes inside each shipping-zone box, so expose one record per
+    // box with that count, dated by the snapshot day for the settlement gate.
+    const d = unwrapEnvelope(data).data;
+    if (!Array.isArray(d?.hexes)) return d;
+    return Object.entries(MARITIME_REGIONS).map(([region, bounds]) => ({
+      region,
+      hexCount: hexesInMaritimeRegion(d.hexes, bounds).length,
+      asOf: d.date,
+    }));
   }
   if (key === MARKET_SETTLEMENT_FEED_KEY) {
     // Settlement feed (#5525 KTD2): records already carry {market, slug,

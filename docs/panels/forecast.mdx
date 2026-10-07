@@ -141,7 +141,7 @@ Every published forecast carries a **resolution spec** — a machine-checkable c
 - **Market**: commodity-future price moves measured from the emission-time baseline.
 - **Prediction-market**: the spec still carries the market's end date, but the resolver seals it as VOID with reason `market_price_not_outcome`. Its feed, `prediction:markets-bootstrap:v1`, lists only open markets and clips `yesPrice` to 10 to 90, so a read at the end date is the crowd's price, not the outcome (issue #5233).
 - **Supply chain**: chokepoint disruption scores.
-- **GPS interference**: jamming-activity counts over a region.
+- **GPS interference**: the number of gpsjam.org hexes inside the shipping-zone box on the snapshot dated on or after the deadline day. The forecast resolves YES when the zone still holds at least 3 hexes, the same floor at which the detector emits it. The spec records this as `rule: persistence` with a `ruleVersion`. Pending rows written under the earlier emission-count threshold move to this rule before they resolve, and keep the old value as `supersededThreshold` (issue #8990).
 - **Infrastructure**: reported outage events for the forecast's country.
 
 **Judged specs** apply to forecasts in domains where signal-to-outcome mapping is editorial or composite:

@@ -25,6 +25,7 @@
 
 import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeResolutionFeeds } from './_forecast-resolution-eval.mjs';
 import { isPublishedOriginEntry } from './_forecast-scorecard.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
 
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
@@ -563,13 +564,17 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       };
     }
     case 'gps': {
+      // The forecast states interference in the zone, so it resolves on the
+      // detector's own emission floor, not on the emission-day count (#8990).
       const hexes = firstFiniteSignalCount(pred, new Set(['gps_jamming']));
       if (!Number.isFinite(hexes)) return null;
       return {
         metricKey: `intelligence:gpsjam:v2|hexCount(region==${pred.region})`,
         operator: '>=',
-        threshold: Math.max(1, Math.round(hexes)),
+        threshold: GPS_ZONE_MIN_HEXES,
         window: FAMILY_WINDOW[family],
+        rule: GPS_RESOLUTION_RULE,
+        ruleVersion: GPS_RESOLUTION_RULE_VERSION,
       };
     }
     case 'market': {
@@ -713,6 +718,7 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}, metrics 
     deadline,
     sourceFeed,
     question: null,
+    ...(metrics.rule ? { rule: metrics.rule, ruleVersion: metrics.ruleVersion } : {}),
   };
 }
 
@@ -847,6 +853,7 @@ export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options =
       sourceFeed: spec.sourceFeed,
       deadline: spec.deadline,
       sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
+      ...(spec.rule && { rule: spec.rule, ruleVersion: spec.ruleVersion }),
     };
   }
   return specs;

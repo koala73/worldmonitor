@@ -1084,12 +1084,13 @@ describe('extraction gate shadow (#7067)', () => {
   }
 
   const RAW_FEEDS = {
-    [GPS_FEED]: { hexes: [{ region: 'Persian Gulf', hexCount: 14 }] },
+    // Live gpsjam shape: single hexes; the Gulf of Guinea has no detector box.
+    [GPS_FEED]: { date: '2023-11-14', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
     [COMMODITY_FEED]: { _seed: { fetchedAt: GENERATED_AT }, data: { quotes: [{ symbol: 'CL=F', price: 70.1 }] } },
   };
 
   it('reads each hard spec sourceFeed once and skips judged specs', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast(), pred({ domain: 'military' })]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast(), pred({ domain: 'military' })]);
     assert.deepEqual(extractionShadowFeedKeys(forecasts).sort(), [GPS_FEED, COMMODITY_FEED].sort());
   });
 
@@ -1104,14 +1105,14 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('negative control: an absent geography extracts non-finite and is marked would-downgrade', () => {
-    const [forecast] = attached([gpsForecast('Baltic Sea')]);
+    const [forecast] = attached([gpsForecast('Gulf of Guinea')]);
     const [verdict] = evaluateExtractionShadow([forecast], RAW_FEEDS);
     assert.deepEqual(verdict, {
-      id: 'fc-gps-Baltic Sea',
+      id: 'fc-gps-Gulf of Guinea',
       outcome: 'fail',
       family: 'gps',
       domain: 'supply_chain',
-      metricKey: `${GPS_FEED}|hexCount(region==Baltic Sea)`,
+      metricKey: `${GPS_FEED}|hexCount(region==Gulf of Guinea)`,
       reason: 'metric_not_found',
       value: null,
     });
@@ -1145,7 +1146,7 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('shadow mode never changes the attached spec', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]);
     const specs = forecasts.map((forecast) => forecast.resolution);
     const before = JSON.stringify(forecasts);
     const verdicts = evaluateExtractionShadow(forecasts, RAW_FEEDS);
@@ -1162,7 +1163,7 @@ describe('extraction gate shadow (#7067)', () => {
       }
       return value;
     };
-    const forecasts = deepFreeze(attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]));
+    const forecasts = deepFreeze(attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]));
     const feeds = deepFreeze(structuredClone(RAW_FEEDS));
     const originalFetch = globalThis.fetch;
     const originalNow = Date.now;
@@ -1180,7 +1181,7 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('summarizes verdicts into per-outcome, per-family, and per-domain counters', () => {
-    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Baltic Sea'), oilForecast()]);
+    const forecasts = attached([gpsForecast('Persian Gulf'), gpsForecast('Gulf of Guinea'), oilForecast()]);
     const summary = summarizeExtractionShadow(evaluateExtractionShadow(forecasts, RAW_FEEDS));
     assert.deepEqual(summary, {
       total: 3,

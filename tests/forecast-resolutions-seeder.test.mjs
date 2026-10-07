@@ -46,6 +46,7 @@ import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../s
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildPublishedForecastPayload, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GRACE = JUDGED_EVIDENCE_GRACE_MS;
@@ -3173,7 +3174,7 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
   const GPS_FEED = 'intelligence:gpsjam:v2';
   const COMMODITY_FEED = 'market:commodities-bootstrap:v1';
   const RAW_FEEDS = {
-    [GPS_FEED]: { hexes: [{ region: 'Persian Gulf', hexCount: 14 }] },
+    [GPS_FEED]: { date: '2026-07-07', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
     [COMMODITY_FEED]: { _seed: { fetchedAt: T0 }, data: { quotes: [{ symbol: 'CL=F', price: 71.5 }] } },
   };
 
@@ -3189,7 +3190,7 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
     });
     return attachResolutionSpecs([
       forecast({ id: 'fc-gps-gulf', region: 'Persian Gulf', title: 'GPS jamming: Persian Gulf', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Persian Gulf', weight: 0.5 }] }),
-      forecast({ id: 'fc-gps-baltic', region: 'Baltic Sea', title: 'GPS jamming: Baltic Sea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Baltic Sea', weight: 0.5 }] }),
+      forecast({ id: 'fc-gps-guinea', region: 'Gulf of Guinea', title: 'GPS jamming: Gulf of Guinea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Gulf of Guinea', weight: 0.5 }] }),
       forecast({
         id: 'fc-oil',
         domain: 'market',
@@ -3512,5 +3513,89 @@ describe('projection horizon windows (#7075)', () => {
       spec: { kind: 'hard', horizon: 'd30', deadline: now + DAY_MS }, deadline: now + DAY_MS,
     };
     assert.deepEqual(Object.keys(pruneArchivedTerminalEntries({ [stale.key]: stale, [open.key]: open }, now)), [open.key]);
+  });
+});
+
+describe('GPS rows after the hexCount shaper (#8990)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const METRIC = `${GPS_FEED}|hexCount(region==Eastern Mediterranean)`;
+  const deadline = T0 + 7 * DAY_MS;
+  const gpsRow = (generatedAt, overrides) => ({
+    id: 'fc-supply_chain-091bde59',
+    key: `fc-supply_chain-091bde59@${generatedAt + 7 * DAY_MS}`,
+    domain: 'supply_chain',
+    region: 'Eastern Mediterranean',
+    title: 'GPS interference in Eastern Mediterranean shipping zone',
+    generationOrigin: 'legacy_detector',
+    probability: 0.5,
+    generatedAt,
+    deadline: generatedAt + 7 * DAY_MS,
+    spec: { kind: 'hard', deadline: generatedAt + 7 * DAY_MS, metricKey: METRIC, operator: '>=', threshold: 3, window: 'at-deadline', sourceFeed: GPS_FEED },
+    ...overrides,
+  });
+  const voided = gpsRow(T0 - 7 * DAY_MS, {
+    status: 'resolved',
+    outcome: 'VOID',
+    resolvedAt: T0,
+    sealedAt: T0,
+    evidence: { reason: 'no_establishable_metric', metricKey: METRIC, resolvedAt: T0 },
+    samples: { count: 1, recent: [{ ts: T0, error: 'metric_not_found' }] },
+  });
+  const pending = gpsRow(T0, { status: 'pending', samples: { count: 1, recent: [{ ts: T0, error: 'metric_not_found' }] } });
+  const deadlineDate = new Date(deadline).toISOString().slice(0, 10);
+  const feeds = shapeResolutionFeeds({
+    [GPS_FEED]: { date: deadlineDate, hexes: Array.from({ length: 5 }, () => ({ lat: 35, lon: 30, level: 'high', region: 'turkey-caucasus' })) },
+  });
+
+  it('keeps an unreadable-metric VOID as it was and resolves a pending row from the zone count', () => {
+    const ledger = { [voided.key]: structuredClone(voided), [pending.key]: structuredClone(pending) };
+    const { ledger: next } = processResolutionCycle(ledger, [], feeds, deadline + DAY_MS);
+    assert.deepEqual(next[voided.key], voided);
+    assert.equal(next[pending.key].outcome, 'YES');
+    assert.equal(next[pending.key].evidence.metricValue, 5);
+  });
+
+  it('rewrites a pending emission-count row to the persistence rule once, keeping the old threshold for audit', () => {
+    const legacy = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: 59 } });
+    const ruleFields = (spec) => [spec.threshold, spec.rule, spec.ruleVersion, spec.supersededThreshold];
+    const first = processResolutionCycle({ [legacy.key]: structuredClone(legacy) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual(ruleFields(first.ledger[legacy.key].spec), [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, 59]);
+    const second = processResolutionCycle(first.ledger, [], {}, T0 + 2 * DAY_MS);
+    assert.deepEqual(second.ledger[legacy.key].spec, first.ledger[legacy.key].spec);
+    const resolved = processResolutionCycle(second.ledger, [], feeds, deadline + DAY_MS);
+    assert.equal(resolved.ledger[legacy.key].outcome, 'YES', '5 hexes meet the floor though the emission count was 59');
+    assert.equal(resolved.ledger[legacy.key].evidence.comparison, `5 >= ${GPS_ZONE_MIN_HEXES}`);
+  });
+
+  it('leaves a row on the current rule as emitted and migrates one that lacks the rule version', () => {
+    const current = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: GPS_ZONE_MIN_HEXES, rule: GPS_RESOLUTION_RULE, ruleVersion: GPS_RESOLUTION_RULE_VERSION } });
+    const unversioned = gpsRow(T0 + 1, { id: 'fc-gps-unversioned', status: 'pending', spec: { ...pending.spec, deadline: deadline + 1, threshold: 59, rule: GPS_RESOLUTION_RULE } });
+    const { ledger } = processResolutionCycle({ [current.key]: structuredClone(current), [unversioned.key]: structuredClone(unversioned) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual(ledger[current.key].spec, current.spec);
+    assert.deepEqual([ledger[unversioned.key].spec.threshold, ledger[unversioned.key].spec.ruleVersion, ledger[unversioned.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
+  });
+
+  it('migrates a legacy emission read from history as it opens its window', () => {
+    const emission = {
+      id: pending.id, domain: 'supply_chain', region: 'Eastern Mediterranean', title: pending.title, probability: 0.5,
+      timeHorizon: '7d', generationOrigin: 'legacy_detector', generatedAt: T0, signals: [],
+      resolution: { ...pending.spec, threshold: 59, question: null, baselineValue: null },
+    };
+    const { ledger } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [emission] }], {}, T0 + 1);
+    const [opened] = Object.values(ledger);
+    assert.deepEqual([opened.spec.threshold, opened.spec.rule, opened.spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE, 59]);
+  });
+
+  it('stamps a stale post-deadline read with its snapshot day, so the deadline-day count still decides', () => {
+    const zone = (date, count) => shapeResolutionFeeds({
+      [GPS_FEED]: { date, hexes: Array.from({ length: count }, () => ({ lat: 35, lon: 30, level: 'high', region: 'turkey-caucasus' })) },
+    });
+    const dayBefore = new Date(deadline - DAY_MS).toISOString().slice(0, 10);
+    const first = processResolutionCycle({ [pending.key]: structuredClone(pending) }, [], zone(dayBefore, 9), deadline + DAY_MS);
+    assert.equal(first.ledger[pending.key].status, 'pending');
+    assert.equal(first.ledger[pending.key].samples.last.ts, Date.parse(dayBefore));
+    const second = processResolutionCycle(first.ledger, [], zone(deadlineDate, 2), deadline + 2 * DAY_MS);
+    assert.equal(second.ledger[pending.key].outcome, 'NO');
+    assert.equal(second.ledger[pending.key].evidence.metricValue, 2);
   });
 });
