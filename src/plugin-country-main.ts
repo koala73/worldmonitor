@@ -236,12 +236,24 @@ function boundedChinaContext(base: Record<string, unknown>, root: HTMLElement | 
   const china = { groups: candidates.map(candidate => candidate.record), unexpectedGroupCount };
   let value: Record<string, unknown> = { ...base, china };
   const fits = () => contextBytes({ jsonrpc: '2.0', id, method: 'ui/update-model-context', params: { content: [{ type: 'text', text: JSON.stringify(value) }] } }) <= CHINA_MODEL_CONTEXT_BYTES;
-  const sections = value.sections as Array<{ section?: string; renderedText: string; renderedTruncated?: boolean; renderedOriginalCharacterCount?: number; invalidUnicode?: boolean }>;
+  const sections = value.sections as Array<{ section?: string; visible?: boolean; renderedText: string; renderedTruncated?: boolean; renderedOriginalCharacterCount?: number; invalidUnicode?: boolean }>;
   for (const section of sections) if (section.section === 'china') {
     const text = contextText(legacyAllowed ? section.renderedText : '', 2000);
     section.renderedText = text.text;
     if (text.truncated) { section.renderedOriginalCharacterCount = text.originalCharacterCount; section.renderedTruncated = true; }
     if (text.invalidUnicode) { section.invalidUnicode = true; section.renderedTruncated = true; }
+  }
+  const completeChina = { ...china, groups: candidates.map(({ record, rendered, links }) => ({
+    ...record, renderedText: rendered.text, renderedTruncated: rendered.truncated, links,
+  })) };
+  const completeFits = () => contextBytes({ jsonrpc: '2.0', id, method: 'ui/update-model-context', params: { content: [{ type: 'text', text: JSON.stringify({ ...value, china: completeChina }) }] } }) <= CHINA_MODEL_CONTEXT_BYTES;
+  for (const section of [...sections].reverse()) {
+    if (completeFits()) break;
+    if (section.visible === false && section.renderedText) {
+      section.renderedOriginalCharacterCount = Math.max(section.renderedOriginalCharacterCount ?? 0, section.renderedText.length);
+      section.renderedTruncated = true;
+      section.renderedText = '';
+    }
   }
   const omittedFieldNames: string[] = [];
   for (const field of ['selectedAtlasAsset', 'signalCoverage', 'summaries']) {

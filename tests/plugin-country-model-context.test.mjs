@@ -15,7 +15,7 @@ assert.equal(selected.length, 3);
 const send = mount.body.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(file) === 'send'));
 assert.ok(send);
 const helpers = file.statements.slice(0, file.statements.indexOf(mount)).filter(node => !ts.isImportDeclaration(node) && !ts.isExpressionStatement(node)).map(node => node.getText(file));
-const program = ts.transpileModule([...helpers, send.getText(file), ...selected.map(node => node.getText(file)), 'this.api = { snapshot, scheduleContext, request };'].join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+const program = ts.transpileModule([...helpers, send.getText(file), ...selected.map(node => node.getText(file)), 'this.api = { snapshot, scheduleContext, request, boundedChinaContext };'].join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
 const groups = [{"id":"macro","title":"Macro Signals","state":"PARTIAL","line":538,"signals":[{"label":"Industrial Value Added (YoY)","value":"5.2 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260917_1965348.html"},{"label":"Fixed-Asset Investment (YoY)","value":"-7.2 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260916_1965343.html"},{"label":"Real Estate Development Investment (YoY)","value":"-19.9 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260916_1965342.html"},{"label":"Foreign-Exchange Reserves","value":"34383 USD 100 million","observedAt":"2026-08","publishedAt":"2026-09-07","sourceAsCaptured":"State Administration of Foreign Exchange · official government","sourceUrlAsCaptured":"safe.gov.cn/safe/2026/0907/27859.html"}],"reasonAsCaptured":"7 signals failed the launch/provenance boundary."},{"id":"policy-enforcement","title":"Policy & Enforcement","state":"PARTIAL","line":571,"signals":[{"label":"市场监管总局关于发布《国家统一推行自愿性认证制度管理办法（试行）》的公告","value":"SAMR · final_rule · unknown","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"State Administration for Market Regulation · official government","sourceUrlAsCaptured":"samr.gov.cn/zw/zfxxgk/fdzdgknr/rzjgs/art/2026/art_c739f36a509440eeb44dd56513f5aeef.html"},{"label":"商务部办公厅关于做好2027年度汽车和摩托车出口许可申报工作的通知","value":"MOFCOM · announcement_guidance · announced","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"Ministry of Commerce · official government","sourceUrlAsCaptured":"mofcom.gov.cn/zcfb/zc/art/2026/art_c7ac10d2deaa489dbf6346461785c65c.html"},{"label":"四部门关于开展2026年度享受增值税加计抵减政策的集成电路企业清单制定工作的通知","value":"MIIT · announcement_guidance · announced","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"Ministry of Industry and Information Technology · official government","sourceUrlAsCaptured":"miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html"},{"label":"市场监管总局关于发布《饼干生产许可审查细则（2026版）》的公告","value":"SAMR · announcement_guidance · announced","publishedAt":"2026-09-29","effectiveAt":"2027-01-01","translationState":"not translated","sourceAsCaptured":"State Administration for Market Regulation · official government","sourceUrlAsCaptured":"samr.gov.cn/zw/zfxxgk/fdzdgknr/spscs/art/2026/art_b8afbb7e06e048aebb9f93f50737565f.html"}],"reasonAsCaptured":null},{"id":"cross-strait-activity","title":"Cross-Strait Activity","state":"AVAILABLE","line":604,"signals":[{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 8 · officialShips: 8","observedAt":"2026-10-05T22:00:00.000Z","publishedAt":"2026-10-06","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87922"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 8 · officialShips: 9","observedAt":"2026-10-04T22:00:00.000Z","publishedAt":"2026-10-05","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87913"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 7 · officialShips: 8","observedAt":"2026-10-03T22:00:00.000Z","publishedAt":"2026-10-04","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87905"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 5 · planShips: 6 · officialShips: 7 · adizEntries: 2","observedAt":"2026-10-02T22:00:00.000Z","publishedAt":"2026-10-03","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87903"}],"reasonAsCaptured":null},{"id":"corporate-disclosures","title":"Corporate Disclosures","state":"UNAVAILABLE","line":640,"signals":[],"reasonAsCaptured":"healthy_quiet_window: Healthy exchange queries contained no qualifying disclosure events."},{"id":"corridor-conditions","title":"Corridor Conditions","state":"PARTIAL","line":645,"signals":[{"label":"Yangtze River Delta · port","value":"partial","observedAt":"2026-09-30T00:02:51.316Z","effectiveAt":"2026-09-30T00:02:51.316Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · aviation","value":"available","observedAt":"2026-10-06T16:32:29.855Z","effectiveAt":"2026-10-06T16:32:29.855Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · hazard","value":"available","observedAt":"2026-10-06T16:32:04.270Z","effectiveAt":"2026-10-06T16:32:04.270Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · power_energy","value":"available","observedAt":"2026-05","effectiveAt":"2026-05","sourceAsCaptured":"WorldMonitor derived output · derived output"}],"reasonAsCaptured":null},{"id":"activity-nowcast","title":"Activity Nowcast","state":"AVAILABLE","line":669,"signals":[{"label":"Official activity versus independent proxies","value":"mixed_signals · medium confidence","observedAt":"2026-10-06T16:18:32.279Z","effectiveAt":"2026-10-06T16:18:32.279Z","sourceAsCaptured":"WorldMonitor China Activity Nowcast · derived output"}],"reasonAsCaptured":null}];
 const ids = groups.map(group => group.id);
 const windows = [];
@@ -97,6 +97,120 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
   }
   return { win, doc, root, state, messages, context, publish };
 }
+
+
+const controlledSecurityBase = {
+  countryCode: 'CN', countryName: 'China', revision: 7, topic: 'security',
+  usage: { used: 2, limit: 50, remaining: 48 },
+  sections: ['assessment', 'factors', 'facts', 'china', 'signals', 'timeline', 'news', 'military', 'sanctions', 'economic', 'housing', 'debt', 'flows', 'tariffs', 'trade', 'scenario', 'products', 'markets', 'energy', 'maritime', 'commodities', 'food', 'infrastructure', 'demographics'].map(section => {
+    const visible = ['china', 'signals', 'timeline', 'news', 'military', 'sanctions', 'infrastructure'].includes(section);
+    return { section, state: 'ready', visible, renderedText: `${section} controlled fixture text. `.repeat(100).slice(0, section === 'china' ? 2000 : visible ? 500 : 1300) };
+  }),
+};
+const syntheticChinaGroups = [{"id":"macro","title":"Macro Signals","state":"partial","reason":"","renderedText":"Macro Signals\nPARTIAL\nSynthetic industrial activity\n3.1 %\nAs of: 2024-01\nPublished: 2024-02-16\nSource: Synthetic public observation\nSynthetic fixed investment\n-2.0 %\nAs of: 2024-01\nPublished: 2024-02-16\nSource: Synthetic public observation\nSynthetic property activity\n0.7 %\nAs of: 2024-01\nPublished: 2024-02-16\nSource: Synthetic public observation\nSynthetic reserves\n30000 USD 100 million\nAs of: 2024-01\nPublished: 2024-02-16\nSource: Synthetic public observation\n","links":[{"itemIndex":0,"itemLabel":"Synthetic industrial activity","label":"Synthetic public observation","url":"https://example.test/china/macro/1"},{"itemIndex":1,"itemLabel":"Synthetic fixed investment","label":"Synthetic public observation","url":"https://example.test/china/macro/2"},{"itemIndex":2,"itemLabel":"Synthetic property activity","label":"Synthetic public observation","url":"https://example.test/china/macro/3"},{"itemIndex":3,"itemLabel":"Synthetic reserves","label":"Synthetic public observation","url":"https://example.test/china/macro/4"}]},{"id":"policy-enforcement","title":"Policy & Enforcement","state":"partial","reason":"","renderedText":"Policy & Enforcement\nPARTIAL\n示例政策 1\nannouncement_guidance · unknown\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\n示例政策 2\nannouncement_guidance · unknown\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\n示例政策 3\nannouncement_guidance · unknown\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\n示例政策 4\nannouncement_guidance · unknown\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\n","links":[{"itemIndex":0,"itemLabel":"示例政策 1","label":"Synthetic public observation","url":"https://example.test/china/policy-enforcement/1"},{"itemIndex":1,"itemLabel":"示例政策 2","label":"Synthetic public observation","url":"https://example.test/china/policy-enforcement/2"},{"itemIndex":2,"itemLabel":"示例政策 3","label":"Synthetic public observation","url":"https://example.test/china/policy-enforcement/3"},{"itemIndex":3,"itemLabel":"示例政策 4","label":"Synthetic public observation","url":"https://example.test/china/policy-enforcement/4"}]},{"id":"cross-strait-activity","title":"Cross-Strait Activity","state":"available","reason":"","renderedText":"Cross-Strait Activity\nAVAILABLE\nSynthetic activity day 1\nplaAircraftSorties: 7 · planShips: 3\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\nSynthetic activity day 2\nplaAircraftSorties: 0 · planShips: 3\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\nSynthetic activity day 3\nplaAircraftSorties: 0 · planShips: 3\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\nSynthetic activity day 4\nplaAircraftSorties: 0 · planShips: 3\nAs of: 2024-01\nPublished: 2024-02-16\nTranslation: not translated\nSource: Synthetic public observation\n","links":[{"itemIndex":0,"itemLabel":"Synthetic activity day 1","label":"Synthetic public observation","url":"https://example.test/china/cross-strait-activity/1"},{"itemIndex":1,"itemLabel":"Synthetic activity day 2","label":"Synthetic public observation","url":"https://example.test/china/cross-strait-activity/2"},{"itemIndex":2,"itemLabel":"Synthetic activity day 3","label":"Synthetic public observation","url":"https://example.test/china/cross-strait-activity/3"},{"itemIndex":3,"itemLabel":"Synthetic activity day 4","label":"Synthetic public observation","url":"https://example.test/china/cross-strait-activity/4"}]},{"id":"corporate-disclosures","title":"Corporate Disclosures","state":"unavailable","reason":"healthy_quiet_window: Healthy exchange queries contained no qualifying disclosure events.","renderedText":"","links":[]},{"id":"corridor-conditions","title":"Corridor Conditions","state":"partial","reason":"","renderedText":"Corridor Conditions\nPARTIAL\nSynthetic region · port\npartial\nAs of: 2024-01\nPublished: 2024-02-16\nEffective: 2024-02-16\nSource: Synthetic derived output\nSynthetic region · aviation\navailable\nAs of: 2024-01\nPublished: 2024-02-16\nEffective: 2024-02-16\nSource: Synthetic derived output\nSynthetic region · hazard\navailable\nAs of: 2024-01\nPublished: 2024-02-16\nEffective: 2024-02-16\nSource: Synthetic derived output\nSynthetic region · power_energy\navailable\nAs of: 2024-01\nPublished: 2024-02-16\nEffective: 2024-02-16\nSource: Synthetic derived output\n","links":[]},{"id":"activity-nowcast","title":"Activity Nowcast","state":"available","reason":"","renderedText":"Activity Nowcast\nAVAILABLE\nSynthetic official activity versus proxies\nmixed_signals · medium confidence\nAs of: 2024-01\nPublished: 2024-02-16\nEffective: 2024-02-16\nSource: Synthetic derived output\n","links":[]}];
+
+function syntheticChinaView() {
+  const view = harness();
+  for (const captured of syntheticChinaGroups) {
+    const node = view.root.querySelector(`[data-group-id="${captured.id}"]`);
+    node.className = 'cdp-china-summary-group cdp-china-summary-group--' + captured.state;
+    node.querySelector('.cdp-china-summary-state').textContent = captured.state;
+    const reason = node.querySelector('.cdp-china-summary-note, .cdp-china-summary-empty');
+    if (reason) reason.textContent = captured.reason;
+    Object.defineProperty(node, 'innerText', { configurable: true, value: captured.renderedText });
+    if (captured.links.length) {
+      node.querySelectorAll('.cdp-china-summary-signal').forEach(item => item.remove());
+      for (const link of captured.links) {
+        const item = view.doc.createElement('div');
+        item.className = 'cdp-china-summary-signal';
+        const label = view.doc.createElement('div');
+        label.className = 'cdp-china-summary-signal-label';
+        label.textContent = link.itemLabel;
+        const anchor = view.doc.createElement('a');
+        anchor.className = 'cdp-china-summary-source-link';
+        anchor.textContent = link.label;
+        anchor.setAttribute('href', link.url);
+        item.append(label, anchor);
+        node.append(item);
+      }
+    } else {
+      node.querySelectorAll('.cdp-china-summary-source-link').forEach(anchor => anchor.remove());
+    }
+  }
+  return view;
+}
+
+test('inactive Security section text cannot crowd out the current China groups', () => {
+  const view = syntheticChinaView();
+  const base = structuredClone(controlledSecurityBase);
+  const result = view.context.api.boundedChinaContext(base, view.root, 123);
+  const bytes = new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id: 123, method: 'ui/update-model-context', params: { content: [{ type: 'text', text: JSON.stringify(result) }] } })).length;
+  assert.ok(bytes <= 32768);
+  for (const captured of syntheticChinaGroups) {
+    const group = result.china.groups.find(item => item.id === captured.id);
+    assert.equal(group.state, captured.state);
+    assert.equal(group.reason, captured.reason);
+    assert.equal(group.renderedText, captured.renderedText, captured.id + ': current rendered fields lost');
+    assert.equal(group.renderedTruncated, false);
+    assert.deepEqual(Array.from(group.links, link => link.url), captured.links.map(link => link.url));
+    assert.equal(group.omittedItemCount, 0);
+    assert.equal(group.omittedLinkCount, 0);
+  }
+  assert.equal(result.usage.remaining, 48);
+  assert.equal(result.revision, controlledSecurityBase.revision);
+  assert.equal(result.sections.length, controlledSecurityBase.sections.length);
+  for (const section of result.sections) {
+    const original = controlledSecurityBase.sections.find(item => item.section === section.section);
+    assert.equal(section.state, original.state);
+    assert.equal(section.visible, original.visible);
+    if (original.visible) assert.equal(section.renderedText, original.renderedText);
+    else if (section.renderedText !== original.renderedText) {
+      assert.equal(section.renderedText, '');
+      assert.equal(section.renderedTruncated, true);
+      assert.ok(section.renderedOriginalCharacterCount >= original.renderedText.length);
+    }
+  }
+});
+test('inactive text eviction preserves older omission metadata and unspecified visibility', () => {
+  const view = syntheticChinaView();
+  const base = structuredClone(controlledSecurityBase);
+  const commodities = base.sections.find(section => section.section === 'commodities');
+  commodities.renderedOriginalCharacterCount = 9000;
+  commodities.renderedTruncated = true;
+  commodities.invalidUnicode = true;
+  const empty = base.sections.find(section => section.section === 'energy');
+  empty.renderedText = '';
+  empty.renderedOriginalCharacterCount = 12000;
+  empty.renderedTruncated = true;
+  empty.invalidUnicode = true;
+  const unspecified = base.sections.find(section => section.section === 'demographics');
+  delete unspecified.visible;
+  const expectedEmpty = { ...empty };
+  const expectedUnspecified = { ...unspecified };
+  const result = view.context.api.boundedChinaContext(base, view.root, 123);
+  const actualCommodities = result.sections.find(section => section.section === 'commodities');
+  assert.equal(actualCommodities.renderedText, '');
+  assert.equal(actualCommodities.renderedOriginalCharacterCount, 9000);
+  assert.equal(actualCommodities.renderedTruncated, true);
+  assert.equal(actualCommodities.invalidUnicode, true);
+  assert.equal(JSON.stringify(result.sections.find(section => section.section === 'energy')), JSON.stringify(expectedEmpty));
+  assert.equal(JSON.stringify(result.sections.find(section => section.section === 'demographics')), JSON.stringify(expectedUnspecified));
+});
+
+test('fitting China context leaves inactive section text and metadata unchanged', () => {
+  const view = syntheticChinaView();
+  const base = structuredClone(controlledSecurityBase);
+  base.sections = base.sections.filter(section => ['china', 'products', 'energy'].includes(section.section));
+  const products = base.sections.find(section => section.section === 'products');
+  products.renderedOriginalCharacterCount = 9000;
+  products.renderedTruncated = true;
+  products.invalidUnicode = true;
+  const before = JSON.stringify(base.sections);
+  const result = view.context.api.boundedChinaContext(base, view.root, 123);
+  assert.equal(JSON.stringify(result.sections), before);
+  assert.ok(result.china.groups.every(group => !group.renderedTruncated));
+  assert.equal(result.china.groups.reduce((count, group) => count + group.links.length, 0), 12);
+});
 
 function commodityCard(view) {
   const card = view.doc.createElement('article');
