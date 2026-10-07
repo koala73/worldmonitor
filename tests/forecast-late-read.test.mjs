@@ -117,6 +117,17 @@ describe('a live at-deadline read more than one resolver cycle late (#8990)', ()
     assert.equal(row.evidence.metricValue, 91.87);
   });
 
+  it('never grades a quote fetched before the deadline, even on the deadline day', async () => {
+    const emit = at('2026-07-15T06:01:00Z');
+    const deadline = at('2026-07-19T06:01:00Z');
+    const { ledger, history } = await openWindow(brentBet(emit, deadline), [...pendingRuns, '2026-07-19'], (fetchedAt) => brentFeed(88, fetchedAt));
+    assert.equal(onlyRow(ledger).status, 'pending', 'the 07-19 06:02 run read a quote fetched at 05:52, before the 06:01 deadline');
+    const result = await run(ledger, history, brentFeed(91.87, at('2026-07-20T05:52:00Z')), at('2026-07-20T06:02:00Z'));
+    const row = onlyRow(result.ledger);
+    assert.equal(row.outcome, 'YES');
+    assert.equal(row.evidence.readTs, at('2026-07-20T05:52:00Z'));
+  });
+
   it('keeps grading a period feed whose reading is dated by its own observation date', async () => {
     const { ledger, history } = await openWindow(eiaBet(EMIT, DEADLINE), pendingRuns, () => eiaFeed(88, '2026-07-10'));
     let state = ledger;

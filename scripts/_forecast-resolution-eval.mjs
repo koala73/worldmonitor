@@ -230,6 +230,15 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
       }
       return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
     }
+    // The settlement gate accepts any quote from the deadline's UTC day. A
+    // live quote fetched earlier that day is not the deadline's; the next
+    // run's quote still lands inside LATE_READ_MAX_LAG_MS.
+    if (!sample && isLivePointRead(spec)) {
+      const { asOf } = extractMetricObservation(parsed, feedData);
+      if (Number.isFinite(asOf) && asOf < deadline) {
+        return { status: 'pending', evidence: { reason: 'awaiting_post_deadline_read', deadline, asOf } };
+      }
+    }
     const value = sample && Number.isFinite(sample.value) ? sample.value : feedValue;
     const readTs = sample?.ts ?? nowMs;
     if (!Number.isFinite(value)) return voidResult('no_establishable_metric', entry, spec, parsed, nowMs);
