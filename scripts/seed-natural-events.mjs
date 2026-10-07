@@ -219,7 +219,7 @@ async function readEonetBody(res, controller, signal) {
   }
 }
 
-async function fetchEventSourceJson(source, url, fetchFn) {
+async function fetchEventSourceJson(source, url, fetchFn, noContentValue) {
   const started = performance.now();
   const deadline = started + SOURCE_REQUEST_BUDGET_MS;
   let attempt = 0;
@@ -251,6 +251,7 @@ async function fetchEventSourceJson(source, url, fetchFn) {
         await res.body?.cancel?.().catch(() => { throw error; });
         throw error;
       }
+      if (res.status === 204 && noContentValue !== undefined) return noContentValue;
       stage = 'body';
       return await (controller ? readEonetBody(res, controller, signal) : res.json());
     } catch (cause) {
@@ -408,6 +409,7 @@ function parseGdacsTcFields(props) {
 async function fetchGdacsType(eventtype, fetchFn, now) {
   // MAP requires one type, but its VO route returns 404. SEARCH supplies
   // recent volcano events; their iscurrent field determines closure below.
+  // SEARCH answers an event-free date range with 204 and no body.
   const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
   if (eventtype === 'VO') {
     url.search = new URLSearchParams({
@@ -417,7 +419,8 @@ async function fetchGdacsType(eventtype, fetchFn, now) {
       pageSize: '100', pageNumber: '1',
     }).toString();
   } else url.searchParams.set('eventtype', eventtype);
-  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn);
+  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn,
+    eventtype === 'VO' ? { type: 'FeatureCollection', features: [] } : undefined);
   if (!Array.isArray(data?.features) || data.features.some(feature =>
     !['Point', 'Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature?.geometry?.type))) {
     throw new Error(`GDACS malformed response (${eventtype})`);
