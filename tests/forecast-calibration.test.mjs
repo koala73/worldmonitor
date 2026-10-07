@@ -8,12 +8,15 @@ import {
   CALIBRATION_MIN_TOTAL_SAMPLE,
   CalibrationCohortOverlapError,
   applyCalibration,
+  applyPublishedCalibration,
+  decideCalibrationPublication,
   evaluateCalibrationCohort,
   evaluateCalibrationShadow,
   fitCalibrationMap,
   isotonicKnots,
   knotsAreMonotone,
   parseCalibrationMap,
+  recordCalibrationPublication,
   resolveCalibrationMapForRun,
 } from '../scripts/_forecast-calibration.mjs';
 import {
@@ -436,6 +439,147 @@ describe('map lifecycle', () => {
     assert.deepEqual(withMap.skill, plain.skill);
     assert.deepEqual(withMap.calibration, plain.calibration);
     assert.equal(withMap.calibrationShadow.status, 'shadow');
+  });
+});
+
+describe('published calibration (#7070 activation)', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const map = fitCalibrationMap(ledgerOf([
+    ...repeat(48, () => entry({ domain: 'cyber', probability: 0.4, outcome: 'NO' })),
+    ...repeat(12, () => entry({ domain: 'cyber', probability: 0.4, outcome: 'YES' })),
+    ...repeat(10, () => entry({ domain: 'conflict', probability: 0.5, outcome: 'YES' })),
+  ]), fitAt);
+  const eligibleShadow = {
+    status: 'shadow',
+    mapVersion: map.version,
+    activationGate: {
+      eligible: true,
+      reasons: [],
+      forwardCount: 72,
+      overall: { brierDeltaUpper: -0.011, nonInferior: true },
+      domains: [{ domain: 'cyber', count: 41, sufficient: true, brierDeltaUpper: -0.02, nonInferior: true }],
+    },
+  };
+  const failingShadow = {
+    ...eligibleShadow,
+    activationGate: {
+      ...eligibleShadow.activationGate,
+      eligible: false,
+      reasons: ['overall_not_non_inferior'],
+      overall: { brierDeltaUpper: 0.012, nonInferior: false },
+    },
+  };
+  const preds = () => [
+    { id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 },
+    { id: 'b', domain: 'conflict', generationOrigin: 'legacy_detector', probability: 0.5 },
+    { id: 'c', domain: 'cyber', generationOrigin: 'state_derived', probability: 0.4 },
+  ];
+
+  it('publishes the calibrated probability when the gate is eligible, keeping the raw value', () => {
+    assert.equal(map.domains.cyber.mode, 'isotonic');
+    const decision = decideCalibrationPublication(map, eligibleShadow);
+    assert.deepEqual(
+      { mode: decision.mode, reason: decision.reason, mapVersion: decision.mapVersion },
+      { mode: 'calibrated', reason: 'gate_eligible', mapVersion: map.version },
+    );
+    assert.deepEqual(decision.gate, {
+      eligible: true,
+      reasons: [],
+      forwardCount: 72,
+      brierDeltaUpper: -0.011,
+      domains: [{ domain: 'cyber', count: 41, brierDeltaUpper: -0.02 }],
+    });
+    const batch = preds();
+    assert.equal(applyPublishedCalibration(batch, map, decision), 1);
+    assert.deepEqual(batch[0], { id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.2, uncalibratedProbability: 0.4 });
+    assert.deepEqual(batch[1], preds()[1], 'an identity domain publishes its raw value');
+    assert.deepEqual(batch[2], preds()[2], 'state_derived is outside the fitted population');
+  });
+
+  it('reverts to raw when the gate fails, under the same rule', () => {
+    const decision = decideCalibrationPublication(map, failingShadow);
+    assert.deepEqual({ mode: decision.mode, reason: decision.reason }, { mode: 'raw', reason: 'gate_ineligible' });
+    assert.deepEqual(decision.gate.reasons, ['overall_not_non_inferior']);
+    const batch = preds();
+    assert.equal(applyPublishedCalibration(batch, map, decision), 0);
+    assert.deepEqual(batch, preds());
+  });
+
+  it('forces raw under the kill switch even when the gate is eligible', () => {
+    const decision = decideCalibrationPublication(map, eligibleShadow, { forceRaw: true });
+    assert.deepEqual({ mode: decision.mode, reason: decision.reason }, { mode: 'raw', reason: 'force_raw' });
+    const batch = preds();
+    applyPublishedCalibration(batch, map, decision);
+    assert.deepEqual(batch, preds());
+  });
+
+  it('stays raw without a map, without a gate, on a read failure, or when the gate scored another map', () => {
+    assert.equal(decideCalibrationPublication(null, eligibleShadow).reason, 'no_map');
+    assert.equal(decideCalibrationPublication(map, { status: 'no_map' }).reason, 'no_gate');
+    assert.equal(decideCalibrationPublication(map, null).reason, 'no_gate');
+    assert.equal(decideCalibrationPublication(map, eligibleShadow, { readFailed: true }).reason, 'read_failed');
+    const other = decideCalibrationPublication(map, { ...eligibleShadow, mapVersion: 'forecast-calibration-pav-v1@1' });
+    assert.deepEqual({ mode: other.mode, reason: other.reason }, { mode: 'raw', reason: 'gate_map_mismatch' });
+  });
+
+  it('records each flip with its gate numbers and keeps the last flip across steady runs', () => {
+    const on = recordCalibrationPublication(null, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS);
+    assert.equal(on.flipped, true, 'every publication before activation was raw');
+    assert.deepEqual(on.record.lastFlip, {
+      at: fitAt + DAY_MS,
+      from: 'raw',
+      to: 'calibrated',
+      reason: 'gate_eligible',
+      gate: on.record.gate,
+    });
+    assert.equal(on.record.mode, 'calibrated');
+    assert.equal(on.record.decidedAt, fitAt + DAY_MS);
+
+    const off = recordCalibrationPublication(on.record, decideCalibrationPublication(map, failingShadow), fitAt + 2 * DAY_MS);
+    assert.equal(off.flipped, true);
+    assert.deepEqual(
+      { at: off.record.lastFlip.at, from: off.record.lastFlip.from, to: off.record.lastFlip.to, reason: off.record.lastFlip.reason },
+      { at: fitAt + 2 * DAY_MS, from: 'calibrated', to: 'raw', reason: 'gate_ineligible' },
+    );
+    assert.equal(off.record.lastFlip.gate.brierDeltaUpper, 0.012);
+
+    const firstRaw = recordCalibrationPublication(null, decideCalibrationPublication(map, failingShadow), fitAt);
+    assert.equal(firstRaw.flipped, false);
+    assert.equal(firstRaw.record.lastFlip, null);
+  });
+
+  it('is idempotent: a rerun on the same inputs decides, publishes and records the same thing', () => {
+    const first = recordCalibrationPublication(null, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS);
+    const rerun = recordCalibrationPublication(first.record, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS + 3_600_000);
+    assert.equal(rerun.flipped, false);
+    assert.deepEqual(rerun.record.lastFlip, first.record.lastFlip);
+    assert.deepEqual({ ...rerun.record, decidedAt: 0 }, { ...first.record, decidedAt: 0 });
+    const a = preds();
+    const b = preds();
+    applyPublishedCalibration(a, map, first.record);
+    applyPublishedCalibration(b, map, rerun.record);
+    assert.deepEqual(a, b);
+  });
+
+  it('scores the uncalibrated value as raw after a flip, so the gate cannot latch on its own output', () => {
+    // Calibrated 0.2 is worse than raw 0.4 on an all-YES forward cohort. If
+    // the shadow read the published probability as raw, both sides would be
+    // 0.2, the delta 0, and the gate would stay eligible forever.
+    const forward = repeat(70, (i) => ({
+      ...entry({ domain: 'cyber', probability: 0.2, outcome: 'YES', generatedAt: fitAt + DAY_MS + i }),
+      uncalibratedProbability: 0.4,
+    }));
+    const shadow = evaluateCalibrationShadow(ledgerOf(forward), map, fitAt + 60 * DAY_MS);
+    assert.equal(shadow.forward.raw.brier, 0.36);
+    assert.equal(shadow.forward.calibrated.brier, 0.64);
+    assert.equal(shadow.activationGate.eligible, false);
+    assert.ok(shadow.activationGate.reasons.includes('overall_not_non_inferior'));
+  });
+
+  it('fits on the uncalibrated value of a calibrated publication', () => {
+    const rows = repeat(60, () => ({ ...entry({ domain: 'cyber', probability: 0.2, outcome: 'NO' }), uncalibratedProbability: 0.4 }));
+    const refit = fitCalibrationMap(ledgerOf(rows), fitAt);
+    assert.deepEqual(refit.domains.cyber.knots.map((knot) => knot.x), [0.4]);
   });
 });
 

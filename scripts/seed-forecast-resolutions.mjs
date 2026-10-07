@@ -61,6 +61,8 @@ export const CALIBRATION_MAP_META_KEY = 'seed-meta:forecast:calibration-map';
 export const CALIBRATION_MAP_TTL_SECONDS = 90 * 24 * 60 * 60;
 // One-way: /api/health treats the map as not yet seeded until this exists.
 export const CALIBRATION_MAP_ACTIVATION_KEY = 'seed-activated:forecast:calibration-map';
+// Written by seed-forecasts on every publish (#7070 activation).
+export const CALIBRATION_PUBLICATION_KEY = 'forecast:calibration-publication:v1';
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
@@ -167,10 +169,15 @@ export function declareCalibrationMapRecords(map) {
   return map?.domains ? Object.keys(map.domains).length : 0;
 }
 
-export function buildScorecard(ledger, nowMs, calibrationMap = null) {
+// `publication` is the seeder's latest #7070 decision record: mode, reason,
+// gate numbers and the last flip.
+export function buildScorecard(ledger, nowMs, calibrationMap = null, publication = null) {
   return {
     ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() }),
-    calibrationShadow: evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
+    calibrationShadow: {
+      ...evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
+      ...(publication && { publication }),
+    },
     receipts: buildPublicReceipts(ledger, nowMs),
   };
 }
@@ -1614,6 +1621,7 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     spec: cloneJson(spec),
     probability: Number(forecast.probability),
     firstSeenProbability: Number(forecast.probability),
+    uncalibratedProbability: uncalibratedProbabilityOf(forecast),
     calibration: forecast.calibration ? cloneJson(forecast.calibration) : undefined,
     // Phase-2 bet-engine fields (#5525). This is an explicit whitelist, so the
     // three-baseline contract (KTD5) and the settlement path both need their
@@ -1663,6 +1671,9 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
       // has since rejected (#7071).
       if (forecast.calibration && typeof forecast.calibration === 'object') entry.calibration = cloneJson(forecast.calibration);
       else delete entry.calibration;
+      const uncalibrated = uncalibratedProbabilityOf(forecast);
+      if (uncalibrated === undefined) delete entry.uncalibratedProbability;
+      else entry.uncalibratedProbability = uncalibrated;
     }
   }
   // Market-settlement bets track the venue's CURRENT endDate: venues move
@@ -1678,6 +1689,13 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
     entry.spec.deadline = incomingDeadline;
   }
   entry.lastSeenAt = Math.max(Number(entry.lastSeenAt || 0), snapshotAt);
+}
+
+// Post-blend value of a calibrated publication (#7070). `probability` stays
+// the published value, so the scorecard scores what readers saw.
+function uncalibratedProbabilityOf(forecast) {
+  const value = forecast.uncalibratedProbability;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 // Provenance rank for updateOpenWindow's no-downgrade guard.
@@ -2278,6 +2296,12 @@ async function buildLedgerForRun(runState) {
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
   const calibration = await resolveCalibrationMap(result.ledger, nowMs);
   runState.map = calibration.map;
+  runState.publication = await readRedisJson(CALIBRATION_PUBLICATION_KEY)
+    .then((value) => unwrapEnvelope(value).data ?? null)
+    .catch((err) => {
+      console.warn(`  [forecast-resolutions] calibration publication read failed: ${err?.message || err}`);
+      return null;
+    });
   console.log(`  Calibration map: ${calibration.action}${calibration.reason ? ` (${calibration.reason})` : ''}${calibration.map ? ` ${calibration.map.version}` : ''}`);
   return result.ledger;
 }
@@ -2423,7 +2447,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => buildScorecard(ledger, Date.now(), runState.map),
+      transform: (ledger) => buildScorecard(ledger, Date.now(), runState.map, runState.publication),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,

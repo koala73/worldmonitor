@@ -3,7 +3,9 @@
 // A CalibrationMap is data: per-domain monotone knots fitted by
 // pool-adjacent-violators over individual resolved YES/NO published-origin
 // ledger entries. `applyCalibration` is the only interpretation of that data.
-// The map is shadow-only: nothing here changes a published probability.
+// `decideCalibrationPublication` runs the same rule on every seeder run: the
+// seeder publishes calibrated probabilities only while the activation gate is
+// eligible for the current map and the kill switch is off.
 //
 // No wall-clock reads: every time is injected.
 
@@ -75,12 +77,14 @@ export function emissionTime(entry) {
   return Number.isFinite(firstSeenAt) ? firstSeenAt : NaN;
 }
 
-// The stored `probability` IS the post-blend value; #7071 lineage on the
-// calibration object names it explicitly when an anchor applied.
+// The post-blend value before any published calibration: the stage the map
+// is fitted on and applied to. A calibrated publication keeps it as
+// `uncalibratedProbability`; otherwise #7071 lineage names it when an anchor
+// applied, and the stored `probability` is it.
 export function sourceProbability(entry) {
-  const blended = Number(entry?.calibration?.marketBlendedProbability);
-  const value = Number.isFinite(blended) ? blended : Number(entry?.probability);
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
+  const value = [entry?.uncalibratedProbability, entry?.calibration?.marketBlendedProbability, entry?.probability]
+    .find((candidate) => typeof candidate === 'number' && Number.isFinite(candidate));
+  return value === undefined ? NaN : Math.max(0, Math.min(1, value));
 }
 
 function domainOf(entry) {
@@ -297,8 +301,8 @@ export function evaluateCalibrationCohort(entries, map, context = {}, options = 
     .filter((entry) => isScoredEntry(entry) && isPublishedOriginEntry(entry))
     .map((entry) => {
       const domain = domainOf(entry);
-      const raw = Math.max(0, Math.min(1, Number(entry.probability)));
-      return { domain, y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, sourceProbability(entry)) };
+      const raw = sourceProbability(entry);
+      return { domain, y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, raw) };
     });
   const modeByDomain = modeByDomainOf(map);
   const forward = summarizeCalibrationShadow(rows, modeByDomain, options);
@@ -357,4 +361,85 @@ export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
     forward,
     activationGate,
   };
+}
+
+/**
+ * @typedef {'calibrated' | 'raw'} PublicationMode
+ * @typedef {'gate_eligible' | 'force_raw' | 'read_failed' | 'no_map' | 'no_gate' | 'gate_map_mismatch' | 'gate_ineligible'} PublicationReason
+ * @typedef {{
+ *   eligible: boolean,
+ *   reasons: string[],
+ *   forwardCount: number,
+ *   brierDeltaUpper: number | null,
+ *   domains: { domain: string, count: number, brierDeltaUpper: number | null }[],
+ * }} PublicationGate
+ * @typedef {{ mode: PublicationMode, reason: PublicationReason, mapVersion: string | null, gate: PublicationGate | null }} CalibrationPublicationDecision
+ * @typedef {{ at: number, from: PublicationMode, to: PublicationMode, reason: PublicationReason, gate: PublicationGate | null }} CalibrationFlip
+ * @typedef {CalibrationPublicationDecision & { decidedAt: number, lastFlip: CalibrationFlip | null }} CalibrationPublicationRecord
+ */
+
+export const CALIBRATION_FORCE_RAW_ENV = 'FORECAST_CALIBRATION_FORCE_RAW';
+
+function publicationGate(gate) {
+  if (!gate || typeof gate !== 'object') return null;
+  return {
+    eligible: gate.eligible === true,
+    reasons: Array.isArray(gate.reasons) ? [...gate.reasons] : [],
+    forwardCount: gate.forwardCount ?? 0,
+    brierDeltaUpper: gate.overall?.brierDeltaUpper ?? null,
+    domains: (gate.domains ?? []).map(({ domain, count, brierDeltaUpper }) => ({ domain, count, brierDeltaUpper })),
+  };
+}
+
+/**
+ * Stateless: the same inputs always give the same mode, and the previous mode
+ * is never an input. `shadow` is the scorecard's calibrationShadow block.
+ * @returns {CalibrationPublicationDecision}
+ */
+export function decideCalibrationPublication(map, shadow, { forceRaw = false, readFailed = false } = {}) {
+  const gate = publicationGate(shadow?.activationGate);
+  const decide = (mode, reason) => ({ mode, reason, mapVersion: map?.version ?? null, gate });
+  if (forceRaw) return decide('raw', 'force_raw');
+  if (readFailed) return decide('raw', 'read_failed');
+  if (!map) return decide('raw', 'no_map');
+  if (!gate) return decide('raw', 'no_gate');
+  // A verdict on another map says nothing about this one.
+  if (shadow.mapVersion !== map.version) return decide('raw', 'gate_map_mismatch');
+  if (!gate.eligible) return decide('raw', 'gate_ineligible');
+  return decide('calibrated', 'gate_eligible');
+}
+
+/**
+ * Audit record for a decision. A missing previous record reads as raw, since
+ * every publication before activation was raw.
+ * @returns {{ flipped: boolean, record: CalibrationPublicationRecord }}
+ */
+export function recordCalibrationPublication(previous, decision, nowMs) {
+  const previousMode = previous?.mode === 'calibrated' ? 'calibrated' : 'raw';
+  const flipped = previousMode !== decision.mode;
+  const lastFlip = flipped
+    ? { at: nowMs, from: previousMode, to: decision.mode, reason: decision.reason, gate: decision.gate }
+    : previous?.lastFlip ?? null;
+  return { flipped, record: { ...decision, decidedAt: nowMs, lastFlip } };
+}
+
+/**
+ * Applies the map to post-blend probabilities in place, for the population it
+ * was fitted on. A moved forecast keeps its post-blend value as
+ * `uncalibratedProbability`, which the fit and the shadow read back.
+ * Returns how many forecasts moved.
+ */
+export function applyPublishedCalibration(predictions, map, decision) {
+  if (decision?.mode !== 'calibrated' || !map) return 0;
+  let moved = 0;
+  for (const pred of predictions) {
+    if (!isPublishedOriginEntry(pred)) continue;
+    const raw = pred.probability;
+    const calibrated = Math.round(applyCalibration(map, domainOf(pred), raw) * 1000) / 1000;
+    if (!Number.isFinite(calibrated) || calibrated === raw) continue;
+    pred.uncalibratedProbability = raw;
+    pred.probability = calibrated;
+    moved += 1;
+  }
+  return moved;
 }

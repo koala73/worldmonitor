@@ -11,6 +11,7 @@ import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
+import { applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import {
@@ -80,6 +81,12 @@ const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
 // silently invalidating the verification pipeline's Brier.
 const FUNNEL_HEALTH_KEY = 'forecast:funnel:health:v1';
 const FUNNEL_HEALTH_TTL_SECONDS = 6 * 60 * 60; // 6h — 6x the hourly cron, mirrors TTL_SECONDS
+// #7070 activation. The map and its gate verdict are written by
+// seed-forecast-resolutions; the seeder writes its decision record.
+const CALIBRATION_MAP_KEY = 'forecast:calibration-map:v1';
+const CALIBRATION_GATE_SCORECARD_KEY = 'forecast:scorecard:v1';
+const CALIBRATION_PUBLICATION_KEY = 'forecast:calibration-publication:v1';
+const CALIBRATION_PUBLICATION_TTL_SECONDS = 90 * 24 * 60 * 60;
 const TRACE_RUNS_MAX = 50;
 const TRACE_REDIS_TTL_SECONDS = 60 * 24 * 60 * 60;
 const WORLD_STATE_HISTORY_LIMIT = 6;
@@ -4937,6 +4944,7 @@ function buildHistoryForecastEntry(pred) {
     region: pred.region,
     title: pred.title,
     probability: pred.probability,
+    ...(Number.isFinite(pred.uncalibratedProbability) && { uncalibratedProbability: pred.uncalibratedProbability }),
     confidence: pred.confidence,
     timeHorizon: pred.timeHorizon,
     generationOrigin: pred.generationOrigin || 'legacy_detector',
@@ -5037,6 +5045,51 @@ async function seedForecastFunnelHealth(predictions) {
     'SET', `seed-meta:${FUNNEL_HEALTH_KEY}`, JSON.stringify(meta), 'EX', FUNNEL_HEALTH_TTL_SECONDS,
   ]).catch((err) => console.warn(`  [FunnelHealth] seed-meta write failed: ${err.message}`));
   return assessment;
+}
+
+/**
+ * Reads the map, the gate verdict and the previous record, then decides this
+ * run's mode under the stateless rule in _forecast-calibration.mjs. A failed
+ * read publishes raw.
+ */
+async function resolveCalibrationPublication(nowMs, { env = process.env, logger = console } = {}) {
+  const forceRaw = env[CALIBRATION_FORCE_RAW_ENV] === '1';
+  let map = null;
+  let shadow = null;
+  let previous = null;
+  let readFailed = false;
+  try {
+    const { url, token } = getRedisCredentials();
+    const [rawMap, scorecard, record] = await Promise.all([
+      redisGetOrThrow(url, token, CALIBRATION_MAP_KEY),
+      redisGetOrThrow(url, token, CALIBRATION_GATE_SCORECARD_KEY),
+      redisGetOrThrow(url, token, CALIBRATION_PUBLICATION_KEY),
+    ]);
+    map = parseCalibrationMap(rawMap);
+    shadow = scorecard?.calibrationShadow ?? null;
+    previous = record;
+  } catch (err) {
+    readFailed = true;
+    logger.warn(`  [Calibration] Read failed, publishing raw: ${err.message}`);
+  }
+  const decision = decideCalibrationPublication(map, shadow, { forceRaw, readFailed });
+  const { flipped, record } = recordCalibrationPublication(previous, decision, nowMs);
+  const gate = decision.gate;
+  const gateText = gate
+    ? `eligible=${gate.eligible} forward=${gate.forwardCount} brierDeltaUpper=${gate.brierDeltaUpper} `
+      + `domains=${gate.domains.map((row) => `${row.domain}:${row.count}:${row.brierDeltaUpper}`).join(',') || 'none'} `
+      + `gateReasons=${gate.reasons.join(',') || 'none'}`
+    : 'gate=none';
+  const line = `mode=${decision.mode} reason=${decision.reason} map=${decision.mapVersion ?? 'none'} ${gateText}`;
+  if (flipped) logger.warn(`  [Calibration] FLIP ${record.lastFlip.from} -> ${record.lastFlip.to} ${line}`);
+  else logger.log(`  [Calibration] ${line}`);
+  return { map, decision, record, flipped };
+}
+
+async function writeCalibrationPublication(record) {
+  if (!record) return;
+  const { url, token } = getRedisCredentials();
+  await redisSet(url, token, CALIBRATION_PUBLICATION_KEY, record, CALIBRATION_PUBLICATION_TTL_SECONDS);
 }
 
 function getTraceMaxForecasts(totalForecasts = 0) {
@@ -16502,6 +16555,7 @@ async function fetchForecasts() {
   inputs.criticalSignalBundle = await extractCriticalSignalBundle(inputs);
   console.log(`  [CriticalSignals] source=${inputs.criticalSignalBundle.source} candidates=${inputs.criticalSignalBundle.candidateCount} frames=${inputs.criticalSignalBundle.extractedFrameCount} fallbackNewsSignals=${inputs.criticalSignalBundle.fallbackNewsSignalCount} structuredSignals=${inputs.criticalSignalBundle.structuredSignalCount}`);
   const prior = await readPriorPredictions();
+  const calibrationPublication = await resolveCalibrationPublication(runGeneratedAt);
 
   console.log('  Running domain detectors...');
   const { url: emaUrl, token: emaToken } = getRedisCredentials();
@@ -16526,6 +16580,7 @@ async function fetchForecasts() {
 
   attachNewsContext(predictions, inputs.newsInsights, inputs.newsDigest);
   calibrateWithMarkets(predictions, inputs.predictionMarkets);
+  applyPublishedCalibration(predictions, calibrationPublication.map, calibrationPublication.decision);
   computeConfidence(predictions);
   computeProjections(predictions);
   const cascadeRules = loadCascadeRules();
@@ -16558,6 +16613,7 @@ async function fetchForecasts() {
     console.log(`  [stateDerived] Added ${stateDerivedPredictions.length} forecast(s) from canonical state units (${Object.entries(stateDerivedDomainCounts).map(([domain, count]) => `${domain}:${count}`).join(', ')})`);
     attachNewsContext(stateDerivedPredictions, inputs.newsInsights, inputs.newsDigest);
     calibrateWithMarkets(stateDerivedPredictions, inputs.predictionMarkets);
+    applyPublishedCalibration(stateDerivedPredictions, calibrationPublication.map, calibrationPublication.decision);
     computeConfidence(stateDerivedPredictions);
     computeProjections(stateDerivedPredictions);
     resolveCascades(stateDerivedPredictions, cascadeRules);
@@ -16680,6 +16736,7 @@ async function fetchForecasts() {
     marketSelectionIndex,
     impactExpansionCandidates,
     deepForecast,
+    calibrationPublication: calibrationPublication.record,
     priorWorldStateKey: priorTracePointer?.worldStateKey || '',
     priorWorldState,
     priorWorldStates,
@@ -18082,6 +18139,12 @@ if (_isDirectRun) {
         await seedForecastFunnelHealth(data.predictions || []);
       } catch (err) {
         console.warn(`  [FunnelHealth] Assessment/write failed: ${err.message}`);
+      }
+
+      try {
+        await writeCalibrationPublication(data.calibrationPublication);
+      } catch (err) {
+        console.warn(`  [Calibration] Publication record write failed: ${err.message}`);
       }
 
       try {
@@ -19567,6 +19630,9 @@ async function runSimulationWorker({ once = false, runId = '' } = {}) {
 }
 
 export {
+  CALIBRATION_PUBLICATION_KEY,
+  resolveCalibrationPublication,
+  writeCalibrationPublication,
   CANONICAL_KEY,
   DASHBOARD_KEY,
   PRIOR_KEY,
