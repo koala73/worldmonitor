@@ -15,9 +15,9 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
-// Default grace for a scalar feed to publish a deadline-period reading before
-// we give up and VOID. Live feeds (for example commodities) should not retain a
-// missing/stale observation indefinitely.
+// Default grace before a missing reading VOIDs: a count feed that stays down
+// past its settlement lag, or a scalar record that never settles. A live point
+// read reaches LATE_READ_MAX_LAG_MS first.
 export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
 // EIA's weekly petroleum observation date trails publication by roughly one
 // week. A deadline just after the covered period may therefore need the next
@@ -37,12 +37,44 @@ export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 export const FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
 export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 
-function valueSettlementMaxLagMs(feedKey) {
+// Feeds that date each reading by its own period or by the venue's
+// adjudication, so a read days after the deadline still reports the
+// deadline's period. null for a live feed, whose reading is the value at the
+// moment it was fetched.
+function periodFeedMaxLagMs(feedKey) {
   if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (feedKey === MARKET_SETTLEMENT_FEED_KEY) return MARKET_SETTLEMENT_MAX_LAG_MS;
   if (FRED_MONTHLY_FEED_KEYS.has(feedKey)) return FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (FRED_DAILY_FEED_KEYS.has(feedKey)) return FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS;
-  return VALUE_SETTLEMENT_MAX_LAG_MS;
+  return null;
+}
+
+function valueSettlementMaxLagMs(feedKey) {
+  return periodFeedMaxLagMs(feedKey) ?? VALUE_SETTLEMENT_MAX_LAG_MS;
+}
+
+// A live point read happens on the first resolver run after the deadline. The
+// resolver runs once a day (cron `0 6 * * *`); its runs start between 06:00
+// and 06:05 UTC, so that read lands at most one cycle plus a few minutes after
+// the deadline. The hour absorbs the start jitter. A missed run puts the next
+// read past the bound, and the price it reads is no longer the deadline's.
+export const LATE_READ_MAX_LAG_MS = DAY_MS + 60 * 60 * 1000;
+export const LATE_READ_VOID_REASON = 'late_read';
+export const FEED_UNAVAILABLE_VOID_REASON = 'feed_unavailable';
+
+export function isLivePointRead(spec) {
+  const parsed = parseMetricKey(spec?.metricKey);
+  return (spec?.window === 'at-deadline' || spec?.window === 'at-endDate')
+    && periodFeedMaxLagMs(parsed?.feedKey || spec?.sourceFeed) == null;
+}
+
+// The first finite reading taken on time: at or after the deadline and within
+// one resolver cycle of it.
+export function firstTimelySample(samples, deadline) {
+  return normalizeSamples(samples)
+    .map(normalizeSample)
+    .filter((sample) => sample && Number.isFinite(sample.value) && sample.ts >= deadline && sample.ts - deadline <= LATE_READ_MAX_LAG_MS)
+    .sort((a, b) => a.ts - b.ts)[0] || null;
 }
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
@@ -100,6 +132,15 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
   }
 
+  if (isLivePointRead(spec)) {
+    const timely = firstTimelySample(samples, deadline);
+    if (timely) return compareResult(timely.value, spec, entry, parsed, nowMs, { readTs: timely.ts });
+    if (nowMs - deadline > LATE_READ_MAX_LAG_MS) {
+      const reason = feedData == null ? FEED_UNAVAILABLE_VOID_REASON : LATE_READ_VOID_REASON;
+      return voidResult(reason, entry, spec, parsed, nowMs, { maxReadLagMs: LATE_READ_MAX_LAG_MS });
+    }
+  }
+
   // Settlement gate for scalar `value`/`price` reads at a POINT window
   // (at-deadline). Like count(), a premature or STALE read scores a false
   // YES/NO: a period feed (EIA weekly, dated by `asOf`) may still hold the prior
@@ -124,7 +165,10 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     if (nowMs < sealAfter) {
       return { status: 'pending', evidence: { reason: 'count_settlement_lag', deadline, sealAfter } };
     }
+    // Count records are dated and the coverage gate below refuses a pruned
+    // window, so only a feed that stays down needs a bound.
     if (feedData == null) {
+      if (nowMs >= sealAfter + VALUE_SETTLEMENT_MAX_LAG_MS) return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
       return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
     }
     const generatedAt = Number(entry?.generatedAt ?? entry?.firstSeenAt);
@@ -181,6 +225,9 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     const sample = selectFirstSampleAtOrAfter(samples, deadline);
     const feedValue = extractMetricValue(parsed, feedData);
     if (feedData == null && !sample) {
+      if (nowMs >= deadline + valueSettlementMaxLagMs(parsed.feedKey || spec.sourceFeed)) {
+        return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
+      }
       return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
     }
     const value = sample && Number.isFinite(sample.value) ? sample.value : feedValue;

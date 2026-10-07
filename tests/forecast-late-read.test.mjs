@@ -276,7 +276,8 @@ describe('rows already graded on a late read (#8990)', () => {
     assert.equal(voided.evidence.supersededOutcome, 'YES');
     assert.equal(voided.evidence.voidedAt, NOW);
     assert.equal(receiptNeedsRearchive(voided), true);
-    assert.equal(buildPublicReceipts(ledger, NOW).find((receipt) => receipt.resolvedAt === orphan.resolvedAt)?.voidReason, 'late_read');
+    const [receipt] = buildPublicReceipts({ [orphan.key]: { ...voided, generationOrigin: 'legacy_detector' } }, NOW);
+    assert.equal(receipt.voidReason, 'late_read', 'a published row names the reason on its receipt');
   });
 
   it('leaves on-time reads and period feeds alone', async () => {

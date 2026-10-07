@@ -3476,7 +3476,7 @@ describe('projection horizon windows (#7075)', () => {
 
     const lateRead = deadline + horizonSampleToleranceMs('7d') + H;
     const { ledger: final, receipts } = processResolutionCycle(ledger, [], HORMUZ(61), lateRead);
-    assert.equal(final[parentKey].outcome, 'YES', 'the parent window reads the late live feed');
+    assert.equal(final[parentKey].evidence.reason, 'feed_unavailable', 'the feed was down for a cycle past the parent deadline, so the parent is never graded on a later read (#8990)');
     const row = final[key];
     assert.equal(row.status, 'resolved');
     assert.equal(row.outcome, 'UNOBSERVED');
