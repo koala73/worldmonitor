@@ -19,6 +19,7 @@ export const SCORECARD_DATA_FIELDS = [
   'publishedByDomain',
   'uncertainty',
   'funnel',
+  'receipts',
 ] as const satisfies readonly (keyof GetForecastScorecardResponse)[];
 
 export type ScorecardData = Pick<GetForecastScorecardResponse, typeof SCORECARD_DATA_FIELDS[number]>;
@@ -46,6 +47,18 @@ export const SCORECARD_BLOCK_FIELDS = {
 } as const;
 
 type BlockName = keyof typeof SCORECARD_BLOCK_FIELDS;
+
+// Mirrors PUBLIC_RECEIPT_FIELDS in scripts/_forecast-scorecard.mjs (a test pins
+// the parity), so a seeder row carrying anything else is trimmed here too.
+export const RECEIPT_FIELDS = [
+  'question', 'forecastAt', 'probability', 'outcome', 'resolvedAt',
+  'voidReason', 'sourceFeed', 'observedValue', 'citationTitle', 'citationUrl',
+] as const;
+
+function selectReceipts(value: unknown): unknown {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(isRecord).map((row) => pickNonNull(row, RECEIPT_FIELDS));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value);
@@ -75,7 +88,9 @@ export function selectScorecardFields(data: Record<string, unknown>): Partial<Sc
   const selected: Record<string, unknown> = {};
   for (const field of SCORECARD_DATA_FIELDS) {
     if (data[field] == null) continue;
-    const value = field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
+    const value = field === 'receipts'
+      ? selectReceipts(data[field])
+      : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
     if (value !== undefined) selected[field] = value;
   }
   return selected as Partial<ScorecardData>;

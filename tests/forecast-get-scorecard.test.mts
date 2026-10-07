@@ -4,7 +4,8 @@ import forecastRoute from '../api/forecast/v1/[rpc].ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 import { SCORECARD_DECLARED_FIELDS, SCORECARD_NESTED_CHILD_FIELDS, SCORECARD_NESTED_OBJECT_FIELDS } from '../scripts/build-accuracy-page.mjs';
-import { SCORECARD_BLOCK_FIELDS } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
+import { RECEIPT_FIELDS, SCORECARD_BLOCK_FIELDS } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
+import { PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -122,6 +123,7 @@ describe('getForecastScorecard backend status', () => {
         resolvedOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
         scoredOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
       },
+      receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
       degraded: false, stale: false, error: '',
     };
     const { fetchImpl } = createRedisFetch({});
@@ -134,6 +136,7 @@ describe('getForecastScorecard backend status', () => {
             ...data,
             uncertainty: { ...data.uncertainty, skillBrier: null, draws: [0.1], overallBrier: { ...data.uncertainty.overallBrier, scope: 'overall' } },
             funnel: { ...data.funnel, entryIds: ['a'], resolvedOfMatured: { ...data.funnel.resolvedOfMatured, sampleIds: ['b'] } },
+            receipts: data.receipts.map((row) => ({ ...row, key: 'ledger-key', rationale: 'judge text' })),
             judgedLane: { pendingJudge: 3 },
             betEngine: { count: 1, vsBaseRate: { brierDelta: 0.02 }, deviationSkill: { count: 1 } },
             futureInternalMetric: { syntheticMarker: 'not-part-of-response' },
@@ -150,6 +153,10 @@ describe('getForecastScorecard backend status', () => {
     const serialized = await response.json();
     assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS].sort());
     assert.deepEqual(serialized, data, 'every declared field must survive the real gateway and serializer, and a null interval is omitted');
+  });
+
+  it('filters receipt rows with the member list the producer publishes', () => {
+    assert.deepEqual([...RECEIPT_FIELDS], [...PUBLIC_RECEIPT_FIELDS]);
   });
 
   it('filters the interval and funnel blocks with the same member lists the /accuracy/ page uses', () => {

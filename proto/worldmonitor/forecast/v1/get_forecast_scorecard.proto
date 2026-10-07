@@ -119,6 +119,19 @@ message ScorecardFunnel {
   ScorecardProportion scored_of_matured = 9;
 }
 
+message ScorecardReceipt {
+  string question = 1;
+  int64 forecast_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double probability = 3;
+  string outcome = 4;
+  int64 resolved_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string void_reason = 6;
+  string source_feed = 7;
+  optional double observed_value = 8;
+  string citation_title = 9;
+  string citation_url = 10;
+}
+
 message GetForecastScorecardResponse {
   int32 schema_version = 1;
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -138,4 +151,5 @@ message GetForecastScorecardResponse {
   repeated ScorecardPublishedDomain published_by_domain = 15;
   ScorecardUncertainty uncertainty = 16;
   ScorecardFunnel funnel = 17;
+  repeated ScorecardReceipt receipts = 18;
 }
