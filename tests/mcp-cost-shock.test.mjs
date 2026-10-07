@@ -3,6 +3,9 @@ import { afterEach, describe, it } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import handler from '../api/mcp.ts';
 import { TOOL_REGISTRY, buildPublicTool, toolAccess, toolWeight } from '../api/mcp/registry/index.ts';
+import { createSupplyChainServiceRoutes } from '../src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
+import { getMultiSectorCostShock } from '../server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts';
+import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { computeMultiSectorShocks } from '../server/worldmonitor/supply-chain/v1/_multi-sector-shock.ts';
 
 const originalFetch = globalThis.fetch;
@@ -13,7 +16,79 @@ const tool = () => {
 };
 const call = args => tool()._execute(args, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_shock_fixture' });
 
+const callThroughRealRoutes = async args => {
+  const envNames = ['WORLDMONITOR_VALID_KEYS', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
+  const previousEnv = new Map(envNames.map(name => [name, process.env[name]]));
+  const routes = createSupplyChainServiceRoutes({ getMultiSectorCostShock, getCountryCostShock });
+  process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-test-token';
+  try {
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'redis.test') {
+        const key = decodeURIComponent(url.pathname.split('/get/')[1] ?? '');
+        const fixtures = {
+          'comtrade:bilateral-hs4:CN:v1': { iso2: 'CN', products: [
+            { hs4: '2709', totalValue: 1000000000, year: 2024 },
+            { hs4: '8542', totalValue: 2000000000, year: 2024 },
+          ] },
+          'supply_chain:chokepoints:v4': { chokepoints: [{ id: 'taiwan_strait', warRiskTier: 'WAR_RISK_TIER_ELEVATED' }] },
+        };
+        assert.ok(Object.hasOwn(fixtures, key), `unexpected Redis key: ${key}`);
+        return Response.json({ result: JSON.stringify(fixtures[key]) });
+      }
+      assert.equal(url.origin, 'https://api.worldmonitor.app');
+      const route = routes.find(candidate => candidate.path === url.pathname);
+      assert.ok(route, `unexpected RPC route: ${url.pathname}`);
+      return route.handler(new Request(url, init));
+    };
+    const response = await handler(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': 'wm_shock_fixture' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: {
+        name: 'get_supply_chain_cost_shock', arguments: args,
+      } }),
+    }));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.ok(payload.result, JSON.stringify(payload));
+    const { result } = payload;
+    assert.notEqual(result.isError, true, JSON.stringify(result));
+    return result.structuredContent;
+  } finally {
+    for (const [name, value] of previousEnv) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+};
+
 describe('supply-chain cost shock MCP workflow', () => {
+  for (const closureDays of [30, 90, undefined]) {
+    it(`dispatches public snake_case arguments through the real multi-sector RPC for ${closureDays ?? 'default 30'} days`, async () => {
+      const result = await callThroughRealRoutes({ mode: 'multi-sector', country: 'CN',
+        chokepoint_id: 'taiwan_strait', ...(closureDays === undefined ? {} : { closure_days: closureDays }) });
+      assert.equal(result.mode, 'multi-sector');
+      assert.equal(result.data.iso2, 'CN');
+      assert.equal(result.data.chokepointId, 'taiwan_strait');
+      assert.equal(result.data.closureDays, closureDays ?? 30);
+      assert.equal(result.data.sectors.length, 10);
+      assert.ok(result.data.totalAddedCost > 0);
+      assert.equal(result.data.unavailableReason, '');
+      for (const sector of result.data.sectors) assert.equal(sector.closureDays, closureDays ?? 30);
+    });
+  }
+
+  it('dispatches energy arguments through the real RPC and preserves unavailable model information', async () => {
+    const result = await callThroughRealRoutes({ mode: 'energy', country: 'CN', chokepoint_id: 'taiwan_strait' });
+    assert.equal(result.mode, 'energy');
+    assert.equal(result.data.iso2, 'CN');
+    assert.equal(result.data.chokepointId, 'taiwan_strait');
+    assert.equal(result.data.hs2, '27');
+    assert.equal(result.data.hasEnergyModel, false);
+    assert.match(result.data.unavailableReason, /not yet supported/);
+  });
+
   it('calls the energy route with normalized country and canonical chokepoint', async () => {
     const data = { iso2: 'JP', chokepointId: 'hormuz_strait', hs2: '27', supplyDeficitPct: 0,
       coverageDays: 32, warRiskPremiumBps: 100, warRiskTier: 'WAR_RISK_TIER_HIGH', hasEnergyModel: true,
@@ -21,7 +96,7 @@ describe('supply-chain cost shock MCP workflow', () => {
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       assert.equal(url.pathname, '/api/supply-chain/v1/get-country-cost-shock');
-      assert.deepEqual(Object.fromEntries(url.searchParams), { iso2: 'JP', chokepoint_id: 'hormuz_strait', hs2: '27' });
+      assert.deepEqual(Object.fromEntries(url.searchParams), { iso2: 'JP', chokepointId: 'hormuz_strait', hs2: '27' });
       assert.equal(init.headers['X-WorldMonitor-Key'], 'wm_shock_fixture'); return Response.json(data);
     };
     assert.deepEqual(await call({ mode: 'energy', country: 'Japan', chokepoint_id: 'hormuz_strait' }), { mode: 'energy', data });
@@ -34,7 +109,7 @@ describe('supply-chain cost shock MCP workflow', () => {
       warRiskTier: 'WAR_RISK_TIER_NORMAL', fetchedAt: '2026-09-30T12:00:00Z', unavailableReason: '' };
     globalThis.fetch = async input => {
       const url = new URL(String(input)); assert.equal(url.pathname, '/api/supply-chain/v1/get-multi-sector-cost-shock');
-      assert.deepEqual(Object.fromEntries(url.searchParams), { iso2: 'DE', chokepoint_id: 'suez', closure_days: '90' });
+      assert.deepEqual(Object.fromEntries(url.searchParams), { iso2: 'DE', chokepointId: 'suez', closureDays: '90' });
       return Response.json(data);
     };
     const result = await call({ mode: 'multi-sector', country: 'DEU', chokepoint_id: 'suez', closure_days: 90 });
@@ -46,7 +121,7 @@ describe('supply-chain cost shock MCP workflow', () => {
 
   it('keeps unavailable model/import information and defaults without inventing measurements', async () => {
     globalThis.fetch = async input => {
-      assert.equal(new URL(String(input)).searchParams.get('closure_days'), '30');
+      assert.equal(new URL(String(input)).searchParams.get('closureDays'), '30');
       return Response.json({ sectors: [], totalAddedCost: 0, unavailableReason: 'No seeded import data available for this country' });
     };
     assert.match((await call({ mode: 'multi-sector', country: 'JP', chokepoint_id: 'suez' })).data.unavailableReason, /No seeded import/);
