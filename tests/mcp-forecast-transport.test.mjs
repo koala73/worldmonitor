@@ -16,6 +16,76 @@ const full = { generatedAt: generation, predictions: Array.from({ length: 20 }, 
 })) };
 const paid = { inboundHostClass: 'apex', downstreamOrigin: 'https://worldmonitor.app', downstreamOriginTag: 'test', panelScope: 'forecasts' };
 
+describe('public forecast family history transport', () => {
+  const rows = [
+    { forecastId: 'case-0', outcome: 'YES', voidReason: 'private', resolvedAt: 123, evidence: { private: true } },
+    { forecastId: 'case-0', outcome: 'VOID', voidReason: 'judge_disagreement' },
+    { forecastId: 'case-0', outcome: 'NO' },
+    { forecastId: 'case-1', outcome: 'VOID', voidReason: '<img src=x>' },
+  ];
+  function project(scorecard, params = {}, predictions = full, execution = paid) {
+    return opening._postFilter(structuredClone({ predictions, scorecard }), params, execution);
+  }
+  for (const reason of ['resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable']) {
+    it(`preserves new public VOID reason ${reason}`, () => {
+      const result = project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason, evidence: 'private', resolvedAt: 123 }] });
+      assert.ok(Array.isArray(result.familyOutcomes), 'public VOID history must be present');
+      assert.ok(result.familyOutcomes[0], 'retained public VOID row must be present');
+      assert.deepEqual(result.familyOutcomes[0], { forecastId: 'case-0', outcome: 'VOID', voidReason: reason });
+    });
+  }
+  it('advertises each new public VOID reason in the paid schema with only the public set', () => {
+    const reasons = opening.outputSchema.properties.data.properties.familyOutcomes.items.properties.voidReason.enum;
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    assert.ok(Array.isArray(reasons), 'public reason schema enum must be present');
+    assert.deepEqual([...reasons].sort(), Object.keys(labels).sort());
+    assert.equal(reasons.includes('__proto__'), false);
+    assert.equal(reasons.includes('unknown'), false);
+  });
+  it('joins earlier public windows by retained ID in supplied newest-first order', () => {
+    const result = project({ familyOutcomes: rows }, { limit: 1 });
+    assert.deepEqual(result.familyOutcomes, [
+      { forecastId: 'case-0', outcome: 'YES' },
+      { forecastId: 'case-0', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'case-0', outcome: 'NO' },
+    ]);
+    assert.equal(result.reliability.status, 'unavailable', 'history does not require calibration fields');
+    assert.deepEqual(project({ familyOutcomes: rows }).familyOutcomes.at(-1), { forecastId: 'case-1', outcome: 'VOID', voidReason: 'other' });
+  });
+  it('joins after domain and region filtering, with no family guesses or unrelated rows', () => {
+    const predictions = { generatedAt: generation, predictions: [
+      { id: 'case-0', domain: 'energy', region: 'Europe' }, { id: 'case-1', domain: 'macro', region: 'Asia' },
+    ] };
+    for (const params of [{ domain: 'macro' }, { region: 'Asia' }]) {
+      assert.deepEqual(project({ familyOutcomes: rows }, params, predictions).familyOutcomes, [{ forecastId: 'case-1', outcome: 'VOID', voidReason: 'other' }]);
+    }
+    assert.deepEqual(project({ familyOutcomes: [{ forecastId: 'CASE-0', outcome: 'YES' }, { forecastId: 'unrelated', outcome: 'NO' }] }).familyOutcomes, []);
+  });
+  it('caps each retained family at five valid rows and the 30-card opening at 150 public rows', () => {
+    const predictions = { generatedAt: generation, predictions: Array.from({ length: 30 }, (unusedValue, forecastIndex) => ({ id: `family-${forecastIndex}`, title: 'Controlled forecast', domain: 'energy', probability: 0.4 })) };
+    const familyOutcomes = predictions.predictions.flatMap(prediction => [null, { forecastId: prediction.id, outcome: 'PENDING' }, ...Array.from({ length: 8 }, (unusedValue, windowIndex) => ({ forecastId: prediction.id, outcome: windowIndex % 2 ? 'NO' : 'YES' }))]);
+    const result = project({ familyOutcomes }, {}, predictions);
+    assert.ok(Array.isArray(result.familyOutcomes), 'valid family history must be present');
+    assert.equal(result.familyOutcomes.length, 150);
+    for (const prediction of predictions.predictions) assert.deepEqual(result.familyOutcomes.filter(row => row.forecastId === prediction.id).map(row => row.outcome), ['YES', 'NO', 'YES', 'NO', 'YES']);
+    assert.ok(Buffer.byteLength(JSON.stringify({ data: result })) < 131072);
+    assert.equal(opening._outputBudgetBytes, 131072);
+  });
+  it('uses only the public VOID allowlist, drops private fields, and hides unavailable history', () => {
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    for (const reason of Object.keys(labels)) {
+      const result = project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }] });
+      assert.ok(Array.isArray(result.familyOutcomes), 'valid VOID history must be present');
+      assert.equal(result.familyOutcomes[0].voidReason, reason);
+    }
+    for (const reason of [undefined, 12, '__proto__', '<script>private</script>']) assert.equal(project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }] }).familyOutcomes[0].voidReason, 'other');
+    for (const scorecard of [null, [], {}, { familyOutcomes: {} }, { degraded: true, familyOutcomes: rows }, { error: 'failed', familyOutcomes: rows }]) assert.equal(Object.hasOwn(project(scorecard), 'familyOutcomes'), false);
+    assert.deepEqual(project({ familyOutcomes: [] }).familyOutcomes, []);
+    assert.deepEqual(project({ familyOutcomes: [null, [], { forecastId: '', outcome: 'YES' }, { forecastId: 3, outcome: 'NO' }, { forecastId: 'case-0', outcome: 'yes' }] }).familyOutcomes, []);
+    assert.deepEqual(project({ familyOutcomes: rows }, {}, full, null), { predictions: full }, 'ordinary API result remains exact');
+  });
+});
+
 describe('bounded forecast list and original case transport', () => {
   it('preserves the website compact list and every case identity inside the opening budget', () => {
     assert.ok(Buffer.byteLength(JSON.stringify({ data: { predictions: full } })) > opening._outputBudgetBytes, 'controlled full dossiers exceed the existing response budget');

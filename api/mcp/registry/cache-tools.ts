@@ -524,6 +524,38 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
   return presented;
 }
 
+const FORECAST_VOID_REASONS = new Set([
+  'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained',
+  'unsupported_window', 'unsupported_metric_key', 'not_hard_spec', 'missing_threshold',
+  'missing_deadline', 'missing_generated_at', 'beyond_archive_horizon', 'no_archive_evidence',
+  'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'other',
+  'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable',
+]);
+
+function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
+  const raw = data.scorecard;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const card = raw as Record<string, unknown>;
+  if (card.degraded || card.error || !Array.isArray(card.familyOutcomes)) return undefined;
+  const rows = selectScorecardFields(card).familyOutcomes;
+  if (!Array.isArray(rows)) return undefined;
+  const retained = new Set(ids.slice(0, 30));
+  const counts = new Map<string, number>();
+  const history: { forecastId: string; outcome: string; voidReason?: string }[] = [];
+  for (const row of rows) {
+    if (typeof row.forecastId !== 'string' || !row.forecastId || !retained.has(row.forecastId)
+      || !['YES', 'NO', 'VOID'].includes(row.outcome)) continue;
+    const count = counts.get(row.forecastId) ?? 0;
+    if (count >= 5) continue;
+    counts.set(row.forecastId, count + 1);
+    history.push({ forecastId: row.forecastId, outcome: row.outcome,
+      ...(row.outcome === 'VOID' ? { voidReason: FORECAST_VOID_REASONS.has(row.voidReason) ? row.voidReason : 'other' } : {}),
+    });
+    if (history.length === 150) break;
+  }
+  return history;
+}
+
 function forecastReliability(data: Record<string, unknown>, domains: string[]) {
   const raw = data.scorecard;
   const unavailable = { status: 'unavailable' };
@@ -3206,6 +3238,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     outputSchema: (() => {
       const schema = cacheEnvelope({
+      familyOutcomes: { type: 'array', maxItems: 150, items: { type: 'object', additionalProperties: false,
+        properties: { forecastId: { type: 'string' }, outcome: { type: 'string', enum: ['YES', 'NO', 'VOID'] }, voidReason: { type: 'string', enum: [...FORECAST_VOID_REASONS] } },
+        required: ['forecastId', 'outcome'],
+      } },
       reliability: { type: 'object', properties: { status: { type: 'string', enum: ['ready', 'unavailable'] }, byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } } } },
       predictions: {
         type: ['object', 'null'],
@@ -3248,7 +3284,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
         const node = data.predictions as { predictions?: unknown[] } | null;
         const domains = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'domain' in value && typeof value.domain === 'string' ? [value.domain] : []);
-        return { predictions: data.predictions, reliability: forecastReliability(data, domains) };
+        const ids = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' ? [value.id] : []);
+        const familyOutcomes = forecastFamilyOutcomes(data, ids);
+        return { predictions: data.predictions, reliability: forecastReliability(data, domains), ...(familyOutcomes === undefined ? {} : { familyOutcomes }) };
       }
       return { predictions: data.predictions };
     },
