@@ -2393,7 +2393,8 @@
           "resolver_envelope_bug": "正しく読み取れなかったデータフィードで採点されました",
           "market_price_not_outcome": "フィードが示したのは市場価格で、市場の決着結果ではありませんでした",
           "judged_evidence_unreliable": "審査員の根拠資料を修正するまで採点対象外",
-          "other": "結果を確定できませんでした"
+          "other": "結果を確定できませんでした",
+          "judged_old_selection": "後に信頼できないと判明した証拠選定方法で判定"
         }
       },
       "horizons": {

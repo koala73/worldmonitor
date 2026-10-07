@@ -95,6 +95,7 @@ const RENDER = `
       resolver_envelope_bug: "Scored against a data feed we could not read correctly",
       market_price_not_outcome: "The feed showed the market price, not how the market resolved",
       judged_evidence_unreliable: "Held out of scoring while the judges' evidence is being fixed",
+      judged_old_selection: "Judged with an evidence method later found unreliable",
       other: "Could not be resolved"
     };
     function indexHistory(rows) {

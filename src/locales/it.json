@@ -2413,7 +2413,8 @@
           "resolver_envelope_bug": "Valutato su un feed di dati che non riuscivamo a leggere correttamente",
           "market_price_not_outcome": "Il feed mostrava il prezzo di mercato, non come si è risolto il mercato",
           "judged_evidence_unreliable": "Escluso dal punteggio finché le prove dei giudici non vengono corrette",
-          "other": "Non è stato possibile risolverla"
+          "other": "Non è stato possibile risolverla",
+          "judged_old_selection": "Valutato con un metodo di evidenza successivamente ritenuto inaffidabile"
         }
       },
       "horizons": {

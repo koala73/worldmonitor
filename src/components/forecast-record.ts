@@ -144,7 +144,7 @@ const OUTCOME_MARKS: Record<Outcome, string> = { YES: '✓', NO: '✗', VOID: '�
 export const VOID_REASON_CODES = [
   'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained', 'unsupported_window',
   'unsupported_metric_key', 'not_hard_spec', 'missing_threshold', 'missing_deadline', 'missing_generated_at',
-  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'other',
+  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'judged_old_selection', 'other',
 ] as const;
 const VOID_REASONS = new Set<string>(VOID_REASON_CODES);
 

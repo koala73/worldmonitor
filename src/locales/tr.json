@@ -2403,7 +2403,8 @@
           "resolver_envelope_bug": "Doğru okuyamadığımız bir veri akışına göre puanlandı",
           "market_price_not_outcome": "Akış piyasa fiyatını gösterdi, piyasanın nasıl sonuçlandığını değil",
           "judged_evidence_unreliable": "Hakemlerin kanıtları düzeltilene kadar puanlamadan çıkarıldı",
-          "other": "Sonuçlandırılamadı"
+          "other": "Sonuçlandırılamadı",
+          "judged_old_selection": "Daha sonra güvenilmez olduğu tespit edilen bir kanıt yöntemiyle değerlendirildi"
         }
       },
       "horizons": {

@@ -2140,7 +2140,8 @@
           "resolver_envelope_bug": "Ilipimwa dhidi ya chanzo cha data ambacho hatukuweza kusoma ipasavyo",
           "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
           "judged_evidence_unreliable": "Imeondolewa kwenye upimaji wakati ushahidi wa majaji unarekebishwa",
-          "other": "Haikuweza kuamuliwa"
+          "other": "Haikuweza kuamuliwa",
+          "judged_old_selection": "Iliamuliwa kwa njia ya ushahidi ambayo baadaye ilionekana kuwa si ya kuaminika"
         }
       },
       "horizons": {
