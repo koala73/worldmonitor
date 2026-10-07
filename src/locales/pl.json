@@ -2424,7 +2424,7 @@
           "market_price_not_outcome": "Źródło pokazywało cenę rynkową, a nie to, jak rynek został rozstrzygnięty",
           "judged_evidence_unreliable": "Wyłączono z oceny do czasu naprawienia materiałów dla sędziów",
           "other": "Nie można było rozstrzygnąć",
-          "judged_on_unreliable_evidence": "Oceniono na podstawie dowodów później uznanych za niewiarygodne"
+          "judged_old_selection": "Oceniono metodą doboru dowodów, którą później uznano za niewiarygodną"
         }
       },
       "horizons": {

@@ -2021,7 +2021,7 @@
           "market_price_not_outcome": "Källan visade marknadspriset, inte hur marknaden avgjordes",
           "judged_evidence_unreliable": "Undantagen från poängsättning medan domarnas underlag rättas",
           "other": "Kunde inte avgöras",
-          "judged_on_unreliable_evidence": "Bedömd utifrån bevis som senare visade sig opålitliga"
+          "judged_old_selection": "Bedömd med en bevismetod som senare visade sig opålitlig"
         }
       },
       "horizons": {

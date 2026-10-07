@@ -98,8 +98,11 @@ function liveShapedLedger() {
   pending.deadline = NOW + 3 * DAY_MS;
   pending.spec.deadline = pending.deadline;
   pending.key = `${pending.id}@${pending.deadline}`;
+  const undated = judgedRow('fc-conflict-undated-yes', { outcome: 'YES' });
+  delete undated.resolvedAt;
   const rows = [
     judgedRow('fc-conflict-old-yes', { outcome: 'YES' }),
+    undated,
     judgedRow('fc-conflict-old-no', { outcome: 'NO', resolvedAt: CUTOFF - 1 }),
     judgedRow('fc-conflict-new-yes', { outcome: 'YES', resolvedAt: CUTOFF + 60 * 60 * 1000 }),
     judgedRow('fc-conflict-old-void', { outcome: 'VOID', reason: 'all_judges_void' }),
@@ -151,7 +154,7 @@ describe('judged verdicts sealed on the stock-word selection (#8990)', () => {
     const before = byId(liveShapedLedger());
     const { ledger } = await runLikeProduction(liveShapedLedger(), NOW);
     const after = byId(ledger);
-    for (const id of ['fc-conflict-new-yes', 'fc-conflict-old-void', 'fc-conflict-hard-yes']) {
+    for (const id of ['fc-conflict-new-yes', 'fc-conflict-old-void', 'fc-conflict-hard-yes', 'fc-conflict-undated-yes']) {
       const { receiptArchivedAt: _a, ...kept } = after[id];
       const { receiptArchivedAt: _b, ...original } = before[id];
       assert.deepEqual(kept, original, id);
@@ -205,13 +208,13 @@ describe('judged verdicts sealed on the stock-word selection (#8990)', () => {
     assert.equal(scorecard.judgedLane.voidByReason[JUDGED_OLD_SELECTION_VOID_REASON], 2);
     const receipt = buildPublicReceipts(ledger, NOW).find((row) => row.voidReason === JUDGED_OLD_SELECTION_VOID_REASON);
     assert.ok(receipt, 'the voided row is published with its own reason');
-    assert.equal(RECEIPT_VOID_REASON_LABELS[receipt.voidReason], 'Judged on evidence later found unreliable');
+    assert.equal(RECEIPT_VOID_REASON_LABELS[receipt.voidReason], 'Judged with an evidence method later found unreliable');
   });
 
   it('labels the reason on the card chips in every locale', () => {
     const source = readFileSync(new URL('../src/components/forecast-record.ts', import.meta.url), 'utf8');
     assert.match(source, new RegExp(`'${JUDGED_OLD_SELECTION_VOID_REASON}'`));
     const en = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
-    assert.equal(en.components.forecast.resolution.void[JUDGED_OLD_SELECTION_VOID_REASON], 'Judged on evidence later found unreliable');
+    assert.equal(en.components.forecast.resolution.void[JUDGED_OLD_SELECTION_VOID_REASON], 'Judged with an evidence method later found unreliable');
   });
 });

@@ -2394,7 +2394,7 @@
           "market_price_not_outcome": "数据源显示的是市场价格，而不是市场的最终结果",
           "judged_evidence_unreliable": "在修正裁判所用证据期间暂不计分",
           "other": "无法确定结果",
-          "judged_on_unreliable_evidence": "依据后来被认定不可靠的证据作出裁定"
+          "judged_old_selection": "依据一种后来被认定不可靠的取证方法作出裁定"
         }
       },
       "horizons": {

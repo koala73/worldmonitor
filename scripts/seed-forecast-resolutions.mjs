@@ -2078,7 +2078,7 @@ export function voidEnvelopeBugResolutions(ledger, nowMs) {
 // its verdict and evidence kept as superseded. No judged YES or NO was sealed
 // between 2026-08-23 and the deploy, so the cutoff minute changes no row.
 // Re-running is a no-op: a voided row is no longer YES or NO.
-export const JUDGED_OLD_SELECTION_VOID_REASON = 'judged_on_unreliable_evidence';
+export const JUDGED_OLD_SELECTION_VOID_REASON = 'judged_old_selection';
 export const SUBJECT_GATED_SELECTION_SINCE_MS = Date.parse('2026-10-07T14:39:00Z');
 
 export function voidOldSelectionJudgedResolutions(ledger, nowMs) {

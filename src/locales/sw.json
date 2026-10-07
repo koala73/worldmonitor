@@ -2141,7 +2141,7 @@
           "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
           "judged_evidence_unreliable": "Imeondolewa kwenye upimaji wakati ushahidi wa majaji unarekebishwa",
           "other": "Haikuweza kuamuliwa",
-          "judged_on_unreliable_evidence": "Kuhukumiwa kulingana na ushahidi uliogunduliwa kuwa hauaminiki baadaye"
+          "judged_old_selection": "Iliamuliwa kwa njia ya ushahidi ambayo baadaye ilionekana kuwa si ya kuaminika"
         }
       },
       "horizons": {

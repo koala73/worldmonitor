@@ -2414,7 +2414,7 @@
           "market_price_not_outcome": "Fluxul arăta prețul pieței, nu modul în care s-a rezolvat piața",
           "judged_evidence_unreliable": "Exclus de la punctare cât timp dovezile judecătorilor sunt corectate",
           "other": "Nu a putut fi rezolvată",
-          "judged_on_unreliable_evidence": "Evaluat pe baza unor dovezi considerate ulterior nesigure"
+          "judged_old_selection": "Evaluat cu o metodă de selectare a dovezilor considerată ulterior nesigură"
         }
       },
       "horizons": {

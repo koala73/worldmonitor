@@ -2149,7 +2149,7 @@
           "market_price_not_outcome": "Izvor je prikazivao tržišnu cijenu, a ne kako je tržište razriješeno",
           "judged_evidence_unreliable": "Izuzeto iz ocjenjivanja dok se dokazi za suce ne isprave",
           "other": "Nije moglo biti riješeno",
-          "judged_on_unreliable_evidence": "Ocijenjeno na temelju dokaza koji su se kasnije pokazali nepouzdanima"
+          "judged_old_selection": "Ocijenjeno metodom prikupljanja dokaza koja se kasnije pokazala nepouzdanom"
         }
       },
       "horizons": {

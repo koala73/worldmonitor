@@ -2414,7 +2414,7 @@
           "market_price_not_outcome": "El feed mostraba el precio del mercado, no cómo se resolvió el mercado",
           "judged_evidence_unreliable": "Excluido de la puntuación mientras se corrigen las pruebas de los jueces",
           "other": "No se pudo resolver",
-          "judged_on_unreliable_evidence": "Juzgado sobre evidencia posteriormente considerada no confiable"
+          "judged_old_selection": "Resuelto con un método de evidencia posteriormente considerado no confiable"
         }
       },
       "horizons": {

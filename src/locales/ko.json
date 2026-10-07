@@ -2394,7 +2394,7 @@
           "market_price_not_outcome": "피드에는 시장 가격만 있었고 시장의 결과는 없었습니다",
           "judged_evidence_unreliable": "심사 근거 자료를 바로잡는 동안 채점에서 제외됨",
           "other": "판정할 수 없었습니다",
-          "judged_on_unreliable_evidence": "나중에 신뢰할 수 없는 것으로 밝혀진 증거를 바탕으로 판정됨"
+          "judged_old_selection": "나중에 신뢰할 수 없는 것으로 판명된 증거 방법으로 판정됨"
         }
       },
       "horizons": {

@@ -2424,7 +2424,7 @@
           "market_price_not_outcome": "Zdroj ukazoval tržní cenu, ne to, jak byl trh rozhodnut",
           "judged_evidence_unreliable": "Vyřazeno z hodnocení, dokud se neopraví podklady pro hodnotitele",
           "other": "Nelze vyřešit",
-          "judged_on_unreliable_evidence": "Posouzeno na základě důkazů později shledaných nespolehlivými"
+          "judged_old_selection": "Posouzeno metodou výběru důkazů, která se později ukázala jako nespolehlivá"
         }
       },
       "horizons": {

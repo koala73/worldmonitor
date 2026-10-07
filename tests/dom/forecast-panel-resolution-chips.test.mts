@@ -255,9 +255,9 @@ describe('ForecastPanel resolution chips', () => {
   });
 
   it('names the #8990 old-selection judged void instead of falling back to other', async () => {
-    const [card] = await cardsWith([{ forecastId: 'fc-judged', outcome: 'VOID', voidReason: 'judged_on_unreliable_evidence' }], ['fc-judged']);
-    expect(card!.querySelector('.fc-res-chip')?.getAttribute('title')).toBe('Judged on evidence later found unreliable');
-    expect(card!.querySelector('.fc-res-reasons')?.textContent).toBe('Judged on evidence later found unreliable');
+    const [card] = await cardsWith([{ forecastId: 'fc-judged', outcome: 'VOID', voidReason: 'judged_old_selection' }], ['fc-judged']);
+    expect(card!.querySelector('.fc-res-chip')?.getAttribute('title')).toBe('Judged with an evidence method later found unreliable');
+    expect(card!.querySelector('.fc-res-reasons')?.textContent).toBe('Judged with an evidence method later found unreliable');
   });
 
   it('shows nothing on a card whose family has no resolved window', async () => {
