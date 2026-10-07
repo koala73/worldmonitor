@@ -59,6 +59,66 @@ test('notification GET and POST relay failures deliver distinct Sentry fingerpri
       ['api/notification-channels', 'POST', 'Error'],
     ]);
     assert.notDeepEqual(events[0].fingerprint, events[1].fingerprint);
+    assert.equal(events[0].level, 'error');
+    assert.equal(events[1].level, 'error');
+  } finally {
+    notification?.__setNotificationChannelsDepsForTests?.(null);
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('notification GET TimeoutError / AbortError capture is downgraded to warning', async () => {
+  const originalEnv = {
+    NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT,
+    VITE_SENTRY_DSN: process.env.VITE_SENTRY_DSN,
+    CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
+    CONVEX_TENANT_RELAY_SECRET: process.env.CONVEX_TENANT_RELAY_SECRET,
+  };
+  const originalFetch = globalThis.fetch;
+  const envelopes = [];
+  const waits = [];
+  let notification;
+
+  delete process.env.NODE_TEST_CONTEXT;
+  process.env.VITE_SENTRY_DSN = 'https://public@example.ingest.sentry.io/12345';
+  process.env.CONVEX_SITE_URL = 'https://example.convex.site';
+  process.env.CONVEX_TENANT_RELAY_SECRET = 'test-secret';
+  globalThis.fetch = async (_input, init) => {
+    envelopes.push({ init });
+    return new Response(null, { status: 200 });
+  };
+
+  try {
+    notification = await import(`../api/notification-channels.ts?timeout=${Date.now()}`);
+    notification.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-timeout' }),
+      getEntitlements: async () => ({ features: { tier: 1 } }),
+      fetch: async () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      },
+    });
+
+    const response = await notification.default(
+      new Request('https://example.test/api/notification-channels', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer test-token' },
+      }),
+      { waitUntil: (promise) => waits.push(promise) },
+    );
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'Failed to fetch' });
+    await Promise.all(waits);
+
+    assert.equal(envelopes.length, 1);
+    const event = JSON.parse(String(envelopes[0].init.body).split('\n')[2]);
+    assert.equal(event.level, 'warning');
+    assert.deepEqual(event.fingerprint, ['api/notification-channels', 'GET', 'TimeoutError']);
+    assert.equal(event.tags.route, 'api/notification-channels');
+    assert.equal(event.tags.method, 'GET');
   } finally {
     notification?.__setNotificationChannelsDepsForTests?.(null);
     globalThis.fetch = originalFetch;
