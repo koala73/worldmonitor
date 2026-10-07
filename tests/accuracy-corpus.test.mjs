@@ -1732,34 +1732,49 @@ describe('accuracy page after the #5233 correction', () => {
 });
 
 describe('accuracy record under audit (#8990)', () => {
+  // A fixture, not the live switch: these suites must stay green when the switch is lifted to null,
+  // so the audited branch stays tested for the next audit.
+  const AUDIT = Object.freeze({
+    since: '2026-10-07',
+    issue: 8990,
+    reason: 'An audit found three errors in how forecasts were scored. Some outcomes were recorded as "did not happen" without reading the data that decides them. Some forecasts were counted more than once. Some were scored at a probability other than the one published.',
+  });
   const FULL = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL, receipts: RECEIPTS, marketAlerts: MARKET_ALERTS });
-  const NOTICE = 'Under audit since 2026-10-07. An audit found errors in how forecasts were scored, including outcomes recorded without reading their data. The scores previously shown here were not reliable and are withdrawn while corrections are made. Forecasts are still being published and recorded.';
-  const audited = () => renderState(FULL, { audit: FORECAST_ACCURACY_AUDIT });
+  const NOTICE = `Under audit since 2026-10-07. ${AUDIT.reason} The scores previously shown here were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.`;
+  const audited = () => renderState(FULL, { audit: AUDIT });
+  const visibleText = (html) => stripTags(html.split('<body>')[1].replace(/<script[\s\S]*?<\/script>/g, '')).replaceAll('&quot;', '"');
 
-  it('is one switch in shared/, set today to the 2026-10-07 audit', () => {
-    assert.deepEqual({ ...FORECAST_ACCURACY_AUDIT }, {
-      since: '2026-10-07',
-      issue: 8990,
-      reason: 'An audit found errors in how forecasts were scored, including outcomes recorded without reading their data.',
-    });
-    assert.equal(accuracyAuditNotice(FORECAST_ACCURACY_AUDIT), NOTICE);
+  it('keeps the switch either lifted or a well-formed audit', () => {
+    if (FORECAST_ACCURACY_AUDIT === null) return;
+    assert.match(FORECAST_ACCURACY_AUDIT.since, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(Number.isInteger(FORECAST_ACCURACY_AUDIT.issue) && FORECAST_ACCURACY_AUDIT.issue > 0);
+    assert.ok(FORECAST_ACCURACY_AUDIT.reason.length > 40);
+    assert.ok(Object.isFrozen(FORECAST_ACCURACY_AUDIT));
   });
 
-  it('defaults every renderer to the switch, so the build publishes the audited record', () => {
+  it('names the three flaws and the rescoring in the notice, with no skill verdict', () => {
+    assert.equal(accuracyAuditNotice(AUDIT), NOTICE);
+    if (FORECAST_ACCURACY_AUDIT) assert.equal(FORECAST_ACCURACY_AUDIT.reason, AUDIT.reason, 'the live reason is the reviewed copy');
+    assert.doesNotMatch(NOTICE, /skill|beat|base rate/i);
+  });
+
+  it('defaults every renderer to the switch', () => {
     const { tpl } = fakeTpl();
-    const html = renderAccuracyPage({
-      baseUrl: BASE_URL, tpl, state: classifyAccuracyState(FULL), lastmod: '2026-10-07',
-      dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH,
+    const state = classifyAccuracyState(FULL);
+    const page = (audit) => renderAccuracyPage({
+      baseUrl: BASE_URL, tpl, state, lastmod: '2026-10-07', dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH, ...audit,
     });
-    assert.match(html, /data-accuracy-audit="2026-10-07"/);
-    assert.match(renderAccuracyLlmsSection(FULL), /Under audit since 2026-10-07/);
-    const download = JSON.parse(accuracyDatasetDownload({ state: classifyAccuracyState(FULL), snapshotPath: SNAPSHOT_PATH }));
-    assert.equal(download.underAudit?.issue, 8990);
+    assert.equal(page({}), page({ audit: FORECAST_ACCURACY_AUDIT }));
+    assert.equal(renderAccuracyLlmsSection(FULL), renderAccuracyLlmsSection(FULL, FORECAST_ACCURACY_AUDIT));
+    assert.equal(
+      accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH }),
+      accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: FORECAST_ACCURACY_AUDIT }),
+    );
   });
 
   it('replaces the headline, the verdict and every score with the dated notice', () => {
     const { html } = audited();
-    const text = stripTags(html);
+    const text = visibleText(html);
     assert.ok(text.includes(NOTICE), 'the notice must read in full');
     assert.match(html, /<a href="https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990">issue #8990<\/a>/);
     for (const marker of [
@@ -1774,53 +1789,79 @@ describe('accuracy record under audit (#8990)', () => {
     }
   });
 
-  it('keeps the methodology and the receipts, and marks the receipts unverified', () => {
+  it('renders the notice once, as a callout, with no heading that repeats it', () => {
+    const { html } = audited();
+    const callout = html.match(/<section id="under-audit" class="card" role="note"[^>]*>[\s\S]*?<\/section>/)?.[0];
+    assert.ok(callout, 'the notice is a bordered callout');
+    assert.doesNotMatch(callout, /<h2/);
+    assert.match(callout, /<p><strong>Under audit since 2026-10-07\.<\/strong> An audit found three errors/);
+    assert.equal(visibleText(html).split('Under audit since').length - 1, 1);
+  });
+
+  it('states in the lede what the page does without claiming every forecast is scored', () => {
+    const { html } = audited();
+    assert.match(html, /<p class="lede">World Monitor logs every forecast it publishes and aims to score each one once its outcome is known\. While the audit below is open, this page publishes no scores\.<\/p>/);
+    assert.doesNotMatch(stripTags(html), /scores every forecast it publishes/);
+  });
+
+  it('keeps the methodology and the receipts, marks the receipts unverified and names the scored chance', () => {
     const { html } = audited();
     assert.match(html, /<h2>Methodology<\/h2>/);
     assert.ok(html.includes(LIVE_SCORECARD.methodology));
     assert.match(html, /<h2>Recently resolved forecasts, unverified<\/h2>/);
     const table = html.match(/<table data-forecast-receipts data-receipts-unverified>[\s\S]*?<\/table>/)?.[0];
     assert.ok(table, 'the receipts table must carry the unverified marker');
-    assert.match(table, /<caption>Unverified\. These outcomes were recorded by the scoring that is under audit/);
+    assert.match(table, /<caption>Not yet rechecked\. These outcomes were recorded by the scoring system the audit found errors in, so some may be wrong\./);
+    assert.match(table, /The chance is the probability each forecast was scored at\. This may differ from the probability first published\./);
+    assert.match(table, /<th scope="col">Chance scored<\/th>/);
+    assert.doesNotMatch(table, /Chance given/);
     assert.equal([...table.matchAll(/<tr data-receipt-outcome=/g)].length, RECEIPTS.length);
   });
 
-  it('keeps the market-alert section and says in one line that the audit did not cover it', () => {
+  it('keeps the market-alert section and says the audit did not cover or recheck it', () => {
     const { html } = audited();
     assert.match(html, /<h2 id="market-alerts">/);
     assert.match(html, /<table data-market-alerts>/);
-    assert.match(html, /<p data-market-alerts-audit-scope>The audit did not cover this section: market alerts are scored from a separate ledger\.<\/p>/);
+    assert.match(html, /<p data-market-alerts-audit-scope>The audit did not cover this section\. Market alerts are scored from a separate ledger, and these figures have not been rechecked\.<\/p>/);
   });
 
-  it('withdraws the score claims from the meta description and the Dataset description', () => {
+  it('withdraws the score claims from the meta and Dataset descriptions', () => {
     const { shell, jsonLd } = audited();
     assert.doesNotMatch(shell.description, /Brier|calibration/);
     assert.match(shell.description, /under audit/);
     const dataset = jsonLd.find((entry) => entry?.['@type'] === 'Dataset');
     assert.match(dataset.description, /^Under audit since 2026-10-07\./);
     assert.match(dataset.description, /issues\/8990/);
+    assert.match(dataset.description, /The download keeps the raw scorecard fields as captured, flagged underAudit; they are not reliable while the audit is open\.$/);
+    assert.doesNotMatch(dataset.description, /always agree|Aggregate accuracy/);
+  });
+
+  it('does not call the raw figures published numbers in the footer', () => {
+    const footer = audited().html.match(/<p class="source"[\s\S]*?<\/p>/)[0];
+    assert.doesNotMatch(footer, /Numbers generated/);
+    assert.match(footer, /The raw figures in the download were generated [^<]+ and read on 2026-09-10, and are under audit\./);
+    assert.match(renderState(FULL, { audit: LIFTED }).html, /Numbers generated/);
   });
 
   it('shows the notice even when no scorecard was captured', () => {
-    const { html } = renderState(null, { audit: FORECAST_ACCURACY_AUDIT });
+    const { html } = renderState(null, { audit: AUDIT });
     assert.match(html, /data-accuracy-audit="2026-10-07"/);
     assert.doesNotMatch(html, /data-accuracy-headline/);
   });
 
   it('puts the notice in llms-full in place of the accuracy claims', () => {
-    const llms = renderAccuracyLlmsSection(FULL, FORECAST_ACCURACY_AUDIT);
+    const llms = renderAccuracyLlmsSection(FULL, AUDIT);
     assert.match(llms, /^## Forecast accuracy$/m);
-    assert.match(llms, /Under audit since 2026-10-07\. An audit found errors in how forecasts were scored/);
-    assert.match(llms, /The scores previously shown on that page were not reliable and are withdrawn while corrections are made\./);
+    assert.ok(llms.includes(accuracyAuditNotice(AUDIT, 'on that page')));
     assert.match(llms, /https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990/);
     assert.doesNotMatch(llms, /Brier|0\.118|confidence intervals/);
   });
 
   it('flags scorecard.json under audit and keeps every raw field', () => {
     const state = classifyAccuracyState(FULL);
-    const audit = JSON.parse(accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: FORECAST_ACCURACY_AUDIT }));
+    const audit = JSON.parse(accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: AUDIT }));
     const lifted = JSON.parse(accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: LIFTED }));
-    assert.deepEqual(audit.underAudit, { since: '2026-10-07', reason: FORECAST_ACCURACY_AUDIT.reason, issue: 8990 });
+    assert.deepEqual(audit.underAudit, { since: '2026-10-07', reason: AUDIT.reason, issue: 8990 });
     assert.equal(lifted.underAudit, null);
     const { underAudit: _a, ...auditRest } = audit;
     const { underAudit: _l, ...liftedRest } = lifted;
@@ -1828,48 +1869,85 @@ describe('accuracy record under audit (#8990)', () => {
     assert.equal(audit.scorecard.skill.brier, LIVE_SCORECARD.skill.brier);
   });
 
-  it('dates a correction on the July scorecard post, which quotes figures from the same pipeline', () => {
-    const post = read('blog-site/src/content/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.md');
-    assert.match(post, /> \*\*Update, October 7, 2026\.\*\* An audit found errors in how these forecasts were scored[^\n]*The figures in this post are not reliable\.[^\n]*\(https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990\)/);
+  const BLOG = 'blog-site/src/content/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.md';
+  const BLOG_NOTE = '> **Update, October 7, 2026.**';
+
+  it('dates a correction on the July post that covers its method claims as well as its figures', () => {
+    const post = read(BLOG);
+    const note = post.split('\n').find((line) => line.startsWith(BLOG_NOTE));
+    assert.ok(note, 'the dated note is present');
+    assert.match(note, /some outcomes were recorded without reading the data that decides them/);
+    assert.match(note, /some forecasts were counted more than once/);
+    assert.match(note, /some were scored at a probability other than the one first published/);
+    assert.match(note, /The figures in this post are not reliable, and the method described above was not always followed\./);
+    assert.match(note, /\(https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990\)/);
   });
 
-  // Hand-written public surfaces that describe the record. Each must stay true in both states, so none may
-  // state a score as a verdict or promise that the page carries scores while the switch is set.
+  it('qualifies every method claim in the July post that the audit disproved', () => {
+    const post = read(BLOG);
+    const lineWith = (needle) => post.split('\n').find((line) => line.includes(needle)) ?? '';
+    assert.match(lineWith('keep their original probabilities forever'), /\(Update, October 7, 2026: the audit in issue #8990 found the scorer did not always follow this\./);
+    assert.match(lineWith('Once a forecast enters the resolution ledger'), /That is the design\. The October 2026 audit \(issue #8990\) found the scorer sometimes replaced a forecast's first probability with a later one, and that is being fixed\./);
+    assert.match(lineWith('demonstrated track record of its domain'), /\(while the record is under audit, do not\)/);
+    const description = post.match(/^description: "([^"]*)"$/m)[1];
+    assert.equal(description, 'How WorldMonitor scores its own AI forecasts, with a July 2026 snapshot of 32 forecasts. An audit found scoring errors and withdrew those figures in October 2026.');
+  });
+
+  // Public surfaces that describe the record. Each must be true in both states, so none may state a score
+  // as a verdict or promise that the record page carries scores. llms-full is generated from the switch, so
+  // it is held to this only while the audit is on.
   const STATIC_SURFACES = [
     'README.md',
     'public/llms.txt',
-    'public/llms-full.txt',
     'public/.well-known/mcp/server-card.json',
     'public/.well-known/agent-skills/check-forecast-signals/SKILL.md',
     'docs/methodology/cii-risk-scores.mdx',
     'docs/zh/methodology/cii-risk-scores.mdx',
     'docs/agent-skills.mdx',
     'docs/mcp-overview.mdx',
-    'blog-site/src/content/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.md',
+    'scripts/build-crawlable-corpus.mjs',
   ];
   const CLAIM_PHRASES = [
     /carries\s+the\s+Brier/i,
+    /with its Brier scores/i,
     /how well World Monitor forecasts have scored/i,
     /republishes the current scores/i,
     /ledger currently reads/i,
     /headline cohort scores a Brier/i,
     /graded and published/i,
     /载有 Brier/,
+    /Brier\s+(?:score\s+)?(?:of\s+)?\d?\.\d/i,
+    /beat(?:s|ing)?\s+(?:a\s+)?coin[- ]flip/i,
+    /beats maximal ignorance/i,
+    /Brier-score audit/i,
   ];
+  const claimsIn = (text) => CLAIM_PHRASES.filter((phrase) => phrase.test(text)).map(String);
 
-  it('keeps every static surface free of score claims while the switch is set', () => {
-    assert.ok(FORECAST_ACCURACY_AUDIT, 'this guard only means something while the audit is on');
-    for (const path of STATIC_SURFACES) {
-      const text = read(path);
-      for (const phrase of CLAIM_PHRASES) assert.doesNotMatch(text, phrase, `${path} states accuracy as a verdict`);
+  it('keeps every static surface free of score claims', () => {
+    const surfaces = FORECAST_ACCURACY_AUDIT ? [...STATIC_SURFACES, 'public/llms-full.txt'] : STATIC_SURFACES;
+    for (const path of surfaces) assert.deepEqual(claimsIn(read(path)), [], `${path} states accuracy as a verdict`);
+    const post = read(BLOG);
+    const noteAt = post.indexOf(BLOG_NOTE);
+    assert.ok(noteAt > 0, 'the July post keeps its dated note');
+    assert.deepEqual(claimsIn(post.slice(0, noteAt)), [], 'the July post states a verdict above its dated note, front matter included');
+  });
+
+  it('catches a new numeric claim, not only the retired wording', () => {
+    for (const planted of [
+      'World Monitor forecasts score a Brier of 0.111 over 243 forecasts, beating a coin flip.',
+      'Brier score 0.074 for cyber.',
+      'Our forecasts beat a coin flip.',
+    ]) {
+      assert.notDeepEqual(claimsIn(planted), [], planted);
     }
   });
 
   it('restores the full record when the switch is lifted', () => {
     const { html, shell } = renderState(FULL, { audit: LIFTED });
-    assert.doesNotMatch(html, /data-accuracy-audit|Under audit since|data-receipts-unverified|data-market-alerts-audit-scope/);
+    assert.doesNotMatch(html, /data-accuracy-audit|Under audit since|data-receipts-unverified|data-market-alerts-audit-scope|Chance scored/);
     assert.match(html, /data-accuracy-verdict/);
     assert.match(html, /<table data-by-domain>/);
+    assert.match(html, /<th scope="col">Chance given<\/th>/);
     assert.match(shell.description, /Published Brier and log scores/);
   });
 });

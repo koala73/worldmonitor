@@ -155,9 +155,12 @@ export function auditIssueUrl(audit) {
   return `${ISSUE_URL}/${audit.issue}`;
 }
 
+const auditSinceSentence = (audit) => `Under audit since ${audit.since}.`;
+const auditNoticeBody = (audit, where) => `${audit.reason} The scores previously shown ${where} were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.`;
+
 /** The withdrawal notice every surface prints while the audit switch is set. */
 export function accuracyAuditNotice(audit, where = 'here') {
-  return `Under audit since ${audit.since}. ${audit.reason} The scores previously shown ${where} were not reliable and are withdrawn while corrections are made. Forecasts are still being published and recorded.`;
+  return `${auditSinceSentence(audit)} ${auditNoticeBody(audit, where)}`;
 }
 
 const isPlainObject = (value) => (
@@ -729,7 +732,9 @@ function receiptSourceHtml(receipt, escapeHtml) {
   return `${escapeHtml('Judged against archived news: ')}${href ? `<a href="${escapeHtml(href)}" rel="nofollow noopener">${title}</a>` : title}`;
 }
 
-const UNVERIFIED_RECEIPTS = 'Unverified. These outcomes were recorded by the scoring that is under audit and have not been rechecked.';
+const UNVERIFIED_RECEIPTS = 'Not yet rechecked. These outcomes were recorded by the scoring system the audit found errors in, so some may be wrong.';
+const SCORED_CHANCE = 'The chance is the probability the forecast was scored at.';
+const UNVERIFIED_SCORED_CHANCE = 'The chance is the probability each forecast was scored at. This may differ from the probability first published.';
 
 function receiptsSection(scorecard, escapeHtml, unverified = false) {
   const heading = unverified
@@ -755,8 +760,8 @@ function receiptsSection(scorecard, escapeHtml, unverified = false) {
   }
   return `${heading}
       <div class="table-scroll"><table data-forecast-receipts${unverified ? ' data-receipts-unverified' : ''}>
-        <caption>${unverified ? `${escapeHtml(UNVERIFIED_RECEIPTS)} ` : ''}The ${escapeHtml(formatCount(rows.length))} most recently resolved published forecasts, newest first, leaving out experimental, synthetic and unattributed origins, voids included. The chance is the probability the forecast was scored at. A hard forecast is settled by reading a World Monitor data feed; a judged one by AI judges reading archived news, and the linked item is one they cited. Dates are UTC.</caption>
-        <thead><tr><th scope="col">Forecast</th><th scope="col">Made</th><th scope="col">Chance given</th><th scope="col">Outcome</th><th scope="col">Resolved</th><th scope="col">How it was settled</th></tr></thead>
+        <caption>${unverified ? `${escapeHtml(UNVERIFIED_RECEIPTS)} ` : ''}The ${escapeHtml(formatCount(rows.length))} most recently resolved published forecasts, newest first, leaving out experimental, synthetic and unattributed origins, voids included. ${escapeHtml(unverified ? UNVERIFIED_SCORED_CHANCE : SCORED_CHANCE)} A hard forecast is settled by reading a World Monitor data feed; a judged one by AI judges reading archived news, and the linked item is one they cited. Dates are UTC.</caption>
+        <thead><tr><th scope="col">Forecast</th><th scope="col">Made</th><th scope="col">${unverified ? 'Chance scored' : 'Chance given'}</th><th scope="col">Outcome</th><th scope="col">Resolved</th><th scope="col">How it was settled</th></tr></thead>
         <tbody>
 ${rows.map((receipt) => `          <tr data-receipt-outcome="${escapeHtml(receipt.outcome)}"><th scope="row">${escapeHtml(receipt.question)}</th><td>${escapeHtml(utcDate(receipt.forecastAt))}</td><td><span data-probability-band>${escapeHtml(isFiniteNumber(receipt.probability) ? `${Number((receipt.probability * 100).toFixed(1))}%` : 'Not recorded')}</span></td><td>${escapeHtml(RECEIPT_OUTCOME_LABELS[receipt.outcome])}</td><td>${escapeHtml(utcDate(receipt.resolvedAt))}</td><td>${receiptSourceHtml(receipt, escapeHtml)}</td></tr>`).join('\n')}
         </tbody>
@@ -889,7 +894,7 @@ function marketAlertCells(row) {
   ];
 }
 
-const MARKET_ALERTS_OUTSIDE_AUDIT = 'The audit did not cover this section: market alerts are scored from a separate ledger.';
+const MARKET_ALERTS_OUTSIDE_AUDIT = 'The audit did not cover this section. Market alerts are scored from a separate ledger, and these figures have not been rechecked.';
 
 function marketAlertsSection(marketAlerts, escapeHtml, audited = false) {
   const heading = `      <h2 id="market-alerts">Market alerts: did the news follow?</h2>${audited ? `\n      <p data-market-alerts-audit-scope>${escapeHtml(MARKET_ALERTS_OUTSIDE_AUDIT)}</p>` : ''}`;
@@ -1076,17 +1081,20 @@ function relatedSection(baseUrl, tpl) {
       </ul>`;
 }
 
-function provenanceLine(state, dataset, snapshotPath, escapeHtml) {
-  const dated = state.scorecard
-    ? ` Numbers generated ${escapeHtml(formatUtcDateTime(state.generatedAt))} and read on ${escapeHtml(state.capturedAt || 'an unrecorded date')}.`
-    : '';
+function provenanceLine(state, dataset, snapshotPath, escapeHtml, audited = false) {
+  const generated = state.scorecard ? escapeHtml(formatUtcDateTime(state.generatedAt)) : '';
+  const read = escapeHtml(state.capturedAt || 'an unrecorded date');
+  const dated = !state.scorecard
+    ? ''
+    : audited
+      ? ` The raw figures in the download were generated ${generated} and read on ${read}, and are under audit.`
+      : ` Numbers generated ${generated} and read on ${read}.`;
   return `      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(dataset.href)}">${escapeHtml(dataset.filename)}</a>. Source: World Monitor forecast scorecard snapshot.${dated} Live results come from the credentialed forecast scorecard endpoint, which this page freezes so it can be read without one.</p>`;
 }
 
 function auditSection(audit, escapeHtml) {
-  return `      <section id="under-audit" data-accuracy-audit="${escapeHtml(audit.since)}" aria-label="Accuracy under audit">
-        <h2>Under audit</h2>
-        <p>${escapeHtml(accuracyAuditNotice(audit))}</p>
+  return `      <section id="under-audit" class="card" role="note" data-accuracy-audit="${escapeHtml(audit.since)}" aria-label="Accuracy under audit">
+        <p><strong>${escapeHtml(auditSinceSentence(audit))}</strong> ${escapeHtml(auditNoticeBody(audit, 'here'))}</p>
         <p>The findings and the fixes are tracked in <a href="${escapeHtml(auditIssueUrl(audit))}">issue #${escapeHtml(String(audit.issue))}</a>. The download below keeps the raw figures and marks them as under audit.</p>
       </section>`;
 }
@@ -1096,13 +1104,13 @@ function auditSection(audit, escapeHtml) {
 // comparison, and no ledger or funnel counts built from the same windows.
 function auditedBody({ state, baseUrl, tpl, dataset, snapshotPath, heading, audit }) {
   const { escapeHtml } = tpl;
-  const lede = '      <p class="lede">World Monitor scores every forecast it publishes once the outcome is knowable. While the audit below is open, this page publishes no scores.</p>';
+  const lede = '      <p class="lede">World Monitor logs every forecast it publishes and aims to score each one once its outcome is known. While the audit below is open, this page publishes no scores.</p>';
   if (!state.scorecard) {
     return `${heading}
 ${lede}
 ${auditSection(audit, escapeHtml)}
 ${relatedSection(baseUrl, tpl)}
-${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
+${provenanceLine(state, dataset, snapshotPath, escapeHtml, true)}`;
   }
   const { scorecard } = state;
   return `${heading}
@@ -1114,7 +1122,7 @@ ${auditSection(audit, escapeHtml)}
 ${receiptsSection(scorecard, escapeHtml, true)}
 ${marketAlertsSection(scorecard.marketAlerts, escapeHtml, true)}
 ${relatedSection(baseUrl, tpl)}
-${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
+${provenanceLine(state, dataset, snapshotPath, escapeHtml, true)}`;
 }
 
 function accuracyBody({ state, baseUrl, tpl, dataset, snapshotPath, audit }) {
@@ -1178,8 +1186,9 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset, audit }) {
     '@type': 'Dataset',
     '@id': `${canonical}#dataset`,
     name: 'World Monitor forecast resolution scorecard',
-    description: (audit ? `${accuracyAuditNotice(audit, 'in this dataset')} Findings: ${auditIssueUrl(audit)}. ` : '') +
-      'Aggregate accuracy of World Monitor forecasts over a rolling window: Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, a head-to-head against liquid prediction markets, and receipts for the most recently resolved forecasts. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
+    description: audit
+      ? `${accuracyAuditNotice(audit, 'in this dataset')} Findings: ${auditIssueUrl(audit)}. The download keeps the raw scorecard fields as captured, flagged underAudit; they are not reliable while the audit is open.`
+      : 'Aggregate accuracy of World Monitor forecasts over a rolling window: Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, a head-to-head against liquid prediction markets, and receipts for the most recently resolved forecasts. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
     identifier: DATASET_IDENTIFIER,
     keywords: [
       'forecast accuracy',

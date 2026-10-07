@@ -733,7 +733,7 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Under audit since 2026-10-07. An audit found errors in how forecasts were scored, including outcomes recorded without reading their data. The scores previously shown on that page were not reliable and are withdrawn while corrections are made. Forecasts are still being published and recorded.
+Under audit since 2026-10-07. An audit found three errors in how forecasts were scored. Some outcomes were recorded as "did not happen" without reading the data that decides them. Some forecasts were counted more than once. Some were scored at a probability other than the one published. The scores previously shown on that page were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.
 
 The audit's findings and fixes are tracked at https://github.com/koala73/worldmonitor/issues/8990.
 

@@ -568,6 +568,26 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
   };
 }
 
+const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.';
+
+/** While the audit switch is set (#8990) the first sentence, the one tools/list keeps, is the notice. */
+export function forecastScorecardDescription(audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
+  return audit
+    ? `Under audit since ${audit.since} (issue ${audit.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
+    : FORECAST_SCORECARD_DESCRIPTION;
+}
+
+/** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+  const scorecard = data.scorecard;
+  const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
+  return {
+    underAudit: audit ? { since: audit.since, issue: audit.issue, reason: audit.reason } : null,
+    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
+    marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
+  };
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
@@ -3310,13 +3330,18 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: `${FORECAST_ACCURACY_AUDIT ? `Under audit since ${FORECAST_ACCURACY_AUDIT.since} (issue ${FORECAST_ACCURACY_AUDIT.issue}): scores are unreliable and withdrawn while corrections are made. ` : ''}Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id.`,
+    description: forecastScorecardDescription(),
     inputSchema: {
       type: 'object',
       properties: {},
       required: [],
     },
     outputSchema: cacheEnvelope({
+      underAudit: {
+        type: ['object', 'null'],
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict.',
+        properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
+      },
       scorecard: {
         type: ['object', 'null'],
         properties: {
@@ -3355,14 +3380,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1'],
     _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts' },
-    _project: (data) => {
-      const scorecard = data.scorecard;
-      const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
-      return {
-        scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
-        marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
-      };
-    },
+    _project: (data) => projectForecastScorecard(data),
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",

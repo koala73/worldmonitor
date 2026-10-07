@@ -5,5 +5,5 @@
 export const FORECAST_ACCURACY_AUDIT = Object.freeze({
   since: '2026-10-07',
   issue: 8990,
-  reason: 'An audit found errors in how forecasts were scored, including outcomes recorded without reading their data.',
+  reason: 'An audit found three errors in how forecasts were scored. Some outcomes were recorded as "did not happen" without reading the data that decides them. Some forecasts were counted more than once. Some were scored at a probability other than the one published.',
 });

@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { projectForecastScorecard } from '../api/mcp/registry/cache-tools.ts';
+import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 const tool = CACHE_TOOLS.find((entry) => entry.name === 'get_forecast_scorecard');
 
@@ -174,9 +176,9 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     assert.deepEqual(result.data.scorecard, DECLARED);
   });
 
-  it('projects only the two declared blocks rather than spreading what the cache read returned', () => {
+  it('projects only the declared blocks and the audit flag rather than spreading what the cache read returned', () => {
     const projected = tool._project({ scorecard: DECLARED, marketAlerts: MARKET_ALERTS_STORED, archive: { coveredFromMs: 1 } });
-    assert.deepEqual(Object.keys(projected).sort(), ['marketAlerts', 'scorecard']);
+    assert.deepEqual(Object.keys(projected).sort(), ['marketAlerts', 'scorecard', 'underAudit']);
   });
 
   it('declares the market-alert container and row members in outputSchema', () => {
@@ -186,5 +188,24 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
       Object.keys(alerts.properties.byType.items.properties).sort(),
       Object.keys(MARKET_ALERTS.byType[0]).sort(),
     );
+  });
+});
+
+describe('get_forecast_scorecard under the accuracy audit (#8990)', () => {
+  const AUDIT = Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+  const data = { scorecard: { schemaVersion: 2, skill: { count: 243, brier: 0.110775 } }, marketAlerts: null };
+
+  it('flags the result and keeps the raw scorecard', () => {
+    const audited = projectForecastScorecard(data, AUDIT);
+    assert.deepEqual(audited.underAudit, { since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+    assert.equal(audited.scorecard.skill.brier, 0.110775);
+    const lifted = projectForecastScorecard(data, null);
+    assert.equal(lifted.underAudit, null);
+    assert.deepEqual({ ...audited, underAudit: null }, lifted, 'the flag is the only difference');
+  });
+
+  it('projects through the live switch and declares the flag in its output schema', () => {
+    assert.deepEqual(tool._project(structuredClone(data)), projectForecastScorecard(structuredClone(data), FORECAST_ACCURACY_AUDIT));
+    assert.deepEqual(tool.outputSchema.properties.data.properties.underAudit.type, ['object', 'null']);
   });
 });

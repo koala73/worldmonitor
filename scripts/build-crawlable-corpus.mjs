@@ -2400,7 +2400,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
       <h2>What the CII measures</h2>
       <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
       <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
-      <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the graded record is published on the <a href="/accuracy/">forecast accuracy scorecard</a> with its Brier scores, calibration and sample sizes.</p>
+      <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the record and its methodology are published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
       <a class="cta" href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the live CII panel in World Monitor →</a>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Instability Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
   const html = pageDocument({
