@@ -247,8 +247,8 @@ describe('ForecastPanel resolution chips', () => {
 
   it('names the #5233 envelope-bug void instead of falling back to other', async () => {
     const [card] = await cardsWith([{ forecastId: 'fc-env', outcome: 'VOID', voidReason: 'resolver_envelope_bug' }], ['fc-env']);
-    expect(card!.querySelector('.fc-res-chip')?.getAttribute('title')).toBe('Scored against a feed the resolver could not read; voided on 2026-10-07');
-    expect(card!.querySelector('.fc-res-reasons')?.textContent).toBe('Scored against a feed the resolver could not read; voided on 2026-10-07');
+    expect(card!.querySelector('.fc-res-chip')?.getAttribute('title')).toBe('Scored against a data feed we could not read correctly');
+    expect(card!.querySelector('.fc-res-reasons')?.textContent).toBe('Scored against a data feed we could not read correctly');
   });
 
   it('shows nothing on a card whose family has no resolved window', async () => {

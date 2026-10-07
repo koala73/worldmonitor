@@ -78,7 +78,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
-    methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is scored on the probability published at the time. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.',
+    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is scored on the probability published at the time. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}`,
     totals: {
       entries: entries.length,
       resolved: resolved.length,
@@ -212,6 +212,16 @@ export function isScoredEntry(entry) {
 // Projection horizon windows (#7075) share the ledger with forecast windows
 // under `<parentKey>@<horizon>` keys. Every forecast-window reader partitions
 // on this so a projection never enters a forecast metric, fit, or cohort.
+// The #5233 correction travels with the numbers it changed: a frozen capture
+// taken before the resolver voided those rows carries no note.
+function envelopeBugNote(voided) {
+  const count = voided.filter((entry) => entry?.evidence?.reason === 'resolver_envelope_bug').length;
+  if (!count) return '';
+  return count === 1
+    ? ' 1 forecast scored against a data feed we could not read correctly is voided and left out of every score (issue #5233).'
+    : ` ${count} forecasts scored against a data feed we could not read correctly are voided and left out of every score (issue #5233).`;
+}
+
 export function isHorizonEntry(entry) {
   return typeof entry?.spec?.horizon === 'string';
 }
@@ -912,7 +922,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   judge_disagreement: 'The judges disagreed',
   judge_retry_exhausted: 'The judges returned no verdict',
   withheld_unpublished: 'This kind of forecast is no longer published',
-  resolver_envelope_bug: 'Scored against a feed the resolver could not read; voided on 2026-10-07',
+  resolver_envelope_bug: 'Scored against a data feed we could not read correctly',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

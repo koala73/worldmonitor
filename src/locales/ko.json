@@ -2390,7 +2390,7 @@
           "judge_disagreement": "심사자 간 의견이 일치하지 않습니다",
           "judge_retry_exhausted": "심사자가 판정을 내리지 못했습니다",
           "withheld_unpublished": "이 유형의 예측은 더 이상 게시되지 않습니다",
-          "resolver_envelope_bug": "리졸버가 읽을 수 없던 피드로 채점되어 2026-10-07에 무효 처리됨",
+          "resolver_envelope_bug": "올바르게 읽지 못한 데이터 피드로 채점됨",
           "other": "판정할 수 없었습니다"
         }
       },

@@ -2017,7 +2017,7 @@
           "judge_disagreement": "Domarna var oeniga",
           "judge_retry_exhausted": "Domarna återkom utan dom",
           "withheld_unpublished": "Den här typen av prognos publiceras inte längre",
-          "resolver_envelope_bug": "Bedömd mot en källa som resolvern inte kunde läsa; ogiltigförklarad 2026-10-07",
+          "resolver_envelope_bug": "Bedömd mot en datakälla som vi inte kunde läsa korrekt",
           "other": "Kunde inte avgöras"
         }
       },

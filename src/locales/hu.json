@@ -2134,7 +2134,7 @@
           "judge_disagreement": "A bírálók nem értettek egyet",
           "judge_retry_exhausted": "A bírálók nem hoztak döntést",
           "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
-          "resolver_envelope_bug": "Olyan feed alapján értékelve, amelyet a feloldó nem tudott beolvasni; 2026-10-07-én érvénytelenítve",
+          "resolver_envelope_bug": "Olyan adatforrás alapján értékelve, amelyet nem tudtunk helyesen beolvasni",
           "other": "Nem lehetett eldönteni"
         }
       },

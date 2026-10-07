@@ -2420,7 +2420,7 @@
           "judge_disagreement": "Sędziowie się nie zgodzili",
           "judge_retry_exhausted": "Sędziowie nie wydali wyroku",
           "withheld_unpublished": "Ten rodzaj prognozy nie jest już publikowany",
-          "resolver_envelope_bug": "Oceniono na podstawie źródła, którego mechanizm rozstrzygania nie mógł odczytać; unieważniono 2026-10-07",
+          "resolver_envelope_bug": "Oceniono na podstawie źródła danych, którego nie mogliśmy poprawnie odczytać",
           "other": "Nie można było rozstrzygnąć"
         }
       },

@@ -613,6 +613,9 @@ function coverageSentence(state) {
       : ' Nothing in this window has been scored yet.';
     return `The headline cohort has no scored forecast in this window, so it carries no Brier score.${excluded} The breakdowns below are still real measurements.`;
   }
+  if (skill.count < INTERVAL_MIN_SAMPLE) {
+    return `The headline cohort has ${formatCount(skill.count)} scored forecasts. That is fewer than the ${formatCount(INTERVAL_MIN_SAMPLE)} the domain table needs before it publishes a score, so read the headline score as a small sample.`;
+  }
   return `The headline cohort has ${formatCount(skill.count)} scored forecasts, enough to publish a score.`;
 }
 
@@ -630,7 +633,7 @@ function totalsTable(totals, intervals, escapeHtml) {
     ['Scored share of the ledger', escapeHtml(rateOf(totals.publicationCoverage, totals.entries, 'entries'))],
   ];
   return `      <div class="table-scroll"><table data-ledger-totals>
-        <caption>Resolution ledger totals for the rolling window. Forecasts withheld under issue #5234 are left out. These are state-derived sovereign risk, rates and inflation, and FX stress forecasts that no feed can check. Forecasts scored against a feed the resolver could not read were voided on 2026-10-07 under issue #5233. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
+        <caption>Resolution ledger totals for the rolling window. Forecasts withheld under issue #5234 are left out. These are state-derived sovereign risk, rates and inflation, and FX stress forecasts that no feed can check. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
         <thead><tr><th scope="col">Ledger stage</th><th scope="col">Entries</th></tr></thead>
         <tbody>
 ${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}

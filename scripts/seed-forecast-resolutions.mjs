@@ -209,7 +209,7 @@ function promoteBetEngineEnabled() {
 
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested);
+  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   // Drop terminal entries that are already receipted to R2 and outside the
@@ -223,7 +223,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
 
 export async function processResolutionCycleWithJudges(existingLedger, historySnapshots, feedsByKey, newsArchive, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested);
+  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
@@ -1599,7 +1599,7 @@ function isEnvelopeBugResolution(entry) {
     && entry.evidence?.envelopeAware !== true;
 }
 
-export function voidEnvelopeBugResolutions(ledger) {
+export function voidEnvelopeBugResolutions(ledger, nowMs) {
   let voided = 0;
   for (const entry of Object.values(ledger)) {
     if (!isEnvelopeBugResolution(entry)) continue;
@@ -1609,6 +1609,7 @@ export function voidEnvelopeBugResolutions(ledger) {
       resolvedAt: entry.resolvedAt,
       supersededOutcome: entry.outcome,
       supersededEvidence: entry.evidence,
+      voidedAt: nowMs,
     };
     entry.outcome = 'VOID';
     voided += 1;
@@ -2428,7 +2429,7 @@ async function dryRun() {
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
   // The live run fits the calibration map after the cycle has voided these
   // rows; the preview must fit the same ledger.
-  voidEnvelopeBugResolutions(preLedger);
+  voidEnvelopeBugResolutions(preLedger, nowMs);
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = { ...buildLiveJudgedOptions(nowMs), persistRecoveredCoverage: false };
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);

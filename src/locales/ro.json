@@ -2410,7 +2410,7 @@
           "judge_disagreement": "Evaluatorii nu au fost de acord",
           "judge_retry_exhausted": "Evaluatorii nu au returnat o hotărâre",
           "withheld_unpublished": "Acest tip de prognoză nu mai este publicat",
-          "resolver_envelope_bug": "Evaluat pe baza unui flux pe care rezolvatorul nu îl putea citi; anulat pe 2026-10-07",
+          "resolver_envelope_bug": "Evaluat pe baza unui flux de date pe care nu l-am putut citi corect",
           "other": "Nu a putut fi rezolvată"
         }
       },

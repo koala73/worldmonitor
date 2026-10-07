@@ -2390,7 +2390,7 @@
           "judge_disagreement": "判定者の意見が異なります",
           "judge_retry_exhausted": "判定者が判定を下しませんでした",
           "withheld_unpublished": "この種類の予測は現在公開されていません",
-          "resolver_envelope_bug": "リゾルバーが読み取れなかったフィードで採点されたため、2026-10-07に無効化",
+          "resolver_envelope_bug": "正しく読み取れなかったデータフィードで採点されました",
           "other": "結果を確定できませんでした"
         }
       },

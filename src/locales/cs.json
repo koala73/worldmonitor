@@ -2420,7 +2420,7 @@
           "judge_disagreement": "Rozhodčí se neshodli",
           "judge_retry_exhausted": "Rozhodčí nevydali rozhodnutí",
           "withheld_unpublished": "Tento druh předpovědi se již nezveřejňuje",
-          "resolver_envelope_bug": "Vyhodnoceno podle zdroje dat, který vyhodnocovač nedokázal přečíst; zrušeno 2026-10-07",
+          "resolver_envelope_bug": "Vyhodnoceno podle zdroje dat, který jsme nedokázali správně přečíst",
           "other": "Nelze vyřešit"
         }
       },
