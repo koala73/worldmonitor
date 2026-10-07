@@ -6,6 +6,7 @@ import { TOOL_REGISTRY, buildPublicTool, toolAccess, toolWeight } from '../api/m
 import { createSupplyChainServiceRoutes } from '../src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
 import { getMultiSectorCostShock } from '../server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
+import { getKeyPrefix, __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { computeMultiSectorShocks } from '../server/worldmonitor/supply-chain/v1/_multi-sector-shock.ts';
 
 const originalFetch = globalThis.fetch;
@@ -23,20 +24,27 @@ const callThroughRealRoutes = async args => {
   process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-test-token';
+  __resetKeyPrefixCacheForTests();
+  const unexpectedKeys = [];
+  const rateLimitRequests = [];
   try {
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.hostname === 'redis.test') {
+        if (url.pathname === '/pipeline') {
+          rateLimitRequests.push(init?.body);
+          return Response.json([{ result: [59, 60] }]);
+        }
         const key = decodeURIComponent(url.pathname.split('/get/')[1] ?? '');
         const fixtures = {
           'comtrade:bilateral-hs4:CN:v1': { iso2: 'CN', products: [
             { hs4: '2709', totalValue: 1000000000, year: 2024 },
             { hs4: '8542', totalValue: 2000000000, year: 2024 },
           ] },
-          'supply_chain:chokepoints:v4': { chokepoints: [{ id: 'taiwan_strait', warRiskTier: 'WAR_RISK_TIER_ELEVATED' }] },
+          [`${getKeyPrefix()}supply_chain:chokepoints:v4`]: { chokepoints: [{ id: 'taiwan_strait', warRiskTier: 'WAR_RISK_TIER_ELEVATED' }] },
         };
-        assert.ok(Object.hasOwn(fixtures, key), `unexpected Redis key: ${key}`);
-        return Response.json({ result: JSON.stringify(fixtures[key]) });
+        if (!Object.hasOwn(fixtures, key)) unexpectedKeys.push({ path: url.pathname, body: init?.body });
+        return Response.json({ result: Object.hasOwn(fixtures, key) ? JSON.stringify(fixtures[key]) : null });
       }
       assert.equal(url.origin, 'https://api.worldmonitor.app');
       const route = routes.find(candidate => candidate.path === url.pathname);
@@ -49,6 +57,13 @@ const callThroughRealRoutes = async args => {
         name: 'get_supply_chain_cost_shock', arguments: args,
       } }),
     }));
+    assert.deepEqual(unexpectedKeys, [], 'all Redis reads must use declared fixtures');
+    for (const body of rateLimitRequests) {
+      const commands = JSON.parse(String(body));
+      assert.equal(commands.length, 1);
+      assert.equal(commands[0][0], 'evalsha');
+      assert.match(commands[0][3], /^rl:mcp:key:/);
+    }
     assert.equal(response.status, 200);
     const payload = await response.json();
     assert.ok(payload.result, JSON.stringify(payload));
@@ -56,6 +71,7 @@ const callThroughRealRoutes = async args => {
     assert.notEqual(result.isError, true, JSON.stringify(result));
     return result.structuredContent;
   } finally {
+    __resetKeyPrefixCacheForTests();
     for (const [name, value] of previousEnv) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
@@ -71,6 +87,7 @@ describe('supply-chain cost shock MCP workflow', () => {
       assert.equal(result.mode, 'multi-sector');
       assert.equal(result.data.iso2, 'CN');
       assert.equal(result.data.chokepointId, 'taiwan_strait');
+      assert.equal(result.data.warRiskTier, 'WAR_RISK_TIER_ELEVATED');
       assert.equal(result.data.closureDays, closureDays ?? 30);
       assert.equal(result.data.sectors.length, 10);
       assert.ok(result.data.totalAddedCost > 0);
@@ -84,6 +101,7 @@ describe('supply-chain cost shock MCP workflow', () => {
     assert.equal(result.mode, 'energy');
     assert.equal(result.data.iso2, 'CN');
     assert.equal(result.data.chokepointId, 'taiwan_strait');
+    assert.equal(result.data.warRiskTier, 'WAR_RISK_TIER_ELEVATED');
     assert.equal(result.data.hs2, '27');
     assert.equal(result.data.hasEnergyModel, false);
     assert.match(result.data.unavailableReason, /not yet supported/);
