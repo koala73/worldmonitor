@@ -205,7 +205,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     // "designations exist but we printed None" is the precise failure this
     // shell was fixed to stop making.
     var n = num(count);
-    if (n != null && n > 0) return String(n) + " OFAC-listed";
+    if (n != null && n > 0) return String(n) + " sanctions listings";
     if (active === true) return "Active";
     if (active === false) return "None";
     return "—";
