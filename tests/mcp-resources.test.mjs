@@ -1043,7 +1043,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('country'), 'Russia');
     // The original defect: sanctionsExposure did not exist, so this printed
     // "None" for a country carrying 3417 active designations.
-    assert.equal(view.text('sanctions'), '3417 OFAC-listed');
+    assert.equal(view.text('sanctions'), '3417 sanctions listings');
     // cii is a CiiScore object, never a bare number.
     assert.equal(view.text('cii'), '78');
     assert.equal(view.text('level'), 'High');
