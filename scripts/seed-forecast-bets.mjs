@@ -170,21 +170,23 @@ export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
 // replaces their probability (source 'ensemble') while keeping
 // baselineProbability intact.
 //
-// Open-ledger skips: bets whose OPEN LEDGER WINDOW already holds a full
-// ensemble probability are skipped (updateOpenWindow never downgrades, so a
-// re-run adds nothing) but do NOT consume a top-K slot. Otherwise long-horizon
-// geo pending windows (up to 210d) would freeze the high-score slice for
-// months and starve every lower-score Gate-2 family. topK therefore means
-// "up to K successful new ensemble attempts", not "first K rows of the ranked
-// list including already-ensembled skips".
+// Open-ledger skips: a bet whose question already has an OPEN LEDGER WINDOW is
+// skipped (the window is scored on the probability it opened with, so a
+// re-run adds nothing) but does NOT consume a top-K slot. Otherwise long-horizon geo pending windows (up to 210d) would
+// freeze the high-score slice for months and starve every lower-score Gate-2
+// family. topK therefore means "up to K successful new ensemble attempts", not
+// "first K rows of the ranked list including already-ensembled skips". The
+// skip matches the question, not the id: a bet id asks a new threshold or
+// direction on most runs, and that new question opens its own window (#8990).
 //
-// Injected callLLM/news/openWindows keep this testable.
+// Injected callLLM/news/openQuestions keep this testable.
 export async function attachEnsembleProbabilities(snapshot, options = {}) {
   const bets = snapshot?.predictions || [];
   if (!bets.length || typeof options.callLLM !== 'function') return { attempted: 0, ensembled: 0, skipped: 0 };
   const topK = Number.isFinite(options.topK) ? options.topK : ENSEMBLE_TOP_K;
   const deadlineMs = Number.isFinite(options.deadlineMs) ? options.deadlineMs : Date.now() + ENSEMBLE_BUDGET_MS;
-  const openEnsembleIds = options.openEnsembleIds instanceof Set ? options.openEnsembleIds : new Set();
+  const openQuestions = options.openQuestions instanceof Set ? options.openQuestions : new Set();
+  const questionKeyOf = typeof options.questionKeyOf === 'function' ? options.questionKeyOf : null;
   const news = Array.isArray(options.news) ? options.news : [];
 
   const ranked = [...bets].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0));
@@ -193,7 +195,7 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   let partial = 0;
   let skipped = 0;
   for (const bet of ranked) {
-    if (openEnsembleIds.has(bet.id)) { skipped += 1; continue; }
+    if (questionKeyOf && openQuestions.has(openQuestionToken(bet.id, questionKeyOf({ ...bet, spec: bet.resolution })))) { skipped += 1; continue; }
     if (attempted >= topK) break; // K new attempts filled; remaining keep base-rate
     if (Date.now() >= deadlineMs) break; // remaining bets keep the base-rate
     attempted += 1;
@@ -205,9 +207,7 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
         marketPrice: bet.calibration?.marketPrice,
       }, options.callLLM, { deadlineMs, cache: options.cache, stageBudgetMs: options.stageBudgetMs });
       // A partial round (1-2 finite passes) is still better evidence than the
-      // base rate, but it attaches under its OWN provenance: only a full
-      // 'ensemble' pins the open ledger window (skip + no-downgrade guard), so
-      // an 'ensemble_partial' bet is re-scored next run and upgradeable.
+      // base rate, so it attaches under its OWN provenance.
       if ((result.source === 'ensemble' || result.source === 'ensemble_partial') && Number.isFinite(result.probability)) {
         bet.probability = result.probability;
         bet.probabilitySource = result.source;
@@ -222,20 +222,23 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   return { attempted, ensembled, partial, skipped };
 }
 
-// Ids of pending ledger entries whose open window already carries a FULL
-// ensemble-sourced probability (re-scoring them would be wasted spend — the
-// resolver's updateOpenWindow guard would ignore a downgrade anyway).
-// 'ensemble_partial' windows are deliberately NOT indexed: a degraded 1-2 pass
-// round must be retried until a full round lands.
-export function collectOpenEnsembleIds(ledger) {
+// Questions with an open ledger window. A window keeps the probability it
+// opened with (#8990), so a re-run of an open question, whether it opened on
+// a full ensemble, a partial one or the base rate, would be wasted spend.
+// `questionKeyOf` is the resolver's windowQuestionKey.
+export function collectOpenQuestions(ledger, questionKeyOf) {
   const entries = ledger && typeof ledger === 'object'
     ? (Array.isArray(ledger) ? ledger : Object.values(ledger.data ?? ledger))
     : [];
-  const ids = new Set();
+  const questions = new Set();
   for (const entry of entries) {
-    if (entry && entry.status === 'pending' && entry.probabilitySource === 'ensemble' && entry.id) ids.add(entry.id);
+    if (entry && entry.status === 'pending' && entry.id && entry.spec) questions.add(openQuestionToken(entry.id, questionKeyOf(entry)));
   }
-  return ids;
+  return questions;
+}
+
+function openQuestionToken(id, questionKey) {
+  return `${id}\n${questionKey}`;
 }
 
 async function redisPipeline(command) {
@@ -283,7 +286,7 @@ async function main() {
         import('./seed-forecast-resolutions.mjs'),
       ]);
       const ledger = await readRedisJson(RESOLUTIONS_LEDGER_KEY).catch(() => null);
-      const openEnsembleIds = collectOpenEnsembleIds(ledger || {});
+      const openQuestions = collectOpenQuestions(ledger || {}, resolutions.windowQuestionKey);
       let news = [];
       try {
         const archive = await resolutions.readDigestAccumulatorArchive(nowMs - 3 * 24 * 60 * 60 * 1000, nowMs, { maxHashes: 300 });
@@ -293,7 +296,8 @@ async function main() {
       }
       const stats = await attachEnsembleProbabilities(snapshot, {
         callLLM: callForecastLLM,
-        openEnsembleIds,
+        openQuestions,
+        questionKeyOf: resolutions.windowQuestionKey,
         news,
         topK: ENSEMBLE_TOP_K,
         deadlineMs: Date.now() + ENSEMBLE_BUDGET_MS,
