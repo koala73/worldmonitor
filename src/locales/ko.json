@@ -2367,7 +2367,7 @@
       },
       "resolution": {
         "last": "마지막: {{outcome}}",
-        "lastSr": "이전 예측 윈도우가 {{outcome}}로 해결되었습니다.",
+        "lastSr": "이 예측의 이전 윈도우는 {{outcome}}(으)로 판정되었습니다.",
         "history": "최근 윈도우, 최신순: {{list}}",
         "outcome": {
           "yes": "예",
@@ -2376,7 +2376,7 @@
         },
         "void": {
           "no_establishable_metric": "피드에 이 질문에 대한 데이터가 없습니다",
-          "value_source_never_settled": "피드가 해결된 값을 게시하지 않았습니다",
+          "value_source_never_settled": "피드가 확정된 값을 게시하지 않았습니다",
           "count_source_window_not_retained": "피드가 더 이상 질문 윈도우를 보유하지 않습니다",
           "unsupported_window": "질문을 피드와 대조할 수 없습니다",
           "unsupported_metric_key": "질문을 피드와 대조할 수 없습니다",
@@ -2389,7 +2389,7 @@
           "all_judges_void": "두 심사자 모두 증거가 부족하다고 판단했습니다",
           "judge_disagreement": "심사자 간 의견이 일치하지 않습니다",
           "judge_retry_exhausted": "심사자가 판정을 내리지 못했습니다",
-          "other": "해결할 수 없습니다"
+          "other": "판정할 수 없었습니다"
         }
       }
     },

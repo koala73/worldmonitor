@@ -2396,8 +2396,8 @@
         "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Domena musi mieć {{min}} zanim wyświetli się jej dokładność."
       },
       "resolution": {
-        "last": "Ostatnia: {{outcome}}",
-        "lastSr": "Poprzednie okno tego prognozy rozstrzygnęło się {{outcome}}.",
+        "last": "Ostatnio: {{outcome}}",
+        "lastSr": "Poprzednie okno tej prognozy zostało rozstrzygnięte jako {{outcome}}.",
         "history": "Ostatnie okna, od najnowszych: {{list}}",
         "outcome": {
           "yes": "TAK",
@@ -2411,11 +2411,11 @@
           "unsupported_window": "Nie można było sprawdzić pytania względem jego źródła",
           "unsupported_metric_key": "Nie można było sprawdzić pytania względem jego źródła",
           "not_hard_spec": "Nie można było sprawdzić pytania względem jego źródła",
-          "missing_threshold": "Brakuje progu dla pytania",
-          "missing_deadline": "Brakuje terminu dla pytania",
-          "missing_generated_at": "Brakuje daty rozpoczęcia prognozy",
-          "beyond_archive_horizon": "Archiwum wiadomości nie obejmuje już tego okna czasowego",
-          "no_archive_evidence": "Archiwum wiadomości nie ma informacji na ten temat",
+          "missing_threshold": "W pytaniu brakowało progu",
+          "missing_deadline": "W pytaniu brakowało terminu",
+          "missing_generated_at": "W prognozie brakowało daty rozpoczęcia",
+          "beyond_archive_horizon": "Archiwum wiadomości nie obejmowało już okna pytania",
+          "no_archive_evidence": "Archiwum wiadomości nie miało informacji na ten temat",
           "all_judges_void": "Obaj sędziowie uznali dowody za niewystarczające",
           "judge_disagreement": "Sędziowie się nie zgodzili",
           "judge_retry_exhausted": "Sędziowie nie wydali wyroku",

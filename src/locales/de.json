@@ -2385,7 +2385,7 @@
           "void": "UNGÜLTIG"
         },
         "void": {
-          "no_establishable_metric": "Der Feed hatte keine Lesart für diese Frage",
+          "no_establishable_metric": "Der Feed hatte keinen Messwert für diese Frage",
           "value_source_never_settled": "Der Feed veröffentlichte keinen festgestellten Wert",
           "count_source_window_not_retained": "Der Feed behielt das Fragefenster nicht mehr",
           "unsupported_window": "Die Frage konnte nicht gegen ihren Feed überprüft werden",

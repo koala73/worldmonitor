@@ -141,6 +141,11 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     assert.equal(serialized.includes('calibrationShadow'), false);
   });
 
+  it('names every row list it serves in the tool description', () => {
+    assert.match(tool.description, /\breceipts\b/);
+    assert.match(tool.description, /\bfamilyOutcomes\b/);
+  });
+
   it('declares every field it serves in outputSchema', () => {
     const declared = Object.keys(tool.outputSchema.properties.data.properties.scorecard.properties).sort();
     assert.deepEqual(declared, Object.keys(DECLARED).sort());

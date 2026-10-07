@@ -2111,7 +2111,7 @@
       },
       "resolution": {
         "last": "Utolsó: {{outcome}}",
-        "lastSr": "Az előző időszak ebben az előrejelzésben {{outcome}} eredményre zárult.",
+        "lastSr": "Ennek az előrejelzésnek az előző időszaka {{outcome}} eredménnyel zárult.",
         "history": "Legutóbbi időszakok, legújabb először: {{list}}",
         "outcome": {
           "yes": "IGEN",
@@ -2120,7 +2120,7 @@
         },
         "void": {
           "no_establishable_metric": "A feed nem adott értéket erre a kérdésre",
-          "value_source_never_settled": "A feed soha nem közölt véglegzett értéket",
+          "value_source_never_settled": "A feed soha nem közölt végleges értéket",
           "count_source_window_not_retained": "A feed már nem tárolt adatot az időszakhoz",
           "unsupported_window": "A kérdés nem ellenőrizhető a feed alapján",
           "unsupported_metric_key": "A kérdés nem ellenőrizhető a feed alapján",
@@ -2128,12 +2128,12 @@
           "missing_threshold": "A kérdésből hiányzott egy küszöbérték",
           "missing_deadline": "A kérdésből hiányzott egy határidő",
           "missing_generated_at": "Az előrejelzésből hiányzott a kezdési dátuma",
-          "beyond_archive_horizon": "A hírarchívum már nem fed le az időszakot",
-          "no_archive_evidence": "A hírarchívumban nincs adat az témáról",
-          "all_judges_void": "Mindkét bíró elégtelennek találta a bizonyítékot",
-          "judge_disagreement": "A bírók egyetértésre nem jutottak",
-          "judge_retry_exhausted": "A bírók nem hoztak ítéletet",
-          "other": "Nem lehetett rendezni"
+          "beyond_archive_horizon": "A hírarchívum már nem fedte le a kérdés időszakát",
+          "no_archive_evidence": "A hírarchívumban nem volt semmi a témáról",
+          "all_judges_void": "Mindkét bíráló elégtelennek találta a bizonyítékot",
+          "judge_disagreement": "A bírálók nem értettek egyet",
+          "judge_retry_exhausted": "A bírálók nem hoztak döntést",
+          "other": "Nem lehetett eldönteni"
         }
       }
     },

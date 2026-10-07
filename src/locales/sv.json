@@ -1993,8 +1993,8 @@
         "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
       },
       "resolution": {
-        "last": "Senaste: {{outcome}}",
-        "lastSr": "Den tidigare perioden för denna prognos löste {{outcome}}.",
+        "last": "Senast: {{outcome}}",
+        "lastSr": "Den förra perioden för denna prognos avgjordes som {{outcome}}.",
         "history": "Senaste perioder, nyast först: {{list}}",
         "outcome": {
           "yes": "JA",
@@ -2002,7 +2002,7 @@
           "void": "OGILTIG"
         },
         "void": {
-          "no_establishable_metric": "Källan hade ingen läsning för denna fråga",
+          "no_establishable_metric": "Källan hade inget mätvärde för denna fråga",
           "value_source_never_settled": "Källan publicerade aldrig ett slutgiltigt värde",
           "count_source_window_not_retained": "Källan behöll inte längre frågeperioden",
           "unsupported_window": "Frågan kunde inte kontrolleras mot sin källa",
@@ -2013,10 +2013,10 @@
           "missing_generated_at": "Prognosen saknade sitt startdatum",
           "beyond_archive_horizon": "Nyhetsarkivet täckte inte längre frågeperioden",
           "no_archive_evidence": "Nyhetsarkivet hade inget om ämnet",
-          "all_judges_void": "Båda domare fann bevisen otillräckliga",
+          "all_judges_void": "Båda domarna fann bevisen otillräckliga",
           "judge_disagreement": "Domarna var oeniga",
           "judge_retry_exhausted": "Domarna återkom utan dom",
-          "other": "Kunde inte lösas"
+          "other": "Kunde inte avgöras"
         }
       }
     },

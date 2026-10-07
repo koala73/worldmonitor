@@ -2407,10 +2407,10 @@
         "void": {
           "no_establishable_metric": "Zdroj dat neměl hodnotu pro tuto otázku",
           "value_source_never_settled": "Zdroj dat nikdy nezveřejnil stanovenou hodnotu",
-          "count_source_window_not_retained": "Zdroj dat již neuchováv okresní okno",
-          "unsupported_window": "Otázka se nemohla ověřit proti svému zdroji dat",
-          "unsupported_metric_key": "Otázka se nemohla ověřit proti svému zdroji dat",
-          "not_hard_spec": "Otázka se nemohla ověřit proti svému zdroji dat",
+          "count_source_window_not_retained": "Zdroj dat již neuchovával období otázky",
+          "unsupported_window": "Otázku nebylo možné ověřit podle jejího zdroje dat",
+          "unsupported_metric_key": "Otázku nebylo možné ověřit podle jejího zdroje dat",
+          "not_hard_spec": "Otázku nebylo možné ověřit podle jejího zdroje dat",
           "missing_threshold": "Otázce chyběl práh",
           "missing_deadline": "Otázce chyběl termín",
           "missing_generated_at": "Předpovědi chybělo datum začátku",
@@ -2418,7 +2418,7 @@
           "no_archive_evidence": "Archiv zpráv o daném tématu nic neměl",
           "all_judges_void": "Oba rozhodčí shledali důkazy nedostatečnými",
           "judge_disagreement": "Rozhodčí se neshodli",
-          "judge_retry_exhausted": "Rozhodčí nepřijali rozhodnutí",
+          "judge_retry_exhausted": "Rozhodčí nevydali rozhodnutí",
           "other": "Nelze vyřešit"
         }
       }

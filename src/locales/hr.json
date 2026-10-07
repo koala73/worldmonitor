@@ -2122,7 +2122,7 @@
       },
       "resolution": {
         "last": "Zadnje: {{outcome}}",
-        "lastSr": "Prethodni vremenski period ovog prognoze riješen je sa {{outcome}}.",
+        "lastSr": "Prethodni vremenski period ove prognoze razriješen je kao {{outcome}}.",
         "history": "Nedavni vremenski periodi, od novijih prema starijima: {{list}}",
         "outcome": {
           "yes": "DA",
@@ -2140,8 +2140,8 @@
           "missing_deadline": "Pitanju je nedostajao rok",
           "missing_generated_at": "Prognozi je nedostajao datum početka",
           "beyond_archive_horizon": "Arhiv vijesti više nije pokrivao vremenski period pitanja",
-          "no_archive_evidence": "Arhiv vijesti nije imao ništa o tom pitanju",
-          "all_judges_void": "Oba ocjenjivača smatraju da je dokaza nedovoljno",
+          "no_archive_evidence": "Arhiv vijesti nije imao ništa o toj temi",
+          "all_judges_void": "Oba ocjenjivača smatrala su da dokaza nije dovoljno",
           "judge_disagreement": "Ocjenjivači se nisu slagali",
           "judge_retry_exhausted": "Ocjenjivači nisu donijeli presudu",
           "other": "Nije moglo biti riješeno"

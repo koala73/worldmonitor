@@ -2366,8 +2366,8 @@
         "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分的結果。領域需要至少 {{min}} 個結果才能顯示準確度。"
       },
       "resolution": {
-        "last": "最後：{{outcome}}",
-        "lastSr": "該預測的上一個時間視窗已解決，結果為{{outcome}}。",
+        "last": "上次：{{outcome}}",
+        "lastSr": "該預測的上一個時間視窗已有結果：{{outcome}}。",
         "history": "最近的時間視窗，最新的優先：{{list}}",
         "outcome": {
           "yes": "是",
@@ -2389,7 +2389,7 @@
           "all_judges_void": "兩位裁定者都認為證據不足",
           "judge_disagreement": "裁定者意見不一致",
           "judge_retry_exhausted": "裁定者未作出裁決",
-          "other": "無法解決"
+          "other": "無法確定結果"
         }
       }
     },

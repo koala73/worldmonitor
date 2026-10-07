@@ -2387,7 +2387,7 @@
       },
       "resolution": {
         "last": "Ultimo: {{outcome}}",
-        "lastSr": "La finestra precedente di questo forecast si è risolta con {{outcome}}.",
+        "lastSr": "La finestra precedente di questa previsione si è risolta con {{outcome}}.",
         "history": "Finestre recenti, più recente per prima: {{list}}",
         "outcome": {
           "yes": "SÌ",
@@ -2403,13 +2403,13 @@
           "not_hard_spec": "La domanda non poteva essere verificata rispetto al suo feed",
           "missing_threshold": "Alla domanda mancava una soglia",
           "missing_deadline": "Alla domanda mancava una scadenza",
-          "missing_generated_at": "Al forecast mancava la data di inizio",
+          "missing_generated_at": "Alla previsione mancava la data di inizio",
           "beyond_archive_horizon": "L'archivio delle notizie non copriva più la finestra della domanda",
           "no_archive_evidence": "L'archivio delle notizie non aveva nulla sull'argomento",
           "all_judges_void": "Entrambi i giudici hanno ritenuto le prove insufficienti",
           "judge_disagreement": "I giudici hanno dissentito",
           "judge_retry_exhausted": "I giudici non hanno emesso un verdetto",
-          "other": "Non potrebbe essere risolto"
+          "other": "Non è stato possibile risolverla"
         }
       }
     },

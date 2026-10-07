@@ -272,7 +272,13 @@ function injectStyles(): void {
     .fc-card-meta .fc-reliability { flex: 0 1 auto; min-width: 0; }
     .fc-res-chip, .fc-res-history { flex: none; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
     .fc-res-chip { padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
-    .fc-res-chip[title] { cursor: help; }
+    .fc-res-void { flex: none; min-width: 0; }
+    .fc-res-void > summary { display: flex; align-items: baseline; gap: 6px; list-style: none; cursor: pointer; }
+    .fc-res-void > summary::-webkit-details-marker { display: none; }
+    .fc-res-void > summary .fc-res-chip { text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-card-meta:has(> .fc-res-void[open]) { flex-wrap: wrap; }
+    .fc-res-void[open] { flex-basis: 100%; }
+    .fc-res-reasons { margin: 2px 0 0; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); white-space: normal; }
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
     .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
     .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
@@ -326,7 +332,7 @@ export class ForecastPanel extends Panel {
     bindActivationKeys(this.content, '[data-fc-toggle]');
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest('a.fc-reliability')) return;
+      if (target.closest('a.fc-reliability, .fc-res-void')) return;
 
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {

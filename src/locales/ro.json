@@ -2387,8 +2387,8 @@
       },
       "resolution": {
         "last": "Ultimul: {{outcome}}",
-        "lastSr": "Perioada anterioară a acestei prognoze s-a rezolvat cu {{outcome}}.",
-        "history": "Perioade recente, cele mai noi în primul rând: {{list}}",
+        "lastSr": "Perioada anterioară a acestei prognoze s-a încheiat cu {{outcome}}.",
+        "history": "Perioade recente, cele mai noi primele: {{list}}",
         "outcome": {
           "yes": "DA",
           "no": "NU",
@@ -2397,13 +2397,13 @@
         "void": {
           "no_establishable_metric": "Fluxul nu avea o citire pentru această întrebare",
           "value_source_never_settled": "Fluxul nu a publicat niciodată o valoare finală",
-          "count_source_window_not_retained": "Fluxul nu mai ținea perioada pentru această întrebare",
+          "count_source_window_not_retained": "Fluxul nu mai păstra perioada întrebării",
           "unsupported_window": "Întrebarea nu a putut fi verificată față de fluxul său",
           "unsupported_metric_key": "Întrebarea nu a putut fi verificată față de fluxul său",
           "not_hard_spec": "Întrebarea nu a putut fi verificată față de fluxul său",
           "missing_threshold": "Întrebării îi lipsea o valoare prag",
-          "missing_deadline": "Întrebării îi lipsia o dată limită",
-          "missing_generated_at": "Prognosei îi lipsia data de început",
+          "missing_deadline": "Întrebării îi lipsea o dată limită",
+          "missing_generated_at": "Prognozei îi lipsea data de început",
           "beyond_archive_horizon": "Arhiva de știri nu mai acoperea perioada întrebării",
           "no_archive_evidence": "Arhiva de știri nu avea nimic despre subiect",
           "all_judges_void": "Ambii evaluatori au găsit dovezile insuficiente",

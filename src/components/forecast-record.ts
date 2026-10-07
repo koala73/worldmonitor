@@ -147,27 +147,32 @@ function outcomeWord(outcome: Outcome): string {
   return t(`components.forecast.resolution.outcome.${outcome.toLowerCase()}`);
 }
 
-/** The card is the open window, so the chip is the family's last resolved one; the history adds up to four earlier. */
+/**
+ * The card is the open window, so the chip is the family's last resolved one; the history adds up to four earlier.
+ * A VOID window has a reason to read, so the row becomes a disclosure that tap and keyboard can open.
+ */
 export function renderResolutionChips(history: FamilyHistory | null, forecastId: string): string {
   const windows = history?.get(forecastId);
   if (!windows?.length) return '';
-  const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
-  const reason = last.outcome === 'VOID' ? t(`components.forecast.resolution.void.${last.voidReason}`) : '';
-  const lastText = t('components.forecast.resolution.last', { outcome: outcomeWord(last.outcome) });
-  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${reason ? ` title="${escapeHtml(reason)}"` : ''}>`
-    + `<span aria-hidden="true">${escapeHtml(lastText)}</span>`
-    + `<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }))}${reason ? ` ${escapeHtml(reason)}` : ''}</span></span>`;
-  if (windows.length < 2) return chip;
   const reasonOf = (w: FamilyWindow) => (w.outcome === 'VOID' ? t(`components.forecast.resolution.void.${w.voidReason}`) : '');
+  const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
+  const reason = reasonOf(last);
+  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${reason ? ` title="${escapeHtml(reason)}"` : ''}>`
+    + `<span aria-hidden="true">${escapeHtml(t('components.forecast.resolution.last', { outcome: outcomeWord(last.outcome) }))}</span>`
+    + `<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }))}</span></span>`;
+  const disclosed = windows.some((w) => w.outcome === 'VOID');
+  const sentence = t('components.forecast.resolution.history', {
+    list: windows.map((w) => (reasonOf(w) ? `${outcomeWord(w.outcome)} (${reasonOf(w)})` : outcomeWord(w.outcome))).join(', '),
+  });
   const marks = windows.map((w) => {
     const why = reasonOf(w);
     return `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true"${why ? ` title="${escapeHtml(why)}"` : ''}>${OUTCOME_MARKS[w.outcome]}</span>`;
   }).join('');
-  const list = windows.map((w) => {
-    const why = reasonOf(w);
-    return why ? `${outcomeWord(w.outcome)} (${why})` : outcomeWord(w.outcome);
-  }).join(', ');
-  return `${chip}<span class="fc-res-history">${marks}<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.history', { list }))}</span></span>`;
+  const row = windows.length < 2
+    ? chip
+    : `${chip}<span class="fc-res-history">${marks}${disclosed ? '' : `<span class="fc-sr-only">${escapeHtml(sentence)}</span>`}</span>`;
+  if (!disclosed) return row;
+  return `<details class="fc-res-void"><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */

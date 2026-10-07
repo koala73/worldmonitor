@@ -11,6 +11,7 @@ import {
   RECEIPT_SOURCE_FEEDS,
   RECEIPT_SOURCE_LABELS,
   RECEIPT_VOID_REASON_LABELS,
+  FAMILY_OUTCOME_FAMILY_LIMIT,
   FAMILY_OUTCOME_LIMIT,
   PUBLIC_FAMILY_OUTCOME_FIELDS,
   buildFamilyOutcomes,
@@ -782,10 +783,59 @@ describe('buildFamilyOutcomes (#5092 card chips)', () => {
     assert.deepEqual(buildFamilyOutcomes(ledger, NOW).map((row) => row.outcome), ['YES', 'NO']);
   });
 
-  it(`caps each family at ${5} windows`, () => {
+  it('keeps the five newest windows of a family, newest first', () => {
     assert.equal(FAMILY_OUTCOME_LIMIT, 5);
     assert.deepEqual([...PUBLIC_FAMILY_OUTCOME_FIELDS], ['forecastId', 'outcome', 'voidReason']);
-    const ledger = [open('fam'), ...Array.from({ length: 8 }, (_, i) => win('fam', NOW - (i + 1) * DAY_MS, 'NO'))];
-    assert.equal(buildFamilyOutcomes(ledger, NOW).length, 5);
+    const newestFirst = ['YES', 'NO', 'NO', 'VOID', 'YES', 'NO', 'YES', 'YES'];
+    const ledger = [
+      open('fam'),
+      ...newestFirst.map((outcome, i) => win('fam', NOW - (i + 1) * DAY_MS, outcome, { evidence: { reason: 'judge_disagreement' } })),
+    ].reverse();
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [
+      { forecastId: 'fam', outcome: 'YES' },
+      { forecastId: 'fam', outcome: 'NO' },
+      { forecastId: 'fam', outcome: 'NO' },
+      { forecastId: 'fam', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'fam', outcome: 'YES' },
+    ]);
+  });
+
+  it('checks the origin of every window, not only the open one', () => {
+    const ledger = [
+      open('fam'),
+      win('fam', NOW - DAY_MS, 'NO', { generationOrigin: undefined }),
+      win('fam', NOW - 2 * DAY_MS, 'YES', { generationOrigin: 'unknown' }),
+      win('fam', NOW - 3 * DAY_MS, 'NO', { generationOrigin: 'bet_engine' }),
+      win('fam', NOW - 4 * DAY_MS, 'VOID', { generationOrigin: 'state_derived', evidence: { reason: 'other' } }),
+      win('fam', NOW - 5 * DAY_MS, 'YES'),
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [{ forecastId: 'fam', outcome: 'YES' }]);
+  });
+
+  it(`keeps the ${FAMILY_OUTCOME_FAMILY_LIMIT} most recently published families`, () => {
+    const total = FAMILY_OUTCOME_FAMILY_LIMIT + 6;
+    const id = (i) => `fam-${String(i).padStart(2, '0')}`;
+    const ledger = Array.from({ length: total }, (_, i) => [
+      open(id(i), { lastSeenAt: NOW - (total - i) * 60_000 }),
+      win(id(i), NOW - DAY_MS, 'YES'),
+    ]).flat();
+    const kept = new Set(buildFamilyOutcomes(ledger, NOW).map((row) => row.forecastId));
+    assert.deepEqual([...kept].sort(), Array.from({ length: FAMILY_OUTCOME_FAMILY_LIMIT }, (_, i) => id(i + 6)));
+  });
+
+  it('stays inside its byte budget for a worst-case ledger', () => {
+    const families = 400;
+    const ledger = Array.from({ length: families }, (_, f) => {
+      const id = `fc-infrastructure-${f.toString(16).padStart(8, '0')}`;
+      return [
+        open(id, { lastSeenAt: NOW - f }),
+        ...Array.from({ length: 30 }, (_, w) => win(id, NOW - (w + 1) * 3_600_000, 'VOID', { evidence: { reason: 'count_source_window_not_retained' } })),
+      ];
+    }).flat();
+    const rows = buildFamilyOutcomes(ledger, NOW);
+    assert.equal(rows.length, FAMILY_OUTCOME_FAMILY_LIMIT * FAMILY_OUTCOME_LIMIT);
+    const bytes = Buffer.byteLength(JSON.stringify(rows));
+    console.log(`familyOutcomes worst case: ${bytes} bytes`);
+    assert.ok(bytes <= 14_000, `${bytes} bytes`);
   });
 });

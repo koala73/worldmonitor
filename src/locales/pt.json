@@ -2011,7 +2011,7 @@
         },
         "void": {
           "no_establishable_metric": "O feed não tinha leitura para esta pergunta",
-          "value_source_never_settled": "O feed nunca publicou um valor resolvido",
+          "value_source_never_settled": "O feed nunca publicou um valor definitivo",
           "count_source_window_not_retained": "O feed não mantinha mais a janela da pergunta",
           "unsupported_window": "A pergunta não pôde ser verificada contra seu feed",
           "unsupported_metric_key": "A pergunta não pôde ser verificada contra seu feed",

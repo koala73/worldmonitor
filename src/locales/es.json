@@ -2396,7 +2396,7 @@
         },
         "void": {
           "no_establishable_metric": "El feed no tenía lectura para esta pregunta",
-          "value_source_never_settled": "El feed nunca publicó un valor liquidado",
+          "value_source_never_settled": "El feed nunca publicó un valor definitivo",
           "count_source_window_not_retained": "El feed ya no conservaba la ventana de la pregunta",
           "unsupported_window": "La pregunta no se pudo verificar contra su feed",
           "unsupported_metric_key": "La pregunta no se pudo verificar contra su feed",

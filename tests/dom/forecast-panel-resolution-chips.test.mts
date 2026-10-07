@@ -13,7 +13,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { VOID_REASON_CODES } from '@/components/forecast-record';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 // @ts-expect-error -- untyped seeder module; this test reads the void-reason label table.
 import { RECEIPT_VOID_REASON_LABELS } from '../../scripts/_forecast-scorecard.mjs';
 
@@ -106,6 +106,29 @@ describe('ForecastPanel resolution chips', () => {
     expect(en).toEqual(RECEIPT_VOID_REASON_LABELS);
   });
 
+  it('translates every resolution string in every catalog, with the reviewed domain terms', () => {
+    const resolution = (locale: string) => JSON.parse(readFileSync(`src/locales/${locale}.json`, 'utf8')).components.forecast.resolution;
+    const flat = (o: Record<string, unknown>, prefix = ''): [string, string][] => Object.entries(o)
+      .flatMap(([k, v]) => (typeof v === 'object' && v ? flat(v as Record<string, unknown>, `${prefix}${k}.`) : [[`${prefix}${k}`, String(v)]]));
+    const en = new Map(flat(resolution('en')));
+    const locales = readdirSync('src/locales').filter((f) => f.endsWith('.json') && !f.startsWith('en.')).map((f) => f.slice(0, -5));
+    expect(locales).toHaveLength(27);
+    for (const locale of locales) {
+      const strings = new Map(flat(resolution(locale)));
+      expect([...strings.keys()].sort(), locale).toEqual([...en.keys()].sort());
+      for (const [key, value] of strings) {
+        if (!key.startsWith('outcome.')) expect(value, `${locale} ${key} is untranslated`).not.toBe(en.get(key));
+        for (const slot of en.get(key)!.match(/\{\{\w+\}\}/g) ?? []) expect(value, `${locale} ${key}`).toContain(slot);
+      }
+    }
+    expect(resolution('de').void.no_establishable_metric).toContain('keinen Messwert');
+    expect(resolution('zh').last).toContain('上次');
+    expect(resolution('zh-TW').last).toContain('上次');
+    expect(resolution('ar').void.missing_deadline).toContain('موعدًا نهائيًا');
+    expect(resolution('bg').void.other, 'Bulgarian, not Russian').not.toMatch(/может/);
+    expect(resolution('ja').lastSr).not.toContain('フォーキャスト');
+  });
+
   it("shows the family's last resolved window and its recent history, newest first", async () => {
     const [card] = await cardsWith([
       { forecastId: 'fc-a', outcome: 'YES', voidReason: '' },
@@ -117,7 +140,7 @@ describe('ForecastPanel resolution chips', () => {
     expect(chip?.textContent).toContain('Last: YES');
     const history = card!.querySelector<HTMLElement>('.fc-res-history');
     expect(Array.from(history!.querySelectorAll<HTMLElement>('[data-outcome]')).map((el) => el.dataset.outcome)).toEqual(['YES', 'NO', 'VOID']);
-    expect(history!.textContent).toContain('Recent windows, newest first: YES, NO, VOID (The judges disagreed)');
+    expect(card!.querySelector('.fc-res-reasons')?.textContent).toBe('Recent windows, newest first: YES, NO, VOID (The judges disagreed)');
     const voidMark = history!.querySelector<HTMLElement>('[data-outcome="VOID"]');
     expect(voidMark?.getAttribute('title')).toBe('The judges disagreed');
     expect(history!.querySelector('[data-outcome="YES"]')?.hasAttribute('title')).toBe(false);
@@ -129,8 +152,37 @@ describe('ForecastPanel resolution chips', () => {
     expect(chip?.dataset.outcome).toBe('VOID');
     expect(chip?.textContent).toContain('Last: VOID');
     expect(chip?.getAttribute('title')).toBe('The news archive had nothing on the subject');
-    expect(chip?.textContent).toContain('The news archive had nothing on the subject');
     expect(card!.querySelector('.fc-res-history'), 'one window needs no history').toBeNull();
+  });
+
+  it('puts a VOID reason behind a disclosure that touch and keyboard users can open', async () => {
+    const [voided, history, plain] = await cardsWith([
+      { forecastId: 'fc-v', outcome: 'VOID', voidReason: 'no_archive_evidence' },
+      { forecastId: 'fc-h', outcome: 'YES', voidReason: '' },
+      { forecastId: 'fc-h', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'fc-p', outcome: 'NO', voidReason: '' },
+    ], ['fc-v', 'fc-h', 'fc-p']);
+    const disclosure = voided!.querySelector<HTMLDetailsElement>('details.fc-res-void');
+    expect(disclosure, 'a VOID window opens a disclosure').not.toBeNull();
+    expect(disclosure!.open).toBe(false);
+    expect(disclosure!.querySelector(':scope > summary .fc-res-chip')).not.toBeNull();
+    const reason = disclosure!.querySelector<HTMLElement>(':scope > .fc-res-reasons');
+    expect(reason?.textContent).toBe('The news archive had nothing on the subject');
+    expect(reason?.closest('.fc-sr-only, [aria-hidden="true"]')).toBeNull();
+    const earlier = history!.querySelector<HTMLDetailsElement>('details.fc-res-void');
+    expect(earlier?.querySelector(':scope > summary .fc-res-history')).not.toBeNull();
+    expect(earlier?.querySelector('.fc-res-reasons')?.textContent).toBe('Recent windows, newest first: YES, VOID (The judges disagreed)');
+    expect(plain!.querySelector('details'), 'nothing to disclose without a VOID').toBeNull();
+    expect(plain!.querySelector('.fc-res-chip')).not.toBeNull();
+  });
+
+  it('opens the VOID disclosure without toggling the card row', async () => {
+    const [card] = await cardsWith([{ forecastId: 'fc-v', outcome: 'VOID', voidReason: 'judge_disagreement' }], ['fc-v']);
+    const toggleRow = card!.querySelector<HTMLElement>('.fc-toggle-row')!;
+    const before = toggleRow.style.display;
+    card!.querySelector<HTMLElement>('details.fc-res-void > summary')!.click();
+    expect(card!.querySelector<HTMLDetailsElement>('details.fc-res-void')!.open).toBe(true);
+    expect(toggleRow.style.display).toBe(before);
   });
 
   it('never renders an unknown reason or outcome as text', async () => {
@@ -151,8 +203,14 @@ describe('ForecastPanel resolution chips', () => {
   });
 
   it('shows no chips when the scorecard fails or is degraded', async () => {
-    const [degraded] = await cardsWith([{ forecastId: 'fc-a', outcome: 'YES', voidReason: '' }], ['fc-a'], { degraded: true, error: 'forecast_scorecard_backend_unavailable' });
-    expect(degraded!.querySelector('.fc-res-chip')).toBeNull();
+    const [degraded] = await cardsWith([{ forecastId: 'fc-a', outcome: 'YES', voidReason: '' }], ['fc-a'], { degraded: true, error: '' });
+    expect(degraded!.querySelector('.fc-res-chip'), 'degraded with no error').toBeNull();
+    vi.restoreAllMocks();
+    panel.destroy();
+    panel = new ForecastPanel();
+    document.body.appendChild((panel as unknown as { element: HTMLElement }).element);
+    const [failed] = await cardsWith([{ forecastId: 'fc-a', outcome: 'YES', voidReason: '' }], ['fc-a'], { error: 'forecast_scorecard_backend_unavailable' });
+    expect(failed!.querySelector('.fc-res-chip'), 'error with degraded false').toBeNull();
     vi.restoreAllMocks();
     panel.destroy();
     panel = new ForecastPanel();
@@ -170,6 +228,8 @@ describe('ForecastPanel resolution chips', () => {
     expect(rule('.fc-card-meta')).toMatch(/contain:\s*inline-size/);
     expect(rule('.fc-res-chip')).not.toMatch(/(^|[;{\s])border:/);
     expect(rule('.fc-reliability')).not.toMatch(/contain:/);
+    expect(rule('.fc-card-meta'), 'a closed row never wraps, so a long badge truncates').not.toMatch(/flex-wrap/);
+    expect(css).toMatch(/\.fc-card-meta:has\(> \.fc-res-void\[open\]\)\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 
   it('patches chips in place beside the badge, on the same line slot', async () => {

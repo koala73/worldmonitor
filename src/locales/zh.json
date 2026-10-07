@@ -2366,8 +2366,8 @@
         "unmeasuredHint": "{{domain}} 预测在过去 {{days}} 天内有 {{n}} 个已评分的结果。领域需要至少 {{min}} 个结果才能显示准确度。"
       },
       "resolution": {
-        "last": "最后：{{outcome}}",
-        "lastSr": "该预测的上一个时间窗口已解决，结果为{{outcome}}。",
+        "last": "上次：{{outcome}}",
+        "lastSr": "该预测的上一个时间窗口已有结果：{{outcome}}。",
         "history": "最近的时间窗口，最新的优先：{{list}}",
         "outcome": {
           "yes": "是",
@@ -2389,7 +2389,7 @@
           "all_judges_void": "两位裁定者都认为证据不足",
           "judge_disagreement": "裁定者意见不一致",
           "judge_retry_exhausted": "裁定者未作出裁决",
-          "other": "无法解决"
+          "other": "无法确定结果"
         }
       }
     },

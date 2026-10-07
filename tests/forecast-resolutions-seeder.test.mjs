@@ -137,10 +137,13 @@ describe('processResolutionCycle', () => {
       assert.deepEqual(ledger[KEY].calibration, anchored);
     });
 
-    it('publishes the resolved entry as a public receipt on the scorecard (#5092)', () => {
+    it('publishes the resolved entry as a public receipt and a chip for the open window (#5092)', () => {
       const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
-      const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [first])], resolvedFeeds, T0 + 2 * DAY_MS);
+      const reopened = forecast({ generatedAt: T0 + 1.5 * DAY_MS, deadline: T0 + 3 * DAY_MS });
+      const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 1.5 * DAY_MS, [reopened])], resolvedFeeds, T0 + 2 * DAY_MS);
       assert.equal(ledger[KEY].status, 'resolved');
+      assert.equal(ledger[`fc-hormuz@${T0 + 3 * DAY_MS}`].status, 'pending');
+      assert.deepEqual(scorecard.familyOutcomes, [{ forecastId: 'fc-hormuz', outcome: 'YES' }]);
       assert.equal(scorecard.receipts.length, 1);
       assert.deepEqual(scorecard.receipts, buildPublicReceipts(ledger, T0 + 2 * DAY_MS));
       assert.equal(scorecard.receipts[0].sourceFeed, 'chokepoints');

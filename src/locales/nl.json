@@ -1994,7 +1994,7 @@
       },
       "resolution": {
         "last": "Laatste: {{outcome}}",
-        "lastSr": "Het vorige venster van deze forecast is opgelost als {{outcome}}.",
+        "lastSr": "Het vorige venster van deze voorspelling is beslist als {{outcome}}.",
         "history": "Recente vensters, nieuwste eerst: {{list}}",
         "outcome": {
           "yes": "JA",
@@ -2010,13 +2010,13 @@
           "not_hard_spec": "De vraag kon niet tegen de feed worden gecontroleerd",
           "missing_threshold": "De vraag miste een drempel",
           "missing_deadline": "De vraag miste een deadline",
-          "missing_generated_at": "De forecast miste de startdatum",
+          "missing_generated_at": "De voorspelling miste de startdatum",
           "beyond_archive_horizon": "Het nieuwsarchief dekte het vraagvenster niet meer",
           "no_archive_evidence": "Het nieuwsarchief had niets over het onderwerp",
           "all_judges_void": "Beide beoordelaars vonden het bewijs onvoldoende",
           "judge_disagreement": "De beoordelaars waren het niet eens",
           "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
-          "other": "Kon niet worden opgelost"
+          "other": "Kon niet worden beslist"
         }
       }
     },

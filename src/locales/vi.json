@@ -2366,7 +2366,7 @@
         "unmeasuredHint": "Các dự báo {{domain}} có {{n}} kết quả được xếp loại trong {{days}} ngày qua. Một lĩnh vực cần {{min}} trước khi độ chính xác của nó được hiển thị."
       },
       "resolution": {
-        "last": "Lần cuối: {{outcome}}",
+        "last": "Lần trước: {{outcome}}",
         "lastSr": "Kỳ trước của dự báo này đã kết thúc với {{outcome}}.",
         "history": "Các kỳ gần đây, mới nhất trước: {{list}}",
         "outcome": {
@@ -2375,21 +2375,21 @@
           "void": "VÔ HIỆU"
         },
         "void": {
-          "no_establishable_metric": "Feed không có dữ liệu cho câu hỏi này",
-          "value_source_never_settled": "Feed chưa bao giờ công bố giá trị đã xác định",
-          "count_source_window_not_retained": "Feed không còn lưu giữ kỳ câu hỏi",
-          "unsupported_window": "Không thể kiểm tra câu hỏi theo feed của nó",
-          "unsupported_metric_key": "Không thể kiểm tra câu hỏi theo feed của nó",
-          "not_hard_spec": "Không thể kiểm tra câu hỏi theo feed của nó",
+          "no_establishable_metric": "Nguồn dữ liệu không có số đo cho câu hỏi này",
+          "value_source_never_settled": "Nguồn dữ liệu chưa bao giờ công bố giá trị chính thức",
+          "count_source_window_not_retained": "Nguồn dữ liệu không còn lưu giữ kỳ của câu hỏi",
+          "unsupported_window": "Không thể kiểm tra câu hỏi theo nguồn dữ liệu của nó",
+          "unsupported_metric_key": "Không thể kiểm tra câu hỏi theo nguồn dữ liệu của nó",
+          "not_hard_spec": "Không thể kiểm tra câu hỏi theo nguồn dữ liệu của nó",
           "missing_threshold": "Câu hỏi thiếu ngưỡng",
           "missing_deadline": "Câu hỏi thiếu hạn chót",
           "missing_generated_at": "Dự báo thiếu ngày bắt đầu",
-          "beyond_archive_horizon": "Kho lưu trữ tin tức không còn phủ sóng kỳ câu hỏi",
+          "beyond_archive_horizon": "Kho lưu trữ tin tức không còn bao quát kỳ của câu hỏi",
           "no_archive_evidence": "Kho lưu trữ tin tức không có thông tin về chủ đề",
           "all_judges_void": "Cả hai người phân xử đều thấy bằng chứng không đủ",
           "judge_disagreement": "Những người phân xử không đồng ý",
           "judge_retry_exhausted": "Những người phân xử không đưa ra phán quyết",
-          "other": "Không thể kết thúc"
+          "other": "Không thể xác định kết quả"
         }
       }
     },
