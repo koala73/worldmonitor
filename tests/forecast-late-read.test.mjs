@@ -238,6 +238,15 @@ describe('a GPS-jamming read: one snapshot per UTC day, published a day later (#
     assert.equal(row.evidence.reason, 'late_read');
   });
 
+  it('never grades an undated snapshot', async () => {
+    const undated = (day) => (day >= '2026-07-19' ? { [GPS_FEED]: [{ region: ZONE, hexCount: 999 }] } : gpsFeed(dayBefore(day, 2)));
+    const waiting = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 10), undated);
+    assert.equal(waiting.status, 'pending', 'a count without its snapshot day cannot be the deadline day');
+    const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 11), undated);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'value_source_never_settled');
+  });
+
   it('seals VOID feed_unavailable when the feed stays down past the bound', async () => {
     const down = (day) => (day >= '2026-07-19' ? {} : gpsFeed(dayBefore(day, 2)));
     const waiting = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 10), down);

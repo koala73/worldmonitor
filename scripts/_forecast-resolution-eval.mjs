@@ -349,14 +349,17 @@ function nearestFiniteSample(samples, deadline) {
 
 // A daily-snapshot read grades on the snapshot dated the deadline's UTC day,
 // sampled earlier or still in the feed. A later-dated snapshot means that day
-// was replaced unread. Returns null when the feed has no dated reading for the
+// was replaced unread. Returns null when the feed has no reading for the
 // metric, so the caller's no-metric path applies.
 function resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec) {
   const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
   const onDeadlineDay = (ts) => ts >= deadlineDay && ts < deadlineDay + DAY_MS;
+  // A dated snapshot's sample is stamped with its day, a UTC midnight. The
+  // sampler stamps an undated reading with the run time instead, and that
+  // reading cannot be shown to be the deadline day's.
   const sampled = normalizeSamples(samples)
     .map(normalizeSample)
-    .find((sample) => sample && Number.isFinite(sample.value) && onDeadlineDay(sample.ts));
+    .find((sample) => sample && Number.isFinite(sample.value) && sample.ts === deadlineDay);
   if (sampled) return compareResult(sampled.value, spec, entry, parsed, nowMs, { readTs: sampled.ts });
   const pastBound = nowMs >= deadlineDay + GPS_JAM_SNAPSHOT_MAX_LAG_MS;
   if (feedData == null) {
@@ -364,7 +367,12 @@ function resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, en
     return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
   }
   const { value, asOf } = extractMetricObservation(parsed, feedData);
-  if (!Number.isFinite(value) || !Number.isFinite(asOf)) return null;
+  if (!Number.isFinite(value)) return null;
+  if (!Number.isFinite(asOf)) {
+    // A count with no snapshot day cannot be shown to be the deadline day's.
+    if (pastBound) return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
+    return { status: 'pending', evidence: { reason: 'value_source_undated', deadline } };
+  }
   if (onDeadlineDay(asOf)) return compareResult(value, spec, entry, parsed, nowMs, { readTs: asOf });
   if (asOf >= deadlineDay + DAY_MS) return voidResult(LATE_READ_VOID_REASON, entry, spec, parsed, nowMs, { asOf });
   if (pastBound) return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
