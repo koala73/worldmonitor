@@ -2250,7 +2250,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             disease: { type: 'string' }, location: { type: 'string' }, countryCode: { type: 'string' },
             alertLevel: { type: 'string', description: 'Editorial watch, warning or alert classification, not a case-count measurement.' },
             summary: { type: 'string' }, sourceName: { type: 'string' }, sourceUrl: { type: 'string' },
-            publishedAt: { type: 'number', description: 'Source report publication time in Unix epoch milliseconds.' },
+            publishedAt: { type: 'number', description: 'Source report publication time in Unix epoch milliseconds, or fetch time when the source date is missing or invalid; this field alone does not confirm publication time.' },
             lat: { type: 'number' }, lng: { type: 'number', description: 'Latitude/longitude are source locations or inferred points; both zero means unknown.' },
             cases: { type: ['number', 'null'], description: 'Reported case count; zero, null or absence means unknown, not no cases.' },
             country: { type: 'string', description: 'Optional legacy country field; current reports use location and countryCode.' },
