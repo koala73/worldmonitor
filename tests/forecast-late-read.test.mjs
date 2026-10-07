@@ -147,6 +147,81 @@ describe('a live at-deadline read more than one resolver cycle late (#8990)', ()
   });
 });
 
+describe('a GPS-jamming read: one snapshot per UTC day, published a day later (#8990)', () => {
+  // seed-gpsjam runs every 8h and day D's snapshot first lands at its 08:00
+  // tick on D+1, so the 06:00 resolver run on day X holds the snapshot dated
+  // X-2. Records are given pre-shaped: one per zone, dated by the snapshot day.
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const ZONE = 'Baltic Sea';
+  const countOn = (day) => 300 + Number(day.slice(8, 10));
+  const gpsFeed = (day) => ({ [GPS_FEED]: [{ region: ZONE, hexCount: countOn(day), asOf: day }] });
+  const dayBefore = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) - n * DAY_MS).toISOString().slice(0, 10);
+  const gpsForecast = (generatedAt, deadline) => ({
+    id: 'fc-gps-baltic',
+    domain: 'military',
+    region: ZONE,
+    title: 'GPS interference in Baltic Sea shipping zone',
+    probability: 0.5,
+    timeHorizon: '7d',
+    generationOrigin: 'legacy_detector',
+    generatedAt,
+    resolution: { kind: 'hard', metricKey: `${GPS_FEED}|hexCount(region==${ZONE})`, operator: '>=', threshold: 310, window: 'at-deadline', deadline, sourceFeed: GPS_FEED },
+  });
+
+  async function runDays(deadline, days, snapshotFor) {
+    const forecast = gpsForecast(deadline - 7 * DAY_MS, deadline);
+    const history = [snap(forecast.generatedAt, [forecast])];
+    let ledger = {};
+    let result;
+    for (const day of days) {
+      result = await run(ledger, history, snapshotFor(day), at(`${day}T06:02:00Z`));
+      ledger = result.ledger;
+    }
+    return onlyRow(ledger);
+  }
+  const days = (from, n) => Array.from({ length: n }, (_, i) => new Date(Date.parse(`${from}T00:00:00Z`) + i * DAY_MS).toISOString().slice(0, 10));
+
+  for (const hour of ['03:00', '10:03', '18:02']) {
+    it(`grades a deadline at ${hour} on the snapshot dated the deadline day`, async () => {
+      const row = await runDays(at(`2026-07-19T${hour}:00Z`), days('2026-07-13', 9), (day) => gpsFeed(dayBefore(day, 2)));
+      assert.equal(row.status, 'resolved');
+      assert.equal(row.evidence.metricValue, countOn('2026-07-19'), 'read the 07-19 snapshot, first held by the 07-21 run');
+      assert.equal(row.evidence.readTs, at('2026-07-19T00:00:00Z'));
+      assert.equal(row.outcome, 'YES');
+    });
+  }
+
+  it('waits for a deadline-day snapshot published a cycle late', async () => {
+    const lagged = (day) => gpsFeed(dayBefore(day, day >= '2026-07-21' ? 3 : 2));
+    const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 10), lagged);
+    assert.equal(row.evidence.metricValue, countOn('2026-07-19'), 'the 07-22 run reads the 07-19 snapshot');
+  });
+
+  it('seals VOID once the deadline-day snapshot is past the bound', async () => {
+    const stuck = (day) => gpsFeed(day <= '2026-07-20' ? dayBefore(day, 2) : '2026-07-18');
+    const waiting = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 10), stuck);
+    assert.equal(waiting.status, 'pending', 'the 07-22 run is inside the bound');
+    const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 11), stuck);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'value_source_never_settled');
+  });
+
+  it('seals VOID late_read when a later snapshot replaced the deadline day before it was read', async () => {
+    const skipped = (day) => gpsFeed(day === '2026-07-21' ? '2026-07-20' : dayBefore(day, 2));
+    const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 9), skipped);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'late_read');
+  });
+
+  it('seals VOID feed_unavailable when the feed stays down past the bound', async () => {
+    const down = (day) => (day >= '2026-07-19' ? {} : gpsFeed(dayBefore(day, 2)));
+    const waiting = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 10), down);
+    assert.equal(waiting.status, 'pending');
+    const row = await runDays(at('2026-07-19T03:00:00Z'), days('2026-07-13', 11), down);
+    assert.equal(row.evidence.reason, 'feed_unavailable');
+  });
+});
+
 describe('a feed that never comes back (#8990)', () => {
   const EMIT = at('2026-07-15T05:00:00Z');
   const DEADLINE = at('2026-07-19T05:00:00Z');

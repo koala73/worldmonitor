@@ -2404,7 +2404,7 @@
           "market_price_not_outcome": "Akış piyasa fiyatını gösterdi, piyasanın nasıl sonuçlandığını değil",
           "judged_evidence_unreliable": "Hakemlerin kanıtları düzeltilene kadar puanlamadan çıkarıldı",
           "other": "Sonuçlandırılamadı",
-          "late_read": "Son tarihten bir gün içinde ölçüm alınmadı",
+          "late_read": "Akış, son tarihe yeterince yakın bir zamanda okunmadı",
           "feed_unavailable": "Son tarihten sonra veri akışı kullanılamadı"
         }
       },

@@ -2138,7 +2138,7 @@
           "market_price_not_outcome": "A feed a piaci árat mutatta, nem azt, hogyan zárult a piac",
           "judged_evidence_unreliable": "Kizárva az értékelésből, amíg a bírák bizonyítékait javítjuk",
           "other": "Nem lehetett eldönteni",
-          "late_read": "A határidő után egy napon belül nem történt leolvasás",
+          "late_read": "A feedet nem olvastuk le elég közel a határidőhöz",
           "feed_unavailable": "Az adatfeed a határidő után nem volt elérhető"
         }
       },

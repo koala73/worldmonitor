@@ -37,11 +37,21 @@ export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 export const FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
 export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 
-// Feeds that date each reading by its own period or by the venue's
+// gpsjam publishes one snapshot per UTC day, dated by its `date` field.
+// seed-gpsjam runs every 8h and day D's snapshot first lands at its 08:00
+// tick on D+1, so the 06:00 resolver run on D+2 is the first to hold it: 54h
+// after the start of D. The bound adds one resolver cycle, for a snapshot
+// gpsjam.org publishes after that tick, plus an hour of run-start jitter.
+// Measured from the start of the deadline's UTC day.
+const GPSJAM_SNAPSHOT_FEED_KEY = 'intelligence:gpsjam:v2';
+export const GPS_JAM_SNAPSHOT_MAX_LAG_MS = 3 * DAY_MS + 7 * 60 * 60 * 1000;
+
+// Feeds that date each reading by its own period, snapshot day or the venue's
 // adjudication, so a read days after the deadline still reports the
 // deadline's period. null for a live feed, whose reading is the value at the
 // moment it was fetched.
 function periodFeedMaxLagMs(feedKey) {
+  if (feedKey === GPSJAM_SNAPSHOT_FEED_KEY) return GPS_JAM_SNAPSHOT_MAX_LAG_MS;
   if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (feedKey === MARKET_SETTLEMENT_FEED_KEY) return MARKET_SETTLEMENT_MAX_LAG_MS;
   if (FRED_MONTHLY_FEED_KEYS.has(feedKey)) return FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS;
@@ -132,6 +142,12 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
   }
 
+  const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
+  if (isPointWindow && (parsed.feedKey || spec.sourceFeed) === GPSJAM_SNAPSHOT_FEED_KEY) {
+    const snapshot = resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec);
+    if (snapshot) return snapshot;
+  }
+
   if (isLivePointRead(spec)) {
     const timely = firstTimelySample(samples, deadline);
     if (timely) return compareResult(timely.value, spec, entry, parsed, nowMs, { readTs: timely.ts });
@@ -151,7 +167,6 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   // deadline day; pend until then, VOID if it never settles. Records with no
   // timestamp fall through (cannot gate). within-horizon is exempt — it resolves
   // from the asOf-stamped sample timeline, not the current feed record.
-  const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
   const isSettlementYesPrice = parsed.fn === 'yesPrice'
     && (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY);
   if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || isSettlementYesPrice)) {
@@ -323,6 +338,30 @@ function nearestFiniteSample(samples, deadline) {
     if (!nearest || Math.abs(ts - deadline) < Math.abs(nearest.ts - deadline)) nearest = { ts, value };
   }
   return nearest;
+}
+
+// A daily-snapshot read grades on the snapshot dated the deadline's UTC day,
+// sampled earlier or still in the feed. A later-dated snapshot means that day
+// was replaced unread. Returns null when the feed has no dated reading for the
+// metric, so the caller's no-metric path applies.
+function resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec) {
+  const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
+  const onDeadlineDay = (ts) => ts >= deadlineDay && ts < deadlineDay + DAY_MS;
+  const sampled = normalizeSamples(samples)
+    .map(normalizeSample)
+    .find((sample) => sample && Number.isFinite(sample.value) && onDeadlineDay(sample.ts));
+  if (sampled) return compareResult(sampled.value, spec, entry, parsed, nowMs, { readTs: sampled.ts });
+  const pastBound = nowMs >= deadlineDay + GPS_JAM_SNAPSHOT_MAX_LAG_MS;
+  if (feedData == null) {
+    if (pastBound) return voidResult(FEED_UNAVAILABLE_VOID_REASON, entry, spec, parsed, nowMs);
+    return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
+  }
+  const { value, asOf } = extractMetricObservation(parsed, feedData);
+  if (!Number.isFinite(value) || !Number.isFinite(asOf)) return null;
+  if (onDeadlineDay(asOf)) return compareResult(value, spec, entry, parsed, nowMs, { readTs: asOf });
+  if (asOf >= deadlineDay + DAY_MS) return voidResult(LATE_READ_VOID_REASON, entry, spec, parsed, nowMs, { asOf });
+  if (pastBound) return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
+  return { status: 'pending', evidence: { reason: 'value_source_not_settled', deadline, asOf } };
 }
 
 // Freshness gate for a scalar `value` read: is the matched record dated on or

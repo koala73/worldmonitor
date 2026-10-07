@@ -2414,7 +2414,7 @@
           "market_price_not_outcome": "Il feed mostrava il prezzo di mercato, non come si è risolto il mercato",
           "judged_evidence_unreliable": "Escluso dal punteggio finché le prove dei giudici non vengono corrette",
           "other": "Non è stato possibile risolverla",
-          "late_read": "Nessuna lettura è stata effettuata entro un giorno dalla scadenza",
+          "late_read": "Il feed non è stato letto abbastanza vicino alla scadenza",
           "feed_unavailable": "Il feed di dati non era disponibile dopo la scadenza"
         }
       },

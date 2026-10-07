@@ -2149,7 +2149,7 @@
           "market_price_not_outcome": "Izvor je prikazivao tržišnu cijenu, a ne kako je tržište razriješeno",
           "judged_evidence_unreliable": "Izuzeto iz ocjenjivanja dok se dokazi za suce ne isprave",
           "other": "Nije moglo biti riješeno",
-          "late_read": "Nijedno očitanje nije uzeto unutar jednog dana od roka",
+          "late_read": "Feed nije očitan dovoljno blizu roka",
           "feed_unavailable": "Izvor podataka nije bio dostupan nakon roka"
         }
       },

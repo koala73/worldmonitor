@@ -174,7 +174,9 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 ### 迟读与缺失的数据源
 
-实时数据源（大宗商品报价、咽喉要道风险、GPS 干扰）报告的是抓取时刻的数值，因此时间点问题（`at-deadline` 或 `at-endDate`）必须在截止时间附近读取。结算器每天运行一次（cron `0 6 * * *`），每次在 UTC 06:00 到 06:05 之间启动，因此截止后的第一次运行会在一个周期内读取数据源。`LATE_READ_MAX_LAG_MS` 等于这个周期再加一小时，用于吸收启动抖动。结算器按截止时间当时或之后、且在该界限内取得的第一个有限读数判定。界限过后仍没有这样的读数时，记录封存为 VOID：数据源缺失时原因为 `feed_unavailable`，数据源存在但读数太迟时原因为 `late_read`。因此一次漏跑会让间隔内到期的问题作废，而不是按之后的价格判定。按自身周期或场馆裁决标注读数日期的数据源（EIA、FRED、`prediction:markets-resolution:v1`）保留各自的结算宽限期，不受该界限约束；其中某个数据源缺失超过宽限期时，记录封存为 VOID `feed_unavailable`。计数数据源缺失超过其结算延迟加 `VALUE_SETTLEMENT_MAX_LAG_MS`（10 天）时，同样封存。
+实时数据源（大宗商品报价、咽喉要道风险）报告的是抓取时刻的数值，因此时间点问题（`at-deadline` 或 `at-endDate`）必须在截止时间附近读取。结算器每天运行一次（cron `0 6 * * *`），每次在 UTC 06:00 到 06:05 之间启动，因此截止后的第一次运行会在一个周期内读取数据源。`LATE_READ_MAX_LAG_MS` 等于这个周期再加一小时，用于吸收启动抖动。结算器按截止时间当时或之后、且在该界限内取得的第一个有限读数判定。界限过后仍没有这样的读数时，记录封存为 VOID：数据源缺失时原因为 `feed_unavailable`，数据源存在但读数太迟时原因为 `late_read`。因此一次漏跑会让间隔内到期的问题作废，而不是按之后的价格判定。按自身周期或场馆裁决标注读数日期的数据源（EIA、FRED、`prediction:markets-resolution:v1`）保留各自的结算宽限期，不受该界限约束；其中某个数据源缺失超过宽限期时，记录封存为 VOID `feed_unavailable`。计数数据源缺失超过其结算延迟加 `VALUE_SETTLEMENT_MAX_LAG_MS`（10 天）时，同样封存。
+
+`intelligence:gpsjam:v2` 每个 UTC 日发布一份快照，日期由其 `date` 字段标注。GPS 干扰问题按截止时间所在 UTC 日的快照判定。`seed-gpsjam` 每 8 小时运行一次，第 D 天的快照最早在 D+1 日 08:00 的运行中写入，因此结算器在 D+2 日 06:00 的运行是第一次能读到它。`GPS_JAM_SNAPSHOT_MAX_LAG_MS` 从截止日零点起算为 3 天 7 小时：包括这第一次运行、为延迟发布的快照多留的一个周期，以及一小时的启动抖动。若数据源中的快照日期晚于截止日，说明截止日的快照在结算器读取之前已被替换，记录封存为 VOID `late_read`。界限过后仍只有更早的快照时，记录封存为 VOID `value_source_never_settled`；数据源缺失时为 `feed_unavailable`。
 
 在 issue #8990 之前没有这个界限，结算器晚了数天才处理的窗口会按当天的价格判定。每次运行都会在 `duplicate_window` 作废之后更正这些记录。读取时间超过界限的实时数据源 YES 或 NO 记录，会按同一指标任一窗口采到的第一个及时读数重新判定；账本中没有这样的读数时，封存为 VOID `late_read`。被替换的结果和证据移入 `supersededOutcome` 与 `supersededEvidence`。重新判定的记录写入 `regradedAt`，作废的记录写入 `voidedAt`，`resolvedAt` 保持不变。更正后的记录要么读数及时，要么是 VOID，因此重复运行更正不会再改变任何内容。
 

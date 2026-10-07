@@ -2424,7 +2424,7 @@
           "market_price_not_outcome": "Zdroj ukazoval tržní cenu, ne to, jak byl trh rozhodnut",
           "judged_evidence_unreliable": "Vyřazeno z hodnocení, dokud se neopraví podklady pro hodnotitele",
           "other": "Nelze vyřešit",
-          "late_read": "Do jednoho dne od termínu nebylo provedeno žádné měření",
+          "late_read": "Zdroj dat nebyl přečten dostatečně blízko termínu",
           "feed_unavailable": "Zdroj dat byl po termínu nedostupný"
         }
       },

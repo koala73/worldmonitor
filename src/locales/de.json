@@ -2404,7 +2404,7 @@
           "market_price_not_outcome": "Der Feed zeigte den Marktpreis, nicht wie der Markt aufgelöst wurde",
           "judged_evidence_unreliable": "Von der Bewertung ausgenommen, solange die Belege der Gutachter überarbeitet werden",
           "other": "Konnte nicht aufgelöst werden",
-          "late_read": "Innerhalb eines Tages nach der Frist wurde kein Messwert erfasst",
+          "late_read": "Der Feed wurde nicht nah genug an der Frist ausgelesen",
           "feed_unavailable": "Der Datenfeed war nach der Frist nicht verfügbar"
         }
       },

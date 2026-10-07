@@ -2021,7 +2021,7 @@
           "market_price_not_outcome": "Källan visade marknadspriset, inte hur marknaden avgjordes",
           "judged_evidence_unreliable": "Undantagen från poängsättning medan domarnas underlag rättas",
           "other": "Kunde inte avgöras",
-          "late_read": "Ingen avläsning gjordes inom en dag efter tidsfristen",
+          "late_read": "Källan lästes inte tillräckligt nära tidsfristen",
           "feed_unavailable": "Dataflödet var inte tillgängligt efter tidsfristen"
         }
       },

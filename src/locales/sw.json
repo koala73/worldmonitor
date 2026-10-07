@@ -2141,7 +2141,7 @@
           "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
           "judged_evidence_unreliable": "Imeondolewa kwenye upimaji wakati ushahidi wa majaji unarekebishwa",
           "other": "Haikuweza kuamuliwa",
-          "late_read": "Hakuna kipimo kilichochukuliwa ndani ya siku moja baada ya tarehe ya mwisho",
+          "late_read": "Chanzo cha data hakikusomwa karibu vya kutosha na tarehe ya mwisho",
           "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho"
         }
       },
