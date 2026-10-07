@@ -264,8 +264,10 @@ describe('normalizeFrozenDevelopments', () => {
       'Terms of ceasefire agreed',
     ].map((title, index) => ({ ...news, title, url: `https://example.net/news/story-${index}` }));
     assert.deepEqual(normalizeFrozenDevelopments({ headlines: realStories }).headlines, realStories, 'a headline that only begins with a site-page phrase is kept');
-    const marked = { ...news, title: '**Privacy Policy** | Example Times', url: 'https://example.net/news/legal/privacy' };
+    const marked = { ...news, title: '**Privacy Policy**', url: 'https://example.net/news/legal/privacy' };
     assert.deepEqual(normalizeFrozenDevelopments({ headlines: [marked] }).headlines, [], 'markers are stripped before the site-page check');
+    const separated = { ...news, title: 'Privacy Policy - Parliament approves new rules', url: 'https://example.net/news/2026/10/parliament-privacy-rules' };
+    assert.deepEqual(normalizeFrozenDevelopments({ headlines: [separated] }).headlines, [separated], 'a news URL keeps a headline that starts with a site-page name');
     const deepAbout = { ...news, title: 'Who runs the port', url: 'https://example.net/news/2026/10/about' };
     assert.deepEqual(normalizeFrozenDevelopments({ headlines: [deepAbout] }).headlines, [deepAbout], 'a slug deep in a news path is kept');
   });

@@ -333,10 +333,10 @@ function stripRowMarkers(row, fields) {
  * complete weekly capture. Rows without a brief keep their shape.
  */
 // A country index occasionally captures a publisher's site page (privacy,
-// terms, cookies) as if it were an article. Match a title that is only the
-// page name, optionally followed by a site separator, or a one-segment URL
-// path, so a news story that merely begins with "About" or "Terms" is kept.
-const SITE_PAGE_TITLE = /^(privacy policy|privacy notice|terms of (use|service)|terms and conditions|cookie policy|contact us|about us)\s*(?:[|\-–—].*)?$/i;
+// terms, cookies) as if it were an article. Match a one-segment URL path such
+// as /privacy-policy/, or a title that is only the page name, so a news story
+// whose headline merely begins with "About" or "Privacy Policy -" is kept.
+const SITE_PAGE_TITLE = /^(privacy policy|privacy notice|terms of (use|service)|terms and conditions|cookie policy|contact us|about us)$/i;
 const SITE_PAGE_SLUG = /^(privacy|privacy-policy|privacy-notice|terms|terms-of-use|terms-of-service|terms-and-conditions|cookie-policy|cookies|contact|contact-us|about|about-us)$/i;
 
 function isSitePage(row) {
