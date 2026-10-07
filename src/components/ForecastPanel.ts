@@ -265,7 +265,8 @@ function injectStyles(): void {
     .fc-record-item { color: var(--text-primary, #e6edf3); white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
     .fc-record-stale { color: #d29922; border: 1px solid rgba(210,153,34,0.35); border-radius: 3px; padding: 0 5px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .fc-record-stale[title] { cursor: help; }
-    .fc-reliability, .fc-reliability-placeholder { display: inline-block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; contain: inline-size; }
     .fc-reliability-placeholder { visibility: hidden; }
     .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
     .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }

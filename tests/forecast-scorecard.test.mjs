@@ -172,6 +172,10 @@ describe('computeScorecard', () => {
       { domain: 'market', count: 2, brier: 0.1, yesCount: 1 },
     ]);
     assert.equal(scorecard.byDomain.find((row) => row.domain === 'market').scored, 5, 'byDomain still pools every origin');
+    // Documented divergence (#8952): promotion adds bet_engine to the headline
+    // skill cohort (a, b, c, d, h) but never to the published-domain rows.
+    assert.equal(scorecard.skill.count, 5);
+    assert.equal(scorecard.publishedByDomain.some((row) => row.domain === 'cyber'), false);
   });
 
   it('reports skill.yesCount as 0, not absent, when nothing real in the cohort came true', () => {

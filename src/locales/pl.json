@@ -2390,7 +2390,7 @@
         "fullRecord": "Pełne wyniki"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} vs stopa bazowa {{base}} (n={{n}})",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs stopa bazowa {{base}}",
         "measuredHint": "Jak opublikowane prognozy {{domain}} osiągnęły wynik na {{n}} ocenianych prognozach w ciągu ostatnich {{days}} dni. Stopa bazowa to wynik, jaki uzyskałoby zawsze odpowiadanie obserwowaną stopą „tak\" dla domeny. Niżej jest lepiej. To rekord domeny, a nie tej prognozy.",
         "unmeasured": "Jeszcze nie zmierzone",
         "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Domena musi mieć {{min}} zanim wyświetli się jej dokładność."
