@@ -7,7 +7,7 @@ const STYLES = `
   .drow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .drow:last-child { border-bottom: none; }
   .mag { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 52px; }
-  .dplace { flex: 1; font-size: 13px; color: var(--fg); min-width: 0; }
+  .dplace { flex: 1 1 10rem; font-size: 13px; color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
   .dcounts, .dwarning { font-size: 12px; color: var(--muted); margin: 6px 0; }
   .dwarning { color: var(--high); }
   .dtime { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
