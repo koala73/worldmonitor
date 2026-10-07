@@ -131,6 +131,36 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.skill.yesCount, 1);
   });
 
+  it('drops withheld state-derived market buckets from every published figure but keeps energy and freight (#5234)', () => {
+    const stateDerived = (title, domain, outcome) => resolved({
+      title, domain, outcome, probability: 0.6, generationOrigin: 'state_derived',
+    });
+    const ledger = {
+      a: resolved({ probability: 0.8, outcome: 'YES', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.3, outcome: 'VOID', generationOrigin: 'detector' }),
+      sov: stateDerived('Sovereign risk repricing from Iran security escalation state', 'market', 'VOID'),
+      sovYes: stateDerived('Sovereign risk repricing from Gulf maritime disruption state', 'market', 'YES'),
+      fx: stateDerived('FX stress from Americas governance pressure state', 'market', 'VOID'),
+      rates: stateDerived('Inflation and rates pressure from Red Sea maritime disruption state', 'market', 'VOID'),
+      ratesPending: { ...stateDerived('Inflation and rates pressure from Andes state', 'market'), status: 'pending-judge', outcome: undefined },
+      energy: stateDerived('Energy repricing risk from Red Sea maritime disruption state', 'market', 'VOID'),
+      freight: stateDerived('Supply chain disruption risk from Red Sea maritime disruption state', 'supply_chain', 'YES'),
+    };
+
+    const scorecard = computeScorecard(ledger, NOW);
+
+    assert.equal(scorecard.totals.entries, 4);
+    assert.equal(scorecard.totals.resolved, 4);
+    assert.equal(scorecard.totals.void, 2);
+    assert.equal(scorecard.totals.voidRate, 0.5);
+    assert.equal(scorecard.totals.pendingJudge, 0);
+    assert.equal(scorecard.overall.count, 2);
+    const stateRow = scorecard.byGenerationOrigin.find((row) => row.generationOrigin === 'state_derived');
+    assert.equal(stateRow.resolved, 2);
+    assert.equal(scorecard.skill.count, 1);
+    assert.ok(Object.hasOwn(ledger, 'sov'), 'ledger rows are not deleted');
+  });
+
   it('holds entries with no recorded origin out of the headline but keeps them in overall and byGenerationOrigin', () => {
     // Rows written before origin tagging carry no origin, or the resolver's
     // literal 'unknown'. They cannot be attributed to a generator (#5240).

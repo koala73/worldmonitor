@@ -149,7 +149,7 @@ Every published forecast carries a **resolution spec** — a machine-checkable c
 - **Political**: regime stability, negotiations, policy shifts.
 - **Military**: posture transitions, deployment patterns.
 - **Cyber**: attribution and impact severity.
-- All **state-derived** forecasts, which blend multiple signal sources and carry composite provenance (if signals alone yielded a clean metric, origin-precedence still routes them to judged rather than hard).
+- **State-derived** forecasts whose bucket has no feed metric at emission. Energy forecasts resolve on the `CL=F` price, and supply-chain freight forecasts resolve on a chokepoint score.
 - Hard-family forecasts that cannot derive a finite threshold despite their domain (e.g., a market forecast with no tradeable anchor).
 
 The resolution spec does not change which forecasts are published or their order — it only *adds* machine-checkable ground truth to each forecast, the substrate for a future public track record that scores forecasts against what actually happened.
@@ -161,6 +161,8 @@ The seeder runs approximately **hourly**. The key is allowed up to **90 minutes*
 ## Resolution & track record
 
 Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, publication coverage, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
+
+State-derived market forecasts in the `sovereign_risk`, `rates_inflation` and `fx_stress` buckets are not published, because no feed can check them (issue #5234). Their earlier rows stay in `forecast:resolutions:v1`, but the scorecard leaves them out of every figure it reports, including the VOID rate. State-derived `energy` and `freight` forecasts are still published and resolve on a price or chokepoint feed.
 
 ### Judged-lane evidence horizon
 

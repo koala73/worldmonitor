@@ -40,10 +40,22 @@ export function isPublishedOriginEntry(entry) {
   return !DEFAULT_SKILL_EXCLUDED_ORIGINS.includes(generationOriginOf(entry));
 }
 
+// State-derived market buckets withdrawn from publication until they have a
+// checkable question (#5234). The ledger stores no bucket id, so earlier rows
+// are matched on the title buildStateDerivedForecastTitle gives each bucket.
+// The rows stay in the ledger; no published figure counts them.
+const WITHHELD_STATE_DERIVED_TITLE = /^(Sovereign risk repricing|Inflation and rates pressure|FX stress) from /;
+
+export function isWithheldEntry(entry) {
+  return generationOriginOf(entry) === 'state_derived'
+    && entry?.domain === 'market'
+    && WITHHELD_STATE_DERIVED_TITLE.test(entry?.title || '');
+}
+
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
-  const allEntries = normalizeLedger(ledger);
+  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry));
   const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
