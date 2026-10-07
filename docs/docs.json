@@ -211,7 +211,8 @@
                   "panels/telegram-intel",
                   "panels/x-intel",
                   "panels/fsi",
-                  "panels/news-market-correlation"
+                  "panels/news-market-correlation",
+                  "panels/parity-probe-8968"
                 ]
               },
               {
