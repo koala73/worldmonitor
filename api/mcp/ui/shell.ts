@@ -337,6 +337,19 @@ function renderBridgeTail(appName: string): string {
         var result = msg.params && msg.params.result ? msg.params.result : msg.params;
         showPanelUsage(result);
         var extracted = extractToolResult(result);
+        if (result && result.isError === true) {
+          var message = softError(extracted.data);
+          message = typeof message === "string" ? message.replace(/[\\x00-\\x1f\\x7f]/g, "").trim().slice(0, 1000) : "";
+          if (!message && Array.isArray(result.content)) {
+            for (var i = 0; i < result.content.length; i++) {
+              var block = result.content[i];
+              if (!block || block.type !== "text" || typeof block.text !== "string") continue;
+              message = block.text.replace(/[\\x00-\\x1f\\x7f]/g, "").trim().slice(0, 1000);
+              if (message) break;
+            }
+          }
+          extracted = { data: { error: message || "Tool request failed." }, renderContext: { kind: "unknown" } };
+        }
         safeRender(extracted.data, extracted.renderContext);
         break;
       }

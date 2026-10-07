@@ -109,7 +109,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: COUNTRY_BRIEF_UI_URI,
     name: 'Country Brief (interactive)',
     description:
-      'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the analytical framework lens, and the grounding sources. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the grounding sources, and cited WorldMonitor data. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: COUNTRY_BRIEF_APP_HTML,
