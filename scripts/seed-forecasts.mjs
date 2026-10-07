@@ -5093,10 +5093,17 @@ async function resolveCalibrationPublication(nowMs, { env = process.env, logger 
   return { map, decision, record, flipped };
 }
 
+// Unlike redisSet, checks the reply: Upstash reports a rejected SET as HTTP
+// 200 with an error body, and a silent miss would leave lastFlip stale.
 async function writeCalibrationPublication(record) {
   if (!record) return;
   const { url, token } = getRedisCredentials();
-  await redisSet(url, token, CALIBRATION_PUBLICATION_KEY, record, CALIBRATION_PUBLICATION_TTL_SECONDS);
+  if (_testRedisStore) {
+    await redisSet(url, token, CALIBRATION_PUBLICATION_KEY, record, CALIBRATION_PUBLICATION_TTL_SECONDS);
+    return;
+  }
+  const reply = await redisCommand(url, token, ['SET', CALIBRATION_PUBLICATION_KEY, JSON.stringify(record), 'EX', CALIBRATION_PUBLICATION_TTL_SECONDS]);
+  if (reply?.result !== 'OK') throw new Error(`SET ${CALIBRATION_PUBLICATION_KEY} was not acknowledged: ${JSON.stringify(reply).slice(0, 200)}`);
 }
 
 function getTraceMaxForecasts(totalForecasts = 0) {

@@ -1444,7 +1444,8 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
       if (existing.status === 'pending') existing.lastSeenAt = Math.max(Number(existing.lastSeenAt || 0), snapshotAt);
       continue;
     }
-    const view = { ...forecast, probability, timeHorizon: spec.timeHorizon };
+    const { uncalibratedProbability: _parentLineage, ...parent } = forecast;
+    const view = { ...parent, probability, timeHorizon: spec.timeHorizon };
     ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey };
   }
 }

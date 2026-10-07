@@ -179,6 +179,29 @@ describe('seeder calibration publication (#7070)', () => {
     assert.doesNotMatch(JSON.stringify(payload), /uncalibratedProbability/);
   });
 
+  it('fails loudly when Redis rejects the publication record write', async () => {
+    const saved = { fetch: globalThis.fetch, url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const sent = [];
+    try {
+      globalThis.fetch = async (_url, init) => {
+        sent.push(JSON.parse(init.body));
+        return new Response(JSON.stringify({ error: 'OOM command not allowed' }), { status: 200 });
+      };
+      await assert.rejects(writeCalibrationPublication({ mode: 'raw' }), /OOM command not allowed/);
+      globalThis.fetch = async () => new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      await writeCalibrationPublication({ mode: 'raw' });
+      assert.deepEqual(sent[0].slice(0, 3), ['SET', CALIBRATION_PUBLICATION_KEY, JSON.stringify({ mode: 'raw' })]);
+    } finally {
+      globalThis.fetch = saved.fetch;
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', saved.url], ['UPSTASH_REDIS_REST_TOKEN', saved.token]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
   it('records the published probability in the ledger and keeps the uncalibrated value beside it', () => {
     const deadline = FIT_AT + 10 * DAY_MS;
     const pred = {
@@ -196,7 +219,15 @@ describe('seeder calibration publication (#7070)', () => {
     assert.equal(entry.uncalibratedProbability, 0.4);
 
     const generatedAt = FIT_AT + DAY_MS;
-    let ledger = ingestHistory({}, [{ generatedAt, predictions: [entry] }], generatedAt);
+    const withHorizon = {
+      ...entry,
+      projections: { h24: 0.15, d7: 0.2, d30: 0.25 },
+      horizonResolutions: { d30: { kind: 'hard', deadline: deadline + 20 * DAY_MS, timeHorizon: '30d', sourceFeed: 'cyber:threats:v2' } },
+    };
+    let ledger = ingestHistory({}, [{ generatedAt, predictions: [withHorizon] }], generatedAt);
+    const horizonRow = ledger[`fc-1@${deadline}@d30`];
+    assert.equal(horizonRow.probability, 0.25);
+    assert.equal('uncalibratedProbability' in horizonRow, false, 'a projection row has no post-blend lineage of its own');
     const row = ledger[`fc-1@${deadline}`];
     assert.equal(row.probability, 0.2, 'the scorecard scores what was published');
     assert.equal(row.firstSeenProbability, 0.2);
