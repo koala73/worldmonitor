@@ -2710,7 +2710,7 @@ describe('absence-based NO (#8896)', () => {
     return Array.from({ length: count }, (_, index) => ({
       id: `N${index + 1}`,
       title: `Freedonia parliament delays the emergency policy change again (${index + 1})`,
-      description: `Lawmakers postponed the vote on the emergency policy change for another week, session ${index + 1}.`,
+      description: `Lawmakers postponed the vote on the emergency policy change for another week as protests continued, session ${index + 1}.`,
       publishedAt: T_DEADLINE - 1 - index,
     }));
   }

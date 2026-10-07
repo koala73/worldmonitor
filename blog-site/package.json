@@ -24,7 +24,7 @@
     "gray-matter": "^4.0.3",
     "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "satori": "^0.25.0",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.5"
   },
   "overrides": {
     "http-cache-semantics": "$http-cache-semantics",
