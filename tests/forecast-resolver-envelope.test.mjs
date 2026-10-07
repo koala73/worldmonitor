@@ -2,9 +2,9 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { ENVELOPE_BUG_VOID_REASON, processResolutionCycle, processResolutionCycleWithJudges, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
-import { evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
+import { buildResolutionSpec, evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
 import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { resolveHardSpec, shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-09-01T00:00:00Z');
@@ -209,5 +209,69 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
     const one = preFixLedger();
     delete one['fc-infra-zero@' + (T0 + 7 * DAY_MS)];
     assert.match(processResolutionCycle(one, [], {}, nowMs).scorecard.methodology, / 1 forecast scored against a data feed we could not read correctly is voided /);
+  });
+});
+
+// The cyber feed keeps country-bearing records for under a day (AbuseIPDB and
+// URLhaus are re-listed daily; C2Intel and OTX carry no country), so a 7-day
+// count read once a day measures how close the deadline fell to the read.
+describe('cyber counts cannot be read honestly from the snapshot (#5233 audit)', () => {
+  const READ_AT = Date.parse('2026-10-07T06:00:00Z');
+  const HOUR = 60 * 60 * 1000;
+  const feed = shapeResolutionFeeds({
+    [CYBER_FEED]: envelope({
+      threats: Array.from({ length: 120 }, (_, i) => ({ id: `abuse:${i}`, country: 'CN', firstSeenAt: READ_AT - (i % 18) * HOUR - HOUR / 2 })),
+    }, READ_AT),
+  })[CYBER_FEED];
+  const outcomeWithDeadlineHoursBeforeRead = (hours) => {
+    const deadline = READ_AT - hours * HOUR;
+    const entry = { generatedAt: deadline - 7 * DAY_MS, spec: { ...cyberRomania.resolution, metricKey: `${CYBER_FEED}|count(country==China)`, threshold: 65, deadline } };
+    return resolveHardSpec(entry, feed, { count: 0, recent: [] }, READ_AT).outcome;
+  };
+
+  it('the same 7-day claim reads YES or NO depending on the deadline hour', () => {
+    assert.deepEqual([1, 6, 12, 18].map(outcomeWithDeadlineHoursBeforeRead), ['YES', 'YES', 'NO', 'NO']);
+  });
+
+  it('new cyber forecasts go to the judges', () => {
+    const spec = buildResolutionSpec({
+      id: 'fc-cyber-cn', domain: 'cyber', region: 'China', title: 'Cyber threat concentration: China', probability: 0.5, confidence: 0.5,
+      timeHorizon: '7d', generationOrigin: 'legacy_detector', signals: [{ type: 'cyber', value: '120 threats (malware)', weight: 0.5 }],
+    }, {}, T0);
+    assert.equal(spec.kind, 'judged');
+  });
+
+  it('pending hard cyber rows move to the judged lane', () => {
+    const { ledger } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [cyberRomania] }], {}, T0 + DAY_MS);
+    const row = resolvedRow(ledger, 'fc-cyber-ro');
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.spec.kind, 'judged');
+    assert.match(row.spec.question, /Romania/);
+  });
+});
+
+// The bootstrap feed lists only open markets and clips yesPrice to [10, 90], so
+// a read at endDate is the crowd's price, not the market's outcome.
+describe('bootstrap prediction-market rows never grade the crowd price (#5233 audit)', () => {
+  const BOOTSTRAP = 'prediction:markets-bootstrap:v1';
+  const market = forecast('fc-pm-israel', 'conflict', 'Middle East', {
+    kind: 'hard',
+    metricKey: `${BOOTSTRAP}|yesPrice(market==Will Israel strike 4 countries in 2026?)`,
+    operator: 'crosses',
+    threshold: 50,
+    baselineValue: 73,
+    window: 'at-endDate',
+    deadline: T0 + 7 * DAY_MS,
+    sourceFeed: BOOTSTRAP,
+  });
+
+  it('voids a due row with a named reason even when the feed still lists the market', () => {
+    const feeds = shapeResolutionFeeds({ [BOOTSTRAP]: envelope({ geopolitical: [{ title: 'Will Israel strike 4 countries in 2026?', yesPrice: 80 }] }, T0 + 7 * DAY_MS) });
+    const { ledger, scorecard } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [market] }], feeds, T0 + 8 * DAY_MS);
+    const row = resolvedRow(ledger, 'fc-pm-israel');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'market_price_not_outcome');
+    assert.equal(scorecard.totals.scored, 0);
+    assert.equal(RECEIPT_VOID_REASON_LABELS.market_price_not_outcome, 'The feed showed the market price, not how the market resolved');
   });
 });
