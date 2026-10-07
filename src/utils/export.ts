@@ -555,7 +555,7 @@ function buildEvidenceSources(
 
 function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: string): string[] {
   const notes: string[] = [`Exported at ${exportedAt}.`];
-  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt);
   if (briefGeneratedAt) {
     notes.push(`Brief generated at ${briefGeneratedAt}${input.briefCached === true ? ' from cache' : ''}.`);
   } else {
@@ -593,7 +593,7 @@ function renderQuotedEvidenceBlock(value: string): string[] {
 export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
   const exportedAt = normalizeIsoTimestamp(input.exportedAt) ?? new Date().toISOString();
   const generatedAt = normalizeIsoTimestamp(input.generatedAt);
-  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt);
   const brief = sanitizeEvidenceText(input.brief);
   return {
     country: sanitizeEvidenceText(input.country),
