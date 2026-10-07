@@ -978,14 +978,16 @@ components:
                 simulationAdjustment:
                     type: number
                     format: double
-                    description: Score delta from the deep simulation pipeline; 0 when it has not run.
+                    description: |-
+                        Score delta from the deep simulation pipeline: +0.08 to +0.12, or
+                         -0.12 or -0.15; 0 when it has not run.
                 simPathConfidence:
                     type: number
                     format: double
                     description: Confidence in [0, 1] of the matched simulation top path; 0 when not set.
                 demotedBySimulation:
                     type: boolean
-                    description: True when a negative adjustment demoted this forecast.
+                    description: True when a negative adjustment crossed the 0.50 acceptance threshold.
                 resolution:
                     $ref: '#/components/schemas/ResolutionSpec'
         ForecastSignal:
@@ -1586,6 +1588,7 @@ components:
                 pairedHitRate:
                     type: number
                     format: double
+                    description: Hit rate over the rows whose control scored; compare with base_hit_rate.
                 medianLeadTimeMs:
                     type: integer
                     format: int64

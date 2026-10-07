@@ -144,14 +144,12 @@ message Forecast {
   Perspectives perspectives = 16;
   Projections projections = 17;
   ForecastCase case_file = 18;
-  // simulation_adjustment is +0.08 to +0.12 or -0.12/-0.15; demoted_by_simulation
-  // flips when a negative adjustment crosses the 0.50 acceptance threshold.
-
-  // Score delta from the deep simulation pipeline; 0 when it has not run.
+  // Score delta from the deep simulation pipeline: +0.08 to +0.12, or
+  // -0.12 or -0.15; 0 when it has not run.
   double simulation_adjustment = 20;
   // Confidence in [0, 1] of the matched simulation top path; 0 when not set.
   double sim_path_confidence = 21;
-  // True when a negative adjustment demoted this forecast.
+  // True when a negative adjustment crossed the 0.50 acceptance threshold.
   bool demoted_by_simulation = 22;
   // Outcome contract for this forecast (see ResolutionSpec); null when the
   // resolution enrichment pass has not run.

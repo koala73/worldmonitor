@@ -384,20 +384,58 @@ describe('generated OpenAPI description guard for high-risk documentation claims
   });
 });
 
+function yamlBooleanOffenders(node, path) {
+  if (Array.isArray(node)) return node.flatMap((child, index) => yamlBooleanOffenders(child, `${path}[${index}]`));
+  if (node === null || typeof node !== 'object') return [];
+  const offenders = [];
+  if (node.properties && typeof node.properties === 'object') {
+    for (const key of Object.keys(node.properties)) {
+      if (key === 'true' || key === 'false') offenders.push(`${path}.properties.${key}`);
+    }
+  }
+  if (Array.isArray(node.enum) && node.type !== 'boolean') {
+    for (const value of node.enum) {
+      if (typeof value === 'boolean') offenders.push(`${path}.enum:${value}`);
+    }
+  }
+  for (const [key, child] of Object.entries(node)) offenders.push(...yamlBooleanOffenders(child, `${path}.${key}`));
+  return offenders;
+}
+
 // sebuf v0.11.1 renders format=json by passing its YAML through a YAML 1.1
 // converter, so a proto field named n, y, no, yes, on or off is emitted as the
 // property "false" or "true" in docs/api/*.openapi.json (#8867).
 describe('per-service OpenAPI JSON property names', () => {
-  it('never carries a YAML 1.1 boolean in place of a field name', () => {
-    const offenders = [];
-    for (const file of readdirSync(apiDir).filter((name) => name.endsWith('.openapi.json'))) {
-      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
-      for (const [schemaName, schema] of Object.entries(spec.components?.schemas ?? {})) {
-        for (const property of Object.keys(schema.properties ?? {})) {
-          if (property === 'true' || property === 'false') offenders.push(`${file}:${schemaName}.${property}`);
-        }
-      }
-    }
+  it('never carries a YAML 1.1 boolean in place of a property name or enum value', () => {
+    const offenders = readdirSync(apiDir)
+      .filter((name) => name.endsWith('.openapi.json'))
+      .flatMap((file) => yamlBooleanOffenders(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')), file));
     assert.deepEqual(offenders, []);
+  });
+
+  it('finds boolean names and enum values at any depth, and leaves boolean enums alone', () => {
+    const doc = {
+      paths: { '/x': { get: { parameters: [{ schema: { type: 'string', enum: ['yes', false] } }] } } },
+      components: { schemas: { Row: { properties: { nested: { type: 'object', properties: { false: { type: 'integer' } } }, flag: { type: 'boolean', enum: [true] } } } } },
+    };
+    assert.deepEqual(yamlBooleanOffenders(doc, 'doc'), [
+      'doc.paths./x.get.parameters[0].schema.enum:false',
+      'doc.components.schemas.Row.properties.nested.properties.false',
+    ]);
+  });
+});
+
+describe('forecast field descriptions a client needs to read the numbers (#8867)', () => {
+  const schemas = loadUnifiedOpenApiSpec().components.schemas;
+  const schema = (suffix) => Object.entries(schemas).find(([name]) => name.endsWith(`_${suffix}`) || name === suffix)?.[1];
+
+  it('says what paired_hit_rate is compared with', () => {
+    assert.match(schema('MarketAlertRow').properties.pairedHitRate.description ?? '', /control scored[\s\S]*base_?[hH]it_?[rR]ate/);
+  });
+
+  it('keeps the simulation demotion threshold and adjustment ranges', () => {
+    const forecast = schema('Forecast').properties;
+    assert.match(forecast.demotedBySimulation.description ?? '', /0\.50/);
+    assert.match(forecast.simulationAdjustment.description ?? '', /\+0\.08 to \+0\.12/);
   });
 });
