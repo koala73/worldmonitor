@@ -1527,6 +1527,7 @@
       "scripts/seed-forecasts.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "scripts/seed-forecast-resolutions.mjs (header docblock declares daily cron)"

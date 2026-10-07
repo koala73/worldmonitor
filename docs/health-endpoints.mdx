@@ -938,7 +938,9 @@ classifier exposes either condition as `SEED_ERROR`.
 
 The metadata also records judged-lane quality, which never changes the status.
 `quality.noScoredWithinSlaRuns` (mirrored by `stalledRuns`, capped at 3) counts
-consecutive eligible runs without a new scored-within-SLA outcome. A run is
+consecutive eligible runs without a new scored-within-SLA outcome. A judged
+entry is overdue, and its two-day SLA starts, at its deadline plus the 18-hour
+reporting grace, the first moment it can be judged. A run is
 eligible when judged entries remain overdue or judged outcomes were resolved
 since the preceding health observation. Old successes and VOID outcomes do not
 clear the streak. A new scored-within-SLA outcome or an idle lane resets it.

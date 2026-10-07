@@ -8962,6 +8962,21 @@ const MACRO_REGION_MAP = {
   'Somalia': 'AFRICA', 'Mali': 'AFRICA', 'Mozambique': 'AFRICA', 'Sahel': 'AFRICA',
 };
 
+// Every region label a forecast can carry: the judged resolver needs a subject
+// entry for each (#8990, scripts/build-judged-subject-terms.mjs).
+export const EMITTED_REGION_LABELS = Object.freeze([...new Set([
+  ...Object.values(THEATER_REGIONS),
+  ...Object.values(THEATER_LABELS),
+  ...Object.keys(CHOKEPOINT_COMMODITIES),
+  ...Object.keys(REGION_MACRO_BUCKETS),
+  ...Object.keys(REGION_KEYWORDS),
+  ...Object.keys(MARITIME_REGIONS),
+  ...Object.values(MARKET_TAG_TO_REGION),
+  ...Object.keys(MACRO_REGION_MAP),
+  ...CRITICAL_NEWS_GEO_HINTS.map((hint) => hint.region),
+  ...Object.values(loadCountryCodes()).map((row) => row.name),
+])].sort());
+
 const CROSS_THEATER_EXEMPT_CHANNELS = new Set(['cyber_disruption', 'market_repricing']);
 const CROSS_THEATER_ACTOR_SPECIFICITY_MIN = 0.90;
 const EFFECT_CLASS_PRIORITY = {
