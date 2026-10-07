@@ -173,19 +173,29 @@ export async function fetchSp500Breadth({ fetchImpl = fetch, timeoutMs = 15_000,
       `TradingView scan truncated: totalCount=${body.totalCount} data=${body.data.length}`,
     );
   }
-  const breadth = computeBreadth(body.data);
-  requireCompleteReadings(breadth.readings);
-  const sourceSessionAt = body.data[0]?.d?.[TIME_INDEX] * 1000;
-  if (!Number.isFinite(sourceSessionAt) || sourceSessionAt <= 0 || sourceSessionAt > now
-      || now - sourceSessionAt > MAX_SESSION_AGE_MIN * 60_000) {
-    throw scanError('Breadth source session is missing, future, or stale');
+  // Score the session most rows share. A halted or delisted constituent keeps
+  // its last bar (WBD stayed on 2026-10-05 the next day), so it is left out;
+  // a scan split across sessions still fails the constituent floor.
+  const bySession = new Map();
+  for (const row of body.data) {
+    const seconds = row?.d?.[TIME_INDEX];
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds * 1000 > now) continue;
+    const date = SESSION_DATE.format(seconds * 1000);
+    if (!bySession.has(date)) bySession.set(date, []);
+    bySession.get(date).push(row);
   }
-  const sessionDate = SESSION_DATE.format(sourceSessionAt);
-  if (body.data.some((row) => !Number.isFinite(row?.d?.[TIME_INDEX])
-      || row.d[TIME_INDEX] <= 0 || row.d[TIME_INDEX] * 1000 > now
-      || SESSION_DATE.format(row.d[TIME_INDEX] * 1000) !== sessionDate)) {
+  let sessionRows = [];
+  for (const rows of bySession.values()) if (rows.length > sessionRows.length) sessionRows = rows;
+  if (sessionRows.length < MIN_VALID_CONSTITUENTS) {
     throw scanError('Breadth scan contains missing or mixed source sessions');
   }
+  const sourceSessionAt = sessionRows[0].d[TIME_INDEX] * 1000;
+  if (now - sourceSessionAt > MAX_SESSION_AGE_MIN * 60_000) {
+    throw scanError('Breadth source session is stale');
+  }
+  const sessionDate = SESSION_DATE.format(sourceSessionAt);
+  const breadth = computeBreadth(sessionRows);
+  requireCompleteReadings(breadth.readings);
   const weekday = new Date(`${sessionDate}T12:00:00Z`).getUTCDay();
   // A daily bar's timestamp is its open. Wait until the regular close even
   // on early-close days; the twice-daily cron runs outside trading hours.
@@ -193,5 +203,5 @@ export async function fetchSp500Breadth({ fetchImpl = fetch, timeoutMs = 15_000,
       || (sessionDate === SESSION_DATE.format(now) && Number(SESSION_HOUR.format(now)) < 16)) {
     throw scanError('Breadth source session has not closed or is not a weekday');
   }
-  return { ...breadth, sessionDate, sourceSessionAt };
+  return { ...breadth, sessionDate, sourceSessionAt, otherSessions: body.data.length - sessionRows.length };
 }

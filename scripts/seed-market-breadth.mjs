@@ -14,9 +14,9 @@ loadEnvFile(import.meta.url);
 const BREADTH_TTL = 2592000; // 30 days
 
 async function fetchAll() {
-  const { readings, constituents, valid, sessionDate, sourceSessionAt } = await fetchSp500Breadth();
+  const { readings, constituents, valid, sessionDate, sourceSessionAt, otherSessions } = await fetchSp500Breadth();
 
-  console.log(`  TradingView: ${constituents} S&P 500 constituents (valid 20d=${valid.pctAbove20d} | 50d=${valid.pctAbove50d} | 200d=${valid.pctAbove200d})`);
+  console.log(`  TradingView: ${constituents} S&P 500 constituents on ${sessionDate} (valid 20d=${valid.pctAbove20d} | 50d=${valid.pctAbove50d} | 200d=${valid.pctAbove200d} | other sessions=${otherSessions})`);
   console.log(`    20d=${readings.pctAbove20d ?? 'null'} | 50d=${readings.pctAbove50d ?? 'null'} | 200d=${readings.pctAbove200d ?? 'null'}`);
 
   requireCompleteReadings(readings);

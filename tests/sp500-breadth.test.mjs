@@ -206,10 +206,24 @@ describe('fetchSp500Breadth', () => {
     });
   }
 
-  it('rejects mixed source sessions even with 503 valid prices', async () => {
-    const data = universe(503, (i) => row(`T${i}`, 100, 90, 90, 90));
+  // WBD kept its 2026-10-05 bar after trading stopped, and the whole 10-06
+  // run failed on that one row.
+  it('leaves a constituent stuck on an older session out of the reading', async () => {
+    const data = universe(504, (i) => row(`T${i}`, 100, 90, 90, i < 252 ? 90 : 110));
     data[0].d[5] -= 86400;
-    await assert.rejects(fetchSp500Breadth({ now: Date.parse('2026-09-06T02:00:00Z'), fetchImpl: async () => Response.json({ totalCount: 503, data }) }), /session/i);
+    data[0].d[1] = 1;
+    const result = await fetchSp500Breadth({ now: Date.parse('2026-09-06T02:00:00Z'), fetchImpl: async () => Response.json({ totalCount: 504, data }) });
+    assert.equal(result.sessionDate, '2026-09-04');
+    assert.equal(result.sourceSessionAt, Date.parse('2026-09-04T13:30:00Z'));
+    assert.equal(result.constituents, 503);
+    assert.equal(result.otherSessions, 1);
+    assert.deepEqual(result.readings, { pctAbove20d: 100, pctAbove50d: 100, pctAbove200d: 49.9 });
+  });
+
+  it('rejects a scan split across sessions below the constituent floor', async () => {
+    const data = universe(503, (i) => row(`T${i}`, 100, 90, 90, 90));
+    for (let i = 0; i < 503 - MIN_VALID_CONSTITUENTS + 1; i++) data[i].d[5] -= 86400;
+    await assert.rejects(fetchSp500Breadth({ now: Date.parse('2026-09-06T02:00:00Z'), fetchImpl: async () => Response.json({ totalCount: 503, data }) }), /mixed source sessions/);
   });
 
   it('uses New York close across the winter UTC date boundary', async () => {
