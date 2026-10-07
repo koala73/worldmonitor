@@ -892,7 +892,9 @@ function countryMatches(country, raw, padded, context) {
   const contextText = removeWholePhrases(context, country.exclusions);
   let rawText = raw;
   for (const phrase of country.exclusions) {
-    rawText = rawText.replace(new RegExp(`(^|[^A-Za-z0-9])${phrase.split(' ').map(escapeRegExp).join('[\\s\\-.\']+')}`, 'gi'), '$1 ');
+    // Ends at a word end or a demonym suffix: "south sudan" removes "South
+    // Sudanese", but "french open" never eats "French opens".
+    rawText = rawText.replace(new RegExp(`(^|[^A-Za-z0-9])${phrase.split(' ').map(escapeRegExp).join('[\\s\\-.\']+')}(?:ese|ian|an|n|i)?(?=$|[^A-Za-z0-9])`, 'gi'), '$1 ');
   }
   const has = (term) => text.includes(` ${term} `);
   if (country.terms.some(has)) return true;

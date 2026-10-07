@@ -244,6 +244,14 @@ describe('forecast evidence publication wiring (#7082)', () => {
     assert.ok(written.coverageEndMs > coverage.coverageEndMs, 'a blanked link does not block the coverage advance');
   });
 
+  it('passes the host the ingest gate blanked to the keep-link script (#8990)', async () => {
+    const redis = await runWriter({ coverage, items: [storyItem({ link: '', blankedLinkHost: 'gated.example' })] });
+    const evals = redis.commandsOf((verb) => verb === 'EVAL')
+      .filter((command) => String(command[3]).startsWith('forecast:evidence:record:v1:'));
+    assert.equal(evals.length, 1);
+    assert.equal(evals[0][7], 'gated.example');
+  });
+
   it('writes NOTHING to the archive from a preview deployment', async () => {
     // Archive keys are written raw, bypassing getKeyPrefix(), and previews
     // share the production Upstash instance — so an unguarded preview build
