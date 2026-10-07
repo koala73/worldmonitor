@@ -141,9 +141,16 @@ export function presentNaturalDisastersPanel(result: Record<string, unknown>, bu
     if (!original || !original.points) return;
     const next = compactNaturalEventsDashboardPayload({ events: [row] }).events[0]!;
     if (next === row) return;
-    const returned = coneCounts(next.conePolygon);
+    const originalRings = row.conePolygon as unknown[];
+    const compactedRings = (next.conePolygon as unknown[]).map((ring, index) => {
+      const before = coneCounts([originalRings[index]]);
+      const after = coneCounts([ring]);
+      return before && after && after.points < before.points ? ring : originalRings[index];
+    });
+    if (compactedRings.every((ring, index) => ring === originalRings[index])) return;
+    const returned = coneCounts(compactedRings);
     if (!returned) return;
-    row.conePolygon = next.conePolygon;
+    row.conePolygon = compactedRings;
     note(row, 'events.events', index, 'conePolygon', original.points, returned.points, 'geometry_simplified',
       { original: original.rings, returned: returned.rings });
   });
@@ -154,7 +161,9 @@ export function presentNaturalDisastersPanel(result: Record<string, unknown>, bu
       if (!Array.isArray(value) || !value.length) continue;
       const cone = field === 'conePolygon' ? coneCounts(value) : null;
       if (field === 'conePolygon' && !cone) continue;
-      if (field !== 'conePolygon' && !value.every(record)) continue;
+      if (field !== 'conePolygon' && !value.every(point => record(point)
+        && Number.isFinite(point.lat) && Math.abs(Number(point.lat)) <= 90
+        && Number.isFinite(point.lon) && Math.abs(Number(point.lon)) <= 180)) continue;
       delete row[field];
       note(row, collection, index, field, cone?.points ?? value.length, 0, 'output_budget',
         cone ? { original: cone.rings, returned: 0 } : undefined);

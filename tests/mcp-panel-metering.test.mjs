@@ -1597,6 +1597,34 @@ describe('bounded public Natural paid panel presentation', () => {
     assert.deepEqual(eventBucket, original);
     assert.equal(payload.data.fires._firmsCount, 1);
   });
+  it('preserves an unclosed four-point ring without negative coverage in actual dispatch', async () => {
+    const quad = [{ points: [{ lon: 0, lat: 0 }, { lon: 1, lat: 0 }, { lon: 1, lat: 1 }, { lon: 0, lat: 1 }] }];
+    eventBucket.events[2].conePolygon = quad;
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const payload = (await invoke(deps)).structuredContent;
+    assert.notEqual(payload._budget_exceeded, true);
+    assert.deepEqual(payload.data.events.events[2].conePolygon, quad);
+    assert.ok(payload.transportCoverage.details.every(item => item.returned_count <= item.original_count && item.omitted_count >= 0));
+    assert.equal(payload.transportCoverage.details.some(item => item.event_id === eventBucket.events[2].id), false);
+    assert.deepEqual(eventBucket, original);
+  });
+  for (const field of ['forecastTrack', 'pastTrack']) {
+    it(`preserves malformed ${field} coordinates and the fixed guard in actual dispatch`, async () => {
+      const malformed = [{ lat: null, lon: 'invalid', description: 'x'.repeat(140000) }];
+      eventBucket.events[0][field] = malformed;
+      const original = structuredClone(eventBucket);
+      const { presentNaturalDisastersPanel } = await import('../api/mcp/_natural-disasters-reuse.ts');
+      const shown = presentNaturalDisastersPanel({ data: { events: eventBucket } }, 131072);
+      assert.deepEqual(shown.data.events.events[0][field], malformed);
+      assert.equal(shown.transportCoverage?.details.some(item => item.field === field), false);
+      const { deps } = makeProDeps();
+      const payload = (await invoke(deps, { limit: 2 })).structuredContent;
+      assert.equal(payload._budget_exceeded, true);
+      assert.equal(payload.budget_bytes, 131072);
+      assert.deepEqual(eventBucket, original);
+    });
+  }
   it('omits oversized tracks and samples declared regional detail with exact counts and intact health', async () => {
     const track = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index, windKt: 60, timestamp: snapshot - index }));
     for (const event of eventBucket.events) { event.forecastTrack = track; event.pastTrack = track; }
