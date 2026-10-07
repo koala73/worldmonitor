@@ -5,6 +5,7 @@ import {
   DUPLICATE_WINDOW_VOID_REASON,
   FIRST_SEEN_RESCORE_REASON,
   RECEIPT_REARCHIVE_PER_RUN,
+  __setCountFeedAvailableForTests,
   appendR2Receipts,
   collectUnarchivedReceipts,
   markReceiptsArchived,
@@ -17,6 +18,7 @@ import {
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -214,6 +216,29 @@ describe('one window per question (#8990 item 11)', () => {
     assert.deepEqual(windowsOf(ledger, 'fc-supply_chain-hormuz').map((entry) => [entry.spec.threshold, entry.probability, entry.lastSeenProbability]), [[60, 0.2, 0.5]]);
   });
 
+  it('keeps one window when a count feed comes back after its rows moved to the judges', () => {
+    const conflict = (generatedAt, threshold, probability) => ({
+      id: 'fc-conflict-sd',
+      domain: 'conflict',
+      region: 'Sudan',
+      title: 'Escalation risk: Sudan',
+      probability,
+      timeHorizon: '7d',
+      generationOrigin: 'legacy_detector',
+      generatedAt,
+      resolution: { kind: 'hard', metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Sudan)`, operator: '>=', threshold, window: 'within-horizon', deadline: generatedAt + 7 * DAY_MS, sourceFeed: CONFLICT_COUNT_SOURCE_FEED },
+    });
+    const migrated = ingestHistory({}, [snap(T0, [conflict(T0, 12, 0.4)])], T0 + HOUR_MS);
+    assert.equal(windowsOf(migrated, 'fc-conflict-sd')[0].spec.kind, 'judged');
+    __setCountFeedAvailableForTests(CONFLICT_COUNT_SOURCE_FEED, true);
+    try {
+      const ledger = ingestHistory(migrated, [snap(T0 + DAY_MS, [conflict(T0 + DAY_MS, 15, 0.6)])], T0 + DAY_MS + HOUR_MS);
+      assert.deepEqual(windowsOf(ledger, 'fc-conflict-sd').map((entry) => [entry.spec.kind, entry.probability, entry.lastSeenProbability]), [['judged', 0.4, 0.6]]);
+    } finally {
+      __setCountFeedAvailableForTests(CONFLICT_COUNT_SOURCE_FEED, undefined);
+    }
+  });
+
   it('treats the same threshold reached from the other side as a different question', () => {
     const rise = brent(T0, 87, 85, 0.4);
     const fall = brent(T0 + HOUR_MS, 87, 89, 0.7);
@@ -288,9 +313,12 @@ describe('existing ledger correction (#8990)', () => {
   const otherQuestion = base(T0 + 2 * DAY_MS, { region: 'Red Sea', spec: { ...spec, metricKey: `${CHOKEPOINT_FEED}|riskScore(route==Bab el-Mandeb)`, deadline: T0 + 2 * DAY_MS + D }, status: 'resolved', outcome: 'NO', probability: 0.25, firstSeenProbability: 0.25, resolvedAt: T0 + 9 * DAY_MS, evidence: { metricValue: 65 } });
   const legacy = Object.fromEntries([keeper, ghostResolved, ghostPending, ghostHorizon, otherQuestion].map((entry) => [entry.key, entry]));
   const NOW = T0 + 9 * DAY_MS + HOUR_MS;
+  // A history read that holds none of these rows' emissions, as the
+  // resolver's first ingest of a run would be for rows past the 8-day read.
+  const HISTORY = [snap(NOW, [])];
 
   it('voids duplicate windows, rescores last-seen probabilities, and leaves other questions scored', async () => {
-    const { ledger, scorecard } = await processResolutionCycleWithJudges(legacy, [], {}, [], NOW, noJudges);
+    const { ledger, scorecard } = await processResolutionCycleWithJudges(ingestHistory(legacy, HISTORY, NOW), [], {}, [], NOW, noJudges);
 
     const kept = ledger[keeper.key];
     assert.equal(kept.outcome, 'YES');
@@ -321,10 +349,10 @@ describe('existing ledger correction (#8990)', () => {
   it('is idempotent across runs and leaves rows the earlier fix already voided at their reason', async () => {
     const enveloped = { ...ghostResolved, outcome: 'VOID', evidence: { reason: 'resolver_envelope_bug', voidedAt: T0 } };
     const start = { ...legacy, [ghostResolved.key]: enveloped };
-    const once = (await processResolutionCycleWithJudges(start, [], {}, [], NOW, noJudges)).ledger;
+    const once = (await processResolutionCycleWithJudges(ingestHistory(start, HISTORY, NOW), [], {}, [], NOW, noJudges)).ledger;
     assert.equal(once[ghostResolved.key].evidence.reason, 'resolver_envelope_bug');
     assert.equal(once[ghostResolved.key].duplicateOf, keeper.key);
-    const twice = (await processResolutionCycleWithJudges(once, [], {}, [], NOW + DAY_MS, noJudges)).ledger;
+    const twice = (await processResolutionCycleWithJudges(ingestHistory(once, HISTORY, NOW + DAY_MS), [], {}, [], NOW + DAY_MS, noJudges)).ledger;
     assert.deepEqual(twice, once);
   });
 
@@ -356,7 +384,7 @@ describe('existing ledger correction (#8990)', () => {
 
   it('flags corrected rows whose R2 receipt predates the correction, and only those', () => {
     const archived = Object.fromEntries(Object.values(legacy).map((entry) => [entry.key, entry.status === 'resolved' ? { ...entry, receiptArchivedAt: T0 + D + 3 * HOUR_MS } : entry]));
-    const ledger = ingestHistory(archived, [], NOW);
+    const ledger = ingestHistory(archived, HISTORY, NOW);
     const stale = Object.values(ledger).filter(receiptNeedsRearchive).map((entry) => entry.key).sort();
     assert.deepEqual(stale, [keeper.key, ghostResolved.key].sort());
     assert.equal(ledger[keeper.key].receiptArchivedAt, T0 + D + 3 * HOUR_MS, 'the old archive stamp stays until the rewrite lands');
@@ -365,7 +393,7 @@ describe('existing ledger correction (#8990)', () => {
 
   it('moves only the market anchor of a row the old code re-sighted without moving its probability', () => {
     const sameProbability = base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, lastSeenAt: T0 + 3 * DAY_MS, probabilitySource: 'ensemble', baselineProbability: 0.4, passes: [{ probability: 0.2 }], calibration: { marketPrice: 0.9 }, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
-    const ledger = ingestHistory({ [sameProbability.key]: sameProbability }, [], NOW);
+    const ledger = ingestHistory({ [sameProbability.key]: sameProbability }, HISTORY, NOW);
     const row = ledger[sameProbability.key];
     assert.equal(row.probability, 0.2);
     assert.equal('calibration' in row, false);
@@ -378,7 +406,7 @@ describe('existing ledger correction (#8990)', () => {
 
   it('labels a window that opened on the base-rate placeholder and keeps its base rate', () => {
     const placeholder = base(T0, { generationOrigin: 'bet_engine', status: 'resolved', outcome: 'NO', probability: 0.7, firstSeenProbability: 0.4, baselineProbability: 0.4, probabilitySource: 'ensemble', passes: [{ probability: 0.7 }], resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
-    const ledger = ingestHistory({ [placeholder.key]: placeholder }, [], NOW);
+    const ledger = ingestHistory({ [placeholder.key]: placeholder }, HISTORY, NOW);
     const row = ledger[placeholder.key];
     assert.equal(row.probability, 0.4);
     assert.equal(row.probabilitySource, 'base_rate');
@@ -408,27 +436,62 @@ describe('existing ledger correction (#8990)', () => {
 
   it('leaves a row the fixed code re-sighted untouched', () => {
     const current = base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, lastSeenAt: T0 + 3 * DAY_MS, lastSeenProbability: 0.5, calibration: { marketPrice: 0.9 }, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
-    const ledger = ingestHistory({ [current.key]: current }, [], NOW);
+    const ledger = ingestHistory({ [current.key]: current }, HISTORY, NOW);
     assert.deepEqual(ledger[current.key], current);
+  });
+
+  describe('the production run shape: history ingest, then the cycle with no history', () => {
+    const generatedAt = T0;
+    const anchor = { marketPrice: 55, source: 'polymarket' };
+    const opening = { ...brent(generatedAt, 87.43, 85.3, 0.4), baselineProbability: 0.4, probabilitySource: 'ensemble', calibration: anchor };
+    const confirmedRow = () => ({
+      ...ingestHistory({}, [snap(generatedAt, [opening])], generatedAt)[`commodity:BZ=F@${generatedAt + 4 * DAY_MS}`],
+      status: 'resolved', outcome: 'YES', resolvedAt: generatedAt + 4 * DAY_MS + HOUR_MS, evidence: { metricValue: 88 },
+      lastSeenAt: generatedAt + DAY_MS,
+    });
+
+    it('keeps a market anchor that history confirmed through both calls (#8992 R1)', async () => {
+      const row = confirmedRow();
+      const pre = ingestHistory({ [row.key]: row }, [snap(generatedAt, [opening])], generatedAt + 5 * DAY_MS);
+      const { ledger } = await processResolutionCycleWithJudges(pre, [], {}, [], generatedAt + 5 * DAY_MS, noJudges);
+      assert.deepEqual(ledger[row.key].calibration, anchor);
+      assert.equal('rescore' in ledger[row.key], false);
+      const { openingVerifiedAt: _stamp, ...rest } = ledger[row.key];
+      assert.deepEqual(rest, row);
+    });
+
+    it('keeps a confirmed row once its first emission has left the history read', () => {
+      const row = confirmedRow();
+      const confirmed = ingestHistory({ [row.key]: row }, [snap(generatedAt, [opening])], generatedAt + 5 * DAY_MS);
+      const later = ingestHistory(confirmed, [snap(generatedAt + 9 * DAY_MS, [])], generatedAt + 9 * DAY_MS);
+      assert.deepEqual(later[row.key].calibration, anchor);
+      assert.equal('rescore' in later[row.key], false);
+    });
+
+    it('never rescores in a call that read no history', () => {
+      const row = { ...confirmedRow(), probability: 0.7 };
+      const ledger = ingestHistory({ [row.key]: row }, [], generatedAt + 5 * DAY_MS);
+      assert.deepEqual(ledger[row.key], row);
+    });
   });
 
   it('never rescores a VOID row', () => {
     const voided = base(T0, { status: 'resolved', outcome: 'VOID', probability: 0.7, firstSeenProbability: 0.4, resolvedAt: T0 + D + HOUR_MS, evidence: { reason: 'no_establishable_metric' } });
-    const ledger = ingestHistory({ [voided.key]: voided }, [], NOW);
+    const ledger = ingestHistory({ [voided.key]: voided }, HISTORY, NOW);
     assert.equal(ledger[voided.key].probability, 0.7);
     assert.equal('rescore' in ledger[voided.key], false);
   });
 
   it('leaves duplicates out of the card chips', () => {
     const open = base(T0 + 8 * DAY_MS, { status: 'pending', probability: 0.3, firstSeenProbability: 0.3, lastSeenAt: NOW });
-    const ledger = ingestHistory({ ...legacy, [open.key]: open }, [], NOW);
+    const ledger = ingestHistory({ ...legacy, [open.key]: open }, HISTORY, NOW);
     const chips = buildFamilyOutcomes(ledger, NOW);
     assert.ok(chips.length > 0);
     assert.equal(chips.some((chip) => chip.outcome === 'VOID'), false, 'the voided ghost is no earlier outcome of the family');
   });
 
   it('keeps rescored rows out of the calibration fit', () => {
-    const ledger = ingestHistory(legacy, [], NOW);
+    const ledger = ingestHistory(legacy, HISTORY, NOW);
     const cohortKeys = selectFitCohort(ledger, NOW).map((entry) => entry.key);
     assert.equal(cohortKeys.includes(keeper.key), false, 'the restored first-seen probability has no recorded raw value');
     assert.equal(cohortKeys.includes(otherQuestion.key), true);
@@ -496,7 +559,7 @@ describe('bounded receipt re-archive (#8990, #8989)', () => {
 
   it('voids envelope-bug rows before the correction, so none is rescored and then voided', () => {
     const row = { ...envelopeRow(0), probability: 0.5 };
-    const ledger = ingestHistory({ [row.key]: row }, [], T0 + 20 * DAY_MS);
+    const ledger = ingestHistory({ [row.key]: row }, [snap(T0 + 20 * DAY_MS, [])], T0 + 20 * DAY_MS);
     assert.equal(ledger[row.key].evidence.reason, 'resolver_envelope_bug');
     assert.equal('rescore' in ledger[row.key], false);
   });

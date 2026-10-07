@@ -1547,7 +1547,8 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     .filter(Boolean)
     .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
   const openingEmissions = indexEmissions(snapshots, nowMs);
-  correctLedgerWindows(ledger, nowMs, openingEmissions);
+  const historyRead = snapshots.length > 0;
+  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
   const windows = indexQuestionWindows(ledger);
 
   // Emission order, not snapshot order: a later snapshot can carry an earlier
@@ -1593,7 +1594,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   // A window opened this run for an emission the old code had absorbed into
   // another question can precede an existing window of its own question, so
   // the correction runs again and the ledger converges in one run.
-  correctLedgerWindows(ledger, nowMs, openingEmissions);
+  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
 }
@@ -1700,7 +1701,7 @@ function indexEmissions(snapshots, nowMs) {
   return emissions;
 }
 
-export function correctLedgerWindows(ledger, nowMs, emissions = new Map()) {
+export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { historyRead = true } = {}) {
   const byId = new Map();
   const horizonByParent = new Map();
   for (const entry of Object.values(ledger)) {
@@ -1732,7 +1733,11 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map()) {
     }
   }
 
+  // Only a call that read history can tell a row the old code overwrote from
+  // a correct one. The cycle's own ingest passes no history, so it never
+  // rescores.
   let rescored = 0;
+  if (!historyRead) return { duplicates, rescored };
   for (const entry of Object.values(ledger)) {
     if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID' || entry.rescore) continue;
     if (rescoreToFirstSeen(entry, nowMs, emissions.get(`${entry.id}|${Number(entry.generatedAt)}`))) rescored += 1;
@@ -1761,7 +1766,12 @@ function rescoreToFirstSeen(entry, nowMs, firstEmission) {
   if (firstEmission && Number(firstEmission.probability) === first) {
     const opened = createEntry(entry.id, firstEmission, firstEmission.resolution || {}, entry.generatedAt, entry.firstSeenAt, entry.deadline);
     const changed = OPENING_FIELDS.filter((field) => JSON.stringify(entry[field]) !== JSON.stringify(opened[field]));
-    if (!probabilityMoved && !changed.length) return false;
+    if (!probabilityMoved && !changed.length) {
+      // Confirmed against its first emission: a later call without that
+      // emission must not infer a correction for it.
+      entry.openingVerifiedAt = nowMs;
+      return false;
+    }
     const superseded = Object.fromEntries(changed.map((field) => [field, field in entry ? entry[field] : null]));
     entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, restoredFromHistory: true, rescoredAt: nowMs };
     for (const field of changed) {
@@ -1787,9 +1797,9 @@ function rescoreToFirstSeen(entry, nowMs, firstEmission) {
 // A later sighting before #8990 could overwrite the sighting fields without
 // moving the published probability. Since #8990 every sighting after the
 // first records lastSeenProbability, so a row seen again without it was
-// last updated by the old code.
+// last updated by the old code, unless history already confirmed it.
 function sightedBeforeFix(entry) {
-  return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry);
+  return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry) && !entry.openingVerifiedAt;
 }
 
 function voidDuplicateWindow(entry, keeperKey, nowMs) {
@@ -1864,10 +1874,21 @@ const UNAVAILABLE_COUNT_FEED_MIGRATIONS = [
   { feed: CYBER_COUNT_SOURCE_FEED, available: () => false, buildQuestion: buildCyberJudgedQuestionForEntry },
 ];
 
+// Tests flip a feed's availability to exercise a phase-2 flag change.
+const COUNT_FEED_AVAILABILITY_OVERRIDES = new Map();
+export function __setCountFeedAvailableForTests(feed, available) {
+  if (available === undefined) COUNT_FEED_AVAILABILITY_OVERRIDES.delete(feed);
+  else COUNT_FEED_AVAILABILITY_OVERRIDES.set(feed, available);
+}
+
+function countFeedAvailable(migration) {
+  return COUNT_FEED_AVAILABILITY_OVERRIDES.get(migration.feed) ?? migration.available();
+}
+
 function migratePendingCountEntryToJudged(entry, { ignoreAvailability = false } = {}) {
   if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
   const migration = UNAVAILABLE_COUNT_FEED_MIGRATIONS.find(
-    (m) => m.feed === entry.spec.sourceFeed && (ignoreAvailability || !m.available()),
+    (m) => m.feed === entry.spec.sourceFeed && (ignoreAvailability || !countFeedAvailable(m)),
   );
   if (!migration) return;
   const parsed = parseMetricKey(entry.spec.metricKey);
