@@ -2412,6 +2412,7 @@
           "withheld_unpublished": "Este tipo de pronóstico ya no se publica",
           "resolver_envelope_bug": "Se evaluó con una fuente de datos que no pudimos leer correctamente",
           "market_price_not_outcome": "El feed mostraba el precio del mercado, no cómo se resolvió el mercado",
+          "judged_evidence_unreliable": "Excluido de la puntuación mientras se corrigen las pruebas de los jueces",
           "other": "No se pudo resolver"
         }
       },

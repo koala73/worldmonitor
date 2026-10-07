@@ -2147,6 +2147,7 @@
           "withheld_unpublished": "Ova vrsta prognoze više se ne objavljuje",
           "resolver_envelope_bug": "Ocijenjeno prema izvoru podataka koji nismo mogli ispravno pročitati",
           "market_price_not_outcome": "Izvor je prikazivao tržišnu cijenu, a ne kako je tržište razriješeno",
+          "judged_evidence_unreliable": "Izuzeto iz ocjenjivanja dok se dokazi za suce ne isprave",
           "other": "Nije moglo biti riješeno"
         }
       },

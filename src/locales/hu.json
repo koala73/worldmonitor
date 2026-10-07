@@ -2136,6 +2136,7 @@
           "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
           "resolver_envelope_bug": "Olyan adatforrás alapján értékelve, amelyet nem tudtunk helyesen beolvasni",
           "market_price_not_outcome": "A feed a piaci árat mutatta, nem azt, hogyan zárult a piac",
+          "judged_evidence_unreliable": "Kizárva az értékelésből, amíg a bírák bizonyítékait javítjuk",
           "other": "Nem lehetett eldönteni"
         }
       },

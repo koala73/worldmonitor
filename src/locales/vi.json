@@ -2392,6 +2392,7 @@
           "withheld_unpublished": "Loại dự báo này không còn được công bố",
           "resolver_envelope_bug": "Được chấm theo nguồn dữ liệu mà chúng tôi không đọc đúng được",
           "market_price_not_outcome": "Nguồn dữ liệu chỉ cho thấy giá thị trường, không cho thấy thị trường đã được phân định ra sao",
+          "judged_evidence_unreliable": "Tạm loại khỏi việc chấm điểm trong khi bằng chứng cho giám khảo đang được sửa",
           "other": "Không thể xác định kết quả"
         }
       },

@@ -2412,6 +2412,7 @@
           "withheld_unpublished": "Questo tipo di previsione non viene più pubblicato",
           "resolver_envelope_bug": "Valutato su un feed di dati che non riuscivamo a leggere correttamente",
           "market_price_not_outcome": "Il feed mostrava il prezzo di mercato, non come si è risolto il mercato",
+          "judged_evidence_unreliable": "Escluso dal punteggio finché le prove dei giudici non vengono corrette",
           "other": "Non è stato possibile risolverla"
         }
       },

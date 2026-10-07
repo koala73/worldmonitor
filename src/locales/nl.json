@@ -2019,6 +2019,7 @@
           "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
           "resolver_envelope_bug": "Beoordeeld tegen een datafeed die we niet correct konden lezen",
           "market_price_not_outcome": "De feed toonde de marktprijs, niet hoe de markt is afgewikkeld",
+          "judged_evidence_unreliable": "Buiten de score gehouden zolang het bewijs voor de beoordelaars wordt hersteld",
           "other": "Kon niet worden beslist"
         }
       },

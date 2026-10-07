@@ -232,6 +232,20 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
   return { ledger, receipts, scorecard };
 }
 
+// The judges' archive held 0 to 2 on-subject items for cyber rows and the
+// pair never ruled NO, so a judged cyber score could only be an unsupported
+// YES (#5233). Phase 2 of #8990 flips this once the evidence is fixed; the
+// dedicated reason lets it find the rows held out meanwhile.
+export const CYBER_JUDGING_HELD = true;
+export const JUDGED_EVIDENCE_UNRELIABLE_REASON = 'judged_evidence_unreliable';
+
+function isHeldCyberJudgedEntry(entry, nowMs) {
+  return CYBER_JUDGING_HELD
+    && entry?.status === 'pending-judge'
+    && entry.domain === 'cyber'
+    && Number(entry.deadline ?? entry.spec?.deadline) <= nowMs;
+}
+
 export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, options = {}) {
   const receipts = [];
   const maxEntries = Number.isFinite(options.maxJudgedEntries)
@@ -248,11 +262,15 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
   const backoffPolicy = resolveJudgedBackoffPolicy(options);
   let attempted = 0;
 
-  // Withheld buckets (#5234) have no checkable question and no published
-  // figure counts them, so they seal without a judge call or a budget slot.
+  // Withheld buckets (#5234) and held cyber rows (#5233) seal without a judge
+  // call or a budget slot.
   for (const [key, entry] of Object.entries(ledger)) {
-    if (entry?.status !== 'pending-judge' || !isWithheldEntry(entry)) continue;
-    const result = resolvedJudgedResult('VOID', 'withheld_unpublished', entry, [], [], nowMs);
+    const reason = entry?.status !== 'pending-judge' ? null
+      : isWithheldEntry(entry) ? 'withheld_unpublished'
+        : isHeldCyberJudgedEntry(entry, nowMs) ? JUDGED_EVIDENCE_UNRELIABLE_REASON
+          : null;
+    if (!reason) continue;
+    const result = resolvedJudgedResult('VOID', reason, entry, [], [], nowMs);
     recordJudgedTerminalAttempt(entry, result, nowMs);
     result.evidence = pruneUndefined({
       ...result.evidence,

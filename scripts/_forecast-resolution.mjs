@@ -525,6 +525,9 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
+    // Unreachable for emission while cyber is in JUDGED_DOMAINS (#5233); kept
+    // for the judged question's threshold and for the per-cycle accumulation
+    // that would let a hard cyber count return.
     case 'cyber': {
       const tally = firstFiniteSignalCount(pred, new Set(['cyber']));
       if (!Number.isFinite(tally)) return null;
@@ -657,6 +660,12 @@ function buildQuestion(pred) {
   }
   if (domain === 'political') {
     return `Within the ${horizon} horizon, did ${region} experience a materially elevated level of civil unrest or political instability versus its recent baseline, consistent with "${title}"?`;
+  }
+  if (domain === 'cyber') {
+    const metrics = deriveHardMetrics(pred, 'cyber', {});
+    if (metrics) {
+      return `Within the ${horizon} horizon after this forecast, did public threat-intelligence sources report at least ${metrics.threshold} new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to ${region}?`;
+    }
   }
   return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
 }
