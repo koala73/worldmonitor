@@ -268,15 +268,14 @@ function injectStyles(): void {
     .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
     .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .fc-reliability-placeholder { visibility: hidden; }
-    .fc-card-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; contain: inline-size; }
-    .fc-card-meta .fc-reliability { flex: 0 1 auto; min-width: 0; }
+    .fc-card-meta { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; contain: inline-size; }
+    .fc-card-meta .fc-reliability { flex: 1 1 5em; min-width: 0; max-width: max-content; }
     .fc-res-chip, .fc-res-history { flex: none; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
     .fc-res-chip { padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
     .fc-res-void { flex: none; min-width: 0; }
     .fc-res-void > summary { display: flex; align-items: baseline; gap: 6px; list-style: none; cursor: pointer; }
     .fc-res-void > summary::-webkit-details-marker { display: none; }
     .fc-res-void > summary .fc-res-chip { text-decoration: underline dotted; text-underline-offset: 2px; }
-    .fc-card-meta:has(> .fc-res-void[open]) { flex-wrap: wrap; }
     .fc-res-void[open] { flex-basis: 100%; }
     .fc-res-reasons { margin: 2px 0 0; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); white-space: normal; }
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }

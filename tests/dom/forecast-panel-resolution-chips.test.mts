@@ -221,15 +221,19 @@ describe('ForecastPanel resolution chips', () => {
     expect(cardFor(panel, 'fc-a').querySelector('.fc-res-chip')).toBeNull();
   });
 
-  it('keeps chips and badge on one line without growing it: no border on the chip, the row sizes to its column', () => {
+  it('keeps the chip line inside its column: no border on the chip, the badge wraps below a chip rather than collapsing to zero', () => {
     new ForecastPanel().destroy();
     const css = Array.from(document.head.querySelectorAll('style')).map((el) => el.textContent ?? '').join('\n');
     const rule = (selector: string) => css.match(new RegExp(`(^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*\\}`))?.[0] ?? '';
     expect(rule('.fc-card-meta')).toMatch(/contain:\s*inline-size/);
     expect(rule('.fc-res-chip')).not.toMatch(/(^|[;{\s])border:/);
     expect(rule('.fc-reliability')).not.toMatch(/contain:/);
-    expect(rule('.fc-card-meta'), 'a closed row never wraps, so a long badge truncates').not.toMatch(/flex-wrap/);
-    expect(css).toMatch(/\.fc-card-meta:has\(> \.fc-res-void\[open\]\)\s*\{[^}]*flex-wrap:\s*wrap/);
+    // A 390px card leaves ~60px beside a chip. The badge claims a small basis, so it wraps to its own line
+    // there instead of shrinking to 0px; with room it stays on the chip line and truncates with an ellipsis.
+    expect(rule('.fc-card-meta')).toMatch(/flex-wrap:\s*wrap/);
+    const badge = rule('.fc-card-meta .fc-reliability');
+    expect(badge).toMatch(/flex:\s*1 1 \d+(\.\d+)?em/);
+    expect(badge).toMatch(/max-width:\s*max-content/);
   });
 
   it('patches chips in place beside the badge, on the same line slot', async () => {
