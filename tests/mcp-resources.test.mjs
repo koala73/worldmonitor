@@ -123,6 +123,25 @@ function mountWidgetHtml(html) {
     setAttribute(name, value) {
       this.attributes[name] = String(value);
     }
+    getAttribute(name) {
+      return this.attributes[name] ?? null;
+    }
+    querySelectorAll(selector) {
+      const matches = [];
+      const visit = (node) => {
+        for (const child of node.childNodes) {
+          if (selector.startsWith('.')
+            ? child.className.split(/\s+/).includes(selector.slice(1))
+            : child.tagName.toLowerCase() === selector.toLowerCase()) matches.push(child);
+          visit(child);
+        }
+      };
+      visit(this);
+      return matches;
+    }
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] ?? null;
+    }
     getBoundingClientRect() {
       return { height: 240 };
     }
@@ -444,7 +463,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters-v2.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
       'ui://worldmonitor/news-dashboard-v3.html',
       'ui://worldmonitor/country-view-v3.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
@@ -672,25 +691,49 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // CSP / dark-mode / bridge contract. Generalises the single-widget check to
   // the whole ui:// registry read back off the wire.
   // -------------------------------------------------------------------------
-  it('FORECAST: advertises one versioned shell and preserves the saved original URI as a public read alias', async () => {
+  it('FORECAST: advertises v4 and preserves prior URIs as public quota-free read aliases', async () => {
+    const uri = 'ui://worldmonitor/forecasts-v4.html';
+    const aliases = ['ui://worldmonitor/forecasts-v3.html', 'ui://worldmonitor/forecasts-v2.html', 'ui://worldmonitor/forecasts.html'];
     const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const resources = (await listRes.json()).result.resources;
-    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts-v3.html').length, 1);
-    assert.equal(resources.filter(resource => resource.uri === 'ui://worldmonitor/forecasts.html').length, 0, 'saved alias must not create another advertised resource');
-    const currentRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v3.html')));
+    assert.equal(resources.filter(resource => resource.uri === uri).length, 1, 'v4 must identify the current Forecast renderer');
+    for (const alias of aliases) assert.equal(resources.filter(resource => resource.uri === alias).length, 0);
+    assert.equal(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')._uiResourceUri, uri);
+    const listedTools = (await (await handler(envKeyReq({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} }))).json()).result.tools;
+    const forecastTool = listedTools.find(tool => tool.name === 'get_forecast_predictions');
+    assert.equal(forecastTool._meta.ui.resourceUri, uri);
+    assert.equal(forecastTool._meta['ui/resourceUri'], uri);
+    const currentRes = await handler(anonReq(readBody(uri)));
     const current = (await currentRes.json()).result.contents[0];
-    const legacyRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts.html')));
-    const legacy = (await legacyRes.json()).result.contents[0];
-    assert.equal(current.uri, 'ui://worldmonitor/forecasts-v3.html');
-    assert.equal(legacy.uri, 'ui://worldmonitor/forecasts.html', 'read responses must preserve the requested URI');
-    assert.equal(legacy.text, current.text, 'saved alias must serve the current forecast renderer');
-    assert.equal(legacy.mimeType, current.mimeType);
-    const previousRes = await handler(anonReq(readBody('ui://worldmonitor/forecasts-v2.html')));
-    const previous = (await previousRes.json()).result.contents[0];
-    assert.equal(previous.uri, 'ui://worldmonitor/forecasts-v2.html');
-    assert.equal(previous.text, current.text);
-    assert.equal(resources.filter(resource => resource.uri === previous.uri).length, 0);
-    assert.deepEqual(legacy._meta, current._meta);
+    assert.equal(current.uri, uri);
+    assert.match(current.text, /Accuracy under audit/);
+    assert.match(current.text, /data-unverified/);
+    assert.match(current.text, /familyOutcomes/);
+    assert.match(current.text, /scoredHorizons/);
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (String(args[0]) !== 'https://fake.upstash.io/pipeline') reads++;
+      return mockFetch(...args);
+    };
+    try {
+      for (const requested of [uri, ...aliases]) {
+        for (const request of [anonReq(readBody(requested)), proReq('POST', readBody(requested))]) {
+          const response = await mcpHandler(request, deps);
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.error, undefined);
+          const content = body.result.contents[0];
+          assert.equal(content.uri, requested);
+          assert.equal(content.text, current.text);
+          assert.equal(content.mimeType, current.mimeType);
+          assert.deepEqual(content._meta, current._meta);
+        }
+      }
+    } finally { globalThis.fetch = mockFetch; }
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
     assert.match(resources.find(resource => resource.uri === current.uri).description, /original case/);
   });
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
@@ -766,7 +809,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/conflict-events-v2.html',
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets-v3.html',
-      'ui://worldmonitor/forecasts-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
     ];
     for (const uri of shellWidgets) {
       const res = await handler(envKeyReq(readBody(uri)));
@@ -863,7 +906,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html',
+        uri: 'ui://worldmonitor/forecasts-v4.html',
         hostId: 'list',
         raw: { data: { predictions: { predictions: [{
           title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
@@ -967,7 +1010,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         ] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [
           { title: 'Unknown forecast', probability: null },
           { title: 'Fraction forecast', probability: 0.25 },
@@ -1201,7 +1244,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
       },
       {
-        uri: 'ui://worldmonitor/forecasts-v3.html', hostId: 'list',
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
         payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
       },
     ];
@@ -2149,7 +2192,7 @@ describe('shared MCP notification failures', () => {
       ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
       ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
       ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],
-      ['forecasts-v3', 'list', { data: { predictions: { predictions: [{ title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global' }] } } }, /Oil remains above/],
+      ['forecasts-v4', 'list', { data: { predictions: { predictions: [{ title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global' }] } } }, /Oil remains above/],
     ];
     for (const [name, id, payload, token] of cases) {
       const response = await buildUiResourceRead(1, 'ui://worldmonitor/' + name + '.html', {});

@@ -60,8 +60,9 @@ const LEGACY_NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.htm
 export const PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets-v3.html';
 const PREVIOUS_PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets-v2.html';
 const LEGACY_PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets.html';
-export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v3.html';
-const PREVIOUS_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v2.html';
+export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v4.html';
+const PREVIOUS_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v3.html';
+const LEGACY_FORECASTS_V2_UI_URI = 'ui://worldmonitor/forecasts-v2.html';
 const LEGACY_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts.html';
 
 // Per-resource `_meta.ui` (ext-apps `UIResourceMeta`) is built by the shared
@@ -183,7 +184,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
-  return uri === PREVIOUS_COUNTRY_RISK_UI_URI || uri === PREVIOUS_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_RISK_UI_URI || uri === LEGACY_WORLD_BRIEF_UI_URI || uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI || uri === PREVIOUS_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_CONFLICT_EVENTS_UI_URI || uri === LEGACY_NATURAL_DISASTERS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI || uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
+  return uri === PREVIOUS_COUNTRY_RISK_UI_URI || uri === PREVIOUS_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_RISK_UI_URI || uri === LEGACY_WORLD_BRIEF_UI_URI || uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI || uri === PREVIOUS_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_CONFLICT_EVENTS_UI_URI || uri === LEGACY_NATURAL_DISASTERS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI || uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_V2_UI_URI || uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
 // resources/list public shape — {uri, name, description, mimeType} plus the
@@ -225,7 +226,7 @@ export async function buildUiResourceRead(
     : uri === LEGACY_CONFLICT_EVENTS_UI_URI ? CONFLICT_EVENTS_UI_URI
     : uri === LEGACY_NATURAL_DISASTERS_UI_URI ? NATURAL_DISASTERS_UI_URI
     : (uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI) ? PREDICTION_MARKETS_UI_URI
-    : uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI ? FORECASTS_UI_URI
+    : uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_V2_UI_URI ? FORECASTS_UI_URI
       : uri;
   const def = UI_RESOURCE_BY_URI.get(canonicalUri);
   if (!def) {
