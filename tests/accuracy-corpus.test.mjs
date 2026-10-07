@@ -1742,7 +1742,8 @@ describe('accuracy record under audit (#8990)', () => {
   const FULL = sectionWith({ uncertainty: UNCERTAINTY, funnel: FUNNEL, receipts: RECEIPTS, marketAlerts: MARKET_ALERTS });
   const NOTICE = `Under audit since 2026-10-07. ${AUDIT.reason} The scores previously shown here were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.`;
   const audited = () => renderState(FULL, { audit: AUDIT });
-  const visibleText = (html) => stripTags(html.split('<body>')[1].replace(/<script[\s\S]*?<\/script>/g, '')).replaceAll('&quot;', '"');
+  // The page body only: JSON-LD lives in the head, so it never counts as visible copy.
+  const visibleText = ({ shell }) => stripTags(shell.body).replaceAll('&quot;', '"');
 
   it('keeps the switch either lifted or a well-formed audit', () => {
     if (FORECAST_ACCURACY_AUDIT === null) return;
@@ -1773,8 +1774,9 @@ describe('accuracy record under audit (#8990)', () => {
   });
 
   it('replaces the headline, the verdict and every score with the dated notice', () => {
-    const { html } = audited();
-    const text = visibleText(html);
+    const rendered = audited();
+    const { html } = rendered;
+    const text = visibleText(rendered);
     assert.ok(text.includes(NOTICE), 'the notice must read in full');
     assert.match(html, /<a href="https:\/\/github\.com\/koala73\/worldmonitor\/issues\/8990">issue #8990<\/a>/);
     for (const marker of [
@@ -1795,7 +1797,7 @@ describe('accuracy record under audit (#8990)', () => {
     assert.ok(callout, 'the notice is a bordered callout');
     assert.doesNotMatch(callout, /<h2/);
     assert.match(callout, /<p><strong>Under audit since 2026-10-07\.<\/strong> An audit found three errors/);
-    assert.equal(visibleText(html).split('Under audit since').length - 1, 1);
+    assert.equal(visibleText(audited()).split('Under audit since').length - 1, 1);
   });
 
   it('states in the lede what the page does without claiming every forecast is scored', () => {
