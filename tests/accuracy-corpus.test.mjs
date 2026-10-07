@@ -1697,3 +1697,28 @@ describe('accuracy page publishing contract', () => {
     }
   });
 });
+
+describe('accuracy page after the #5233 correction', () => {
+  const CORRECTION = 'could not read';
+
+  it('the committed pre-correction snapshot carries no correction note', () => {
+    const snapshot = JSON.parse(read('docs/snapshots/crawlable-live-pulse-2026-10-05.json'));
+    const { html } = renderState(snapshot.forecastScorecard);
+    assert.doesNotMatch(stripTags(html), new RegExp(CORRECTION));
+  });
+
+  it('shows the note when the captured scorecard reports the voids', () => {
+    const methodology = `${LIVE_SCORECARD.methodology} 215 forecasts scored against a data feed we could not read correctly are voided and left out of every score (issue #5233).`;
+    const { html } = renderState(sectionWith({ methodology }));
+    assert.match(stripTags(html), /215 forecasts scored against a data feed we could not read correctly are voided/);
+  });
+
+  it('calls a headline cohort under the domain-table minimum a small sample', () => {
+    const small = stripTags(renderState(sectionWith({ skill: { ...LIVE_SCORECARD.skill, count: 28, yesCount: 20, brier: 0.311271 } })).html);
+    assert.match(small, /The headline cohort has 28 scored forecasts\. That is fewer than the 30 the domain table needs before it publishes a score, so read the headline score as a small sample\./);
+    assert.doesNotMatch(small, /enough to publish a score/);
+    const large = stripTags(renderState(LIVE_SECTION).html);
+    assert.match(large, /The headline cohort has 180 scored forecasts, enough to publish a score\./);
+    assert.doesNotMatch(large, /small sample/);
+  });
+});

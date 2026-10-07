@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { ENVELOPE_BUG_VOID_REASON, processResolutionCycle, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
+import { ENVELOPE_BUG_VOID_REASON, processResolutionCycle, processResolutionCycleWithJudges, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
 import { evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
 import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
@@ -117,6 +117,15 @@ function preFixRow(id, sourceFeed, metricKey, outcome, evidence) {
   };
 }
 
+// resolveDueEntries never stamps a horizon row, so a zero it reads after the
+// fix carries no envelopeAware either.
+function horizonRow() {
+  const row = preFixRow('fc-infra-horizon', INFRA_FEED, `${INFRA_FEED}|present(country==Iraq)`, 'NO', { metricValue: 0 });
+  row.key = `${row.id}@d7@${T0 + 7 * DAY_MS}`;
+  row.spec = { ...row.spec, horizon: 'd7' };
+  return row;
+}
+
 function preFixLedger() {
   const rows = [
     preFixRow('fc-cyber-zero', CYBER_FEED, `${CYBER_FEED}|count(country==Romania)`, 'NO', { metricValue: 0, comparison: '0 >= 8', sampleSpan: { count: 0 } }),
@@ -124,6 +133,8 @@ function preFixLedger() {
     preFixRow('fc-infra-void', INFRA_FEED, `${INFRA_FEED}|present(country==Iraq)`, 'VOID', { reason: 'no_establishable_metric' }),
     preFixRow('fc-ucdp-zero', 'conflict:ucdp-events:v1', 'conflict:ucdp-events:v1|count(country==Mali)', 'NO', { metricValue: 0, comparison: '0 >= 8' }),
     preFixRow('fc-cyber-postfix', CYBER_FEED, `${CYBER_FEED}|count(country==Romania)`, 'NO', { metricValue: 0, comparison: '0 >= 8', envelopeAware: true }),
+    preFixRow('fc-cyber-nonzero', CYBER_FEED, `${CYBER_FEED}|count(country==Romania)`, 'NO', { metricValue: 3, comparison: '3 >= 8' }),
+    horizonRow(),
   ];
   return Object.fromEntries(rows.map((row) => [row.key, row]));
 }
@@ -132,7 +143,8 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
   it('voids only zero reads of the enveloped feeds that the old reader resolved', () => {
     const before = preFixLedger();
     const ledger = structuredClone(before);
-    assert.equal(voidEnvelopeBugResolutions(ledger), 2);
+    const voidedAt = T0 + 10 * DAY_MS;
+    assert.equal(voidEnvelopeBugResolutions(ledger, voidedAt), 2);
     const byId = Object.fromEntries(Object.values(ledger).map((row) => [row.id, row]));
     for (const id of ['fc-cyber-zero', 'fc-infra-zero']) {
       const original = Object.values(before).find((row) => row.id === id);
@@ -143,20 +155,21 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
         resolvedAt: original.resolvedAt,
         supersededOutcome: 'NO',
         supersededEvidence: original.evidence,
+        voidedAt,
       });
       assert.equal(byId[id].resolvedAt, original.resolvedAt, 'the row stays in the same rolling window');
     }
-    for (const id of ['fc-infra-void', 'fc-ucdp-zero', 'fc-cyber-postfix']) {
+    for (const id of ['fc-infra-void', 'fc-ucdp-zero', 'fc-cyber-postfix', 'fc-cyber-nonzero', 'fc-infra-horizon']) {
       assert.deepEqual(byId[id], Object.values(before).find((row) => row.id === id), id);
     }
   });
 
   it('is idempotent', () => {
     const once = preFixLedger();
-    voidEnvelopeBugResolutions(once);
+    voidEnvelopeBugResolutions(once, T0 + 10 * DAY_MS);
     const twice = structuredClone(once);
-    assert.equal(voidEnvelopeBugResolutions(twice), 0);
-    assert.deepEqual(twice, once);
+    assert.equal(voidEnvelopeBugResolutions(twice, T0 + 11 * DAY_MS), 0);
+    assert.deepEqual(twice, once, 'a later run keeps the first voidedAt');
   });
 
   it('keeps a genuine zero the fixed reader resolves, across later cycles', () => {
@@ -177,6 +190,24 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
     assert.equal(scorecard.totals.void - before.totals.void, 2);
     const receipt = buildPublicReceipts(ledger, nowMs).find((row) => row.voidReason === ENVELOPE_BUG_VOID_REASON);
     assert.ok(receipt, 'a voided row is published as a receipt with its reason');
-    assert.equal(RECEIPT_VOID_REASON_LABELS[receipt.voidReason], 'Scored against a feed the resolver could not read; voided on 2026-10-07');
+    assert.equal(RECEIPT_VOID_REASON_LABELS[receipt.voidReason], 'Scored against a data feed we could not read correctly');
+    assert.equal(Object.values(ledger).find((row) => row.id === 'fc-cyber-zero').evidence.voidedAt, nowMs);
+  });
+
+  it('runs inside the judged cycle that production calls', async () => {
+    const nowMs = T0 + 10 * DAY_MS;
+    const { ledger } = await processResolutionCycleWithJudges(preFixLedger(), [], {}, { items: [], available: false }, nowMs);
+    const voided = Object.values(ledger).filter((row) => row.evidence?.reason === ENVELOPE_BUG_VOID_REASON).map((row) => row.id).sort();
+    assert.deepEqual(voided, ['fc-cyber-zero', 'fc-infra-zero']);
+  });
+
+  it('explains the voids in the scorecard methodology only while the window holds them', () => {
+    const nowMs = T0 + 10 * DAY_MS;
+    const { scorecard } = processResolutionCycle(preFixLedger(), [], {}, nowMs);
+    assert.match(scorecard.methodology, / 2 forecasts scored against a data feed we could not read correctly are voided and left out of every score \(issue #5233\)\.$/);
+    assert.doesNotMatch(computeScorecard(preFixLedger(), nowMs).methodology, /could not read correctly/);
+    const one = preFixLedger();
+    delete one['fc-infra-zero@' + (T0 + 7 * DAY_MS)];
+    assert.match(processResolutionCycle(one, [], {}, nowMs).scorecard.methodology, / 1 forecast scored against a data feed we could not read correctly is voided /);
   });
 });
