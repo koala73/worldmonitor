@@ -3553,4 +3553,17 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     assert.equal(next[pending.key].outcome, 'YES');
     assert.equal(next[pending.key].evidence.metricValue, 5);
   });
+
+  it('stamps a stale post-deadline read with its snapshot day, so the deadline-day count still decides', () => {
+    const zone = (date, count) => shapeResolutionFeeds({
+      [GPS_FEED]: { date, hexes: Array.from({ length: count }, () => ({ lat: 35, lon: 30, level: 'high', region: 'turkey-caucasus' })) },
+    });
+    const dayBefore = new Date(deadline - DAY_MS).toISOString().slice(0, 10);
+    const first = processResolutionCycle({ [pending.key]: structuredClone(pending) }, [], zone(dayBefore, 9), deadline + DAY_MS);
+    assert.equal(first.ledger[pending.key].status, 'pending');
+    assert.equal(first.ledger[pending.key].samples.last.ts, Date.parse(dayBefore));
+    const second = processResolutionCycle(first.ledger, [], zone(deadlineDate, 2), deadline + 2 * DAY_MS);
+    assert.equal(second.ledger[pending.key].outcome, 'NO');
+    assert.equal(second.ledger[pending.key].evidence.metricValue, 2);
+  });
 });
