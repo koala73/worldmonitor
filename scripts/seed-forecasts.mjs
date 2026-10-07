@@ -4979,9 +4979,9 @@ function buildHistoryForecastEntry(pred) {
       effect: cascade.effect,
       probability: cascade.probability,
     })),
-    // History is the only store for projections (#8967): horizon scoring
-    // grades each hard horizon contract on these values, and the public
-    // payload no longer carries them.
+    // Horizon scoring grades each hard horizon contract on these values and
+    // reads them only from history; the canonical published payload omits
+    // them (#8967).
     projections: pred.projections ? {
       h24: Number(pred.projections.h24 || 0),
       d7: Number(pred.projections.d7 || 0),
