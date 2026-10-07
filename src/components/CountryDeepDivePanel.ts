@@ -3454,11 +3454,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       for (const rec of rows) {
         const tr = this.el('tr', '');
         const worldRec = worldByCommodity.get(rec.commodity);
+        const worldRatio = this.formatStocksToUse(worldRec?.stocksToUse, worldRec);
+        const worldLabel = worldRatio !== '—' && worldRec?.marketingYear
+          ? `${worldRatio} (${worldRec.marketingYear})`
+          : worldRatio;
         tr.append(
           this.el('td', '', this.foodStockCommodityLabel(rec.commodity)),
           this.el('td', '', rec.marketingYear || '—'),
           this.el('td', '', this.formatStocksToUse(rec.stocksToUse, rec)),
-          this.el('td', '', this.formatStocksToUse(worldRec?.stocksToUse, worldRec)),
+          this.el('td', '', worldLabel),
         );
         tbody.append(tr);
       }
