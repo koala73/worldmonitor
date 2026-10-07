@@ -65,6 +65,31 @@ took 259s because the longest job, `variant-smoke-pro-webmcp`, waited 39s for a
 runner. The cause of that wait was not confirmed. That job is the next one to
 shorten.
 
+## Playwright install-deps adds no library on the hosted image
+
+On ubuntu-24.04, `npx playwright install-deps chromium` downloaded 32.5 MB on
+every browser job, plus an 11.6 MB `apt-get update`. That came to about 21 MB
+of fonts (CJK, Japanese, Thai, GNU FreeFont, Unifont and X11 fonts) and about
+11 MB of Mesa upgrades. `ldd` found no missing library on either Playwright
+browser binary. One run fetched from the Azure mirror at 228 kB/s, which took
+158s and set the run's wall time.
+
+The browser jobs now:
+
+- Run `ldd` on the Playwright browser binaries and call `install-deps` only
+  when a library is missing or no binary is found. The 8-minute cap and the
+  repair step still apply when the fallback runs.
+- Install only the fonts the shipped locales need beyond the image's DejaVu,
+  Liberation and Noto Color Emoji: `fonts-wqy-zenhei` (zh, ja and ko),
+  `fonts-tlwg-loma-otf` (th) and `fonts-lohit-deva` (hi). The
+  `install-browser-fonts` action caches the `.deb` files, so most runs download
+  nothing. The step takes 9-11s and runs beside the dependency restore. A
+  failed font install only warns, because fonts affect only the evidence
+  screenshots.
+
+The E2E Visual workflow keeps the full `install-deps`, because its golden
+screenshots depend on rendering.
+
 ## Parallel-step behavior verified on hosted runners
 
 - `parallel:` and `background: true` parse and run. `cancel: <id>` is rejected
