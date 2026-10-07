@@ -157,6 +157,11 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.deepEqual(served(null).underAudit?.issue, 8990);
     assert.deepEqual(served({ ...scorecard, degraded: true }).underAudit?.issue, 8990);
   });
+  it('declares underAudit in the reliability output schema', () => {
+    const reliability = opening.outputSchema.properties.data.properties.reliability;
+    assert.deepEqual(reliability.properties.underAudit.type, 'object');
+    assert.deepEqual(Object.keys(reliability.properties.underAudit.properties).sort(), ['issue', 'reason', 'since']);
+  });
   it('serves through the live switch', () => {
     const data = { predictions: structuredClone(full), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
     const viaTool = opening._postFilter(structuredClone(data), {}, paid).reliability;
