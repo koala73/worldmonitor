@@ -163,6 +163,7 @@ export interface GetForecastScorecardResponse {
   uncertainty?: ScorecardUncertainty;
   funnel?: ScorecardFunnel;
   receipts: ScorecardReceipt[];
+  marketAlerts?: MarketAlertScorecard;
 }
 
 export interface ScorecardTotals {
@@ -278,6 +279,24 @@ export interface ScorecardReceipt {
   observedValue?: number;
   citationTitle: string;
   citationUrl: string;
+}
+
+export interface MarketAlertScorecard {
+  generatedAt: number;
+  windowHours: number;
+  rollingWindowDays: number;
+  methodology: string;
+  byType: MarketAlertRow[];
+}
+
+export interface MarketAlertRow {
+  type: string;
+  n: number;
+  hitRate?: number;
+  baseN: number;
+  baseHitRate?: number;
+  pairedHitRate?: number;
+  medianLeadTimeMs?: number;
 }
 
 export interface GetSimulationPackageRequest {

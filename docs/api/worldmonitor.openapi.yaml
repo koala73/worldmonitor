@@ -11511,10 +11511,8 @@ paths:
                 - name: runId
                   in: query
                   description: |-
-                    Optional run identifier. Does not select the package — the latest stored package is
-                     always returned regardless of this value. When supplied and it differs from the
-                     returned package's runId, the response `note` field is populated to warn that per-run
-                     filtering is not yet active. Reserved for Phase 3 per-run lookup.
+                    Optional run identifier. The latest package is always returned; when it
+                     differs from this value, note says so.
                   required: false
                   example: "example-id"
                   schema:
@@ -43426,10 +43424,8 @@ components:
                 trend:
                     type: string
                     description: |-
-                        Forecast trend direction. Current values are "rising", "falling", and
-                         "stable". The seeder compares probability against the prior forecast
-                         snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
-                         below -0.05 are falling, and everything inside the band is stable.
+                        "rising", "falling", or "stable" versus the prior snapshot, with a
+                         +/-0.05 deadband on the probability delta.
                 priorProbability:
                     type: number
                     format: double
@@ -43452,17 +43448,14 @@ components:
                 simulationAdjustment:
                     type: number
                     format: double
-                    description: |-
-                        Simulation-scoring fields — populated when the deep forecast simulation pipeline
-                         has run for this forecast's state and produced a non-zero adjustment.
-                         simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
-                         sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
-                         demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+                    description: Score delta from the deep simulation pipeline; 0 when it has not run.
                 simPathConfidence:
                     type: number
                     format: double
+                    description: Confidence in [0, 1] of the matched simulation top path; 0 when not set.
                 demotedBySimulation:
                     type: boolean
+                    description: True when a negative adjustment demoted this forecast.
                 resolution:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_ResolutionSpec'
         worldmonitor_forecast_v1_ForecastSignal:
@@ -43521,20 +43514,20 @@ components:
                 h24:
                     type: number
                     format: double
-                    description: Projected 24-hour probability after domain-curve normalization.
+                    description: Projected 24-hour probability.
                 d7:
                     type: number
                     format: double
-                    description: Projected 7-day probability after domain-curve normalization.
+                    description: Projected 7-day probability.
                 d30:
                     type: number
                     format: double
-                    description: Projected 30-day probability after domain-curve normalization.
+                    description: Projected 30-day probability.
             description: |-
-                Projections contains bounded presentation-path probabilities derived from
-                 domain curves. Market forecasts are peak-anchored, so the projected value at
-                 the forecast's own time_horizon can intentionally differ from the headline
-                 probability; non-market forecasts preserve their emitted horizon as anchor.
+                Bounded presentation-path probabilities from domain curves.
+                 Market forecasts are peak-anchored, so the value at the forecast's own
+                 time_horizon can differ from the headline probability;
+                 non-market forecasts preserve their emitted horizon as anchor.
         worldmonitor_forecast_v1_ForecastCase:
             type: object
             properties:
@@ -43752,6 +43745,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardReceipt'
+                marketAlerts:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_MarketAlertScorecard'
         worldmonitor_forecast_v1_ScorecardTotals:
             type: object
             properties:
@@ -43898,10 +43893,9 @@ components:
                     type: integer
                     format: int32
             description: |-
-                Headline "real skill" summary: Brier/log score over scored entries whose
-                 generation origin is NOT synthetic backfill or an unpromoted shadow stream.
-                 count 0 with excluded_scored > 0 means the headline is unmeasurable because
-                 everything scored was synthetic — the honest signal for a collapsed funnel.
+                Headline Brier/log score over scored entries that are neither synthetic
+                 backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
+                 means everything scored was synthetic.
         worldmonitor_forecast_v1_ScorecardPublishedDomain:
             type: object
             properties:
@@ -44021,16 +44015,59 @@ components:
                     type: string
                 citationUrl:
                     type: string
+        worldmonitor_forecast_v1_MarketAlertScorecard:
+            type: object
+            properties:
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                windowHours:
+                    type: integer
+                    format: int32
+                rollingWindowDays:
+                    type: integer
+                    format: int32
+                methodology:
+                    type: string
+                byType:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_forecast_v1_MarketAlertRow'
+            description: Rolling scorecard of the market-alert ledger.
+        worldmonitor_forecast_v1_MarketAlertRow:
+            type: object
+            properties:
+                type:
+                    type: string
+                n:
+                    type: integer
+                    format: int32
+                hitRate:
+                    type: number
+                    format: double
+                baseN:
+                    type: integer
+                    format: int32
+                baseHitRate:
+                    type: number
+                    format: double
+                pairedHitRate:
+                    type: number
+                    format: double
+                medianLeadTimeMs:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+            description: One market-alert type's rolling hit rate beside its base rate.
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:
                 runId:
                     type: string
                     description: |-
-                        Optional run identifier. Does not select the package — the latest stored package is
-                         always returned regardless of this value. When supplied and it differs from the
-                         returned package's runId, the response `note` field is populated to warn that per-run
-                         filtering is not yet active. Reserved for Phase 3 per-run lookup.
+                        Optional run identifier. The latest package is always returned; when it
+                         differs from this value, note says so.
         worldmonitor_forecast_v1_GetSimulationPackageResponse:
             type: object
             properties:
@@ -44049,9 +44086,7 @@ components:
                     description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
-                    description: |-
-                        Populated when req.runId was supplied but does not match the returned package's runId.
-                         Indicates that per-run filtering is not yet active and the latest package was returned instead.
+                    description: Set when run_id differs from the returned package's run_id.
                 error:
                     type: string
                     description: |-
@@ -44090,10 +44125,8 @@ components:
                 note:
                     type: string
                     description: |-
-                        Populated when req.runId was supplied but does not match the returned outcome's runId,
-                         or when the by-run lookup returned a tombstone (Redis transient write failure).
-                         Distinguishes "your runId expired beyond 24h retention" from "by-run lookup failed
-                         (Redis transient); returned latest" so callers can react differently.
+                        Set when run_id was supplied but the latest outcome is returned instead;
+                         says whether that run expired or its lookup failed.
                 error:
                     type: string
                     description: |-
@@ -44102,9 +44135,9 @@ components:
                 theaterSummariesJson:
                     type: string
                     description: |-
-                        JSON-encoded array of theater summaries for the UI (populated when found=true).
-                         Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
-                         Parse with JSON.parse() on the client. Empty string when found=false.
+                        JSON-encoded Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label,
+                         summary, confidence, keyActors}], dominantReactions, stabilizers,
+                         invalidators }>; empty when found=false.
                 processing:
                     type: boolean
                     description: True when the supplied runId is still queued, as opposed to expired.

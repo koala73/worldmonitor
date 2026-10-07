@@ -53,16 +53,16 @@ message ResolutionSpec {
   optional string question = 9;
 }
 
-// Projections contains bounded presentation-path probabilities derived from
-// domain curves. Market forecasts are peak-anchored, so the projected value at
-// the forecast's own time_horizon can intentionally differ from the headline
-// probability; non-market forecasts preserve their emitted horizon as anchor.
+// Bounded presentation-path probabilities from domain curves.
+// Market forecasts are peak-anchored, so the value at the forecast's own
+// time_horizon can differ from the headline probability;
+// non-market forecasts preserve their emitted horizon as anchor.
 message Projections {
-  // Projected 24-hour probability after domain-curve normalization.
+  // Projected 24-hour probability.
   double h24 = 1;
-  // Projected 7-day probability after domain-curve normalization.
+  // Projected 7-day probability.
   double d7 = 2;
-  // Projected 30-day probability after domain-curve normalization.
+  // Projected 30-day probability.
   double d30 = 3;
 }
 
@@ -134,10 +134,8 @@ message Forecast {
   string time_horizon = 8;
   repeated ForecastSignal signals = 9;
   repeated CascadeEffect cascades = 10;
-  // Forecast trend direction. Current values are "rising", "falling", and
-  // "stable". The seeder compares probability against the prior forecast
-  // snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
-  // below -0.05 are falling, and everything inside the band is stable.
+  // "rising", "falling", or "stable" versus the prior snapshot, with a
+  // +/-0.05 deadband on the probability delta.
   string trend = 11;
   double prior_probability = 12;
   CalibrationInfo calibration = 13;
@@ -146,18 +144,16 @@ message Forecast {
   Perspectives perspectives = 16;
   Projections projections = 17;
   ForecastCase case_file = 18;
-  // Simulation-scoring fields — populated when the deep forecast simulation pipeline
-  // has run for this forecast's state and produced a non-zero adjustment.
-  // simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
-  // sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
-  // demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+  // simulation_adjustment is +0.08 to +0.12 or -0.12/-0.15; demoted_by_simulation
+  // flips when a negative adjustment crosses the 0.50 acceptance threshold.
+
+  // Score delta from the deep simulation pipeline; 0 when it has not run.
   double simulation_adjustment = 20;
+  // Confidence in [0, 1] of the matched simulation top path; 0 when not set.
   double sim_path_confidence = 21;
+  // True when a negative adjustment demoted this forecast.
   bool demoted_by_simulation = 22;
-  // Resolution spec — the machine-checkable outcome contract for this forecast
-  // (see ResolutionSpec). "hard" specs resolve for free by metric comparison
-  // against source_feed; "judged" specs resolve via a later LLM judge against
-  // question. Nullable: a forecast that never passed through the resolution
-  // enrichment pass carries null. deadline is an epoch-milliseconds timestamp.
+  // Outcome contract for this forecast (see ResolutionSpec); null when the
+  // resolution enrichment pass has not run.
   ResolutionSpec resolution = 23;
 }
