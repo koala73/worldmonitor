@@ -199,6 +199,24 @@ export function parseSnapshot(value) {
   };
 }
 
+const isRun = (run) => isPlainObject(run) && Number.isFinite(run.since) && Number.isFinite(run.until) && Array.isArray(run.types) && run.types.every((type) => typeof type === 'string');
+
+/**
+ * What the stored snapshot says about the past, salvaged from any shape: when
+ * it was observed and the runs of held activity it carried. A snapshot that
+ * parseSnapshot rejects for a missing field still supplies both; the
+ * object-valued activity of the previous snapshot shape supplies no runs.
+ */
+export function snapshotHistory(value) {
+  const { data } = unwrapEnvelope(value);
+  if (!isPlainObject(data)) return { observedAt: null, activity: {} };
+  const runs = isPlainObject(data.activity) && Object.values(data.activity).every((symbolRuns) => Array.isArray(symbolRuns) && symbolRuns.every(isRun));
+  return {
+    observedAt: Number.isFinite(data.timestamp) ? data.timestamp : null,
+    activity: runs ? data.activity : {},
+  };
+}
+
 // A re-read of the same poll (equal fetchedAt) or a gap wider than two polls
 // cannot say the move happened since the previous tick.
 function predictionBaseline(baseline, predictionsFetchedAt) {
@@ -264,11 +282,11 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
     });
   }
 
-  // Runs are facts about the past, so they come from the previous snapshot
-  // even when it is too old to be a baseline; the resolver reads the snapshot's
-  // map rather than this tick's because ingest prunes against nowMs.
-  const previousActivity = previousSnapshot?.activity ?? {};
-  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity });
+  // Runs are facts about the past, so they come from the stored snapshot even
+  // when it is no baseline; the resolver reads the snapshot's map rather than
+  // this tick's because ingest prunes against nowMs.
+  const { observedAt, activity: previousActivity } = snapshotHistory(raw[SNAPSHOT_KEY]);
+  const ingested = ingestSignals(parseLedger(raw[MARKET_ALERT_LEDGER_KEY]), signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity, observedAt });
   const resolved = await resolveDueEntries(ingested.ledger, { nowMs, archive, activity: previousActivity });
   const ledger = pruneLedger(resolved.ledger, nowMs);
   const byType = {};

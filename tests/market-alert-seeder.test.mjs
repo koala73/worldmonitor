@@ -14,6 +14,7 @@ import {
   createRedisArchive,
   formatSummary,
   readRawInputs,
+  snapshotHistory,
 } from '../scripts/seed-market-alert-ledger.mjs';
 import { MARKET_ALERT_SCORECARD_KEY } from '../scripts/_market-alert-ledger.mjs';
 
@@ -41,6 +42,7 @@ const LIVE_SNAPSHOT = {
 const OBSERVED_PREDICTIONS = { [FED_CUT_KEY]: 30, [`\u0000title:${FED_CUT.title}`]: 30 };
 const OBSERVED_MARKETS = { '^GSPC': 0.2, 'CL=F': 3.1, BTC: 0.5 };
 const CRUDE_ALERTS = ['flow_price_divergence:CL=F', 'silent_divergence:CL=F'];
+const crudeHeld = (sinceMs, untilMs = sinceMs) => ({ 'CL=F': [{ since: sinceMs, until: untilMs, types: ['flow_price_divergence', 'silent_divergence'] }] });
 const OBSERVED_SNAPSHOT = {
   timestamp: NOW,
   predictionChanges: OBSERVED_PREDICTIONS,
@@ -65,6 +67,10 @@ const QUIET_NEWS = [
   { title: 'Parliament debates the autumn budget timetable', source: 'BBC', link: 'https://example.test/budget', published_at: new Date(NOW - 40 * MIN).toISOString(), isAlert: false },
   { title: 'City council approves new tram line', source: 'The Guardian', link: 'https://example.test/tram', published_at: new Date(NOW - 50 * MIN).toISOString(), isAlert: false },
 ];
+const OIL_NEWS = [
+  { title: 'Oil prices jump as OPEC cuts output', source: 'Reuters', link: 'https://example.test/opec', published_at: new Date(NOW - 30 * MIN).toISOString(), isAlert: false },
+  ...QUIET_NEWS,
+];
 
 function rawInputs(overrides = {}) {
   return {
@@ -87,14 +93,16 @@ function byType(ledger, type) {
   return Object.values(ledger).filter((entry) => entry.type === type);
 }
 
-function pendingCrude(emittedAt) {
-  const key = `silent_divergence:CL=F@${emittedAt + MARKET_ALERT_WINDOW_MS}`;
+function pendingCrude(emittedAt, type = 'silent_divergence', overrides = {}) {
+  const id = `${type}:CL=F`;
+  const key = `${id}@${emittedAt + MARKET_ALERT_WINDOW_MS}`;
   return {
     [key]: {
-      id: 'silent_divergence:CL=F', key, type: 'silent_divergence',
+      id, key, type,
       entity: { kind: 'market', symbol: 'CL=F', name: 'Crude Oil', entityId: 'CL=F' },
       emittedAt, deadline: emittedAt + MARKET_ALERT_WINDOW_MS, observedChange: 2.5, newsVelocity: 0, confidence: 0.65,
       runtimeMode: 'legacy', description: 'Crude Oil moved +2.50%', lastSeenAt: emittedAt, samples: 0, status: 'pending',
+      ...overrides,
     },
   };
 }
@@ -182,20 +190,21 @@ describe('buildTick runs the shared detectors under Node', () => {
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(tick.ledger, {});
     assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 });
-    assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT);
+    assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, activity: crudeHeld(NOW) }, 'the holds are recorded as a run');
   });
 
   it('a stale baseline still carries its recorded activity and blocks a control over it', async () => {
     const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
     const pending = pendingCrude(emittedAt);
     const [key] = Object.keys(pending);
-    const run = { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR };
+    const run = { since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR, types: ['silent_divergence'] };
     const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 16 * MIN, activity: { 'CL=F': [run] } });
     const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: stale, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive });
     assert.equal(tick.summary.emitted.held, 2, 'no live baseline, so the crude alerts are held');
     assert.deepEqual(tick.ledger[key].control, { start: emittedAt - 24 * HOUR, end: emittedAt - 18 * HOUR, outcome: 'skipped', reason: 'overlap' });
-    assert.deepEqual(tick.snapshot.activity, { 'CL=F': [run] }, 'a run is a fact about the past and outlives the baseline');
+    assert.equal(tick.ledger[key].lastSeenAt, NOW, 'the silent hold bumps its row');
+    assert.deepEqual(tick.snapshot.activity, { 'CL=F': [run, { since: NOW, until: NOW, types: ['flow_price_divergence'] }] }, 'a run is a fact about the past and outlives the baseline; the flow hold starts a new one');
   });
 
   it('a snapshot missing a field added by #8951, or holding activity in its old object shape, is no baseline', async () => {
@@ -209,16 +218,17 @@ describe('buildTick runs the shared detectors under Node', () => {
       const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(snapshot) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
       assert.deepEqual(tick.ledger, {}, label);
       assert.deepEqual(tick.summary.emitted, { total: 2, byType: { silent_divergence: 1, flow_price_divergence: 1 }, gated: 0, held: 2 }, label);
-      assert.deepEqual(tick.snapshot, OBSERVED_SNAPSHOT, label);
+      assert.deepEqual(tick.snapshot, { ...OBSERVED_SNAPSHOT, activity: crudeHeld(NOW) }, label);
     }
   });
 
-  it('a market alert emitted on the previous tick is held, and the snapshot still records it', async () => {
-    const alerted = envelope({ ...LIVE_SNAPSHOT, marketChanges: { 'CL=F': 3.0 }, emitted: CRUDE_ALERTS });
+  it('a market alert the previous tick held is held again, and the snapshot still records it', async () => {
+    const alerted = envelope({ ...LIVE_SNAPSHOT, marketChanges: { 'CL=F': 3.0 }, emitted: CRUDE_ALERTS, activity: crudeHeld(NOW - 5 * MIN) });
     const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: alerted }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(Object.values(tick.ledger).map((entry) => entry.id), [`prediction_leads_news:${FED_CUT_KEY}`]);
     assert.equal(tick.summary.emitted.held, 2);
     assert.deepEqual(tick.snapshot.emitted, CRUDE_ALERTS);
+    assert.deepEqual(tick.snapshot.activity, crudeHeld(NOW - 5 * MIN, NOW));
   });
 
   it('a 5-minute-old snapshot is a live baseline', async () => {
@@ -243,24 +253,20 @@ describe('buildTick runs the shared detectors under Node', () => {
   it('a move already elevated at cold start is held with no row, and the hold is recorded as activity', async () => {
     const cold = await buildTick(rawInputs({ [SNAPSHOT_KEY]: null }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
     assert.deepEqual(cold.ledger, {});
-    assert.deepEqual(cold.snapshot, OBSERVED_SNAPSHOT);
+    assert.deepEqual(cold.snapshot, { ...OBSERVED_SNAPSHOT, activity: crudeHeld(NOW) });
     const held = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(cold.snapshot) }), { nowMs: NOW + 5 * MIN, archive: EMPTY_ARCHIVE });
     assert.deepEqual(held.ledger, {});
     assert.equal(held.summary.emitted.held, 2);
-    assert.deepEqual(held.snapshot.activity, { 'CL=F': [{ since: NOW + 5 * MIN, until: NOW + 5 * MIN }] });
+    assert.deepEqual(held.snapshot.activity, crudeHeld(NOW, NOW + 5 * MIN));
     const still = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(held.snapshot) }), { nowMs: NOW + 10 * MIN, archive: EMPTY_ARCHIVE });
-    assert.deepEqual(still.snapshot.activity, { 'CL=F': [{ since: NOW + 5 * MIN, until: NOW + 10 * MIN }] }, 'the run survives the snapshot round trip');
+    assert.deepEqual(still.snapshot.activity, crudeHeld(NOW, NOW + 10 * MIN), 'the run survives the snapshot round trip');
   });
 
   it('a move already explained at cold start is held with no row on the first ticks', async () => {
-    const oilNews = [
-      { title: 'Oil prices jump as OPEC cuts output', source: 'Reuters', link: 'https://example.test/opec', published_at: new Date(NOW - 30 * MIN).toISOString(), isAlert: false },
-      ...QUIET_NEWS,
-    ];
     let previous = null;
     for (const minutes of [0, 5, 10]) {
       const tick = await buildTick(rawInputs({
-        [DIGEST_KEY]: digestOf(oilNews),
+        [DIGEST_KEY]: digestOf(OIL_NEWS),
         [SNAPSHOT_KEY]: previous === null ? null : envelope(previous.snapshot),
         [MARKET_ALERT_LEDGER_KEY]: envelope(previous?.ledger ?? {}),
       }), { nowMs: NOW + minutes * MIN, archive: EMPTY_ARCHIVE });
@@ -270,11 +276,33 @@ describe('buildTick runs the shared detectors under Node', () => {
     }
   });
 
+  it('a stale snapshot does not age a pending explained row: the first tick after the gap carries it to its own time', async () => {
+    const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - HOUR;
+    const pending = pendingCrude(emittedAt, 'explained_market_move', { lastSeenAt: NOW - 30 * MIN });
+    const [key] = Object.keys(pending);
+    const stale = envelope({ ...LIVE_SNAPSHOT, timestamp: NOW - 30 * MIN });
+    const unproven = { readStories: async () => ({ coveredFromMs: null, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
+    const tick = await buildTick(rawInputs({ [DIGEST_KEY]: digestOf(OIL_NEWS), [SNAPSHOT_KEY]: stale, [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }), { nowMs: NOW, archive: unproven });
+    assert.deepEqual(Object.keys(tick.ledger), [key], 'held, so no second explained row');
+    assert.equal(tick.summary.emitted.held, 2);
+    assert.equal(tick.ledger[key].lastSeenAt, NOW);
+  });
+
+  it('a snapshot missing emitted is no baseline but still supplies its runs and its time, so the first tick extends the carried run', async () => {
+    const run = { since: NOW - 20 * MIN, until: NOW - 5 * MIN, types: ['silent_divergence'] };
+    const { emitted, ...noEmitted } = { ...LIVE_SNAPSHOT, activity: { 'CL=F': [run] } };
+    assert.deepEqual(emitted, []);
+    const tick = await buildTick(rawInputs({ [SNAPSHOT_KEY]: envelope(noEmitted) }), { nowMs: NOW, archive: EMPTY_ARCHIVE });
+    assert.deepEqual(tick.ledger, {});
+    assert.equal(tick.summary.emitted.held, 2);
+    assert.deepEqual(tick.snapshot.activity, crudeHeld(NOW - 20 * MIN, NOW));
+  });
+
   it('a control window overlapped by recorded activity is skipped when the row resolves', async () => {
     const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
     const pending = pendingCrude(emittedAt);
     const [key] = Object.keys(pending);
-    const snapshot = { ...LIVE_SNAPSHOT, activity: { 'CL=F': [{ since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR }] } };
+    const snapshot = { ...LIVE_SNAPSHOT, activity: { 'CL=F': [{ since: emittedAt - 25 * HOUR, until: emittedAt - 20 * HOUR, types: ['silent_divergence'] }] } };
     const archive = { readStories: async () => ({ coveredFromMs: emittedAt - 26 * HOUR, truncated: false, stories: [] }), readSourceTiers: async () => new Map() };
     const tick = await buildTick(
       rawInputs({ [DIGEST_KEY]: null, [SNAPSHOT_KEY]: envelope(snapshot), [MARKET_ALERT_LEDGER_KEY]: envelope(pending) }),
@@ -487,6 +515,22 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.equal(tick.summary.pending, 3);
     assert.match(formatSummary(tick.summary), / gated=0 held=0 new=3 re-emitted=0 \| resolved hit=0 miss=0 void=0 unproven=0 \| pending=3 /);
     assert.deepEqual(tick.scorecard.archive, NO_ARCHIVE_PASS);
+  });
+});
+
+describe('snapshotHistory', () => {
+  it('salvages the runs and the time of any snapshot shape, and nothing from a shape it cannot read', () => {
+    const run = { since: NOW - 20 * MIN, until: NOW - 5 * MIN, types: ['silent_divergence'] };
+    const full = { ...LIVE_SNAPSHOT, activity: { 'CL=F': [run] } };
+    const { emitted, ...noEmitted } = full;
+    assert.deepEqual(snapshotHistory(envelope(full)), { observedAt: NOW - 5 * MIN, activity: { 'CL=F': [run] } });
+    assert.deepEqual(snapshotHistory(envelope(noEmitted)), { observedAt: NOW - 5 * MIN, activity: { 'CL=F': [run] } }, 'a missing field rejects the baseline, not the history');
+    assert.deepEqual(snapshotHistory(envelope({ ...full, activity: { 'CL=F': { since: run.since, until: run.until } } })), { observedAt: NOW - 5 * MIN, activity: {} }, 'the object-valued activity of the previous snapshot shape is not salvaged');
+    assert.deepEqual(snapshotHistory(envelope({ ...full, activity: { 'CL=F': [{ since: 'then', until: run.until, types: run.types }] } })), { observedAt: NOW - 5 * MIN, activity: {} });
+    assert.deepEqual(snapshotHistory(envelope({ ...full, activity: { 'CL=F': [{ since: run.since, until: run.until }] } })), { observedAt: NOW - 5 * MIN, activity: {} }, 'a run that names no types is not salvaged');
+    assert.deepEqual(snapshotHistory(envelope({ ...full, timestamp: new Date(NOW - 5 * MIN).toISOString() })), { observedAt: null, activity: { 'CL=F': [run] } });
+    assert.deepEqual(snapshotHistory(null), { observedAt: null, activity: {} });
+    assert.deepEqual(snapshotHistory('not-json'), { observedAt: null, activity: {} });
   });
 });
 

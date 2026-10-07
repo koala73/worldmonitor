@@ -30,10 +30,11 @@ export const MARKET_ALERT_CONTROL_OFFSET_MS = DAY_MS;
 export const MARKET_ALERT_EVIDENCE_EXPIRY_MS = 6 * DAY_MS;
 export const MARKET_ALERT_ROLLING_WINDOW_DAYS = 30;
 export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS * DAY_MS;
-// Holds this close together are one run of activity. The seeder's
-// SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot too old to
-// be a baseline is also too old to continue a run.
-export const MARKET_ALERT_ACTIVITY_GAP_MS = 15 * 60 * 1000;
+export const MARKET_ALERT_TICK_MS = 5 * 60 * 1000;
+// Holds this close together, in observed time, are one run of activity. The
+// seeder's SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot
+// too old to be a baseline holds every alert still emitted.
+export const MARKET_ALERT_ACTIVITY_GAP_MS = 3 * MARKET_ALERT_TICK_MS;
 // The cap drops the oldest run even when it is still inside retention, so
 // more than eight separate held runs in the retention window lose the
 // earliest.
@@ -95,37 +96,64 @@ function latestRow(rows, id) {
 
 const withinGap = (sinceMs, nowMs) => nowMs - sinceMs <= MARKET_ALERT_ACTIVITY_GAP_MS;
 const lastSeen = (row) => Math.max(row.deadline, row.lastSeenAt ?? 0);
-// A row is a run of held activity too: its window, and every hold that bumped
-// it. Without it a silent row that absorbs the silent holds leaves no run, and
-// the explained type reopens once its own row's window and the gap pass.
-const spanOf = (row) => ({ since: row.emittedAt, until: lastSeen(row) });
+// A row is held activity too: its window, and every hold that bumped it.
+const spanOf = (row) => ({ since: row.emittedAt, until: lastSeen(row), types: [row.type] });
+const unionTypes = (a, b) => [...new Set([...a, ...b])].sort();
+
+// Spans of held activity no more than the gap apart are one stretch, and the
+// stretch that reaches the gap before nowMs is the move still under way.
+function currentStretch(spans, nowMs) {
+  let stretch = null;
+  for (const span of [...spans].sort((a, b) => a.since - b.since)) {
+    stretch = stretch !== null && span.since <= stretch.until + MARKET_ALERT_ACTIVITY_GAP_MS
+      ? { since: stretch.since, until: Math.max(stretch.until, span.until), types: unionTypes(stretch.types, span.types) }
+      : span;
+  }
+  return stretch !== null && withinGap(stretch.until, nowMs) ? stretch : null;
+}
 
 // The detector flips a move between explained and silent as the digest
-// changes. Each market type says which of the previous tick's alerts hold a
-// new row and whether a fresh run of held activity does, where a run is a
-// span in `activity` or a row of any type for the symbol. A quiet-market alert
-// is held by any alert for the symbol and by any fresh run, so neither the
-// flip itself nor a dropout inside another type's window reopens the move. An
-// explained alert is held by itself and by a run that continues its own row's
-// activity, so a move that was silent and then found its news still gets its
-// explained row.
-const QUIET_MARKET_RULE = {
-  previousTickBlocks: (emitted, id) => emitted.some((other) => entityKeyOf(other) === entityKeyOf(id)),
-  runBlocks: () => true,
-};
+// changes. Each market type says whether the move under way holds a new row.
+// A quiet-market alert is held by any move under way, so neither the flip
+// itself nor a dropout inside another type's window reopens the move. An
+// explained alert is held only by a move that has already held or rowed
+// explained, so a move that was silent and then found its news still gets
+// its explained row.
 const HOLD_RULES = {
-  explained_market_move: {
-    previousTickBlocks: (emitted, id) => emitted.includes(id),
-    runBlocks: (run, latest) => latest !== null && run.since <= lastSeen(latest) + MARKET_ALERT_ACTIVITY_GAP_MS,
-  },
-  silent_divergence: QUIET_MARKET_RULE,
-  flow_price_divergence: QUIET_MARKET_RULE,
+  explained_market_move: (stretch) => stretch.types.includes('explained_market_move'),
+  silent_divergence: () => true,
+  flow_price_divergence: () => true,
 };
 
-function extendRuns(runs = [], nowMs) {
+function extendRuns(runs = [], nowMs, type) {
   const last = runs.at(-1);
-  if (last && withinGap(last.until, nowMs)) return [...runs.slice(0, -1), { since: last.since, until: nowMs }];
-  return [...runs, { since: nowMs, until: nowMs }].slice(-MARKET_ALERT_ACTIVITY_MAX_RUNS);
+  if (last && withinGap(last.until, nowMs)) return [...runs.slice(0, -1), { since: last.since, until: nowMs, types: unionTypes(last.types, [type]) }];
+  return [...runs, { since: nowMs, until: nowMs, types: [type] }].slice(-MARKET_ALERT_ACTIVITY_MAX_RUNS);
+}
+
+// Ticks the seeder skipped observed nothing, so the interval since the last
+// snapshot counts for one tick: every row and every symbol's last run that
+// was fresh at the snapshot moves forward by the unobserved remainder, never
+// past nowMs. A move fresh at the snapshot is one tick older now whatever
+// the outage lasted, and one already stale stays stale, so a move that ended
+// before the outage can open a new row afterwards.
+function carryAcrossGap(ledger, runs, observedAt, nowMs) {
+  const unobserved = observedAt === null ? 0 : Math.max(0, nowMs - observedAt - MARKET_ALERT_TICK_MS);
+  if (unobserved === 0) return { runs, carried: 0 };
+  const carry = (seenMs) => Math.min(nowMs, seenMs + unobserved);
+  let carried = 0;
+  for (const row of Object.values(ledger)) {
+    if (!withinGap(lastSeen(row), observedAt) || lastSeen(row) >= nowMs) continue;
+    ledger[row.key] = { ...row, lastSeenAt: carry(lastSeen(row)) };
+    carried += 1;
+  }
+  const activity = Object.fromEntries(Object.entries(runs).map(([symbol, symbolRuns]) => {
+    const last = symbolRuns.at(-1);
+    if (!withinGap(last.until, observedAt)) return [symbol, symbolRuns];
+    carried += 1;
+    return [symbol, [...symbolRuns.slice(0, -1), { ...last, until: carry(last.until) }]];
+  }));
+  return { runs: activity, carried };
 }
 
 function createEntry(signal, entity, nowMs, runtimeMode) {
@@ -150,49 +178,50 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
 }
 
 /**
- * A market signal opens a row only under the recency rule: the symbol's most
- * recent row of the same type, whatever its status, was last seen (its
- * deadline or `lastSeenAt`, whichever is later) more than
- * MARKET_ALERT_ACTIVITY_GAP_MS ago, the previous tick did not emit the alerts
- * HOLD_RULES names for the type, and no run of held activity that ended
- * inside the gap, counting every row of the symbol as a run, blocks the type
- * under the same rules, so a move that stays elevated opens one row per type
- * however the detector flips it between explained and silent, and a move that
- * was silent and then found its news gets its explained row. `baseline.emitted` holds the previous tick's market ids that
- * passed the type and confidence gate. A symbol without a baseline (`baseline`
- * null, or the symbol absent from `baseline.marketChanges` because its feed
- * skipped the previous tick) is held, so every alert still emitted after a
- * seeder gap or a cold start stays held. A hold whose same-type row is still
- * fresh bumps that row's `lastSeenAt`, whatever its status, so a closed
- * window whose alert keeps firing still blocks a later control window; every
- * other quoted hold extends or starts a run in `activity` instead, so a stale
- * row is never stretched, and a hold without a baseline extends a fresh run
- * but starts none, so a feed skip or a rejected snapshot inside a run does not
- * end it. `activity` maps a
- * symbol to its newest MARKET_ALERT_ACTIVITY_MAX_RUNS runs `{ since, until }`
- * in ms, oldest first, where holds no more than the gap apart share a run;
- * `baseline.activity` is carried forward pruned to runs that ended inside
- * MARKET_ALERT_ACTIVITY_RETENTION_MS, long enough for the control window of
- * an emission that resolves at its deadline. `emitted` in the result is this
- * tick's gated market ids, sorted, for the next tick's baseline.
+ * A market signal opens a row only under the recency rule: no stretch of
+ * held activity for the symbol reaches the gap before this tick, or the one
+ * that does fails to hold the type under HOLD_RULES. A stretch is built from
+ * the symbol's runs in `activity` and every row of the symbol, whatever its
+ * status, each a span from its emission to its deadline or `lastSeenAt`,
+ * whichever is later, with spans no more than MARKET_ALERT_ACTIVITY_GAP_MS
+ * apart merged and their types pooled, so a move that stays elevated opens
+ * one row per type however the detector flips it between explained and
+ * silent, and a move that was silent and then found its news gets its
+ * explained row. A symbol without a baseline (`baseline` null, or the symbol
+ * absent from `baseline.marketChanges` because its feed skipped the previous
+ * tick) is held, so every alert still emitted after a seeder gap or a cold
+ * start stays held. Every hold records its sighting: one whose same-type row
+ * is still fresh bumps that row's `lastSeenAt`, whatever its status, so a
+ * closed window whose alert keeps firing still blocks a later control window;
+ * every other hold extends or starts a run naming the type, so the move
+ * cannot reopen inside the gap however the hold came about. `activity` maps a
+ * symbol to its newest MARKET_ALERT_ACTIVITY_MAX_RUNS runs
+ * `{ since, until, types }` in ms, oldest first, where holds no more than the
+ * gap apart share a run; it is carried forward pruned to runs that ended
+ * inside MARKET_ALERT_ACTIVITY_RETENTION_MS, long enough for the control
+ * window of an emission that resolves at its deadline. `observedAt` is when
+ * `activity` was observed; the ticks skipped since then observed nothing and
+ * count as one, so a seeder outage does not age a move. `emitted` in the
+ * result is this tick's gated market ids, sorted, for the snapshot.
  */
-export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity = baseline?.activity ?? {} }) {
+export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, predictions, baseline, activity: previousActivity = baseline?.activity ?? {}, observedAt = null }) {
   const ledger = { ...existing };
   const marketsBySymbol = new Map(markets.map((market) => [market.symbol, market]));
   const predictionsByKey = new Map(predictions.map((prediction) => [predictionMarketKey(prediction), prediction]));
-  // Holds read the runs and rows as the tick began, so a symbol's outcome
-  // does not depend on the order of its signals within the tick.
-  const runs = Object.fromEntries(Object.entries(previousActivity)
+  const retained = Object.fromEntries(Object.entries(previousActivity)
     .map(([symbol, symbolRuns]) => [symbol, symbolRuns.filter((run) => run.until >= nowMs - MARKET_ALERT_ACTIVITY_RETENTION_MS)])
     .filter(([, symbolRuns]) => symbolRuns.length > 0));
-  const rows = Object.values(existing);
+  const { runs, carried } = carryAcrossGap(ledger, retained, observedAt, nowMs);
+  // Holds read the runs and rows as the tick began, so a symbol's outcome
+  // does not depend on the order of its signals within the tick.
+  const rows = Object.values(ledger);
   const activity = { ...runs };
   const emitted = new Set();
   let created = 0;
   let updated = 0;
   let gated = 0;
   let held = 0;
-  let touched = 0;
+  let touched = carried;
   for (const signal of signals) {
     const entityKey = signal.data?.correlatedEntities?.[0];
     if (!ALERT_TYPES.has(signal.type) || !(signal.confidence >= MARKET_ALERT_CONFIDENCE_GATE) || !entityKey) {
@@ -216,21 +245,14 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
       }
     } else {
       const quoted = baseline !== null && Object.hasOwn(baseline.marketChanges, entityKey);
-      const rule = HOLD_RULES[signal.type];
       const symbolRows = rows.filter((entry) => entityKeyOf(entry.id) === entityKey);
       const latest = latestRow(symbolRows, id);
-      const rowFresh = latest !== null && withinGap(lastSeen(latest), nowMs);
-      const spans = [...(runs[entityKey] ?? []), ...symbolRows.map(spanOf)];
-      const runFresh = spans.some((span) => withinGap(span.until, nowMs) && rule.runBlocks(span, latest));
-      if (!quoted || runFresh || rule.previousTickBlocks(baseline.emitted, id)) {
+      const stretch = currentStretch([...(runs[entityKey] ?? []), ...symbolRows.map(spanOf)], nowMs);
+      if (!quoted || (stretch !== null && HOLD_RULES[signal.type](stretch))) {
         held += 1;
-        // Without a quoted baseline the hold cannot say the move is new, so
-        // it records its sighting only where fresh activity already is.
-        const lastRun = runs[entityKey]?.at(-1);
-        const runContinues = lastRun !== undefined && withinGap(lastRun.until, nowMs);
-        if (rowFresh) ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
-        else if (quoted || runContinues) activity[entityKey] = extendRuns(activity[entityKey], nowMs);
-        if (rowFresh || quoted || runContinues) touched += 1;
+        touched += 1;
+        if (latest !== null && withinGap(lastSeen(latest), nowMs)) ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
+        else activity[entityKey] = extendRuns(activity[entityKey], nowMs, signal.type);
         continue;
       }
       entity = entityForMarket(marketsBySymbol.get(entityKey));
