@@ -168,6 +168,11 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     assert.deepEqual(result.data.scorecard, DECLARED);
   });
 
+  it('projects only the two declared blocks rather than spreading what the cache read returned', () => {
+    const projected = tool._project({ scorecard: DECLARED, marketAlerts: MARKET_ALERTS_STORED, archive: { coveredFromMs: 1 } });
+    assert.deepEqual(Object.keys(projected).sort(), ['marketAlerts', 'scorecard']);
+  });
+
   it('declares the market-alert container and row members in outputSchema', () => {
     const alerts = tool.outputSchema.properties.data.properties.marketAlerts;
     assert.deepEqual(Object.keys(alerts.properties).sort(), Object.keys(MARKET_ALERTS).sort());

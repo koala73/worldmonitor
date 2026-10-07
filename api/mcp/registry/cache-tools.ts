@@ -3347,7 +3347,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       const scorecard = data.scorecard;
       const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
       return {
-        ...data,
         scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
         marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
       };
