@@ -58,7 +58,7 @@ const RENDER = `
         warning(host, "Some detail was simplified or omitted for display. Full original detail is not loaded.");
         Object.keys(displayedCounts).forEach(function (field) {
           var count = displayedCounts[field];
-          host.appendChild(el("div", "dcounts", detailLabels[field] + ": " + count.returned + " displayed from " + count.original + " original items."));
+          host.appendChild(el("div", "dcounts", detailLabels[field] + ": " + count.returned + " returned from " + count.original + " original items."));
         });
       }
     }
