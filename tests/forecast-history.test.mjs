@@ -384,6 +384,14 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.equal(legacy.generationOrigin, 'legacy_detector');
   });
 
+  it('carries the state-derived bucket id so the ledger can tell withheld buckets apart (#5234)', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    pred.stateDerivation = { bucketId: 'fx_stress', sourceStateKind: 'governance_pressure' };
+    assert.equal(buildHistoryForecastEntry(pred).stateBucketId, 'fx_stress');
+    assert.equal(JSON.parse(JSON.stringify(buildHistoryForecastEntry(makeHardConflictPred()))).stateBucketId, undefined);
+  });
+
   it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
     const pred = makeHardConflictPred();
     assert.equal(pred.resolution, null);
@@ -396,10 +404,16 @@ describe('forecast resolution spec round-trip (U3)', () => {
 
     const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
     assert.ok(!('resolution' in payload));
-    // projections default: absent projections -> null in both builders
-    // (pre-existing sibling convention, unchanged).
     assert.strictEqual(historyEntry.projections, null);
-    assert.strictEqual(payload.projections, null);
+    assert.ok(!('projections' in payload));
+  });
+
+  it('projections stay in the history entry for horizon scoring and never reach the published payload (#8967)', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.61, d7: 0.66, d30: 0.72 };
+    assert.deepEqual(buildHistoryForecastEntry(pred).projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('projections' in payload), 'forecast:predictions:v2 must not publish projections');
   });
 
   it('canonical payload emits a camelCase resolution object for a spec\'d forecast, omits it otherwise', () => {
@@ -527,5 +541,48 @@ describe('projection horizon contracts persist into history (#7075)', () => {
   it('a forecast without contracts persists null', () => {
     const pred = makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.6, 0.5, '7d', []);
     assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
+  });
+});
+
+describe('published payload scored horizons (#7075 panel)', () => {
+  const hard = (horizon) => ({ horizon, kind: 'hard', semantics: 'point_in_time', deadline: HARD_CONFLICT_GENERATED_AT + 1 });
+  const unscored = (horizon) => ({ horizon, kind: 'unscored', reason: 'parent_horizon' });
+
+  it('names only the horizons with a hard point-in-time contract, in horizon order', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.horizonResolutions = { d30: hard('d30'), d7: unscored('d7'), h24: hard('h24') };
+    assert.deepEqual(buildPublishedForecastPayload(pred).scoredHorizons, ['h24', 'd30']);
+  });
+
+  it('omits the field when no horizon is scored', () => {
+    const pred = makeHardConflictPred();
+    pred.horizonResolutions = { h24: unscored('h24'), d7: unscored('d7'), d30: unscored('d30') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+    delete pred.horizonResolutions;
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+
+  it('never names a horizon for a held-out origin, whose windows the resolver does not register', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.generationOrigin = 'state_derived';
+    pred.horizonResolutions = { h24: hard('h24') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+});
+
+describe('history projections never invent a zero (#7075 review)', () => {
+  it('keeps a missing or non-finite horizon value as null, never 0', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: undefined, d30: Number.NaN };
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(entry.projections, { h24: 0.4, d7: null, d30: null });
+  });
+
+  it('keeps a real zero', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0, d7: 0.2, d30: 0.3 };
+    assert.equal(buildHistoryForecastEntry(pred).projections.h24, 0);
   });
 });

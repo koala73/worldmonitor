@@ -236,11 +236,14 @@ export async function fetchDiseaseOutbreaks() {
   // Sort before dedup so the first occurrence is always the most recent.
   otherOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
 
-  // Deduplicate non-TGH items by disease+country (keep most recent per pair).
+  // Deduplicate non-TGH items by source+disease+country (keep most recent per
+  // triple). Two sources on one event are two reports: the 2026-10-06 WHO
+  // briefing otherwise hid CIDRAP's Irkutsk story. ECDC's epi-update and news
+  // feeds share a source name, so their overlap still collapses.
   // TGH items each represent a distinct geo-located event — never collapse them.
   const seen = new Set();
   const dedupedOthers = otherOutbreaks.filter(o => {
-    const key = o.disease === 'Unknown Disease' ? o.id : `${o.disease}:${o.countryCode || o.location}`;
+    const key = o.disease === 'Unknown Disease' ? o.id : `${o.sourceName}:${o.disease}:${o.countryCode || o.location}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

@@ -21,6 +21,9 @@ import { INTERVAL_MIN_SAMPLE } from '../../scripts/_forecast-scorecard.mjs';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
+// Pins the lifted state; forecast-panel-under-audit.test.mts pins the audited one (#8990).
+vi.mock('../../shared/forecast-accuracy-audit', () => ({ FORECAST_ACCURACY_AUDIT: null }));
+
 const SCORECARD_PATH = '/api/forecast/v1/get-forecast-scorecard';
 
 type PublishedDomain = NonNullable<GetForecastScorecardResponse['publishedByDomain']>[number];
@@ -45,6 +48,7 @@ function scorecard(rows: PublishedDomain[], overrides: Partial<GetForecastScorec
     calibration: [],
     skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13 },
     publishedByDomain: rows,
+    familyOutcomes: [],
     receipts: [],
     degraded: false,
     stale: false,
@@ -155,6 +159,11 @@ describe('ForecastPanel reliability badge', () => {
     // A block link spans the label column; fit-content keeps blank space beside it unclickable.
     expect(rule).toMatch(/width:\s*fit-content/);
     expect(rule).toMatch(/max-width:\s*100%/);
+    // Size containment gives the badge a zero intrinsic width, so fit-content collapses it to 0px.
+    expect(rule).not.toMatch(/contain:/);
+    // Without it the 1fr label track grows to the badge's nowrap width and pushes the other columns out.
+    const label = css.match(/\.fc-prob-label\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(label).toMatch(/min-width:\s*0/);
   });
 
   it('treats a non-integer yesCount as unmeasured, matching the /accuracy/ table', async () => {

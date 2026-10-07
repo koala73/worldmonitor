@@ -2363,7 +2363,7 @@
       "unscored": "Scenarii narative, nenotate pentru acuratețe."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus.",
+      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus.",
       "record": {
         "label": "Istoricul rezultatelor",
         "labelHint": "Cum au fost punctate prognozele publicate după ce s-au rezolvat, în ultimele {{days}} de zile. Treceți cursorul peste un număr pentru a vedea ce înseamnă.",
@@ -2384,6 +2384,46 @@
         "measuredHint": "Cum s-au clasat prognozele publicate {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} de zile. Rata de bază este ce s-ar fi obținut prin răspunsul întotdeauna cu rata observată „da\" a domeniului. Mai mic este mai bun. Acesta este istoricul domeniului, nu al acestei prognoze.",
         "unmeasured": "Încă nemăsurat",
         "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
+      },
+      "resolution": {
+        "last": "Ultimul: {{outcome}}",
+        "lastSr": "Perioada anterioară a acestei prognoze s-a încheiat cu {{outcome}}.",
+        "history": "Perioade recente, cele mai noi primele: {{list}}",
+        "outcome": {
+          "yes": "DA",
+          "no": "NU",
+          "void": "ANULAT"
+        },
+        "void": {
+          "no_establishable_metric": "Fluxul nu avea o citire pentru această întrebare",
+          "value_source_never_settled": "Fluxul nu a publicat niciodată o valoare finală",
+          "count_source_window_not_retained": "Fluxul nu mai păstra perioada întrebării",
+          "unsupported_window": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "unsupported_metric_key": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "not_hard_spec": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "missing_threshold": "Întrebării îi lipsea o valoare prag",
+          "missing_deadline": "Întrebării îi lipsea o dată limită",
+          "missing_generated_at": "Prognozei îi lipsea data de început",
+          "beyond_archive_horizon": "Arhiva de știri nu mai acoperea perioada întrebării",
+          "no_archive_evidence": "Arhiva de știri nu avea nimic despre subiect",
+          "all_judges_void": "Ambii evaluatori au găsit dovezile insuficiente",
+          "judge_disagreement": "Evaluatorii nu au fost de acord",
+          "judge_retry_exhausted": "Evaluatorii nu au returnat o hotărâre",
+          "withheld_unpublished": "Acest tip de prognoză nu mai este publicat",
+          "resolver_envelope_bug": "Evaluat pe baza unui flux de date pe care nu l-am putut citi corect",
+          "market_price_not_outcome": "Fluxul arăta prețul pieței, nu modul în care s-a rezolvat piața",
+          "judged_evidence_unreliable": "Exclus de la punctare cât timp dovezile judecătorilor sunt corectate",
+          "other": "Nu a putut fi rezolvată"
+        }
+      },
+      "horizons": {
+        "label": "De asemenea, evaluat la: {{list}}",
+        "hint": "Probabilitatea titlului este evaluată la orizontul propriu al prognozei. Proiecția la fiecare dintre aceste orizonturi este de asemenea evaluată, comparată cu sursa sa de feed, folosind valoarea publicată pentru prima dată pentru această prognoză. Valorile proiecției nu sunt afișate deoarece valoarea curentă poate diferi de cea evaluată."
+      },
+      "audit": {
+        "label": "Precizie sub audit",
+        "hint": "Sub audit din {{date}}. Un audit a identificat erori în modul în care au fost evaluate previziunile. Scorurile sunt retrase în timp ce se fac corecții. Previziunile continuă să fie publicate și înregistrate.",
+        "unverified": "Rezultat înregistrat, neverificat cât timp precizia este sub audit."
       }
     },
     "escalationCorrelation": {

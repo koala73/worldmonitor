@@ -2090,7 +2090,7 @@
       "infoTooltip": "<strong>Utawala wa BTC</strong> Dashibodi ya ishara mchanganyiko ya uwekaji wa Bitcoin na hamu ya hatari:<ul><li><strong>Ukwasi</strong>: Wakala wa ukwasi halisi wa Fed</li><li><strong>Mtiririko</strong>: Marejesho ya BTC dhidi ya QQQ ya siku 5</li><li><strong>Utawala</strong>: Mzunguko wa QQQ dhidi ya XLP (risk-on/off)</li><li><strong>Mwenendo wa BTC</strong>: Bei dhidi ya SMA50/200, Mayer Multiple</li><li><strong>Kiwango cha Hash</strong>: Mabadiliko ya hash ya mtandao ya siku 30</li><li><strong>Hofu na Tamaa</strong>: Kielezo cha hisia za soko</li></ul>Paneli hii ni ya utawala na uwekaji, si data pana ya uchumi mkuu."
     },
     "forecast": {
-      "infoTooltip": "<strong>Makadirio ya AI</strong> Makadirio ya uwezekano yanayotengenezwa na AI kwa matukio ya kijiografia na kiuchumi:<ul><li>Ufunikaji wa vikoa mbalimbali: migogoro, masoko, mnyororo wa ugavi, mtandao, siasa</li><li>Kila makadirio huonyesha uwezekano uliokadiriwa, kiwango cha uaminifu na upeo wa muda</li><li>Hulinganishwa na misingi ya masoko ya utabiri inapopatikana</li></ul>Makadirio husasishwa kadiri ishara mpya za kijasusi zinavyowasili. Chuja kwa kikoa ukitumia vichupo vilivyo hapo juu.",
+      "infoTooltip": "<strong>Makadirio ya AI</strong> Makadirio ya uwezekano yanayotengenezwa na AI kwa matukio ya kijiografia na kiuchumi:<ul><li>Ufunikaji wa vikoa mbalimbali: migogoro, masoko, mnyororo wa ugavi, mtandao, siasa</li><li>Kila makadirio huonyesha uwezekano uliokadiriwa, kiwango cha uaminifu na upeo wa muda</li></ul>Makadirio husasishwa kadiri ishara mpya za kijasusi zinavyowasili. Chuja kwa kikoa ukitumia vichupo vilivyo hapo juu.",
       "record": {
         "label": "Rekodi ya utendaji",
         "labelHint": "Jinsi utabiri uliochapishwa ulivyopata alama baada ya kuamuliwa, katika siku {{days}} zilizopita. Elea juu ya nambari kuona maana yake.",
@@ -2111,6 +2111,46 @@
         "measuredHint": "Jinsi ambavyo mwonekano uliotangazwa wa {{domain}} umefanya alama zaidi ya {{n}} mwonekano uliokadiria katika siku {{days}} zilizopita. Kiwango cha msingi ni kile kinachoshindwa kwa kujibu kila wakati kwa kiwango kilichogunduliwa cha ndiyo cha kikoa. Chini ni nzuri. Hii ni rekodi ya kikoa, sio ya mwonekano huu.",
         "unmeasured": "Haijapimwa bado",
         "unmeasuredHint": "{{domain}} utabiri una {{n}} matokeo yaliyokadiria katika siku {{days}} zilizopita. Kikoa kinahitaji {{min}} kabla usahihi wake kuonekana."
+      },
+      "resolution": {
+        "last": "Mwisho: {{outcome}}",
+        "lastSr": "Dirisha lililopita la utabiri huu liliamuliwa kuwa {{outcome}}.",
+        "history": "Madirisha ya karibuni, mapya kwanza: {{list}}",
+        "outcome": {
+          "yes": "NDIO",
+          "no": "HAPANA",
+          "void": "BATILI"
+        },
+        "void": {
+          "no_establishable_metric": "Chanzo hakikuwa na kipimo kwa swali hili",
+          "value_source_never_settled": "Chanzo hakikuchapisha thamani ya mwisho",
+          "count_source_window_not_retained": "Chanzo hakikuhifadhi tena dirisha la swali",
+          "unsupported_window": "Swali halikuweza kukaguliwa dhidi ya chanzo chake",
+          "unsupported_metric_key": "Swali halikuweza kukaguliwa dhidi ya chanzo chake",
+          "not_hard_spec": "Swali halikuweza kukaguliwa dhidi ya chanzo chake",
+          "missing_threshold": "Swali lilikosa kiwango cha kizingiti",
+          "missing_deadline": "Swali lilikosa tarehe ya mwisho",
+          "missing_generated_at": "Utabiri ulikosa tarehe ya kuanza",
+          "beyond_archive_horizon": "Hifadhi ya habari haikufunika tena dirisha la swali",
+          "no_archive_evidence": "Hifadhi ya habari haikuwa na kitu juu ya mada",
+          "all_judges_void": "Mahakimu wote wawili waliona ushahidi hautoshi",
+          "judge_disagreement": "Mahakimu hawakukubaliana",
+          "judge_retry_exhausted": "Mahakimu hawakutoa hukumu",
+          "withheld_unpublished": "Aina hii ya utabiri haichapishwi tena",
+          "resolver_envelope_bug": "Ilipimwa dhidi ya chanzo cha data ambacho hatukuweza kusoma ipasavyo",
+          "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
+          "judged_evidence_unreliable": "Imeondolewa kwenye upimaji wakati ushahidi wa majaji unarekebishwa",
+          "other": "Haikuweza kuamuliwa"
+        }
+      },
+      "horizons": {
+        "label": "Pia alama zilizotolewa katika: {{list}}",
+        "hint": "Uwezekano wa kichwa ni alama iliyopeana katika mlangoni wa utabiri. Makadirio katika kila moja ya miradi hii pia alama iliyopeana, ikabadilishwa na chanzo chake cha mwili, kwa kutumia thamani iliyochapishwa kwa mara ya kwanza kwa utabiri huu. Thamani za makadirio hazijafanyiwa wazi kwa sababu thamani ya sasa inaweza kuwa tofauti na ile iliyoalama."
+      },
+      "audit": {
+        "label": "Usahihi unakaguliwa",
+        "hint": "Inakaguliwa tangu {{date}}. Ukaguzi ulipata makosa katika jinsi utabiri ulivyopewa alama. Alama zimeondolewa wakati marekebisho yanafanywa. Utabiri bado unachapishwa na kurekodiwa.",
+        "unverified": "Matokeo yaliyorekodiwa, hayajathibitishwa wakati usahihi unakaguliwa."
       }
     },
     "escalationCorrelation": {

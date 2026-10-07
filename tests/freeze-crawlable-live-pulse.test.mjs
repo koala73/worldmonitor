@@ -180,6 +180,7 @@ function countryPayload() {
   // Fixed, not Date.now(): the freeze copies generatedAt through verbatim and
   // the assertions compare it exactly.
   const SCORECARD_GENERATED_AT = 1789020144012;
+  const MARKET_ALERT_METHODOLOGY = 'An emission resolves HIT when a tracked story names the same entity within six hours.';
 
   /**
    * Shaped like GET /api/forecast/v1/get-forecast-scorecard, including the
@@ -221,6 +222,20 @@ function countryPayload() {
       receipts: [
         { question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75, key: 'internal-ledger-key' },
       ],
+      marketAlerts: {
+        schemaVersion: 1,
+        generatedAt: SCORECARD_GENERATED_AT,
+        windowHours: 6,
+        rollingWindowDays: 30,
+        methodology: MARKET_ALERT_METHODOLOGY,
+        totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
+        archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
+        byType: [
+          { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, scored: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+          { type: 'prediction-market', scored: 0, baseN: 0 },
+        ],
+      },
+      familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES', key: 'internal-ledger-key' }],
       degraded: false,
       stale: false,
       error: '',
@@ -737,8 +752,18 @@ describe('freeze crawlable live pulse coverage gates', () => {
       [...SCORECARD_DECLARED_FIELDS].sort(),
       'the committed snapshot must carry the declared surface and nothing else',
     );
-    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane|internal-ledger-key/);
+    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane|internal-ledger-key|coveredFromMs/);
     assert.equal(section.scorecard.receipts[0].observedValue, 100.75);
+    assert.deepEqual(section.scorecard.marketAlerts, {
+      generatedAt: SCORECARD_GENERATED_AT,
+      windowHours: 6,
+      rollingWindowDays: 30,
+      methodology: MARKET_ALERT_METHODOLOGY,
+      byType: [
+        { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+        { type: 'prediction-market', scored: 0, baseN: 0 },
+      ],
+    }, 'the market-alert block survives capture whitelisted member by member (#8867)');
     const state = classifyAccuracyState(section);
     assert.equal(state.availability, 'ok');
     assert.equal(state.coverage, 'measurable');

@@ -137,6 +137,11 @@ function mountWidgetHtml(html) {
   const document = {
     documentElement,
     getElementById: (id) => byId.get(id) ?? null,
+    createTextNode: (text) => {
+      const node = new TestElement('#text');
+      node.textContent = text;
+      return node;
+    },
     createElement: (tag) => {
       const node = new TestElement(tag);
       created.push(node);
@@ -1973,4 +1978,198 @@ describe('shared MCP shell notification origin', () => {
     assert.match(view.text('empty'), /too large/);
     assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
   });
+});
+
+
+describe('shared MCP notification failures', () => {
+  const brief = {
+  "countryCode": "CA",
+  "countryName": "Canada",
+  "brief": "Controlled current assessment [E1]. Unresolved [E2].",
+  "model": "hidden-fixture-model",
+  "generatedAt": 1791288000000,
+  "sources": [
+    {
+      "source": "Controlled Wire",
+      "title": "Original source",
+      "url": "https://example.com/original?q=1",
+      "publishedAt": "2026-10-06T08:00:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1",
+      "label": "Controlled indicator",
+      "value": "2.3%",
+      "asOf": "2026-10-05T11:00:00Z",
+      "url": "https://example.com/data"
+    }
+  ],
+  "groundingStories": [
+    {
+      "title": "Distinct grounding",
+      "publishedAt": "2026-10-06T07:00:00Z"
+    }
+  ]
+};
+  async function mountedBrief() {
+    const response = await buildUiResourceRead(1, 'ui://worldmonitor/country-brief-v3.html', {});
+    const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+    view.sendToolResult(brief);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    assert.match(view.text('brief'), /Controlled current assessment/);
+    assert.match(view.text('sources'), /Original source/);
+    assert.match(view.text('evidence'), /Controlled indicator/);
+    assert.match(view.text('foot'), /^Generated /);
+    return view;
+  }
+  it('renders a valid nonempty dedicated brief baseline', async () => { await mountedBrief(); });
+  it('shows the standard strict MCP failure after a valid brief', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: {
+      isError: true, content: [{ type: 'text', text: 'Controlled upstream failed' }],
+    } } });
+    assert.equal(view.text('empty'), 'Controlled upstream failed');
+    assert.equal(view.nodes('card')[0].style.display, 'none');
+  });
+  it('advertises only the Country Brief content the dedicated card displays', () => {
+    const resource = UI_RESOURCE_LIST_RESPONSE.find(r => r.uri === 'ui://worldmonitor/country-brief-v3.html');
+    assert.doesNotMatch(resource.description, /framework lens/);
+    assert.match(resource.description, /paragraphs/);
+    assert.match(resource.description, /grounding sources/);
+    assert.match(resource.description, /cited WorldMonitor data/);
+  });
+  it('uses strict failure precedence and preserves specific existing soft errors', async () => {
+    const cases = [
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: 'Controlled denial' }] }, 'Controlled denial'],
+      [{ isError: true, structuredContent: { error: 'Specific failure' }, content: [{ type: 'text', text: 'Conflicting failure' }] }, 'Specific failure'],
+      [{ isError: true, content: [{ type: 'text', text: '{"error":"Parsed failure"}' }] }, 'Parsed failure'],
+      [{ isError: true, structuredContent: { _budget_exceeded: true }, content: [{ type: 'text', text: 'Conflict' }] }, /too large/],
+      [{ isError: true, content: [{ type: 'text', text: '{"_jmespath_error":"Bad projection"}' }] }, /projection could not/],
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: '{"error":"Literal JSON"}' }] }, '{"error":"Literal JSON"}'],
+    ];
+    for (const [result, expected] of cases) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+      if (typeof expected === 'string') assert.equal(view.text('empty'), expected);
+      else assert.match(view.text('empty'), expected);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+      assert.match(view.text('brief'), /Controlled current assessment/);
+    }
+  });
+  it('chooses the first usable text and a fixed fallback for unusable content', async () => {
+    for (const content of [undefined, [], [{ type: 'image', text: 'Wrong type' }], [{ type: 'text', text: '\u0000 \n\t' }]]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content } });
+      assert.equal(view.text('empty'), 'Tool request failed.');
+    }
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true,
+      structuredContent: { error: '\u0000 \t' },
+      content: [{ type: 'text', text: '\u0000 \n' }, { type: 'text', text: '  Later usable text  ' }, { type: 'text', text: 'Unused' }],
+    } } });
+    assert.equal(view.text('empty'), 'Later usable text');
+    for (const text of ['7', '[]', JSON.stringify(brief)]) {
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text }] } });
+      assert.equal(view.text('empty'), text);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+    }
+  });
+  it('cleans and bounds every error-message path and keeps hostile markup literal', async () => {
+    const message = ' \u0000<img src=x onerror="bad()">' + 'x'.repeat(1100) + '\u007f ';
+    const expected = message.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 1000);
+    for (const fields of [
+      { content: [{ type: 'text', text: message }] },
+      { structuredContent: { error: message } },
+      { content: [{ type: 'text', text: JSON.stringify({ error: message }) }] },
+    ]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true, ...fields } } });
+      assert.equal(view.text('empty'), expected);
+      assert.equal(view.text('empty').length, 1000);
+      assert.ok(!view.created.some(node => ['IMG', 'SCRIPT'].includes(node.tagName)));
+    }
+  });
+  it('retains accepted DOM on failure and recovers through ordinary and non-strict results', async () => {
+    const view = await mountedBrief();
+    const ids = ['brief', 'sources', 'evidence', 'foot'];
+    const accepted = ids.map(id => view.nodes(id).slice());
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } });
+    ids.forEach((id, i) => {
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, accepted[i].length, id + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, accepted[i][index], id + ': accepted node identity survives'));
+    });
+    for (const flag of [undefined, false, 'true']) {
+      const recovery = { ...brief, brief: 'Controlled recovery.' };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: flag, structuredContent: recovery } } });
+      assert.equal(view.nodes('card')[0].style.display, 'block');
+      assert.equal(view.nodes('empty')[0].style.display, 'none');
+      assert.equal(view.text('brief'), 'Controlled recovery.');
+    }
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.match(view.text('brief'), /Controlled current assessment/);
+  });
+  it('preserves parent association, both params forms, initialization and size', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } }, false);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    view.sendMessage({ id: 1, result: { hostCapabilities: {}, hostContext: { theme: 'dark' } } });
+    for (const wrapped of [false, true]) {
+      const result = { isError: true, content: [{ type: 'text', text: 'Association failure' }] };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: wrapped ? { result } : result });
+      assert.equal(view.text('empty'), 'Association failure');
+    }
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/initialized'));
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/size-changed'));
+    assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
+  });
+  it('recomputes notification origin after a failure without changing ordinary extraction', () => {
+    const html = buildAppHtml({ title: 'Origin', appName: 'origin', styles: '',
+      body: '<div id="empty"></div><div id="card"><p id="capture"></p></div>',
+      renderBody: 'setText("capture", JSON.stringify({data:data,origin:renderContext.kind}));' });
+    const view = mountWidgetHtml(html);
+    view.sendToolResult(brief);
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, structuredContent: brief } });
+    assert.equal(view.text('capture'), before);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'text-fallback');
+    view.sendToolResult({ projection: brief });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'projection-wrapped');
+  });
+  it('preserves valid nonempty baselines and error/recovery across all eight shared-shell cards', async () => {
+    const world = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-world-brief-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const chokepoints = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-chokepoint-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const cases = [
+      ['country-brief-v3', 'brief', brief, /Controlled current assessment/],
+      ['world-brief-v2', 'brief', world, /First claim/],
+      ['news-intelligence-v2', 'list', { data: { insights: { topStories: [{ primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)', category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE' }] } } }, /Port disruption expands/],
+      ['chokepoint-monitor-v2', 'rows', chokepoints, /Hormuz strait/],
+      ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
+      ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
+      ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],
+      ['forecasts-v3', 'list', { data: { predictions: { predictions: [{ title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global' }] } } }, /Oil remains above/],
+    ];
+    for (const [name, id, payload, token] of cases) {
+      const response = await buildUiResourceRead(1, 'ui://worldmonitor/' + name + '.html', {});
+      const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+      view.sendToolResult(payload);
+      assert.match(view.text(id), token, name + ': baseline must actually render');
+      const before = view.nodes(id).slice();
+      const footer = view.text('foot');
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text: 'Controlled fleet failure' }] } });
+      assert.equal(view.text('empty'), 'Controlled fleet failure', name);
+      assert.equal(view.nodes('card')[0].style.display, 'none', name);
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, before.length, name + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, before[index], name + ': accepted node identity survives'));
+      assert.equal(view.text('foot'), footer, name + ': existing footer survives');
+      view.sendToolResult(payload);
+      assert.equal(view.nodes('card')[0].style.display, 'block', name);
+      assert.equal(view.nodes('empty')[0].style.display, 'none', name);
+      assert.match(view.text(id), token, name);
+    }
+  });
+
 });

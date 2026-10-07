@@ -2343,7 +2343,7 @@
       "unscored": "서술형 시나리오이며 정확도는 평가되지 않습니다."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li><li>사용 가능한 경우 예측 시장 기준선을 기준으로 보정됨</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다.",
+      "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다.",
       "record": {
         "label": "실적 기록",
         "labelHint": "최근 {{days}}일 동안 공개된 예측이 확정된 뒤 어떤 점수를 받았는지 보여줍니다. 숫자 위에 마우스를 올리면 의미를 볼 수 있습니다.",
@@ -2364,6 +2364,46 @@
         "measuredHint": "지난 {{days}}일간 {{n}}개의 평가된 예측에서 공개된 {{domain}} 예측들의 점수. 기준율은 항상 도메인의 관찰된 예 비율로 답변했을 때의 점수입니다. 낮을수록 좋습니다. 이것은 도메인의 기록이지, 이 예측의 기록이 아닙니다.",
         "unmeasured": "아직 측정되지 않음",
         "unmeasuredHint": "{{domain}} 예측은 지난 {{days}}일 동안 {{n}}개의 등급이 매겨진 결과가 있습니다. 도메인의 정확도를 표시하려면 {{min}}개가 필요합니다."
+      },
+      "resolution": {
+        "last": "마지막: {{outcome}}",
+        "lastSr": "이 예측의 이전 윈도우는 {{outcome}}(으)로 판정되었습니다.",
+        "history": "최근 윈도우, 최신순: {{list}}",
+        "outcome": {
+          "yes": "예",
+          "no": "아니오",
+          "void": "무효"
+        },
+        "void": {
+          "no_establishable_metric": "피드에 이 질문에 대한 데이터가 없습니다",
+          "value_source_never_settled": "피드가 확정된 값을 게시하지 않았습니다",
+          "count_source_window_not_retained": "피드가 더 이상 질문 윈도우를 보유하지 않습니다",
+          "unsupported_window": "질문을 피드와 대조할 수 없습니다",
+          "unsupported_metric_key": "질문을 피드와 대조할 수 없습니다",
+          "not_hard_spec": "질문을 피드와 대조할 수 없습니다",
+          "missing_threshold": "질문에 임계값이 누락되었습니다",
+          "missing_deadline": "질문에 마감일이 누락되었습니다",
+          "missing_generated_at": "예측에 시작 날짜가 누락되었습니다",
+          "beyond_archive_horizon": "뉴스 아카이브가 더 이상 질문 윈도우를 다루지 않습니다",
+          "no_archive_evidence": "뉴스 아카이브에 관련 정보가 없습니다",
+          "all_judges_void": "두 심사자 모두 증거가 부족하다고 판단했습니다",
+          "judge_disagreement": "심사자 간 의견이 일치하지 않습니다",
+          "judge_retry_exhausted": "심사자가 판정을 내리지 못했습니다",
+          "withheld_unpublished": "이 유형의 예측은 더 이상 게시되지 않습니다",
+          "resolver_envelope_bug": "올바르게 읽지 못한 데이터 피드로 채점됨",
+          "market_price_not_outcome": "피드에는 시장 가격만 있었고 시장의 결과는 없었습니다",
+          "judged_evidence_unreliable": "심사 근거 자료를 바로잡는 동안 채점에서 제외됨",
+          "other": "판정할 수 없었습니다"
+        }
+      },
+      "horizons": {
+        "label": "다음 시점에서도 평가됨: {{list}}",
+        "hint": "헤드라인 확률은 예측의 자체 기한에 맞춰 평가됩니다. 각 기한의 예측값도 소스 피드에 대해 평가되며, 이 예측을 위해 처음 발행된 값을 기준으로 합니다. 현재 값이 평가된 값과 다를 수 있으므로 예측값은 표시되지 않습니다."
+      },
+      "audit": {
+        "label": "정확도 감사 중",
+        "hint": "{{date}}부터 감사 중입니다. 감사에서 예측 점수 산정 방식의 오류가 발견되었습니다. 수정이 진행되는 동안 점수는 철회되었습니다. 예측은 계속 게시되고 기록됩니다.",
+        "unverified": "기록된 결과이며, 정확도 감사 중에는 검증되지 않았습니다."
       }
     },
     "escalationCorrelation": {

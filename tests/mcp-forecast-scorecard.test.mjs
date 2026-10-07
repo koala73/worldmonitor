@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { projectForecastScorecard } from '../api/mcp/registry/cache-tools.ts';
+import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 const tool = CACHE_TOOLS.find((entry) => entry.name === 'get_forecast_scorecard');
 
@@ -29,6 +31,31 @@ const DECLARED = {
     scoredOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
   },
   receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
+  familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES' }, { forecastId: 'fc-conflict-1', outcome: 'VOID', voidReason: 'judge_disagreement' }],
+};
+
+const MARKET_ALERTS_STORED = {
+  schemaVersion: 1,
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
+  archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
+  byType: [
+    { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, n: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null },
+  ],
+};
+const MARKET_ALERTS = {
+  generatedAt: 789,
+  windowHours: 6,
+  rollingWindowDays: 30,
+  methodology: 'market-alert methodology',
+  byType: [
+    { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'prediction-market', scored: 0, baseN: 0 },
+  ],
 };
 
 async function runTool(stored, params = {}) {
@@ -116,8 +143,69 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     assert.equal(serialized.includes('calibrationShadow'), false);
   });
 
+  it('names every row list it serves in the tool description', () => {
+    assert.match(tool.description, /\breceipts\b/);
+    assert.match(tool.description, /\bfamilyOutcomes\b/);
+  });
+
   it('declares every field it serves in outputSchema', () => {
     const declared = Object.keys(tool.outputSchema.properties.data.properties.scorecard.properties).sort();
     assert.deepEqual(declared, Object.keys(DECLARED).sort());
+  });
+
+  it('serves the market-alert scorecard from its own key, whitelisted member by member (#8867)', async () => {
+    const result = await runTool({
+      'forecast:scorecard:v1': { _seed: { fetchedAt: Date.now() }, data: DECLARED },
+      'correlation:market-alerts:scorecard:v1': { _seed: { fetchedAt: Date.now() }, data: MARKET_ALERTS_STORED },
+      'seed-meta:forecast:scorecard': { fetchedAt: Date.now() },
+    });
+
+    assert.deepEqual(result.data.scorecard, DECLARED);
+    assert.deepEqual(result.data.marketAlerts, MARKET_ALERTS);
+    const serialized = JSON.stringify(result);
+    assert.equal(serialized.includes('archive'), false);
+    assert.equal(serialized.includes('coveredFromMs'), false);
+  });
+
+  it('serves marketAlerts as null when its key is absent', async () => {
+    const result = await runTool({
+      'forecast:scorecard:v1': DECLARED,
+      'seed-meta:forecast:scorecard': { fetchedAt: Date.now() },
+    });
+    assert.equal(result.data.marketAlerts, null);
+    assert.deepEqual(result.data.scorecard, DECLARED);
+  });
+
+  it('projects only the declared blocks and the audit flag rather than spreading what the cache read returned', () => {
+    const projected = tool._project({ scorecard: DECLARED, marketAlerts: MARKET_ALERTS_STORED, archive: { coveredFromMs: 1 } });
+    assert.deepEqual(Object.keys(projected).sort(), ['marketAlerts', 'scorecard', 'underAudit']);
+  });
+
+  it('declares the market-alert container and row members in outputSchema', () => {
+    const alerts = tool.outputSchema.properties.data.properties.marketAlerts;
+    assert.deepEqual(Object.keys(alerts.properties).sort(), Object.keys(MARKET_ALERTS).sort());
+    assert.deepEqual(
+      Object.keys(alerts.properties.byType.items.properties).sort(),
+      Object.keys(MARKET_ALERTS.byType[0]).sort(),
+    );
+  });
+});
+
+describe('get_forecast_scorecard under the accuracy audit (#8990)', () => {
+  const AUDIT = Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+  const data = { scorecard: { schemaVersion: 2, skill: { count: 243, brier: 0.110775 } }, marketAlerts: null };
+
+  it('flags the result and keeps the raw scorecard', () => {
+    const audited = projectForecastScorecard(data, AUDIT);
+    assert.deepEqual(audited.underAudit, { since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+    assert.equal(audited.scorecard.skill.brier, 0.110775);
+    const lifted = projectForecastScorecard(data, null);
+    assert.equal(lifted.underAudit, null);
+    assert.deepEqual({ ...audited, underAudit: null }, lifted, 'the flag is the only difference');
+  });
+
+  it('projects through the live switch and declares the flag in its output schema', () => {
+    assert.deepEqual(tool._project(structuredClone(data)), projectForecastScorecard(structuredClone(data), FORECAST_ACCURACY_AUDIT));
+    assert.deepEqual(tool.outputSchema.properties.data.properties.underAudit.type, ['object', 'null']);
   });
 });

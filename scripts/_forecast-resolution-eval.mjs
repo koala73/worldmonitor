@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 // settlement grace can never disagree with the template's declared cadence.
 import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
 import { finiteObservations } from './_bet-templates-macro.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
@@ -26,6 +27,7 @@ export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // endDate; the settlement loader then needs a run to capture it. Pend up to
 // this long past the deadline for the adjudicated record before VOIDing.
 export const MARKET_SETTLEMENT_FEED_KEY = 'prediction:markets-resolution:v1';
+const MARKET_BOOTSTRAP_FEED_KEY = 'prediction:markets-bootstrap:v1';
 export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // FRED (#5525 KTD4): monthly series observations are dated the FIRST of the
 // reference month and publish ~2 weeks after the month ENDS, so the first
@@ -89,6 +91,13 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   const deadline = Number(spec.deadline ?? entry.deadline);
   if (nowMs < deadline) {
     return { status: 'pending', evidence: { reason: 'deadline_not_reached', deadline } };
+  }
+
+  // The bootstrap feed lists only open markets and clips yesPrice to [10, 90],
+  // so a read at endDate is the crowd's price, never the market's outcome
+  // (#5233). Bets read the settlement feed instead.
+  if (parsed.fn === 'yesPrice' && (spec.sourceFeed === MARKET_BOOTSTRAP_FEED_KEY || parsed.feedKey === MARKET_BOOTSTRAP_FEED_KEY)) {
+    return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
   }
 
   // Settlement gate for scalar `value`/`price` reads at a POINT window
@@ -402,7 +411,10 @@ export function shapeResolutionFeed(key, data) {
     const d = data?.data ?? data;
     return Array.isArray(d?.records) ? d.records : (Array.isArray(d) ? d : []);
   }
-  return data;
+  // Contract-mode seeds store {_seed, data:{threats|outages|...}}. iterateRecords
+  // descends only into arrays, so a raw envelope yields no records and every
+  // count reads 0 (#5233). Legacy bare values pass through unchanged.
+  return unwrapEnvelope(data).data;
 }
 
 // The resolver's keyed feed view: each successfully read key mapped to its

@@ -2343,7 +2343,7 @@
       "unscored": "叙事情景，未经准确性评估。"
     },
     "forecast": {
-      "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li><li>根据预测市场基线进行校准（如可用）</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。",
+      "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。",
       "record": {
         "label": "历史战绩",
         "labelHint": "过去{{days}}天内，已公开的预测在结果确定后的得分情况。将鼠标悬停在数字上可查看其含义。",
@@ -2364,6 +2364,46 @@
         "measuredHint": "过去 {{days}} 天内 {{n}} 个已评分预测中，已发布的 {{domain}} 预测的 Brier 评分。基准率是如果始终按该领域观察到的是概率回答所得的评分。分数越低越好。这是该领域的历史记录，不是此预测的记录。",
         "unmeasured": "暂未测量",
         "unmeasuredHint": "{{domain}} 预测在过去 {{days}} 天内有 {{n}} 个已评分的结果。领域需要至少 {{min}} 个结果才能显示准确度。"
+      },
+      "resolution": {
+        "last": "上次：{{outcome}}",
+        "lastSr": "该预测的上一个时间窗口已有结果：{{outcome}}。",
+        "history": "最近的时间窗口，最新的优先：{{list}}",
+        "outcome": {
+          "yes": "是",
+          "no": "否",
+          "void": "作废"
+        },
+        "void": {
+          "no_establishable_metric": "该数据源对此问题没有读数",
+          "value_source_never_settled": "该数据源从未发布已结算的数值",
+          "count_source_window_not_retained": "该数据源不再保留该问题的时间窗口",
+          "unsupported_window": "无法根据其数据源检查该问题",
+          "unsupported_metric_key": "无法根据其数据源检查该问题",
+          "not_hard_spec": "无法根据其数据源检查该问题",
+          "missing_threshold": "该问题缺少阈值",
+          "missing_deadline": "该问题缺少截止日期",
+          "missing_generated_at": "该预测缺少开始日期",
+          "beyond_archive_horizon": "新闻存档不再涵盖该问题的时间窗口",
+          "no_archive_evidence": "新闻存档中没有相关内容",
+          "all_judges_void": "两位裁定者都认为证据不足",
+          "judge_disagreement": "裁定者意见不一致",
+          "judge_retry_exhausted": "裁定者未作出裁决",
+          "withheld_unpublished": "此类预测已不再发布",
+          "resolver_envelope_bug": "依据我们未能正确读取的数据源评分",
+          "market_price_not_outcome": "数据源显示的是市场价格，而不是市场的最终结果",
+          "judged_evidence_unreliable": "在修正裁判所用证据期间暂不计分",
+          "other": "无法确定结果"
+        }
+      },
+      "horizons": {
+        "label": "同时评分于：{{list}}",
+        "hint": "头条概率按预测自身的时间范围评分。以下各时间范围的投射值也会评分：按该预测首次公布的值，与其数据源对照。由于当前值可能与评分所用的值不同，因此不显示投射值。"
+      },
+      "audit": {
+        "label": "准确性审计中",
+        "hint": "自 {{date}} 起审计中。审计发现预测评分方式存在错误。评分已撤回，正在进行更正。预测仍在发布和记录中。",
+        "unverified": "记录的结果，准确性审计期间未验证。"
       }
     },
     "escalationCorrelation": {

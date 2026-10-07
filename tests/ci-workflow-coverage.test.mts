@@ -79,7 +79,10 @@ describe('root dependency cache (#8710)', () => {
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
-        const steps = YAML.parse(workflowText).jobs[jobId].steps;
+        // A `parallel:` group holds its steps in a list; expand it in place so
+        // the action is still found, and the order check still holds.
+        const steps = YAML.parse(workflowText).jobs[jobId].steps
+          .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
         const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
         const install = steps.find((step) => step.uses === './.github/actions/install-root-deps');
         assert.ok(install, `${jobId} must use the shared root dependency action`);
@@ -1012,7 +1015,17 @@ describe('CI workflow coverage', () => {
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'test:e2e:ci-smoke must contain exactly the pinned smoke-spec inventory',
     );
-    const shardSpecs = ['test:e2e:ci-smoke:1', 'test:e2e:ci-smoke:2'].map((script) => {
+    // One script per CI shard, read from the matrix so adding a shard without
+    // its spec list (or the reverse) fails here.
+    const smokeShards: number[] = YAML.parse(testWorkflow).jobs['variant-smoke-shards'].strategy.matrix.shard;
+    assert.deepEqual(smokeShards, smokeShards.map((_, i) => i + 1), 'smoke shard indices must be 1..N');
+    const shardScripts = Object.keys(packageScripts).filter((name) => /^test:e2e:ci-smoke:\d+$/.test(name));
+    assert.deepEqual(
+      shardScripts.sort(),
+      smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).sort(),
+      'package.json must define exactly one test:e2e:ci-smoke:<n> script per CI smoke shard',
+    );
+    const shardSpecs = smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).map((script) => {
       const command = packageScripts[script] ?? '';
       const tokens = shellArgvTokens(command);
       assert.deepEqual(
@@ -1025,10 +1038,11 @@ describe('CI workflow coverage', () => {
       assert.equal(new Set(specs).size, specs.length, `${script} must not repeat a spec`);
       return specs;
     });
-    const intersection = shardSpecs[0].filter((spec) => shardSpecs[1].includes(spec));
-    assert.deepEqual(intersection, [], 'ci-smoke shards must be disjoint');
+    const allShardSpecs = shardSpecs.flat();
+    assert.equal(new Set(allShardSpecs).size, allShardSpecs.length, 'ci-smoke shards must be disjoint');
+    assert.ok(shardSpecs.every((specs) => specs.length > 0), 'no ci-smoke shard may be empty');
     assert.deepEqual(
-      [...shardSpecs[0], ...shardSpecs[1]].sort(),
+      [...allShardSpecs].sort(),
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'the ci-smoke shard union must equal the pinned smoke-spec inventory',
     );
@@ -1057,10 +1071,39 @@ describe('CI workflow coverage', () => {
         job,
         /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
       );
+      // install-deps runs only when ldd finds a library a Playwright browser
+      // cannot resolve. An unconditional install would download ~32 MB of
+      // fonts and Mesa upgrades on every run.
+      const installDeps = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { id?: string }) => step.id === 'playwright-install-deps');
+      assert.match(installDeps.run, /ldd "\$browser" \| grep 'not found'[\s\S]*exit 0[\s\S]*npx playwright install-deps chromium/);
+      assert.match(installDeps.run, /missing="no Playwright browser binary found"/, 'a missing browser binary must fall through to install-deps');
       assert.match(
         job,
         /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
       );
+    }
+  });
+
+  it('installs the locale font subset from a package cache in every browser job', () => {
+    const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
+    const steps = action.runs.steps;
+    const download = steps.find((step: { name?: string }) => step.name === 'Download browser font packages on cache miss');
+    const packages = download.run.match(/packages=\(([^)]+)\)/)[1].trim().split(/\s+/);
+    assert.deepEqual(packages, ['fonts-wqy-zenhei', 'fonts-tlwg-loma-otf', 'fonts-lohit-deva']);
+    const keyStep = steps.find((step: { id?: string }) => step.id === 'font-key');
+    for (const pkg of packages) {
+      assert.ok(keyStep.run.includes(pkg), `the font cache key must change when ${pkg} leaves the list`);
+    }
+    assert.equal(download.if, "steps.font-debs.outputs.cache-hit != 'true'");
+    assert.equal(steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/cache/save@')).if, download.if);
+    for (const jobName of ['variant-smoke-shards', 'variant-smoke-pro-webmcp']) {
+      const fonts = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { uses?: string }) => step.uses === './.github/actions/install-browser-fonts');
+      assert.ok(fonts, `${jobName} must install the browser fonts`);
+      assert.equal(fonts['continue-on-error'], true, `${jobName}: a font install failure must not fail the job`);
     }
   });
 

@@ -9,8 +9,9 @@ import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
+import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
+import { alignPriorToPublication, applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import {
@@ -80,6 +81,12 @@ const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
 // silently invalidating the verification pipeline's Brier.
 const FUNNEL_HEALTH_KEY = 'forecast:funnel:health:v1';
 const FUNNEL_HEALTH_TTL_SECONDS = 6 * 60 * 60; // 6h — 6x the hourly cron, mirrors TTL_SECONDS
+// #7070 activation. The map and its gate verdict are written by
+// seed-forecast-resolutions; the seeder writes its decision record.
+const CALIBRATION_MAP_KEY = 'forecast:calibration-map:v1';
+const CALIBRATION_GATE_SCORECARD_KEY = 'forecast:scorecard:v1';
+const CALIBRATION_PUBLICATION_KEY = 'forecast:calibration-publication:v1';
+const CALIBRATION_PUBLICATION_TTL_SECONDS = 90 * 24 * 60 * 60;
 const TRACE_RUNS_MAX = 50;
 const TRACE_REDIS_TTL_SECONDS = 60 * 24 * 60 * 60;
 const WORLD_STATE_HISTORY_LIMIT = 6;
@@ -1399,9 +1406,14 @@ function getStateDerivedBucketSignalTypes(domain, bucketId) {
   return [];
 }
 
+// Every bucket here has a hard-spec path in deriveStateDerivedHardMetrics
+// (_forecast-resolution.mjs). sovereign_risk, rates_inflation and fx_stress
+// have no checkable question and stay unpublished until they get one (#5234).
+// Re-enabling one also means removing it from WITHHELD_STATE_BUCKETS
+// (_forecast-scorecard.mjs), which keeps its ledger rows out of the scorecard.
 function getStateDerivedAllowedBuckets(domain) {
   if (domain === 'supply_chain') return ['freight', 'energy'];
-  if (domain === 'market') return ['energy', 'sovereign_risk', 'rates_inflation', 'fx_stress'];
+  if (domain === 'market') return ['energy'];
   return [];
 }
 
@@ -4911,7 +4923,10 @@ function buildForecastCases(predictions) {
 function buildPriorForecastSnapshot(pred) {
   return {
     id: pred.id,
+    domain: pred.domain,
+    generationOrigin: pred.generationOrigin,
     probability: pred.probability,
+    ...(Number.isFinite(pred.uncalibratedProbability) && { uncalibratedProbability: pred.uncalibratedProbability }),
     signals: (pred.signals || []).map(signal => signal.value),
     newsContext: pred.newsContext || [],
     calibration: pred.calibration
@@ -4930,6 +4945,10 @@ function buildCalibrationLineage(calibration) {
   };
 }
 
+function finiteOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function buildHistoryForecastEntry(pred) {
   return {
     id: pred.id,
@@ -4937,9 +4956,11 @@ function buildHistoryForecastEntry(pred) {
     region: pred.region,
     title: pred.title,
     probability: pred.probability,
+    ...(Number.isFinite(pred.uncalibratedProbability) && { uncalibratedProbability: pred.uncalibratedProbability }),
     confidence: pred.confidence,
     timeHorizon: pred.timeHorizon,
     generationOrigin: pred.generationOrigin || 'legacy_detector',
+    stateBucketId: pred.stateDerivation?.bucketId,
     trend: pred.trend,
     priorProbability: pred.priorProbability,
     signals: (pred.signals || []).slice(0, 6).map(signal => ({
@@ -4962,14 +4983,14 @@ function buildHistoryForecastEntry(pred) {
       effect: cascade.effect,
       probability: cascade.probability,
     })),
-    // Persist projections into the 45-day history too (#4933 audit gap —
-    // canonical payload already emits them at :5100; history was the only
-    // store dropping them, so the per-horizon curve a future multi-horizon
-    // Brier needs was lost). Mirror the canonical payload's shape.
+    // Horizon scoring grades each hard horizon contract on these values and
+    // reads them only from history; the canonical published payload omits
+    // them (#8967).
+    // A missing value stays null: a 0 would be graded as a real projection.
     projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
+      h24: finiteOrNull(pred.projections.h24),
+      d7: finiteOrNull(pred.projections.d7),
+      d30: finiteOrNull(pred.projections.d30),
     } : null,
     // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
     // payload emits, so Bet 2's resolver can score forecasts still in-window.
@@ -5037,6 +5058,67 @@ async function seedForecastFunnelHealth(predictions) {
     'SET', `seed-meta:${FUNNEL_HEALTH_KEY}`, JSON.stringify(meta), 'EX', FUNNEL_HEALTH_TTL_SECONDS,
   ]).catch((err) => console.warn(`  [FunnelHealth] seed-meta write failed: ${err.message}`));
   return assessment;
+}
+
+/**
+ * Reads the map, the gate verdict and the previous record, then decides this
+ * run's mode under the stateless rule in _forecast-calibration.mjs. A failed
+ * map or gate read publishes raw. A failed read of the previous record leaves
+ * the decision alone but returns no record, so the stored flip history is
+ * never overwritten by one built without it.
+ */
+async function resolveCalibrationPublication(nowMs, { env = process.env, logger = console } = {}) {
+  const forceRaw = env[CALIBRATION_FORCE_RAW_ENV] === '1';
+  const { url, token } = getRedisCredentials();
+  const read = (key) => redisGetOrThrow(url, token, key).then(
+    (value) => ({ ok: true, value }),
+    (err) => {
+      logger.warn(`  [Calibration] Read of ${key} failed: ${err.message}`);
+      return { ok: false, value: null };
+    },
+  );
+  const [mapRead, scorecardRead, previousRead] = await Promise.all([
+    read(CALIBRATION_MAP_KEY),
+    read(CALIBRATION_GATE_SCORECARD_KEY),
+    read(CALIBRATION_PUBLICATION_KEY),
+  ]);
+  const map = parseCalibrationMap(mapRead.value);
+  const shadow = scorecardRead.value?.calibrationShadow ?? null;
+  const readFailed = !mapRead.ok || !scorecardRead.ok;
+  const decision = decideCalibrationPublication(map, shadow, {
+    forceRaw,
+    readFailed,
+    nowMs,
+    gateGeneratedAt: Number(scorecardRead.value?.generatedAt),
+  });
+  if (!previousRead.ok) {
+    logger.warn(`  [Calibration] mode=${decision.mode} reason=${decision.reason} map=${decision.mapVersion ?? 'none'}; previous record unreadable, so no flip is recorded this run`);
+    return { map, decision, record: null, flipped: false };
+  }
+  const { flipped, record } = recordCalibrationPublication(previousRead.value, decision, nowMs);
+  const gate = decision.gate;
+  const gateText = gate
+    ? `eligible=${gate.eligible} forward=${gate.forwardCount} brierDeltaUpper=${gate.brierDeltaUpper} `
+      + `domains=${gate.domains.map((row) => `${row.domain}:${row.count}:${row.brierDeltaUpper}`).join(',') || 'none'} `
+      + `gateReasons=${gate.reasons.join(',') || 'none'}`
+    : 'gate=none';
+  const line = `mode=${decision.mode} reason=${decision.reason} map=${decision.mapVersion ?? 'none'} ${gateText}`;
+  if (flipped) logger.warn(`  [Calibration] FLIP ${record.lastFlip.from} -> ${record.lastFlip.to} ${line}`);
+  else logger.log(`  [Calibration] ${line}`);
+  return { map, decision, record, flipped };
+}
+
+// Unlike redisSet, checks the reply: Upstash reports a rejected SET as HTTP
+// 200 with an error body, and a silent miss would leave lastFlip stale.
+async function writeCalibrationPublication(record) {
+  if (!record) return;
+  const { url, token } = getRedisCredentials();
+  if (_testRedisStore) {
+    await redisSet(url, token, CALIBRATION_PUBLICATION_KEY, record, CALIBRATION_PUBLICATION_TTL_SECONDS);
+    return;
+  }
+  const reply = await redisCommand(url, token, ['SET', CALIBRATION_PUBLICATION_KEY, JSON.stringify(record), 'EX', CALIBRATION_PUBLICATION_TTL_SECONDS]);
+  if (reply?.result !== 'OK') throw new Error(`SET ${CALIBRATION_PUBLICATION_KEY} was not acknowledged: ${JSON.stringify(reply).slice(0, 200)}`);
 }
 
 function getTraceMaxForecasts(totalForecasts = 0) {
@@ -5551,6 +5633,11 @@ function buildHorizonResolutionsOutputBlock(horizonResolutions) {
   return Object.keys(block).length ? block : null;
 }
 
+function scoredHorizonsBlock(pred) {
+  const scored = scoredHorizonKeys(pred);
+  return scored.length ? { scoredHorizons: scored } : {};
+}
+
 function buildPublishedForecastPayload(pred) {
   return {
     id: pred.id,
@@ -5592,12 +5679,8 @@ function buildPublishedForecastPayload(pred) {
       regional: pred.perspectives.regional || '',
       contrarian: pred.perspectives.contrarian || '',
     } : null,
-    projections: pred.projections ? {
-      h24: Number(pred.projections.h24 || 0),
-      d7: Number(pred.projections.d7 || 0),
-      d30: Number(pred.projections.d30 || 0),
-    } : null,
     resolution: buildResolutionOutputBlock(pred.resolution),
+    ...scoredHorizonsBlock(pred),
     caseFile: slimForecastCaseForPublish(pred.caseFile),
     simulationAdjustment: Number(pred.simulationAdjustment || 0),
     simPathConfidence: Number(pred.simPathConfidence || 0),
@@ -16478,6 +16561,28 @@ async function updateEmaWindows(inputs, url, token) {
 }
 
 // ── Main pipeline ──────────────────────────────────────────
+/** This run's calibration decision, and the prior run on the same scale. */
+async function resolveCalibrationRun(nowMs) {
+  const calibrationPublication = await resolveCalibrationPublication(nowMs);
+  const prior = alignPriorToPublication(await readPriorPredictions(), calibrationPublication.map, calibrationPublication.decision);
+  return { calibrationPublication, prior };
+}
+
+// Detector output to scored forecasts. The published calibration applies to
+// the post-blend probability, before anything derived from it.
+function scoreDetectedPredictions(predictions, { inputs, prior, calibrationPublication, cascadeRules }) {
+  attachNewsContext(predictions, inputs.newsInsights, inputs.newsDigest);
+  calibrateWithMarkets(predictions, inputs.predictionMarkets);
+  applyPublishedCalibration(predictions, calibrationPublication.map, calibrationPublication.decision);
+  computeConfidence(predictions);
+  computeProjections(predictions);
+  resolveCascades(predictions, cascadeRules);
+  discoverGraphCascades(predictions, loadEntityGraph());
+  computeTrends(predictions, prior);
+  buildForecastCases(predictions);
+  annotateForecastChanges(predictions, prior);
+}
+
 async function fetchForecasts() {
   await warmPingChokepoints();
   const traceStorageConfig = resolveR2StorageConfig();
@@ -16501,7 +16606,7 @@ async function fetchForecasts() {
   console.log('  Extracting urgent critical event frames...');
   inputs.criticalSignalBundle = await extractCriticalSignalBundle(inputs);
   console.log(`  [CriticalSignals] source=${inputs.criticalSignalBundle.source} candidates=${inputs.criticalSignalBundle.candidateCount} frames=${inputs.criticalSignalBundle.extractedFrameCount} fallbackNewsSignals=${inputs.criticalSignalBundle.fallbackNewsSignalCount} structuredSignals=${inputs.criticalSignalBundle.structuredSignalCount}`);
-  const prior = await readPriorPredictions();
+  const { calibrationPublication, prior } = await resolveCalibrationRun(runGeneratedAt);
 
   console.log('  Running domain detectors...');
   const { url: emaUrl, token: emaToken } = getRedisCredentials();
@@ -16524,16 +16629,8 @@ async function fetchForecasts() {
     console.log(`  Forecast trace config: raw=${traceCap.raw ?? 'default'} resolved=${traceCap.resolved} total=${traceCap.totalForecasts}`);
   }
 
-  attachNewsContext(predictions, inputs.newsInsights, inputs.newsDigest);
-  calibrateWithMarkets(predictions, inputs.predictionMarkets);
-  computeConfidence(predictions);
-  computeProjections(predictions);
   const cascadeRules = loadCascadeRules();
-  resolveCascades(predictions, cascadeRules);
-  discoverGraphCascades(predictions, loadEntityGraph());
-  computeTrends(predictions, prior);
-  buildForecastCases(predictions);
-  annotateForecastChanges(predictions, prior);
+  scoreDetectedPredictions(predictions, { inputs, prior, calibrationPublication, cascadeRules });
   let fullRunPredictions = predictions.slice();
   let fullRunSituationClusters = attachSituationContext(predictions);
   let fullRunSituationFamilies = attachSituationFamilyContext(predictions, buildSituationFamilies(fullRunSituationClusters));
@@ -16680,6 +16777,7 @@ async function fetchForecasts() {
     marketSelectionIndex,
     impactExpansionCandidates,
     deepForecast,
+    calibrationPublication: calibrationPublication.record,
     priorWorldStateKey: priorTracePointer?.worldStateKey || '',
     priorWorldState,
     priorWorldStates,
@@ -18028,6 +18126,122 @@ export const FORECAST_EXTRA_KEYS = [
   },
 ];
 
+// Runs after the canonical publish. The calibration record goes first: it
+// describes the probabilities just published, and the later stages share an
+// LLM budget and R2 latency that must not delay or skip it.
+async function runForecastAfterPublish(data, meta, triggerContext) {
+  try {
+    await writeCalibrationPublication(data.calibrationPublication);
+  } catch (err) {
+    console.warn(`  [Calibration] Publication record write failed: ${err.message}`);
+  }
+
+  if (triggerContext.triggerRequest) {
+    await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
+  }
+
+  // market_implications is the last remaining LLM stage and shares the 200s
+  // run budget (#4978). Run it BEFORE the best-effort telemetry below
+  // (history + deep-forecast snapshots, ~20s R2 trace export) so their
+  // wall-clock can't push the tail stage past the run deadline and starve
+  // it into a (pre-fix) SEED_ERROR. Independent of that telemetry — it reads
+  // data.inputs and publishes to its own key.
+  try {
+    await buildAndSeedMarketImplications(data.inputs || {});
+  } catch (err) {
+    console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
+  }
+
+  try {
+    const snapshot = await appendHistorySnapshot(data);
+    console.log(`  History appended: ${snapshot.predictions.length} forecasts -> ${HISTORY_KEY}`);
+  } catch (err) {
+    console.warn(`  [History] Append failed: ${err.message}`);
+  }
+
+  try {
+    await seedForecastFunnelHealth(data.predictions || []);
+  } catch (err) {
+    console.warn(`  [FunnelHealth] Assessment/write failed: ${err.message}`);
+  }
+
+  try {
+    const runId = meta?.runId || `${Date.now()}`;
+    let deepForecast = data.deepForecast || {
+      status: 'skipped',
+      reason: 'not_eligible',
+      eligibleStateCount: 0,
+      selectedStateIds: [],
+      selectedPathCount: 0,
+      failureReason: '',
+      completedAt: '',
+      replacedFastRun: false,
+      rejectedPathsPreview: [],
+    };
+    const snapshotPayload = buildDeepForecastSnapshotPayload({
+      ...data,
+      triggerContext,
+      forecastDepth: 'fast',
+    }, { runId });
+    const snapshotWrite = await writeDeepForecastSnapshot(snapshotPayload, { runId });
+    if (snapshotWrite?.storageConfig && (data.impactExpansionCandidates || []).length > 0) {
+      writeSimulationPackage(snapshotPayload, { storageConfig: snapshotWrite.storageConfig, priorWorldState: data.priorWorldState || null })
+        .then(() => enqueueSimulationTask(runId))
+        .catch((err) => console.warn(`  [SimulationPackage] Write/enqueue failed: ${err.message}`));
+    }
+    if (deepForecast.status === 'queued' && (data.impactExpansionCandidates || []).length > 0) {
+      if (snapshotWrite?.snapshotKey) {
+        const queueResult = await enqueueDeepForecastTask({
+          runId,
+          snapshotKey: snapshotWrite.snapshotKey,
+          fastPrefix: buildTraceRunPrefix(runId, data.generatedAt, snapshotWrite.storageConfig?.basePrefix || FORECAST_DEEP_RUN_PREFIX),
+          priorWorldStateKey: data.priorWorldStateKey || '',
+          selectedCandidateStateIds: deepForecast.selectedStateIds || [],
+          createdAt: Date.now(),
+          retryCount: 0,
+        });
+        if (!queueResult.queued) {
+          deepForecast = {
+            ...deepForecast,
+            status: queueResult.reason === 'duplicate' ? 'queued' : 'failed',
+            failureReason: queueResult.reason === 'duplicate' ? '' : (queueResult.reason || 'queue_failed'),
+          };
+        }
+      } else {
+        deepForecast = {
+          ...deepForecast,
+          status: 'failed',
+          failureReason: 'snapshot_write_failed',
+        };
+      }
+    } else if (!snapshotWrite?.snapshotKey) {
+      console.warn('  [DeepForecast] Snapshot write skipped or failed; replay will not be available for this run');
+    }
+    console.log('  [Trace] Starting R2 export...');
+    const pointer = await writeForecastTraceArtifacts({
+      ...data,
+      triggerContext,
+      forecastDepth: 'fast',
+      deepForecast,
+      runStatusContext: {
+        status: deepForecast.status,
+        stage: 'fast_published',
+        progressPercent: 100,
+        completedAt: deepForecast.completedAt || '',
+        failureReason: deepForecast.failureReason || '',
+      },
+    }, { runId });
+    if (pointer) {
+      console.log(`  [Trace] Written: ${pointer.summaryKey} (${pointer.tracedForecastCount} forecasts)`);
+    } else {
+      console.log('  [Trace] Skipped: R2 storage not configured');
+    }
+  } catch (err) {
+    console.warn(`  [Trace] Export failed: ${err.message}`);
+    if (err.stack) console.warn(`  [Trace] Stack: ${err.stack.split('\n').slice(0, 3).join(' | ')}`);
+  }
+}
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -18054,112 +18268,7 @@ if (_isDirectRun) {
     schemaVersion: 1,
     maxStaleMin: 90,
     publishTransform: buildPublishedSeedPayload,
-    afterPublish: async (data, meta) => {
-      if (triggerContext.triggerRequest) {
-        await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
-      }
-
-      // market_implications is the last remaining LLM stage and shares the 200s
-      // run budget (#4978). Run it BEFORE the best-effort telemetry below
-      // (history + deep-forecast snapshots, ~20s R2 trace export) so their
-      // wall-clock can't push the tail stage past the run deadline and starve
-      // it into a (pre-fix) SEED_ERROR. Independent of that telemetry — it reads
-      // data.inputs and publishes to its own key.
-      try {
-        await buildAndSeedMarketImplications(data.inputs || {});
-      } catch (err) {
-        console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
-      }
-
-      try {
-        const snapshot = await appendHistorySnapshot(data);
-        console.log(`  History appended: ${snapshot.predictions.length} forecasts -> ${HISTORY_KEY}`);
-      } catch (err) {
-        console.warn(`  [History] Append failed: ${err.message}`);
-      }
-
-      try {
-        await seedForecastFunnelHealth(data.predictions || []);
-      } catch (err) {
-        console.warn(`  [FunnelHealth] Assessment/write failed: ${err.message}`);
-      }
-
-      try {
-        const runId = meta?.runId || `${Date.now()}`;
-        let deepForecast = data.deepForecast || {
-          status: 'skipped',
-          reason: 'not_eligible',
-          eligibleStateCount: 0,
-          selectedStateIds: [],
-          selectedPathCount: 0,
-          failureReason: '',
-          completedAt: '',
-          replacedFastRun: false,
-          rejectedPathsPreview: [],
-        };
-        const snapshotPayload = buildDeepForecastSnapshotPayload({
-          ...data,
-          triggerContext,
-          forecastDepth: 'fast',
-        }, { runId });
-        const snapshotWrite = await writeDeepForecastSnapshot(snapshotPayload, { runId });
-        if (snapshotWrite?.storageConfig && (data.impactExpansionCandidates || []).length > 0) {
-          writeSimulationPackage(snapshotPayload, { storageConfig: snapshotWrite.storageConfig, priorWorldState: data.priorWorldState || null })
-            .then(() => enqueueSimulationTask(runId))
-            .catch((err) => console.warn(`  [SimulationPackage] Write/enqueue failed: ${err.message}`));
-        }
-        if (deepForecast.status === 'queued' && (data.impactExpansionCandidates || []).length > 0) {
-          if (snapshotWrite?.snapshotKey) {
-            const queueResult = await enqueueDeepForecastTask({
-              runId,
-              snapshotKey: snapshotWrite.snapshotKey,
-              fastPrefix: buildTraceRunPrefix(runId, data.generatedAt, snapshotWrite.storageConfig?.basePrefix || FORECAST_DEEP_RUN_PREFIX),
-              priorWorldStateKey: data.priorWorldStateKey || '',
-              selectedCandidateStateIds: deepForecast.selectedStateIds || [],
-              createdAt: Date.now(),
-              retryCount: 0,
-            });
-            if (!queueResult.queued) {
-              deepForecast = {
-                ...deepForecast,
-                status: queueResult.reason === 'duplicate' ? 'queued' : 'failed',
-                failureReason: queueResult.reason === 'duplicate' ? '' : (queueResult.reason || 'queue_failed'),
-              };
-            }
-          } else {
-            deepForecast = {
-              ...deepForecast,
-              status: 'failed',
-              failureReason: 'snapshot_write_failed',
-            };
-          }
-        } else if (!snapshotWrite?.snapshotKey) {
-          console.warn('  [DeepForecast] Snapshot write skipped or failed; replay will not be available for this run');
-        }
-        console.log('  [Trace] Starting R2 export...');
-        const pointer = await writeForecastTraceArtifacts({
-          ...data,
-          triggerContext,
-          forecastDepth: 'fast',
-          deepForecast,
-          runStatusContext: {
-            status: deepForecast.status,
-            stage: 'fast_published',
-            progressPercent: 100,
-            completedAt: deepForecast.completedAt || '',
-            failureReason: deepForecast.failureReason || '',
-          },
-        }, { runId });
-        if (pointer) {
-          console.log(`  [Trace] Written: ${pointer.summaryKey} (${pointer.tracedForecastCount} forecasts)`);
-        } else {
-          console.log('  [Trace] Skipped: R2 storage not configured');
-        }
-      } catch (err) {
-        console.warn(`  [Trace] Export failed: ${err.message}`);
-        if (err.stack) console.warn(`  [Trace] Stack: ${err.stack.split('\n').slice(0, 3).join(' | ')}`);
-      }
-    },
+    afterPublish: (data, meta) => runForecastAfterPublish(data, meta, triggerContext),
     extraKeys: FORECAST_EXTRA_KEYS,
   });
 }
@@ -19567,6 +19676,12 @@ async function runSimulationWorker({ once = false, runId = '' } = {}) {
 }
 
 export {
+  CALIBRATION_PUBLICATION_KEY,
+  resolveCalibrationRun,
+  runForecastAfterPublish,
+  scoreDetectedPredictions,
+  resolveCalibrationPublication,
+  writeCalibrationPublication,
   CANONICAL_KEY,
   DASHBOARD_KEY,
   PRIOR_KEY,
@@ -19680,6 +19795,7 @@ export {
   normalizeChokepoints,
   normalizeGpsJamming,
   deriveStateDrivenForecasts,
+  getStateDerivedAllowedBuckets,
   detectUcdpConflictZones,
   detectCyberScenarios,
   detectGpsJammingScenarios,

@@ -971,7 +971,7 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 39 });
-    assert.equal(int64Stats.replacedRefs, 40);
+    assert.equal(int64Stats.replacedRefs, 42);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_ROLLING_WINDOW_DAYS } from '../scripts/_forecast-scorecard.mjs';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { forecastReliability, forecastScorecardDescription } from '../api/mcp/registry/cache-tools.ts';
+import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
@@ -15,6 +17,91 @@ const full = { generatedAt: generation, predictions: Array.from({ length: 20 }, 
   caseFile: { baseCase: `${i}:` + 'Original original evidence. '.repeat(450), supportingEvidence: [{ summary: 'Original observation', weight: 0.8 }] },
 })) };
 const paid = { inboundHostClass: 'apex', downstreamOrigin: 'https://worldmonitor.app', downstreamOriginTag: 'test', panelScope: 'forecasts' };
+
+describe('public forecast family history transport', () => {
+  const rows = [
+    { forecastId: 'case-0', outcome: 'YES', voidReason: 'private', resolvedAt: 123, evidence: { private: true } },
+    { forecastId: 'case-0', outcome: 'VOID', voidReason: 'judge_disagreement' },
+    { forecastId: 'case-0', outcome: 'NO' },
+    { forecastId: 'case-1', outcome: 'VOID', voidReason: '<img src=x>' },
+  ];
+  function project(scorecard, params = {}, predictions = full, execution = paid) {
+    return opening._postFilter(structuredClone({ predictions, scorecard }), params, execution);
+  }
+  for (const reason of ['resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable']) {
+    it(`preserves new public VOID reason ${reason}`, () => {
+      const result = project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason, evidence: 'private', resolvedAt: 123 }] });
+      assert.ok(Array.isArray(result.familyOutcomes), 'public VOID history must be present');
+      assert.ok(result.familyOutcomes[0], 'retained public VOID row must be present');
+      assert.deepEqual(result.familyOutcomes[0], { forecastId: 'case-0', outcome: 'VOID', voidReason: reason });
+    });
+  }
+  it('advertises each new public VOID reason in the paid schema with only the public set', () => {
+    const reasons = opening.outputSchema.properties.data.properties.familyOutcomes.items.properties.voidReason.enum;
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    assert.ok(Array.isArray(reasons), 'public reason schema enum must be present');
+    assert.deepEqual([...reasons].sort(), Object.keys(labels).sort());
+    assert.equal(reasons.includes('__proto__'), false);
+    assert.equal(reasons.includes('unknown'), false);
+  });
+  it('keeps public history independent from live accuracy-audit score withholding', () => {
+    const familyOutcomes = ['resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable'].map(reason => ({ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }));
+    const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 205, brier: 0.074, yesCount: 9 }], familyOutcomes };
+    const result = project(scorecard);
+    assert.deepEqual(result.familyOutcomes, familyOutcomes);
+    if (FORECAST_ACCURACY_AUDIT) {
+      assert.equal(result.reliability.status, 'unavailable');
+      assert.deepEqual(result.reliability.byDomain, []);
+      assert.deepEqual(result.reliability.underAudit, { since: FORECAST_ACCURACY_AUDIT.since, issue: FORECAST_ACCURACY_AUDIT.issue, reason: FORECAST_ACCURACY_AUDIT.reason });
+      assert.doesNotMatch(JSON.stringify(result.reliability), /0\.074|brier/i);
+    } else {
+      assert.equal(result.reliability.status, 'ready');
+    }
+    assert.deepEqual(project(scorecard, {}, full, null), { predictions: full });
+  });
+  it('joins earlier public windows by retained ID in supplied newest-first order', () => {
+    const result = project({ familyOutcomes: rows }, { limit: 1 });
+    assert.deepEqual(result.familyOutcomes, [
+      { forecastId: 'case-0', outcome: 'YES' },
+      { forecastId: 'case-0', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'case-0', outcome: 'NO' },
+    ]);
+    assert.equal(result.reliability.status, 'unavailable', 'history does not require calibration fields');
+    assert.deepEqual(project({ familyOutcomes: rows }).familyOutcomes.at(-1), { forecastId: 'case-1', outcome: 'VOID', voidReason: 'other' });
+  });
+  it('joins after domain and region filtering, with no family guesses or unrelated rows', () => {
+    const predictions = { generatedAt: generation, predictions: [
+      { id: 'case-0', domain: 'energy', region: 'Europe' }, { id: 'case-1', domain: 'macro', region: 'Asia' },
+    ] };
+    for (const params of [{ domain: 'macro' }, { region: 'Asia' }]) {
+      assert.deepEqual(project({ familyOutcomes: rows }, params, predictions).familyOutcomes, [{ forecastId: 'case-1', outcome: 'VOID', voidReason: 'other' }]);
+    }
+    assert.deepEqual(project({ familyOutcomes: [{ forecastId: 'CASE-0', outcome: 'YES' }, { forecastId: 'unrelated', outcome: 'NO' }] }).familyOutcomes, []);
+  });
+  it('caps each retained family at five valid rows and the 30-card opening at 150 public rows', () => {
+    const predictions = { generatedAt: generation, predictions: Array.from({ length: 30 }, (unusedValue, forecastIndex) => ({ id: `family-${forecastIndex}`, title: 'Controlled forecast', domain: 'energy', probability: 0.4 })) };
+    const familyOutcomes = predictions.predictions.flatMap(prediction => [null, { forecastId: prediction.id, outcome: 'PENDING' }, ...Array.from({ length: 8 }, (unusedValue, windowIndex) => ({ forecastId: prediction.id, outcome: windowIndex % 2 ? 'NO' : 'YES' }))]);
+    const result = project({ familyOutcomes }, {}, predictions);
+    assert.ok(Array.isArray(result.familyOutcomes), 'valid family history must be present');
+    assert.equal(result.familyOutcomes.length, 150);
+    for (const prediction of predictions.predictions) assert.deepEqual(result.familyOutcomes.filter(row => row.forecastId === prediction.id).map(row => row.outcome), ['YES', 'NO', 'YES', 'NO', 'YES']);
+    assert.ok(Buffer.byteLength(JSON.stringify({ data: result })) < 131072);
+    assert.equal(opening._outputBudgetBytes, 131072);
+  });
+  it('uses only the public VOID allowlist, drops private fields, and hides unavailable history', () => {
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    for (const reason of Object.keys(labels)) {
+      const result = project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }] });
+      assert.ok(Array.isArray(result.familyOutcomes), 'valid VOID history must be present');
+      assert.equal(result.familyOutcomes[0].voidReason, reason);
+    }
+    for (const reason of [undefined, 12, '__proto__', '<script>private</script>']) assert.equal(project({ familyOutcomes: [{ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }] }).familyOutcomes[0].voidReason, 'other');
+    for (const scorecard of [null, [], {}, { familyOutcomes: {} }, { degraded: true, familyOutcomes: rows }, { error: 'failed', familyOutcomes: rows }]) assert.equal(Object.hasOwn(project(scorecard), 'familyOutcomes'), false);
+    assert.deepEqual(project({ familyOutcomes: [] }).familyOutcomes, []);
+    assert.deepEqual(project({ familyOutcomes: [null, [], { forecastId: '', outcome: 'YES' }, { forecastId: 3, outcome: 'NO' }, { forecastId: 'case-0', outcome: 'yes' }] }).familyOutcomes, []);
+    assert.deepEqual(project({ familyOutcomes: rows }, {}, full, null), { predictions: full }, 'ordinary API result remains exact');
+  });
+});
 
 describe('bounded forecast list and original case transport', () => {
   it('preserves the website compact list and every case identity inside the opening budget', () => {
@@ -103,7 +190,12 @@ describe('bounded forecast list and original case transport', () => {
 
 describe('published forecast reliability transport', () => {
   const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
-  const project = (scorecard, predictions = full) => opening._postFilter({ predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+  // Pins the lifted state (#8990); the suite below pins what the tool serves while the audit switch is set.
+  const project = (scorecard, predictions = full) => {
+    const data = { predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
+    const loaded = opening._postFilter(data, {}, paid).predictions.predictions.map(prediction => prediction.domain);
+    return forecastReliability(data, loaded, null);
+  };
   it('matches the website and producer window fallback for missing or invalid windows', () => {
     const website = readFileSync(new URL('../src/components/forecast-record.ts', import.meta.url), 'utf8');
     const websiteWindowDays = Number(website.match(/const DEFAULT_WINDOW_DAYS = (\d+);/)?.[1]);
@@ -129,5 +221,44 @@ describe('published forecast reliability transport', () => {
   it('validates raw health and schema before public field selection', () => {
     const good = { schemaVersion: 2, publishedByDomain: [row()] };
     for (const value of [null, {}, { ...good, schemaVersion: 1 }, { ...good, degraded: true }, { ...good, error: 'source_failure' }, { ...good, publishedByDomain: null }]) assert.equal(project(value)?.status, 'unavailable', 'unhealthy optional reliability must be explicit and non-null');
+  });
+});
+
+describe('published forecast reliability under the accuracy audit (#8990)', () => {
+  // A fixture, not the live switch, so lifting the switch keeps this branch tested for the next audit.
+  const AUDIT = Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 205, brier: 0.074, yesCount: 9 }] };
+  const served = (card) => forecastReliability({ scorecard: card, scorecardMeta: { fetchedAt: Date.now() } }, ['energy'], AUDIT);
+  it('serves no domain score, says why, and keeps the freshness clock', () => {
+    const reliability = served(scorecard);
+    assert.equal(reliability.status, 'unavailable');
+    assert.deepEqual(reliability.byDomain, []);
+    assert.deepEqual(reliability.underAudit, { since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+    assert.equal(reliability.windowDays, 90);
+    assert.equal(reliability.stale, false);
+    assert.doesNotMatch(JSON.stringify(reliability), /0\.074|brier/i);
+  });
+  it('still says why when the scorecard itself is unhealthy', () => {
+    assert.deepEqual(served(null).underAudit?.issue, 8990);
+    assert.deepEqual(served({ ...scorecard, degraded: true }).underAudit?.issue, 8990);
+  });
+  it('declares underAudit in the reliability output schema', () => {
+    const reliability = opening.outputSchema.properties.data.properties.reliability;
+    assert.deepEqual(reliability.properties.underAudit.type, 'object');
+    assert.deepEqual(Object.keys(reliability.properties.underAudit.properties).sort(), ['issue', 'reason', 'since']);
+  });
+  it('serves through the live switch', () => {
+    const data = { predictions: structuredClone(full), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
+    const viaTool = opening._postFilter(structuredClone(data), {}, paid).reliability;
+    const direct = forecastReliability(data, ['energy'], FORECAST_ACCURACY_AUDIT);
+    assert.deepEqual({ ...viaTool, capturedAt: null }, { ...direct, capturedAt: null });
+  });
+  it('leads the scorecard tool description with the notice, inside the tools/list sentence budget', async () => {
+    const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
+    const listed = compressDescription(forecastScorecardDescription(AUDIT), TOOL_DESCRIPTION_MAX_BYTES);
+    assert.equal(listed, 'Under audit since 2026-10-07 (issue 8990): scores are unreliable and withdrawn while corrections are made.');
+    assert.doesNotMatch(forecastScorecardDescription(null), /Under audit/);
+    const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
+    assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT));
   });
 });
