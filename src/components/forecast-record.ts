@@ -112,6 +112,57 @@ export function renderReliabilityBadge(table: ReliabilityTable | null, domain: s
   return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(reliabilityHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
 }
 
+const OUTCOMES = ['YES', 'NO', 'VOID'] as const;
+type Outcome = typeof OUTCOMES[number];
+// Distinct shapes, so the history never relies on colour; the words are in the screen-reader text.
+const OUTCOME_MARKS: Record<Outcome, string> = { YES: '✓', NO: '✗', VOID: '∅' };
+
+/** Public void-reason codes; mirrors RECEIPT_VOID_REASON_LABELS in scripts/_forecast-scorecard.mjs (a test pins the parity). */
+export const VOID_REASON_CODES = [
+  'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained', 'unsupported_window',
+  'unsupported_metric_key', 'not_hard_spec', 'missing_threshold', 'missing_deadline', 'missing_generated_at',
+  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'other',
+] as const;
+const VOID_REASONS = new Set<string>(VOID_REASON_CODES);
+
+interface FamilyWindow { outcome: Outcome; voidReason: string }
+
+/** Earlier resolved windows per forecast id, newest first; null when the scorecard cannot vouch for them. */
+export type FamilyHistory = ReadonlyMap<string, readonly FamilyWindow[]>;
+
+export function projectFamilyHistory(resp: GetForecastScorecardResponse): FamilyHistory | null {
+  if (resp.degraded || resp.error || !Array.isArray(resp.familyOutcomes)) return null;
+  const history = new Map<string, FamilyWindow[]>();
+  for (const row of resp.familyOutcomes) {
+    if (typeof row?.forecastId !== 'string' || !(OUTCOMES as readonly string[]).includes(row.outcome)) continue;
+    const voidReason = row.outcome === 'VOID' ? (VOID_REASONS.has(row.voidReason) ? row.voidReason : 'other') : '';
+    const windows = history.get(row.forecastId) ?? [];
+    windows.push({ outcome: row.outcome as Outcome, voidReason });
+    history.set(row.forecastId, windows);
+  }
+  return history;
+}
+
+function outcomeWord(outcome: Outcome): string {
+  return t(`components.forecast.resolution.outcome.${outcome.toLowerCase()}`);
+}
+
+/** The card is the open window, so the chip is the family's last resolved one; the history adds up to four earlier. */
+export function renderResolutionChips(history: FamilyHistory | null, forecastId: string): string {
+  const windows = history?.get(forecastId);
+  if (!windows?.length) return '';
+  const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
+  const reason = last.outcome === 'VOID' ? t(`components.forecast.resolution.void.${last.voidReason}`) : '';
+  const lastText = t('components.forecast.resolution.last', { outcome: outcomeWord(last.outcome) });
+  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${reason ? ` title="${escapeHtml(reason)}"` : ''}>`
+    + `<span aria-hidden="true">${escapeHtml(lastText)}</span>`
+    + `<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }))}${reason ? ` ${escapeHtml(reason)}` : ''}</span></span>`;
+  if (windows.length < 2) return chip;
+  const marks = windows.map((w) => `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true">${OUTCOME_MARKS[w.outcome]}</span>`).join('');
+  const list = windows.map((w) => outcomeWord(w.outcome)).join(', ');
+  return `${chip}<span class="fc-res-history">${marks}<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.history', { list }))}</span></span>`;
+}
+
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
 export function baseRateBrier(yesShare: number): number {
   return yesShare * (1 - yesShare);

@@ -3324,6 +3324,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           uncertainty: { type: ['object', 'null'] },
           funnel: { type: ['object', 'null'] },
           receipts: { type: 'array', items: { type: 'object' } },
+          familyOutcomes: { type: 'array', items: { type: 'object' } },
         },
       },
       marketAlerts: {

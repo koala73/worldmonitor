@@ -24,6 +24,7 @@ export const SCORECARD_DATA_FIELDS = [
   'uncertainty',
   'funnel',
   'receipts',
+  'familyOutcomes',
 ] as const satisfies readonly (keyof GetForecastScorecardResponse)[];
 
 export type ScorecardData = Pick<GetForecastScorecardResponse, typeof SCORECARD_DATA_FIELDS[number]>;
@@ -59,9 +60,14 @@ export const RECEIPT_FIELDS = [
   'voidReason', 'sourceFeed', 'observedValue', 'citationTitle', 'citationUrl',
 ] as const;
 
-function selectReceipts(value: unknown): unknown {
+// Mirrors PUBLIC_FAMILY_OUTCOME_FIELDS in scripts/_forecast-scorecard.mjs (a test pins the parity).
+export const FAMILY_OUTCOME_FIELDS = ['forecastId', 'outcome', 'voidReason'] as const;
+
+const ROW_FIELDS: Record<string, readonly string[]> = { receipts: RECEIPT_FIELDS, familyOutcomes: FAMILY_OUTCOME_FIELDS };
+
+function selectRows(value: unknown, fields: readonly string[]): unknown {
   if (!Array.isArray(value)) return undefined;
-  return value.filter(isRecord).map((row) => pickNonNull(row, RECEIPT_FIELDS));
+  return value.filter(isRecord).map((row) => pickNonNull(row, fields));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -92,8 +98,9 @@ export function selectScorecardFields(data: Record<string, unknown>): Partial<Sc
   const selected: Record<string, unknown> = {};
   for (const field of SCORECARD_DATA_FIELDS) {
     if (data[field] == null) continue;
-    const value = field === 'receipts'
-      ? selectReceipts(data[field])
+    const rowFields = ROW_FIELDS[field];
+    const value = rowFields
+      ? selectRows(data[field], rowFields)
       : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
     if (value !== undefined) selected[field] = value;
   }

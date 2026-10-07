@@ -43746,6 +43746,10 @@ components:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardReceipt'
                 marketAlerts:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_MarketAlertScorecard'
+                familyOutcomes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardFamilyOutcome'
         worldmonitor_forecast_v1_ScorecardTotals:
             type: object
             properties:
@@ -44061,6 +44065,15 @@ components:
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
             description: One market-alert type's rolling hit rate beside its base rate.
+        worldmonitor_forecast_v1_ScorecardFamilyOutcome:
+            type: object
+            properties:
+                forecastId:
+                    type: string
+                outcome:
+                    type: string
+                voidReason:
+                    type: string
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:

@@ -1991,6 +1991,33 @@
         "measuredHint": "Hur publicerade {{domain}}-prognoser har presterat över {{n}} bedömda prognoser de senaste {{days}} dagarna. Basfrekvensen är vad man skulle ha fått genom att alltid svara ja enligt domänens observerade frekvens. Lägre är bättre. Detta är domänens historik, inte denna prognos.",
         "unmeasured": "Ännu inte mätt",
         "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
+      },
+      "resolution": {
+        "last": "Senaste: {{outcome}}",
+        "lastSr": "Den tidigare perioden för denna prognos löste {{outcome}}.",
+        "history": "Senaste perioder, nyast först: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEJ",
+          "void": "OGILTIG"
+        },
+        "void": {
+          "no_establishable_metric": "Källan hade ingen läsning för denna fråga",
+          "value_source_never_settled": "Källan publicerade aldrig ett slutgiltigt värde",
+          "count_source_window_not_retained": "Källan behöll inte längre frågeperioden",
+          "unsupported_window": "Frågan kunde inte kontrolleras mot sin källa",
+          "unsupported_metric_key": "Frågan kunde inte kontrolleras mot sin källa",
+          "not_hard_spec": "Frågan kunde inte kontrolleras mot sin källa",
+          "missing_threshold": "Frågan saknade ett tröskelvärde",
+          "missing_deadline": "Frågan saknade en tidsgräns",
+          "missing_generated_at": "Prognosen saknade sitt startdatum",
+          "beyond_archive_horizon": "Nyhetsarkivet täckte inte längre frågeperioden",
+          "no_archive_evidence": "Nyhetsarkivet hade inget om ämnet",
+          "all_judges_void": "Båda domare fann bevisen otillräckliga",
+          "judge_disagreement": "Domarna var oeniga",
+          "judge_retry_exhausted": "Domarna återkom utan dom",
+          "other": "Kunde inte lösas"
+        }
       }
     },
     "escalationCorrelation": {

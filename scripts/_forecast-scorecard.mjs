@@ -965,6 +965,34 @@ function publicReceipt(entry) {
   return receipt;
 }
 
+// Card chips (#5092): for each published family (forecast id) with an open
+// window, its newest resolved windows, newest first. A live card is the open
+// window, so these are the family's earlier outcomes, never the card's own.
+export const FAMILY_OUTCOME_LIMIT = 5;
+export const PUBLIC_FAMILY_OUTCOME_FIELDS = Object.freeze(['forecastId', 'outcome', 'voidReason']);
+
+export function buildFamilyOutcomes(ledger, nowMs, { limit = FAMILY_OUTCOME_LIMIT } = {}) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  const windows = normalizeLedger(ledger).filter((entry) => entry && !isHorizonEntry(entry) && isPublishedOriginEntry(entry));
+  const live = new Set(windows
+    .filter((entry) => entry.status === 'pending' || entry.status === 'pending-judge')
+    .map((entry) => entry.id));
+  const byFamily = new Map();
+  for (const entry of windows) {
+    if (entry.status !== 'resolved' || !live.has(entry.id) || !RECEIPT_OUTCOMES.has(entry.outcome)) continue;
+    const resolvedAt = Number(entry.resolvedAt);
+    if (!Number.isFinite(resolvedAt) || resolvedAt < minResolvedAt) continue;
+    if (!byFamily.has(entry.id)) byFamily.set(entry.id, []);
+    byFamily.get(entry.id).push(entry);
+  }
+  return [...byFamily.keys()].sort().flatMap((id) => byFamily.get(id)
+    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt))
+    .slice(0, limit)
+    .map((entry) => (entry.outcome === 'VOID'
+      ? { forecastId: id, outcome: 'VOID', voidReason: Object.hasOwn(RECEIPT_VOID_REASON_LABELS, entry.evidence?.reason) ? entry.evidence.reason : 'other' }
+      : { forecastId: id, outcome: entry.outcome })));
+}
+
 // Published-origin forecast windows inside the rolling window: shadow,
 // synthetic and unattributed origins never become receipts.
 export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMIT } = {}) {

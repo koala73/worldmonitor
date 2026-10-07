@@ -1276,6 +1276,10 @@ components:
                         $ref: '#/components/schemas/ScorecardReceipt'
                 marketAlerts:
                     $ref: '#/components/schemas/MarketAlertScorecard'
+                familyOutcomes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardFamilyOutcome'
         ScorecardTotals:
             type: object
             properties:
@@ -1591,6 +1595,15 @@ components:
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
             description: One market-alert type's rolling hit rate beside its base rate.
+        ScorecardFamilyOutcome:
+            type: object
+            properties:
+                forecastId:
+                    type: string
+                outcome:
+                    type: string
+                voidReason:
+                    type: string
         GetSimulationPackageRequest:
             type: object
             properties:

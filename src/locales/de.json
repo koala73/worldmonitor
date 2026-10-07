@@ -2374,6 +2374,33 @@
         "measuredHint": "Wie veröffentlichte {{domain}}-Prognosen bei {{n}} bewerteten Prognosen in den letzten {{days}} Tagen abgeschnitten haben. Die Basisrate ist das Ergebnis, das man durch konstante Antworten mit der beobachteten Ja-Quote des Bereichs erhalten würde. Niedriger ist besser. Dies ist die Bilanz des Bereichs, nicht dieser Prognose.",
         "unmeasured": "Noch nicht gemessen",
         "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Ein Bereich benötigt {{min}}, bevor seine Genauigkeit angezeigt wird."
+      },
+      "resolution": {
+        "last": "Zuletzt: {{outcome}}",
+        "lastSr": "Das vorherige Fenster dieser Prognose wurde mit {{outcome}} aufgelöst.",
+        "history": "Letzte Fenster, neueste zuerst: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEIN",
+          "void": "UNGÜLTIG"
+        },
+        "void": {
+          "no_establishable_metric": "Der Feed hatte keine Lesart für diese Frage",
+          "value_source_never_settled": "Der Feed veröffentlichte keinen festgestellten Wert",
+          "count_source_window_not_retained": "Der Feed behielt das Fragefenster nicht mehr",
+          "unsupported_window": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "unsupported_metric_key": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "not_hard_spec": "Die Frage konnte nicht gegen ihren Feed überprüft werden",
+          "missing_threshold": "Der Frage fehlte ein Schwellenwert",
+          "missing_deadline": "Der Frage fehlte eine Frist",
+          "missing_generated_at": "Der Prognose fehlte das Startdatum",
+          "beyond_archive_horizon": "Das Nachrichtenarchiv deckte das Fragefenster nicht mehr ab",
+          "no_archive_evidence": "Das Nachrichtenarchiv hatte nichts zum Thema",
+          "all_judges_void": "Beide Bewerter fanden die Evidenz unzureichend",
+          "judge_disagreement": "Die Bewerter waren sich uneinig",
+          "judge_retry_exhausted": "Die Bewerter gaben kein Urteil ab",
+          "other": "Konnte nicht aufgelöst werden"
+        }
       }
     },
     "escalationCorrelation": {

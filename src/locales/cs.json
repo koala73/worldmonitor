@@ -2394,6 +2394,33 @@
         "measuredHint": "Jak dosáhly publikované {{domain}} předpovědi ve {{n}} ohodnocených předpovědích za poslední {{days}} dní. Základní míra je to, co by získala vždy odpověď na základě pozorované frekvence „ano\" v dané doméně. Nižší je lepší. Toto je záznam domény, ne této předpovědi.",
         "unmeasured": "Zatím neměřeno",
         "unmeasuredHint": "Předpovědi {{domain}} mají {{n}} vyhodnocených výsledků za poslední {{days}} dní. Doména potřebuje {{min}}, než se zobrazí její přesnost."
+      },
+      "resolution": {
+        "last": "Poslední: {{outcome}}",
+        "lastSr": "Předchozí období této předpovědi se vyřešilo jako {{outcome}}.",
+        "history": "Nedávná období (nejnovější první): {{list}}",
+        "outcome": {
+          "yes": "ANO",
+          "no": "NE",
+          "void": "NEPLATNÉ"
+        },
+        "void": {
+          "no_establishable_metric": "Zdroj dat neměl hodnotu pro tuto otázku",
+          "value_source_never_settled": "Zdroj dat nikdy nezveřejnil stanovenou hodnotu",
+          "count_source_window_not_retained": "Zdroj dat již neuchováv okresní okno",
+          "unsupported_window": "Otázka se nemohla ověřit proti svému zdroji dat",
+          "unsupported_metric_key": "Otázka se nemohla ověřit proti svému zdroji dat",
+          "not_hard_spec": "Otázka se nemohla ověřit proti svému zdroji dat",
+          "missing_threshold": "Otázce chyběl práh",
+          "missing_deadline": "Otázce chyběl termín",
+          "missing_generated_at": "Předpovědi chybělo datum začátku",
+          "beyond_archive_horizon": "Archiv zpráv již nepokrýval toto období",
+          "no_archive_evidence": "Archiv zpráv o daném tématu nic neměl",
+          "all_judges_void": "Oba rozhodčí shledali důkazy nedostatečnými",
+          "judge_disagreement": "Rozhodčí se neshodli",
+          "judge_retry_exhausted": "Rozhodčí nepřijali rozhodnutí",
+          "other": "Nelze vyřešit"
+        }
       }
     },
     "escalationCorrelation": {

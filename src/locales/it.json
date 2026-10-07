@@ -2384,6 +2384,33 @@
         "measuredHint": "Come i forecast pubblicati {{domain}} hanno ottenuto un punteggio su {{n}} forecast valutati negli ultimi {{days}} giorni. Il tasso di base è quello che si otterrebbe rispondendo sempre con il tasso di sì osservato del dominio. Più basso è meglio. Questo è il track record del dominio, non di questo forecast.",
         "unmeasured": "Non ancora misurato",
         "unmeasuredHint": "Le previsioni di {{domain}} hanno {{n}} risultati valutati negli ultimi {{days}} giorni. Un dominio ha bisogno di {{min}} prima che la sua accuratezza sia mostrata."
+      },
+      "resolution": {
+        "last": "Ultimo: {{outcome}}",
+        "lastSr": "La finestra precedente di questo forecast si è risolta con {{outcome}}.",
+        "history": "Finestre recenti, più recente per prima: {{list}}",
+        "outcome": {
+          "yes": "SÌ",
+          "no": "NO",
+          "void": "ANNULLATO"
+        },
+        "void": {
+          "no_establishable_metric": "Il feed non aveva una lettura per questa domanda",
+          "value_source_never_settled": "Il feed non ha mai pubblicato un valore definitivo",
+          "count_source_window_not_retained": "Il feed non ha più conservato la finestra della domanda",
+          "unsupported_window": "La domanda non poteva essere verificata rispetto al suo feed",
+          "unsupported_metric_key": "La domanda non poteva essere verificata rispetto al suo feed",
+          "not_hard_spec": "La domanda non poteva essere verificata rispetto al suo feed",
+          "missing_threshold": "Alla domanda mancava una soglia",
+          "missing_deadline": "Alla domanda mancava una scadenza",
+          "missing_generated_at": "Al forecast mancava la data di inizio",
+          "beyond_archive_horizon": "L'archivio delle notizie non copriva più la finestra della domanda",
+          "no_archive_evidence": "L'archivio delle notizie non aveva nulla sull'argomento",
+          "all_judges_void": "Entrambi i giudici hanno ritenuto le prove insufficienti",
+          "judge_disagreement": "I giudici hanno dissentito",
+          "judge_retry_exhausted": "I giudici non hanno emesso un verdetto",
+          "other": "Non potrebbe essere risolto"
+        }
       }
     },
     "escalationCorrelation": {

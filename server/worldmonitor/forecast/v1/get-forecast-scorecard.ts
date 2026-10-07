@@ -39,6 +39,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     calibration: [],
     publishedByDomain: [],
     receipts: [],
+    familyOutcomes: [],
     degraded: false,
     stale: false,
     error: '',

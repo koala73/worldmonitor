@@ -2119,6 +2119,33 @@
         "measuredHint": "Kako su objavljene {{domain}} prognoze postigle rezultat na {{n}} ocijenjenih prognoza u posljednjih {{days}} dana. Bazna stopa je ono što bi dobila uvijek odgovor prema promatranoj stopi \"da\" u domeni. Niže je bolje. Ovo je zapis domene, ne ove prognoze.",
         "unmeasured": "Još nije izmjereno",
         "unmeasuredHint": "Prognose {{domain}} imaju {{n}} ocijenjenih rezultata u zadnjih {{days}} dana. Domena treba {{min}} prije nego što se prikaže njena točnost."
+      },
+      "resolution": {
+        "last": "Zadnje: {{outcome}}",
+        "lastSr": "Prethodni vremenski period ovog prognoze riješen je sa {{outcome}}.",
+        "history": "Nedavni vremenski periodi, od novijih prema starijima: {{list}}",
+        "outcome": {
+          "yes": "DA",
+          "no": "NE",
+          "void": "NIŠTAVNO"
+        },
+        "void": {
+          "no_establishable_metric": "Feed nije imao očitanje za ovo pitanje",
+          "value_source_never_settled": "Feed nikada nije objavio potvrđenu vrijednost",
+          "count_source_window_not_retained": "Feed više nije čuvao vremenski period pitanja",
+          "unsupported_window": "Pitanje nije moglo biti provjereno prema njegovom feedu",
+          "unsupported_metric_key": "Pitanje nije moglo biti provjereno prema njegovom feedu",
+          "not_hard_spec": "Pitanje nije moglo biti provjereno prema njegovom feedu",
+          "missing_threshold": "Pitanju je nedostajala granica",
+          "missing_deadline": "Pitanju je nedostajao rok",
+          "missing_generated_at": "Prognozi je nedostajao datum početka",
+          "beyond_archive_horizon": "Arhiv vijesti više nije pokrivao vremenski period pitanja",
+          "no_archive_evidence": "Arhiv vijesti nije imao ništa o tom pitanju",
+          "all_judges_void": "Oba ocjenjivača smatraju da je dokaza nedovoljno",
+          "judge_disagreement": "Ocjenjivači se nisu slagali",
+          "judge_retry_exhausted": "Ocjenjivači nisu donijeli presudu",
+          "other": "Nije moglo biti riješeno"
+        }
       }
     },
     "escalationCorrelation": {

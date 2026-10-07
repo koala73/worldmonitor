@@ -2132,6 +2132,33 @@
         "measuredHint": "How published {{domain}} forecasts have scored over {{n}} graded forecasts in the last {{days}} days. The base rate is what always answering the domain's observed yes rate would have scored. Lower is better. This is the domain's record, not this forecast's.",
         "unmeasured": "Not yet measured",
         "unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain needs {{min}} before its accuracy is shown."
+      },
+      "resolution": {
+        "last": "Last: {{outcome}}",
+        "lastSr": "The previous window of this forecast resolved {{outcome}}.",
+        "history": "Recent windows, newest first: {{list}}",
+        "outcome": {
+          "yes": "YES",
+          "no": "NO",
+          "void": "VOID"
+        },
+        "void": {
+          "no_establishable_metric": "The feed had no reading for this question",
+          "value_source_never_settled": "The feed never published a settled value",
+          "count_source_window_not_retained": "The feed no longer held the question window",
+          "unsupported_window": "The question could not be checked against its feed",
+          "unsupported_metric_key": "The question could not be checked against its feed",
+          "not_hard_spec": "The question could not be checked against its feed",
+          "missing_threshold": "The question was missing a threshold",
+          "missing_deadline": "The question was missing a deadline",
+          "missing_generated_at": "The forecast was missing its start date",
+          "beyond_archive_horizon": "The news archive no longer covered the question window",
+          "no_archive_evidence": "The news archive had nothing on the subject",
+          "all_judges_void": "Both judges found the evidence insufficient",
+          "judge_disagreement": "The judges disagreed",
+          "judge_retry_exhausted": "The judges returned no verdict",
+          "other": "Could not be resolved"
+        }
       }
     },
     "escalationCorrelation": {

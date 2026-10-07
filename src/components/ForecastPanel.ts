@@ -6,7 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
-import { projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, type ForecastRecord, type ReliabilityTable } from './forecast-record';
+import { projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
@@ -268,6 +268,16 @@ function injectStyles(): void {
     .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
     .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .fc-reliability-placeholder { visibility: hidden; }
+    .fc-card-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .fc-card-meta .fc-reliability { flex: 0 1 auto; min-width: 0; }
+    .fc-res-chip, .fc-res-history { flex: none; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+    .fc-res-chip { padding: 0 5px; border-radius: 3px; border: 1px solid var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
+    .fc-res-chip[title] { cursor: help; }
+    .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
+    .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
+    .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
+    .fc-res-history { display: inline-flex; gap: 2px; letter-spacing: 0.02em; }
+    .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
     .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
     .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
@@ -303,6 +313,8 @@ export class ForecastPanel extends Panel {
   private recordPromise: Promise<void> | null = null;
   /** Per-domain card badges (#5092), from the same scorecard response as the strip. */
   private reliability: ReliabilityTable | null = null;
+  /** Per-card resolution chips (#5092): each family's earlier resolved windows. */
+  private familyHistory: FamilyHistory | null = null;
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
@@ -468,11 +480,13 @@ export class ForecastPanel extends Panel {
         (resp) => {
           this.record = projectForecastRecord(resp);
           this.reliability = projectReliability(resp);
+          this.familyHistory = projectFamilyHistory(resp);
         },
         (err: unknown) => {
           if (this.isAbortError(err)) return;
           this.record = { kind: 'unavailable' };
           this.reliability = null;
+          this.familyHistory = null;
         },
       )
       .then(() => {
@@ -491,10 +505,14 @@ export class ForecastPanel extends Panel {
         for (const badgeSlot of this.content.querySelectorAll<HTMLElement>('[data-fc-reliability]')) {
           const domain = badgeSlot.dataset.fcReliability ?? '';
           badgeSlot.classList.remove('fc-reliability-pending');
-          // renderReliabilityBadge() escapes every interpolated value.
-          setTrustedHtml(badgeSlot, trustedHtml(renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain), 'ForecastPanel reliability badge; escaped markup from renderReliabilityBadge (#5092)'));
+          // Both renderers escape every interpolated value.
+          setTrustedHtml(badgeSlot, trustedHtml(this.cardMeta(badgeSlot.dataset.fcForecast ?? '', domain), 'ForecastPanel resolution chips and reliability badge; escaped markup (#5092)'));
         }
       });
+  }
+
+  private cardMeta(forecastId: string, domain: string): string {
+    return `${renderResolutionChips(this.familyHistory, forecastId)}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain)}`;
   }
 
   updateSimulation(theaterSummariesJson: string): void {
@@ -744,7 +762,7 @@ export class ForecastPanel extends Panel {
               ${simChipHtml}
             </div>
             ${simBarHtml}
-            <div data-fc-reliability="${escapeHtml(domain)}"${this.record.kind === 'loading' ? ' class="fc-reliability-pending"' : ''}>${this.record.kind === 'loading' ? '<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>' : renderReliabilityBadge(this.reliability, domain, catLabel)}</div>
+            <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? '<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>' : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

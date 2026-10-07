@@ -2384,6 +2384,33 @@
         "measuredHint": "Cómo los pronósticos publicados en {{domain}} han puntuado en {{n}} pronósticos calificados en los últimos {{days}} días. La tasa base es lo que hubiera puntuado siempre responder con la tasa de sí observada del dominio. Menor es mejor. Este es el historial del dominio, no de este pronóstico.",
         "unmeasured": "Aún no medido",
         "unmeasuredHint": "Los pronósticos de {{domain}} tienen {{n}} resultados calificados en los últimos {{days}} días. Un dominio necesita {{min}} antes de que se muestre su precisión."
+      },
+      "resolution": {
+        "last": "Último: {{outcome}}",
+        "lastSr": "La ventana anterior de este pronóstico se resolvió como {{outcome}}.",
+        "history": "Ventanas recientes, más nuevas primero: {{list}}",
+        "outcome": {
+          "yes": "SÍ",
+          "no": "NO",
+          "void": "NULO"
+        },
+        "void": {
+          "no_establishable_metric": "El feed no tenía lectura para esta pregunta",
+          "value_source_never_settled": "El feed nunca publicó un valor liquidado",
+          "count_source_window_not_retained": "El feed ya no conservaba la ventana de la pregunta",
+          "unsupported_window": "La pregunta no se pudo verificar contra su feed",
+          "unsupported_metric_key": "La pregunta no se pudo verificar contra su feed",
+          "not_hard_spec": "La pregunta no se pudo verificar contra su feed",
+          "missing_threshold": "A la pregunta le faltaba un umbral",
+          "missing_deadline": "A la pregunta le faltaba una fecha límite",
+          "missing_generated_at": "El pronóstico carecía de su fecha de inicio",
+          "beyond_archive_horizon": "El archivo de noticias ya no cubría la ventana de la pregunta",
+          "no_archive_evidence": "El archivo de noticias no tenía nada sobre el tema",
+          "all_judges_void": "Ambos árbitros consideraron la prueba insuficiente",
+          "judge_disagreement": "Los árbitros no estuvieron de acuerdo",
+          "judge_retry_exhausted": "Los árbitros no emitieron veredicto",
+          "other": "No se pudo resolver"
+        }
       }
     },
     "escalationCorrelation": {

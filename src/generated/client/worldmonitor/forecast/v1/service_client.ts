@@ -165,6 +165,7 @@ export interface GetForecastScorecardResponse {
   funnel?: ScorecardFunnel;
   receipts: ScorecardReceipt[];
   marketAlerts?: MarketAlertScorecard;
+  familyOutcomes: ScorecardFamilyOutcome[];
 }
 
 export interface ScorecardTotals {
@@ -298,6 +299,12 @@ export interface MarketAlertRow {
   baseHitRate?: number;
   pairedHitRate?: number;
   medianLeadTimeMs?: number;
+}
+
+export interface ScorecardFamilyOutcome {
+  forecastId: string;
+  outcome: string;
+  voidReason: string;
 }
 
 export interface GetSimulationPackageRequest {

@@ -2384,6 +2384,33 @@
         "measuredHint": "Score obtenu par les prévisions publiées {{domain}} sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. Le taux de base est le score qu'on obtiendrait en répondant toujours par le taux de oui observé du domaine. Plus bas est mieux. C'est l'historique du domaine, pas de cette prévision.",
         "unmeasured": "Pas encore mesuré",
         "unmeasuredHint": "Les prévisions {{domain}} ont {{n}} résultats évalués au cours des {{days}} derniers jours. Un domaine doit en avoir {{min}} avant que sa précision soit affichée."
+      },
+      "resolution": {
+        "last": "Dernier : {{outcome}}",
+        "lastSr": "La fenêtre précédente de cette prévision a abouti à {{outcome}}.",
+        "history": "Fenêtres récentes, les plus récentes en premier : {{list}}",
+        "outcome": {
+          "yes": "OUI",
+          "no": "NON",
+          "void": "NUL"
+        },
+        "void": {
+          "no_establishable_metric": "Le flux n'avait pas de lecture pour cette question",
+          "value_source_never_settled": "Le flux n'a jamais publié de valeur définitive",
+          "count_source_window_not_retained": "Le flux ne conservait plus la fenêtre de la question",
+          "unsupported_window": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "unsupported_metric_key": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "not_hard_spec": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "missing_threshold": "La question manquait d'un seuil",
+          "missing_deadline": "La question manquait d'une date limite",
+          "missing_generated_at": "La prévision manquait de sa date de début",
+          "beyond_archive_horizon": "L'archive de nouvelles ne couvrait plus la fenêtre de la question",
+          "no_archive_evidence": "L'archive de nouvelles n'avait rien sur le sujet",
+          "all_judges_void": "Les deux arbitres ont jugé les preuves insuffisantes",
+          "judge_disagreement": "Les arbitres n'étaient pas d'accord",
+          "judge_retry_exhausted": "Les arbitres n'ont rendu aucun verdict",
+          "other": "N'a pas pu être résolu"
+        }
       }
     },
     "escalationCorrelation": {

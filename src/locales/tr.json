@@ -2374,6 +2374,33 @@
         "measuredHint": "{{n}} puanlanan tahmin üzerinden son {{days}} günde yayınlanan {{domain}} tahminlerinin nasıl performans gösterdiği. Taban oranı, her zaman alanın gözlemlenen evet oranını yanıtlamanın elde edeceği puandır. Düşük değer daha iyidir. Bu, alanın sicilidir, bu tahminin değil.",
         "unmeasured": "Henüz ölçülmedi",
         "unmeasuredHint": "{{domain}} tahminleri son {{days}} gün içinde {{n}} puanlanan sonuca sahiptir. Bir alanın doğruluğunun gösterilmesi için {{min}} gereklidir."
+      },
+      "resolution": {
+        "last": "Son: {{outcome}}",
+        "lastSr": "Bu tahmin önceki penceresi {{outcome}} ile çözüldü.",
+        "history": "Son pencereler, en yenisi ilk: {{list}}",
+        "outcome": {
+          "yes": "EVET",
+          "no": "HAYIR",
+          "void": "GEÇERSİZ"
+        },
+        "void": {
+          "no_establishable_metric": "Akış bu soru için veri sunmadı",
+          "value_source_never_settled": "Akış hiçbir zaman kesinleştirilmiş değer yayınlamadı",
+          "count_source_window_not_retained": "Akış artık soru penceresini tutmuyordu",
+          "unsupported_window": "Soru akışına karşı kontrol edilemedi",
+          "unsupported_metric_key": "Soru akışına karşı kontrol edilemedi",
+          "not_hard_spec": "Soru akışına karşı kontrol edilemedi",
+          "missing_threshold": "Soru eşik değerinden yoksundu",
+          "missing_deadline": "Soru son tarihten yoksundu",
+          "missing_generated_at": "Tahmin başlangıç tarihinden yoksundu",
+          "beyond_archive_horizon": "Haber arşivi artık soru penceresini kapsamıyor",
+          "no_archive_evidence": "Haber arşivinde konu hakkında hiçbir şey yoktu",
+          "all_judges_void": "Her iki hakim de kanıtları yetersiz buldu",
+          "judge_disagreement": "Hakimler anlaşamadı",
+          "judge_retry_exhausted": "Hakimler karar vermedi",
+          "other": "Çözülemedi"
+        }
       }
     },
     "escalationCorrelation": {

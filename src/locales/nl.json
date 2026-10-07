@@ -1991,6 +1991,33 @@
         "measuredHint": "Hoe gepubliceerde {{domain}}-prognoses hebben gescoord over {{n}} geclassificeerde prognoses in de afgelopen {{days}} dagen. Het basispercentage is wat je zou scoren door altijd het waargenomen ja-percentage van het domein te antwoorden. Lager is beter. Dit is het record van het domein, niet van deze prognose.",
         "unmeasured": "Nog niet gemeten",
         "unmeasuredHint": "{{domain}} voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. Een domein heeft minimaal {{min}} nodig voordat de nauwkeurigheid wordt weergegeven."
+      },
+      "resolution": {
+        "last": "Laatste: {{outcome}}",
+        "lastSr": "Het vorige venster van deze forecast is opgelost als {{outcome}}.",
+        "history": "Recente vensters, nieuwste eerst: {{list}}",
+        "outcome": {
+          "yes": "JA",
+          "no": "NEE",
+          "void": "ONGELDIG"
+        },
+        "void": {
+          "no_establishable_metric": "De feed had geen waarde voor deze vraag",
+          "value_source_never_settled": "De feed heeft nooit een vastgestelde waarde gepubliceerd",
+          "count_source_window_not_retained": "De feed bewaarde het vraagvenster niet meer",
+          "unsupported_window": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "unsupported_metric_key": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "not_hard_spec": "De vraag kon niet tegen de feed worden gecontroleerd",
+          "missing_threshold": "De vraag miste een drempel",
+          "missing_deadline": "De vraag miste een deadline",
+          "missing_generated_at": "De forecast miste de startdatum",
+          "beyond_archive_horizon": "Het nieuwsarchief dekte het vraagvenster niet meer",
+          "no_archive_evidence": "Het nieuwsarchief had niets over het onderwerp",
+          "all_judges_void": "Beide beoordelaars vonden het bewijs onvoldoende",
+          "judge_disagreement": "De beoordelaars waren het niet eens",
+          "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
+          "other": "Kon niet worden opgelost"
+        }
       }
     },
     "escalationCorrelation": {

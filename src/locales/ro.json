@@ -2384,6 +2384,33 @@
         "measuredHint": "Cum s-au clasat prognozele publicate {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} de zile. Rata de bază este ce s-ar fi obținut prin răspunsul întotdeauna cu rata observată „da\" a domeniului. Mai mic este mai bun. Acesta este istoricul domeniului, nu al acestei prognoze.",
         "unmeasured": "Încă nemăsurat",
         "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
+      },
+      "resolution": {
+        "last": "Ultimul: {{outcome}}",
+        "lastSr": "Perioada anterioară a acestei prognoze s-a rezolvat cu {{outcome}}.",
+        "history": "Perioade recente, cele mai noi în primul rând: {{list}}",
+        "outcome": {
+          "yes": "DA",
+          "no": "NU",
+          "void": "ANULAT"
+        },
+        "void": {
+          "no_establishable_metric": "Fluxul nu avea o citire pentru această întrebare",
+          "value_source_never_settled": "Fluxul nu a publicat niciodată o valoare finală",
+          "count_source_window_not_retained": "Fluxul nu mai ținea perioada pentru această întrebare",
+          "unsupported_window": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "unsupported_metric_key": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "not_hard_spec": "Întrebarea nu a putut fi verificată față de fluxul său",
+          "missing_threshold": "Întrebării îi lipsea o valoare prag",
+          "missing_deadline": "Întrebării îi lipsia o dată limită",
+          "missing_generated_at": "Prognosei îi lipsia data de început",
+          "beyond_archive_horizon": "Arhiva de știri nu mai acoperea perioada întrebării",
+          "no_archive_evidence": "Arhiva de știri nu avea nimic despre subiect",
+          "all_judges_void": "Ambii evaluatori au găsit dovezile insuficiente",
+          "judge_disagreement": "Evaluatorii nu au fost de acord",
+          "judge_retry_exhausted": "Evaluatorii nu au returnat o hotărâre",
+          "other": "Nu a putut fi rezolvată"
+        }
       }
     },
     "escalationCorrelation": {

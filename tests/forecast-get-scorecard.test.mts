@@ -6,17 +6,19 @@ import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 import {
   SCORECARD_DECLARED_FIELDS,
+  SCORECARD_LIVE_ONLY_FIELDS,
   SCORECARD_NESTED_CHILD_FIELDS,
   SCORECARD_NESTED_OBJECT_FIELDS,
   selectDeclaredScorecardFields,
 } from '../scripts/build-accuracy-page.mjs';
 import {
+  FAMILY_OUTCOME_FIELDS,
   MARKET_ALERT_FIELDS,
   MARKET_ALERT_ROW_FIELDS,
   RECEIPT_FIELDS,
   SCORECARD_BLOCK_FIELDS,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
-import { PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
+import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -183,6 +185,7 @@ describe('getForecastScorecard backend status', () => {
         scoredOfMatured: { count: 2, successes: 1, rate: 0.5, ci95: [0.094531, 0.905469] },
       },
       receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
+      familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES' }, { forecastId: 'fc-conflict-1', outcome: 'VOID', voidReason: 'no_archive_evidence' }],
       degraded: false, stale: false, error: '',
     };
     const { fetchImpl } = createRedisFetch({});
@@ -192,6 +195,7 @@ describe('getForecastScorecard backend status', () => {
         uncertainty: { ...data.uncertainty, skillBrier: null, draws: [0.1], overallBrier: { ...data.uncertainty.overallBrier, scope: 'overall' } },
         funnel: { ...data.funnel, entryIds: ['a'], resolvedOfMatured: { ...data.funnel.resolvedOfMatured, sampleIds: ['b'] } },
         receipts: data.receipts.map((row) => ({ ...row, key: 'ledger-key', rationale: 'judge text' })),
+        familyOutcomes: data.familyOutcomes.map((row) => ({ ...row, key: 'ledger-key', evidence: { reason: 'raw' } })),
         judgedLane: { pendingJudge: 3 },
         betEngine: { count: 1, vsBaseRate: { brierDelta: 0.02 }, deviationSkill: { count: 1 } },
         futureInternalMetric: { syntheticMarker: 'not-part-of-response' },
@@ -210,7 +214,7 @@ describe('getForecastScorecard backend status', () => {
     }));
     assert.equal(response.status, 200);
     const serialized = await response.json();
-    assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS].sort());
+    assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].sort());
     assert.deepEqual(
       serialized,
       { ...data, marketAlerts: MARKET_ALERTS_SERVED },
@@ -232,6 +236,7 @@ describe('getForecastScorecard backend status', () => {
 
   it('filters receipt rows with the member list the producer publishes', () => {
     assert.deepEqual([...RECEIPT_FIELDS], [...PUBLIC_RECEIPT_FIELDS]);
+    assert.deepEqual([...FAMILY_OUTCOME_FIELDS], [...PUBLIC_FAMILY_OUTCOME_FIELDS]);
   });
 
   it('filters the interval and funnel blocks with the same member lists the /accuracy/ page uses', () => {

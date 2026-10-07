@@ -2108,6 +2108,33 @@
         "measuredHint": "Hogy a közzétett {{domain}} előrejelzések {{n}} értékelt előrejelzésből teljesítettek az utolsó {{days}} napban. Az alapráta az, amit a tartomány megfigyelt igen aránya alapján mindig válaszolva kapnánk. Alacsonyabb jobb. Ez a tartomány nyilvántartása, nem ennek az előrejelzésnek a nyilvántartása.",
         "unmeasured": "Még nem mért",
         "unmeasuredHint": "A(z) {{domain}} előrejelzéseknek {{n}} értékelt eredménye van az elmúlt {{days}} napban. Egy tartománynak {{min}} eredményre van szüksége ahhoz, hogy a pontossága megjelenjen."
+      },
+      "resolution": {
+        "last": "Utolsó: {{outcome}}",
+        "lastSr": "Az előző időszak ebben az előrejelzésben {{outcome}} eredményre zárult.",
+        "history": "Legutóbbi időszakok, legújabb először: {{list}}",
+        "outcome": {
+          "yes": "IGEN",
+          "no": "NEM",
+          "void": "SEMMIS"
+        },
+        "void": {
+          "no_establishable_metric": "A feed nem adott értéket erre a kérdésre",
+          "value_source_never_settled": "A feed soha nem közölt véglegzett értéket",
+          "count_source_window_not_retained": "A feed már nem tárolt adatot az időszakhoz",
+          "unsupported_window": "A kérdés nem ellenőrizhető a feed alapján",
+          "unsupported_metric_key": "A kérdés nem ellenőrizhető a feed alapján",
+          "not_hard_spec": "A kérdés nem ellenőrizhető a feed alapján",
+          "missing_threshold": "A kérdésből hiányzott egy küszöbérték",
+          "missing_deadline": "A kérdésből hiányzott egy határidő",
+          "missing_generated_at": "Az előrejelzésből hiányzott a kezdési dátuma",
+          "beyond_archive_horizon": "A hírarchívum már nem fed le az időszakot",
+          "no_archive_evidence": "A hírarchívumban nincs adat az témáról",
+          "all_judges_void": "Mindkét bíró elégtelennek találta a bizonyítékot",
+          "judge_disagreement": "A bírók egyetértésre nem jutottak",
+          "judge_retry_exhausted": "A bírók nem hoztak ítéletet",
+          "other": "Nem lehetett rendezni"
+        }
       }
     },
     "escalationCorrelation": {

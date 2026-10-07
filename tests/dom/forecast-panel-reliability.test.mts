@@ -45,6 +45,7 @@ function scorecard(rows: PublishedDomain[], overrides: Partial<GetForecastScorec
     calibration: [],
     skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13 },
     publishedByDomain: rows,
+    familyOutcomes: [],
     receipts: [],
     degraded: false,
     stale: false,

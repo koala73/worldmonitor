@@ -47,6 +47,11 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'marketAlerts',
 ]);
 
+// Proto fields the frozen page and its download deliberately leave out.
+// familyOutcomes keys the live forecast-card chips by forecast id; a weekly
+// snapshot has no live cards, and the distribution publishes no forecast ids.
+export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes']);
+
 // A fixed vocabulary, because the page is public: an exception message or an
 // upstream response body would publish internals and could carry attacker-
 // controlled text. Anything outside this set normalises to 'unknown'.

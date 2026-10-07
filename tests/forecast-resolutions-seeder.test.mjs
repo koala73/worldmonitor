@@ -40,7 +40,7 @@ import {
   ingestHistory,
   samplePendingEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
-import { buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
@@ -144,6 +144,7 @@ describe('processResolutionCycle', () => {
       assert.equal(scorecard.receipts.length, 1);
       assert.deepEqual(scorecard.receipts, buildPublicReceipts(ledger, T0 + 2 * DAY_MS));
       assert.equal(scorecard.receipts[0].sourceFeed, 'chokepoints');
+      assert.deepEqual(scorecard.familyOutcomes, buildFamilyOutcomes(ledger, T0 + 2 * DAY_MS));
     });
   });
 

@@ -1999,6 +1999,33 @@
         "measuredHint": "Como as previsões publicadas de {{domain}} pontuaram em {{n}} previsões avaliadas nos últimos {{days}} dias. A taxa base é o que sempre responder a taxa de \"sim\" observada do domínio teria pontuado. Quanto menor, melhor. Este é o histórico do domínio, não desta previsão.",
         "unmeasured": "Ainda não medido",
         "unmeasuredHint": "As previsões de {{domain}} têm {{n}} resultados avaliados nos últimos {{days}} dias. Um domínio precisa de {{min}} antes que sua precisão seja exibida."
+      },
+      "resolution": {
+        "last": "Último: {{outcome}}",
+        "lastSr": "A janela anterior desta previsão foi resolvida como {{outcome}}.",
+        "history": "Janelas recentes, mais novas primeiro: {{list}}",
+        "outcome": {
+          "yes": "SIM",
+          "no": "NÃO",
+          "void": "ANULADO"
+        },
+        "void": {
+          "no_establishable_metric": "O feed não tinha leitura para esta pergunta",
+          "value_source_never_settled": "O feed nunca publicou um valor resolvido",
+          "count_source_window_not_retained": "O feed não mantinha mais a janela da pergunta",
+          "unsupported_window": "A pergunta não pôde ser verificada contra seu feed",
+          "unsupported_metric_key": "A pergunta não pôde ser verificada contra seu feed",
+          "not_hard_spec": "A pergunta não pôde ser verificada contra seu feed",
+          "missing_threshold": "A pergunta estava sem um limite",
+          "missing_deadline": "A pergunta estava sem uma data limite",
+          "missing_generated_at": "A previsão estava sem sua data de início",
+          "beyond_archive_horizon": "O arquivo de notícias não cobria mais a janela da pergunta",
+          "no_archive_evidence": "O arquivo de notícias não tinha nada sobre o assunto",
+          "all_judges_void": "Ambos os juízes consideraram as evidências insuficientes",
+          "judge_disagreement": "Os juízes discordaram",
+          "judge_retry_exhausted": "Os juízes não retornaram um veredicto",
+          "other": "Não pôde ser resolvido"
+        }
       }
     },
     "escalationCorrelation": {

@@ -235,6 +235,7 @@ function countryPayload() {
           { type: 'prediction-market', scored: 0, baseN: 0 },
         ],
       },
+      familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES', key: 'internal-ledger-key' }],
       degraded: false,
       stale: false,
       error: '',

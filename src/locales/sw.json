@@ -2111,6 +2111,33 @@
         "measuredHint": "Jinsi ambavyo mwonekano uliotangazwa wa {{domain}} umefanya alama zaidi ya {{n}} mwonekano uliokadiria katika siku {{days}} zilizopita. Kiwango cha msingi ni kile kinachoshindwa kwa kujibu kila wakati kwa kiwango kilichogunduliwa cha ndiyo cha kikoa. Chini ni nzuri. Hii ni rekodi ya kikoa, sio ya mwonekano huu.",
         "unmeasured": "Haijapimwa bado",
         "unmeasuredHint": "{{domain}} utabiri una {{n}} matokeo yaliyokadiria katika siku {{days}} zilizopita. Kikoa kinahitaji {{min}} kabla usahihi wake kuonekana."
+      },
+      "resolution": {
+        "last": "Mwisho: {{outcome}}",
+        "lastSr": "Dirisha lililopita la tabiri hili lilitatuliwa {{outcome}}.",
+        "history": "Dirisha la karibuni, jipya kwanza: {{list}}",
+        "outcome": {
+          "yes": "NDIO",
+          "no": "HAPANA",
+          "void": "BATILI"
+        },
+        "void": {
+          "no_establishable_metric": "Chanzo hakina kiwango kwa swali hili",
+          "value_source_never_settled": "Chanzo hakikuwa na thamani iliyotatuliwa",
+          "count_source_window_not_retained": "Chanzo halikubaki na dirisha la swali",
+          "unsupported_window": "Swali halikuweza kuchecked dhidi ya chanzo chake",
+          "unsupported_metric_key": "Swali halikuweza kuchecked dhidi ya chanzo chake",
+          "not_hard_spec": "Swali halikuweza kuchecked dhidi ya chanzo chake",
+          "missing_threshold": "Swali lilitokuwa na kiwango cha kuzuia",
+          "missing_deadline": "Swali lilitokuwa na tarehe ya mwisho",
+          "missing_generated_at": "Tabiri ilikosa tarehe ya kuanza",
+          "beyond_archive_horizon": "Hifadhi ya habari haikuwa na dirisha la swali",
+          "no_archive_evidence": "Hifadhi ya habari haikuwa na kitu juu ya mada",
+          "all_judges_void": "Hakimu wote wawili waligundua ushahidi hauwi tosha",
+          "judge_disagreement": "Hakimu walisisitizana",
+          "judge_retry_exhausted": "Hakimu hawakurudisha hukumu",
+          "other": "Haiwezi kutatuliwa"
+        }
       }
     },
     "escalationCorrelation": {

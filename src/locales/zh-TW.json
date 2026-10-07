@@ -2364,6 +2364,33 @@
         "measuredHint": "過去 {{days}} 天內 {{n}} 個已評分預測中，已釋出的 {{domain}} 預測的 Brier 評分。基準率是如果始終按該領域觀察到的是機率回答所得的評分。分數越低越好。這是該領域的歷史記錄，不是此預測的記錄。",
         "unmeasured": "暫未測量",
         "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分的結果。領域需要至少 {{min}} 個結果才能顯示準確度。"
+      },
+      "resolution": {
+        "last": "最後：{{outcome}}",
+        "lastSr": "該預測的上一個時間視窗已解決，結果為{{outcome}}。",
+        "history": "最近的時間視窗，最新的優先：{{list}}",
+        "outcome": {
+          "yes": "是",
+          "no": "否",
+          "void": "作廢"
+        },
+        "void": {
+          "no_establishable_metric": "該資料來源對此問題沒有讀數",
+          "value_source_never_settled": "該資料來源從未釋出已結算的數值",
+          "count_source_window_not_retained": "該資料來源不再保留該問題的時間視窗",
+          "unsupported_window": "無法根據其資料來源檢查該問題",
+          "unsupported_metric_key": "無法根據其資料來源檢查該問題",
+          "not_hard_spec": "無法根據其資料來源檢查該問題",
+          "missing_threshold": "該問題缺少閾值",
+          "missing_deadline": "該問題缺少截止日期",
+          "missing_generated_at": "該預測缺少開始日期",
+          "beyond_archive_horizon": "新聞存檔不再涵蓋該問題的時間視窗",
+          "no_archive_evidence": "新聞存檔中沒有相關內容",
+          "all_judges_void": "兩位裁定者都認為證據不足",
+          "judge_disagreement": "裁定者意見不一致",
+          "judge_retry_exhausted": "裁定者未作出裁決",
+          "other": "無法解決"
+        }
       }
     },
     "escalationCorrelation": {

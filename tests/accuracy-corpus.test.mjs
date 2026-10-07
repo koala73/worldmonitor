@@ -12,6 +12,7 @@ import {
   ACCURACY_PAGE_PATH,
   MARKET_ALERT_TYPE_LABELS,
   SCORECARD_DECLARED_FIELDS,
+  SCORECARD_LIVE_ONLY_FIELDS,
   SCORECARD_STALE_AFTER_HOURS,
   accuracyDatasetDownload,
   classifyAccuracyState,
@@ -84,6 +85,7 @@ const LIVE_SCORECARD = Object.freeze({
     { domain: 'market', count: 60, brier: 0.13, yesCount: 22 },
     { domain: 'political', count: 12, brier: 0.2, yesCount: 4 },
   ],
+  familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES' }],
   degraded: false,
   stale: false,
   error: '',
@@ -160,7 +162,7 @@ describe('forecast scorecard field whitelist', () => {
     const declared = protoMessageFields('GetForecastScorecardResponse');
     assert.ok(declared.length > 10, 'the proto parse must actually find fields');
     assert.deepEqual(
-      [...SCORECARD_DECLARED_FIELDS].sort(),
+      [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].sort(),
       declared.sort(),
       'the published field list must track the proto, or an undeclared seeder field can reach the page',
     );
@@ -1152,6 +1154,15 @@ describe('accuracy page forecast receipts (#5092)', () => {
       receipts: [{ ...RECEIPTS[0], key: 'commodity:BZ=F@1', rationale: 'judge text', evidence: { metricKey: 'x' } }],
     });
     assert.deepEqual(selected.receipts, [RECEIPTS[0]]);
+  });
+
+  it('leaves the live-card family outcomes out of the frozen page and download', () => {
+    const selected = selectDeclaredScorecardFields({
+      ...WITH_INTERVALS.scorecard,
+      familyOutcomes: [{ forecastId: 'fc-1', outcome: 'VOID', voidReason: 'other' }],
+    });
+    assert.equal(Object.hasOwn(selected, 'familyOutcomes'), false);
+    assert.deepEqual([...SCORECARD_LIVE_ONLY_FIELDS], ['familyOutcomes']);
   });
 
   it('renders the receipts newest first with what was forecast, when, the chance, the outcome and the source', () => {
