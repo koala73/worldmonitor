@@ -244,6 +244,19 @@ describe('developmentsHasDatedItem', () => {
 });
 
 describe('normalizeFrozenDevelopments', () => {
+  it('drops site-policy pages that a country index captured as headlines', () => {
+    const news = { title: 'Malawi misses IMF target', source: 'maravipost.com', url: 'https://www.maravipost.com/malawi-misses-imf-target/', publishedAt: '2026-10-07T05:45:00.000Z' };
+    const policyRows = [
+      { title: 'Privacy Policy | Face of Malawi', source: 'faceofmalawi.com', url: 'https://www.faceofmalawi.com/privacy-policy/', publishedAt: '2026-10-07T05:15:00.000Z' },
+      { title: 'Terms of Use - Example Times', source: 'example.com', url: 'https://example.com/terms-of-use', publishedAt: '2026-10-07T05:00:00.000Z' },
+      { title: 'Example Herald', source: 'example.org', url: 'https://example.org/cookie-policy/', publishedAt: '2026-10-07T04:00:00.000Z' },
+    ];
+    const out = normalizeFrozenDevelopments({ headlines: [news, ...policyRows] });
+    assert.deepEqual(out.headlines.map((row) => row.title), ['Malawi misses IMF target']);
+    const story = { ...news, title: 'Costa Rica tightens privacy policy for tourists', url: 'https://example.net/costa-rica-privacy-policy-tourists' };
+    assert.deepEqual(normalizeFrozenDevelopments({ headlines: [story] }).headlines, [story], 'a news story about a policy is kept');
+  });
+
   it('withholds invented assets and citations to the wrong source (#7865)', () => {
     const sources = [
       { title: 'Israel resumes talks', source: 'Reuters', url: 'https://reuters.com/a' },
