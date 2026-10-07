@@ -75,16 +75,18 @@ function every(fromMinutes, toMinutes, types) {
 
 // A tick whose third element is null has no baseline, as at cold start or
 // after a seeder gap; its runs still carry over, as the seeder reads them
-// from the stale snapshot.
+// from the stale snapshot. 'unquoted' is the tick after a feed skip, whose
+// baseline lacks the symbol's quote.
 function runTicks(ticks, market) {
   let state = { ledger: {}, emitted: [], activity: {}, held: [] };
   for (const [minutes, types, baseline] of ticks) {
+    const marketChanges = baseline === 'unquoted' ? {} : { [market.symbol]: market.change };
     const tick = ingestSignals(state.ledger, types.map((type) => marketSignal(type, market)), {
       nowMs: NOW + minutes * MIN,
       runtimeMode: 'legacy',
       markets: [market],
       predictions: [],
-      baseline: baseline === null ? null : { marketChanges: { [market.symbol]: market.change }, emitted: state.emitted, activity: state.activity },
+      baseline: baseline === null ? null : { marketChanges, emitted: state.emitted, activity: state.activity },
       activity: state.activity,
     });
     state = { ledger: tick.ledger, emitted: tick.emitted, activity: tick.activity, held: [...state.held, tick.held] };
@@ -262,6 +264,50 @@ describe('ingestSignals', () => {
     assert.deepEqual(activity, { AVGO: [{ since: NOW + 30 * MIN, until: NOW + 55 * MIN }] }, 'the flow holds are the run; the new explained row does not extend it');
   });
 
+  it('silent, then explained, then silent past the explained window and the gap, then explained again opens no second explained row', () => {
+    const ticks = [[0, ['silent_divergence']], [5, ['explained_market_move']], ...every(10, 380, ['silent_divergence']), [385, ['explained_market_move']], [390, ['explained_market_move']]];
+    const { ledger, activity } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW + 5 * MIN], ['silent_divergence', NOW]]);
+    assert.deepEqual(activity, { AVGO: [{ since: NOW + 385 * MIN, until: NOW + 390 * MIN }] }, 'the silent row absorbed every silent hold, so the explained holds are the only run');
+  });
+
+  it('one tick without the alert inside another type\'s window does not let a quiet type open a row', () => {
+    const cases = [
+      ['explained, a dropout, then silent', [[0, ['explained_market_move']], [5, []], [10, ['silent_divergence']]]],
+      ['silent, a dropout, then flow', [[0, ['silent_divergence']], [5, []], [10, ['flow_price_divergence']]]],
+      ['flow, a dropout, then silent beside explained', [[0, ['flow_price_divergence']], [5, []], [10, ['silent_divergence', 'explained_market_move']]]],
+    ];
+    for (const [label, ticks] of cases) {
+      const { ledger, activity } = runTicks(ticks, AVGO);
+      const first = ticks[0][1][0];
+      const rows = rowsOf(ledger).filter(([type]) => type !== 'explained_market_move' || first === 'explained_market_move');
+      assert.deepEqual(rows, [[first, NOW]], label);
+      assert.deepEqual(activity, { AVGO: [{ since: NOW + 10 * MIN, until: NOW + 10 * MIN }] }, `${label}: the quiet hold is a run`);
+    }
+  });
+
+  it('explained held with no baseline inside its fresh row bumps the row, so two dropouts after it do not reopen it', () => {
+    const ticks = [...every(0, 365, ['explained_market_move']), [370, ['explained_market_move'], null], [375, []], [380, []], [385, ['explained_market_move']]];
+    const { ledger } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW]]);
+    assert.equal(Object.values(ledger)[0].lastSeenAt, NOW + 385 * MIN);
+  });
+
+  it('silent held on an unquoted baseline after a feed skip bumps its fresh row, so two dropouts after it do not reopen it', () => {
+    const ticks = [...every(0, 365, ['silent_divergence']), [370, []], [375, ['silent_divergence'], 'unquoted'], [380, []], [385, []], [390, ['silent_divergence']]];
+    const { ledger } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['silent_divergence', NOW]]);
+    assert.equal(Object.values(ledger)[0].lastSeenAt, NOW + 390 * MIN);
+  });
+
+  it('a cold-start run continues through a hold on an unquoted baseline, so two dropouts after a feed skip open no row', () => {
+    const [first, ...rest] = every(0, 45, ['silent_divergence']);
+    const ticks = [[...first, null], ...rest, [50, []], [55, ['silent_divergence'], 'unquoted'], [60, []], [65, []], [70, ['silent_divergence']]];
+    const { ledger, activity } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), []);
+    assert.deepEqual(activity, { AVGO: [{ since: NOW + 5 * MIN, until: NOW + 70 * MIN }] });
+  });
+
   it('silent on one tick then explained on the next opens the explained row', () => {
     const silentTick = ingest({}, [marketSignal('silent_divergence', CRUDE), marketSignal('flow_price_divergence', CRUDE)], NOW, { marketChanges: { 'CL=F': 3.0 }, emitted: [] });
     assert.deepEqual(silentTick.emitted, ['flow_price_divergence:CL=F', 'silent_divergence:CL=F']);
@@ -316,13 +362,24 @@ describe('ingestSignals', () => {
     assert.deepEqual(Object.values(ledger), [{ ...row, lastSeenAt: dueAt + 2 }]);
   });
 
-  it('a hold for a missing baseline or an unquoted symbol touches no row and records no activity', async () => {
+  it('a hold for a missing baseline or an unquoted symbol bumps a fresh same-type row, extends a fresh run, and otherwise records nothing', async () => {
     const dueAt = NOW + MARKET_ALERT_WINDOW_MS;
     const closed = (await resolveDueEntries(ingest({}, [marketSignal('silent_divergence', CRUDE)]).ledger, { nowMs: dueAt + 1, archive: archiveOf([], {}) })).ledger;
-    for (const baseline of [null, { marketChanges: { 'ZW=F': 3.0 }, emitted: [], activity: {} }]) {
-      const { ledger, held, touched, activity } = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, baseline);
-      assert.deepEqual({ held, touched, activity }, { held: 1, touched: 0, activity: {} });
-      assert.deepEqual(ledger, closed);
+    const [row] = Object.values(closed);
+    const unquoted = { marketChanges: { 'ZW=F': 3.0 }, emitted: [], activity: {} };
+    for (const baseline of [null, unquoted]) {
+      const fresh = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 2, baseline);
+      assert.deepEqual({ held: fresh.held, touched: fresh.touched, activity: fresh.activity }, { held: 1, touched: 1, activity: {} });
+      assert.deepEqual(Object.values(fresh.ledger), [{ ...row, lastSeenAt: dueAt + 2 }], 'the fresh closed row is bumped');
+
+      const stale = ingest(closed, [marketSignal('silent_divergence', CRUDE)], dueAt + 20 * MIN, baseline);
+      assert.deepEqual({ held: stale.held, touched: stale.touched, activity: stale.activity }, { held: 1, touched: 0, activity: {} });
+      assert.deepEqual(stale.ledger, closed, 'a stale row is left alone and no run starts');
+
+      const run = { since: dueAt + 20 * MIN, until: dueAt + 30 * MIN };
+      const continued = ingestSignals(closed, [marketSignal('silent_divergence', CRUDE)], { nowMs: dueAt + 40 * MIN, runtimeMode: 'legacy', markets: [CRUDE], predictions: [], baseline, activity: { 'CL=F': [run] } });
+      assert.deepEqual({ held: continued.held, touched: continued.touched, activity: continued.activity }, { held: 1, touched: 1, activity: { 'CL=F': [{ since: run.since, until: dueAt + 40 * MIN }] } });
+      assert.deepEqual(continued.ledger, closed);
     }
   });
 
