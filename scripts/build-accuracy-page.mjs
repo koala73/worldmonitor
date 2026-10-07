@@ -739,6 +739,23 @@ ${populated.map((bucket) => `          <tr data-calibration-bucket="${escapeHtml
 const PUBLISHED_BY_DOMAIN_SCHEMA = 2;
 const NOT_YET_MEASURED = 'Not yet measured';
 
+// Mirrors DOMAIN_LABELS in src/components/ForecastPanel.ts, which the badge
+// uses; scripts/ cannot import browser components, so a test pins the copy.
+export const ACCURACY_DOMAIN_LABELS = Object.freeze({
+  conflict: 'Conflict',
+  market: 'Market',
+  supply_chain: 'Supply Chain',
+  political: 'Political',
+  military: 'Military',
+  cyber: 'Cyber',
+  infrastructure: 'Infra',
+});
+
+function domainLabel(domain) {
+  return ACCURACY_DOMAIN_LABELS[domain]
+    ?? String(domain).split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
 function domainSection(scorecard, escapeHtml) {
   const rows = scorecard.publishedByDomain;
   if (!isFiniteNumber(scorecard.schemaVersion) || scorecard.schemaVersion < PUBLISHED_BY_DOMAIN_SCHEMA || !Array.isArray(rows)) {
@@ -761,7 +778,7 @@ function domainSection(scorecard, escapeHtml) {
         <tbody>
 ${rows.map((row) => {
     const [brier, base] = cells(row);
-    return `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(row.domain)}</th><td>${escapeHtml(formatCount(row.count))}</td><td>${escapeHtml(brier)}</td><td>${escapeHtml(base)}</td></tr>`;
+    return `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(domainLabel(row.domain))}</th><td>${escapeHtml(formatCount(row.count))}</td><td>${escapeHtml(brier)}</td><td>${escapeHtml(base)}</td></tr>`;
   }).join('\n')}
         </tbody>
       </table></div>`;

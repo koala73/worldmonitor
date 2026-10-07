@@ -84,7 +84,7 @@ export function projectReliability(resp: GetForecastScorecardResponse): Reliabil
   const byDomain = new Map<string, DomainReliability>();
   for (const row of resp.publishedByDomain) {
     const n = finite(row.count) && row.count > 0 ? row.count : 0;
-    const validYes = finite(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
+    const validYes = Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
     byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier) && validYes
       ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n }
       : { kind: 'unmeasured', n });
@@ -146,12 +146,12 @@ function staleBadge(record: GradedRecord): string {
   return `<span class="fc-record-stale"${title}>${escapeHtml(t('components.forecast.record.stale'))}</span>`;
 }
 
-/** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
 /** The badge lands on the /accuracy/ table built from the same publishedByDomain rows. */
 export function reliabilityHref(desktop: boolean): string {
   return `${recordHref(desktop)}#by-domain`;
 }
 
+/** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
 export function recordHref(desktop: boolean): string {
   return desktop ? `${CANONICAL_ORIGIN}accuracy/` : '/accuracy/';
 }

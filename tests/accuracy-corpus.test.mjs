@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ACCURACY_CONTENT_VERSION,
+  ACCURACY_DOMAIN_LABELS,
   ACCURACY_FAILURE_CODES,
   ACCURACY_PAGE_PATH,
   SCORECARD_DECLARED_FIELDS,
@@ -844,9 +845,30 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     assert.ok(table, 'the published domain table renders');
     assert.deepEqual([...table.matchAll(/<tr data-domain="([^"]+)"/g)].map(([, d]) => d), ['conflict', 'market', 'political']);
     // conflict: p = 30/120, p(1-p) = 0.1875.
-    assert.match(rowText(html, 'conflict'), /conflict\s*120\s*0\.110\s*0\.188/);
+    assert.match(rowText(html, 'conflict'), /Conflict\s*120\s*0\.110\s*0\.188/);
     // market: p = 22/60, p(1-p) = 0.2322.
-    assert.match(rowText(html, 'market'), /market\s*60\s*0\.130\s*0\.232/);
+    assert.match(rowText(html, 'market'), /Market\s*60\s*0\.130\s*0\.232/);
+  });
+
+  it('labels rows with the same human domain names the card badge uses', () => {
+    const { html } = renderState(sectionWith({
+      publishedByDomain: [
+        { domain: 'supply_chain', count: 40, brier: 0.2, yesCount: 10 },
+        { domain: 'infrastructure', count: 40, brier: 0.2, yesCount: 10 },
+        { domain: 'geopolitical', count: 40, brier: 0.2, yesCount: 10 },
+      ],
+    }));
+    const headers = [...tableOf(html).matchAll(/<th scope="row">([^<]+)<\/th>/g)].map(([, label]) => label);
+    assert.deepEqual(headers, ['Supply Chain', 'Infra', 'Geopolitical']);
+    const panel = read('src/components/ForecastPanel.ts');
+    const badgeLabels = Object.fromEntries([...panel.match(/const DOMAIN_LABELS[^{]*\{([\s\S]*?)\};/)[1].matchAll(/(\w+):\s*'([^']+)'/g)].map(([, k, v]) => [k, v]));
+    delete badgeLabels.all;
+    assert.deepEqual(ACCURACY_DOMAIN_LABELS, badgeLabels, 'the page and the badge must share domain labels');
+  });
+
+  it('treats a non-integer yesCount as not yet measured, matching the badge', () => {
+    const { html } = renderState(sectionWith({ publishedByDomain: [{ domain: 'conflict', count: 40, brier: 0.2, yesCount: 10.5 }] }));
+    assert.match(rowText(html, 'conflict'), /Not yet measured/);
   });
 
   it('drops the pooled all-origin domain table from the page', () => {

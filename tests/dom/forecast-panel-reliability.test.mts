@@ -152,6 +152,14 @@ describe('ForecastPanel reliability badge', () => {
     expect(rule).toMatch(/white-space:\s*nowrap/);
     expect(rule).toMatch(/overflow:\s*hidden/);
     expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    // A block link spans the label column; fit-content keeps blank space beside it unclickable.
+    expect(rule).toMatch(/width:\s*fit-content/);
+    expect(rule).toMatch(/max-width:\s*100%/);
+  });
+
+  it('treats a non-integer yesCount as unmeasured, matching the /accuracy/ table', async () => {
+    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15.5)], ['conflict']);
+    expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
   });
 
   it('uses corrected hu, el and de wording', () => {
@@ -163,6 +171,7 @@ describe('ForecastPanel reliability badge', () => {
     expect(JSON.stringify(el).replace(/\{\{\w+\}\}/g, '')).not.toMatch(/base rate|domain/i);
     expect(locale('de').unmeasuredHint).not.toContain('Domain');
     expect(locale('de').unmeasuredHint).toContain('Bereich');
+    expect(locale('cs').measured).toContain('základní míra');
     for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f) && f !== 'en.json')) {
       expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate/i);
     }
