@@ -728,7 +728,8 @@ test('refresh keeps prior observations and delayed country work cannot repaint a
   await expect.poll(() => host.cancelled).toContain('get_country_coverage');
   host.releaseCoverage();
   expect(host.calls.filter(call => call.name === 'get_country_brief')).toHaveLength(1);
-  await expect(frame.locator('#countryUsage')).toContainText(`${50 - host.admissions} of 50 requests remaining`);
+  expect(host.admissions).toBe(9);
+  await expect(frame.locator('#countryUsage')).toContainText('41 of 50 requests remaining');
   await frame.getByRole('button', { name: 'New AI assessment', exact: true }).click();
   await expect.poll(() => host.calls.filter(call => call.name === 'get_country_brief').length).toBe(2);
   host.recover();
