@@ -482,7 +482,7 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)}${intervalPhrase} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. It does not score the 24-hour, 7-day and 30-day projections shown in the product. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section) {
   const state = classifyAccuracyState(section);
@@ -1029,7 +1029,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
         <li>No confidence intervals on the log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling the individual forecasts. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
-        <li>No accuracy for the 24-hour, 7-day and 30-day projections shown in the product. Those horizons are not scored yet, so nothing here describes them. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
+        <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
 }

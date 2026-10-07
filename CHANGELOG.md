@@ -13,11 +13,12 @@ All notable changes to World Monitor are documented here.
   unscored editorial curves, not probabilities, and four of five domains broke
   the probability law (a 30-day value below the 24-hour value for the same
   event). `Forecast.projections` (field 17) stays in the v1 proto and OpenAPI as
-  deprecated and is never populated, per the v1 compatibility policy in
-  `docs/api-versioning.mdx`. **Migration:** read `probability` with
-  `timeHorizon`; no per-horizon value replaces it. Horizon scoring (#7075) is
-  unchanged: the seeder still computes the values and keeps them in its internal
-  history, where the outcome ledger grades each point-in-time horizon contract.
+  deprecated and is no longer populated, effective immediately by the
+  2026-10-07 decision, with no deprecation window. **Migration:** read
+  `probability` with `timeHorizon`; no per-horizon value replaces it. Horizon
+  scoring (#7075) is unchanged: the seeder still computes the values and keeps
+  them in its internal history, where the outcome ledger grades each
+  point-in-time horizon contract.
 
 - **YouTube channel live detection is retired** (#8167; #5503). It scraped
   youtube.com channel pages through a residential proxy, which #5503 flagged as

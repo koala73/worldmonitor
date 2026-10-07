@@ -807,6 +807,16 @@ describe('accuracy page honesty rules', () => {
     }
   });
 
+  it('says the horizon projections are no longer published, never that the product shows them (#8967)', () => {
+    const text = stripTags(renderState(LIVE_SECTION).html);
+    const llms = renderAccuracyLlmsSection(LIVE_SECTION);
+    for (const [surface, body] of [['page', text], ['llms-full', llms]]) {
+      assert.doesNotMatch(body, /shown in the product/i, `${surface} claims the product shows the projections`);
+      assert.match(body, /no longer publishe[sd]/i, `${surface} must say the projections are no longer published`);
+      assert.match(body, /2026-10-07|7 October 2026/, `${surface} must date the change`);
+    }
+  });
+
   it('ships the calibration and per-domain data as real tables, with any chart aria-hidden', () => {
     const { html } = renderState(LIVE_SECTION);
     assert.ok((html.match(/<table/g) || []).length >= 4, 'totals, calibration, domains and origins are tables');
