@@ -2394,6 +2394,7 @@
           "market_price_not_outcome": "資料來源顯示的是市場價格，而不是市場的最終結果",
           "judged_evidence_unreliable": "在修正裁判所用證據期間暫不計分",
           "other": "無法確定結果",
+          "judged_old_selection": "依據一種後來被認定不可靠的取證方法作出裁定",
           "late_read": "未能在足夠接近截止時間時讀取資料來源",
           "feed_unavailable": "資料來源在截止日期後不可用"
         }

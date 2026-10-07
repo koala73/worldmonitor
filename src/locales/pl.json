@@ -2424,6 +2424,7 @@
           "market_price_not_outcome": "Źródło pokazywało cenę rynkową, a nie to, jak rynek został rozstrzygnięty",
           "judged_evidence_unreliable": "Wyłączono z oceny do czasu naprawienia materiałów dla sędziów",
           "other": "Nie można było rozstrzygnąć",
+          "judged_old_selection": "Oceniono metodą doboru dowodów, którą później uznano za niewiarygodną",
           "late_read": "Źródło danych nie zostało odczytane wystarczająco blisko terminu",
           "feed_unavailable": "Źródło danych było niedostępne po terminie"
         }

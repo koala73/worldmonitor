@@ -1642,6 +1642,9 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   // another question can precede an existing window of its own question, so
   // the correction runs again and the ledger converges in one run.
   correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+  // After the window correction, so a duplicate keeps duplicate_window
+  // whichever of the two corrections reaches a ledger first.
+  voidOldSelectionJudgedResolutions(ledger, nowMs);
   correctLateReads(ledger, nowMs);
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
@@ -2069,6 +2072,36 @@ export function voidEnvelopeBugResolutions(ledger, nowMs) {
   return voided;
 }
 
+// Until #8995 the judged lane picked evidence by stock words from the question
+// template, with no deadline cutoff, so most verdicts sealed before its deploy
+// rest on off-subject or post-deadline items (#8990 audit: 14 of 27 YES/NO
+// verdicts unsupported). Every such row's window ended by 2026-08-23, outside
+// the 15-day evidence archive, so none can be judged again: each is voided,
+// its verdict and evidence kept as superseded. No judged YES or NO was sealed
+// between 2026-08-23 and the deploy, so the cutoff minute changes no row.
+// Re-running is a no-op: a voided row is no longer YES or NO.
+export const JUDGED_OLD_SELECTION_VOID_REASON = 'judged_old_selection';
+export const SUBJECT_GATED_SELECTION_SINCE_MS = Date.parse('2026-10-07T14:39:00Z');
+
+export function voidOldSelectionJudgedResolutions(ledger, nowMs) {
+  let voided = 0;
+  for (const entry of Object.values(ledger)) {
+    if (entry?.status !== 'resolved' || entry.spec?.kind !== 'judged') continue;
+    if (entry.outcome !== 'YES' && entry.outcome !== 'NO') continue;
+    if (!(Number(entry.resolvedAt) < SUBJECT_GATED_SELECTION_SINCE_MS)) continue;
+    entry.evidence = {
+      reason: JUDGED_OLD_SELECTION_VOID_REASON,
+      resolvedAt: entry.resolvedAt,
+      supersededOutcome: entry.outcome,
+      supersededEvidence: entry.evidence,
+      voidedAt: nowMs,
+    };
+    entry.outcome = 'VOID';
+    voided += 1;
+  }
+  return voided;
+}
+
 // Until #8990 a live at-deadline read had no lateness bound, so a window the
 // resolver reached days after its deadline was graded on that day's price.
 // Each run corrects those rows after the duplicate voids. A row whose read
@@ -2115,11 +2148,12 @@ function isLateLiveRead(entry) {
 }
 
 // Rows corrected after their receipt reached R2 (#5233 envelope voids,
-// #8990 duplicate voids, rescores and late-read corrections) are written
-// again so R2 holds the correction. R2 writes are serial at about 450 ms (p90 about 780 ms), and the
-// whole run has a 150 s fetch phase, so each run rewrites at most this many
-// stale receipts, oldest first: 50 x 780 ms is about 40 s, which leaves the
-// run's own 20 to 60 s of feed reads and judge calls well inside the budget.
+// #8990 duplicate voids, old-selection judged voids, late-read corrections and
+// rescores) are written again so R2 holds the correction. R2 writes are serial at about 450 ms (p90
+// about 780 ms), and the whole run has a 150 s fetch phase, so each run
+// rewrites at most this many stale receipts, oldest first: 50 x 780 ms is about
+// 40 s, which leaves the run's own 20 to 60 s of feed reads and judge calls
+// well inside the budget.
 // The backlog drains over later runs, and pruning keeps a stale row until its
 // receipt is rewritten.
 export const RECEIPT_REARCHIVE_PER_RUN = 50;
@@ -2138,6 +2172,8 @@ export function collectUnarchivedReceipts(ledger, { rearchiveLimit = RECEIPT_REA
     }));
 }
 
+const CORRECTION_VOID_REASONS = new Set([ENVELOPE_BUG_VOID_REASON, DUPLICATE_WINDOW_VOID_REASON, JUDGED_OLD_SELECTION_VOID_REASON, LATE_READ_VOID_REASON]);
+
 // Durable: derived from the correction stamps, so it holds until a later
 // archive write stamps receiptArchivedAt after the correction.
 export function receiptNeedsRearchive(entry) {
@@ -2145,7 +2181,7 @@ export function receiptNeedsRearchive(entry) {
   if (entry?.status !== 'resolved' || !entry.receiptArchivedAt || !Number.isFinite(archivedAt)) return false;
   const reason = entry.evidence?.reason;
   const correctedAt = Math.max(
-    reason === ENVELOPE_BUG_VOID_REASON || reason === DUPLICATE_WINDOW_VOID_REASON || reason === LATE_READ_VOID_REASON ? Number(entry.evidence.voidedAt) || 0 : 0,
+    CORRECTION_VOID_REASONS.has(reason) ? Number(entry.evidence.voidedAt) || 0 : 0,
     Number(entry.evidence?.regradedAt) || 0,
     Number(entry.rescore?.rescoredAt) || 0,
   );

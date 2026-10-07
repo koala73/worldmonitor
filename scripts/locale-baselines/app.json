@@ -700,6 +700,7 @@
   "components.forecast.resolution.void.judge_disagreement": "The judges disagreed",
   "components.forecast.resolution.void.judge_retry_exhausted": "The judges returned no verdict",
   "components.forecast.resolution.void.judged_evidence_unreliable": "Held out of scoring while the judges' evidence is being fixed",
+  "components.forecast.resolution.void.judged_old_selection": "Judged with an evidence method later found unreliable",
   "components.forecast.resolution.void.late_read": "The feed was not read close enough to the deadline",
   "components.forecast.resolution.void.market_price_not_outcome": "The feed showed the market price, not how the market resolved",
   "components.forecast.resolution.void.missing_deadline": "The question was missing a deadline",

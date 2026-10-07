@@ -2414,6 +2414,7 @@
           "market_price_not_outcome": "Le flux indiquait le prix du marché, pas la manière dont le marché a été résolu",
           "judged_evidence_unreliable": "Exclu de la notation le temps de corriger les éléments fournis aux juges",
           "other": "N'a pas pu être résolu",
+          "judged_old_selection": "Jugé avec une méthode de preuve reconnue par la suite non fiable",
           "late_read": "Le flux n'a pas été lu assez près de la date limite",
           "feed_unavailable": "Le flux de données n'était pas disponible après la date limite"
         }
