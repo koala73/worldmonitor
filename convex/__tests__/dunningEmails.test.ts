@@ -20,6 +20,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { internalMutation } from "../_generated/server";
 import {
   DUNNING_DAY3_AGE_MS,
   DUNNING_DAY7_AGE_MS,
@@ -551,6 +552,54 @@ describe("runDunningScan windows", () => {
     ).rejects.toThrow(/on every subsequent retry/);
     expect(calls).toBe(3);
     expect(calls).toBeLessThanOrEqual(RESEND_SLOT_OCC_MAX_ATTEMPTS);
+  });
+
+  test("sendDunningEmail sends and records the ledger after reserveResendSlot exhausts OCC twice (WORLDMONITOR-17S)", async () => {
+    // Swap reserveResendSlot in convex-test's module map for a mutation that
+    // fails the first two calls with the production OCC text, then delegates
+    // to the real handler. The real sendDunningEmail resolves the mutation
+    // through this map, so the retry is exercised at the actual call site.
+    const occMessage =
+      'Documents read from or written to the "counters" table changed while this mutation was being run and on every subsequent retry. Another call to this mutation changed the document with ID "doc_test".';
+    let reserveCalls = 0;
+    const emailsModulePath = "../payments/subscriptionEmails.ts";
+    const flakyModules = {
+      ...modules,
+      [emailsModulePath]: async () => {
+        const actual = (await modules[emailsModulePath]()) as typeof import("../payments/subscriptionEmails");
+        const realHandler = (actual.reserveResendSlot as unknown as {
+          _handler: (ctx: unknown, args: Record<string, never>) => Promise<number>;
+        })._handler;
+        return {
+          ...actual,
+          reserveResendSlot: internalMutation({
+            args: {},
+            handler: async (ctx, args) => {
+              reserveCalls += 1;
+              if (reserveCalls <= 2) throw new Error(occMessage);
+              return realHandler(ctx, args);
+            },
+          }),
+        };
+      },
+    };
+
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, flakyModules);
+    const anchor = Date.now() - 4 * DAY_MS;
+    await seedSub(t, { onHoldAt: anchor });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day3",
+      episodeAt: anchor,
+    });
+
+    expect(result).toEqual({ sent: true });
+    expect(reserveCalls).toBe(3);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(1);
   });
 });
 

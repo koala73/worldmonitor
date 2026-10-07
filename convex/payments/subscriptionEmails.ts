@@ -856,7 +856,13 @@ export const reserveResendSlot = internalMutation({
   },
 });
 
-/** Convex permanent OCC failure after the mutation's built-in retries are spent. */
+/**
+ * Convex permanent OCC failure after the mutation's built-in retries are spent.
+ * Matches Convex's message text (docs.convex.dev/error#1); there is no error
+ * code to key on. If Convex rewords it, this returns false and the send fails
+ * as it did before the retry existed: the action throws before the Resend POST
+ * and writes no ledger row.
+ */
 export function isConvexOccExhaustedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
