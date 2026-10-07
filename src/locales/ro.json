@@ -2413,7 +2413,9 @@
           "resolver_envelope_bug": "Evaluat pe baza unui flux de date pe care nu l-am putut citi corect",
           "market_price_not_outcome": "Fluxul arăta prețul pieței, nu modul în care s-a rezolvat piața",
           "judged_evidence_unreliable": "Exclus de la punctare cât timp dovezile judecătorilor sunt corectate",
-          "other": "Nu a putut fi rezolvată"
+          "other": "Nu a putut fi rezolvată",
+          "late_read": "Nu a fost efectuată nicio citire în termen de o zi de la termen",
+          "feed_unavailable": "Fluxul de date nu a fost disponibil după termen"
         }
       },
       "horizons": {

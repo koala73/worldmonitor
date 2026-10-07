@@ -2140,7 +2140,9 @@
           "resolver_envelope_bug": "Ilipimwa dhidi ya chanzo cha data ambacho hatukuweza kusoma ipasavyo",
           "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
           "judged_evidence_unreliable": "Imeondolewa kwenye upimaji wakati ushahidi wa majaji unarekebishwa",
-          "other": "Haikuweza kuamuliwa"
+          "other": "Haikuweza kuamuliwa",
+          "late_read": "Hakuna kipimo kilichochukuliwa ndani ya siku moja baada ya tarehe ya mwisho",
+          "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho"
         }
       },
       "horizons": {

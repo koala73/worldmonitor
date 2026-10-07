@@ -2393,7 +2393,9 @@
           "resolver_envelope_bug": "正しく読み取れなかったデータフィードで採点されました",
           "market_price_not_outcome": "フィードが示したのは市場価格で、市場の決着結果ではありませんでした",
           "judged_evidence_unreliable": "審査員の根拠資料を修正するまで採点対象外",
-          "other": "結果を確定できませんでした"
+          "other": "結果を確定できませんでした",
+          "late_read": "締め切りから1日以内に読み取りが行われませんでした",
+          "feed_unavailable": "締め切り後、データフィードが利用できませんでした"
         }
       },
       "horizons": {

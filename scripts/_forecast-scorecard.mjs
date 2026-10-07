@@ -964,6 +964,8 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   resolver_envelope_bug: 'Scored against a data feed we could not read correctly',
   market_price_not_outcome: 'The feed showed the market price, not how the market resolved',
   judged_evidence_unreliable: "Held out of scoring while the judges' evidence is being fixed",
+  late_read: 'No reading was taken within a day of the deadline',
+  feed_unavailable: 'The data feed was unavailable after the deadline',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

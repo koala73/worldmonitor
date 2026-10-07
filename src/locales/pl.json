@@ -2423,7 +2423,9 @@
           "resolver_envelope_bug": "Oceniono na podstawie źródła danych, którego nie mogliśmy poprawnie odczytać",
           "market_price_not_outcome": "Źródło pokazywało cenę rynkową, a nie to, jak rynek został rozstrzygnięty",
           "judged_evidence_unreliable": "Wyłączono z oceny do czasu naprawienia materiałów dla sędziów",
-          "other": "Nie można było rozstrzygnąć"
+          "other": "Nie można było rozstrzygnąć",
+          "late_read": "Nie wykonano żadnego odczytu w ciągu doby od terminu",
+          "feed_unavailable": "Źródło danych było niedostępne po terminie"
         }
       },
       "horizons": {

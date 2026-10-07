@@ -2393,7 +2393,9 @@
           "resolver_envelope_bug": "올바르게 읽지 못한 데이터 피드로 채점됨",
           "market_price_not_outcome": "피드에는 시장 가격만 있었고 시장의 결과는 없었습니다",
           "judged_evidence_unreliable": "심사 근거 자료를 바로잡는 동안 채점에서 제외됨",
-          "other": "판정할 수 없었습니다"
+          "other": "판정할 수 없었습니다",
+          "late_read": "마감일로부터 1일 이내에 측정값이 기록되지 않음",
+          "feed_unavailable": "마감일 이후 데이터 피드를 사용할 수 없음"
         }
       },
       "horizons": {

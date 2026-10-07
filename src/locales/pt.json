@@ -2028,7 +2028,9 @@
           "resolver_envelope_bug": "Avaliado com base em um feed de dados que não conseguimos ler corretamente",
           "market_price_not_outcome": "O feed mostrava o preço de mercado, não como o mercado foi resolvido",
           "judged_evidence_unreliable": "Excluído da pontuação enquanto as evidências dos juízes são corrigidas",
-          "other": "Não pôde ser resolvido"
+          "other": "Não pôde ser resolvido",
+          "late_read": "Nenhuma leitura foi feita até um dia após o prazo",
+          "feed_unavailable": "O feed de dados ficou indisponível após o prazo"
         }
       },
       "horizons": {

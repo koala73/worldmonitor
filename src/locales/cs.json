@@ -2423,7 +2423,9 @@
           "resolver_envelope_bug": "Vyhodnoceno podle zdroje dat, který jsme nedokázali správně přečíst",
           "market_price_not_outcome": "Zdroj ukazoval tržní cenu, ne to, jak byl trh rozhodnut",
           "judged_evidence_unreliable": "Vyřazeno z hodnocení, dokud se neopraví podklady pro hodnotitele",
-          "other": "Nelze vyřešit"
+          "other": "Nelze vyřešit",
+          "late_read": "Do jednoho dne od termínu nebylo provedeno žádné měření",
+          "feed_unavailable": "Zdroj dat byl po termínu nedostupný"
         }
       },
       "horizons": {
