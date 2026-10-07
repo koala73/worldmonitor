@@ -157,8 +157,11 @@ function atMostOneRowPerTypeInAStretch(log) {
 // A stretch whose first emitting tick has no live baseline is held by design,
 // and one that starts inside an earlier row's window, or within the gap of
 // its deadline, updates or holds that row instead, so only stretches clear of
-// both are checked.
-function freshStretchOpensOneRowPerEmittedType(log) {
+// both are checked. After a quiet opening, the first explained alert in the
+// stretch opens the explained row when it has a live quoted baseline, and a
+// held one marks the move explained, so the stretch creates exactly that one
+// row or none.
+function freshStretchOpensExactlyOneRowPerEmittedType(log) {
   for (const { first, last } of stretchesOf(log)) {
     const opening = log[first];
     if (opening.baseline !== 'live') continue;
@@ -168,10 +171,13 @@ function freshStretchOpensOneRowPerEmittedType(log) {
     if (JSON.stringify(opening.created) !== JSON.stringify(expected)) {
       return `the stretch opening at ${minutes(opening.nowMs)} created [${opening.created}] on its first tick, expected [${expected}]`;
     }
-    const later = log.slice(first + 1, last + 1).flatMap((tick) => tick.created.map((type) => `${type}@${minutes(tick.nowMs)}`));
-    const allowed = opening.emitted.includes(TYPES.explained) ? [] : [TYPES.explained];
-    if (later.length > 1 || later.some((row) => !allowed.includes(row.split('@')[0]))) {
-      return `the stretch opening at ${minutes(opening.nowMs)} with [${opening.emitted}] later created [${later}]`;
+    const rest = log.slice(first + 1, last + 1);
+    const later = rest.flatMap((tick) => tick.created.map((type) => `${type}@${minutes(tick.nowMs)}`));
+    const firstExplained = opening.emitted.includes(TYPES.explained) ? undefined : rest.find((tick) => tick.emitted.includes(TYPES.explained));
+    const opensExplained = firstExplained !== undefined && firstExplained.baseline === 'live' && firstExplained.step.quoted;
+    const allowed = opensExplained ? [`${TYPES.explained}@${minutes(firstExplained.nowMs)}`] : [];
+    if (JSON.stringify(later) !== JSON.stringify(allowed)) {
+      return `the stretch opening at ${minutes(opening.nowMs)} with [${opening.emitted}] later created [${later}], expected [${allowed}]`;
     }
   }
   return null;
@@ -285,8 +291,8 @@ describe(`market-alert ledger property (seed ${BASE_SEED}, ${TIMELINES} timeline
     check(atMostOneRowPerTypeInAStretch);
   });
 
-  it('(b) a stretch opening on a live quoted baseline, clear of every earlier window, creates one row per emitted type on its first tick and afterwards at most an explained row after a quiet type', () => {
-    check(freshStretchOpensOneRowPerEmittedType);
+  it('(b) a stretch opening on a live quoted baseline, clear of every earlier window, creates one row per emitted type on its first tick and afterwards exactly one explained row after a quiet type, on its first explained alert when that alert has a live quoted baseline', () => {
+    check(freshStretchOpensExactlyOneRowPerEmittedType);
   });
 
   it('(c) creates no row on a tick whose baseline is null or lacks the quote, nor on a feed-skipped tick, nor on the tick after a baseline-less tick for a type it emitted', () => {
