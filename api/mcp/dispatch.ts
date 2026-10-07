@@ -29,7 +29,7 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
-import { filterConflictPanelEvents, presentConflictEvents, projectConflictSourceObservation } from './registry/cache-tools';
+import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
@@ -840,6 +840,10 @@ export async function dispatchToolsCall(
     // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
+    if (tool.name === 'get_market_data' && tool._execute === undefined && isOrdinaryMarketDefault(p.arguments ?? {})
+      && result && typeof result === 'object') {
+      result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
+    }
     const { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // Attribution accompaniment. A projection can detach a redistribution-
     // permitted value from the licence fields sitting beside it in the

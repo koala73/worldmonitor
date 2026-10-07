@@ -486,6 +486,115 @@ describe('paid curated market panel through the MCP handler', () => {
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
+  it('serves usable ordinary default market data within the dispatched text budget without changing its canonical snapshot', async testContext => {
+    const now = 1787056200000;
+    testContext.mock.timers.enable({ apis: ['Date'], now });
+    const { readFileSync } = await import('node:fs');
+    const { buildProducerBackedPhysicalComparisonFixture } = await import('./helpers/mcp-producer-fixtures.mjs');
+    const { CACHE_TOOLS } = await import('../api/mcp/registry/cache-tools.ts');
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/jmespath-samples/fat-get-market-data.response.json', import.meta.url), 'utf8'));
+    const physical = buildProducerBackedPhysicalComparisonFixture('ok');
+    fixture.data['physical-premium'] = physical.premium;
+    fixture.data['physical-divergence'] = physical.divergence;
+    fixture.data.sectors.valuations = {"XLK": {"trailingPE": 20}, "XLF": {"trailingPE": 21}, "XLE": {"trailingPE": 22}, "XLV": {"trailingPE": 23}, "XLY": {"trailingPE": 24}, "XLI": {"trailingPE": 25}, "XLP": {"trailingPE": 26}, "XLU": {"trailingPE": 27}, "XLB": {"trailingPE": 28}, "XLRE": {"trailingPE": 29}, "XLC": {"trailingPE": 30}, "SMH": {"trailingPE": 31}};
+    fixture.data.sectors.valuationCoverage = {"valuationCount": 12, "expectedValuationCount": 12, "currentValuationCount": 12, "sourceStatus": "ok", "source": "controlled_fixture", "fetchedAt": 1787056200000, "stale": false};
+    const keyToSection = {"market:stocks-bootstrap:v1": "stocks-bootstrap", "market:commodities-bootstrap:v1": "commodities-bootstrap", "market:physical-premium:v1": "physical-premium", "market:physical-divergence:v1": "physical-divergence", "market:crypto:v1": "crypto", "market:sectors:v2": "sectors", "market:etf-flows:v1": "etf-flows", "market:gulf-quotes:v1": "gulf-quotes", "market:fear-greed:v1": "fear-greed"};
+    const metadataKeys = ["seed-meta:market:stocks", "seed-meta:market:sectors"];
+    const originalFetch = globalThis.fetch;
+    const fixtureBefore = JSON.stringify(fixture);
+    const reads = [];
+    testContext.after(() => { globalThis.fetch = originalFetch; testContext.mock.timers.reset(); });
+    const market = CACHE_TOOLS.find(tool => tool.name === 'get_market_data');
+    assert.equal(typeof market?._postFilter, 'function');
+    const expectedData = market._postFilter(structuredClone(fixture.data), { limit: 30 });
+    assert.ok(expectedData['physical-divergence'], 'Healthy physical cohort must survive existing normalization');
+    assert.equal(Object.hasOwn(expectedData['physical-divergence'], 'transitions'), false);
+    for (const reading of expectedData['physical-divergence'].readings) assert.equal(reading.historyKey, reading.provenance.historyKey);
+    globalThis.fetch = async (input, init) => {
+      const rawUrl = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+      const url = new URL(rawUrl);
+      assert.equal(url.origin, 'https://market-seed.invalid');
+      assert.ok(url.pathname.startsWith('/get/'));
+      assert.equal(url.search, '');
+      assert.equal((init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase(), 'GET');
+      assert.equal(init?.body, undefined);
+      const key = decodeURIComponent(url.pathname.slice('/get/'.length));
+      assert.ok(Object.hasOwn(keyToSection, key) || metadataKeys.includes(key), `Unplanned read ${key}`);
+      reads.push(key);
+      const value = metadataKeys.includes(key) ? { fetchedAt: now } : fixture.data[keyToSection[key]];
+      assert.notEqual(value, undefined, `Missing controlled fixture ${key}`);
+      return Response.json({ result: JSON.stringify(value) });
+    };
+    const { deps, pipe } = makeProDeps();
+    const response = await handler(proReq('POST', callBody('get_market_data', {}, 100)), deps);
+    const wire = await response.text();
+    const body = JSON.parse(wire);
+    assert.equal(response.status, 200);
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, 100);
+    assert.equal(body.error, undefined);
+    assert.equal(pipe.count, 1);
+    assert.deepEqual(reads.slice().sort(), [...Object.keys(keyToSection), ...metadataKeys].sort());
+    const stored = [...pipe.store].filter(([key]) => /:markets:.*:data:[a-f0-9]{64}$/.test(key));
+    assert.equal(stored.length, 1, 'Healthy complete cohort must save its canonical original');
+    const canonical = JSON.parse(stored[0][1]);
+    assert.equal(canonical.stale, false);
+    assert.equal(canonical.freshnessUnknown, undefined);
+    assert.equal(canonical.transportCoverage, undefined);
+    assert.equal(canonical.panelRequest, undefined);
+    const lists = [['stocks-bootstrap','quotes'],['commodities-bootstrap','quotes'],['crypto','quotes'],['gulf-quotes','quotes'],['sectors','sectors'],['etf-flows','etfs']];
+    for (const [section, list] of lists) assert.deepEqual(canonical.data[section][list], fixture.data[section][list].slice(0, 30));
+    assert.deepEqual(canonical.data, expectedData);
+    const savedSets = pipe.ops.flat().filter(cmd => cmd[0] === 'SET' && cmd[1] === stored[0][0]);
+    assert.equal(savedSets.length, 1);
+    assert.equal(savedSets[0][2], stored[0][1]);
+    assert.equal(JSON.stringify(fixture), fixtureBefore);
+    const value = body.result.structuredContent;
+    const text = body.result.content[0].text;
+    if (value._budget_exceeded === true) {
+      assert.equal(value.budget_bytes, 131072);
+      assert.ok(value.actual_bytes > 131072);
+      testContext.diagnostic(JSON.stringify({ expectedCurrentFailure: 'actual dispatch budget replacement', actualBytes: value.actual_bytes, textBytes: Buffer.byteLength(text), outerWireBytes: Buffer.byteLength(wire), allocationCount: pipe.count, cacheReads: reads.length }));
+    }
+    assert.notEqual(value._budget_exceeded, true, 'Ordinary default must retain usable market data');
+    assert.ok(Buffer.byteLength(text, 'utf8') <= 131072);
+    assert.deepEqual(JSON.parse(text), value);
+    assert.equal(value.transportCoverage.count_scope, 'post_filter_snapshot');
+    for (const [section, list] of lists) {
+      const originalRows = canonical.data[section][list], returnedRows = value.data[section][list];
+      assert.ok(returnedRows.length > 0, section + ' retains useful whole rows');
+      let lastOrdinal = -1;
+      for (const row of returnedRows) {
+        const ordinal = originalRows.findIndex(original => JSON.stringify(original) === JSON.stringify(row));
+        assert.ok(ordinal > lastOrdinal, section + ' preserves whole original rows and series in source order');
+        lastOrdinal = ordinal;
+      }
+      const coverage = value.transportCoverage.collections[section + '.' + list];
+      assert.equal(coverage.original_count, originalRows.length);
+      assert.equal(coverage.returned_count, returnedRows.length);
+      assert.equal(coverage.omitted_count, originalRows.length - returnedRows.length);
+    }
+    for (const section of ['physical-premium', 'physical-divergence', 'fear-greed']) assert.deepEqual(value.data[section], canonical.data[section]);
+    const snapshotValue = stored[0][1], readCount = reads.length;
+    for (const args of [{ symbols: [], asset_class: [] }, { symbols: [' '] }]) {
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent._budget_exceeded, undefined);
+      assert.equal(next.result.structuredContent.transportCoverage.count_scope, 'post_filter_snapshot');
+    }
+    assert.equal(reads.length, readCount, 'normalized empty defaults reuse the saved canonical snapshot');
+    for (const args of [{ limit: 30 }, { limit: 0 }, { summary: false }, { jmespath: '' }, { refresh: false }, { panel_request: value.panelRequest.token }]) {
+      const beforeReads = reads.length;
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent._budget_exceeded, true, JSON.stringify(args) + ' keeps the existing explicit response');
+      if (args.panel_request) assert.equal(reads.length, beforeReads, 'the original reader reuses its snapshot without source reads');
+    }
+    for (const args of [{ limit: 10 }, { limit: 1 }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }, { summary: true }, { jmespath: 'data' }]) {
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent.transportCoverage, undefined, 'explicit presentation is not fitted');
+    }
+    assert.equal(pipe.count, 1);
+    assert.equal(pipe.store.get(stored[0][0]), snapshotValue);
+  });
   it('shares one allocation across opens and filters, while refresh retries share their original allocation', async () => {
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps, { symbols: ['AAPL'], asset_class: ['equity'] });

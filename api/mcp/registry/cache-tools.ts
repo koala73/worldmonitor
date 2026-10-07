@@ -468,6 +468,61 @@ export function applySectorValuationFreshness(
   return data;
 }
 
+const MARKET_TRANSPORT_LISTS = [
+  ['stocks-bootstrap', 'quotes'], ['commodities-bootstrap', 'quotes'],
+  ['crypto', 'quotes'], ['gulf-quotes', 'quotes'], ['sectors', 'sectors'], ['etf-flows', 'etfs'],
+] as const;
+
+export function isOrdinaryMarketDefault(params: Record<string, unknown>): boolean {
+  return !['limit', 'summary', 'jmespath', 'refresh', 'request_id', 'panel_request']
+    .some(key => Object.prototype.hasOwnProperty.call(params, key))
+    && argStrList(params.symbols).length === 0 && argStrList(params.asset_class).length === 0;
+}
+
+export function presentDefaultMarketData(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+  if (!result.data || typeof result.data !== 'object' || Array.isArray(result.data)) return result;
+  const presented = structuredClone(result);
+  const data = presented.data as Record<string, unknown>;
+  const collections: Record<string, Record<string, unknown>> = {};
+  const lists = MARKET_TRANSPORT_LISTS.map(([section, field]) => {
+    const source = data[section];
+    const node = source && typeof source === 'object' && !Array.isArray(source) ? source as Record<string, unknown> : undefined;
+    const value = node?.[field];
+    const rows = Array.isArray(value) ? value : null;
+    const coverage: Record<string, unknown> = rows
+      ? { state: 'available', original_count: rows.length, returned_count: rows.length, omitted_count: 0, omission_reason: null }
+      : { state: value === null || source === null ? 'null' : value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
+    collections[section + '.' + field] = coverage;
+    return { node, field, rows, coverage };
+  });
+  presented.transportCoverage = { count_scope: 'post_filter_snapshot', default_list_limit: 30, collections };
+  const size = () => new TextEncoder().encode(JSON.stringify(presented)).byteLength;
+  if (size() <= budgetBytes) return presented;
+  for (const list of lists) if (list.rows && list.node) {
+    list.node[list.field] = [];
+    list.coverage.returned_count = 0;
+    list.coverage.omitted_count = list.rows.length;
+    list.coverage.omission_reason = list.rows.length ? 'output_budget' : null;
+  }
+  if (size() > budgetBytes) return result;
+  const rounds = Math.max(0, ...lists.map(list => list.rows?.length ?? 0));
+  for (let ordinal = 0; ordinal < rounds; ordinal++) for (const list of lists) {
+    if (!list.rows || !list.node || ordinal >= list.rows.length) continue;
+    const selected = list.node[list.field] as unknown[];
+    selected.push(list.rows[ordinal]);
+    list.coverage.returned_count = selected.length;
+    list.coverage.omitted_count = list.rows.length - selected.length;
+    list.coverage.omission_reason = selected.length < list.rows.length ? 'output_budget' : null;
+    if (size() > budgetBytes) {
+      selected.pop();
+      list.coverage.returned_count = selected.length;
+      list.coverage.omitted_count = list.rows.length - selected.length;
+      list.coverage.omission_reason = selected.length < list.rows.length ? 'output_budget' : null;
+    }
+  }
+  return presented;
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
@@ -615,7 +670,8 @@ export const CACHE_TOOLS: ToolDef[] = [
     // This schema previously advertised `changePercent` and `flow`, which no
     // producer has ever written, so every agent projecting per the hint got
     // null for each row. Keep these names pinned to the seeders.
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       'stocks-bootstrap': {
         type: ['object', 'null'],
         properties: {
@@ -736,7 +792,20 @@ export const CACHE_TOOLS: ToolDef[] = [
           unavailable: { type: 'boolean' },
         },
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+        type: 'object', required: ['count_scope', 'default_list_limit', 'collections'], properties: {
+          count_scope: { const: 'post_filter_snapshot' }, default_list_limit: { const: 30 },
+          collections: { type: 'object', properties: Object.fromEntries(MARKET_TRANSPORT_LISTS.map(([section, field]) => [section + '.' + field, {
+            type: 'object', required: ['state', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'], properties: {
+              state: { type: 'string', enum: ['available', 'missing', 'null', 'unavailable'] },
+              original_count: { type: ['integer', 'null'], minimum: 0 }, returned_count: { type: ['integer', 'null'], minimum: 0 },
+              omitted_count: { type: ['integer', 'null'], minimum: 0 }, omission_reason: { enum: ['output_budget', null] },
+            },
+          }])) },
+        },
+      } } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       normalizePhysicalDivergenceDataset(data);
