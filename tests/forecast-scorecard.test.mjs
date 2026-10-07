@@ -376,8 +376,22 @@ describe('scorecard uncertainty and maturity denominators (#7072)', () => {
 
 describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
   function betEngineEntry(overrides) {
-    return resolved({ generationOrigin: 'bet_engine', ...overrides });
+    return resolved({ generationOrigin: 'bet_engine', probabilitySource: 'ensemble', ...overrides });
   }
+
+  it('keeps windows that opened on the base-rate placeholder out of the skill comparisons (#8990)', () => {
+    const scorecard = computeScorecard({
+      a: betEngineEntry({ probability: 0.8, outcome: 'YES', baselineProbability: 0.4, calibration: { marketPrice: 60 } }),
+      b: betEngineEntry({ probability: 0.4, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'base_rate', calibration: { marketPrice: 70 } }),
+      c: betEngineEntry({ probability: 0.3, outcome: 'NO', baselineProbability: 0.4, probabilitySource: undefined, calibration: { marketPrice: 70 } }),
+      d: betEngineEntry({ probability: 0.2, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'ensemble_partial', calibration: { marketPrice: 70 } }),
+    }, NOW);
+    assert.equal(scorecard.betEngine.count, 4, 'every bet window is still scored');
+    assert.equal(scorecard.betEngine.ensembleCount, 2);
+    assert.equal(scorecard.betEngine.vsBaseRate.count, 2);
+    assert.equal(scorecard.betEngine.vsMarketSkill.count, 2);
+    assert.equal(scorecard.betEngine.deviationSkill.count, 2);
+  });
 
   it('exposes a bet_engine-scoped slice with calibration + brier, isolated from legacy', () => {
     const scorecard = computeScorecard({
