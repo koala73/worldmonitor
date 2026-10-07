@@ -44,6 +44,21 @@ describe('public forecast family history transport', () => {
     assert.equal(reasons.includes('__proto__'), false);
     assert.equal(reasons.includes('unknown'), false);
   });
+  it('keeps public history independent from live accuracy-audit score withholding', () => {
+    const familyOutcomes = ['resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable'].map(reason => ({ forecastId: 'case-0', outcome: 'VOID', voidReason: reason }));
+    const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 205, brier: 0.074, yesCount: 9 }], familyOutcomes };
+    const result = project(scorecard);
+    assert.deepEqual(result.familyOutcomes, familyOutcomes);
+    if (FORECAST_ACCURACY_AUDIT) {
+      assert.equal(result.reliability.status, 'unavailable');
+      assert.deepEqual(result.reliability.byDomain, []);
+      assert.deepEqual(result.reliability.underAudit, { since: FORECAST_ACCURACY_AUDIT.since, issue: FORECAST_ACCURACY_AUDIT.issue, reason: FORECAST_ACCURACY_AUDIT.reason });
+      assert.doesNotMatch(JSON.stringify(result.reliability), /0\.074|brier/i);
+    } else {
+      assert.equal(result.reliability.status, 'ready');
+    }
+    assert.deepEqual(project(scorecard, {}, full, null), { predictions: full });
+  });
   it('joins earlier public windows by retained ID in supplied newest-first order', () => {
     const result = project({ familyOutcomes: rows }, { limit: 1 });
     assert.deepEqual(result.familyOutcomes, [
