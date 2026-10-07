@@ -1525,8 +1525,8 @@ describe('bounded public Natural paid panel presentation', () => {
   const cyclone = id => ({ id, title: 'Controlled cyclone ' + id, category: 'severeStorms',
     categoryTitle: 'Tropical Cyclone', lat: 20, lon: 120, date: snapshot - 30000,
     sourceName: 'NHC', sourceUrl: 'https://www.nhc.noaa.gov/', closed: false,
-    forecastTrack: [], pastTrack: [], conePolygon: [{ points: Array.from({ length: 1900 }, (_, i) => ({
-      lon: 120 + Math.sin(i / 1900 * Math.PI * 2), lat: 20 + Math.cos(i / 1900 * Math.PI * 2),
+    forecastTrack: [], pastTrack: [], conePolygon: [{ points: Array.from({ length: 1900 }, (_, index) => ({
+      lon: 120 + Math.sin(index / 1900 * Math.PI * 2), lat: 20 + Math.cos(index / 1900 * Math.PI * 2),
     })) }], });
   const invoke = async (deps, args = {}) => {
     const response = await handler(proReq('POST', callBody('get_natural_disasters', args)), deps);
@@ -1628,8 +1628,8 @@ describe('bounded public Natural paid panel presentation', () => {
   it('omits oversized tracks and samples declared regional detail with exact counts and intact health', async () => {
     const track = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index, windKt: 60, timestamp: snapshot - index }));
     for (const event of eventBucket.events) { event.forecastTrack = track; event.pastTrack = track; }
-    const regional = Array.from({ length: 20 }, (_, i) => ({ id: 'regional-' + i, date: snapshot - i,
-      sourceUrl: 'https://example.org/regional/' + i, description: 'x'.repeat(10000), forecastTrack: track }));
+    const regional = Array.from({ length: 20 }, (_, index) => ({ id: 'regional-' + index, date: snapshot - index,
+      sourceUrl: 'https://example.org/regional/' + index, description: 'x'.repeat(10000), forecastTrack: track }));
     eventBucket.westernPacific.events = regional;
     eventBucket.hkoWarnings.warnings = regional.map(({ forecastTrack, ...row }) => row);
     const original = structuredClone(eventBucket);
