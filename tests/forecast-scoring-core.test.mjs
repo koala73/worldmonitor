@@ -382,6 +382,24 @@ describe('existing ledger correction (#8990)', () => {
     assert.deepEqual(ingestHistory(once, history, OCT_5 + 2 * HOUR_MS), once);
   });
 
+  it('corrects keyless rows by their ledger keys', () => {
+    const strip = ({ key: _key, ...entry }) => entry;
+    const keeperKey = `fc-supply_chain-hormuz@${T0 + D}`;
+    const twinKey = `fc-supply_chain-hormuz@${T0 + D}~twin`;
+    const childKey = `${twinKey}@h24`;
+    const keyless = {
+      [keeperKey]: strip(base(T0, { status: 'resolved', outcome: 'YES', probability: 0.2, firstSeenProbability: 0.2, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 70 } })),
+      [twinKey]: strip(base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, resolvedAt: T0 + D + 2 * HOUR_MS, evidence: { metricValue: 10 } })),
+      [childKey]: { ...strip(ghostHorizon), parentKey: twinKey },
+    };
+    const ledger = ingestHistory(keyless, HISTORY, NOW);
+    assert.equal(ledger[keeperKey].outcome, 'YES');
+    assert.equal(ledger[twinKey].duplicateOf, keeperKey);
+    assert.equal(ledger[childKey].duplicateOf, keeperKey);
+    assert.equal(ledger[childKey].outcome, 'VOID');
+    assert.deepEqual(ingestHistory(ledger, HISTORY, NOW + DAY_MS), ledger);
+  });
+
   it('lets an emission a voided duplicate once absorbed open its own window', () => {
     const late = chokepoint(T0 + 7 * DAY_MS + 30 * 60 * 1000, 0.45);
     const ledger = ingestHistory(legacy, [snap(late.generatedAt, [late])], late.generatedAt + HOUR_MS);
