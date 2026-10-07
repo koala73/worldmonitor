@@ -53,6 +53,14 @@ message ResolutionSpec {
   optional string question = 9;
 }
 
+// Deprecated (#8967): never populated. The seeder keeps these unscored
+// horizon curves internal for horizon scoring.
+message Projections {
+  double h24 = 1;
+  double d7 = 2;
+  double d30 = 3;
+}
+
 message ForecastCaseEvidence {
   string type = 1;
   string summary = 2;
@@ -129,9 +137,8 @@ message Forecast {
   int64 created_at = 14 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int64 updated_at = 15 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   Perspectives perspectives = 16;
-  // Unscored horizon projections, removed from the public contract (#8967).
-  reserved 17;
-  reserved "projections";
+  // Deprecated (#8967): never populated. Kept for v1 wire compatibility.
+  Projections projections = 17 [deprecated = true];
   ForecastCase case_file = 18;
   // Score delta from the deep simulation pipeline: +0.08 to +0.12, or
   // -0.12 or -0.15; 0 when it has not run.

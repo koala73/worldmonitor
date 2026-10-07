@@ -32,6 +32,8 @@ export interface Forecast {
   createdAt: number;
   updatedAt: number;
   perspectives?: Perspectives;
+  /** @deprecated */
+  projections?: Projections;
   caseFile?: ForecastCase;
   simulationAdjustment: number;
   simPathConfidence: number;
@@ -64,6 +66,12 @@ export interface Perspectives {
   strategic: string;
   regional: string;
   contrarian: string;
+}
+
+export interface Projections {
+  h24: number;
+  d7: number;
+  d30: number;
 }
 
 export interface ForecastCase {

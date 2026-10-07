@@ -43441,6 +43441,9 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 perspectives:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_Perspectives'
+                projections:
+                    deprecated: true
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_Projections'
                 caseFile:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_ForecastCase'
                 simulationAdjustment:
@@ -43508,6 +43511,21 @@ components:
                     type: string
                 contrarian:
                     type: string
+        worldmonitor_forecast_v1_Projections:
+            type: object
+            properties:
+                h24:
+                    type: number
+                    format: double
+                d7:
+                    type: number
+                    format: double
+                d30:
+                    type: number
+                    format: double
+            description: |-
+                Deprecated (#8967): never populated. The seeder keeps these unscored
+                 horizon curves internal for horizon scoring.
         worldmonitor_forecast_v1_ForecastCase:
             type: object
             properties:

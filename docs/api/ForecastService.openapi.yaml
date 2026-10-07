@@ -971,6 +971,9 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 perspectives:
                     $ref: '#/components/schemas/Perspectives'
+                projections:
+                    deprecated: true
+                    $ref: '#/components/schemas/Projections'
                 caseFile:
                     $ref: '#/components/schemas/ForecastCase'
                 simulationAdjustment:
@@ -1038,6 +1041,21 @@ components:
                     type: string
                 contrarian:
                     type: string
+        Projections:
+            type: object
+            properties:
+                h24:
+                    type: number
+                    format: double
+                d7:
+                    type: number
+                    format: double
+                d30:
+                    type: number
+                    format: double
+            description: |-
+                Deprecated (#8967): never populated. The seeder keeps these unscored
+                 horizon curves internal for horizon scoring.
         ForecastCase:
             type: object
             properties:
