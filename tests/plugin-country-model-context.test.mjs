@@ -78,7 +78,7 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
     window: win, document: doc, TextEncoder, URL, console,
     modelContextRoot: root, translate: key => key.split('.').at(-1),
     panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null },
-    admission: undefined, signalCoverage: null, revision: 7, nextId: 123, pending: new Map(), modelContext: capability, contextTimer: undefined,
+    admission: undefined, signalCoverage: null, revision: 7, modelContextRevision: 7, nextId: 123, pending: new Map(), modelContext: capability, contextTimer: undefined,
     CHINA_DECISION_SIGNAL_GROUP_IDS: ids,
     CHINA_DECISION_SIGNAL_GROUP_MANIFEST: ids.map(groupId => ({ groupId })),
     CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP: 4,
@@ -97,6 +97,173 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
   }
   return { win, doc, root, state, messages, context, publish };
 }
+
+function commodityCard(view) {
+  const card = view.doc.createElement('article');
+  card.dataset.briefSection = 'commodities';
+  card.dataset.briefCoverage = 'partial';
+  card.innerHTML = '<h3>Commodity vulnerability</h3><div class="cdp-card-body"><p>' + 'Visible preceding content. '.repeat(100) + '</p></div>';
+  view.root.querySelector('.cdp-shell').append(card);
+  return card;
+}
+
+function commodityRow(view, card, { open = true, hidden = false, label = 'Barley' } = {}) {
+  const row = view.doc.createElement('details');
+  row.className = 'cdp-vulnerability-row';
+  row.open = open;
+  row.hidden = hidden;
+  row.innerHTML = `<summary class="cdp-vulnerability-summary"><span class="cdp-vulnerability-commodity">${label}</span><span class="cdp-vulnerability-state">Current</span><span class="cdp-vulnerability-score">90.1</span></summary><div class="cdp-vulnerability-components"><div class="cdp-vulnerability-component"><span class="cdp-vulnerability-component-label">Concentration</span><strong class="cdp-vulnerability-component-value">99%</strong><span class="cdp-vulnerability-component-detail">import mirror only</span></div><div class="cdp-vulnerability-component"><span class="cdp-vulnerability-component-label">Transit</span><strong class="cdp-vulnerability-component-value">85%</strong><span class="cdp-vulnerability-component-detail">Taiwan Strait, Panama Canal</span></div><div class="cdp-vulnerability-component"><span class="cdp-vulnerability-component-label">Buffer</span><strong class="cdp-vulnerability-component-value">71%</strong><span class="cdp-vulnerability-component-detail">known</span></div></div><div class="cdp-vulnerability-reasons">transit_status_uncovered · source_import_mirror_only</div><div class="cdp-vulnerability-sources"><a class="cdp-vulnerability-source" href="https://example.com/concentration">Concentration source</a><a class="cdp-vulnerability-source" href="https://example.com/transit">Transit source</a><a class="cdp-vulnerability-source" href="https://example.com/buffer">Buffer source</a></div>`;
+  card.querySelector('.cdp-card-body').append(row);
+  return row;
+}
+
+test('open commodity details retain individual displayed components beyond the legacy prefix', () => {
+  const view = harness({ country: 'CA' });
+  const card = commodityCard(view);
+  commodityRow(view, card);
+  const result = view.publish();
+  const details = result.snapshot.openCommodityDetails;
+  assert.ok(details, 'Current open commodity details must be attached');
+  assert.equal(details.countryCode, 'CA');
+  assert.equal(details.revision, 7);
+  assert.equal(details.totalOpenRowCount, 1);
+  assert.equal(details.rows[0].commodity, 'Barley');
+  assert.equal(details.rows[0].scoreText, '90.1');
+  assert.equal(details.rows[0].stateText, 'Current');
+  assert.deepEqual(details.rows[0].components.map(item => [item.componentIndex, item.label, item.valueText, item.detailText]), [[0, 'Concentration', '99%', 'import mirror only'], [1, 'Transit', '85%', 'Taiwan Strait, Panama Canal'], [2, 'Buffer', '71%', 'known']]);
+  assert.equal(details.rows[0].caveatsText, 'transit_status_uncovered · source_import_mirror_only');
+  assert.deepEqual(details.rows[0].sourceLinks.map(item => [item.sourceIndex, item.label, item.url]), [[0, 'Concentration source', 'https://example.com/concentration'], [1, 'Transit source', 'https://example.com/transit'], [2, 'Buffer source', 'https://example.com/buffer']]);
+  const legacy = result.snapshot.sections.find(item => item.section === 'commodities').renderedText;
+  assert.equal(legacy.length, 2000);
+  assert.equal(legacy.includes('import mirror only'), false);
+});
+
+test('commodity DOM ordinals survive closed and hidden rows, sources and components', () => {
+  const view = harness({ country: 'CA' });
+  const card = commodityCard(view);
+  Object.defineProperty(card, 'innerText', { get: () => 'Legacy prefix' });
+  commodityRow(view, card, { open: false, label: 'Closed' });
+  const first = commodityRow(view, card);
+  commodityRow(view, card, { hidden: true, label: 'Hidden' });
+  commodityRow(view, card, { label: 'Wheat' });
+  const hiddenSource = first.querySelectorAll('a')[1];
+  hiddenSource.hidden = true;
+  Object.defineProperty(hiddenSource, 'innerText', { configurable: true, get() { throw new Error('Hidden source text read'); } });
+  const originalAttribute = hiddenSource.getAttribute.bind(hiddenSource);
+  hiddenSource.getAttribute = name => { if (name === 'href') throw new Error('Hidden source URL read'); return originalAttribute(name); };
+  const hiddenComponent = first.querySelectorAll('.cdp-vulnerability-component')[1];
+  hiddenComponent.hidden = true;
+  Object.defineProperty(hiddenComponent, 'innerText', { get() { throw new Error('Hidden component read'); } });
+  const extraComponent = hiddenComponent.cloneNode(true);
+  extraComponent.hidden = false;
+  first.querySelector('.cdp-vulnerability-components').append(extraComponent);
+  for (let index = 3; index < 5; index++) {
+    const anchor = view.doc.createElement('a');
+    anchor.className = 'cdp-vulnerability-source';
+    anchor.href = index === 3 ? 'javascript:bad()' : 'https://example.com/fifth';
+    anchor.textContent = 'Source ' + index;
+    first.querySelector('.cdp-vulnerability-sources').append(anchor);
+  }
+  const details = view.publish().snapshot.openCommodityDetails;
+  assert.equal(details.totalOpenRowCount, 2);
+  assert.equal(details.omittedRowCount, 0);
+  assert.deepEqual(details.rows.map(row => row.rowIndex), [1, 3]);
+  const row = details.rows[0];
+  assert.deepEqual(row.sourceLinks.map(link => link.sourceIndex), [0, 1, 2, 3]);
+  assert.deepEqual(row.sourceLinks[1], { sourceIndex: 1, omittedReason: 'hidden' });
+  assert.equal(row.sourceLinks[3].urlOmittedReason, 'invalid-url');
+  assert.equal(row.sourceLinks[3].url, undefined);
+  assert.equal(row.totalSourceCount, 5);
+  assert.equal(row.omittedSourceCount, 1);
+  assert.deepEqual(row.sourceLinks.filter(link => typeof link.url === 'string').map(link => new URL(link.url).href), ['https://example.com/concentration', 'https://example.com/buffer']);
+  assert.deepEqual(row.components[1], { componentIndex: 1, omittedReason: 'hidden' });
+  assert.equal(row.components[2].valueText, '71%');
+  assert.equal(row.omittedComponentCount, 1);
+  hiddenSource.hidden = false;
+  hiddenSource.getAttribute = originalAttribute;
+  Object.defineProperty(hiddenSource, 'innerText', { configurable: true, value: 'Invalid source' });
+  hiddenSource.setAttribute('href', 'javascript:bad()');
+  const invalidGap = view.publish().snapshot.openCommodityDetails.rows[0].sourceLinks;
+  assert.deepEqual(invalidGap.map(link => link.sourceIndex), [0, 1, 2, 3]);
+  assert.equal(invalidGap[1].label, 'Invalid source');
+  assert.equal(invalidGap[1].urlOmittedReason, 'invalid-url');
+  assert.equal(invalidGap[2].url, 'https://example.com/buffer');
+});
+
+test('close, panel/card gates and disconnected current root remove commodity projection', () => {
+  for (const mode of ['close', 'panel', 'hidden', 'css', 'summary', 'locked', 'loading', 'unavailable', 'detached', 'pending-revision']) {
+    const view = harness({ country: 'CA' });
+    const card = commodityCard(view);
+    const row = commodityRow(view, card);
+    assert.ok(view.publish().snapshot.openCommodityDetails);
+    if (mode === 'close') row.open = false;
+    if (mode === 'panel') view.state.visible = false;
+    if (mode === 'pending-revision') view.context.revision++;
+    if (mode === 'hidden') card.hidden = true;
+    if (mode === 'css') card.style.display = 'none';
+    if (mode === 'summary') row.querySelector('summary').hidden = true;
+    if (['locked', 'loading', 'unavailable'].includes(mode)) {
+      const gate = view.doc.createElement('div');
+      if (mode === 'locked') gate.className = 'cdp-pro-locked';
+      if (mode === 'loading') gate.className = 'cdp-loading-inline';
+      if (mode === 'unavailable') gate.dataset.briefState = 'unavailable';
+      card.querySelector('.cdp-card-body').append(gate);
+    }
+    if (mode === 'detached') { const historical = view.root.cloneNode(true); view.root.remove(); view.doc.body.append(historical); }
+    assert.equal(view.publish().snapshot.openCommodityDetails, undefined, mode);
+  }
+  const disabled = harness({ country: 'CA', capability: false });
+  commodityRow(disabled, commodityCard(disabled));
+  assert.equal(disabled.publish(), null);
+});
+
+test('commodity literal zero/unknown and valid URL identities survive Unicode and whole-URL omissions', () => {
+  const view = harness({ country: 'CA' });
+  const row = commodityRow(view, commodityCard(view));
+  const values = row.querySelectorAll('.cdp-vulnerability-component-value');
+  values[0].textContent = '0%';
+  values[1].textContent = 'unknown';
+  row.querySelector('.cdp-vulnerability-commodity').textContent = '中😀"\\\n'.repeat(200);
+  const sources = row.querySelectorAll('a');
+  sources[0].href = 'https://example.com/' + '中😀'.repeat(1000);
+  sources[1].setAttribute('href', 'https://example.com/\uD800');
+  sources[2].setAttribute('href', 'https://example.com/space path');
+  const details = view.publish().snapshot.openCommodityDetails;
+  assert.equal(details.rows[0].components[0].valueText, '0%');
+  assert.equal(details.rows[0].components[1].valueText, 'unknown');
+  assert.ok(details.rows[0].commodityTruncated);
+  assert.ok(new TextEncoder().encode(JSON.stringify(details.rows[0].commodity)).length <= 256);
+  assert.equal(details.rows[0].commodityInvalidUnicode, false);
+  assert.deepEqual(details.rows[0].sourceLinks.map(source => source.urlOmittedReason), ['url-size', 'invalidUnicode', 'invalid-url']);
+  assert.ok(details.rows[0].sourceLinks.every(source => source.url === undefined));
+});
+
+test('commodity packing reserves row/source ordinals and bounds the added actual outer RPC', () => {
+  for (const country of ['CA', 'CN']) {
+    const view = harness({ country });
+    const card = commodityCard(view);
+    for (let index = 0; index < 12; index++) {
+      const row = commodityRow(view, card, { label: '中😀"\\\n'.repeat(60) });
+      for (const detail of row.querySelectorAll('.cdp-vulnerability-component-detail, .cdp-vulnerability-reasons')) detail.textContent = '中😀"\\\n'.repeat(3000);
+    }
+    const result = view.publish();
+    const details = result.snapshot.openCommodityDetails;
+    assert.equal(details.totalOpenRowCount, 12);
+    assert.equal(details.omittedRowCount, 2);
+    const without = structuredClone(result.message);
+    const base = JSON.parse(without.params.content[0].text);
+    delete base.openCommodityDetails;
+    without.params.content[0].text = JSON.stringify(base);
+    const delta = result.bytes - new TextEncoder().encode(JSON.stringify(without)).length;
+    assert.ok(delta <= 8192, country + ': added bytes ' + delta);
+    if (details.state === 'not-supplied') assert.deepEqual(details.rows, []);
+    else {
+      assert.deepEqual(details.rows.map(row => row.rowIndex), Array.from({ length: 10 }, (_, index) => index));
+      for (const row of details.rows) assert.deepEqual(row.sourceLinks.map(source => source.sourceIndex), [0, 1, 2]);
+    }
+    if (country === 'CN') { assert.ok(result.bytes <= 32768); assert.deepEqual(result.snapshot.china.groups.map(group => group.id), ids); }
+  }
+});
 
 test('attached China context keeps all six current groups beyond the old 2000-character card prefix', () => {
   const view = harness();
@@ -260,4 +427,23 @@ test('the final request guard rejects an oversized actual CN context envelope be
   const before = view.messages.length;
   await assert.rejects(view.context.api.request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify({ countryCode: 'CN', china: { groups: [] }, hostile: '中'.repeat(40000) }) }] }));
   assert.equal(view.messages.length, before);
+});
+
+test('commodity complete caveats respect the exact added RPC boundary without a later source URL', () => {
+  const view = harness({ country: 'CA' });
+  const row = commodityRow(view, commodityCard(view));
+  row.querySelector('.cdp-vulnerability-sources').replaceChildren();
+  row.querySelector('.cdp-vulnerability-reasons').textContent = 'a'.repeat(6255);
+  const result = view.publish();
+  const details = result.snapshot.openCommodityDetails.rows[0];
+  const without = structuredClone(result.message);
+  const base = JSON.parse(without.params.content[0].text);
+  delete base.openCommodityDetails;
+  without.params.content[0].text = JSON.stringify(base);
+  const addedBytes = result.bytes - new TextEncoder().encode(JSON.stringify(without)).length;
+  assert.ok(addedBytes <= 8192, 'Actual added RPC bytes ' + addedBytes);
+  assert.equal(details.sourceLinks.length, 0);
+  assert.equal(details.caveatsTextOriginalByteCount, 6257);
+  assert.equal(details.caveatsText.length, 6254);
+  assert.equal(details.caveatsTextTruncated, true);
 });
