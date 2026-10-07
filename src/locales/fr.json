@@ -2410,6 +2410,7 @@
           "judge_disagreement": "Les arbitres n'étaient pas d'accord",
           "judge_retry_exhausted": "Les arbitres n'ont rendu aucun verdict",
           "withheld_unpublished": "Ce type de prévision n'est plus publié",
+          "resolver_envelope_bug": "Évalué sur un flux que le résolveur ne pouvait pas lire ; annulé le 2026-10-07",
           "other": "N'a pas pu être résolu"
         }
       },

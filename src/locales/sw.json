@@ -2137,6 +2137,7 @@
           "judge_disagreement": "Mahakimu hawakukubaliana",
           "judge_retry_exhausted": "Mahakimu hawakutoa hukumu",
           "withheld_unpublished": "Aina hii ya utabiri haichapishwi tena",
+          "resolver_envelope_bug": "Ilipimwa dhidi ya chanzo ambacho kitatuzi hakikuweza kusoma; ilibatilishwa tarehe 2026-10-07",
           "other": "Haikuweza kuamuliwa"
         }
       },

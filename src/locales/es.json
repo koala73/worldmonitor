@@ -2410,6 +2410,7 @@
           "judge_disagreement": "Los árbitros no estuvieron de acuerdo",
           "judge_retry_exhausted": "Los árbitros no emitieron veredicto",
           "withheld_unpublished": "Este tipo de pronóstico ya no se publica",
+          "resolver_envelope_bug": "Se evaluó con un feed que el resolutor no podía leer; anulado el 2026-10-07",
           "other": "No se pudo resolver"
         }
       },

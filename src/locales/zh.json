@@ -2390,6 +2390,7 @@
           "judge_disagreement": "裁定者意见不一致",
           "judge_retry_exhausted": "裁定者未作出裁决",
           "withheld_unpublished": "此类预测已不再发布",
+          "resolver_envelope_bug": "依据结算器无法读取的数据源评分；已于 2026-10-07 作废",
           "other": "无法确定结果"
         }
       },

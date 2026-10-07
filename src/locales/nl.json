@@ -2017,6 +2017,7 @@
           "judge_disagreement": "De beoordelaars waren het niet eens",
           "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
           "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
+          "resolver_envelope_bug": "Beoordeeld tegen een feed die de resolver niet kon lezen; op 2026-10-07 ongeldig verklaard",
           "other": "Kon niet worden beslist"
         }
       },

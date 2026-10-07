@@ -2410,6 +2410,7 @@
           "judge_disagreement": "I giudici hanno dissentito",
           "judge_retry_exhausted": "I giudici non hanno emesso un verdetto",
           "withheld_unpublished": "Questo tipo di previsione non viene più pubblicato",
+          "resolver_envelope_bug": "Valutato su un feed che il risolutore non riusciva a leggere; annullato il 2026-10-07",
           "other": "Non è stato possibile risolverla"
         }
       },

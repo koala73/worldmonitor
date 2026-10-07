@@ -2390,6 +2390,7 @@
           "judge_disagreement": "Những người phân xử không đồng ý",
           "judge_retry_exhausted": "Những người phân xử không đưa ra phán quyết",
           "withheld_unpublished": "Loại dự báo này không còn được công bố",
+          "resolver_envelope_bug": "Được chấm theo nguồn dữ liệu mà bộ phân giải không đọc được; bị hủy vào 2026-10-07",
           "other": "Không thể xác định kết quả"
         }
       },

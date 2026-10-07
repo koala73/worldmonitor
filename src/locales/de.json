@@ -2400,6 +2400,7 @@
           "judge_disagreement": "Die Bewerter waren sich uneinig",
           "judge_retry_exhausted": "Die Bewerter gaben kein Urteil ab",
           "withheld_unpublished": "Diese Art von Prognose wird nicht mehr veröffentlicht",
+          "resolver_envelope_bug": "Gegen einen Feed bewertet, den der Auswerter nicht lesen konnte; am 2026-10-07 annulliert",
           "other": "Konnte nicht aufgelöst werden"
         }
       },

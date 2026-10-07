@@ -2025,6 +2025,7 @@
           "judge_disagreement": "Os juízes discordaram",
           "judge_retry_exhausted": "Os juízes não retornaram um veredicto",
           "withheld_unpublished": "Este tipo de previsão não é mais publicado",
+          "resolver_envelope_bug": "Avaliado com base em um feed que o resolvedor não conseguia ler; anulado em 2026-10-07",
           "other": "Não pôde ser resolvido"
         }
       },

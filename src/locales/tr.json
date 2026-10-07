@@ -2400,6 +2400,7 @@
           "judge_disagreement": "Hakimler anlaşamadı",
           "judge_retry_exhausted": "Hakimler karar vermedi",
           "withheld_unpublished": "Bu tür tahminler artık yayımlanmıyor",
+          "resolver_envelope_bug": "Çözümleyicinin okuyamadığı bir akışa göre puanlandı; 2026-10-07 tarihinde geçersiz sayıldı",
           "other": "Sonuçlandırılamadı"
         }
       },

@@ -2145,6 +2145,7 @@
           "judge_disagreement": "Ocjenjivači se nisu slagali",
           "judge_retry_exhausted": "Ocjenjivači nisu donijeli presudu",
           "withheld_unpublished": "Ova vrsta prognoze više se ne objavljuje",
+          "resolver_envelope_bug": "Ocijenjeno prema feedu koji razrješivač nije mogao pročitati; poništeno 2026-10-07",
           "other": "Nije moglo biti riješeno"
         }
       },
