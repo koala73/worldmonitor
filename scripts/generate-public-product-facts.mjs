@@ -365,7 +365,7 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_prediction_markets → prediction-markets-v3.html',
   ).replace(
     /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
-    'get_forecast_predictions → forecasts-v3.html',
+    'get_forecast_predictions → forecasts-v4.html',
   ).replace(
     /get_chokepoint_status → chokepoint-monitor(?:-v\d+)?\.html/,
     'get_chokepoint_status → chokepoint-monitor-v2.html',
