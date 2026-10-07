@@ -1727,6 +1727,63 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
   }
 
+  for (const scenario of [
+    { name: 'fails closed for an empty sanctions count map', counts: {}, count: 0, unavailable: true },
+    { name: 'keeps an explicit country zero in a populated sanctions map', counts: { CN: 0 }, count: 0, unavailable: false },
+    { name: 'keeps an absent country zero in a populated sanctions map', counts: { US: 2 }, count: 0, unavailable: false },
+    { name: 'preserves a positive China sanctions count', counts: { CN: 1390 }, count: 1390, unavailable: false },
+    { name: 'fails closed for a missing sanctions count key', counts: null, count: 0, unavailable: true },
+    { name: 'fails closed for missing risk data with populated sanctions', counts: { CN: 1390 }, missingKey: 'risk:scores:sebuf:stale:v8', count: 0, unavailable: true },
+    { name: 'fails closed for missing advisory data with populated sanctions', counts: { CN: 1390 }, missingKey: 'intelligence:advisories:v1', count: 0, unavailable: true },
+  ]) {
+    it(scenario.name, async () => {
+      const { module, cleanup } = await importCountryRisk();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        VERCEL_ENV: 'production',
+        VERCEL_GIT_COMMIT_SHA: undefined,
+      });
+      const redis = createRequire(import.meta.url)(resolve(root, 'server/_shared/redis.ts'));
+      redis.__resetKeyPrefixCacheForTests();
+      const originalFetch = globalThis.fetch;
+      const readKeys = [];
+      const redisValues = new Map([
+        ['risk:scores:sebuf:stale:v8', JSON.stringify({ ciiScores: [{ region: 'CN', combinedScore: 70, computedAt: 1700000000000 }] })],
+        ['intelligence:advisories:v1', JSON.stringify({ byCountry: { CN: 'caution' }, byCountryName: { CN: 'China' } })],
+        ['sanctions:country-counts:v1', scenario.counts === null ? undefined : JSON.stringify(scenario.counts)],
+      ]);
+      if (scenario.missingKey) redisValues.delete(scenario.missingKey);
+      globalThis.fetch = async (url) => {
+        const raw = String(url);
+        assert.equal(new URL(raw).origin, 'https://redis.test');
+        if (raw.includes('/get/')) {
+          const key = parseGetKey(raw);
+          readKeys.push(key);
+          return jsonResponse({ result: redisValues.get(key) });
+        }
+        throw new Error(`Unexpected fetch URL: ${raw}`);
+      };
+      try {
+        const result = await module.getCountryRisk({}, { countryCode: 'CN' });
+        assert.equal(result.countryCode, 'CN');
+        assert.equal(result.countryName, 'China');
+        assert.equal(result.upstreamUnavailable, scenario.unavailable);
+        assert.equal(result.sanctionsCount, scenario.count);
+        assert.equal(result.sanctionsActive, scenario.count > 0);
+        assert.equal(result.cii?.combinedScore, scenario.unavailable ? undefined : 70);
+        assert.equal(result.fetchedAt, scenario.unavailable ? 0 : 1700000000000);
+        assert.equal(result.advisoryLevel, scenario.unavailable ? '' : 'caution');
+        assert.deepEqual(readKeys.toSorted(), ['risk:scores:sebuf:stale:v8', 'intelligence:advisories:v1', 'sanctions:country-counts:v1'].toSorted());
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+        redis.__resetKeyPrefixCacheForTests();
+      }
+    });
+  }
+
   it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
     const { module, cleanup } = await importCountryRisk();
     const restoreNow = withMockedNow(1_777_000_000_000);
