@@ -755,7 +755,8 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
 
 /**
  * The #7070 activation gate. Reports eligibility and every failing reason;
- * nothing reads `eligible` to change a published probability. Coverage, VOID
+ * seed-forecasts publishes calibrated probabilities only while `eligible`
+ * holds for the current map. Coverage, VOID
  * and origin mix ride beside the verdict (from `context`) so a cohort that
  * looks better only because its selection changed is visible next to it.
  */

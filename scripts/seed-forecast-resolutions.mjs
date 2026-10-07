@@ -53,7 +53,7 @@ export const SCORECARD_KEY = 'forecast:scorecard:v1';
 export const RESOLUTIONS_META_KEY = 'seed-meta:forecast:resolutions';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
-// Shadow-only calibration map (#7070). Rewritten unchanged every run, so the
+// Calibration map (#7070). Rewritten unchanged every run, so the
 // TTL only matters if the resolver stops for this long; an expired map refits
 // and restarts the forward cohort.
 export const CALIBRATION_MAP_KEY = 'forecast:calibration-map:v1';

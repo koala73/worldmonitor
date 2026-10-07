@@ -174,7 +174,7 @@ Each resolver run also maintains a calibration map in `forecast:calibration-map:
 
 The map records its version, fit time, fit window, cohort filter, per-domain sample and positives, and the probability stage it was fitted on (`marketBlendedProbability`, read from `calibration.marketBlendedProbability` when an anchor applied and from the stored `probability` otherwise). The map stays unchanged between runs so that its forward cohort can grow. It is refitted only when its code version changes or the stored map is missing or invalid. A failed read keeps the stored map instead of refitting.
 
-The map is shadow-only. Nothing reads it to change a published, projected, or scored probability. The scorecard carries an internal `calibrationShadow` block for the forward cohort, which is the set of forecasts emitted after the map was fitted. Like `judgedLane`, the public scorecard endpoint does not serve it. For the forward cohort the block reports raw and calibrated Brier, the paired bootstrap 95% interval on their difference, expected calibration error with bootstrap intervals, and reliability buckets with Wilson intervals. Every figure shows its sample size. The evaluator refuses any entry emitted at or before the end of the fit window, so the map is never scored on the outcomes it was fitted on.
+The map changes published probabilities only while the activation gate below is eligible. The scorecard carries an internal `calibrationShadow` block for the forward cohort, which is the set of forecasts emitted after the map was fitted. Like `judgedLane`, the public scorecard endpoint does not serve it. For the forward cohort the block reports raw and calibrated Brier, the paired bootstrap 95% interval on their difference, expected calibration error with bootstrap intervals, and reliability buckets with Wilson intervals. Every figure shows its sample size. The evaluator refuses any entry emitted at or before the end of the fit window, so the map is never scored on the outcomes it was fitted on.
 
 #### Activation gate
 
@@ -184,11 +184,22 @@ The map is shadow-only. Nothing reads it to change a published, projected, or sc
 - The upper bound of the paired bootstrap 95% interval on calibrated minus raw Brier is at most 0.005, overall and in every non-identity domain.
 - The map is monotone and has at least one non-identity domain.
 
-Forward coverage (registered, matured, scored, VOID by reason, pending) and the generation-origin mix are reported beside the verdict, so a change in which forecasts resolve cannot read as a skill gain. The bootstrap draws 2,000 entry-level resamples from a fixed seed, so a rerun on the same ledger gives the same intervals. The gate does not activate anything. Making the calibrated value canonical is a separate change.
+Forward coverage (registered, matured, scored, VOID by reason, pending) and the generation-origin mix are reported beside the verdict, so a change in which forecasts resolve cannot read as a skill gain. The bootstrap draws 2,000 entry-level resamples from a fixed seed, so a rerun on the same ledger gives the same intervals.
+#### Published calibration
+
+Every `seed-forecasts` run applies the same rule. The run reads the map and the latest `calibrationShadow.activationGate`. It publishes calibrated probabilities only when the gate is eligible, the gate evaluated the current map version, and the kill switch is off. In every other case the run publishes raw probabilities. The rule does not read the previous mode, so a gate that fails on a later resolver run reverts publication on the next seeder run. No manual step is needed in either direction.
+
+The map applies to the post-blend probability, after the market anchor and the domain cap. This is the stage the map is fitted on. The map applies before confidence, projections, trends, case files, narratives, and publish selection, so every surface shows the same number. Only published-origin forecasts move. State-derived forecasts keep their raw value, because the fit excludes them.
+
+A forecast that moves keeps its post-blend value as `uncalibratedProbability`. The value goes to the forecast history and the resolution ledger, but not to the public API. The ledger's `probability` is the published value, so the public scorecard scores what readers saw. The fit and the shadow read `uncalibratedProbability` as the raw value. Without it, the shadow would compare the published calibrated value with itself, and the gate would stay eligible after any flip.
+
+Set `FORECAST_CALIBRATION_FORCE_RAW=1` on the `seed-forecasts` service to publish raw probabilities whatever the gate says. A failed read of the map, the scorecard, or the previous record also publishes raw.
+
+Each run logs its mode, its reason, the map version, and the gate numbers: eligibility, forward count, the overall Brier-delta upper bound, and each activated domain's count and upper bound. A mode change logs a `FLIP` line. The run writes its decision to `forecast:calibration-publication:v1` after the publish succeeds. The record holds the mode, the reason, the gate numbers, the decision time, and `lastFlip`, which gives the time, direction, reason, and gate numbers of the most recent mode change. The resolver copies the record into the internal scorecard as `calibrationShadow.publication`. The reasons are `gate_eligible`, `gate_ineligible`, `gate_map_mismatch`, `no_gate`, `no_map`, `read_failed`, and `force_raw`.
 
 #### Rollback to identity
 
-Identity is the fallback at every level. An unknown domain, an identity domain, and a missing map all return the input probability unchanged. The map never overwrites the stored `probability`, so a return to identity loses no lineage.
+Identity is the fallback at every level. An unknown domain, an identity domain, and a missing map all return the input probability unchanged. Raw publication is the fallback for the activated path: a failing gate, a missing map, or the kill switch publishes the post-blend probability on the next run. A calibrated publication keeps its post-blend value as `uncalibratedProbability`, so a return to raw loses no lineage.
 
 ## Tier & gating
 
