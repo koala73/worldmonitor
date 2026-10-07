@@ -2053,6 +2053,28 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     });
   }
 
+  it('persists the state-derived bucket id on new ledger rows (#5234)', async () => {
+    const stateDerived = judged({ generationOrigin: 'state_derived', stateBucketId: 'energy' });
+    const result = await runCycle({ available: false }, T0 + 1, {}, {}, [snapshot(T0, [stateDerived])]);
+    assert.equal(rowOf(result).stateBucketId, 'energy');
+  });
+
+  it('seals a withheld bucket as VOID without calling a judge (#5234)', async () => {
+    const nowMs = T_DEADLINE + 2;
+    let judgeCalls = 0;
+    const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
+    const withheld = judged({ generationOrigin: 'state_derived', stateBucketId: 'sovereign_risk', domain: 'market', title: 'Sovereign risk repricing from Freedonia state' });
+    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges, maxJudgedEntries: 0 }, {}, [snapshot(T0, [withheld])]);
+
+    const row = rowOf(result);
+    assert.equal(judgeCalls, 0);
+    assert.equal(row.status, 'resolved');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'withheld_unpublished');
+    assert.equal(row.judgeAttemptLog.at(-1).stage, 'terminal');
+    assert.equal(result.scorecard.totals.resolved, 0, 'the scorecard still leaves the withheld row out');
+  });
+
   it('records the terminal attempt for a judged entry with no deadline', async () => {
     const nowMs = T_DEADLINE + 2;
     const ledger = {

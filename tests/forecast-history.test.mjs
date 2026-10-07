@@ -384,6 +384,14 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.equal(legacy.generationOrigin, 'legacy_detector');
   });
 
+  it('carries the state-derived bucket id so the ledger can tell withheld buckets apart (#5234)', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    pred.stateDerivation = { bucketId: 'fx_stress', sourceStateKind: 'governance_pressure' };
+    assert.equal(buildHistoryForecastEntry(pred).stateBucketId, 'fx_stress');
+    assert.equal(JSON.parse(JSON.stringify(buildHistoryForecastEntry(makeHardConflictPred()))).stateBucketId, undefined);
+  });
+
   it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
     const pred = makeHardConflictPred();
     assert.equal(pred.resolution, null);

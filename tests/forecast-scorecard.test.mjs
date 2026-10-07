@@ -161,6 +161,22 @@ describe('computeScorecard', () => {
     assert.ok(Object.hasOwn(ledger, 'sov'), 'ledger rows are not deleted');
   });
 
+  it('withholds by stored bucket id first and by title only for legacy rows, including unattributed ones (#5234)', () => {
+    const ledger = {
+      a: resolved({ outcome: 'YES', generationOrigin: 'detector' }),
+      byBucket: resolved({ outcome: 'VOID', generationOrigin: 'state_derived', stateBucketId: 'rates_inflation', title: 'Retitled pressure from Andes state' }),
+      energyBucket: resolved({ outcome: 'VOID', generationOrigin: 'state_derived', stateBucketId: 'energy', title: 'FX stress from Andes state' }),
+      legacyUnknown: resolved({ outcome: 'VOID', generationOrigin: undefined, title: 'FX stress from Americas governance pressure state' }),
+      detectorTitle: resolved({ outcome: 'VOID', generationOrigin: 'detector', title: 'FX stress from a detector' }),
+    };
+
+    const scorecard = computeScorecard(ledger, NOW);
+
+    assert.equal(scorecard.totals.resolved, 3);
+    assert.equal(scorecard.totals.void, 2);
+    assert.equal(scorecard.byGenerationOrigin.some((row) => row.generationOrigin === 'unknown'), false);
+  });
+
   it('holds entries with no recorded origin out of the headline but keeps them in overall and byGenerationOrigin', () => {
     // Rows written before origin tagging carry no origin, or the resolver's
     // literal 'unknown'. They cannot be attributed to a generator (#5240).

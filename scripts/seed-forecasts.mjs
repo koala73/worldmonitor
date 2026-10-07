@@ -1402,8 +1402,8 @@ function getStateDerivedBucketSignalTypes(domain, bucketId) {
 // Every bucket here has a hard-spec path in deriveStateDerivedHardMetrics
 // (_forecast-resolution.mjs). sovereign_risk, rates_inflation and fx_stress
 // have no checkable question and stay unpublished until they get one (#5234).
-// Re-enabling one also means removing it from isWithheldEntry
-// (_forecast-scorecard.mjs), which keeps its old ledger rows out of the scorecard.
+// Re-enabling one also means removing it from WITHHELD_STATE_BUCKETS
+// (_forecast-scorecard.mjs), which keeps its ledger rows out of the scorecard.
 function getStateDerivedAllowedBuckets(domain) {
   if (domain === 'supply_chain') return ['freight', 'energy'];
   if (domain === 'market') return ['energy'];
@@ -4945,6 +4945,7 @@ function buildHistoryForecastEntry(pred) {
     confidence: pred.confidence,
     timeHorizon: pred.timeHorizon,
     generationOrigin: pred.generationOrigin || 'legacy_detector',
+    stateBucketId: pred.stateDerivation?.bucketId,
     trend: pred.trend,
     priorProbability: pred.priorProbability,
     signals: (pred.signals || []).slice(0, 6).map(signal => ({

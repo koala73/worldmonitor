@@ -41,13 +41,16 @@ export function isPublishedOriginEntry(entry) {
 }
 
 // State-derived market buckets withdrawn from publication until they have a
-// checkable question (#5234). The ledger stores no bucket id, so earlier rows
-// are matched on the title buildStateDerivedForecastTitle gives each bucket.
-// The rows stay in the ledger; no published figure counts them.
+// checkable question (#5234). The rows stay in the ledger; no published figure
+// counts them. Rows written before stateBucketId existed are matched on the
+// title buildStateDerivedForecastTitle gave each bucket, including rows that
+// predate origin tagging.
+export const WITHHELD_STATE_BUCKETS = Object.freeze(['sovereign_risk', 'rates_inflation', 'fx_stress']);
 const WITHHELD_STATE_DERIVED_TITLE = /^(Sovereign risk repricing|Inflation and rates pressure|FX stress) from /;
 
 export function isWithheldEntry(entry) {
-  return generationOriginOf(entry) === 'state_derived'
+  if (typeof entry?.stateBucketId === 'string') return WITHHELD_STATE_BUCKETS.includes(entry.stateBucketId);
+  return ['state_derived', 'unknown'].includes(generationOriginOf(entry))
     && entry?.domain === 'market'
     && WITHHELD_STATE_DERIVED_TITLE.test(entry?.title || '');
 }

@@ -154,7 +154,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 已发布的预测携带机器可校验的结算规范。一个每日结算器将这些规范预注册到 `forecast:resolutions:v1`，在截止日期前采样硬源指标，然后带着证据将每条已发布预测结算为 YES、NO 或 VOID。派生的 `forecast:scorecard:v1` 报告 Brier 评分、对数评分、校准分桶、VOID 率、发布覆盖率和市场锚点技能。裁判规范被跟踪为待处理，留给快速跟进的裁判，并在结算之前从首个硬源成绩单中排除。
 
-`sovereign_risk`、`rates_inflation` 和 `fx_stress` 分桶中的状态派生市场预测不再发布，因为没有数据源可以校验它们（issue #5234）。它们此前的记录仍保留在 `forecast:resolutions:v1` 中，但成绩单报告的所有数字都不计入这些记录，包括 VOID 率。状态派生的 `energy` 和 `freight` 预测仍会发布。发布时若价格或咽喉要道数据源有匹配的数值，就按该数据源结算，否则交由裁判结算。
+`sovereign_risk`、`rates_inflation` 和 `fx_stress` 分桶中的状态派生市场预测不再发布，因为没有数据源可以校验它们（issue #5234）。它们此前的记录仍保留在 `forecast:resolutions:v1` 中，但成绩单报告的所有数字都不计入这些记录，包括 VOID 率。结算器会把其中未结算的记录以原因 `withheld_unpublished` 封存为 VOID，不调用任何裁判。状态派生的 `energy` 和 `freight` 预测仍会发布。发布时若价格或咽喉要道数据源有匹配的数值，就按该数据源结算，否则交由裁判结算。
 
 ## 层级与门控
 

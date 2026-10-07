@@ -19,7 +19,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
-import { buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry } from './_forecast-scorecard.mjs';
+import { buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -238,6 +238,16 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
   const backoffPolicy = resolveJudgedBackoffPolicy(options);
   let attempted = 0;
 
+  // Withheld buckets (#5234) have no checkable question and no published
+  // figure counts them, so they seal without a judge call or a budget slot.
+  for (const [key, entry] of Object.entries(ledger)) {
+    if (entry?.status !== 'pending-judge' || !isWithheldEntry(entry)) continue;
+    const result = resolvedJudgedResult('VOID', 'withheld_unpublished', entry, [], [], nowMs);
+    recordJudgedTerminalAttempt(entry, result, nowMs);
+    sealJudgedEntry(entry, result, nowMs);
+    receipts.push({ key, entry: cloneJson(entry), resolvedAt: nowMs });
+  }
+
   const pendingRows = Object.entries(ledger)
     .filter(([, entry]) => entry?.status === 'pending-judge')
     .sort((left, right) => comparePendingJudgedEntries(left, right, nowMs));
@@ -278,15 +288,19 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
       });
     }
 
-    entry.status = 'resolved';
-    entry.outcome = result.outcome;
-    entry.resolvedAt = nowMs;
-    entry.sealedAt = nowMs;
-    entry.evidence = result.evidence;
+    sealJudgedEntry(entry, result, nowMs);
     receipts.push({ key, entry: cloneJson(entry), resolvedAt: nowMs });
   }
 
   return receipts;
+}
+
+function sealJudgedEntry(entry, result, nowMs) {
+  entry.status = 'resolved';
+  entry.outcome = result.outcome;
+  entry.resolvedAt = nowMs;
+  entry.sealedAt = nowMs;
+  entry.evidence = result.evidence;
 }
 
 function comparePendingJudgedEntries([keyA, entryA], [keyB, entryB], nowMs) {
@@ -1611,6 +1625,7 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     title: forecast.title || '',
     timeHorizon: forecast.timeHorizon || '',
     generationOrigin: forecast.generationOrigin || forecast.origin || 'unknown',
+    stateBucketId: typeof forecast.stateBucketId === 'string' ? forecast.stateBucketId : undefined,
     spec: cloneJson(spec),
     probability: Number(forecast.probability),
     firstSeenProbability: Number(forecast.probability),
