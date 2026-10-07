@@ -4,7 +4,7 @@
  * audit" and link to /accuracy/, whatever the scorecard carries. The per-card
  * resolution chips stay, as recorded outcomes in neutral colour, never as a
  * verified grade. The sibling suites mock the switch to null to pin the
- * lifted state; this one runs against the real switch.
+ * lifted state; this one mocks it to a fixture audit.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,9 +13,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { recordHref } from '@/components/forecast-record';
-import { FORECAST_ACCURACY_AUDIT } from '../../shared/forecast-accuracy-audit';
 
 import { initTestI18n } from './helpers/i18n.mts';
+
+// A fixture, not the live switch, so lifting the switch keeps the audited panel tested for the next audit.
+vi.mock('../../shared/forecast-accuracy-audit', () => ({
+  FORECAST_ACCURACY_AUDIT: Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' }),
+}));
 
 const SCORECARD_PATH = '/api/forecast/v1/get-forecast-scorecard';
 
@@ -89,11 +93,6 @@ afterEach(() => {
 });
 
 describe('ForecastPanel under the accuracy audit (#8990)', () => {
-  it('runs against the real switch, which is set', () => {
-    expect(FORECAST_ACCURACY_AUDIT?.issue).toBe(8990);
-    expect(FORECAST_ACCURACY_AUDIT?.since).toBe('2026-10-07');
-  });
-
   it('replaces the track-record strip with the notice and no number', async () => {
     const root = await render(async () => Response.json(scorecard()));
     const strip = root.querySelector<HTMLElement>('[data-fc-record]')!;
@@ -159,6 +158,14 @@ describe('ForecastPanel under the accuracy audit (#8990)', () => {
       }
       expect(audit.hint, `${file} hint keeps the date token`).toContain('{{date}}');
       expect(`${audit.label} ${audit.hint} ${audit.unverified}`, `${file} leftover English`).not.toMatch(/accuracy|under audit|forecasts?\b|scored|recorded|withdrawn/i);
+    }
+  });
+
+  it('drops the market-calibration claim from the tooltip in every catalogue (#8990 finding 9)', () => {
+    for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f))) {
+      const tooltip: string = JSON.parse(readFileSync(`src/locales/${file}`, 'utf8')).components.forecast.infoTooltip;
+      expect(tooltip.match(/<li>/g), `${file} keeps the two remaining bullets`).toHaveLength(2);
+      expect(tooltip, file).not.toMatch(/Calibrated against prediction market/);
     }
   });
 });
