@@ -160,6 +160,15 @@ describe('ForecastPanel resolution chips', () => {
     expect(cardFor(panel, 'fc-a').querySelector('.fc-res-chip')).toBeNull();
   });
 
+  it('keeps chips and badge on one line without growing it: no border on the chip, the row sizes to its column', () => {
+    new ForecastPanel().destroy();
+    const css = Array.from(document.head.querySelectorAll('style')).map((el) => el.textContent ?? '').join('\n');
+    const rule = (selector: string) => css.match(new RegExp(`(^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*\\}`))?.[0] ?? '';
+    expect(rule('.fc-card-meta')).toMatch(/contain:\s*inline-size/);
+    expect(rule('.fc-res-chip')).not.toMatch(/(^|[;{\s])border:/);
+    expect(rule('.fc-reliability')).not.toMatch(/contain:/);
+  });
+
   it('patches chips in place beside the badge, on the same line slot', async () => {
     let release!: (r: Response) => void;
     stubScorecard(() => new Promise<Response>((resolve) => { release = resolve; }));

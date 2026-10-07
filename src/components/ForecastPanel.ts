@@ -268,10 +268,10 @@ function injectStyles(): void {
     .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
     .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .fc-reliability-placeholder { visibility: hidden; }
-    .fc-card-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .fc-card-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; contain: inline-size; }
     .fc-card-meta .fc-reliability { flex: 0 1 auto; min-width: 0; }
     .fc-res-chip, .fc-res-history { flex: none; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
-    .fc-res-chip { padding: 0 5px; border-radius: 3px; border: 1px solid var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
+    .fc-res-chip { padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
     .fc-res-chip[title] { cursor: help; }
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
     .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
