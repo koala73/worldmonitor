@@ -4,7 +4,11 @@ import { afterEach, describe, it } from 'node:test';
 import { alignPriorToPublication, applyPublishedCalibration, fitCalibrationMap } from '../scripts/_forecast-calibration.mjs';
 import {
   CALIBRATION_PUBLICATION_KEY,
+  PRIOR_KEY,
   __setRedisStoreForTests,
+  resolveCalibrationRun,
+  runForecastAfterPublish,
+  scoreDetectedPredictions,
   buildHistoryForecastEntry,
   buildPriorForecastSnapshot,
   buildPublishedSeedPayload,
@@ -46,6 +50,7 @@ const MAP = fitCalibrationMap(Object.fromEntries([
 
 function scorecardWithGate(eligible) {
   return {
+    generatedAt: FIT_AT + DAY_MS,
     calibrationShadow: {
       status: 'shadow',
       mapVersion: MAP.version,
@@ -68,6 +73,37 @@ function captureLogger() {
 afterEach(() => __setRedisStoreForTests(null));
 
 describe('seeder calibration publication (#7070)', () => {
+  it('runs the publish stages: an eligible forecast moves on every surface and the record is written', async () => {
+    const store = {
+      [CALIBRATION_MAP_KEY]: MAP,
+      [SCORECARD_KEY]: scorecardWithGate(true),
+      [PRIOR_KEY]: { predictions: [buildPriorForecastSnapshot({ id: 'fc-wire', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 })] },
+    };
+    __setRedisStoreForTests(store);
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('network disabled in test'); };
+    const quiet = { log: console.log, warn: console.warn };
+    console.log = () => {};
+    console.warn = () => {};
+    try {
+      const { calibrationPublication, prior } = await resolveCalibrationRun(FIT_AT + DAY_MS);
+      const pred = { id: 'fc-wire', domain: 'cyber', region: 'Global', title: 'Cyber wiring', generationOrigin: 'legacy_detector', probability: 0.4, confidence: 0.5, timeHorizon: '7d', signals: [], cascades: [] };
+      scoreDetectedPredictions([pred], { inputs: {}, prior, calibrationPublication, cascadeRules: [] });
+      assert.equal(pred.probability, 0.2, 'the map moved the published probability');
+      assert.equal(pred.uncalibratedProbability, 0.4);
+      assert.equal(pred.projections.d7, 0.2, 'projections anchor on the calibrated value');
+      assert.deepEqual({ trend: pred.trend, prior: pred.priorProbability }, { trend: 'stable', prior: 0.2 }, 'the raw prior is re-expressed, not read as a fall');
+
+      await runForecastAfterPublish({ predictions: [pred], calibrationPublication: calibrationPublication.record }, { runId: 'test' }, {});
+      assert.equal(store[CALIBRATION_PUBLICATION_KEY]?.mode, 'calibrated');
+      assert.equal(store[CALIBRATION_PUBLICATION_KEY].lastFlip.to, 'calibrated');
+    } finally {
+      globalThis.fetch = savedFetch;
+      console.log = quiet.log;
+      console.warn = quiet.warn;
+    }
+  });
+
   it('publishes calibrated on an eligible gate and logs the flip with the gate numbers', async () => {
     const store = { [CALIBRATION_MAP_KEY]: MAP, [SCORECARD_KEY]: scorecardWithGate(true) };
     __setRedisStoreForTests(store);

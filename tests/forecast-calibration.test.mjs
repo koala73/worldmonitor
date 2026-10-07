@@ -469,6 +469,8 @@ describe('published calibration (#7070 activation)', () => {
       overall: { brierDeltaUpper: 0.012, nonInferior: false },
     },
   };
+  const fresh = { nowMs: fitAt + DAY_MS, gateGeneratedAt: fitAt + DAY_MS - 3_600_000 };
+  const decide = (m, shadow, options) => decideCalibrationPublication(m, shadow, { ...fresh, ...options });
   const preds = () => [
     { id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 },
     { id: 'b', domain: 'conflict', generationOrigin: 'legacy_detector', probability: 0.5 },
@@ -477,7 +479,7 @@ describe('published calibration (#7070 activation)', () => {
 
   it('publishes the calibrated probability when the gate is eligible, keeping the raw value', () => {
     assert.equal(map.domains.cyber.mode, 'isotonic');
-    const decision = decideCalibrationPublication(map, eligibleShadow);
+    const decision = decide(map, eligibleShadow);
     assert.deepEqual(
       { mode: decision.mode, reason: decision.reason, mapVersion: decision.mapVersion },
       { mode: 'calibrated', reason: 'gate_eligible', mapVersion: map.version },
@@ -497,7 +499,7 @@ describe('published calibration (#7070 activation)', () => {
   });
 
   it('reverts to raw when the gate fails, under the same rule', () => {
-    const decision = decideCalibrationPublication(map, failingShadow);
+    const decision = decide(map, failingShadow);
     assert.deepEqual({ mode: decision.mode, reason: decision.reason }, { mode: 'raw', reason: 'gate_ineligible' });
     assert.deepEqual(decision.gate.reasons, ['overall_not_non_inferior']);
     const batch = preds();
@@ -506,7 +508,7 @@ describe('published calibration (#7070 activation)', () => {
   });
 
   it('forces raw under the kill switch even when the gate is eligible', () => {
-    const decision = decideCalibrationPublication(map, eligibleShadow, { forceRaw: true });
+    const decision = decide(map, eligibleShadow, { forceRaw: true });
     assert.deepEqual({ mode: decision.mode, reason: decision.reason }, { mode: 'raw', reason: 'force_raw' });
     const batch = preds();
     applyPublishedCalibration(batch, map, decision);
@@ -514,16 +516,29 @@ describe('published calibration (#7070 activation)', () => {
   });
 
   it('stays raw without a map, without a gate, on a read failure, or when the gate scored another map', () => {
-    assert.equal(decideCalibrationPublication(null, eligibleShadow).reason, 'no_map');
-    assert.equal(decideCalibrationPublication(map, { status: 'no_map' }).reason, 'no_gate');
-    assert.equal(decideCalibrationPublication(map, null).reason, 'no_gate');
-    assert.equal(decideCalibrationPublication(map, eligibleShadow, { readFailed: true }).reason, 'read_failed');
-    const other = decideCalibrationPublication(map, { ...eligibleShadow, mapVersion: 'forecast-calibration-pav-v1@1' });
+    assert.equal(decide(null, eligibleShadow).reason, 'no_map');
+    assert.equal(decide(map, { status: 'no_map' }).reason, 'no_gate');
+    assert.equal(decide(map, null).reason, 'no_gate');
+    assert.equal(decide(map, eligibleShadow, { readFailed: true }).reason, 'read_failed');
+    const other = decide(map, { ...eligibleShadow, mapVersion: 'forecast-calibration-pav-v1@1' });
     assert.deepEqual({ mode: other.mode, reason: other.reason }, { mode: 'raw', reason: 'gate_map_mismatch' });
   });
 
+  it('publishes raw for a map written by another code version', () => {
+    const stale = { ...map, codeVersion: 'forecast-calibration-pav-v0' };
+    const decision = decide(stale, { ...eligibleShadow, mapVersion: stale.version });
+    assert.deepEqual({ mode: decision.mode, reason: decision.reason }, { mode: 'raw', reason: 'map_code_version' });
+  });
+
+  it('publishes raw when the gate verdict is older than 48 hours or undated', () => {
+    const at = (ageMs) => decideCalibrationPublication(map, eligibleShadow, { nowMs: fitAt + 10 * DAY_MS, gateGeneratedAt: fitAt + 10 * DAY_MS - ageMs });
+    assert.equal(at(48 * 3_600_000).reason, 'gate_eligible');
+    assert.deepEqual({ mode: at(48 * 3_600_000 + 1).mode, reason: at(48 * 3_600_000 + 1).reason }, { mode: 'raw', reason: 'gate_stale' });
+    assert.equal(decideCalibrationPublication(map, eligibleShadow, { nowMs: fitAt }).reason, 'gate_stale');
+  });
+
   it('records each flip with its gate numbers and keeps the last flip across steady runs', () => {
-    const on = recordCalibrationPublication(null, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS);
+    const on = recordCalibrationPublication(null, decide(map, eligibleShadow), fitAt + DAY_MS);
     assert.equal(on.flipped, true, 'every publication before activation was raw');
     assert.deepEqual(on.record.lastFlip, {
       at: fitAt + DAY_MS,
@@ -535,7 +550,7 @@ describe('published calibration (#7070 activation)', () => {
     assert.equal(on.record.mode, 'calibrated');
     assert.equal(on.record.decidedAt, fitAt + DAY_MS);
 
-    const off = recordCalibrationPublication(on.record, decideCalibrationPublication(map, failingShadow), fitAt + 2 * DAY_MS);
+    const off = recordCalibrationPublication(on.record, decide(map, failingShadow), fitAt + 2 * DAY_MS);
     assert.equal(off.flipped, true);
     assert.deepEqual(
       { at: off.record.lastFlip.at, from: off.record.lastFlip.from, to: off.record.lastFlip.to, reason: off.record.lastFlip.reason },
@@ -543,14 +558,14 @@ describe('published calibration (#7070 activation)', () => {
     );
     assert.equal(off.record.lastFlip.gate.brierDeltaUpper, 0.012);
 
-    const firstRaw = recordCalibrationPublication(null, decideCalibrationPublication(map, failingShadow), fitAt);
+    const firstRaw = recordCalibrationPublication(null, decide(map, failingShadow), fitAt);
     assert.equal(firstRaw.flipped, false);
     assert.equal(firstRaw.record.lastFlip, null);
   });
 
   it('is idempotent: a rerun on the same inputs decides, publishes and records the same thing', () => {
-    const first = recordCalibrationPublication(null, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS);
-    const rerun = recordCalibrationPublication(first.record, decideCalibrationPublication(map, eligibleShadow), fitAt + DAY_MS + 3_600_000);
+    const first = recordCalibrationPublication(null, decide(map, eligibleShadow), fitAt + DAY_MS);
+    const rerun = recordCalibrationPublication(first.record, decide(map, eligibleShadow), fitAt + DAY_MS + 3_600_000);
     assert.equal(rerun.flipped, false);
     assert.deepEqual(rerun.record.lastFlip, first.record.lastFlip);
     assert.deepEqual({ ...rerun.record, decidedAt: 0 }, { ...first.record, decidedAt: 0 });

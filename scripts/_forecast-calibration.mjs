@@ -365,7 +365,7 @@ export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
 
 /**
  * @typedef {'calibrated' | 'raw'} PublicationMode
- * @typedef {'gate_eligible' | 'force_raw' | 'read_failed' | 'no_map' | 'no_gate' | 'gate_map_mismatch' | 'gate_ineligible'} PublicationReason
+ * @typedef {'gate_eligible' | 'force_raw' | 'read_failed' | 'no_map' | 'map_code_version' | 'no_gate' | 'gate_stale' | 'gate_map_mismatch' | 'gate_ineligible'} PublicationReason
  * @typedef {{
  *   eligible: boolean,
  *   reasons: string[],
@@ -379,6 +379,8 @@ export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
  */
 
 export const CALIBRATION_FORCE_RAW_ENV = 'FORECAST_CALIBRATION_FORCE_RAW';
+// The resolver runs daily; a verdict older than two runs is not current.
+export const CALIBRATION_GATE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
 function publicationGate(gate) {
   if (!gate || typeof gate !== 'object') return null;
@@ -393,16 +395,19 @@ function publicationGate(gate) {
 
 /**
  * Stateless: the same inputs always give the same mode, and the previous mode
- * is never an input. `shadow` is the scorecard's calibrationShadow block.
+ * is never an input. `shadow` is the scorecard's calibrationShadow block and
+ * `gateGeneratedAt` the scorecard's generatedAt.
  * @returns {CalibrationPublicationDecision}
  */
-export function decideCalibrationPublication(map, shadow, { forceRaw = false, readFailed = false } = {}) {
+export function decideCalibrationPublication(map, shadow, { forceRaw = false, readFailed = false, nowMs = NaN, gateGeneratedAt = NaN } = {}) {
   const gate = publicationGate(shadow?.activationGate);
   const decide = (mode, reason) => ({ mode, reason, mapVersion: map?.version ?? null, gate });
   if (forceRaw) return decide('raw', 'force_raw');
   if (readFailed) return decide('raw', 'read_failed');
   if (!map) return decide('raw', 'no_map');
+  if (map.codeVersion !== CALIBRATION_CODE_VERSION) return decide('raw', 'map_code_version');
   if (!gate) return decide('raw', 'no_gate');
+  if (!(nowMs - gateGeneratedAt <= CALIBRATION_GATE_MAX_AGE_MS)) return decide('raw', 'gate_stale');
   // A verdict on another map says nothing about this one.
   if (shadow.mapVersion !== map.version) return decide('raw', 'gate_map_mismatch');
   if (!gate.eligible) return decide('raw', 'gate_ineligible');
