@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import forecastRoute from '../api/forecast/v1/[rpc].ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
+import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 import {
   SCORECARD_DECLARED_FIELDS,
   SCORECARD_NESTED_CHILD_FIELDS,
@@ -278,6 +279,21 @@ describe('getForecastScorecard backend status', () => {
 
     assert.deepEqual(events.slice(0, 2).sort(), [`start ${MARKET_ALERTS_KEY}`, `start ${REDIS_KEY}`]);
     assert.deepEqual(res.marketAlerts, MARKET_ALERTS_SERVED);
+  });
+
+  it('keeps a response cacheable only when it carries the market-alert block', async () => {
+    const noStore = async (stored: Record<string, unknown>, failing: string[] = []) => {
+      console.error = () => {};
+      serveRedis(stored, failing);
+      const ctx = makeCtx();
+      await getForecastScorecard(ctx, {});
+      return drainResponseHeaders(ctx.request)?.['X-No-Cache'] === '1';
+    };
+    const forecast = { [REDIS_KEY]: envelope(FORECAST_DATA) };
+    assert.equal(await noStore({ ...forecast, [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED) }), false, 'present');
+    assert.equal(await noStore(forecast), true, 'missing');
+    assert.equal(await noStore({ ...forecast, [MARKET_ALERTS_KEY]: envelope({ ...MARKET_ALERTS_STORED, generatedAt: null }) }), true, 'malformed');
+    assert.equal(await noStore(forecast, [MARKET_ALERTS_KEY]), true, 'failed read');
   });
 
   it('omits marketAlerts when its key is missing', async () => {

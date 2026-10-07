@@ -54,12 +54,14 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
     const data = envelope.data as Record<string, unknown> | null;
     if (!data) return markNoStoreFallbackResponse(ctx.request, withMarketAlerts(emptyScorecard(), marketAlerts));
     const fetchedAt = Number(envelope.fetchedAt);
-    return withMarketAlerts(emptyScorecard({
+    const response = withMarketAlerts(emptyScorecard({
       ...selectScorecardFields(data),
       degraded: false,
       stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
       error: '',
     }), marketAlerts);
+    // A missing block is never cached: the next request may find it.
+    return marketAlerts ? response : markNoStoreFallbackResponse(ctx.request, response);
   } catch (err) {
     console.error('[forecast] getForecastScorecard getRawJson failed:', err instanceof Error ? err.message : String(err));
     return emptyScorecard({
