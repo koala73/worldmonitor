@@ -244,7 +244,7 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     const openWindow = { id: first.id, region: first.region, generationOrigin: first.generationOrigin, status: 'pending', probabilitySource: 'ensemble', spec: first.resolution };
     const stats = await attachEnsembleProbabilities(snap, {
       callLLM, topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache(),
-      openQuestions: collectOpenQuestions({ a: openWindow }, windowQuestionKey),
+      openQuestions: collectOpenQuestions({ a: { ...openWindow, deadline: first.resolution.deadline } }, windowQuestionKey, NOW),
       questionKeyOf: windowQuestionKey,
     });
     // Open-ensemble skip frees the slot so the next-ranked bet is ensembled.
@@ -304,12 +304,21 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
   it('collectOpenQuestions indexes every pending window, whatever probability it opened with (#8990)', () => {
     const spec = { kind: 'hard', metricKey: 'market:commodities-bootstrap:v1|price(symbol==BZ=F)', operator: 'crosses', threshold: 87, baselineValue: 85, window: 'at-deadline' };
     const questions = collectOpenQuestions({
-      a: { id: 'x', status: 'pending', probabilitySource: 'ensemble', spec },
-      b: { id: 'y', status: 'pending', probabilitySource: 'base_rate', spec },
-      c: { id: 'z', status: 'resolved', probabilitySource: 'ensemble', spec },
-      d: { id: 'w', status: 'pending', probabilitySource: 'ensemble_partial', spec },
-    }, windowQuestionKey);
+      a: { id: 'x', status: 'pending', probabilitySource: 'ensemble', deadline: NOW + 1, spec },
+      b: { id: 'y', status: 'pending', probabilitySource: 'base_rate', deadline: NOW + 1, spec },
+      c: { id: 'z', status: 'resolved', probabilitySource: 'ensemble', deadline: NOW + 1, spec },
+      d: { id: 'w', status: 'pending', probabilitySource: 'ensemble_partial', deadline: NOW + 1, spec },
+    }, windowQuestionKey, NOW);
     assert.deepEqual([...questions].map((token) => token.split('\n')[0]).sort(), ['w', 'x', 'y']);
+  });
+
+  it('does not count a pending window past its deadline as open (#8990)', () => {
+    const spec = { kind: 'hard', metricKey: 'energy:eia-petroleum:v1|value(series==WCESTUS1)', operator: 'crosses', threshold: 87, baselineValue: 85, window: 'at-deadline' };
+    const questions = collectOpenQuestions({
+      overdue: { id: 'x', status: 'pending', generatedAt: NOW - 8 * 864e5, deadline: NOW - 864e5, spec },
+      open: { id: 'y', status: 'pending', generatedAt: NOW - 864e5, deadline: NOW + 864e5, spec },
+    }, windowQuestionKey, NOW);
+    assert.deepEqual([...questions].map((token) => token.split('\n')[0]), ['y']);
   });
 
   it('ensembles a new question on an id whose earlier question is still open (#8990)', async () => {
@@ -319,7 +328,7 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     const openWindow = { id: first.id, region: first.region, generationOrigin: first.generationOrigin, status: 'pending', probabilitySource: 'ensemble', spec: earlierQuestion };
     const stats = await attachEnsembleProbabilities(snap, {
       callLLM: llmDouble(0.7), topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache(),
-      openQuestions: collectOpenQuestions({ a: openWindow }, windowQuestionKey),
+      openQuestions: collectOpenQuestions({ a: { ...openWindow, deadline: first.resolution.deadline } }, windowQuestionKey, NOW),
       questionKeyOf: windowQuestionKey,
     });
     assert.equal(stats.skipped, 0);

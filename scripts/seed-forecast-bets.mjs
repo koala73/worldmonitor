@@ -222,17 +222,20 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   return { attempted, ensembled, partial, skipped };
 }
 
-// Questions with an open ledger window. A window keeps the probability it
-// opened with (#8990), so a re-run of an open question, whether it opened on
-// a full ensemble, a partial one or the base rate, would be wasted spend.
+// Questions with an open ledger window whose dates cover nowMs, the emission
+// time of this run's bets. A window keeps the probability it opened with
+// (#8990), so a re-run of a covered question, whether it opened on a full
+// ensemble, a partial one or the base rate, would be wasted spend. A pending
+// window past its deadline (an unsettled feed) does not cover this run's
+// emission, which opens its own window and needs its own ensemble.
 // `questionKeyOf` is the resolver's windowQuestionKey.
-export function collectOpenQuestions(ledger, questionKeyOf) {
+export function collectOpenQuestions(ledger, questionKeyOf, nowMs) {
   const entries = ledger && typeof ledger === 'object'
     ? (Array.isArray(ledger) ? ledger : Object.values(ledger.data ?? ledger))
     : [];
   const questions = new Set();
   for (const entry of entries) {
-    if (entry && entry.status === 'pending' && entry.id && entry.spec) questions.add(openQuestionToken(entry.id, questionKeyOf(entry)));
+    if (entry && entry.status === 'pending' && entry.id && entry.spec && Number(entry.deadline) > nowMs) questions.add(openQuestionToken(entry.id, questionKeyOf(entry)));
   }
   return questions;
 }
@@ -286,7 +289,7 @@ async function main() {
         import('./seed-forecast-resolutions.mjs'),
       ]);
       const ledger = await readRedisJson(RESOLUTIONS_LEDGER_KEY).catch(() => null);
-      const openQuestions = collectOpenQuestions(ledger || {}, resolutions.windowQuestionKey);
+      const openQuestions = collectOpenQuestions(ledger || {}, resolutions.windowQuestionKey, nowMs);
       let news = [];
       try {
         const archive = await resolutions.readDigestAccumulatorArchive(nowMs - 3 * 24 * 60 * 60 * 1000, nowMs, { maxHashes: 300 });

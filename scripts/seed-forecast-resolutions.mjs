@@ -1694,16 +1694,33 @@ export function correctLedgerWindows(ledger, nowMs) {
 
   let rescored = 0;
   for (const entry of Object.values(ledger)) {
-    if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID') continue;
+    if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID' || entry.rescore) continue;
     const first = Number(entry.firstSeenProbability);
-    if (!Number.isFinite(first) || Number(entry.probability) === first) continue;
+    if (!Number.isFinite(first)) continue;
     const superseded = Object.fromEntries(LAST_SEEN_PAIRED_FIELDS.filter((field) => field in entry).map((field) => [field, entry[field]]));
+    const probabilityMoved = Number(entry.probability) !== first;
+    if (!probabilityMoved && !(sightedBeforeFix(entry) && Object.keys(superseded).length)) continue;
     entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
     for (const field of LAST_SEEN_PAIRED_FIELDS) delete entry[field];
     entry.probability = first;
+    markReceiptForRearchive(entry);
     rescored += 1;
   }
   return { duplicates, rescored };
+}
+
+// A later sighting before #8990 could overwrite the paired fields without
+// moving the published probability. Since #8990 every sighting after the
+// first records lastSeenProbability, so a row seen again without it was
+// last updated by the old code.
+function sightedBeforeFix(entry) {
+  return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry);
+}
+
+// A corrected row whose receipt is already in R2 is archived again, so R2
+// holds the correction before pruning drops the ledger copy.
+function markReceiptForRearchive(entry) {
+  if (entry.status === 'resolved') delete entry.receiptArchivedAt;
 }
 
 function voidDuplicateWindow(entry, keeperKey, nowMs) {
@@ -1714,6 +1731,7 @@ function voidDuplicateWindow(entry, keeperKey, nowMs) {
     : { supersededStatus: entry.status };
   entry.evidence = { reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: keeperKey, ...superseded, voidedAt: nowMs };
   entry.outcome = 'VOID';
+  markReceiptForRearchive(entry);
   if (entry.status !== 'resolved') {
     entry.status = 'resolved';
     entry.resolvedAt = nowMs;
@@ -1999,8 +2017,8 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
 // opening emission or an older sighting records nothing.
 function recordSighting(entry, forecast, snapshotAt) {
   const probability = Number(forecast.probability);
-  if (Number.isFinite(probability) && snapshotAt > Number(entry.firstSeenAt) && snapshotAt >= Number(entry.lastSeenAt || 0)) {
-    entry.lastSeenProbability = probability;
+  if (snapshotAt > Number(entry.firstSeenAt) && snapshotAt >= Number(entry.lastSeenAt || 0)) {
+    entry.lastSeenProbability = Number.isFinite(probability) ? probability : null;
   }
   // Market-settlement bets track the venue's CURRENT endDate: venues move
   // close dates, and freezing the first-seen deadline would run the settlement

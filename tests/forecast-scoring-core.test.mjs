@@ -4,12 +4,14 @@ import { describe, it } from 'node:test';
 import {
   DUPLICATE_WINDOW_VOID_REASON,
   FIRST_SEEN_RESCORE_REASON,
+  collectUnarchivedReceipts,
   ingestHistory,
   processResolutionCycle,
   processResolutionCycleWithJudges,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -328,4 +330,30 @@ describe('existing ledger correction (#8990)', () => {
     assert.equal(opened.length, 1);
     assert.equal(opened[0].status, 'pending');
   });
+
+  it('re-archives corrected receipts so R2 holds the corrected row before pruning', () => {
+    const archived = Object.fromEntries(Object.values(legacy).map((entry) => [entry.key, entry.status === 'resolved' ? { ...entry, receiptArchivedAt: T0 + D + 3 * HOUR_MS } : entry]));
+    const ledger = ingestHistory(archived, [], NOW);
+    const pending = collectUnarchivedReceipts(ledger).map((receipt) => receipt.key).sort();
+    assert.deepEqual(pending, [keeper.key, ghostResolved.key, ghostPending.key, ghostHorizon.key].sort());
+    assert.equal(ledger[otherQuestion.key].receiptArchivedAt, T0 + D + 3 * HOUR_MS, 'an untouched row stays archived');
+  });
+
+  it('moves fields a later sighting wrote even when the probability matches the first emission', () => {
+    const sameProbability = base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, lastSeenAt: T0 + 3 * DAY_MS, calibration: { marketPrice: 0.9 }, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
+    const ledger = ingestHistory({ [sameProbability.key]: sameProbability }, [], NOW);
+    const row = ledger[sameProbability.key];
+    assert.equal(row.probability, 0.2);
+    assert.equal('calibration' in row, false);
+    assert.deepEqual(row.rescore.superseded, { calibration: { marketPrice: 0.9 } });
+    assert.deepEqual(ingestHistory(ledger, [], NOW + DAY_MS), ledger);
+  });
+
+  it('keeps rescored rows out of the calibration fit', () => {
+    const ledger = ingestHistory(legacy, [], NOW);
+    const cohortKeys = selectFitCohort(ledger, NOW).map((entry) => entry.key);
+    assert.equal(cohortKeys.includes(keeper.key), false, 'the restored first-seen probability has no recorded raw value');
+    assert.equal(cohortKeys.includes(otherQuestion.key), true);
+  });
 });
+
