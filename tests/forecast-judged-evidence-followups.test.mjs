@@ -1,0 +1,384 @@
+// Follow-ups to #8995 (#8990 Phase 2 review): subject disambiguation and
+// recall, title-first ranking, the event-word absence floor, the political
+// event terms, the SLA clock, the prompt's window start, blanked-link writes,
+// the scorecard's overdue count and the generatedAt branch of the window.
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { describe, it } from 'node:test';
+
+import {
+  JUDGED_EVENT_TERMS,
+  JUDGED_EVIDENCE_GRACE_MS,
+  JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
+  buildJudgedResolutionPrompt,
+  judgedArchiveHorizonMs,
+  judgedArchiveWindowForEntry,
+  judgedSubjectKind,
+  resolveJudgedEntry,
+  selectJudgedArchiveItems,
+} from '../scripts/seed-forecast-resolutions.mjs';
+import { computeScorecard, DEFAULT_JUDGED_SLA_MS } from '../scripts/_forecast-scorecard.mjs';
+import { buildForecastEvidenceMember, buildForecastEvidenceRecordWrite, FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, parseForecastEvidenceMember } from '../scripts/_forecast-evidence-archive.mjs';
+import { EMITTED_REGION_LABELS } from '../scripts/seed-forecasts.mjs';
+import { buildJudgedSubjectTerms, CHOKEPOINT_LABELS } from '../scripts/build-judged-subject-terms.mjs';
+import { JUDGED_DOMAINS } from '../scripts/_forecast-resolution.mjs';
+import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const DEADLINE = Date.parse('2026-10-05T23:00:00Z');
+const JUDGED_AT = DEADLINE + JUDGED_EVIDENCE_GRACE_MS + HOUR_MS;
+
+function entryFor(region, overrides = {}) {
+  return {
+    id: `fc-${region}`,
+    domain: 'conflict',
+    region,
+    title: `Active armed conflict: ${region}`,
+    generatedAt: DEADLINE - 7 * DAY_MS,
+    deadline: DEADLINE,
+    status: 'pending-judge',
+    spec: { kind: 'judged', deadline: DEADLINE, question: `Did ${region} escalate?` },
+    ...overrides,
+  };
+}
+
+function item(id, title, description = '', publishedAt = DEADLINE - DAY_MS) {
+  return { id, title, description, url: `https://news.example/${id}`, publishedAt };
+}
+
+function shownIds(region, items, overrides) {
+  return selectJudgedArchiveItems(entryFor(region, overrides), items, { nowMs: JUDGED_AT }).map((row) => row.id).sort();
+}
+
+function archiveOf(items, overrides = {}) {
+  return { available: true, coverageStartMs: JUDGED_AT - JUDGED_EVIDENCE_MAX_LOOKBACK_MS, coverageEndMs: JUDGED_AT, items, ...overrides };
+}
+
+describe('N2 subject matching: word boundaries, collisions and recall', () => {
+  it('matches whole words only, case-folded', () => {
+    assert.deepEqual(shownIds('Mali', [
+      item('in', 'MALI junta extends transition'),
+      item('somalia', 'Somalia drought worsens'),
+      item('animal', 'Animalia exhibit opens'),
+    ]), ['in']);
+  });
+
+  it('does not take a Texas paper or a beer cartel for the subject', () => {
+    assert.deepEqual(shownIds('Black Sea', [
+      item('texas', 'DAILY OIL PRICE: Brent edges up', 'Odessa American'),
+      item('odesa', 'Drone strike hits a tanker off Odesa'),
+    ]), ['odesa']);
+    assert.deepEqual(shownIds('Mexico', [
+      item('beer', 'Japanese brewers raided over alleged beer price cartel'),
+      item('sinaloa', 'Mexican gunmen kill 12 in Sinaloa'),
+    ]), ['sinaloa']);
+  });
+
+  it('keeps the Black Sea and Korean Peninsula aliases', () => {
+    assert.deepEqual(shownIds('Black Sea', [item('crimea', 'Drones hit Crimea fuel depot')]), ['crimea']);
+    assert.deepEqual(shownIds('Korean Peninsula', [item('pyongyang', 'Pyongyang fires a ballistic missile')]), ['pyongyang']);
+  });
+
+  it('needs a co-term before an ambiguous country name counts', () => {
+    assert.deepEqual(shownIds('Georgia', [
+      item('state', 'Georgia block party shooting leaves 3 dead'),
+      item('tbilisi', 'Police clear protest camp in Tbilisi'),
+      item('both', 'Georgia arrests opposition leaders as Moscow watches'),
+    ]), ['both', 'tbilisi']);
+    assert.deepEqual(shownIds('Jordan', [
+      item('mj', "Michael Jordan's sneakers sell for $2m"),
+      item('amman', 'Jordan intercepts drones over Amman'),
+    ]), ['amman']);
+    assert.deepEqual(shownIds('Chad', [
+      item('actor', 'Chad Lowe joins the cast'),
+      item('border', 'Chad closes its border with Sudan'),
+    ]), ['border']);
+    assert.deepEqual(shownIds('Niger', [
+      item('state', "Miners die in Nigeria's Niger State as Sahel heat rises"),
+      item('junta', 'Niger junta expels French envoy'),
+    ]), ['junta']);
+    assert.deepEqual(shownIds('Guinea', [
+      item('bissau', 'Guinea-Bissau votes in a tense election'),
+      item('equatorial', 'Equatorial Guinea court jails activist'),
+      item('conakry', 'Guinea soldiers deploy in Conakry'),
+    ]), ['conakry']);
+  });
+
+  it('recognises "US" and "U.K." spellings', () => {
+    assert.deepEqual(shownIds('United States', [
+      item('us', 'US strikes Houthi targets'),
+      item('dotted', 'U.S. Navy shoots down drones'),
+      item('pronoun', 'Join us for the weekend market'),
+    ]), ['dotted', 'us']);
+    assert.deepEqual(shownIds('United Kingdom', [item('uk', 'U.K. sanctions Russian oligarchs')]), ['uk']);
+  });
+
+  it('has a subject entry for every region label the forecast emitter can produce', () => {
+    const uncovered = [...EMITTED_REGION_LABELS, ...CHOKEPOINT_LABELS].filter((label) => judgedSubjectKind(label) === 'fallback');
+    assert.deepEqual(uncovered, []);
+    assert.ok(CHOKEPOINT_LABELS.includes('Strait of Malacca'), 'chokepoint display names are part of the emitter set');
+    assert.ok(EMITTED_REGION_LABELS.includes('Western Pacific'));
+    assert.ok(EMITTED_REGION_LABELS.includes('Burkina Faso'), 'CII country names are part of the emitter set');
+  });
+
+  it('resolves conflict-feed labels with a parenthetical', () => {
+    assert.equal(judgedSubjectKind('DR Congo (Zaire)'), 'country');
+    assert.equal(judgedSubjectKind('Yemen (North Yemen)'), 'country');
+    assert.equal(judgedSubjectKind('Global'), 'none');
+  });
+
+  it('commits the table the generator builds', () => {
+    const committed = readFileSync(new URL('../scripts/shared/judged-subject-terms.json', import.meta.url), 'utf8');
+    assert.equal(committed, `${JSON.stringify(buildJudgedSubjectTerms(), null, 1)}\n`);
+  });
+});
+
+describe('N3 title subject matches rank first', () => {
+  it('puts a headline about the subject ahead of a roundup that names it only in passing', () => {
+    const selected = selectJudgedArchiveItems(entryFor('Syria'), [
+      item('roundup', 'Houthis claim missile and drone attacks on Saudi airport', 'Muslims in Syria and Yemen condemned the strikes'),
+      item('headline', 'Syria reopens a museum in Damascus'),
+    ], { nowMs: JUDGED_AT });
+    assert.deepEqual(selected.map((row) => row.id), ['headline', 'roundup']);
+  });
+});
+
+describe('N4 absence floor counts on-subject reports with an event word', () => {
+  const absence = (ids) => async () => ({ provider: 'p', model: 'm', outcome: 'NO', basis: 'absence', citations: ids.map((id) => ({ id, quote: `Mali item ${id}` })), rationale: 'fixture' });
+
+  it('does not count culture and sport items as coverage of a conflict', async () => {
+    const items = ['A', 'B', 'C'].map((id) => item(id, `Mali item ${id}: national team wins friendly`));
+    const result = await resolveJudgedEntry(entryFor('Mali'), archiveOf(items), JUDGED_AT, { judgeModels: [absence(['A']), absence(['B'])] });
+    assert.equal(result.outcome, 'VOID');
+    assert.deepEqual(result.evidence.judgments.map((row) => row.reason), ['insufficient_subject_items', 'insufficient_subject_items']);
+  });
+
+  it('counts on-subject reports that carry the domain event words', async () => {
+    const items = ['A', 'B', 'C'].map((id) => item(id, `Mali item ${id}: ceasefire holds in the north`));
+    const result = await resolveJudgedEntry(entryFor('Mali'), archiveOf(items), JUDGED_AT, { judgeModels: [absence(['A']), absence(['B'])] });
+    assert.equal(result.outcome, 'NO');
+    assert.equal(result.evidence.basis, 'absence');
+  });
+});
+
+describe('N5 political forecasts rank protest reports', () => {
+  it('uses the unrest event words for the political domain', () => {
+    const selected = selectJudgedArchiveItems(entryFor('Kenya', { domain: 'political' }), [
+      item('weather', 'Kenya braces for heavy rain'),
+      item('protest', 'Kenya police fire tear gas at protesters'),
+    ], { nowMs: JUDGED_AT });
+    assert.equal(selected[0].id, 'protest');
+  });
+});
+
+describe('N1 judged SLA starts when judging is allowed', () => {
+  function judgedRow(resolvedAt) {
+    return {
+      id: 'fc-sla', status: 'resolved', outcome: 'YES', deadline: DEADLINE, resolvedAt, probability: 0.6,
+      spec: { kind: 'judged', deadline: DEADLINE }, evidence: { kind: 'judged', reason: 'dual_model_agreement' },
+    };
+  }
+
+  it('counts a retry on the second daily run inside the SLA', () => {
+    const lastInside = DEADLINE + JUDGED_EVIDENCE_GRACE_MS + DEFAULT_JUDGED_SLA_MS;
+    assert.equal(computeScorecard({ a: judgedRow(lastInside) }, lastInside).judgedLane.scoredWithinSla, 1);
+    assert.equal(computeScorecard({ a: judgedRow(lastInside + 1) }, lastInside + 1).judgedLane.scoredWithinSla, 0);
+  });
+});
+
+describe('N9 scorecard overdue count excludes rows inside the grace', () => {
+  it('matches the health meta', () => {
+    const pending = (deadline) => ({ id: `p${deadline}`, status: 'pending-judge', deadline, probability: 0.5, spec: { kind: 'judged', deadline } });
+    const nowMs = DEADLINE + JUDGED_EVIDENCE_GRACE_MS;
+    const lane = computeScorecard({ inGrace: pending(DEADLINE + 1), due: pending(DEADLINE) }, nowMs).judgedLane;
+    assert.equal(lane.pendingJudgePastDeadline, 1);
+  });
+});
+
+describe('N6 the prompt states the window the archive served', () => {
+  it('starts the stated window at the served coverage start', async () => {
+    const coverageStartMs = DEADLINE - 9 * DAY_MS;
+    const entry = entryFor('Syria', { generatedAt: DEADLINE - 30 * DAY_MS });
+    const { userPrompt } = buildJudgedResolutionPrompt(entry, [], JUDGED_AT, { coverageStartMs });
+    assert.ok(userPrompt.includes(`Evidence window: ${new Date(coverageStartMs).toISOString()} to`));
+    let seen;
+    const capture = async (judgedEntry, items, nowMs, context) => {
+      seen = buildJudgedResolutionPrompt(judgedEntry, items, nowMs, context).userPrompt;
+      return { outcome: 'VOID', citations: [] };
+    };
+    await resolveJudgedEntry(entry, archiveOf([item('N1', 'Syria army shells Idlib')], { coverageStartMs }), JUDGED_AT, { judgeModels: [capture, capture] });
+    assert.ok(seen.includes(`Evidence window: ${new Date(coverageStartMs).toISOString()} to`));
+  });
+});
+
+describe('N7 a blanked link never replaces a stored link', () => {
+  it('writes a linked member with a plain SET and a blanked one through the keep-link script', () => {
+    const linked = buildForecastEvidenceRecordWrite('forecast:evidence:record:v1:h', '{"link":"https://a"}', 'https://a', 1_296_000, 7);
+    assert.deepEqual(linked, ['SET', 'forecast:evidence:record:v1:h', '{"link":"https://a"}', 'EX', 1_296_000]);
+    const blanked = buildForecastEvidenceRecordWrite('forecast:evidence:record:v1:h', '{"link":""}', '', 1_296_000, 7);
+    assert.deepEqual(blanked, ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', 'forecast:evidence:record:v1:h', '{"link":""}', '1296000', '7', '']);
+  });
+});
+
+describe('N8 the required start follows a late generation', () => {
+  it('requires coverage from generation when the forecast is younger than a week', () => {
+    const entry = entryFor('Syria', { generatedAt: DEADLINE - 3 * DAY_MS });
+    assert.equal(judgedArchiveWindowForEntry(entry, JUDGED_AT).requiredStartMs, DEADLINE - 3 * DAY_MS);
+    assert.equal(judgedArchiveHorizonMs(entry), DEADLINE - 3 * DAY_MS + JUDGED_EVIDENCE_MAX_LOOKBACK_MS);
+  });
+});
+
+describe('review round 2: event terms for every judged domain (NB1)', () => {
+  it('gives every judged domain event words, so an absence NO can seal', () => {
+    for (const domain of [...JUDGED_DOMAINS, 'conflict', 'market', 'supply_chain', 'political']) {
+      assert.ok(JUDGED_EVENT_TERMS[domain]?.length > 0, `${domain} has no event words`);
+    }
+  });
+
+  it('seals an infrastructure absence NO on outage coverage', async () => {
+    const absence = async () => ({ provider: 'p', model: 'm', outcome: 'NO', basis: 'absence', citations: [{ id: 'A', quote: 'Chile item A' }], rationale: 'fixture' });
+    const items = ['A', 'B', 'C'].map((id) => item(id, `Chile item ${id}: grid operator restores power after outage`));
+    const result = await resolveJudgedEntry(entryFor('Chile', { domain: 'infrastructure' }), archiveOf(items), JUDGED_AT, { judgeModels: [absence, absence] });
+    assert.equal(result.outcome, 'NO');
+  });
+});
+
+describe('review round 2: matching rules (NB2-NB5, NB8)', () => {
+  it('strips an exclusion only as a whole phrase', () => {
+    assert.deepEqual(shownIds('Niger', [item('statement', 'Niger statement on Mali junta')]), ['statement']);
+  });
+
+  it('accepts a weak name in one field with its co-term in the other', () => {
+    assert.deepEqual(shownIds('Georgia', [item('split', 'Georgia arrests opposition leaders', 'Moscow condemns the move')]), ['split']);
+  });
+
+  it('keeps the true positives the ambiguity rules dropped', () => {
+    assert.deepEqual(shownIds('Jordan', [item('jo', 'ShinyHunters hacker detained in Jordan')]), ['jo']);
+    assert.deepEqual(shownIds('Chad', [item('td', 'Terrorism, kidnapping choke trade lifeline linking Nigeria, Chad, Cameroon')]), ['td']);
+    assert.deepEqual(shownIds('Georgia', [
+      item('ge', 'Georgia joins pro-Ukraine UN statement as Foreign Minister speaks at Crimea Platform summit'),
+      item('demonym', 'Georgian Dream wins vote'),
+    ]), ['demonym', 'ge']);
+    assert.deepEqual(shownIds('Black Sea', [
+      item('port', 'Odessa port hit by drones'),
+      item('texas', 'Oil prices rise', 'Odessa American'),
+    ]), ['port']);
+    assert.deepEqual(shownIds('Ukraine', [item('port', 'Odessa port hit by drones'), item('texas', 'Odessa, Texas council votes')]), ['port']);
+  });
+
+  it('drops keywords and tokens that name something else', () => {
+    assert.deepEqual(shownIds('United States', [
+      item('denzel', 'Denzel Washington wins award'),
+      item('trump', 'Trump says Iran talks are close'),
+      item('join', 'JOIN US FOR THE LAUNCH'),
+      item('dollar', 'Firm raises US$5bn'),
+      item('real', 'US Navy shoots down drones'),
+    ]), ['real']);
+    assert.deepEqual(shownIds('United Kingdom', [item('jack', 'Jack London novel adapted')]), []);
+    assert.deepEqual(shownIds('Bulgaria', [item('sofia', 'Sofia Coppola new film')]), []);
+    assert.deepEqual(shownIds('Libya', [item('lb', 'Clashes in Tripoli, Lebanon')]), []);
+    assert.deepEqual(shownIds('Guinea', [item('pet', 'Guinea pig cafe opens in Conakry')]), ['pet']);
+    assert.deepEqual(shownIds('Guinea', [item('pet', 'Guinea pig owners share tips')]), []);
+    assert.deepEqual(shownIds('Israel/Gaza', [item('lb', 'Hezbollah, FPM try to contain fallout')]), []);
+  });
+
+  it('matches region terms on whole words only', () => {
+    assert.deepEqual(shownIds('Europe', [item('museum', 'Museum reopens after flood'), item('eu', 'EU agrees new sanctions')]), ['eu']);
+    assert.deepEqual(shownIds('Israel/Gaza', [item('mid', 'Midfielder signs new deal'), item('idf', 'IDF strikes Gaza City')]), ['idf']);
+  });
+});
+
+/** Runs FORECAST_EVIDENCE_KEEP_LINK_SCRIPT in a Lua 5.3 VM against a Redis double (same pattern as digest-lastgood-script.test.mjs). */
+function runKeepLinkScript(command, initial = {}) {
+  const store = new Map(Object.entries(initial));
+  const ttls = new Map();
+  const [verb, script, numKeys, ...rest] = command;
+  if (verb !== 'EVAL') {
+    store.set(rest[0] ?? numKeys, script);
+    return { store, ttls };
+  }
+  const keys = rest.slice(0, Number(numKeys));
+  const argv = rest.slice(Number(numKeys));
+  const L = lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(L);
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    const args = [];
+    for (let i = 1; i <= lua.lua_gettop(S); i += 1) args.push(to_jsstring(lua.lua_tostring(S, i)));
+    const [name, key, value, ex, ttl] = args;
+    if (name === 'GET') {
+      if (store.has(key)) lua.lua_pushstring(S, to_luastring(store.get(key))); else lua.lua_pushnil(S);
+      return 1;
+    }
+    if (name === 'SET') {
+      store.set(key, value);
+      if (ex === 'EX') ttls.set(key, Number(ttl));
+      lua.lua_pushstring(S, to_luastring('OK'));
+      return 1;
+    }
+    throw new Error(`redis double: unimplemented ${name}`);
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('call'));
+  lua.lua_setglobal(L, to_luastring('redis'));
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(to_jsstring(lua.lua_tostring(S, 1)));
+    } catch {
+      return lauxlib.luaL_error(S, to_luastring('cjson: invalid JSON'));
+    }
+    lua.lua_createtable(S, 0, 1);
+    for (const [field, value] of Object.entries(parsed)) {
+      if (typeof value === 'string') lua.lua_pushstring(S, to_luastring(value));
+      else if (typeof value === 'number') lua.lua_pushnumber(S, value);
+      else continue;
+      lua.lua_setfield(S, -2, to_luastring(field));
+    }
+    return 1;
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('decode'));
+  lua.lua_setglobal(L, to_luastring('cjson'));
+  for (const [name, values] of [['KEYS', keys], ['ARGV', argv]]) {
+    lua.lua_createtable(L, values.length, 0);
+    values.forEach((value, index) => {
+      lua.lua_pushstring(L, to_luastring(String(value)));
+      lua.lua_seti(L, -2, index + 1);
+    });
+    lua.lua_setglobal(L, to_luastring(name));
+  }
+  assert.equal(lauxlib.luaL_loadstring(L, to_luastring(script)), lua.LUA_OK, 'script compiles');
+  const status = lua.lua_pcall(L, 0, 1, 0);
+  assert.equal(status, lua.LUA_OK, status === lua.LUA_OK ? '' : to_jsstring(lua.lua_tostring(L, -1)));
+  return { store, ttls };
+}
+
+describe('review round 2: the keep-link script itself (NB7, NB8)', () => {
+  const hash = 'a'.repeat(64);
+  const key = `forecast:evidence:record:v1:${hash}`;
+  const member = (link, lastSeen, title = 'Story') => buildForecastEvidenceMember({ hash, title, link, description: 'body / text', publishedAt: 1_000 }, lastSeen);
+  const write = (lastSeen, blankedHost = '') => buildForecastEvidenceRecordWrite(key, member('', lastSeen, 'Gated copy'), '', 1_296_000, lastSeen, blankedHost);
+
+  it('keeps a stored link and moves only lastSeen', () => {
+    const { store, ttls } = runKeepLinkScript(write(9), { [key]: member('https://www.reuters.com/x', 1) });
+    const { record, malformed } = parseForecastEvidenceMember(store.get(key));
+    assert.equal(malformed, false);
+    assert.equal(record.link, 'https://www.reuters.com/x');
+    assert.equal(record.title, 'Story');
+    assert.equal(record.lastSeen, 9);
+    assert.equal(ttls.get(key), 1_296_000);
+  });
+
+  it('stores the blanked member when nothing, a blank record or garbage was stored', () => {
+    for (const initial of [{}, { [key]: member('', 1) }, { [key]: 'not json' }]) {
+      const { store } = runKeepLinkScript(write(9), initial);
+      assert.equal(parseForecastEvidenceMember(store.get(key)).record.title, 'Gated copy');
+    }
+  });
+
+  it('drops a stored link whose host the gate now blanks', () => {
+    const { store } = runKeepLinkScript(write(9, 'reuters.com'), { [key]: member('https://www.reuters.com/x', 1) });
+    assert.equal(parseForecastEvidenceMember(store.get(key)).record.link, '');
+  });
+});

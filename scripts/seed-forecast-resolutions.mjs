@@ -41,6 +41,10 @@ import {
   resolveForecastEvidenceCoverageMaxLagMs,
   recoverForecastEvidenceCoverage,
 } from './_forecast-evidence-archive.mjs';
+import { readFileSync } from 'node:fs';
+import { JUDGED_EVIDENCE_GRACE_MS } from './_forecast-scorecard.mjs';
+
+export { JUDGED_EVIDENCE_GRACE_MS };
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -67,12 +71,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // the last week before the deadline, whatever the horizon.
 export const JUDGED_EVIDENCE_LOOKBACK_MS = 7 * DAY_MS;
 export const JUDGED_EVIDENCE_MAX_LOOKBACK_MS = 14 * DAY_MS;
-// Reports published up to 18h after the deadline are admissible, and an entry
-// is not judged before they can exist. Of the 23 post-deadline citations in the
-// scored judged rows (#8990 audit), 11 were 2-14h late; the next was 30h late
-// and reported a later development. 18h admits the first group and keeps a
-// daily run inside the 2-day judged SLA (DEFAULT_JUDGED_SLA_MS).
-export const JUDGED_EVIDENCE_GRACE_MS = 18 * 60 * 60 * 1000;
 export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 32;
 // Floor for an absence-based NO (#8896). One or two token-matched items can be
 // stray hits (a source name alone scores), so absence from them proves nothing.
@@ -134,82 +132,30 @@ export const DEFAULT_JUDGE_HORIZON_ALERT_LEAD_MS = DAY_MS;
 const JUDGE_ARCHIVE_FENCE_OPEN = '<<<ARCHIVE_BEGIN>>>';
 const JUDGE_ARCHIVE_FENCE_CLOSE = '<<<ARCHIVE_END>>>';
 const JUDGE_ARCHIVE_FENCE_PATTERN = /<<<\s*archive_(?:begin|end)\s*>>>/gi;
-// What a headline calls each judged region. The question templates are the
-// same boilerplate for every region ("experience", "level", "risk"), so the
-// region is the only part of a question that says which news is relevant
-// (#8990). Labels missing here fall back to the label itself.
-const JUDGED_SUBJECT_TERMS = {
-  afghanistan: ['afghanistan', 'afghan', 'afghans', 'kabul', 'taliban'],
-  americas: ['americas', 'latin america', 'south america', 'central america', 'caribbean'],
-  'asia-pacific': ['asia pacific', 'indo pacific', 'south china sea', 'taiwan'],
-  'baltic sea': ['baltic', 'kaliningrad', 'gulf of finland', 'estonia', 'latvia', 'lithuania'],
-  belgium: ['belgium', 'belgian', 'brussels'],
-  'black sea': ['black sea', 'crimea', 'crimean', 'odesa', 'odessa', 'sevastopol', 'kerch', 'novorossiysk', 'bosphorus'],
-  brazil: ['brazil', 'brazilian', 'brasilia'],
-  'burkina faso': ['burkina faso', 'burkina', 'burkinabe', 'ouagadougou'],
-  china: ['china', 'chinese', 'beijing'],
-  colombia: ['colombia', 'colombian', 'bogota'],
-  'costa rica': ['costa rica', 'costa rican'],
-  cuba: ['cuba', 'cuban', 'havana'],
-  'dr congo (zaire)': ['dr congo', 'drc', 'democratic republic of congo', 'democratic republic of the congo', 'congolese', 'kinshasa', 'goma', 'm23'],
-  'eastern mediterranean': ['eastern mediterranean', 'east mediterranean', 'cyprus', 'cypriot', 'lebanon', 'lebanese', 'levant', 'aegean'],
-  ethiopia: ['ethiopia', 'ethiopian', 'addis ababa', 'tigray', 'amhara'],
-  europe: ['europe', 'european'],
-  germany: ['germany', 'german', 'berlin'],
-  gaza: ['gaza', 'palestinian', 'palestinians', 'hamas'],
-  haiti: ['haiti', 'haitian', 'port au prince'],
-  india: ['india', 'new delhi', 'delhi'],
-  iran: ['iran', 'iranian', 'tehran'],
-  'iran theater': ['iran', 'iranian', 'tehran', 'persian gulf', 'hormuz'],
-  iraq: ['iraq', 'iraqi', 'baghdad'],
-  israel: ['israel', 'israeli', 'idf'],
-  'israel/gaza': ['israel', 'israeli', 'idf', 'gaza', 'palestinian', 'palestinians', 'hamas', 'west bank'],
-  'kerch strait': ['kerch', 'crimean bridge'],
-  'korean peninsula': ['korea', 'korean', 'pyongyang', 'seoul', 'dprk'],
-  mali: ['mali', 'malian', 'bamako'],
-  mexico: ['mexico', 'mexican', 'cartel'],
-  'middle east': ['middle east', 'iran', 'iranian', 'israel', 'israeli', 'gaza', 'lebanon', 'lebanese', 'hezbollah', 'syria', 'syrian', 'iraq', 'iraqi', 'yemen', 'houthi', 'houthis', 'saudi', 'qatar', 'persian gulf', 'hormuz'],
-  mozambique: ['mozambique', 'mozambican', 'cabo delgado'],
-  myanmar: ['myanmar', 'burma', 'burmese'],
-  'north korea': ['north korea', 'north korean', 'pyongyang', 'dprk', 'kim jong un'],
-  nigeria: ['nigeria', 'nigerian', 'boko haram', 'abuja'],
-  'northern europe': ['northern europe', 'baltic', 'nordic', 'scandinavia', 'finland', 'finnish', 'sweden', 'swedish', 'norway', 'norwegian', 'denmark', 'danish', 'estonia', 'latvia', 'lithuania', 'kaliningrad'],
-  pakistan: ['pakistan', 'pakistani', 'islamabad', 'khyber', 'balochistan', 'waziristan'],
-  'persian gulf': ['persian gulf', 'gulf of oman', 'hormuz', 'iran', 'iranian', 'qatar', 'bahrain', 'kuwait', 'saudi', 'uae'],
-  philippines: ['philippines', 'filipino', 'manila'],
-  romania: ['romania', 'romanian', 'bucharest'],
-  'red sea': ['red sea', 'houthi', 'houthis', 'bab el mandeb', 'suez', 'gulf of aden'],
-  russia: ['russia', 'russian', 'moscow', 'kremlin'],
-  'south africa': ['south africa', 'south african', 'pretoria', 'johannesburg'],
-  'south china sea': ['south china sea', 'spratly', 'paracel', 'scarborough shoal', 'second thomas shoal'],
-  'strait of hormuz': ['hormuz'],
-  sudan: ['sudan', 'sudanese', 'khartoum', 'darfur', 'rsf', 'el fasher'],
-  syria: ['syria', 'syrian', 'damascus', 'aleppo', 'idlib'],
-  taiwan: ['taiwan', 'taiwanese', 'taipei', 'taiwan strait'],
-  'taiwan strait': ['taiwan strait', 'taiwan', 'taiwanese', 'taipei'],
-  turkey: ['turkey', 'turkiye', 'turkish', 'ankara', 'erdogan'],
-  ukraine: ['ukraine', 'ukrainian', 'kyiv', 'kiev', 'kharkiv', 'donbas', 'odesa'],
-  'united kingdom': ['united kingdom', 'britain', 'british', 'uk', 'london'],
-  'united states': ['united states', 'u s', 'usa', 'pentagon', 'white house'],
-  'western pacific': ['western pacific', 'taiwan', 'taiwanese', 'taiwan strait', 'south china sea', 'east china sea', 'philippine sea', 'guam', 'okinawa'],
-  'yemen (north yemen)': ['yemen', 'yemeni', 'houthi', 'houthis', 'sanaa'],
-};
-// Phrases removed before a subject's terms are tested, so a neighbour whose
-// name contains the subject's never counts as the subject.
-const JUDGED_SUBJECT_EXCLUSIONS = {
-  sudan: ['south sudan', 'south sudanese'],
-  mexico: ['new mexico'],
-};
+// What a headline calls each judged subject: every country and every region
+// label the forecast emitter can produce, generated by
+// scripts/build-judged-subject-terms.mjs (#8990). Loaded on first use so the
+// generator can import this module before the table exists.
+const JUDGED_SUBJECT_TABLE_URL = new URL('./shared/judged-subject-terms.json', import.meta.url);
+let judgedSubjectTable;
+function loadJudgedSubjectTable() {
+  judgedSubjectTable ??= JSON.parse(readFileSync(JUDGED_SUBJECT_TABLE_URL, 'utf8'));
+  return judgedSubjectTable;
+}
 // Words that mark a report of the forecast's kind of event. They rank on-subject
 // items; they never admit an off-subject one.
-const JUDGED_EVENT_TERMS = {
+export const JUDGED_EVENT_TERMS = {
   conflict: ['attack', 'attacks', 'attacked', 'strike', 'strikes', 'airstrike', 'airstrikes', 'killed', 'kills', 'kill', 'dead', 'deaths', 'clashes', 'clash', 'fighting', 'offensive', 'shelling', 'militants', 'militant', 'troops', 'bombing', 'bomb', 'drone', 'drones', 'missile', 'missiles', 'war', 'ceasefire', 'rebels', 'insurgents', 'violence', 'casualties', 'gunmen', 'army', 'soldiers', 'raid', 'assault', 'explosion', 'escalation', 'escalates'],
   military: ['military', 'troops', 'forces', 'navy', 'naval', 'warship', 'warships', 'aircraft', 'jets', 'fighter', 'airlift', 'deployment', 'deploys', 'deployed', 'exercise', 'exercises', 'drills', 'bomber', 'bombers', 'missile', 'missiles', 'drone', 'drones', 'base', 'airspace', 'strike', 'strikes', 'carrier', 'submarine', 'army', 'air force', 'defense', 'defence', 'mobilization'],
   market: ['market', 'markets', 'oil', 'crude', 'brent', 'prices', 'price', 'bond', 'bonds', 'yields', 'currency', 'inflation', 'sanctions', 'economy', 'economic', 'stocks', 'shares', 'investors', 'rating', 'default', 'exchange rate', 'gas', 'energy', 'lng', 'debt', 'central bank', 'rial', 'lira', 'ruble', 'peso', 'dinar'],
   supply_chain: ['shipping', 'ship', 'ships', 'vessel', 'vessels', 'tanker', 'tankers', 'port', 'ports', 'cargo', 'freight', 'maritime', 'container', 'transit', 'route', 'routes', 'blockade', 'grain', 'insurance', 'strait', 'canal', 'exports', 'supply', 'pipeline', 'attack', 'attacks'],
+  infrastructure: ['outage', 'outages', 'blackout', 'blackouts', 'power', 'grid', 'electricity', 'cable', 'cables', 'pipeline', 'internet', 'telecom', 'network', 'airport', 'port', 'disruption', 'disrupted', 'sabotage', 'damaged', 'repair', 'restored', 'shutdown'],
   cyber: ['cyber', 'cyberattack', 'cyberattacks', 'hack', 'hacked', 'hackers', 'ransomware', 'breach', 'malware', 'ddos', 'espionage'],
-  unrest: ['protest', 'protests', 'protesters', 'demonstrators', 'riot', 'riots', 'unrest', 'clashes', 'police', 'crackdown', 'rally', 'strike'],
 };
+const UNREST_EVENT_TERMS = ['protest', 'protests', 'protesters', 'demonstrators', 'riot', 'riots', 'unrest', 'clashes', 'police', 'crackdown', 'rally', 'strike', 'tear gas', 'arrests', 'coup', 'impeachment', 'resigns', 'resignation'];
+// Political forecasts are the emitter's unrest family; migrated count rows keep the unrest domain.
+JUDGED_EVENT_TERMS.political = UNREST_EVENT_TERMS;
+JUDGED_EVENT_TERMS.unrest = UNREST_EVENT_TERMS;
 const NORMALIZED_JUDGED_ARCHIVE_INPUT = Symbol('normalizedJudgedArchiveInput');
 const STALE_COUNT_FEED_REPLACEMENTS = new Map([
   ['conflict:acled:v1:all:0:0', CONFLICT_COUNT_SOURCE_FEED],
@@ -738,7 +684,7 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
   }
 
   const absence = assessAbsenceEligibility(entry, archiveInput, archiveItems, nowMs, coverage.coverageStartMs);
-  const settled = await Promise.allSettled(judgeModels.map((judge) => judge(entry, archiveItems, nowMs)));
+  const settled = await Promise.allSettled(judgeModels.map((judge) => judge(entry, archiveItems, nowMs, { coverageStartMs: coverage.coverageStartMs })));
   const judgments = [];
   for (let index = 0; index < settled.length; index += 1) {
     const result = settled[index];
@@ -825,8 +771,9 @@ function selectNormalizedJudgedArchiveItems(entry, archiveItems, options = {}) {
 
 /**
  * Every returned item names the subject (#8990). Items dated by the deadline
- * come first, then reports of the forecast's kind of event, then items that
- * name the subject in the headline, then the newest.
+ * come first, then items that name the subject in the headline, then reports
+ * of the forecast's kind of event, then the newest. A headline about the
+ * subject outranks a roundup that names it only in its description.
  */
 function rankJudgedArchiveItems(entry, archiveItems, options = {}) {
   const subject = judgedSubjectMatcher(entry);
@@ -844,44 +791,135 @@ function rankJudgedArchiveItems(entry, archiveItems, options = {}) {
         && publishedAt <= evidenceWindow.endMs;
     })
     .map((item, index) => {
-      const title = normalizeSubjectText(item.title);
-      const description = normalizeSubjectText(item.description);
+      const subjectInTitle = subject.matches(item.title, item.description);
       return {
         ...item,
         id: item.id || `N${index + 1}`,
-        onSubject: subject.matches(title) || subject.matches(description),
-        subjectInTitle: subject.matches(title),
+        onSubject: subjectInTitle || subject.matches(item.description, item.title),
+        subjectInTitle,
         datedByDeadline: !Number.isFinite(deadline) || Number(item.publishedAt) <= deadline,
-        eventRelevance: 2 * countTermHits(title, eventTerms) + countTermHits(description, eventTerms),
+        eventRelevance: 2 * countTermHits(normalizeSubjectText(item.title), eventTerms)
+          + countTermHits(normalizeSubjectText(item.description), eventTerms),
       };
     })
     .filter((item) => item.onSubject)
     .sort((a, b) => Number(b.datedByDeadline) - Number(a.datedByDeadline)
-      || b.eventRelevance - a.eventRelevance
       || Number(b.subjectInTitle) - Number(a.subjectInTitle)
+      || b.eventRelevance - a.eventRelevance
       || Number(b.publishedAt || 0) - Number(a.publishedAt || 0));
 }
 
-/** The words a headline uses for the entry's region, normalized like the text they are matched against. */
-export function judgedSubjectTermsForEntry(entry) {
-  const label = String(entry?.region || '').trim().toLowerCase();
-  if (!label || label === 'global') return [];
-  if (JUDGED_SUBJECT_TERMS[label]) return [...JUDGED_SUBJECT_TERMS[label]];
-  const parts = label.split(/[/()]/).map(normalizeSubjectText).filter(Boolean);
-  return [...new Set(parts)];
+/**
+ * How a region label resolves against the subject table: a named region, a
+ * country, a combination (`DR Congo (Zaire)`, `Israel/Gaza`), `none` for an
+ * empty or global label, or `fallback` when nothing matches and the bare label
+ * is all there is.
+ */
+export function judgedSubjectKind(label, table = loadJudgedSubjectTable()) {
+  return resolveJudgedSubject(label, table).kind;
 }
 
+function resolveJudgedSubject(label, table) {
+  const key = normalizeSubjectText(label);
+  if (!key || key === 'global') return { kind: 'none', terms: [], countries: [], exclusions: [] };
+  const direct = resolveSubjectKey(key, table);
+  if (direct) return direct;
+  const parts = String(label).split(/[/()]/).map(normalizeSubjectText).filter(Boolean);
+  const resolved = parts.map((part) => resolveSubjectKey(part, table)).filter(Boolean);
+  if (resolved.length) {
+    return {
+      kind: resolved.length === 1 ? resolved[0].kind : 'combined',
+      terms: [...new Set(resolved.flatMap((row) => row.terms))],
+      countries: [...new Set(resolved.flatMap((row) => row.countries))],
+      exclusions: [...new Set(resolved.flatMap((row) => row.exclusions))],
+    };
+  }
+  return { kind: 'fallback', terms: [...new Set([key, ...parts])], countries: [], exclusions: [] };
+}
+
+function resolveSubjectKey(key, table) {
+  const region = table.regions[key];
+  if (region) return { kind: 'region', terms: region.terms, countries: region.countries, exclusions: region.exclusions || [] };
+  const code = table.labels[key];
+  if (code && table.countries[code]) return { kind: 'country', terms: [], countries: [code], exclusions: [] };
+  return null;
+}
+
+/** The strong terms the entry's subject matches on, normalized like the text they are matched against. */
+export function judgedSubjectTermsForEntry(entry) {
+  const table = loadJudgedSubjectTable();
+  const subject = resolveJudgedSubject(entry?.region, table);
+  return [...new Set([...subject.terms, ...subject.countries.flatMap((code) => table.countries[code].terms)])];
+}
+
+/**
+ * Word-bounded, case-folded match on normalized text. Demonyms and the `US`
+ * token match case-sensitively on the raw text ("Polish" is a country,
+ * "polish" a verb). A country's exclusions are removed first, and an
+ * ambiguous name ("Georgia", "Jordan", "Chad") counts only beside a co-term.
+ */
 function judgedSubjectMatcher(entry) {
-  const terms = judgedSubjectTermsForEntry(entry);
-  const exclusions = JUDGED_SUBJECT_EXCLUSIONS[String(entry?.region || '').trim().toLowerCase()] || [];
+  const table = loadJudgedSubjectTable();
+  const subject = resolveJudgedSubject(entry?.region, table);
+  const countries = subject.countries.map((code) => table.countries[code]);
   return {
-    matches(normalizedText) {
-      if (!normalizedText || !terms.length) return false;
-      let text = ` ${normalizedText} `;
-      for (const phrase of exclusions) text = text.split(` ${phrase} `).join(' ');
-      return terms.some((term) => text.includes(` ${term} `));
+    /**
+     * `contextText` is the item's other field: an ambiguous name in the title
+     * counts when its co-term sits in the description, and the reverse.
+     */
+    matches(rawText, contextText = '') {
+      const raw = String(rawText || '');
+      const normalized = normalizeSubjectText(raw);
+      if (!normalized) return false;
+      const padded = removeWholePhrases(` ${normalized} `, subject.exclusions);
+      if (subject.terms.some((term) => padded.includes(` ${term} `))) return true;
+      const context = ` ${normalizeSubjectText(`${raw} ${contextText || ''}`)} `;
+      return countries.some((country) => countryMatches(country, raw, ` ${normalized} `, context));
     },
   };
+}
+
+// Exclusions are whole words or phrases: "niger state" removes "Niger State",
+// never the "niger" in "Niger statement".
+function removeWholePhrases(padded, phrases = []) {
+  let text = padded;
+  for (const phrase of phrases) text = text.split(` ${phrase} `).join(' ');
+  return text;
+}
+
+function countryMatches(country, raw, padded, context) {
+  const text = removeWholePhrases(padded, country.exclusions);
+  const contextText = removeWholePhrases(context, country.exclusions);
+  let rawText = raw;
+  for (const phrase of country.exclusions) {
+    rawText = rawText.replace(new RegExp(`(^|[^A-Za-z0-9])${phrase.split(' ').map(escapeRegExp).join('[\\s\\-.\']+')}`, 'gi'), '$1 ');
+  }
+  const has = (term) => text.includes(` ${term} `);
+  if (country.terms.some(has)) return true;
+  if (country.demonyms.some((demonym) => hasCasedToken(rawText, demonym))) return true;
+  if (country.codeToken && hasCodeToken(rawText, country.codeToken)) return true;
+  return Boolean(country.weak?.some(has) && country.coTerms.some((term) => contextText.includes(` ${term} `)));
+}
+
+function hasCasedToken(rawText, token) {
+  return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(token)}(?=$|[^A-Za-z0-9])`).test(rawText);
+}
+
+// "US" as a country, not "US$5bn" and not an all-caps headline ("JOIN US").
+function hasCodeToken(rawText, token) {
+  const pattern = new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(token)}(?![A-Za-z0-9$])`, 'g');
+  for (const match of rawText.matchAll(pattern)) {
+    const start = match.index + match[1].length;
+    const before = rawText.slice(0, start).match(/([A-Za-z]+)\W*$/)?.[1] || '';
+    const after = rawText.slice(start + token.length).match(/^\W*([A-Za-z]+)/)?.[1] || '';
+    const shouting = (word) => word.length >= 2 && word === word.toUpperCase();
+    if (!shouting(before) && !shouting(after)) return true;
+  }
+  return false;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function countTermHits(normalizedText, terms) {
@@ -890,18 +928,23 @@ function countTermHits(normalizedText, terms) {
   return terms.filter((term) => text.includes(` ${term} `)).length;
 }
 
-function normalizeSubjectText(value) {
+export function normalizeSubjectText(value) {
   return String(value || '')
     .normalize('NFKD')
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
+    .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
 
-/** On-subject coverage through the deadline: what an absence-based NO may cite and what truncation counts. */
+/**
+ * Coverage an absence-based NO may count and cite: an on-subject report of
+ * the forecast's kind of event, dated by the deadline. An item that only names
+ * the subject (sport, culture) says nothing about whether the event happened.
+ */
 function qualifiesAsAbsenceCoverage(item) {
-  return item.onSubject === true && item.datedByDeadline !== false;
+  return item.onSubject === true && item.datedByDeadline !== false && item.eventRelevance > 0;
 }
 
 /**
@@ -1080,13 +1123,13 @@ function createLiveJudgeModels(options = {}) {
     stageBudgetMs: options.judgeStageBudgetMs ?? stageBudgetMs,
   };
   return [
-    (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
+    (entry, archiveItems, nowMs, context) => callLiveJudgedModel(entry, archiveItems, nowMs, context, {
       ...common,
       stage: 'forecast_resolution_judge_openrouter',
       providerOrder: ['openrouter'],
       modelOverrides: { openrouter: liveJudgeModelIds().a },
     }),
-    (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
+    (entry, archiveItems, nowMs, context) => callLiveJudgedModel(entry, archiveItems, nowMs, context, {
       ...common,
       stage: 'forecast_resolution_judge_openrouter_b',
       providerOrder: ['openrouter'],
@@ -1095,8 +1138,8 @@ function createLiveJudgeModels(options = {}) {
   ];
 }
 
-async function callLiveJudgedModel(entry, archiveItems, nowMs, options) {
-  const { systemPrompt, userPrompt } = buildJudgedResolutionPrompt(entry, archiveItems, nowMs);
+async function callLiveJudgedModel(entry, archiveItems, nowMs, context, options) {
+  const { systemPrompt, userPrompt } = buildJudgedResolutionPrompt(entry, archiveItems, nowMs, context);
   const result = await callForecastLLM(systemPrompt, userPrompt, options);
   if (!result?.text) return null;
   return {
@@ -1118,10 +1161,11 @@ async function callLiveJudgedModel(entry, archiveItems, nowMs, options) {
  * boundary is downstream: dual-model agreement plus citations bound to an
  * archive item ID whose quote must be present in that item's own text.
  */
-export function buildJudgedResolutionPrompt(entry, archiveItems, nowMs) {
+/** `context.coverageStartMs` is the served archive's start, so the stated window matches what selection used. */
+export function buildJudgedResolutionPrompt(entry, archiveItems, nowMs, context = {}) {
   const spec = entry?.spec || entry?.resolution || {};
   const deadline = Number(spec.deadline ?? entry?.deadline);
-  const window = judgedArchiveWindowForEntry(entry, nowMs);
+  const window = judgedArchiveWindowForEntry(entry, nowMs, { coverageStartMs: toFiniteNumber(context?.coverageStartMs) });
   const systemPrompt = [
     'You resolve forecasts using only the provided news archive.',
     'Return JSON only: {"outcome":"YES|NO|VOID","basis":"event|absence","citations":[{"id":"N1","quote":"short evidence"}],"rationale":"short reason"}.',
@@ -1587,7 +1631,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     const key = freeWindowKey(ledger, id, deadline, questionKey);
     if (!key) continue;
     ledger[key] = { ...candidate, key };
-    windows.add(ledger[key], questionKey);
+    windows.add(key, ledger[key], questionKey);
     registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
   }
 
@@ -1637,19 +1681,19 @@ export function windowQuestionKey(entry) {
 // so re-reading history cannot reopen it.
 function indexQuestionWindows(ledger) {
   const byId = new Map();
-  const add = (entry, questionKey = windowQuestionKey(entry)) => {
+  const add = (key, entry, questionKey = windowQuestionKey(entry)) => {
     if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry)) return;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
-    byId.get(entry.id).push({ entry, questionKey });
+    byId.get(entry.id).push({ key, entry, questionKey });
   };
-  for (const entry of Object.values(ledger)) add(entry);
+  for (const [key, entry] of Object.entries(ledger)) add(key, entry);
   return {
     add,
     covering(id, questionKey, generatedAt) {
       const match = (byId.get(id) || [])
-        .filter(({ entry, questionKey: key }) => key === questionKey && windowCovers(entry, generatedAt))
-        .sort((a, b) => Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.entry.key.localeCompare(b.entry.key))[0];
-      return match?.entry.key ?? null;
+        .filter((window) => window.questionKey === questionKey && windowCovers(window.entry, generatedAt))
+        .sort(byEmission)[0];
+      return match?.key ?? null;
     },
   };
 }
@@ -1658,6 +1702,11 @@ function indexQuestionWindows(ledger) {
 // deadline tracks the venue's endDate and can move back before the window's
 // emission once the market closes, so it covers every later emission of the
 // same question, not a [generatedAt, deadline) span.
+// Ledger map keys identify windows; a stored row need not repeat its key.
+function byEmission(a, b) {
+  return Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.key.localeCompare(b.key);
+}
+
 function windowCovers(entry, generatedAt) {
   if (Number(entry.generatedAt) > generatedAt) return false;
   return entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY || generatedAt < Number(entry.deadline);
@@ -1704,7 +1753,7 @@ function indexEmissions(snapshots, nowMs) {
 export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { historyRead = true } = {}) {
   const byId = new Map();
   const horizonByParent = new Map();
-  for (const entry of Object.values(ledger)) {
+  for (const [key, entry] of Object.entries(ledger)) {
     if (!entry?.id) continue;
     if (isHorizonEntry(entry)) {
       if (!horizonByParent.has(entry.parentKey)) horizonByParent.set(entry.parentKey, []);
@@ -1713,12 +1762,12 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
     }
     if (isDuplicateWindow(entry)) continue;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
-    byId.get(entry.id).push({ entry, questionKey: windowQuestionKey(entry) });
+    byId.get(entry.id).push({ key, entry, questionKey: windowQuestionKey(entry) });
   }
 
   let duplicates = 0;
   for (const windows of byId.values()) {
-    windows.sort((a, b) => Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.entry.key.localeCompare(b.entry.key));
+    windows.sort(byEmission);
     const kept = [];
     for (const window of windows) {
       const keeper = kept.find(({ entry, questionKey }) => questionKey === window.questionKey && windowCovers(entry, Number(window.entry.generatedAt)));
@@ -1726,8 +1775,8 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
         kept.push(window);
         continue;
       }
-      for (const entry of [window.entry, ...(horizonByParent.get(window.entry.key) || [])]) {
-        voidDuplicateWindow(entry, keeper.entry.key, nowMs);
+      for (const entry of [window.entry, ...(horizonByParent.get(window.key) || [])]) {
+        voidDuplicateWindow(entry, keeper.key, nowMs);
         duplicates += 1;
       }
     }
@@ -2733,9 +2782,8 @@ export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now(), run
   const recent = entries.filter(entry => entry.status !== 'resolved'
     || (Number(entry.resolvedAt) > since && Number(entry.resolvedAt) <= nowMs));
   const lane = computeScorecard(recent, nowMs).judgedLane;
-  // An entry inside its reporting grace is not judgeable yet, so it is not overdue.
-  const overdue = entries.filter((entry) => entry.status === 'pending-judge'
-    && Number(entry.deadline ?? entry.spec?.deadline) + JUDGED_EVIDENCE_GRACE_MS <= nowMs).length;
+  // The scorecard excludes entries inside their reporting grace: not yet judgeable.
+  const overdue = lane.pendingJudgePastDeadline;
   const eligible = overdue > 0 || lane.resolved > 0;
   const previousStreak = Number.isSafeInteger(previous?.stalledRuns) && previous.stalledRuns > 0
     ? previous.stalledRuns : 0;
@@ -2743,18 +2791,26 @@ export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now(), run
   const coverageVerified = forecastEvidenceCoversWindow(rawCoverage,
     nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS, nowMs,
     resolveForecastEvidenceCoverageMaxLagMs(), true);
+  // Status reports whether the lane can run: reasons name inputs the judges
+  // could not read. How much the judges scored is quality, never status.
   const reasons = [];
   if (!coverageVerified && overdue > 0) reasons.push('coverage_unverified_with_overdue_entries');
   // A valid marker does not prove this run's archive read succeeded.
   if (runState.archiveReadable === false && overdue > 0) reasons.push('archive_unreadable_with_overdue_entries');
-  if (stalledRuns >= 3) reasons.push('no_scored_within_sla_for_3_runs');
   const health = {
     evaluatedAt: nowMs, status: reasons.length ? 'error' : 'ok', reasons,
     stalledRuns, scoredWithinSla: lane.scoredWithinSla,
     pendingJudgePastDeadline: overdue, coverageVerified,
+    quality: { noScoredWithinSlaRuns: stalledRuns },
   };
   if (reasons.length) console.warn(`  [forecast-resolutions] judged lane health: ${reasons.join(', ')}`);
+  if (stalledRuns >= 3) console.warn(`  [forecast-resolutions] judged lane quality: no scored-within-SLA outcome for ${stalledRuns} eligible runs`);
   return health;
+}
+
+export async function buildJudgedLaneAfterPublish(ledger, nowMs = Date.now(), runState = {}) {
+  const health = await buildJudgedLaneHealthPatch(ledger, nowMs, runState);
+  return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
 }
 
 async function dryRun() {
@@ -2861,8 +2917,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     }],
     afterPublish: async (ledger) => {
       if (runState.map) await markCalibrationMapActivated();
-      const health = await buildJudgedLaneHealthPatch(ledger, Date.now(), runState);
-      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
+      return buildJudgedLaneAfterPublish(ledger, Date.now(), runState);
     },
   });
 }

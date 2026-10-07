@@ -174,7 +174,7 @@ describe('absence gate (#8990)', () => {
   const absence = (ids) => judge('NO', ids.map((id) => ({ id, quote: `Syria reports ${id}` })), 'absence');
 
   function quietItems(count, offsetMs = 0) {
-    return Array.from({ length: count }, (_, index) => item(`Q${index + 1}`, `Syria reports Q${index + 1}`, DEADLINE - offsetMs - (index + 1) * HOUR_MS));
+    return Array.from({ length: count }, (_, index) => item(`Q${index + 1}`, `Syria reports Q${index + 1}: ceasefire holds`, DEADLINE - offsetMs - (index + 1) * HOUR_MS));
   }
 
   it('shows about 32 items', () => {

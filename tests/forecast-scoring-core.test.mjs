@@ -142,6 +142,14 @@ describe('ghost windows (#8990 item 4)', () => {
     assert.equal(again.scorecard.totals.scored, 1);
   });
 
+  it('treats a stored row without its own key field by its ledger key', () => {
+    const open = processResolutionCycle({}, history, chokepointFeed(40), T0 + 6 * DAY_MS + HOUR_MS).ledger;
+    const resolved = processResolutionCycle(open, history, chokepointFeed(70), T0 + 7 * DAY_MS + HOUR_MS).ledger;
+    const keyless = Object.fromEntries(Object.entries(resolved).map(([key, { key: _key, ...entry }]) => [key, entry]));
+    const ledger = ingestHistory(keyless, history, T0 + 7 * DAY_MS + 2 * HOUR_MS);
+    assert.deepEqual(Object.keys(ledger), Object.keys(resolved));
+  });
+
   it('re-ingesting the same history any number of times yields the same ledger', () => {
     const open = processResolutionCycle({}, history, chokepointFeed(40), T0 + 6 * DAY_MS + HOUR_MS).ledger;
     const resolved = processResolutionCycle(open, history, chokepointFeed(70), T0 + 7 * DAY_MS + HOUR_MS).ledger;
@@ -372,6 +380,24 @@ describe('existing ledger correction (#8990)', () => {
     const once = ingestHistory({ [earlier.key]: earlier, [later.key]: later }, history, OCT_5 + HOUR_MS);
     assert.equal(once[later.key].duplicateOf, `commodity:BZ=F@${OCT_2 + 4 * DAY_MS}`);
     assert.deepEqual(ingestHistory(once, history, OCT_5 + 2 * HOUR_MS), once);
+  });
+
+  it('corrects keyless rows by their ledger keys', () => {
+    const strip = ({ key: _key, ...entry }) => entry;
+    const keeperKey = `fc-supply_chain-hormuz@${T0 + D}`;
+    const twinKey = `fc-supply_chain-hormuz@${T0 + D}~twin`;
+    const childKey = `${twinKey}@h24`;
+    const keyless = {
+      [keeperKey]: strip(base(T0, { status: 'resolved', outcome: 'YES', probability: 0.2, firstSeenProbability: 0.2, resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 70 } })),
+      [twinKey]: strip(base(T0, { status: 'resolved', outcome: 'NO', probability: 0.2, firstSeenProbability: 0.2, resolvedAt: T0 + D + 2 * HOUR_MS, evidence: { metricValue: 10 } })),
+      [childKey]: { ...strip(ghostHorizon), parentKey: twinKey },
+    };
+    const ledger = ingestHistory(keyless, HISTORY, NOW);
+    assert.equal(ledger[keeperKey].outcome, 'YES');
+    assert.equal(ledger[twinKey].duplicateOf, keeperKey);
+    assert.equal(ledger[childKey].duplicateOf, keeperKey);
+    assert.equal(ledger[childKey].outcome, 'VOID');
+    assert.deepEqual(ingestHistory(ledger, HISTORY, NOW + DAY_MS), ledger);
   });
 
   it('lets an emission a voided duplicate once absorbed open its own window', () => {

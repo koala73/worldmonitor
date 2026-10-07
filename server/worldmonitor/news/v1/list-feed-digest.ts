@@ -71,6 +71,8 @@ import {
   accumulatorPruneBounds,
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
+  buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
   forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
@@ -2682,11 +2684,12 @@ async function writeStoryTracking(
         // story:track — the member is a second stored copy of the link, so
         // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
+          const evidenceLink = storyTrackLinkForPersist(representative);
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: storyTrackLinkForPersist(representative),
+              link: evidenceLink,
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -2697,7 +2700,11 @@ async function writeStoryTracking(
             // representative fields live in a self-contained, independently
             // retained record key, so refreshing one story cannot create a
             // second index member or crowd unique evidence out of the cap.
-            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            // A blanked link never replaces a stored link for the same story (#8990).
+            evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
+              forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : forecastEvidenceLinkHost(representative.link),
+            ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
           } else {

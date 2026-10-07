@@ -1,0 +1,3214 @@
+{
+ "version": 1,
+ "regions": {
+  "africa": {
+   "terms": [
+    "africa",
+    "african"
+   ],
+   "countries": []
+  },
+  "americas": {
+   "terms": [
+    "americas",
+    "caribbean",
+    "central america",
+    "latin america",
+    "south america"
+   ],
+   "countries": []
+  },
+  "asia pacific": {
+   "terms": [
+    "asia pacific",
+    "indo pacific",
+    "south china sea",
+    "taiwan strait"
+   ],
+   "countries": [
+    "TW"
+   ]
+  },
+  "bab el mandeb": {
+   "terms": [
+    "bab el mandeb",
+    "gulf of aden",
+    "houthi",
+    "houthis",
+    "red sea"
+   ],
+   "countries": []
+  },
+  "baltic sea": {
+   "terms": [
+    "baltic",
+    "gulf of finland",
+    "kaliningrad"
+   ],
+   "countries": [
+    "EE",
+    "LT",
+    "LV"
+   ]
+  },
+  "baltic theater": {
+   "terms": [
+    "baltic",
+    "kaliningrad",
+    "nordic"
+   ],
+   "countries": [
+    "EE",
+    "FI",
+    "LT",
+    "LV",
+    "SE"
+   ]
+  },
+  "black sea": {
+   "terms": [
+    "black sea",
+    "bosphorus",
+    "crimea",
+    "crimean",
+    "kerch",
+    "novorossiysk",
+    "odesa",
+    "odessa",
+    "sevastopol"
+   ],
+   "countries": [],
+   "exclusions": [
+    "odessa american",
+    "odessa texas",
+    "odessa tx"
+   ]
+  },
+  "bosporus strait": {
+   "terms": [
+    "bosphorus",
+    "bosporus"
+   ],
+   "countries": []
+  },
+  "cape of good hope": {
+   "terms": [
+    "cape of good hope"
+   ],
+   "countries": []
+  },
+  "dover strait": {
+   "terms": [
+    "dover",
+    "english channel"
+   ],
+   "countries": []
+  },
+  "eastern mediterranean": {
+   "terms": [
+    "aegean",
+    "east mediterranean",
+    "eastern mediterranean",
+    "levant"
+   ],
+   "countries": [
+    "CY",
+    "LB"
+   ]
+  },
+  "europe": {
+   "terms": [
+    "eu",
+    "europe",
+    "european"
+   ],
+   "countries": []
+  },
+  "iran theater": {
+   "terms": [
+    "hormuz",
+    "persian gulf"
+   ],
+   "countries": [
+    "IR"
+   ]
+  },
+  "israel gaza": {
+   "terms": [
+    "idf"
+   ],
+   "countries": [
+    "IL",
+    "PS"
+   ]
+  },
+  "kerch strait": {
+   "terms": [
+    "crimean bridge",
+    "kerch"
+   ],
+   "countries": []
+  },
+  "korea strait": {
+   "terms": [
+    "korea strait",
+    "tsushima"
+   ],
+   "countries": []
+  },
+  "korean peninsula": {
+   "terms": [
+    "dprk",
+    "korea",
+    "korean",
+    "korean peninsula"
+   ],
+   "countries": [
+    "KP",
+    "KR"
+   ]
+  },
+  "latin america": {
+   "terms": [
+    "caribbean",
+    "central america",
+    "latin america",
+    "south america"
+   ],
+   "countries": []
+  },
+  "lombok strait": {
+   "terms": [
+    "lombok"
+   ],
+   "countries": []
+  },
+  "middle east": {
+   "terms": [
+    "hezbollah",
+    "hormuz",
+    "houthi",
+    "houthis",
+    "middle east",
+    "mideast",
+    "persian gulf"
+   ],
+   "countries": [
+    "AE",
+    "BH",
+    "IL",
+    "IQ",
+    "IR",
+    "JO",
+    "KW",
+    "LB",
+    "OM",
+    "PS",
+    "QA",
+    "SA",
+    "SY",
+    "YE"
+   ]
+  },
+  "northern europe": {
+   "terms": [
+    "baltic",
+    "kaliningrad",
+    "nordic",
+    "northern europe",
+    "scandinavia"
+   ],
+   "countries": [
+    "DK",
+    "EE",
+    "FI",
+    "LT",
+    "LV",
+    "NO",
+    "SE"
+   ]
+  },
+  "oceania": {
+   "terms": [
+    "oceania",
+    "pacific islands"
+   ],
+   "countries": [
+    "AU",
+    "NZ"
+   ]
+  },
+  "panama canal": {
+   "terms": [
+    "panama canal"
+   ],
+   "countries": []
+  },
+  "persian gulf": {
+   "terms": [
+    "gulf of oman",
+    "hormuz",
+    "persian gulf"
+   ],
+   "countries": [
+    "AE",
+    "BH",
+    "IR",
+    "KW",
+    "OM",
+    "QA",
+    "SA"
+   ]
+  },
+  "red sea": {
+   "terms": [
+    "bab el mandeb",
+    "gulf of aden",
+    "houthi",
+    "houthis",
+    "red sea",
+    "suez"
+   ],
+   "countries": []
+  },
+  "sahel": {
+   "terms": [
+    "sahel"
+   ],
+   "countries": [
+    "BF",
+    "ML",
+    "NE",
+    "TD"
+   ]
+  },
+  "south china sea": {
+   "terms": [
+    "paracel",
+    "scarborough shoal",
+    "second thomas shoal",
+    "south china sea",
+    "spratly"
+   ],
+   "countries": []
+  },
+  "strait of gibraltar": {
+   "terms": [
+    "gibraltar"
+   ],
+   "countries": []
+  },
+  "strait of hormuz": {
+   "terms": [
+    "hormuz"
+   ],
+   "countries": []
+  },
+  "strait of malacca": {
+   "terms": [
+    "malacca"
+   ],
+   "countries": []
+  },
+  "suez canal": {
+   "terms": [
+    "suez"
+   ],
+   "countries": []
+  },
+  "taiwan strait": {
+   "terms": [
+    "taiwan strait"
+   ],
+   "countries": [
+    "TW"
+   ]
+  },
+  "western pacific": {
+   "terms": [
+    "east china sea",
+    "guam",
+    "okinawa",
+    "philippine sea",
+    "south china sea",
+    "taiwan strait",
+    "western pacific"
+   ],
+   "countries": [
+    "TW"
+   ]
+  },
+  "yemen red sea": {
+   "terms": [
+    "bab el mandeb",
+    "gulf of aden",
+    "houthi",
+    "houthis",
+    "red sea"
+   ],
+   "countries": [
+    "YE"
+   ]
+  }
+ },
+ "labels": {
+  "afghanistan": "AF",
+  "aland": "AX",
+  "albania": "AL",
+  "algeria": "DZ",
+  "american samoa": "AS",
+  "andorra": "AD",
+  "angola": "AO",
+  "anguilla": "AI",
+  "antarctica": "AQ",
+  "antigua and barbuda": "AG",
+  "argentina": "AR",
+  "armenia": "AM",
+  "aruba": "AW",
+  "australia": "AU",
+  "austria": "AT",
+  "azerbaijan": "AZ",
+  "bahamas": "BS",
+  "bahamas the": "BS",
+  "bahrain": "BH",
+  "bangladesh": "BD",
+  "barbados": "BB",
+  "belarus": "BY",
+  "belgium": "BE",
+  "belize": "BZ",
+  "benin": "BJ",
+  "bermuda": "BM",
+  "bhutan": "BT",
+  "bolivarian republic of venezuela": "VE",
+  "bolivia": "BO",
+  "bosnia and herzegovina": "BA",
+  "botswana": "BW",
+  "brazil": "BR",
+  "british indian ocean territory": "IO",
+  "british virgin islands": "VG",
+  "brunei": "BN",
+  "brunei darussalam": "BN",
+  "bulgaria": "BG",
+  "burkina faso": "BF",
+  "burma": "MM",
+  "burundi": "BI",
+  "cabo verde": "CV",
+  "cambodia": "KH",
+  "cameroon": "CM",
+  "canada": "CA",
+  "cape verde": "CV",
+  "cayman islands": "KY",
+  "central african republic": "CF",
+  "chad": "TD",
+  "chile": "CL",
+  "china": "CN",
+  "colombia": "CO",
+  "comoros": "KM",
+  "congo": "CG",
+  "congo brazzaville": "CG",
+  "congo dem rep": "CD",
+  "congo kinshasa": "CD",
+  "congo rep": "CG",
+  "cook islands": "CK",
+  "costa rica": "CR",
+  "cote d ivoire": "CI",
+  "cote divoire": "CI",
+  "croatia": "HR",
+  "cuba": "CU",
+  "curacao": "CW",
+  "cyprus": "CY",
+  "czech republic": "CZ",
+  "czechia": "CZ",
+  "democratic peoples republic of korea": "KP",
+  "democratic republic of korea": "KP",
+  "democratic republic of the congo": "CD",
+  "denmark": "DK",
+  "djibouti": "DJ",
+  "dominica": "DM",
+  "dominican republic": "DO",
+  "dr congo": "CD",
+  "drc": "CD",
+  "east timor": "TL",
+  "ecuador": "EC",
+  "egypt": "EG",
+  "egypt arab rep": "EG",
+  "el salvador": "SV",
+  "equatorial guinea": "GQ",
+  "eritrea": "ER",
+  "estonia": "EE",
+  "eswatini": "SZ",
+  "ethiopia": "ET",
+  "falkland islands": "FK",
+  "faroe islands": "FO",
+  "federated states of micronesia": "FM",
+  "fiji": "FJ",
+  "finland": "FI",
+  "france": "FR",
+  "french polynesia": "PF",
+  "french southern and antarctic lands": "TF",
+  "gabon": "GA",
+  "gambia": "GM",
+  "gambia the": "GM",
+  "gaza": "PS",
+  "georgia": "GE",
+  "germany": "DE",
+  "ghana": "GH",
+  "gibraltar": "GI",
+  "greece": "GR",
+  "greenland": "GL",
+  "grenada": "GD",
+  "guam": "GU",
+  "guatemala": "GT",
+  "guernsey": "GG",
+  "guinea": "GN",
+  "guinea bissau": "GW",
+  "guyana": "GY",
+  "haiti": "HT",
+  "heard island and mcdonald islands": "HM",
+  "honduras": "HN",
+  "hong kong": "HK",
+  "hong kong s a r": "HK",
+  "hong kong sar china": "HK",
+  "hungary": "HU",
+  "iceland": "IS",
+  "india": "IN",
+  "indonesia": "ID",
+  "iran": "IR",
+  "iran islamic rep": "IR",
+  "iraq": "IQ",
+  "ireland": "IE",
+  "isle of man": "IM",
+  "israel": "IL",
+  "italy": "IT",
+  "ivory coast": "CI",
+  "jamaica": "JM",
+  "japan": "JP",
+  "jersey": "JE",
+  "jordan": "JO",
+  "kazakhstan": "KZ",
+  "kenya": "KE",
+  "kiribati": "KI",
+  "korea dem peoples rep": "KP",
+  "korea rep": "KR",
+  "kosovo": "XK",
+  "kuwait": "KW",
+  "kyrgyz republic": "KG",
+  "kyrgyzstan": "KG",
+  "lao pdr": "LA",
+  "laos": "LA",
+  "latvia": "LV",
+  "lebanon": "LB",
+  "lesotho": "LS",
+  "liberia": "LR",
+  "libya": "LY",
+  "liechtenstein": "LI",
+  "lithuania": "LT",
+  "luxembourg": "LU",
+  "macao s a r": "MO",
+  "macao sar china": "MO",
+  "madagascar": "MG",
+  "malawi": "MW",
+  "malaysia": "MY",
+  "maldives": "MV",
+  "mali": "ML",
+  "malta": "MT",
+  "marshall islands": "MH",
+  "mauritania": "MR",
+  "mauritius": "MU",
+  "mexico": "MX",
+  "micronesia": "FM",
+  "micronesia fed sts": "FM",
+  "moldova": "MD",
+  "monaco": "MC",
+  "mongolia": "MN",
+  "montenegro": "ME",
+  "montserrat": "MS",
+  "morocco": "MA",
+  "mozambique": "MZ",
+  "myanmar": "MM",
+  "namibia": "NA",
+  "nauru": "NR",
+  "nepal": "NP",
+  "netherlands": "NL",
+  "new caledonia": "NC",
+  "new zealand": "NZ",
+  "nicaragua": "NI",
+  "niger": "NE",
+  "nigeria": "NG",
+  "niue": "NU",
+  "norfolk island": "NF",
+  "north korea": "KP",
+  "north macedonia": "MK",
+  "northern mariana islands": "MP",
+  "norway": "NO",
+  "occupied palestinian territory": "PS",
+  "oman": "OM",
+  "pakistan": "PK",
+  "palau": "PW",
+  "palestine": "PS",
+  "palestine state of": "PS",
+  "palestinian territories": "PS",
+  "panama": "PA",
+  "papua new guinea": "PG",
+  "paraguay": "PY",
+  "peru": "PE",
+  "philippines": "PH",
+  "pitcairn islands": "PN",
+  "plurinational state of bolivia": "BO",
+  "poland": "PL",
+  "portugal": "PT",
+  "puerto rico": "PR",
+  "qatar": "QA",
+  "republic of korea": "KR",
+  "republic of serbia": "RS",
+  "republic of the congo": "CG",
+  "romania": "RO",
+  "russia": "RU",
+  "russian federation": "RU",
+  "rwanda": "RW",
+  "saint barthelemy": "BL",
+  "saint helena": "SH",
+  "saint kitts and nevis": "KN",
+  "saint lucia": "LC",
+  "saint martin": "MF",
+  "saint pierre and miquelon": "PM",
+  "saint vincent and the grenadines": "VC",
+  "samoa": "WS",
+  "san marino": "SM",
+  "sao tome": "ST",
+  "sao tome and principe": "ST",
+  "saudi arabia": "SA",
+  "senegal": "SN",
+  "serbia": "RS",
+  "seychelles": "SC",
+  "sierra leone": "SL",
+  "singapore": "SG",
+  "sint maarten": "SX",
+  "slovak republic": "SK",
+  "slovakia": "SK",
+  "slovenia": "SI",
+  "solomon islands": "SB",
+  "somalia": "SO",
+  "south africa": "ZA",
+  "south georgia and the islands": "GS",
+  "south korea": "KR",
+  "south sudan": "SS",
+  "spain": "ES",
+  "sri lanka": "LK",
+  "st kitts and nevis": "KN",
+  "st lucia": "LC",
+  "st vincent and the grenadines": "VC",
+  "sudan": "SD",
+  "suriname": "SR",
+  "swaziland": "SZ",
+  "sweden": "SE",
+  "switzerland": "CH",
+  "syria": "SY",
+  "syrian arab republic": "SY",
+  "taiwan": "TW",
+  "tajikistan": "TJ",
+  "tanzania": "TZ",
+  "thailand": "TH",
+  "the bahamas": "BS",
+  "the comoros": "KM",
+  "the gambia": "GM",
+  "the maldives": "MV",
+  "the netherlands": "NL",
+  "the philippines": "PH",
+  "the seychelles": "SC",
+  "timor leste": "TL",
+  "togo": "TG",
+  "tonga": "TO",
+  "trinidad and tobago": "TT",
+  "tunisia": "TN",
+  "turkey": "TR",
+  "turkiye": "TR",
+  "turkmenistan": "TM",
+  "turks and caicos": "TC",
+  "turks and caicos islands": "TC",
+  "tuvalu": "TV",
+  "u s": "US",
+  "u s virgin islands": "VI",
+  "uae": "AE",
+  "uganda": "UG",
+  "uk": "GB",
+  "ukraine": "UA",
+  "united arab emirates": "AE",
+  "united kingdom": "GB",
+  "united republic of tanzania": "TZ",
+  "united states": "US",
+  "united states minor outlying islands": "UM",
+  "united states of america": "US",
+  "united states virgin islands": "VI",
+  "uruguay": "UY",
+  "usa": "US",
+  "uzbekistan": "UZ",
+  "vanuatu": "VU",
+  "vatican": "VA",
+  "venezuela": "VE",
+  "venezuela rb": "VE",
+  "viet nam": "VN",
+  "vietnam": "VN",
+  "virgin islands uk": "VG",
+  "wallis and futuna": "WF",
+  "west bank": "PS",
+  "west bank and gaza": "PS",
+  "western sahara": "EH",
+  "yemen": "YE",
+  "yemen rep": "YE",
+  "zambia": "ZM",
+  "zimbabwe": "ZW"
+ },
+ "countries": {
+  "AD": {
+   "terms": [
+    "andorra"
+   ],
+   "demonyms": [
+    "Andorran"
+   ],
+   "exclusions": []
+  },
+  "AE": {
+   "terms": [
+    "abu dhabi",
+    "dubai",
+    "emirates",
+    "uae",
+    "united arab emirates"
+   ],
+   "demonyms": [
+    "Emirati",
+    "Emiratis"
+   ],
+   "exclusions": []
+  },
+  "AF": {
+   "terms": [
+    "afghanistan",
+    "kabul",
+    "taliban"
+   ],
+   "demonyms": [
+    "Afghan",
+    "Afghans"
+   ],
+   "exclusions": []
+  },
+  "AG": {
+   "terms": [
+    "antigua",
+    "antigua and barbuda"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AI": {
+   "terms": [
+    "anguilla"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AL": {
+   "terms": [
+    "albania",
+    "tirana"
+   ],
+   "demonyms": [
+    "Albanian",
+    "Albanians"
+   ],
+   "exclusions": []
+  },
+  "AM": {
+   "terms": [
+    "armenia",
+    "yerevan"
+   ],
+   "demonyms": [
+    "Armenian",
+    "Armenians"
+   ],
+   "exclusions": []
+  },
+  "AO": {
+   "terms": [
+    "angola",
+    "luanda"
+   ],
+   "demonyms": [
+    "Angolan",
+    "Angolans"
+   ],
+   "exclusions": []
+  },
+  "AQ": {
+   "terms": [
+    "antarctica"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AR": {
+   "terms": [
+    "argentina",
+    "buenos aires"
+   ],
+   "demonyms": [
+    "Argentine",
+    "Argentinian",
+    "Argentinians"
+   ],
+   "exclusions": []
+  },
+  "AS": {
+   "terms": [
+    "american samoa"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AT": {
+   "terms": [
+    "austria",
+    "vienna"
+   ],
+   "demonyms": [
+    "Austrian",
+    "Austrians"
+   ],
+   "exclusions": []
+  },
+  "AU": {
+   "terms": [
+    "australia",
+    "canberra"
+   ],
+   "demonyms": [
+    "Australian",
+    "Australians"
+   ],
+   "exclusions": []
+  },
+  "AW": {
+   "terms": [
+    "aruba"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AX": {
+   "terms": [
+    "aland islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "AZ": {
+   "terms": [
+    "azerbaijan",
+    "baku"
+   ],
+   "demonyms": [
+    "Azerbaijani",
+    "Azeri"
+   ],
+   "exclusions": []
+  },
+  "BA": {
+   "terms": [
+    "bosnia",
+    "bosnia and herzegovina",
+    "sarajevo"
+   ],
+   "demonyms": [
+    "Bosnian",
+    "Bosnians"
+   ],
+   "exclusions": []
+  },
+  "BB": {
+   "terms": [
+    "barbados"
+   ],
+   "demonyms": [
+    "Barbadian"
+   ],
+   "exclusions": []
+  },
+  "BD": {
+   "terms": [
+    "bangladesh",
+    "dhaka"
+   ],
+   "demonyms": [
+    "Bangladeshi",
+    "Bangladeshis"
+   ],
+   "exclusions": []
+  },
+  "BE": {
+   "terms": [
+    "belgium",
+    "brussels"
+   ],
+   "demonyms": [
+    "Belgian",
+    "Belgians"
+   ],
+   "exclusions": []
+  },
+  "BF": {
+   "terms": [
+    "burkina faso",
+    "ouagadougou"
+   ],
+   "demonyms": [
+    "Burkinabe",
+    "Burkinabè"
+   ],
+   "exclusions": []
+  },
+  "BG": {
+   "terms": [
+    "bulgaria"
+   ],
+   "demonyms": [
+    "Bulgarian",
+    "Bulgarians"
+   ],
+   "exclusions": []
+  },
+  "BH": {
+   "terms": [
+    "bahrain",
+    "manama"
+   ],
+   "demonyms": [
+    "Bahraini"
+   ],
+   "exclusions": []
+  },
+  "BI": {
+   "terms": [
+    "burundi"
+   ],
+   "demonyms": [
+    "Burundian",
+    "Burundians"
+   ],
+   "exclusions": []
+  },
+  "BJ": {
+   "terms": [
+    "benin"
+   ],
+   "demonyms": [
+    "Beninese"
+   ],
+   "exclusions": []
+  },
+  "BL": {
+   "terms": [
+    "st barthelemy"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "BM": {
+   "terms": [
+    "bermuda"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "BN": {
+   "terms": [
+    "brunei",
+    "brunei darussalam"
+   ],
+   "demonyms": [
+    "Bruneian"
+   ],
+   "exclusions": []
+  },
+  "BO": {
+   "terms": [
+    "bolivia"
+   ],
+   "demonyms": [
+    "Bolivian",
+    "Bolivians"
+   ],
+   "exclusions": []
+  },
+  "BR": {
+   "terms": [
+    "brasilia",
+    "brazil",
+    "sao paulo"
+   ],
+   "demonyms": [
+    "Brazilian",
+    "Brazilians"
+   ],
+   "exclusions": []
+  },
+  "BS": {
+   "terms": [
+    "bahamas"
+   ],
+   "demonyms": [
+    "Bahamian"
+   ],
+   "exclusions": []
+  },
+  "BT": {
+   "terms": [
+    "bhutan"
+   ],
+   "demonyms": [
+    "Bhutanese"
+   ],
+   "exclusions": []
+  },
+  "BW": {
+   "terms": [
+    "botswana"
+   ],
+   "demonyms": [
+    "Batswana",
+    "Botswanan",
+    "Motswana"
+   ],
+   "exclusions": []
+  },
+  "BY": {
+   "terms": [
+    "belarus",
+    "lukashenko",
+    "minsk"
+   ],
+   "demonyms": [
+    "Belarusian",
+    "Belarusians"
+   ],
+   "exclusions": []
+  },
+  "BZ": {
+   "terms": [
+    "belize"
+   ],
+   "demonyms": [
+    "Belizean"
+   ],
+   "exclusions": []
+  },
+  "CA": {
+   "terms": [
+    "canada",
+    "ottawa",
+    "toronto"
+   ],
+   "demonyms": [
+    "Canadian",
+    "Canadians"
+   ],
+   "exclusions": []
+  },
+  "CD": {
+   "terms": [
+    "congo kinshasa",
+    "democratic republic of congo",
+    "democratic republic of the congo",
+    "dr congo",
+    "drc",
+    "goma",
+    "kinshasa",
+    "m23"
+   ],
+   "demonyms": [],
+   "exclusions": [],
+   "weak": [
+    "congo"
+   ],
+   "coTerms": [
+    "drc",
+    "ebola",
+    "goma",
+    "ituri",
+    "kinshasa",
+    "kivu",
+    "m23",
+    "rwanda",
+    "tshisekedi"
+   ]
+  },
+  "CF": {
+   "terms": [
+    "central african republic"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "CG": {
+   "terms": [
+    "brazzaville",
+    "congo brazzaville",
+    "republic of congo",
+    "republic of the congo"
+   ],
+   "demonyms": [],
+   "exclusions": [
+    "democratic republic of congo",
+    "democratic republic of the congo"
+   ],
+   "weak": [
+    "congo"
+   ],
+   "coTerms": [
+    "brazzaville",
+    "sassou"
+   ]
+  },
+  "CH": {
+   "terms": [
+    "geneva",
+    "swiss",
+    "switzerland",
+    "zurich"
+   ],
+   "demonyms": [
+    "Swiss"
+   ],
+   "exclusions": []
+  },
+  "CI": {
+   "terms": [
+    "abidjan",
+    "cote d ivoire",
+    "ivory coast"
+   ],
+   "demonyms": [
+    "Ivorian",
+    "Ivorians"
+   ],
+   "exclusions": []
+  },
+  "CK": {
+   "terms": [
+    "cook islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "CL": {
+   "terms": [
+    "chile"
+   ],
+   "demonyms": [
+    "Chilean",
+    "Chileans"
+   ],
+   "exclusions": []
+  },
+  "CM": {
+   "terms": [
+    "cameroon",
+    "yaounde"
+   ],
+   "demonyms": [
+    "Cameroonian",
+    "Cameroonians"
+   ],
+   "exclusions": []
+  },
+  "CN": {
+   "terms": [
+    "beijing",
+    "china",
+    "prc",
+    "xi jinping"
+   ],
+   "demonyms": [
+    "Chinese"
+   ],
+   "exclusions": []
+  },
+  "CO": {
+   "terms": [
+    "bogota",
+    "colombia"
+   ],
+   "demonyms": [
+    "Colombian",
+    "Colombians"
+   ],
+   "exclusions": []
+  },
+  "CR": {
+   "terms": [
+    "costa rica"
+   ],
+   "demonyms": [
+    "Costa Rican",
+    "Costa Ricans"
+   ],
+   "exclusions": []
+  },
+  "CU": {
+   "terms": [
+    "cuba",
+    "havana"
+   ],
+   "demonyms": [
+    "Cuban",
+    "Cubans"
+   ],
+   "exclusions": []
+  },
+  "CV": {
+   "terms": [
+    "cabo verde",
+    "cape verde"
+   ],
+   "demonyms": [
+    "Cape Verdean"
+   ],
+   "exclusions": []
+  },
+  "CW": {
+   "terms": [
+    "curacao"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "CY": {
+   "terms": [
+    "cyprus",
+    "nicosia"
+   ],
+   "demonyms": [
+    "Cypriot",
+    "Cypriots"
+   ],
+   "exclusions": []
+  },
+  "CZ": {
+   "terms": [
+    "czech",
+    "czech republic",
+    "czechia",
+    "prague"
+   ],
+   "demonyms": [
+    "Czech",
+    "Czechs"
+   ],
+   "exclusions": []
+  },
+  "DE": {
+   "terms": [
+    "berlin",
+    "germany"
+   ],
+   "demonyms": [
+    "German",
+    "Germans"
+   ],
+   "exclusions": []
+  },
+  "DJ": {
+   "terms": [
+    "djibouti"
+   ],
+   "demonyms": [
+    "Djiboutian"
+   ],
+   "exclusions": []
+  },
+  "DK": {
+   "terms": [
+    "copenhagen",
+    "denmark"
+   ],
+   "demonyms": [
+    "Dane",
+    "Danes",
+    "Danish"
+   ],
+   "exclusions": []
+  },
+  "DM": {
+   "terms": [
+    "dominica"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "DO": {
+   "terms": [
+    "dominican republic"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "DZ": {
+   "terms": [
+    "algeria",
+    "algiers"
+   ],
+   "demonyms": [
+    "Algerian",
+    "Algerians"
+   ],
+   "exclusions": []
+  },
+  "EC": {
+   "terms": [
+    "ecuador",
+    "quito"
+   ],
+   "demonyms": [
+    "Ecuadorean",
+    "Ecuadorian",
+    "Ecuadorians"
+   ],
+   "exclusions": []
+  },
+  "EE": {
+   "terms": [
+    "estonia",
+    "tallinn"
+   ],
+   "demonyms": [
+    "Estonian",
+    "Estonians"
+   ],
+   "exclusions": []
+  },
+  "EG": {
+   "terms": [
+    "cairo",
+    "egypt",
+    "suez"
+   ],
+   "demonyms": [
+    "Egyptian",
+    "Egyptians"
+   ],
+   "exclusions": []
+  },
+  "EH": {
+   "terms": [
+    "western sahara"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "ER": {
+   "terms": [
+    "asmara",
+    "eritrea"
+   ],
+   "demonyms": [
+    "Eritrean",
+    "Eritreans"
+   ],
+   "exclusions": []
+  },
+  "ES": {
+   "terms": [
+    "madrid",
+    "spain"
+   ],
+   "demonyms": [
+    "Spaniard",
+    "Spaniards",
+    "Spanish"
+   ],
+   "exclusions": []
+  },
+  "ET": {
+   "terms": [
+    "addis ababa",
+    "amhara",
+    "ethiopia",
+    "tigray"
+   ],
+   "demonyms": [
+    "Ethiopian",
+    "Ethiopians"
+   ],
+   "exclusions": []
+  },
+  "FI": {
+   "terms": [
+    "finland",
+    "helsinki"
+   ],
+   "demonyms": [
+    "Finn",
+    "Finnish",
+    "Finns"
+   ],
+   "exclusions": []
+  },
+  "FJ": {
+   "terms": [
+    "fiji"
+   ],
+   "demonyms": [
+    "Fijian",
+    "Fijians"
+   ],
+   "exclusions": []
+  },
+  "FK": {
+   "terms": [
+    "falkland islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "FM": {
+   "terms": [
+    "federated states of micronesia",
+    "micronesia"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "FO": {
+   "terms": [
+    "faroe islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "FR": {
+   "terms": [
+    "france",
+    "macron",
+    "paris"
+   ],
+   "demonyms": [
+    "French"
+   ],
+   "exclusions": [
+    "french guiana",
+    "french open",
+    "french polynesia"
+   ]
+  },
+  "GA": {
+   "terms": [
+    "gabon"
+   ],
+   "demonyms": [
+    "Gabonese"
+   ],
+   "exclusions": []
+  },
+  "GB": {
+   "terms": [
+    "britain",
+    "great britain",
+    "u k",
+    "uk",
+    "united kingdom"
+   ],
+   "demonyms": [
+    "British",
+    "Briton",
+    "Britons"
+   ],
+   "exclusions": [
+    "british columbia",
+    "british virgin islands"
+   ]
+  },
+  "GD": {
+   "terms": [
+    "grenada"
+   ],
+   "demonyms": [
+    "Grenadian"
+   ],
+   "exclusions": []
+  },
+  "GE": {
+   "terms": [
+    "georgian dream",
+    "tbilisi"
+   ],
+   "demonyms": [],
+   "exclusions": [],
+   "weak": [
+    "georgia",
+    "georgian"
+   ],
+   "coTerms": [
+    "abkhazia",
+    "batumi",
+    "caucasus",
+    "crimea",
+    "eu",
+    "georgian dream",
+    "ivanishvili",
+    "kobakhidze",
+    "kremlin",
+    "moscow",
+    "nato",
+    "ossetia",
+    "tbilisi",
+    "ukraine"
+   ]
+  },
+  "GG": {
+   "terms": [
+    "guernsey"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GH": {
+   "terms": [
+    "accra",
+    "ghana"
+   ],
+   "demonyms": [
+    "Ghanaian",
+    "Ghanaians"
+   ],
+   "exclusions": []
+  },
+  "GI": {
+   "terms": [
+    "gibraltar"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GL": {
+   "terms": [
+    "greenland"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GM": {
+   "terms": [
+    "gambia"
+   ],
+   "demonyms": [
+    "Gambian",
+    "Gambians"
+   ],
+   "exclusions": []
+  },
+  "GN": {
+   "terms": [
+    "conakry",
+    "guinea"
+   ],
+   "demonyms": [],
+   "exclusions": [
+    "equatorial guinea",
+    "guinea bissau",
+    "guinea fowl",
+    "guinea pig",
+    "guinea pigs",
+    "guinea worm",
+    "papua new guinea"
+   ]
+  },
+  "GQ": {
+   "terms": [
+    "equatorial guinea"
+   ],
+   "demonyms": [
+    "Equatoguinean",
+    "Equatorial Guinean"
+   ],
+   "exclusions": []
+  },
+  "GR": {
+   "terms": [
+    "athens",
+    "greece"
+   ],
+   "demonyms": [
+    "Greek",
+    "Greeks"
+   ],
+   "exclusions": []
+  },
+  "GS": {
+   "terms": [
+    "south georgia and south sandwich islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GT": {
+   "terms": [
+    "guatemala"
+   ],
+   "demonyms": [
+    "Guatemalan",
+    "Guatemalans"
+   ],
+   "exclusions": []
+  },
+  "GU": {
+   "terms": [
+    "guam"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GW": {
+   "terms": [
+    "guinea bissau"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "GY": {
+   "terms": [
+    "guyana"
+   ],
+   "demonyms": [
+    "Guyanese"
+   ],
+   "exclusions": []
+  },
+  "HK": {
+   "terms": [
+    "hong kong"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "HM": {
+   "terms": [
+    "heard and mcdonald islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "HN": {
+   "terms": [
+    "honduras"
+   ],
+   "demonyms": [
+    "Honduran",
+    "Hondurans"
+   ],
+   "exclusions": []
+  },
+  "HR": {
+   "terms": [
+    "croatia",
+    "zagreb"
+   ],
+   "demonyms": [
+    "Croat",
+    "Croatian",
+    "Croatians",
+    "Croats"
+   ],
+   "exclusions": []
+  },
+  "HT": {
+   "terms": [
+    "haiti",
+    "port au prince"
+   ],
+   "demonyms": [
+    "Haitian",
+    "Haitians"
+   ],
+   "exclusions": []
+  },
+  "HU": {
+   "terms": [
+    "budapest",
+    "hungary"
+   ],
+   "demonyms": [
+    "Hungarian",
+    "Hungarians"
+   ],
+   "exclusions": []
+  },
+  "ID": {
+   "terms": [
+    "indonesia",
+    "jakarta"
+   ],
+   "demonyms": [
+    "Indonesian",
+    "Indonesians"
+   ],
+   "exclusions": []
+  },
+  "IE": {
+   "terms": [
+    "dublin",
+    "ireland"
+   ],
+   "demonyms": [
+    "Irish"
+   ],
+   "exclusions": [
+    "northern ireland",
+    "northern irish"
+   ]
+  },
+  "IL": {
+   "terms": [
+    "gaza",
+    "hamas",
+    "idf",
+    "israel",
+    "israeli",
+    "netanyahu",
+    "tel aviv"
+   ],
+   "demonyms": [
+    "Israeli",
+    "Israelis"
+   ],
+   "exclusions": []
+  },
+  "IM": {
+   "terms": [
+    "isle of man"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "IN": {
+   "terms": [
+    "india",
+    "modi",
+    "new delhi"
+   ],
+   "demonyms": [
+    "Indian",
+    "Indians"
+   ],
+   "exclusions": [
+    "indian ocean"
+   ]
+  },
+  "IO": {
+   "terms": [
+    "british indian ocean territory"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "IQ": {
+   "terms": [
+    "baghdad",
+    "iraq"
+   ],
+   "demonyms": [
+    "Iraqi",
+    "Iraqis"
+   ],
+   "exclusions": []
+  },
+  "IR": {
+   "terms": [
+    "iran",
+    "iranian",
+    "irgc",
+    "khamenei",
+    "tehran"
+   ],
+   "demonyms": [
+    "Iranian",
+    "Iranians"
+   ],
+   "exclusions": []
+  },
+  "IS": {
+   "terms": [
+    "iceland",
+    "reykjavik"
+   ],
+   "demonyms": [
+    "Icelander",
+    "Icelanders",
+    "Icelandic"
+   ],
+   "exclusions": []
+  },
+  "IT": {
+   "terms": [
+    "italy",
+    "rome"
+   ],
+   "demonyms": [
+    "Italian",
+    "Italians"
+   ],
+   "exclusions": []
+  },
+  "JE": {
+   "terms": [
+    "jersey"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "JM": {
+   "terms": [
+    "jamaica"
+   ],
+   "demonyms": [
+    "Jamaican",
+    "Jamaicans"
+   ],
+   "exclusions": []
+  },
+  "JO": {
+   "terms": [
+    "amman",
+    "in jordan"
+   ],
+   "demonyms": [
+    "Jordanian",
+    "Jordanians"
+   ],
+   "exclusions": [],
+   "weak": [
+    "jordan"
+   ],
+   "coTerms": [
+    "amman",
+    "gaza",
+    "hashemite",
+    "iraq",
+    "israel",
+    "israeli",
+    "king abdullah",
+    "middle east",
+    "palestinian",
+    "syria",
+    "west bank"
+   ]
+  },
+  "JP": {
+   "terms": [
+    "japan",
+    "tokyo"
+   ],
+   "demonyms": [
+    "Japanese"
+   ],
+   "exclusions": []
+  },
+  "KE": {
+   "terms": [
+    "kenya",
+    "nairobi"
+   ],
+   "demonyms": [
+    "Kenyan",
+    "Kenyans"
+   ],
+   "exclusions": []
+  },
+  "KG": {
+   "terms": [
+    "kyrgyzstan"
+   ],
+   "demonyms": [
+    "Kyrgyz"
+   ],
+   "exclusions": []
+  },
+  "KH": {
+   "terms": [
+    "cambodia",
+    "phnom penh"
+   ],
+   "demonyms": [
+    "Cambodian",
+    "Cambodians"
+   ],
+   "exclusions": []
+  },
+  "KI": {
+   "terms": [
+    "kiribati"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "KM": {
+   "terms": [
+    "comoros"
+   ],
+   "demonyms": [
+    "Comoran",
+    "Comorian"
+   ],
+   "exclusions": []
+  },
+  "KN": {
+   "terms": [
+    "saint kitts",
+    "saint kitts and nevis",
+    "st kitts",
+    "st kitts and nevis"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "KP": {
+   "terms": [
+    "democratic people s republic of korea",
+    "dprk",
+    "kim jong",
+    "kim jong un",
+    "north korea",
+    "pyongyang"
+   ],
+   "demonyms": [
+    "North Korean",
+    "North Koreans"
+   ],
+   "exclusions": []
+  },
+  "KR": {
+   "terms": [
+    "republic of korea",
+    "seoul",
+    "south korea"
+   ],
+   "demonyms": [
+    "South Korean",
+    "South Koreans"
+   ],
+   "exclusions": [
+    "democratic people s republic of korea"
+   ]
+  },
+  "KW": {
+   "terms": [
+    "kuwait"
+   ],
+   "demonyms": [
+    "Kuwaiti",
+    "Kuwaitis"
+   ],
+   "exclusions": []
+  },
+  "KY": {
+   "terms": [
+    "cayman islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "KZ": {
+   "terms": [
+    "astana",
+    "kazakhstan"
+   ],
+   "demonyms": [
+    "Kazakh",
+    "Kazakhs",
+    "Kazakhstani"
+   ],
+   "exclusions": []
+  },
+  "LA": {
+   "terms": [
+    "laos"
+   ],
+   "demonyms": [
+    "Laotian",
+    "Laotians"
+   ],
+   "exclusions": []
+  },
+  "LB": {
+   "terms": [
+    "beirut",
+    "hezbollah",
+    "lebanon"
+   ],
+   "demonyms": [
+    "Lebanese"
+   ],
+   "exclusions": []
+  },
+  "LC": {
+   "terms": [
+    "saint lucia",
+    "st lucia"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "LI": {
+   "terms": [
+    "liechtenstein"
+   ],
+   "demonyms": [
+    "Liechtensteiner"
+   ],
+   "exclusions": []
+  },
+  "LK": {
+   "terms": [
+    "colombo",
+    "sri lanka"
+   ],
+   "demonyms": [
+    "Sri Lankan",
+    "Sri Lankans"
+   ],
+   "exclusions": []
+  },
+  "LR": {
+   "terms": [
+    "liberia"
+   ],
+   "demonyms": [
+    "Liberian",
+    "Liberians"
+   ],
+   "exclusions": []
+  },
+  "LS": {
+   "terms": [
+    "lesotho"
+   ],
+   "demonyms": [
+    "Basotho",
+    "Mosotho"
+   ],
+   "exclusions": []
+  },
+  "LT": {
+   "terms": [
+    "lithuania",
+    "vilnius"
+   ],
+   "demonyms": [
+    "Lithuanian",
+    "Lithuanians"
+   ],
+   "exclusions": []
+  },
+  "LU": {
+   "terms": [
+    "luxembourg"
+   ],
+   "demonyms": [
+    "Luxembourger",
+    "Luxembourgers",
+    "Luxembourgish"
+   ],
+   "exclusions": []
+  },
+  "LV": {
+   "terms": [
+    "latvia",
+    "riga"
+   ],
+   "demonyms": [
+    "Latvian",
+    "Latvians"
+   ],
+   "exclusions": []
+  },
+  "LY": {
+   "terms": [
+    "benghazi",
+    "libya"
+   ],
+   "demonyms": [
+    "Libyan",
+    "Libyans"
+   ],
+   "exclusions": []
+  },
+  "MA": {
+   "terms": [
+    "morocco",
+    "rabat"
+   ],
+   "demonyms": [
+    "Moroccan",
+    "Moroccans"
+   ],
+   "exclusions": []
+  },
+  "MC": {
+   "terms": [
+    "monaco"
+   ],
+   "demonyms": [
+    "Monacan",
+    "Monegasque"
+   ],
+   "exclusions": []
+  },
+  "MD": {
+   "terms": [
+    "chisinau",
+    "moldova"
+   ],
+   "demonyms": [
+    "Moldovan",
+    "Moldovans"
+   ],
+   "exclusions": []
+  },
+  "ME": {
+   "terms": [
+    "montenegro"
+   ],
+   "demonyms": [
+    "Montenegrin",
+    "Montenegrins"
+   ],
+   "exclusions": []
+  },
+  "MF": {
+   "terms": [
+    "st martin"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "MG": {
+   "terms": [
+    "madagascar"
+   ],
+   "demonyms": [
+    "Malagasy"
+   ],
+   "exclusions": []
+  },
+  "MH": {
+   "terms": [
+    "marshall islands"
+   ],
+   "demonyms": [
+    "Marshallese"
+   ],
+   "exclusions": []
+  },
+  "MK": {
+   "terms": [
+    "north macedonia",
+    "skopje"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "ML": {
+   "terms": [
+    "bamako",
+    "mali"
+   ],
+   "demonyms": [
+    "Malian",
+    "Malians"
+   ],
+   "exclusions": []
+  },
+  "MM": {
+   "terms": [
+    "burma",
+    "myanmar",
+    "naypyidaw"
+   ],
+   "demonyms": [
+    "Burmese"
+   ],
+   "exclusions": []
+  },
+  "MN": {
+   "terms": [
+    "mongolia"
+   ],
+   "demonyms": [
+    "Mongolian",
+    "Mongolians"
+   ],
+   "exclusions": []
+  },
+  "MO": {
+   "terms": [
+    "macao",
+    "macau"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "MP": {
+   "terms": [
+    "northern mariana islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "MR": {
+   "terms": [
+    "mauritania"
+   ],
+   "demonyms": [
+    "Mauritanian",
+    "Mauritanians"
+   ],
+   "exclusions": []
+  },
+  "MS": {
+   "terms": [
+    "montserrat"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "MT": {
+   "terms": [
+    "malta"
+   ],
+   "demonyms": [
+    "Maltese"
+   ],
+   "exclusions": []
+  },
+  "MU": {
+   "terms": [
+    "mauritius"
+   ],
+   "demonyms": [
+    "Mauritian",
+    "Mauritians"
+   ],
+   "exclusions": []
+  },
+  "MV": {
+   "terms": [
+    "maldives"
+   ],
+   "demonyms": [
+    "Maldivian",
+    "Maldivians"
+   ],
+   "exclusions": []
+  },
+  "MW": {
+   "terms": [
+    "malawi"
+   ],
+   "demonyms": [
+    "Malawian",
+    "Malawians"
+   ],
+   "exclusions": []
+  },
+  "MX": {
+   "terms": [
+    "mexico",
+    "mexico city"
+   ],
+   "demonyms": [
+    "Mexican",
+    "Mexicans"
+   ],
+   "exclusions": [
+    "new mexico"
+   ]
+  },
+  "MY": {
+   "terms": [
+    "kuala lumpur",
+    "malaysia"
+   ],
+   "demonyms": [
+    "Malaysian",
+    "Malaysians"
+   ],
+   "exclusions": []
+  },
+  "MZ": {
+   "terms": [
+    "cabo delgado",
+    "maputo",
+    "mozambique"
+   ],
+   "demonyms": [
+    "Mozambican",
+    "Mozambicans"
+   ],
+   "exclusions": []
+  },
+  "NA": {
+   "terms": [
+    "namibia"
+   ],
+   "demonyms": [
+    "Namibian",
+    "Namibians"
+   ],
+   "exclusions": []
+  },
+  "NC": {
+   "terms": [
+    "new caledonia"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "NE": {
+   "terms": [
+    "niamey"
+   ],
+   "demonyms": [
+    "Nigerien",
+    "Nigeriens"
+   ],
+   "exclusions": [
+    "niger delta",
+    "niger river",
+    "niger state"
+   ],
+   "weak": [
+    "niger"
+   ],
+   "coTerms": [
+    "africa",
+    "african",
+    "burkina",
+    "ecowas",
+    "junta",
+    "mali",
+    "niamey",
+    "sahel",
+    "tiani"
+   ]
+  },
+  "NF": {
+   "terms": [
+    "norfolk island"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "NG": {
+   "terms": [
+    "abuja",
+    "boko haram",
+    "lagos",
+    "nigeria"
+   ],
+   "demonyms": [
+    "Nigerian",
+    "Nigerians"
+   ],
+   "exclusions": []
+  },
+  "NI": {
+   "terms": [
+    "nicaragua"
+   ],
+   "demonyms": [
+    "Nicaraguan",
+    "Nicaraguans"
+   ],
+   "exclusions": []
+  },
+  "NL": {
+   "terms": [
+    "amsterdam",
+    "dutch",
+    "holland",
+    "netherlands"
+   ],
+   "demonyms": [
+    "Dutch"
+   ],
+   "exclusions": [
+    "holland america"
+   ]
+  },
+  "NO": {
+   "terms": [
+    "norway",
+    "oslo"
+   ],
+   "demonyms": [
+    "Norwegian",
+    "Norwegians"
+   ],
+   "exclusions": []
+  },
+  "NP": {
+   "terms": [
+    "kathmandu",
+    "nepal"
+   ],
+   "demonyms": [
+    "Nepalese",
+    "Nepali",
+    "Nepalis"
+   ],
+   "exclusions": []
+  },
+  "NR": {
+   "terms": [
+    "nauru"
+   ],
+   "demonyms": [
+    "Nauruan"
+   ],
+   "exclusions": []
+  },
+  "NU": {
+   "terms": [
+    "niue"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "NZ": {
+   "terms": [
+    "new zealand"
+   ],
+   "demonyms": [
+    "New Zealander",
+    "New Zealanders"
+   ],
+   "exclusions": []
+  },
+  "OM": {
+   "terms": [
+    "muscat",
+    "oman"
+   ],
+   "demonyms": [
+    "Omani",
+    "Omanis"
+   ],
+   "exclusions": []
+  },
+  "PA": {
+   "terms": [
+    "panama"
+   ],
+   "demonyms": [
+    "Panamanian",
+    "Panamanians"
+   ],
+   "exclusions": []
+  },
+  "PE": {
+   "terms": [
+    "peru"
+   ],
+   "demonyms": [
+    "Peruvian",
+    "Peruvians"
+   ],
+   "exclusions": []
+  },
+  "PF": {
+   "terms": [
+    "french polynesia"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "PG": {
+   "terms": [
+    "papua new guinea"
+   ],
+   "demonyms": [
+    "Papua New Guinean"
+   ],
+   "exclusions": []
+  },
+  "PH": {
+   "terms": [
+    "manila",
+    "philippines"
+   ],
+   "demonyms": [
+    "Filipino",
+    "Filipinos",
+    "Philippine"
+   ],
+   "exclusions": []
+  },
+  "PK": {
+   "terms": [
+    "balochistan",
+    "islamabad",
+    "karachi",
+    "khyber",
+    "pakistan",
+    "waziristan"
+   ],
+   "demonyms": [
+    "Pakistani",
+    "Pakistanis"
+   ],
+   "exclusions": []
+  },
+  "PL": {
+   "terms": [
+    "poland",
+    "warsaw"
+   ],
+   "demonyms": [
+    "Polish"
+   ],
+   "exclusions": []
+  },
+  "PM": {
+   "terms": [
+    "st pierre and miquelon"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "PN": {
+   "terms": [
+    "pitcairn islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "PR": {
+   "terms": [
+    "puerto rico"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "PS": {
+   "terms": [
+    "gaza",
+    "hamas",
+    "palestine",
+    "palestinian",
+    "palestinian territories",
+    "palestinians",
+    "west bank"
+   ],
+   "demonyms": [
+    "Palestinian",
+    "Palestinians"
+   ],
+   "exclusions": []
+  },
+  "PT": {
+   "terms": [
+    "lisbon",
+    "portugal"
+   ],
+   "demonyms": [
+    "Portuguese"
+   ],
+   "exclusions": []
+  },
+  "PW": {
+   "terms": [
+    "palau"
+   ],
+   "demonyms": [
+    "Palauan"
+   ],
+   "exclusions": []
+  },
+  "PY": {
+   "terms": [
+    "paraguay"
+   ],
+   "demonyms": [
+    "Paraguayan",
+    "Paraguayans"
+   ],
+   "exclusions": []
+  },
+  "QA": {
+   "terms": [
+    "doha",
+    "qatar"
+   ],
+   "demonyms": [
+    "Qatari",
+    "Qataris"
+   ],
+   "exclusions": []
+  },
+  "RO": {
+   "terms": [
+    "bucharest",
+    "romania"
+   ],
+   "demonyms": [
+    "Romanian",
+    "Romanians"
+   ],
+   "exclusions": []
+  },
+  "RS": {
+   "terms": [
+    "belgrade",
+    "serbia"
+   ],
+   "demonyms": [
+    "Serb",
+    "Serbian",
+    "Serbians",
+    "Serbs"
+   ],
+   "exclusions": []
+  },
+  "RU": {
+   "terms": [
+    "kremlin",
+    "moscow",
+    "putin",
+    "russia",
+    "russian federation"
+   ],
+   "demonyms": [
+    "Russian",
+    "Russians"
+   ],
+   "exclusions": []
+  },
+  "RW": {
+   "terms": [
+    "kigali",
+    "rwanda"
+   ],
+   "demonyms": [
+    "Rwandan",
+    "Rwandans"
+   ],
+   "exclusions": []
+  },
+  "SA": {
+   "terms": [
+    "mbs",
+    "riyadh",
+    "saudi arabia"
+   ],
+   "demonyms": [
+    "Saudi",
+    "Saudis"
+   ],
+   "exclusions": []
+  },
+  "SB": {
+   "terms": [
+    "solomon islands"
+   ],
+   "demonyms": [
+    "Solomon Islander"
+   ],
+   "exclusions": []
+  },
+  "SC": {
+   "terms": [
+    "seychelles"
+   ],
+   "demonyms": [
+    "Seychellois"
+   ],
+   "exclusions": []
+  },
+  "SD": {
+   "terms": [
+    "darfur",
+    "el fasher",
+    "khartoum",
+    "rsf",
+    "sudan"
+   ],
+   "demonyms": [
+    "Sudanese"
+   ],
+   "exclusions": [
+    "south sudan"
+   ]
+  },
+  "SE": {
+   "terms": [
+    "stockholm",
+    "sweden"
+   ],
+   "demonyms": [
+    "Swede",
+    "Swedes",
+    "Swedish"
+   ],
+   "exclusions": []
+  },
+  "SG": {
+   "terms": [
+    "singapore"
+   ],
+   "demonyms": [
+    "Singaporean",
+    "Singaporeans"
+   ],
+   "exclusions": []
+  },
+  "SH": {
+   "terms": [
+    "st helena"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "SI": {
+   "terms": [
+    "slovenia"
+   ],
+   "demonyms": [
+    "Slovene",
+    "Slovenes",
+    "Slovenian",
+    "Slovenians"
+   ],
+   "exclusions": []
+  },
+  "SK": {
+   "terms": [
+    "bratislava",
+    "slovakia"
+   ],
+   "demonyms": [
+    "Slovak",
+    "Slovaks"
+   ],
+   "exclusions": []
+  },
+  "SL": {
+   "terms": [
+    "sierra leone"
+   ],
+   "demonyms": [
+    "Sierra Leonean",
+    "Sierra Leoneans"
+   ],
+   "exclusions": []
+  },
+  "SM": {
+   "terms": [
+    "san marino"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "SN": {
+   "terms": [
+    "dakar",
+    "senegal"
+   ],
+   "demonyms": [
+    "Senegalese"
+   ],
+   "exclusions": []
+  },
+  "SO": {
+   "terms": [
+    "mogadishu",
+    "somalia"
+   ],
+   "demonyms": [
+    "Somali",
+    "Somalis"
+   ],
+   "exclusions": []
+  },
+  "SR": {
+   "terms": [
+    "suriname"
+   ],
+   "demonyms": [
+    "Surinamese"
+   ],
+   "exclusions": []
+  },
+  "SS": {
+   "terms": [
+    "juba",
+    "south sudan"
+   ],
+   "demonyms": [
+    "South Sudanese"
+   ],
+   "exclusions": []
+  },
+  "ST": {
+   "terms": [
+    "sao tome",
+    "sao tome and principe"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "SV": {
+   "terms": [
+    "el salvador"
+   ],
+   "demonyms": [
+    "Salvadoran",
+    "Salvadorans",
+    "Salvadorean"
+   ],
+   "exclusions": []
+  },
+  "SX": {
+   "terms": [
+    "sint maarten"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "SY": {
+   "terms": [
+    "aleppo",
+    "assad",
+    "damascus",
+    "idlib",
+    "syria"
+   ],
+   "demonyms": [
+    "Syrian",
+    "Syrians"
+   ],
+   "exclusions": []
+  },
+  "SZ": {
+   "terms": [
+    "eswatini",
+    "swaziland"
+   ],
+   "demonyms": [
+    "Swazi"
+   ],
+   "exclusions": []
+  },
+  "TC": {
+   "terms": [
+    "turks and caicos",
+    "turks and caicos islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "TD": {
+   "terms": [
+    "ndjamena"
+   ],
+   "demonyms": [
+    "Chadian",
+    "Chadians"
+   ],
+   "exclusions": [],
+   "weak": [
+    "chad"
+   ],
+   "coTerms": [
+    "africa",
+    "african",
+    "cameroon",
+    "darfur",
+    "deby",
+    "lake chad",
+    "n djamena",
+    "ndjamena",
+    "nigeria",
+    "sahel",
+    "sudan",
+    "sudanese"
+   ]
+  },
+  "TF": {
+   "terms": [
+    "french southern territories"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "TG": {
+   "terms": [
+    "togo"
+   ],
+   "demonyms": [
+    "Togolese"
+   ],
+   "exclusions": []
+  },
+  "TH": {
+   "terms": [
+    "bangkok",
+    "thailand"
+   ],
+   "demonyms": [
+    "Thai",
+    "Thais"
+   ],
+   "exclusions": []
+  },
+  "TJ": {
+   "terms": [
+    "tajikistan"
+   ],
+   "demonyms": [
+    "Tajik",
+    "Tajiks"
+   ],
+   "exclusions": []
+  },
+  "TL": {
+   "terms": [
+    "east timor",
+    "timor leste"
+   ],
+   "demonyms": [
+    "Timorese"
+   ],
+   "exclusions": []
+  },
+  "TM": {
+   "terms": [
+    "turkmenistan"
+   ],
+   "demonyms": [
+    "Turkmen"
+   ],
+   "exclusions": []
+  },
+  "TN": {
+   "terms": [
+    "tunis",
+    "tunisia"
+   ],
+   "demonyms": [
+    "Tunisian",
+    "Tunisians"
+   ],
+   "exclusions": []
+  },
+  "TO": {
+   "terms": [
+    "tonga"
+   ],
+   "demonyms": [
+    "Tongan",
+    "Tongans"
+   ],
+   "exclusions": []
+  },
+  "TR": {
+   "terms": [
+    "ankara",
+    "erdogan",
+    "istanbul",
+    "turkiye"
+   ],
+   "demonyms": [
+    "Turk",
+    "Turkish",
+    "Turks"
+   ],
+   "exclusions": [
+    "turks and caicos"
+   ],
+   "weak": [
+    "turkey"
+   ],
+   "coTerms": [
+    "ankara",
+    "erdogan",
+    "istanbul",
+    "kurdish",
+    "lira",
+    "nato",
+    "pkk",
+    "syria",
+    "turkiye"
+   ]
+  },
+  "TT": {
+   "terms": [
+    "trinidad",
+    "trinidad and tobago"
+   ],
+   "demonyms": [
+    "Trinidadian",
+    "Trinidadians"
+   ],
+   "exclusions": []
+  },
+  "TV": {
+   "terms": [
+    "tuvalu"
+   ],
+   "demonyms": [
+    "Tuvaluan"
+   ],
+   "exclusions": []
+  },
+  "TW": {
+   "terms": [
+    "taipei",
+    "taiwan",
+    "taiwan strait",
+    "tsmc"
+   ],
+   "demonyms": [
+    "Taiwanese"
+   ],
+   "exclusions": []
+  },
+  "TZ": {
+   "terms": [
+    "dar es salaam",
+    "tanzania"
+   ],
+   "demonyms": [
+    "Tanzanian",
+    "Tanzanians"
+   ],
+   "exclusions": []
+  },
+  "UA": {
+   "terms": [
+    "donbas",
+    "kharkiv",
+    "kiev",
+    "kyiv",
+    "odesa",
+    "odessa",
+    "ukraine",
+    "zelensky"
+   ],
+   "demonyms": [
+    "Ukrainian",
+    "Ukrainians"
+   ],
+   "exclusions": [
+    "odessa american",
+    "odessa texas",
+    "odessa tx"
+   ]
+  },
+  "UG": {
+   "terms": [
+    "kampala",
+    "uganda"
+   ],
+   "demonyms": [
+    "Ugandan",
+    "Ugandans"
+   ],
+   "exclusions": []
+  },
+  "UM": {
+   "terms": [
+    "u s outlying islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "US": {
+   "terms": [
+    "pentagon",
+    "u s",
+    "united states",
+    "united states of america",
+    "usa"
+   ],
+   "demonyms": [],
+   "exclusions": [
+    "central america",
+    "latin america",
+    "north america",
+    "south america"
+   ],
+   "codeToken": "US"
+  },
+  "UY": {
+   "terms": [
+    "uruguay"
+   ],
+   "demonyms": [
+    "Uruguayan",
+    "Uruguayans"
+   ],
+   "exclusions": []
+  },
+  "UZ": {
+   "terms": [
+    "tashkent",
+    "uzbekistan"
+   ],
+   "demonyms": [
+    "Uzbek",
+    "Uzbeks"
+   ],
+   "exclusions": []
+  },
+  "VA": {
+   "terms": [
+    "holy see",
+    "vatican",
+    "vatican city"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "VC": {
+   "terms": [
+    "saint vincent",
+    "saint vincent and the grenadines",
+    "st vincent",
+    "st vincent and the grenadines"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "VE": {
+   "terms": [
+    "caracas",
+    "maduro",
+    "venezuela"
+   ],
+   "demonyms": [
+    "Venezuelan",
+    "Venezuelans"
+   ],
+   "exclusions": []
+  },
+  "VG": {
+   "terms": [
+    "british virgin islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "VI": {
+   "terms": [
+    "u s virgin islands"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "VN": {
+   "terms": [
+    "hanoi",
+    "vietnam"
+   ],
+   "demonyms": [
+    "Vietnamese"
+   ],
+   "exclusions": []
+  },
+  "VU": {
+   "terms": [
+    "vanuatu"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "WF": {
+   "terms": [
+    "wallis and futuna"
+   ],
+   "demonyms": [],
+   "exclusions": []
+  },
+  "WS": {
+   "terms": [
+    "samoa"
+   ],
+   "demonyms": [
+    "Samoan",
+    "Samoans"
+   ],
+   "exclusions": [
+    "american samoa"
+   ]
+  },
+  "XK": {
+   "terms": [
+    "kosovo"
+   ],
+   "demonyms": [
+    "Kosovan",
+    "Kosovar",
+    "Kosovars"
+   ],
+   "exclusions": []
+  },
+  "YE": {
+   "terms": [
+    "houthi",
+    "houthis",
+    "sanaa",
+    "yemen"
+   ],
+   "demonyms": [
+    "Yemeni",
+    "Yemenis"
+   ],
+   "exclusions": []
+  },
+  "ZA": {
+   "terms": [
+    "johannesburg",
+    "pretoria",
+    "south africa"
+   ],
+   "demonyms": [
+    "South African",
+    "South Africans"
+   ],
+   "exclusions": []
+  },
+  "ZM": {
+   "terms": [
+    "zambia"
+   ],
+   "demonyms": [
+    "Zambian",
+    "Zambians"
+   ],
+   "exclusions": []
+  },
+  "ZW": {
+   "terms": [
+    "harare",
+    "zimbabwe"
+   ],
+   "demonyms": [
+    "Zimbabwean",
+    "Zimbabweans"
+   ],
+   "exclusions": []
+  }
+ }
+}
