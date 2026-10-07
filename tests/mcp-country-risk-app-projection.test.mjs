@@ -62,15 +62,17 @@ function assertUnknownScore(doc) {
 
 describe('Country Risk exported HTML projections', () => {
   it('uses a source-neutral qualifier for a SEMA-only positive country count', async () => {
-    const semaOnlyRisk = { ...risk, sanctionsCount: 1, sanctionsActive: true };
-    for (const result of [wire(semaOnlyRisk), wire(semaOnlyRisk, true), textWire(semaOnlyRisk)]) {
-      const view = await mount(result);
-      assert.equal(text(view.doc, 'country'), 'Russia');
-      assert.equal(text(view.doc, 'sanctions'), '1 sanctions listings');
-      assert.doesNotMatch(text(view.doc, 'sanctions'), /OFAC/);
-      assert.equal(text(view.doc, 'foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
-      assert.equal(view.requests(), 0);
-      assert.ok(view.messages.every(message => ['ui/initialize', 'ui/notifications/size-changed'].includes(message.method)));
+    for (const [count, expected] of [[1, '1 sanctions listing'], [2, '2 sanctions listings']]) {
+      const semaOnlyRisk = { ...risk, sanctionsCount: count, sanctionsActive: true };
+      for (const result of [wire(semaOnlyRisk), wire(semaOnlyRisk, true), textWire(semaOnlyRisk)]) {
+        const view = await mount(result);
+        assert.equal(text(view.doc, 'country'), 'Russia');
+        assert.equal(text(view.doc, 'sanctions'), expected);
+        assert.doesNotMatch(text(view.doc, 'sanctions'), /OFAC/);
+        assert.equal(text(view.doc, 'foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+        assert.equal(view.requests(), 0);
+        assert.ok(view.messages.every(message => ['ui/initialize', 'ui/notifications/size-changed'].includes(message.method)));
+      }
     }
   });
   it('uses canonical CII headline levels at every boundary and for the captured Ukraine score', async () => {
