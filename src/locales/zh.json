@@ -2391,6 +2391,7 @@
           "judge_retry_exhausted": "裁定者未作出裁决",
           "withheld_unpublished": "此类预测已不再发布",
           "resolver_envelope_bug": "依据我们未能正确读取的数据源评分",
+          "market_price_not_outcome": "数据源显示的是市场价格，而不是市场的最终结果",
           "other": "无法确定结果"
         }
       },

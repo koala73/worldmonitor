@@ -2026,6 +2026,7 @@
           "judge_retry_exhausted": "Os juízes não retornaram um veredicto",
           "withheld_unpublished": "Este tipo de previsão não é mais publicado",
           "resolver_envelope_bug": "Avaliado com base em um feed de dados que não conseguimos ler corretamente",
+          "market_price_not_outcome": "O feed mostrava o preço de mercado, não como o mercado foi resolvido",
           "other": "Não pôde ser resolvido"
         }
       },

@@ -27,6 +27,7 @@ export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // endDate; the settlement loader then needs a run to capture it. Pend up to
 // this long past the deadline for the adjudicated record before VOIDing.
 export const MARKET_SETTLEMENT_FEED_KEY = 'prediction:markets-resolution:v1';
+const MARKET_BOOTSTRAP_FEED_KEY = 'prediction:markets-bootstrap:v1';
 export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // FRED (#5525 KTD4): monthly series observations are dated the FIRST of the
 // reference month and publish ~2 weeks after the month ENDS, so the first
@@ -90,6 +91,13 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   const deadline = Number(spec.deadline ?? entry.deadline);
   if (nowMs < deadline) {
     return { status: 'pending', evidence: { reason: 'deadline_not_reached', deadline } };
+  }
+
+  // The bootstrap feed lists only open markets and clips yesPrice to [10, 90],
+  // so a read at endDate is the crowd's price, never the market's outcome
+  // (#5233). Bets read the settlement feed instead.
+  if (parsed.fn === 'yesPrice' && (spec.sourceFeed === MARKET_BOOTSTRAP_FEED_KEY || parsed.feedKey === MARKET_BOOTSTRAP_FEED_KEY)) {
+    return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
   }
 
   // Settlement gate for scalar `value`/`price` reads at a POINT window

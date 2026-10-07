@@ -2421,6 +2421,7 @@
           "judge_retry_exhausted": "Sędziowie nie wydali wyroku",
           "withheld_unpublished": "Ten rodzaj prognozy nie jest już publikowany",
           "resolver_envelope_bug": "Oceniono na podstawie źródła danych, którego nie mogliśmy poprawnie odczytać",
+          "market_price_not_outcome": "Źródło pokazywało cenę rynkową, a nie to, jak rynek został rozstrzygnięty",
           "other": "Nie można było rozstrzygnąć"
         }
       },

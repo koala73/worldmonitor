@@ -2135,6 +2135,7 @@
           "judge_retry_exhausted": "A bírálók nem hoztak döntést",
           "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
           "resolver_envelope_bug": "Olyan adatforrás alapján értékelve, amelyet nem tudtunk helyesen beolvasni",
+          "market_price_not_outcome": "A feed a piaci árat mutatta, nem azt, hogyan zárult a piac",
           "other": "Nem lehetett eldönteni"
         }
       },

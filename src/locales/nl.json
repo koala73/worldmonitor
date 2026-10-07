@@ -2018,6 +2018,7 @@
           "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
           "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
           "resolver_envelope_bug": "Beoordeeld tegen een datafeed die we niet correct konden lezen",
+          "market_price_not_outcome": "De feed toonde de marktprijs, niet hoe de markt is afgewikkeld",
           "other": "Kon niet worden beslist"
         }
       },

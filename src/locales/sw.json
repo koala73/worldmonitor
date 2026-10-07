@@ -2138,6 +2138,7 @@
           "judge_retry_exhausted": "Mahakimu hawakutoa hukumu",
           "withheld_unpublished": "Aina hii ya utabiri haichapishwi tena",
           "resolver_envelope_bug": "Ilipimwa dhidi ya chanzo cha data ambacho hatukuweza kusoma ipasavyo",
+          "market_price_not_outcome": "Chanzo kilionyesha bei ya soko, si jinsi soko lilivyoamuliwa",
           "other": "Haikuweza kuamuliwa"
         }
       },

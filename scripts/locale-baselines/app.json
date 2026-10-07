@@ -695,6 +695,7 @@
   "components.forecast.resolution.void.count_source_window_not_retained": "The feed no longer held the question window",
   "components.forecast.resolution.void.judge_disagreement": "The judges disagreed",
   "components.forecast.resolution.void.judge_retry_exhausted": "The judges returned no verdict",
+  "components.forecast.resolution.void.market_price_not_outcome": "The feed showed the market price, not how the market resolved",
   "components.forecast.resolution.void.missing_deadline": "The question was missing a deadline",
   "components.forecast.resolution.void.missing_generated_at": "The forecast was missing its start date",
   "components.forecast.resolution.void.missing_threshold": "The question was missing a threshold",

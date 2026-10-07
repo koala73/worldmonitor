@@ -2401,6 +2401,7 @@
           "judge_retry_exhausted": "Die Bewerter gaben kein Urteil ab",
           "withheld_unpublished": "Diese Art von Prognose wird nicht mehr veröffentlicht",
           "resolver_envelope_bug": "Gegen einen Datenfeed bewertet, den wir nicht korrekt lesen konnten",
+          "market_price_not_outcome": "Der Feed zeigte den Marktpreis, nicht wie der Markt aufgelöst wurde",
           "other": "Konnte nicht aufgelöst werden"
         }
       },

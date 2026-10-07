@@ -2146,6 +2146,7 @@
           "judge_retry_exhausted": "Ocjenjivači nisu donijeli presudu",
           "withheld_unpublished": "Ova vrsta prognoze više se ne objavljuje",
           "resolver_envelope_bug": "Ocijenjeno prema izvoru podataka koji nismo mogli ispravno pročitati",
+          "market_price_not_outcome": "Izvor je prikazivao tržišnu cijenu, a ne kako je tržište razriješeno",
           "other": "Nije moglo biti riješeno"
         }
       },

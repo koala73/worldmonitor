@@ -2018,6 +2018,7 @@
           "judge_retry_exhausted": "Domarna återkom utan dom",
           "withheld_unpublished": "Den här typen av prognos publiceras inte längre",
           "resolver_envelope_bug": "Bedömd mot en datakälla som vi inte kunde läsa korrekt",
+          "market_price_not_outcome": "Källan visade marknadspriset, inte hur marknaden avgjordes",
           "other": "Kunde inte avgöras"
         }
       },

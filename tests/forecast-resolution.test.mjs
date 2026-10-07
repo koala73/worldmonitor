@@ -8,7 +8,6 @@ import {
   HORIZON_MS,
   CONFLICT_COUNT_SOURCE_FEED,
   UNREST_COUNT_SOURCE_FEED,
-  CYBER_COUNT_SOURCE_FEED,
   RESOLUTION_FEED_KEYS,
   SIGNAL_TO_HARD_FAMILY,
   JUDGED_DOMAINS,
@@ -174,9 +173,9 @@ describe('buildResolutionSpec — conflict is judged (#5136)', () => {
     assert.equal(spec.kind, 'judged');
   });
 
-  it('the reclassification is scoped — cyber (populated feed) still emits a hard spec', () => {
+  it('the reclassification is scoped — a populated chokepoint feed still emits a hard spec', () => {
     const spec = buildResolutionSpec(
-      pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] }),
+      pred({ domain: 'supply_chain', region: 'Strait of Hormuz', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
       {},
       GENERATED_AT,
     );
@@ -310,7 +309,7 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
   });
 
-  it('a cyber volume forecast resolves to the cyber threat count feed', () => {
+  it('a cyber volume forecast is judged: its feed cannot answer a 7-day count (#5233)', () => {
     const forecast = pred({
       domain: 'cyber',
       region: 'Estonia',
@@ -318,9 +317,8 @@ describe('buildResolutionSpec — feed mapping per family', () => {
       signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, CYBER_COUNT_SOURCE_FEED);
-    assert.equal(spec.metricKey, `${CYBER_COUNT_SOURCE_FEED}|count(country==Estonia)`);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.sourceFeed, null);
   });
 
   it('the legacy infrastructure cascade detector is retired from publication', () => {
@@ -519,7 +517,7 @@ describe('buildResolutionSpec — domain-specific hard and judged families', () 
 
 describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
   it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
-    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['infrastructure', 'military']);
+    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['cyber', 'infrastructure', 'military']);
   });
 
   it('a political-domain forecast carrying a cii signal yields judged, never a hard conflict spec', () => {
@@ -647,7 +645,6 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
   const fixtures = [
     pred({ id: 'conflict', domain: 'conflict', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] }),
     pred({ id: 'political', domain: 'political', region: 'Venezuela', signals: [{ type: 'unrest_events', value: '4 unrest events', weight: 0.3 }] }),
-    pred({ id: 'cyber', domain: 'cyber', region: 'Estonia', signals: [{ type: 'cyber', value: '10 threats', weight: 0.5 }] }),
     pred({ id: 'supply_chain', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
     pred({ id: 'gps', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'gps_jamming', value: '5 jamming hexes', weight: 0.5 }] }),
     pred({ id: 'pm', domain: 'market', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] }),
@@ -1127,8 +1124,8 @@ describe('extraction gate shadow (#7067)', () => {
   });
 
   it('count specs are skipped: the resolver tallies events instead of extracting a record', () => {
-    const [forecast] = attached([pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] })]);
-    const [verdict] = evaluateExtractionShadow([forecast], { [CYBER_COUNT_SOURCE_FEED]: { threats: [] } });
+    const [forecast] = attachResolutionSpecs([pred({ domain: 'conflict', region: 'Mali', timeHorizon: '7d', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] })], COMMODITY_INPUTS, GENERATED_AT, { conflictCountFeedAvailable: true });
+    const [verdict] = evaluateExtractionShadow([forecast], { [CONFLICT_COUNT_SOURCE_FEED]: { events: [] } });
     assert.equal(verdict.outcome, 'skipped');
     assert.equal(verdict.reason, 'count_resolved_by_tally');
   });

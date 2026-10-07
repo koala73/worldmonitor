@@ -64,14 +64,15 @@ function resolvedRow(ledger, id) {
 }
 
 describe('resolver reads contract-mode seed envelopes (#5233)', () => {
+  // Cyber rows now go to the judges (below), so the count read is checked on
+  // the evaluator directly.
   for (const [label, raw] of [['enveloped', envelope(cyberThreats)], ['bare', cyberThreats]]) {
     it(`counts cyber records in a ${label} feed`, () => {
-      const feeds = shapeResolutionFeeds({ [CYBER_FEED]: raw });
-      const { ledger } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [cyberRomania] }], feeds, T0 + 8 * DAY_MS);
-      const row = resolvedRow(ledger, 'fc-cyber-ro');
-      assert.equal(row.status, 'resolved');
-      assert.equal(row.evidence.metricValue, 2);
-      assert.equal(row.outcome, 'YES');
+      const feed = shapeResolutionFeeds({ [CYBER_FEED]: raw })[CYBER_FEED];
+      const entry = { generatedAt: T0, spec: cyberRomania.resolution };
+      const result = resolveHardSpec(entry, feed, { count: 0, recent: [] }, T0 + 8 * DAY_MS);
+      assert.equal(result.evidence.metricValue, 2);
+      assert.equal(result.outcome, 'YES');
     });
   }
 
@@ -173,10 +174,11 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
   });
 
   it('keeps a genuine zero the fixed reader resolves, across later cycles', () => {
-    const feeds = shapeResolutionFeeds({ [CYBER_FEED]: envelope({ threats: [{ id: 'x', country: 'DE', firstSeenAt: T0 + DAY_MS }] }) });
-    const first = processResolutionCycle({}, [{ generatedAt: T0, predictions: [cyberRomania] }], feeds, T0 + 8 * DAY_MS);
+    const feeds = shapeResolutionFeeds({ [INFRA_FEED]: envelope({ outages: [{ id: 'cf-2', country: 'Cuba', detectedAt: T0 + DAY_MS }] }) });
+    const sampled = processResolutionCycle({}, [{ generatedAt: T0, predictions: [infraIraq] }], feeds, T0 + DAY_MS);
+    const first = processResolutionCycle(sampled.ledger, [], feeds, T0 + 8 * DAY_MS);
     const second = processResolutionCycle(first.ledger, [], feeds, T0 + 9 * DAY_MS);
-    const row = resolvedRow(second.ledger, 'fc-cyber-ro');
+    const row = resolvedRow(second.ledger, 'fc-infra-iq');
     assert.equal(row.outcome, 'NO');
     assert.equal(row.evidence.metricValue, 0);
     assert.equal(row.evidence.envelopeAware, true);

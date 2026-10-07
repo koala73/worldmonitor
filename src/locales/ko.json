@@ -2391,6 +2391,7 @@
           "judge_retry_exhausted": "심사자가 판정을 내리지 못했습니다",
           "withheld_unpublished": "이 유형의 예측은 더 이상 게시되지 않습니다",
           "resolver_envelope_bug": "올바르게 읽지 못한 데이터 피드로 채점됨",
+          "market_price_not_outcome": "피드에는 시장 가격만 있었고 시장의 결과는 없었습니다",
           "other": "판정할 수 없었습니다"
         }
       },

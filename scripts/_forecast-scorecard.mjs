@@ -923,6 +923,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   judge_retry_exhausted: 'The judges returned no verdict',
   withheld_unpublished: 'This kind of forecast is no longer published',
   resolver_envelope_bug: 'Scored against a data feed we could not read correctly',
+  market_price_not_outcome: 'The feed showed the market price, not how the market resolved',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

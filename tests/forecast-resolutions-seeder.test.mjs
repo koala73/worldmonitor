@@ -603,7 +603,7 @@ describe('processResolutionCycle', () => {
     assert.equal(scorecard.totals.pending, 1);
   });
 
-  it('samples the first live feed read after a point-window deadline before resolving', () => {
+  it('samples the first live feed read after a point-window deadline, then voids a bootstrap market read (#5233)', () => {
     const point = forecast({
       resolution: {
         kind: 'hard',
@@ -627,9 +627,10 @@ describe('processResolutionCycle', () => {
 
     const row = ledger[`fc-hormuz@${T0 + DAY_MS}`];
     assert.equal(row.status, 'resolved');
-    assert.equal(row.outcome, 'YES');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'market_price_not_outcome');
     assert.equal(row.samples.recent.at(-1).ts, T0 + DAY_MS + 10);
-    assert.equal(row.evidence.metricValue, 98);
+    assert.equal(row.samples.recent.at(-1).value, 98);
     assert.equal(receipts.length, 1);
   });
 });
