@@ -32,6 +32,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let delayOrder = Boolean(rawScenario);
   const orderedCompletion = new Promise<void>(resolve => { releaseOrder = () => { delayOrder = false; resolve(); }; });
   let failFacts = false;
+  let factsDenied = false;
   let failActivity = false;
   let denyActivity = false;
   let atlasDenied = false;
@@ -106,6 +107,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       return { structuredContent: assembleRawSignals(selectedCountry, sources, time) };
     }
     if (section === 'facts' && code === 'US' && delayUS) await delayed;
+    if (section === 'facts' && factsDenied) return { structuredContent: { section, state: 'locked', reason: 'Controlled facts authorization loss' } };
     if (section === 'facts' && failFacts) return { structuredContent: { section, state: 'unavailable', reason: 'Controlled source failure' } };
     if (denyActivity && ['vessels', 'flights', 'fleet'].includes(section)) return { structuredContent: { section, state: 'locked', reason: 'Controlled authorization loss' } };
     if (failActivity && section === 'vessels') return { structuredContent: { section, state: 'unavailable', reason: 'Controlled AIS outage' } };
@@ -125,7 +127,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       ] : [{ id: 'controlled-us-flight', operatorCountry: 'US', location: { latitude: 38, longitude: -77 } }], pagination: { nextCursor: '' } },
       vessels: { dataAvailable: true, snapshot: { snapshotAt: Date.now(), status: { connected: true }, candidateReports: [{ mmsi: '235123456', name: 'Controlled military activity', shipType: 35, lat: code === 'FR' ? 47.3769 : 38, lon: code === 'FR' ? 8.5417 : -77, timestamp: Date.now() }] } },
       fleet: {},
-      facts: { countryCode: code, countryName: code, capital: code === 'US' ? 'Washington, D.C.' : 'Kyiv', population: '340100000', areaSqKm: 9826675, languages: ['English'], currencies: ['US dollar'] },
+      facts: { countryCode: code, countryName: code, wikipediaSummary: 'Controlled facts observed 2026-10-01.', capital: code === 'US' ? 'Washington, D.C.' : 'Kyiv', population: '340100000', areaSqKm: 9826675, languages: ['English'], currencies: ['US dollar'] },
       factors: us.scorecard,
       risk: { upstreamUnavailable: true },
       scenario: { countryCode: code, chokepointId: String((args.arguments as Record<string, unknown>).chokepoint_id), disruptionPct: Number((args.arguments as Record<string, unknown>).disruption_pct), dataAvailable: true, jodiOilCoverage: true, crudeLossKbd: 100, gulfCrudeShare: 0.3, products: [], limitations: [], coverageLevel: 'partial', gasSensitivity: { dataAvailable: true, lngImportsTj: 100000, totalDemandTj: 500000, lngDisruptionTj: Number((args.arguments as Record<string, unknown>).disruption_pct) * 300, deficitPct: Number((args.arguments as Record<string, unknown>).disruption_pct) * 0.06, dataMonth: '2026-05', dataSource: 'JODI', modelBasis: 'assumed_route_sensitivity', assessment: 'Controlled route sensitivity, not measured supplier exposure.' } },
@@ -207,7 +209,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, recover: () => { failFacts = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('static country tiers match the website without adding host data readers', async ({ page }, info) => {
@@ -661,24 +663,73 @@ test('built opaque country view uses the shared sections, host reads, sources an
   expect(host.calls.some(call => call.name === 'get_country_brief_section')).toBe(true);
 });
 
-test('refresh keeps prior observations and delayed country work cannot repaint a new country', async ({ page }) => {
+test('refresh keeps prior observations and delayed country work cannot repaint a new country', async ({ page }, info) => {
   const host = await installCountryHost(page);
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
   await expect.poll(() => host.calls.filter(call => call.arguments.section === 'factors').length).toBe(1);
-  host.fail();
+  const facts = frame.locator('[data-brief-section=facts]');
+  const housing = frame.locator('[data-brief-section=housing]');
+  await expect(housing).toContainText('156.4');
+  await expect(housing).toContainText('2026-Q1');
+  const original = await facts.getByText('Controlled facts observed 2026-10-01.', { exact: true }).elementHandle();
+  const housingText = await housing.textContent();
+  let previousNotice: Awaited<ReturnType<typeof facts.elementHandle>> = null;
+  for (const failure of ['First', 'Second', 'Third']) {
+    host.fail();
+    await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+    const staleNotice = previousNotice;
+    if (staleNotice) await expect.poll(() => staleNotice.evaluate(node => node.isConnected)).toBe(false);
+    await expect(facts).toContainText('This section could not be loaded. Retry to refresh it.');
+    await expect(facts, `${failure} failure preserves originals`).toContainText('Washington, D.C.');
+    await expect(facts).toContainText('Controlled facts observed 2026-10-01.');
+    expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+    await expect(facts.locator('.cdp-refresh-failure')).toHaveCount(1);
+    await expect(facts.locator('[data-brief-state=unavailable]')).toHaveCount(1);
+    await expect(facts).toHaveAttribute('data-load-state', 'unavailable');
+    await expect(housing).toHaveText(housingText!);
+    previousNotice = await facts.locator('.cdp-refresh-failure').elementHandle();
+  }
+  await frame.getByRole('button', { name: 'All sections', exact: true }).click();
+  await expect(facts.getByText('Controlled facts observed 2026-10-01.', { exact: true })).toBeVisible();
+  for (const [name, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await facts.screenshot({ path: info.outputPath(`facts-third-failure-${name}.png`) });
+  }
+  host.denyFacts();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
-  await expect(frame.locator('[data-brief-section=facts]')).toContainText('Previously loaded observations remain visible');
-  await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
-  await expect.poll(() => host.calls.filter(call => call.arguments.section === 'factors').length).toBe(2);
+  await expect(facts).toContainText('This section is not authorized by the current connection.');
+  await expect(facts.locator('.cdp-pro-locked')).toHaveCount(1);
+  await expect(facts).not.toContainText('Washington, D.C.');
+  expect(await original!.evaluate(node => node.isConnected)).toBe(false);
+  host.recover(); host.fail();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(facts).toContainText('This section could not be loaded. Retry to refresh it.');
+  await expect(facts).not.toContainText('Washington, D.C.');
+  await expect(facts.locator('.cdp-refresh-failure')).toHaveCount(0);
+  host.recover();
+  await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+  await expect(facts).toContainText('Washington, D.C.');
+  await expect(facts.locator('.cdp-refresh-failure')).toHaveCount(0);
+  await expect(facts.locator('[data-brief-state=unavailable]')).toHaveCount(0);
+  expect(await original!.evaluate(node => node.isConnected)).toBe(false);
+  await expect(housing).toHaveText(housingText!);
+  await frame.getByRole('button', { name: 'All sections', exact: true }).click();
+  await expect(facts.getByText('Controlled facts observed 2026-10-01.', { exact: true })).toBeVisible();
+  for (const [name, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await facts.screenshot({ path: info.outputPath(`facts-recovered-${name}.png`) });
+  }
+  const coverageReads = host.calls.filter(call => call.name === 'get_country_coverage').length;
   host.delayCoverage();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
-  await expect.poll(() => host.calls.filter(call => call.name === 'get_country_coverage').length).toBe(3);
+  await expect.poll(() => host.calls.filter(call => call.name === 'get_country_coverage').length).toBe(coverageReads + 1);
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect.poll(() => host.cancelled).toContain('get_country_coverage');
   host.releaseCoverage();
   expect(host.calls.filter(call => call.name === 'get_country_brief')).toHaveLength(1);
-  await expect(frame.locator('#countryUsage')).toContainText('46 of 50 requests remaining');
+  expect(host.admissions).toBe(9);
+  await expect(frame.locator('#countryUsage')).toContainText('41 of 50 requests remaining');
   await frame.getByRole('button', { name: 'New AI assessment', exact: true }).click();
   await expect.poll(() => host.calls.filter(call => call.name === 'get_country_brief').length).toBe(2);
   host.recover();
@@ -700,6 +751,22 @@ test('refresh keeps prior observations and delayed country work cannot repaint a
   await frame.getByRole('button', { name: 'Open country', exact: true }).click();
   await expect(frame.locator('[data-brief-section=assessment]')).toContainText('Controlled US assessment');
   expect(host.calls.filter(call => call.name === 'get_country_brief')).toHaveLength(3);
+  host.fail();
+  await frame.getByRole('textbox', { name: 'Country name or code' }).fill('France');
+  await frame.getByRole('button', { name: 'Open country', exact: true }).click();
+  await expect(frame.locator('.cdp-country-name')).toHaveText('France');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(facts).toContainText('This section could not be loaded. Retry to refresh it.');
+    await expect(facts).not.toContainText('Controlled facts observed 2026-10-01.');
+    await expect(facts.locator('.cdp-refresh-failure')).toHaveCount(0);
+    await expect(facts).toHaveAttribute('data-load-state', 'unavailable');
+    if (attempt === 0) {
+      const missingNotice = await facts.locator('[data-brief-state=unavailable]').elementHandle();
+      await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
+      await expect.poll(() => missingNotice!.evaluate(node => node.isConnected)).toBe(false);
+    }
+  }
+  expect(host.unmanaged).toEqual([]);
 });
 
 test('decision calculations and their JSON download use the authenticated host source', async ({ page }) => {
