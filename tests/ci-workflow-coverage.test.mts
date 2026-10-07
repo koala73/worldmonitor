@@ -79,7 +79,10 @@ describe('root dependency cache (#8710)', () => {
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
-        const steps = YAML.parse(workflowText).jobs[jobId].steps;
+        // A `parallel:` group holds its steps in a list; expand it in place so
+        // the action is still found, and the order check still holds.
+        const steps = YAML.parse(workflowText).jobs[jobId].steps
+          .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
         const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
         const install = steps.find((step) => step.uses === './.github/actions/install-root-deps');
         assert.ok(install, `${jobId} must use the shared root dependency action`);
@@ -1012,7 +1015,17 @@ describe('CI workflow coverage', () => {
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'test:e2e:ci-smoke must contain exactly the pinned smoke-spec inventory',
     );
-    const shardSpecs = ['test:e2e:ci-smoke:1', 'test:e2e:ci-smoke:2'].map((script) => {
+    // One script per CI shard, read from the matrix so adding a shard without
+    // its spec list (or the reverse) fails here.
+    const smokeShards: number[] = YAML.parse(testWorkflow).jobs['variant-smoke-shards'].strategy.matrix.shard;
+    assert.deepEqual(smokeShards, smokeShards.map((_, i) => i + 1), 'smoke shard indices must be 1..N');
+    const shardScripts = Object.keys(packageScripts).filter((name) => /^test:e2e:ci-smoke:\d+$/.test(name));
+    assert.deepEqual(
+      shardScripts.sort(),
+      smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).sort(),
+      'package.json must define exactly one test:e2e:ci-smoke:<n> script per CI smoke shard',
+    );
+    const shardSpecs = smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).map((script) => {
       const command = packageScripts[script] ?? '';
       const tokens = shellArgvTokens(command);
       assert.deepEqual(
@@ -1025,10 +1038,11 @@ describe('CI workflow coverage', () => {
       assert.equal(new Set(specs).size, specs.length, `${script} must not repeat a spec`);
       return specs;
     });
-    const intersection = shardSpecs[0].filter((spec) => shardSpecs[1].includes(spec));
-    assert.deepEqual(intersection, [], 'ci-smoke shards must be disjoint');
+    const allShardSpecs = shardSpecs.flat();
+    assert.equal(new Set(allShardSpecs).size, allShardSpecs.length, 'ci-smoke shards must be disjoint');
+    assert.ok(shardSpecs.every((specs) => specs.length > 0), 'no ci-smoke shard may be empty');
     assert.deepEqual(
-      [...shardSpecs[0], ...shardSpecs[1]].sort(),
+      [...allShardSpecs].sort(),
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'the ci-smoke shard union must equal the pinned smoke-spec inventory',
     );
@@ -1055,7 +1069,7 @@ describe('CI workflow coverage', () => {
       assert.match(job, /\n {4}timeout-minutes: 20\n/);
       assert.match(
         job,
-        /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
+        /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx (?:-y "playwright@\$v" |playwright )install-deps chromium/,
       );
       assert.match(
         job,
