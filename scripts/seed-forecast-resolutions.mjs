@@ -67,8 +67,8 @@ export const JUDGED_EVIDENCE_LOOKBACK_MS = 7 * DAY_MS;
 export const JUDGED_EVIDENCE_MAX_LOOKBACK_MS = 14 * DAY_MS;
 // Reports published up to 18h after the deadline are admissible, and an entry
 // is not judged before they can exist. Of the 23 post-deadline citations in the
-// scored judged rows, the 11 that reported deadline-day news were 2-14h late
-// and the next was 30h late (an oil-price move two days on). 18h also keeps a
+// scored judged rows (#8990 audit), 11 were 2-14h late; the next was 30h late
+// and reported a later development. 18h admits the first group and keeps a
 // daily run inside the 2-day judged SLA (DEFAULT_JUDGED_SLA_MS).
 export const JUDGED_EVIDENCE_GRACE_MS = 18 * 60 * 60 * 1000;
 export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 32;
