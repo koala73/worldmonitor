@@ -249,6 +249,11 @@ describe('review round 2: matching rules (NB2-NB5, NB8)', () => {
     assert.deepEqual(shownIds('Niger', [item('statement', 'Niger statement on Mali junta')]), ['statement']);
   });
 
+  it('strips a raw exclusion only up to a word end or a demonym suffix', () => {
+    assert.deepEqual(shownIds('France', [item('fr', 'French opens inquiry into the crash')]), ['fr']);
+    assert.deepEqual(shownIds('Sudan', [item('ss', 'South Sudanese refugees cross the border')]), []);
+  });
+
   it('accepts a weak name in one field with its co-term in the other', () => {
     assert.deepEqual(shownIds('Georgia', [item('split', 'Georgia arrests opposition leaders', 'Moscow condemns the move')]), ['split']);
   });

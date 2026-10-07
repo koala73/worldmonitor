@@ -520,6 +520,9 @@ export interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
+  // the evidence writer drop a stored link on a host the gate now rejects.
+  blankedLinkHost?: string;
   publishedAt: number;
   isAlert: boolean;
   level: ThreatLevel;
@@ -1091,6 +1094,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     if (forDigest) parsedTotal++;
 
     let link: string;
+    let blankedLinkHost = '';
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
@@ -1194,6 +1198,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
         `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
           `host="${linkHostnameForLog(link)}"`,
       );
+      blankedLinkHost = forecastEvidenceLinkHost(link);
       link = '';
     }
 
@@ -1203,6 +1208,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       originPublisherTrusted,
       title,
       link,
+      ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
       level: threat.level,
@@ -2703,7 +2709,7 @@ async function writeStoryTracking(
             // A blanked link never replaces a stored link for the same story (#8990).
             evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
               forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
-              evidenceLink ? '' : forecastEvidenceLinkHost(representative.link),
+              evidenceLink ? '' : (representative.blankedLinkHost || forecastEvidenceLinkHost(representative.link)),
             ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
