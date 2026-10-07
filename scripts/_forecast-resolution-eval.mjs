@@ -45,7 +45,6 @@ export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // after the start of D. The bound adds one resolver cycle, for a snapshot
 // gpsjam.org publishes after that tick, plus an hour of run-start jitter.
 // Measured from the start of the deadline's UTC day.
-const GPSJAM_SNAPSHOT_FEED_KEY = 'intelligence:gpsjam:v2';
 export const GPS_JAM_SNAPSHOT_MAX_LAG_MS = 3 * DAY_MS + 7 * 60 * 60 * 1000;
 
 // Feeds that date each reading by its own period, snapshot day or the venue's
@@ -53,7 +52,7 @@ export const GPS_JAM_SNAPSHOT_MAX_LAG_MS = 3 * DAY_MS + 7 * 60 * 60 * 1000;
 // deadline's period. null for a live feed, whose reading is the value at the
 // moment it was fetched.
 function periodFeedMaxLagMs(feedKey) {
-  if (feedKey === GPSJAM_SNAPSHOT_FEED_KEY) return GPS_JAM_SNAPSHOT_MAX_LAG_MS;
+  if (feedKey === GPS_JAM_FEED_KEY) return GPS_JAM_SNAPSHOT_MAX_LAG_MS;
   if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
   if (feedKey === MARKET_SETTLEMENT_FEED_KEY) return MARKET_SETTLEMENT_MAX_LAG_MS;
   if (FRED_MONTHLY_FEED_KEYS.has(feedKey)) return FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS;
@@ -153,7 +152,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
-  if (isPointWindow && (parsed.feedKey || spec.sourceFeed) === GPSJAM_SNAPSHOT_FEED_KEY) {
+  if (isPointWindow && (parsed.feedKey || spec.sourceFeed) === GPS_JAM_FEED_KEY) {
     const snapshot = resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec);
     if (snapshot) return snapshot;
   }

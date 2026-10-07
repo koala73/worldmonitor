@@ -3575,6 +3575,12 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     assert.deepEqual([ledger[unversioned.key].spec.threshold, ledger[unversioned.key].spec.ruleVersion, ledger[unversioned.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
   });
 
+  it('keeps the original emission count when a row that already recorded it migrates again', () => {
+    const remigrated = gpsRow(T0, { status: 'pending', spec: { ...pending.spec, threshold: 7, rule: GPS_RESOLUTION_RULE, ruleVersion: GPS_RESOLUTION_RULE_VERSION - 1, supersededThreshold: 59 } });
+    const { ledger } = processResolutionCycle({ [remigrated.key]: structuredClone(remigrated) }, [], {}, T0 + DAY_MS);
+    assert.deepEqual([ledger[remigrated.key].spec.threshold, ledger[remigrated.key].spec.ruleVersion, ledger[remigrated.key].spec.supersededThreshold], [GPS_ZONE_MIN_HEXES, GPS_RESOLUTION_RULE_VERSION, 59]);
+  });
+
   it('migrates a legacy emission read from history as it opens its window', () => {
     const emission = {
       id: pending.id, domain: 'supply_chain', region: 'Eastern Mediterranean', title: pending.title, probability: 0.5,
