@@ -2413,7 +2413,8 @@
           "resolver_envelope_bug": "Évalué sur un flux de données que nous ne pouvions pas lire correctement",
           "market_price_not_outcome": "Le flux indiquait le prix du marché, pas la manière dont le marché a été résolu",
           "judged_evidence_unreliable": "Exclu de la notation le temps de corriger les éléments fournis aux juges",
-          "other": "N'a pas pu être résolu"
+          "other": "N'a pas pu être résolu",
+          "judged_on_unreliable_evidence": "Jugé sur la base de preuves ultérieurement jugées non fiables"
         }
       },
       "horizons": {

@@ -2137,7 +2137,8 @@
           "resolver_envelope_bug": "Olyan adatforrás alapján értékelve, amelyet nem tudtunk helyesen beolvasni",
           "market_price_not_outcome": "A feed a piaci árat mutatta, nem azt, hogyan zárult a piac",
           "judged_evidence_unreliable": "Kizárva az értékelésből, amíg a bírák bizonyítékait javítjuk",
-          "other": "Nem lehetett eldönteni"
+          "other": "Nem lehetett eldönteni",
+          "judged_on_unreliable_evidence": "Később megbízhatatlannak bizonyult bizonyítékok alapján bírálták el"
         }
       },
       "horizons": {

@@ -2020,7 +2020,8 @@
           "resolver_envelope_bug": "Bedömd mot en datakälla som vi inte kunde läsa korrekt",
           "market_price_not_outcome": "Källan visade marknadspriset, inte hur marknaden avgjordes",
           "judged_evidence_unreliable": "Undantagen från poängsättning medan domarnas underlag rättas",
-          "other": "Kunde inte avgöras"
+          "other": "Kunde inte avgöras",
+          "judged_on_unreliable_evidence": "Bedömd utifrån bevis som senare visade sig opålitliga"
         }
       },
       "horizons": {

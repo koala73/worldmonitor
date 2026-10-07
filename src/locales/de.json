@@ -2403,7 +2403,8 @@
           "resolver_envelope_bug": "Gegen einen Datenfeed bewertet, den wir nicht korrekt lesen konnten",
           "market_price_not_outcome": "Der Feed zeigte den Marktpreis, nicht wie der Markt aufgelöst wurde",
           "judged_evidence_unreliable": "Von der Bewertung ausgenommen, solange die Belege der Gutachter überarbeitet werden",
-          "other": "Konnte nicht aufgelöst werden"
+          "other": "Konnte nicht aufgelöst werden",
+          "judged_on_unreliable_evidence": "Entschieden auf Grundlage von später als unzuverlässig befundenen Belegen"
         }
       },
       "horizons": {
