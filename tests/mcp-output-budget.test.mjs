@@ -98,8 +98,8 @@ describe('ordinary market response presentation', () => {
   const budget = 131072;
   const bytes = value => Buffer.byteLength(JSON.stringify(value));
   it('limits fitting to ordinary defaults, including normalized empty filters', () => {
-    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }]) assert.equal(isOrdinaryMarketDefault(args), true);
-    for (const args of [{ limit: 30 }, { summary: false }, { jmespath: '' }, { refresh: false }, { request_id: '' }, { panel_request: '' }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }]) assert.equal(isOrdinaryMarketDefault(args), false);
+    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }, { jmespath: null }, { jmespath: undefined }, { jmespath: false }]) assert.equal(isOrdinaryMarketDefault(args), true);
+    for (const args of [{ limit: 30 }, { summary: false }, { jmespath: 'data' }, { jmespath: ' ' }, { refresh: false }, { request_id: '' }, { panel_request: '' }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }]) assert.equal(isOrdinaryMarketDefault(args), false);
   });
   it('skips a giant row while preserving later whole rows, full series and immutable source metadata', () => {
     const retained = { symbol: 'SMALL', sparkline: [1, 2, 3], label: 'é\\"' };
@@ -136,6 +136,18 @@ describe('ordinary market response presentation', () => {
       assert.equal(coverage[key].original_count, null);
       assert.equal(coverage[key].returned_count, null);
     }
+  });
+  it('reports failed section reads as unavailable while preserving genuine null and empty collections', () => {
+    const input = { unreadable: ['stocks-bootstrap'], data: { 'stocks-bootstrap': null, crypto: null, sectors: { sectors: [] } } };
+    const original = structuredClone(input);
+    const output = presentDefaultMarketData(input, budget);
+    assert.deepEqual(output.transportCoverage.collections['stocks-bootstrap.quotes'], {
+      state: 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null,
+    });
+    assert.equal(output.transportCoverage.collections['crypto.quotes'].state, 'null');
+    assert.equal(output.transportCoverage.collections['sectors.sectors'].original_count, 0);
+    assert.deepEqual(output.unreadable, input.unreadable);
+    assert.deepEqual(input, original);
   });
   it('counts exact UTF-8 bytes with escaped text and receipt, then omits the whole one-byte-over row', () => {
     const input = { panelRequest: { token: 'signed-receipt' }, data: { 'stocks-bootstrap': { quotes: [{ symbol: 'é', name: '\\"', padding: '' }] } } };

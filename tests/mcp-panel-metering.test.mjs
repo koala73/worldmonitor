@@ -576,18 +576,24 @@ describe('paid curated market panel through the MCP handler', () => {
     }
     for (const section of ['physical-premium', 'physical-divergence', 'fear-greed']) assert.deepEqual(value.data[section], canonical.data[section]);
     const snapshotValue = stored[0][1], readCount = reads.length;
-    for (const args of [{ symbols: [], asset_class: [] }, { symbols: [' '] }]) {
+    let reusedDefaultText;
+    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }, { jmespath: null }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent._budget_exceeded, undefined);
       assert.equal(next.result.structuredContent.transportCoverage.count_scope, 'post_filter_snapshot');
+      if (Object.keys(args).length === 0) reusedDefaultText = next.result.content[0].text;
+      if (Object.hasOwn(args, 'jmespath')) assert.equal(next.result.content[0].text, reusedDefaultText, 'identity requests preserve fitted bytes and the reused signed receipt');
     }
     assert.equal(reads.length, readCount, 'normalized empty defaults reuse the saved canonical snapshot');
-    for (const args of [{ limit: 30 }, { limit: 0 }, { summary: false }, { jmespath: '' }, { refresh: false }, { panel_request: value.panelRequest.token }]) {
+    for (const args of [{ limit: 30 }, { limit: 0 }, { summary: false }, { refresh: false }, { panel_request: value.panelRequest.token }]) {
       const beforeReads = reads.length;
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent._budget_exceeded, true, JSON.stringify(args) + ' keeps the existing explicit response');
       if (args.panel_request) assert.equal(reads.length, beforeReads, 'the original reader reuses its snapshot without source reads');
     }
+    const projectedCoverage = await (await handler(proReq('POST', callBody('get_market_data', { jmespath: 'transportCoverage' })), deps)).json();
+    assert.equal(projectedCoverage.result.content[0].text, 'null', 'real projection bypasses default coverage presentation');
+    assert.deepEqual(projectedCoverage.result.structuredContent, { projection: null });
     for (const args of [{ limit: 10 }, { limit: 1 }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }, { summary: true }, { jmespath: 'data' }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent.transportCoverage, undefined, 'explicit presentation is not fitted');

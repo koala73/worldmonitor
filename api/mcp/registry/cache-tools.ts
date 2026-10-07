@@ -474,7 +474,8 @@ const MARKET_TRANSPORT_LISTS = [
 ] as const;
 
 export function isOrdinaryMarketDefault(params: Record<string, unknown>): boolean {
-  return !['limit', 'summary', 'jmespath', 'refresh', 'request_id', 'panel_request']
+  return !(typeof params.jmespath === 'string' && params.jmespath.length > 0)
+    && !['limit', 'summary', 'refresh', 'request_id', 'panel_request']
     .some(key => Object.prototype.hasOwnProperty.call(params, key))
     && argStrList(params.symbols).length === 0 && argStrList(params.asset_class).length === 0;
 }
@@ -491,7 +492,7 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
     const rows = Array.isArray(value) ? value : null;
     const coverage: Record<string, unknown> = rows
       ? { state: 'available', original_count: rows.length, returned_count: rows.length, omitted_count: 0, omission_reason: null }
-      : { state: value === null || source === null ? 'null' : value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
+      : { state: Array.isArray(presented.unreadable) && presented.unreadable.includes(section) ? 'unavailable' : value === null || source === null ? 'null' : value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
     collections[section + '.' + field] = coverage;
     return { node, field, rows, coverage };
   });
