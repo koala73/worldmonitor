@@ -2494,18 +2494,26 @@ export async function buildJudgedLaneHealthPatch(ledger, nowMs = Date.now(), run
   const coverageVerified = forecastEvidenceCoversWindow(rawCoverage,
     nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS, nowMs,
     resolveForecastEvidenceCoverageMaxLagMs(), true);
+  // Status reports whether the lane can run: reasons name inputs the judges
+  // could not read. How much the judges scored is quality, never status.
   const reasons = [];
   if (!coverageVerified && overdue > 0) reasons.push('coverage_unverified_with_overdue_entries');
   // A valid marker does not prove this run's archive read succeeded.
   if (runState.archiveReadable === false && overdue > 0) reasons.push('archive_unreadable_with_overdue_entries');
-  if (stalledRuns >= 3) reasons.push('no_scored_within_sla_for_3_runs');
   const health = {
     evaluatedAt: nowMs, status: reasons.length ? 'error' : 'ok', reasons,
     stalledRuns, scoredWithinSla: lane.scoredWithinSla,
     pendingJudgePastDeadline: overdue, coverageVerified,
+    quality: { noScoredWithinSlaRuns: stalledRuns },
   };
   if (reasons.length) console.warn(`  [forecast-resolutions] judged lane health: ${reasons.join(', ')}`);
+  if (stalledRuns >= 3) console.warn(`  [forecast-resolutions] judged lane quality: no scored-within-SLA outcome for ${stalledRuns} eligible runs`);
   return health;
+}
+
+export async function buildJudgedLaneAfterPublish(ledger, nowMs = Date.now(), runState = {}) {
+  const health = await buildJudgedLaneHealthPatch(ledger, nowMs, runState);
+  return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
 }
 
 async function dryRun() {
@@ -2612,8 +2620,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     }],
     afterPublish: async (ledger) => {
       if (runState.map) await markCalibrationMapActivated();
-      const health = await buildJudgedLaneHealthPatch(ledger, Date.now(), runState);
-      return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
+      return buildJudgedLaneAfterPublish(ledger, Date.now(), runState);
     },
   });
 }

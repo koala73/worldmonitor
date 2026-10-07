@@ -2965,6 +2965,17 @@ describe('judged lane health (#8877)', () => {
     return health;
   }
 
+  async function afterPublish(ledger, previous, coverage = marker, runState = undefined) {
+    const { buildJudgedLaneAfterPublish } = await import('../scripts/seed-forecast-resolutions.mjs');
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (url) => {
+      const value = String(url).includes(encodeURIComponent('forecast:evidence:coverage:v1')) ? coverage : previous;
+      return { ok: true, json: async () => ({ result: value ? JSON.stringify(value) : null }) };
+    };
+    return buildJudgedLaneAfterPublish(ledger, now, runState);
+  }
+
   it('alerts immediately on missing coverage with overdue work', async () => {
     const health = await assess({ pending }, null, null);
     assert.equal(health.status, 'error');
@@ -2984,11 +2995,25 @@ describe('judged lane health (#8877)', () => {
     assert.equal(health.status, 'ok');
   });
 
-  it('alerts on the third eligible run without a scored-within-SLA outcome', async () => {
-    const health = await assess({ pending }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 });
+  it('reports a third run without a scored-within-SLA outcome as quality, not as an error', async () => {
+    const { freshnessMetaPatch: health, completionState } = await afterPublish(
+      { pending }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 }, marker, { archiveReadable: true });
+    assert.equal(completionState, 'OK');
+    assert.equal(health.status, 'ok');
+    assert.deepEqual(health.reasons, []);
     assert.equal(health.stalledRuns, 3);
+    assert.equal(health.scoredWithinSla, 0);
+    assert.equal(health.pendingJudgePastDeadline, 1);
+    assert.deepEqual(health.quality, { noScoredWithinSlaRuns: 3 });
+  });
+
+  it('marks the run DEGRADED when the archive is unreadable with overdue entries', async () => {
+    const { freshnessMetaPatch: health, completionState } = await afterPublish(
+      { pending }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 }, marker, { archiveReadable: false });
+    assert.equal(completionState, 'DEGRADED');
     assert.equal(health.status, 'error');
-    assert.ok(health.reasons.includes('no_scored_within_sla_for_3_runs'));
+    assert.deepEqual(health.reasons, ['archive_unreadable_with_overdue_entries']);
+    assert.deepEqual(health.quality, { noScoredWithinSlaRuns: 3 });
   });
 
   it('ignores old successes and does not count VOID as scoring', async () => {
@@ -2997,7 +3022,8 @@ describe('judged lane health (#8877)', () => {
       old: { ...pending, status: 'resolved', outcome: 'YES', deadline: now - 10 * DAY_MS, resolvedAt: now - 10 * DAY_MS },
       void: { ...pending, status: 'resolved', outcome: 'VOID', resolvedAt: now - 1 },
     }, { evaluatedAt: now - DAY_MS, stalledRuns: 2 });
-    assert.equal(health.status, 'error');
+    assert.equal(health.stalledRuns, 3);
+    assert.equal(health.quality.noScoredWithinSlaRuns, 3);
     assert.equal(health.scoredWithinSla, 0);
   });
 
@@ -3006,6 +3032,7 @@ describe('judged lane health (#8877)', () => {
       { evaluatedAt: now - DAY_MS, stalledRuns: 4 });
     assert.equal(health.status, 'ok');
     assert.equal(health.stalledRuns, 0);
+    assert.equal(health.quality.noScoredWithinSlaRuns, 0);
     assert.equal(health.scoredWithinSla, 1);
   });
 
@@ -3022,7 +3049,7 @@ describe('judged lane health (#8877)', () => {
     assert.equal(writes, 0);
   });
 
-  it('does not alert during an idle lane or before the third stalled run', async () => {
+  it('does not alert during an idle lane or a stalled lane whose inputs are readable', async () => {
     assert.equal((await assess({}, { evaluatedAt: now - DAY_MS, stalledRuns: 2 }, null)).status, 'ok');
     assert.equal((await assess({ pending }, null)).status, 'ok');
   });
