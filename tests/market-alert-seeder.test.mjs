@@ -252,6 +252,24 @@ describe('buildTick runs the shared detectors under Node', () => {
     assert.deepEqual(still.snapshot.activity, { 'CL=F': [{ since: NOW + 5 * MIN, until: NOW + 10 * MIN }] }, 'the run survives the snapshot round trip');
   });
 
+  it('a move already explained at cold start is held with no row on the first ticks', async () => {
+    const oilNews = [
+      { title: 'Oil prices jump as OPEC cuts output', source: 'Reuters', link: 'https://example.test/opec', published_at: new Date(NOW - 30 * MIN).toISOString(), isAlert: false },
+      ...QUIET_NEWS,
+    ];
+    let previous = null;
+    for (const minutes of [0, 5, 10]) {
+      const tick = await buildTick(rawInputs({
+        [DIGEST_KEY]: digestOf(oilNews),
+        [SNAPSHOT_KEY]: previous === null ? null : envelope(previous.snapshot),
+        [MARKET_ALERT_LEDGER_KEY]: envelope(previous?.ledger ?? {}),
+      }), { nowMs: NOW + minutes * MIN, archive: EMPTY_ARCHIVE });
+      assert.deepEqual(tick.ledger, {}, `tick at +${minutes} minutes`);
+      assert.deepEqual(tick.summary.emitted, { total: 2, byType: { explained_market_move: 1, flow_price_divergence: 1 }, gated: 0, held: 2 }, `tick at +${minutes} minutes`);
+      previous = tick;
+    }
+  });
+
   it('a control window overlapped by recorded activity is skipped when the row resolves', async () => {
     const emittedAt = NOW - MARKET_ALERT_WINDOW_MS - 10 * MIN;
     const pending = pendingCrude(emittedAt);

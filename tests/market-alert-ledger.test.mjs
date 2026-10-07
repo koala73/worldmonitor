@@ -73,17 +73,21 @@ function every(fromMinutes, toMinutes, types) {
   return ticks;
 }
 
+// A tick whose third element is null has no baseline, as at cold start or
+// after a seeder gap; its runs still carry over, as the seeder reads them
+// from the stale snapshot.
 function runTicks(ticks, market) {
-  let state = { ledger: {}, emitted: [], activity: {} };
-  for (const [minutes, types] of ticks) {
+  let state = { ledger: {}, emitted: [], activity: {}, held: [] };
+  for (const [minutes, types, baseline] of ticks) {
     const tick = ingestSignals(state.ledger, types.map((type) => marketSignal(type, market)), {
       nowMs: NOW + minutes * MIN,
       runtimeMode: 'legacy',
       markets: [market],
       predictions: [],
-      baseline: { marketChanges: { [market.symbol]: market.change }, emitted: state.emitted, activity: state.activity },
+      baseline: baseline === null ? null : { marketChanges: { [market.symbol]: market.change }, emitted: state.emitted, activity: state.activity },
+      activity: state.activity,
     });
-    state = { ledger: tick.ledger, emitted: tick.emitted, activity: tick.activity };
+    state = { ledger: tick.ledger, emitted: tick.emitted, activity: tick.activity, held: [...state.held, tick.held] };
   }
   return state;
 }
@@ -234,6 +238,28 @@ describe('ingestSignals', () => {
     const ticks = [...every(0, 355, ['explained_market_move']), ...every(360, 375, []), [380, ['explained_market_move']]];
     const { ledger } = runTicks(ticks, AVGO);
     assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW], ['explained_market_move', NOW + 380 * MIN]]);
+  });
+
+  it('explained from a cold start, with no baseline on the first tick, opens no row while it keeps being emitted', () => {
+    const [first, ...rest] = every(0, 60, ['explained_market_move']);
+    const { ledger, held } = runTicks([[...first, null], ...rest], AVGO);
+    assert.deepEqual(rowsOf(ledger), []);
+    assert.deepEqual(held, Array(rest.length + 1).fill(1), 'held on every tick, the first for its missing baseline');
+  });
+
+  it('explained re-emitted after a seeder gap, with the baseline gone stale, opens no second row', () => {
+    const ticks = [...every(0, 500, ['explained_market_move']), [530, ['explained_market_move'], null], ...every(535, 600, ['explained_market_move'])];
+    const { ledger, held } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW]]);
+    assert.deepEqual(held.slice(-15), Array(15).fill(1), 'every tick from the gap onward is held');
+  });
+
+  it('explained opens its row when the only fresh run was started by another quiet type', () => {
+    const ticks = [...every(0, 25, ['silent_divergence']), ...every(30, 55, ['silent_divergence', 'flow_price_divergence']), [60, ['explained_market_move']]];
+    const { ledger, activity } = runTicks(ticks, AVGO);
+    assert.deepEqual(rowsOf(ledger), [['explained_market_move', NOW + 60 * MIN], ['silent_divergence', NOW]]);
+    assert.equal(Object.values(ledger)[1].lastSeenAt, NOW + 55 * MIN, 'the silent row is left as it was');
+    assert.deepEqual(activity, { AVGO: [{ since: NOW + 30 * MIN, until: NOW + 55 * MIN }] }, 'the flow holds are the run; the new explained row does not extend it');
   });
 
   it('silent on one tick then explained on the next opens the explained row', () => {

@@ -34,6 +34,9 @@ export const MARKET_ALERT_LEDGER_RETENTION_MS = MARKET_ALERT_ROLLING_WINDOW_DAYS
 // SNAPSHOT_MAX_AGE_MS is the same 15 minutes by design: a snapshot too old to
 // be a baseline is also too old to continue a run.
 export const MARKET_ALERT_ACTIVITY_GAP_MS = 15 * 60 * 1000;
+// The cap drops the oldest run even when it is still inside retention, so
+// more than eight separate held runs in the retention window lose the
+// earliest.
 export const MARKET_ALERT_ACTIVITY_MAX_RUNS = 8;
 // A due row may wait the evidence expiry before it resolves, and its control
 // window starts an offset plus a window before that.
@@ -91,11 +94,27 @@ function latestRow(ledger, id) {
 }
 
 const withinGap = (sinceMs, nowMs) => nowMs - sinceMs <= MARKET_ALERT_ACTIVITY_GAP_MS;
+const lastSeen = (row) => Math.max(row.deadline, row.lastSeenAt ?? 0);
 
 // The detector flips a move between explained and silent as the digest
-// changes; a quiet-market alert also needs the previous tick to have emitted
-// nothing for the symbol, so the flip itself does not reopen the move.
-const QUIET_MARKET_TYPES = new Set(['silent_divergence', 'flow_price_divergence']);
+// changes. Each market type says which of the previous tick's alerts hold a
+// new row and whether a fresh run of held activity does. A quiet-market alert
+// is held by any alert for the symbol and by any fresh run, so the flip itself
+// never reopens the move. An explained alert is held by itself and by a run
+// that continues its own row's activity, so a move that was silent and then
+// found its news still gets its explained row.
+const QUIET_MARKET_RULE = {
+  previousTickBlocks: (emitted, id) => emitted.some((other) => entityKeyOf(other) === entityKeyOf(id)),
+  runBlocks: () => true,
+};
+const HOLD_RULES = {
+  explained_market_move: {
+    previousTickBlocks: (emitted, id) => emitted.includes(id),
+    runBlocks: (run, latest) => latest !== null && run.since <= lastSeen(latest) + MARKET_ALERT_ACTIVITY_GAP_MS,
+  },
+  silent_divergence: QUIET_MARKET_RULE,
+  flow_price_divergence: QUIET_MARKET_RULE,
+};
 
 function extendRuns(runs = [], nowMs) {
   const last = runs.at(-1);
@@ -128,21 +147,23 @@ function createEntry(signal, entity, nowMs, runtimeMode) {
  * A market signal opens a row only under the recency rule: the symbol's most
  * recent row of the same type, whatever its status, was last seen (its
  * deadline or `lastSeenAt`, whichever is later) more than
- * MARKET_ALERT_ACTIVITY_GAP_MS ago, and so was the symbol's latest run of held
- * activity, so a move that stays elevated opens one row per type however the
- * detector flips it between explained and silent. The quiet-market types also
- * need the previous tick to have emitted no market alert for the symbol:
- * `baseline.emitted` holds the previous tick's market ids that passed the type
- * and confidence gate. A symbol without a baseline (`baseline` null, or the
- * symbol absent from `baseline.marketChanges` because its feed skipped the
- * previous tick) is held and records nothing. A hold whose same-type row is
- * still fresh bumps that row's `lastSeenAt`, whatever its status, so a closed
- * window whose alert keeps firing still blocks a later control window; every
- * other quoted hold extends or starts a run in `activity` instead, so a stale
- * row is never stretched. `activity` maps a symbol to its newest
- * MARKET_ALERT_ACTIVITY_MAX_RUNS runs `{ since, until }` in ms, oldest first,
- * where holds no more than the gap apart share a run; `baseline.activity` is
- * carried forward pruned to runs that ended inside
+ * MARKET_ALERT_ACTIVITY_GAP_MS ago, the previous tick did not emit the alerts
+ * HOLD_RULES names for the type, and no run of held activity that ended
+ * inside the gap blocks the type under the same rules, so a move that stays elevated
+ * opens one row per type however the detector flips it between explained and
+ * silent, and a move that was silent and then found its news gets its
+ * explained row. `baseline.emitted` holds the previous tick's market ids that
+ * passed the type and confidence gate. A symbol without a baseline (`baseline`
+ * null, or the symbol absent from `baseline.marketChanges` because its feed
+ * skipped the previous tick) is held and records nothing, so every alert
+ * still emitted after a seeder gap or a cold start stays held. A hold whose
+ * same-type row is still fresh bumps that row's `lastSeenAt`, whatever its
+ * status, so a closed window whose alert keeps firing still blocks a later
+ * control window; every other quoted hold extends or starts a run in
+ * `activity` instead, so a stale row is never stretched. `activity` maps a
+ * symbol to its newest MARKET_ALERT_ACTIVITY_MAX_RUNS runs `{ since, until }`
+ * in ms, oldest first, where holds no more than the gap apart share a run;
+ * `baseline.activity` is carried forward pruned to runs that ended inside
  * MARKET_ALERT_ACTIVITY_RETENTION_MS, long enough for the control window of
  * an emission that resolves at its deadline. `emitted` in the result is this
  * tick's gated market ids, sorted, for the next tick's baseline.
@@ -190,11 +211,12 @@ export function ingestSignals(existing, signals, { nowMs, runtimeMode, markets, 
         held += 1;
         continue;
       }
+      const rule = HOLD_RULES[signal.type];
       const latest = latestRow(ledger, id);
-      const rowFresh = latest !== null && withinGap(Math.max(latest.deadline, latest.lastSeenAt ?? 0), nowMs);
-      const runFresh = entityKey in runs && withinGap(runs[entityKey].at(-1).until, nowMs);
-      const quiet = !QUIET_MARKET_TYPES.has(signal.type) || !baseline.emitted.some((other) => entityKeyOf(other) === entityKey);
-      if (rowFresh || runFresh || !quiet) {
+      const run = runs[entityKey]?.at(-1);
+      const rowFresh = latest !== null && withinGap(lastSeen(latest), nowMs);
+      const runFresh = run !== undefined && withinGap(run.until, nowMs) && rule.runBlocks(run, latest);
+      if (rowFresh || runFresh || rule.previousTickBlocks(baseline.emitted, id)) {
         held += 1;
         touched += 1;
         if (rowFresh) ledger[latest.key] = { ...latest, lastSeenAt: nowMs };
