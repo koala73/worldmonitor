@@ -287,7 +287,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     app-shell resources joining the existing fleet —
 //       * ui://worldmonitor/news-intelligence.html  (get_news_intelligence)
 //       * ui://worldmonitor/conflict-events.html     (get_conflict_events)
-//       * ui://worldmonitor/natural-disasters-v2.html   (get_natural_disasters)
+//       * ui://worldmonitor/natural-disasters-v3.html   (get_natural_disasters)
 //       * ui://worldmonitor/prediction-markets.html  (get_prediction_markets)
 //       * ui://worldmonitor/forecasts.html           (get_forecast_predictions)
 //     Each renders through the shared shell (api/mcp/ui/shell.ts) and links from

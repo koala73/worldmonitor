@@ -461,7 +461,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/chokepoint-monitor-v2.html',
       'ui://worldmonitor/news-intelligence-v3.html',
       'ui://worldmonitor/conflict-events-v2.html',
-      'ui://worldmonitor/natural-disasters-v2.html',
+      'ui://worldmonitor/natural-disasters-v3.html',
       'ui://worldmonitor/prediction-markets-v3.html',
       'ui://worldmonitor/forecasts-v4.html',
       'ui://worldmonitor/news-dashboard-v3.html',
@@ -934,18 +934,47 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
-  it('Natural Disasters advertises v2 and keeps the original URI as a private data-free alias', async () => {
-    const advertised = UI_RESOURCE_REGISTRY.find((resource) => resource.name === 'Natural Disasters (interactive)');
-    assert.equal(advertised.uri, 'ui://worldmonitor/natural-disasters-v2.html');
-    assert.equal(UI_RESOURCE_REGISTRY.some((resource) => resource.uri === 'ui://worldmonitor/natural-disasters.html'), false);
-    const original = await handler(anonReq(readBody('ui://worldmonitor/natural-disasters.html')));
-    const current = await handler(anonReq(readBody(advertised.uri)));
-    const originalContent = (await original.json()).result.contents[0];
-    const currentContent = (await current.json()).result.contents[0];
-    assert.equal(originalContent.uri, 'ui://worldmonitor/natural-disasters.html');
-    assert.equal(currentContent.uri, advertised.uri);
-    assert.equal(originalContent.text, currentContent.text);
-    assert.deepEqual(originalContent._meta, currentContent._meta);
+  it('Natural Disasters advertises v3 and preserves prior URIs as public quota-free read aliases', async () => {
+    const uri = 'ui://worldmonitor/natural-disasters-v3.html';
+    const aliases = ['ui://worldmonitor/natural-disasters-v2.html', 'ui://worldmonitor/natural-disasters.html'];
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const resources = (await listRes.json()).result.resources;
+    assert.equal(resources.filter(resource => resource.uri === uri).length, 1, 'v3 must identify the current Natural renderer');
+    for (const alias of aliases) assert.equal(resources.filter(resource => resource.uri === alias).length, 0);
+    assert.equal(TOOL_REGISTRY.find(tool => tool.name === 'get_natural_disasters')._uiResourceUri, uri);
+    const listedTools = (await (await handler(envKeyReq({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} }))).json()).result.tools;
+    const naturalTool = listedTools.find(tool => tool.name === 'get_natural_disasters');
+    assert.equal(naturalTool._meta.ui.resourceUri, uri);
+    assert.equal(naturalTool._meta['ui/resourceUri'], uri);
+    const currentRes = await handler(anonReq(readBody(uri)));
+    const current = (await currentRes.json()).result.contents[0];
+    assert.equal(current.uri, uri);
+    assert.match(current.text, /Some detail was simplified or omitted for display/);
+    assert.match(current.text, /transportCoverage/);
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (String(args[0]) !== 'https://fake.upstash.io/pipeline') reads++;
+      return mockFetch(...args);
+    };
+    try {
+      for (const requested of [uri, ...aliases]) {
+        for (const request of [anonReq(readBody(requested)), proReq('POST', readBody(requested))]) {
+          const response = await mcpHandler(request, deps);
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.error, undefined);
+          const content = body.result.contents[0];
+          assert.equal(content.uri, requested);
+          assert.equal(content.text, current.text);
+          assert.equal(content.mimeType, current.mimeType);
+          assert.deepEqual(content._meta, current._meta);
+        }
+      }
+    } finally { globalThis.fetch = mockFetch; }
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
   });
 
   for (const [name, project, summarize] of [
