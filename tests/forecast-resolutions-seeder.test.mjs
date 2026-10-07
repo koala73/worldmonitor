@@ -3173,7 +3173,7 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
   const GPS_FEED = 'intelligence:gpsjam:v2';
   const COMMODITY_FEED = 'market:commodities-bootstrap:v1';
   const RAW_FEEDS = {
-    [GPS_FEED]: { hexes: [{ region: 'Persian Gulf', hexCount: 14 }] },
+    [GPS_FEED]: { date: '2026-07-07', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
     [COMMODITY_FEED]: { _seed: { fetchedAt: T0 }, data: { quotes: [{ symbol: 'CL=F', price: 71.5 }] } },
   };
 
@@ -3189,7 +3189,7 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
     });
     return attachResolutionSpecs([
       forecast({ id: 'fc-gps-gulf', region: 'Persian Gulf', title: 'GPS jamming: Persian Gulf', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Persian Gulf', weight: 0.5 }] }),
-      forecast({ id: 'fc-gps-baltic', region: 'Baltic Sea', title: 'GPS jamming: Baltic Sea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Baltic Sea', weight: 0.5 }] }),
+      forecast({ id: 'fc-gps-guinea', region: 'Gulf of Guinea', title: 'GPS jamming: Gulf of Guinea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Gulf of Guinea', weight: 0.5 }] }),
       forecast({
         id: 'fc-oil',
         domain: 'market',
@@ -3512,5 +3512,45 @@ describe('projection horizon windows (#7075)', () => {
       spec: { kind: 'hard', horizon: 'd30', deadline: now + DAY_MS }, deadline: now + DAY_MS,
     };
     assert.deepEqual(Object.keys(pruneArchivedTerminalEntries({ [stale.key]: stale, [open.key]: open }, now)), [open.key]);
+  });
+});
+
+describe('GPS rows after the hexCount shaper (#8990)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const METRIC = `${GPS_FEED}|hexCount(region==Eastern Mediterranean)`;
+  const deadline = T0 + 7 * DAY_MS;
+  const gpsRow = (generatedAt, overrides) => ({
+    id: 'fc-supply_chain-091bde59',
+    key: `fc-supply_chain-091bde59@${generatedAt + 7 * DAY_MS}`,
+    domain: 'supply_chain',
+    region: 'Eastern Mediterranean',
+    title: 'GPS interference in Eastern Mediterranean shipping zone',
+    generationOrigin: 'legacy_detector',
+    probability: 0.5,
+    generatedAt,
+    deadline: generatedAt + 7 * DAY_MS,
+    spec: { kind: 'hard', deadline: generatedAt + 7 * DAY_MS, metricKey: METRIC, operator: '>=', threshold: 3, window: 'at-deadline', sourceFeed: GPS_FEED },
+    ...overrides,
+  });
+  const voided = gpsRow(T0 - 7 * DAY_MS, {
+    status: 'resolved',
+    outcome: 'VOID',
+    resolvedAt: T0,
+    sealedAt: T0,
+    evidence: { reason: 'no_establishable_metric', metricKey: METRIC, resolvedAt: T0 },
+    samples: { count: 1, recent: [{ ts: T0, error: 'metric_not_found' }] },
+  });
+  const pending = gpsRow(T0, { status: 'pending', samples: { count: 1, recent: [{ ts: T0, error: 'metric_not_found' }] } });
+  const deadlineDate = new Date(deadline).toISOString().slice(0, 10);
+  const feeds = shapeResolutionFeeds({
+    [GPS_FEED]: { date: deadlineDate, hexes: Array.from({ length: 5 }, () => ({ lat: 35, lon: 30, level: 'high', region: 'turkey-caucasus' })) },
+  });
+
+  it('keeps an unreadable-metric VOID as it was and resolves a pending row from the zone count', () => {
+    const ledger = { [voided.key]: structuredClone(voided), [pending.key]: structuredClone(pending) };
+    const { ledger: next } = processResolutionCycle(ledger, [], feeds, deadline + DAY_MS);
+    assert.deepEqual(next[voided.key], voided);
+    assert.equal(next[pending.key].outcome, 'YES');
+    assert.equal(next[pending.key].evidence.metricValue, 5);
   });
 });

@@ -2004,7 +2004,7 @@ export function samplePendingEntries(ledger, feedsByKey, nowMs) {
     // provides one, NOT the cycle time — otherwise a stale kept-warm reading
     // gets a post-deadline ts and is later preferred over the fresh quote,
     // defeating the settlement gate (#5243 P1). Feeds with no per-record
-    // timestamp (riskScore/hexCount/yesPrice) keep the cycle time.
+    // timestamp (riskScore/yesPrice) keep the cycle time.
     const sampleTs = Number.isFinite(asOf) ? asOf : nowMs;
     entry.samples = Number.isFinite(value)
       ? appendSample(entry.samples, { ts: sampleTs, value })
