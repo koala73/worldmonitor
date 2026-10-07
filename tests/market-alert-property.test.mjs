@@ -4,10 +4,11 @@ import { describe, it } from 'node:test';
 import {
   MARKET_ALERT_ACTIVITY_GAP_MS,
   MARKET_ALERT_CONFIDENCE_GATE,
+  MARKET_ALERT_TICK_MS,
   MARKET_ALERT_WINDOW_MS,
   ingestSignals,
 } from '../scripts/_market-alert-ledger.mjs';
-import { liveBaseline, parseSnapshot, snapshotOf } from '../scripts/seed-market-alert-ledger.mjs';
+import { liveBaseline, parseSnapshot, snapshotHistory, snapshotOf } from '../scripts/seed-market-alert-ledger.mjs';
 
 const MIN = 60 * 1000;
 const START = Date.UTC(2026, 9, 6, 12, 0, 0);
@@ -100,12 +101,12 @@ function runTimeline(timeline) {
   for (const step of timeline.steps) {
     nowMs += step.advanceMs;
     if (step.reject !== null && snapshot !== null) snapshot = REJECTED_SHAPES[step.reject](snapshot);
-    const previous = parseSnapshot(snapshot);
-    const baseline = liveBaseline(previous, nowMs);
+    const baseline = liveBaseline(parseSnapshot(snapshot), nowMs);
+    const { observedAt, activity } = snapshotHistory(snapshot);
     const markets = step.quoted ? [MARKET] : [];
     const signals = step.types.map((name) => marketSignal(TYPES[name], MARKET, { confidence: step.confidence, nowMs }));
     const before = new Set(Object.keys(ledger));
-    const ingested = ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets, predictions: [], baseline, activity: previous?.activity ?? {} });
+    const ingested = ingestSignals(ledger, signals, { nowMs, runtimeMode: 'legacy', markets, predictions: [], baseline, activity, observedAt });
     ledger = ingested.ledger;
     snapshot = stored(snapshotOf({ nowMs, predictions: [], predictionsFetchedAt: null, markets, emitted: ingested.emitted, activity: ingested.activity }), nowMs);
     log.push({
@@ -119,19 +120,23 @@ function runTimeline(timeline) {
   return { ledger, log };
 }
 
-// Consecutive emitting ticks no more than the activity gap apart are one
-// stretch; dropouts, gated ticks and feed-skipped ticks inside the bound do
-// not break it. A rejected snapshot does: the seeder drops the runs with it
-// (the production snapshot this PR replaces holds none to salvage), so
-// continuity that only runs carried cannot survive that tick.
+// Consecutive emitting ticks are one stretch while the quiet between them,
+// in observed time, is at most the activity gap: a seeder outage observes
+// nothing, so the interval between two log entries counts for at most one
+// tick. Dropouts, gated ticks and feed-skipped ticks inside the bound do not
+// break a stretch, and neither does a snapshot rejected for a missing field,
+// whose runs the seeder salvages. The object-valued activity of the previous
+// snapshot shape cannot be salvaged, so that rejection breaks one.
 function stretchesOf(log) {
   const stretches = [];
+  let quiet = Infinity;
   for (let i = 0; i < log.length; i += 1) {
+    if (i > 0) quiet += Math.min(log[i].nowMs - log[i - 1].nowMs, MARKET_ALERT_TICK_MS);
+    if (log[i].step.reject === 'activity-object') quiet = Infinity;
     if (log[i].emitted.length === 0) continue;
-    const open = stretches.at(-1);
-    const continues = open !== undefined && log[i].step.reject === null && log[i].nowMs - log[open.last].nowMs <= MARKET_ALERT_ACTIVITY_GAP_MS;
-    if (continues) open.last = i;
+    if (quiet <= MARKET_ALERT_ACTIVITY_GAP_MS) stretches.at(-1).last = i;
     else stretches.push({ first: i, last: i });
+    quiet = 0;
   }
   return stretches;
 }
@@ -172,11 +177,35 @@ function freshStretchOpensOneRowPerEmittedType(log) {
   return null;
 }
 
+// A baseline-less tick holds every alert, so the tick after it is the first
+// with a live baseline that could reopen what the held tick saw.
 function noRowWithoutALiveQuotedBaseline(log) {
-  for (const tick of log) {
+  for (let i = 0; i < log.length; i += 1) {
+    const tick = log[i];
     if (tick.created.length === 0) continue;
     if (tick.baseline !== 'live') return `[${tick.created}] created at ${minutes(tick.nowMs)} with baseline ${tick.baseline}`;
     if (!tick.step.quoted) return `[${tick.created}] created at ${minutes(tick.nowMs)} on a feed-skipped tick`;
+    const previous = log[i - 1];
+    const reopened = previous?.baseline === 'null' ? tick.created.filter((type) => previous.emitted.includes(type)) : [];
+    if (reopened.length > 0) return `[${reopened}] created at ${minutes(tick.nowMs)}, the tick after a baseline-less tick that emitted [${previous.emitted}]`;
+  }
+  return null;
+}
+
+// A stretch that opens without a live quoted baseline opens on a hold, and
+// nothing later in it can say the move was new: it creates no row of a type
+// its opening tick emitted, and no other row either, except one explained row
+// when the opening tick emitted no explained alert, as a move that was silent
+// and then found its news gets its explained row.
+function heldOpeningCreatesNoRowOfItsTypes(log) {
+  for (const { first, last } of stretchesOf(log)) {
+    const opening = log[first];
+    if (opening.baseline === 'live') continue;
+    const allowed = opening.emitted.includes(TYPES.explained) ? [] : [TYPES.explained];
+    const rows = log.slice(first, last + 1).flatMap((tick) => tick.created.map((type) => `${type}@${minutes(tick.nowMs)}`));
+    if (rows.length > 1 || rows.some((row) => !allowed.includes(row.split('@')[0]))) {
+      return `the stretch opening at ${minutes(opening.nowMs)} on a ${opening.baseline} baseline with [${opening.emitted}] created [${rows}]`;
+    }
   }
   return null;
 }
@@ -240,14 +269,16 @@ describe(`market-alert ledger property (seed ${BASE_SEED}, ${TIMELINES} timeline
       const clearSince = opening.nowMs - MARKET_ALERT_WINDOW_MS - MARKET_ALERT_ACTIVITY_GAP_MS;
       return opening.baseline === 'live' && !log.slice(0, first).some((tick) => tick.created.length > 0 && tick.nowMs >= clearSince);
     }).length, 0);
+    const checkedByD = runs.reduce((count, log) => count + stretchesOf(log).filter(({ first }) => log[first].baseline !== 'live').length, 0);
     const ticks = runs.reduce((count, log) => count + log.length, 0);
     const rows = runs.reduce((count, log) => count + rowsCreated(log).length, 0);
-    t.diagnostic(`seed ${BASE_SEED}: ${TIMELINES} timelines, ${ticks} ticks, ${stretches.flat().length} stretches (${checkedByB} opened clear with a live baseline), ${rows} rows created`);
+    t.diagnostic(`seed ${BASE_SEED}: ${TIMELINES} timelines, ${ticks} ticks, ${stretches.flat().length} stretches (${checkedByB} opened clear with a live baseline, ${checkedByD} opened on a hold), ${rows} rows created`);
     for (const [key, counts] of Object.entries(coverage)) {
       t.diagnostic(`${key}: ${counts.timelines} timelines, ${counts.ticks} ticks`);
       assert.ok(counts.timelines >= 10, `${key} appears in only ${counts.timelines} timelines`);
     }
     assert.ok(checkedByB >= 50, `only ${checkedByB} stretches opened clear with a live baseline`);
+    assert.ok(checkedByD >= 50, `only ${checkedByD} stretches opened on a hold`);
   });
 
   it('(a) creates at most one row per type inside a continuously active stretch', () => {
@@ -258,7 +289,11 @@ describe(`market-alert ledger property (seed ${BASE_SEED}, ${TIMELINES} timeline
     check(freshStretchOpensOneRowPerEmittedType);
   });
 
-  it('(c) creates no row on a tick whose baseline is null or lacks the quote, nor on a feed-skipped tick', () => {
+  it('(c) creates no row on a tick whose baseline is null or lacks the quote, nor on a feed-skipped tick, nor on the tick after a baseline-less tick for a type it emitted', () => {
     check(noRowWithoutALiveQuotedBaseline);
+  });
+
+  it('(d) a stretch opening on a null or unquoted baseline creates no row of a type its opening tick emitted, and at most an explained row when the opening tick emitted no explained', () => {
+    check(heldOpeningCreatesNoRowOfItsTypes);
   });
 });
