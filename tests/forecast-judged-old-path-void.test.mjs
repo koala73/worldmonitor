@@ -15,7 +15,9 @@ import {
 import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const CUTOFF = SUBJECT_GATED_SELECTION_SINCE_MS;
+// #8995 reached production at 2026-10-07T14:39Z. Pinned here, not read from
+// the resolver, so moving the resolver's cutoff fails these tests.
+const CUTOFF = Date.parse('2026-10-07T14:39:00Z');
 const NOW = CUTOFF + 2 * DAY_MS;
 
 // Shaped like the live rows: fc-conflict-750e2fea@1784631793426 sealed NO on
@@ -122,6 +124,10 @@ async function runLikeProduction(existing, nowMs) {
 const byId = (ledger) => Object.fromEntries(Object.values(ledger).map((row) => [row.id, row]));
 
 describe('judged verdicts sealed on the stock-word selection (#8990)', () => {
+  it('cuts over at the #8995 deploy', () => {
+    assert.equal(SUBJECT_GATED_SELECTION_SINCE_MS, CUTOFF);
+  });
+
   it('voids every old-path judged YES and NO through the production run, keeping the verdict as superseded', async () => {
     const before = byId(liveShapedLedger());
     const { ledger } = await runLikeProduction(liveShapedLedger(), NOW);
