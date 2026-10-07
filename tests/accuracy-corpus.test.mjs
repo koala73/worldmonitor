@@ -10,6 +10,7 @@ import {
   ACCURACY_DOMAIN_LABELS,
   ACCURACY_FAILURE_CODES,
   ACCURACY_PAGE_PATH,
+  MARKET_ALERT_TYPE_LABELS,
   SCORECARD_DECLARED_FIELDS,
   SCORECARD_STALE_AFTER_HOURS,
   accuracyDatasetDownload,
@@ -20,6 +21,8 @@ import {
   selectDeclaredScorecardFields,
   writeAccuracySection,
 } from '../scripts/build-accuracy-page.mjs';
+import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
+import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -959,6 +962,103 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     const { html } = renderState(sectionWith({ publishedByDomain: [] }));
     assert.equal(tableOf(html), null);
     assert.match(stripTags(html), /No published forecast has been graded in any domain/);
+  });
+});
+
+describe('accuracy page market-alert hit rates (#8867)', () => {
+  const HOUR = 3_600_000;
+  const row = (type, overrides = {}) => ({
+    type, n: 40, hitRate: 0.625, baseN: 32, baseHitRate: 0.25, pairedHitRate: 0.59375, medianLeadTimeMs: 2.5 * HOUR, ...overrides,
+  });
+  const withAlerts = (byType, overrides = {}) => sectionWith({
+    marketAlerts: { ...MARKET_ALERTS, methodology: buildScorecard({}, 0, { archive: {} }).methodology, byType, ...overrides },
+  });
+  const tableOf = (html) => html.match(/<table data-market-alerts>[\s\S]*?<\/table>/)?.[0] ?? null;
+  const cellsOf = (html, type) => [...html.match(new RegExp(`<tr data-alert-type="${type}">([\\s\\S]*?)</tr>`))[1]
+    .matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map(([, cell]) => stripTags(cell).trim());
+
+  it('shows count, hit rate, the paired comparison with its base count, and the median lead time', () => {
+    const { html } = renderState(withAlerts([row('silent_divergence')]));
+    assert.match(html, /<h2 id="market-alerts">/);
+    assert.deepEqual(cellsOf(html, 'silent_divergence'), [
+      MARKET_ALERT_TYPE_LABELS.silent_divergence,
+      '40',
+      '62.5% of 40 alerts',
+      '59.4% of 32 alerts',
+      '25.0% of 32 earlier windows',
+      '2 h 30 min',
+    ]);
+  });
+
+  it('applies the n>=30 floor separately to the hit rate and to the paired comparison', () => {
+    const { html } = renderState(withAlerts([
+      row('explained_market_move', { n: 29, baseN: 29 }),
+      row('silent_divergence', { n: 30, baseN: 29 }),
+      row('flow_price_divergence', { n: 30, baseN: 30 }),
+    ]));
+    const [, , belowHit, belowPaired, belowBase, belowLead] = cellsOf(html, 'explained_market_move');
+    assert.deepEqual([belowHit, belowPaired, belowBase, belowLead], Array(4).fill('Not yet measurable'));
+    const [, , hit, paired, base, lead] = cellsOf(html, 'silent_divergence');
+    assert.equal(hit, '62.5% of 30 alerts');
+    assert.deepEqual([paired, base], ['Not yet measurable', 'Not yet measurable']);
+    assert.equal(lead, '2 h 30 min');
+    assert.deepEqual(cellsOf(html, 'flow_price_divergence').slice(3, 5), ['59.4% of 30 alerts', '25.0% of 30 earlier windows']);
+  });
+
+  it('publishes nothing measured for prediction_leads_news until its control windows scored', () => {
+    const unpaired = renderState(withAlerts([row('prediction_leads_news', { n: 120, baseN: 12 })])).html;
+    assert.deepEqual(cellsOf(unpaired, 'prediction_leads_news').slice(2), Array(4).fill('Not yet measurable'));
+    assert.doesNotMatch(tableOf(unpaired), /62\.5%|25\.0%|2 h 30 min/);
+    const paired = renderState(withAlerts([row('prediction_leads_news', { n: 120, baseN: 30 })])).html;
+    assert.deepEqual(cellsOf(paired, 'prediction_leads_news').slice(2), [
+      '62.5% of 120 alerts', '59.4% of 30 alerts', '25.0% of 30 earlier windows', '2 h 30 min',
+    ]);
+  });
+
+  it('treats a missing or out-of-range rate as not yet measurable rather than printing it', () => {
+    const { html } = renderState(withAlerts([row('silent_divergence', { hitRate: undefined, pairedHitRate: 1.2, medianLeadTimeMs: undefined })]));
+    assert.deepEqual(cellsOf(html, 'silent_divergence').slice(2), [
+      'Not yet measurable', 'Not yet measurable', 'Not yet measurable', 'Not yet measurable',
+    ]);
+    assert.doesNotMatch(html, /undefined|NaN/);
+  });
+
+  it('quotes the ledger resolution and base-rate rules verbatim', () => {
+    const { html } = renderState(withAlerts([row('silent_divergence')]));
+    const text = stripTags(html).replaceAll('&#39;', "'");
+    for (const rule of [MARKET_ALERT_RESOLUTION_RULE, MARKET_ALERT_BASE_RATE_RULE]) {
+      assert.ok(text.includes(rule), `the page must quote: ${rule.slice(0, 50)}...`);
+    }
+    assert.equal(buildScorecard({}, 0, { archive: {} }).methodology, `${MARKET_ALERT_RESOLUTION_RULE} ${MARKET_ALERT_BASE_RATE_RULE}`,
+      'the quoted rules are the ones the ledger scores under');
+  });
+
+  it('labels every alert type the ledger scores in plain words', () => {
+    assert.deepEqual(Object.keys(MARKET_ALERT_TYPE_LABELS).sort(), [...MARKET_ALERT_TYPES].sort());
+    const { html } = renderState(withAlerts(MARKET_ALERT_TYPES.map((type) => row(type))));
+    for (const type of MARKET_ALERT_TYPES) assert.equal(cellsOf(html, type)[0], MARKET_ALERT_TYPE_LABELS[type]);
+    assert.doesNotMatch(stripTags(tableOf(html)), /_/, 'no internal type ids in the table text');
+  });
+
+  it('keeps every published percentage next to its population', () => {
+    const { html } = renderState(withAlerts(MARKET_ALERT_TYPES.map((type) => row(type))));
+    const text = stripTags(tableOf(html));
+    const percentages = [...text.matchAll(/\d[\d.]*%/g)];
+    assert.equal(percentages.length, 12);
+    for (const match of percentages) assert.match(text.slice(match.index, match.index + 30), /% of [\d,]+ /);
+  });
+
+  it('renders an honest absent state for a snapshot captured before the block existed', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(html, /<h2 id="market-alerts">/);
+    assert.equal(tableOf(html), null);
+    assert.match(stripTags(html), /captured before market alerts were scored/);
+  });
+
+  it('says no alert has been scored when the ledger has no rows', () => {
+    const { html } = renderState(withAlerts([]));
+    assert.equal(tableOf(html), null);
+    assert.match(stripTags(html), /No market alert has been scored yet/);
   });
 });
 
