@@ -1686,6 +1686,52 @@ describe('bounded public Natural paid panel presentation', () => {
     assert.deepEqual(repeat.transportCoverage, first.transportCoverage);
     assert.equal(repeat.cached_at, first.cached_at);
   });
+  it('preserves fitting paid projections of raw cone counts and tracks', async () => {
+    const track = Array.from({ length: 120 }, (_, index) => ({ lat: 20, lon: 120, hour: index }));
+    eventBucket.events[0].forecastTrack = track;
+    eventBucket.events[1].forecastTrack = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index }));
+    const original = structuredClone(eventBucket);
+    for (const [jmespath, expected] of [
+      ['data.events.events[0].conePolygon[0].points | length(@)', 1900],
+      ['data.events.events[0].forecastTrack', track],
+    ]) {
+      const { deps, pipe } = makeProDeps();
+      const wire = await invoke(deps, { limit: 2, jmespath });
+      assert.deepEqual(wire.structuredContent.projection, expected);
+      assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+      assert.equal(pipe.count, 1);
+    }
+    assert.deepEqual(eventBucket, original);
+  });
+  it('preserves raw geometry when the requested summary sample already fits', async () => {
+    eventBucket.events.push(cyclone('fourth'));
+    for (const row of eventBucket.events) row.conePolygon[0].points = row.conePolygon[0].points.slice(0, 800);
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const wire = await invoke(deps, { summary: true });
+    const payload = wire.structuredContent.projection;
+    assert.equal(payload.data.events.events.count, 4);
+    assert.deepEqual(payload.data.events.events.sample, original.events.slice(0, 3));
+    assert.equal(payload.transportCoverage, undefined);
+    assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+    assert.deepEqual(eventBucket, original);
+  });
+  it('counts only cone detail actually returned in a four-event summary sample', async () => {
+    eventBucket.events.push(cyclone('fourth'));
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const wire = await invoke(deps, { summary: true });
+    const payload = wire.structuredContent.projection;
+    assert.notEqual(payload._budget_exceeded, true);
+    const sample = payload.data.events.events.sample;
+    assert.equal(payload.data.events.events.count, 4);
+    assert.equal(sample.length, 3);
+    const coverage = payload.transportCoverage.details.filter(item => item.field === 'conePolygon');
+    assert.deepEqual(coverage.map(item => item.event_id), sample.map(row => row.id));
+    assert.equal(coverage.reduce((total, item) => total + item.returned_count, 0),
+      sample.reduce((total, row) => total + row.conePolygon.reduce((points, ring) => points + ring.points.length, 0), 0));
+    assert.deepEqual(eventBucket, original);
+  });
   it('preserves full API geometry and news map scope without panel presentation', async () => {
     const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
       tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
@@ -1723,6 +1769,8 @@ describe('bounded public Natural paid panel presentation', () => {
     assert.deepEqual(shown.data.events.events.slice(1), original.data.events.events.slice(1));
     assert.deepEqual(raw, original); assert.equal(shown.panelRequest.token, 'controlled-token');
     assert.ok(shown.transportCoverage.details.every(item => item.event_id === 'known'));
+    const malformedList = { data: { events: { events: { count: 1, sample: [cyclone('unknown-list')] } } } };
+    assert.equal(presentNaturalDisastersPanel(malformedList, 10000), malformedList);
   });
 
 });

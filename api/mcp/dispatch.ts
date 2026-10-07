@@ -835,9 +835,6 @@ export async function dispatchToolsCall(
         ? { ...original, data: filterCacheToolData(tool, original.data, callArguments) }
         : tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
       result = snapshot;
-      if (tool.name === 'get_natural_disasters' && dedicatedPanel && panelRead?.panel === 'disasters') {
-        result = presentNaturalDisastersPanel(panelRequest ? { ...snapshot, panelRequest } : snapshot, tool._outputBudgetBytes);
-      }
       if (argBool(callArguments.summary)) {
         const presented = result as typeof snapshot;
         result = { ...presented, data: tool._summarize ? tool._summarize(presented.data) : summarizeData(presented.data) };
@@ -860,7 +857,16 @@ export async function dispatchToolsCall(
       && result && typeof result === 'object') {
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
     }
-    const { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
+    let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
+    if (tool.name === 'get_natural_disasters' && dedicatedPanel && panelRead?.panel === 'disasters'
+      && result && typeof result === 'object'
+      && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
+      const presented = presentNaturalDisastersPanel(result as Record<string, unknown>, tool._outputBudgetBytes, argBool(callArguments.summary));
+      if (presented !== result) {
+        result = presented;
+        ({ text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg));
+      }
+    }
     // Attribution accompaniment. A projection can detach a redistribution-
     // permitted value from the licence fields sitting beside it in the
     // unprojected payload, so a licence-bearing tool declares an extraction

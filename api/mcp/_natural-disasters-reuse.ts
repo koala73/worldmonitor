@@ -100,7 +100,7 @@ export function filterNaturalDisastersPanelData(data: Record<string, unknown>, a
   return labels.length ? selectDatasets(data, labels) : data;
 }
 
-export function presentNaturalDisastersPanel(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+export function presentNaturalDisastersPanel(result: Record<string, unknown>, budgetBytes: number, summary = false): Record<string, unknown> {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
   if (size(result) <= budgetBytes || !record(result.data) || !record(result.data.events)) return result;
   const presented = structuredClone(result);
@@ -134,7 +134,9 @@ export function presentNaturalDisastersPanel(result: Record<string, unknown>, bu
       returned_ring_count: rings.returned });
     presented.transportCoverage = { count_scope: 'post_filter_snapshot', details };
   };
-  const rows = Array.isArray(bucket.events) ? bucket.events : [];
+  const rows = Array.isArray(bucket.events) ? bucket.events
+    : summary && record(bucket.events) && Number.isSafeInteger(bucket.events.count)
+      && Array.isArray(bucket.events.sample) && Number(bucket.events.count) >= bucket.events.sample.length ? bucket.events.sample : [];
   rows.forEach((row, index) => {
     if (!record(row)) return;
     const original = coneCounts(row.conePolygon);
