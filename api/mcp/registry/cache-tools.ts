@@ -468,6 +468,39 @@ export function applySectorValuationFreshness(
   return data;
 }
 
+function forecastReliability(data: Record<string, unknown>, domains: string[]) {
+  const raw = data.scorecard;
+  const unavailable = { status: 'unavailable' };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable;
+  const card = raw as Record<string, unknown>;
+  if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
+    || !Number.isFinite(card.schemaVersion) || card.schemaVersion < 2 || !Array.isArray(card.publishedByDomain)) return unavailable;
+  const rows = new Map<string, Record<string, unknown>>();
+  for (const value of card.publishedByDomain) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as Record<string, unknown>;
+    if (typeof row.domain === 'string' && row.domain !== 'bet_engine' && domains.includes(row.domain)) rows.set(row.domain, row);
+  }
+  const capturedAt = Date.now();
+  const meta = data.scorecardMeta;
+  const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
+  const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
+  return {
+    status: 'ready', windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 90,
+    stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
+    asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+    byDomain: [...new Set(domains)].filter(domain => domain !== 'bet_engine').map(domain => {
+      const row = rows.get(domain);
+      const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
+      const yes = row?.yesCount;
+      return sampleCount >= 30 && typeof row?.brier === 'number' && Number.isFinite(row.brier)
+        && typeof yes === 'number' && Number.isInteger(yes) && yes >= 0 && yes <= sampleCount
+        ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount }
+        : { domain, kind: 'unmeasured', n: sampleCount };
+    }),
+  };
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
@@ -3103,6 +3136,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     outputSchema: (() => {
       const schema = cacheEnvelope({
+      reliability: { type: 'object', properties: { status: { type: 'string', enum: ['ready', 'unavailable'] }, byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } } } },
       predictions: {
         type: ['object', 'null'],
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
@@ -3141,9 +3175,15 @@ export const CACHE_TOOLS: ToolDef[] = [
           }
         }
       }
-      return data;
+      if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
+        const node = data.predictions as { predictions?: unknown[] } | null;
+        const domains = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'domain' in value && typeof value.domain === 'string' ? [value.domain] : []);
+        return { predictions: data.predictions, reliability: forecastReliability(data, domains) };
+      }
+      return { predictions: data.predictions };
     },
-    _cacheKeys: ['forecast:predictions:v2'],
+    _cacheKeys: ['forecast:predictions:v2', 'forecast:scorecard:v1', 'seed-meta:forecast:scorecard'],
+    _cacheLabels: { 'forecast:predictions:v2': 'predictions', 'forecast:scorecard:v1': 'scorecard', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
     _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecasts",

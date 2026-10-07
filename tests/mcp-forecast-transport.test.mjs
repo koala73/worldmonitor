@@ -98,3 +98,25 @@ describe('bounded forecast list and original case transport', () => {
     for (const bad of [{ ...args, forecast_id: '' }, { ...args, generated_at: '' }, { ...args, arbitrary: true }]) assert.throws(() => detail._postFilter({ predictions: full }, bad, paid));
   });
 });
+
+describe('published forecast reliability transport', () => {
+  const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
+  const project = (scorecard, predictions = full) => opening._postFilter({ predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+  it('projects only loaded published domains with the website sample and base-rate rules', () => {
+    const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [row(), row('conflict'), row('bet_engine')], byDomain: [row('energy', { brier: 0.001 })], receipts: ['private'], skill: 0.99 };
+    const reliability = project(scorecard);
+    assert.deepEqual(reliability?.byDomain, [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }], 'loaded energy must carry its published reliability, never pooled/headline values');
+    assert.equal(reliability.status, 'ready'); assert.equal(reliability.windowDays, 90);
+    const many = { ...full, predictions: Array.from({ length: 50 }, (unusedValue, domainIndex) => ({ ...full.predictions[0], domain: 'domain-' + domainIndex })) };
+    assert.equal(project({ ...scorecard, publishedByDomain: many.predictions.map(prediction => row(prediction.domain)) }, many).byDomain.length, 30, 'public reliability is bounded to the loaded thirty domains');
+    for (const changes of [{ count: 29 }, { yesCount: 15.5 }, { yesCount: -1 }, { yesCount: 46 }, { brier: null }]) assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', changes)] }).byDomain[0].kind, 'unmeasured');
+    assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', { count: 45.5 })] }).byDomain[0].kind, 'measured');
+    assert.equal(project({ ...scorecard, publishedByDomain: [row(), row('energy', { brier: 0.3 })] }).byDomain[0].brier, 0.3);
+    assert.deepEqual(project({ ...scorecard, publishedByDomain: [] }).byDomain, [{ domain: 'energy', kind: 'unmeasured', n: 0 }]);
+    assert.equal(project(scorecard, { ...full, predictions: [{ ...full.predictions[0], domain: 'bet_engine' }] }).byDomain.length, 0);
+  });
+  it('validates raw health and schema before public field selection', () => {
+    const good = { schemaVersion: 2, publishedByDomain: [row()] };
+    for (const value of [null, {}, { ...good, schemaVersion: 1 }, { ...good, degraded: true }, { ...good, error: 'source_failure' }, { ...good, publishedByDomain: null }]) assert.equal(project(value)?.status, 'unavailable', 'unhealthy optional reliability must be explicit and non-null');
+  });
+});

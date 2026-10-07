@@ -186,6 +186,13 @@ async function executeCacheTool(
     activationStates,
   );
 
+  if (tool.name === 'get_forecast_predictions') {
+    const index = labels.indexOf('predictions');
+    if (index < 0 || !dataReads[index]!.ok || results[index] == null) {
+      throw new McpSourceUnavailableError('cache_read_failed', [], ['predictions']);
+    }
+  }
+
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
   // / stampede). Throw so dispatchToolsCall reports a normal tool-execution
@@ -757,6 +764,8 @@ export async function dispatchToolsCall(
   let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
+    let forecastSnapshotToSave: Record<string, unknown> | undefined;
+    let forecastCompletedBytes = 0;
     let intelligenceRead: NewsIntelligencePanelRead | undefined;
     let chokepointRead: ChokepointPanelRead | undefined;
     let disasterRead: NaturalDisastersPanelRead | undefined;
@@ -806,7 +815,8 @@ export async function dispatchToolsCall(
         await panelRead.save(snapshot);
       } else if (tool.name === 'get_forecast_predictions' && result && typeof result === 'object') {
         const { panelRequest: _receipt, ...snapshot } = result as Record<string, unknown>;
-        await panelRead.save(snapshot);
+        forecastSnapshotToSave = snapshot;
+        forecastCompletedBytes = utf8ByteLength(JSON.stringify(panelRequest ? { ...result, panelRequest } : result));
       } else await panelRead.save(result);
     }
     if (tool.name === 'get_forecast_predictions' && panelRead?.panel === 'forecasts' && tool._execute === undefined && argBool(callArguments.summary) && result && typeof result === 'object' && 'data' in result) {
@@ -869,7 +879,7 @@ export async function dispatchToolsCall(
     // Measured on the merged text, so the rider counts toward the budget: it
     // is bytes on the wire, and a projection that only fits by shedding its
     // attribution is not a projection we can serve.
-    const textBytes = utf8ByteLength(text);
+    const textBytes = Math.max(utf8ByteLength(text), forecastCompletedBytes);
     const outputBudget = tool._outputBudgetBytes;
     const budgetExceeded = textBytes > outputBudget;
     if (telemetryEnabled()) {
@@ -918,6 +928,8 @@ export async function dispatchToolsCall(
       };
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
     }
+    if (forecastSnapshotToSave && panelRead) await panelRead.save(forecastSnapshotToSave);
+
     // Every tool advertises an `outputSchema`, so a strict client rejects a
     // result without `structuredContent` before the model sees it (#8328). A
     // soft-fail envelope is already an object in its own advertised branch. A
