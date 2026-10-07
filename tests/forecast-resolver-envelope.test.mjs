@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { ENVELOPE_BUG_VOID_REASON, processResolutionCycle, processResolutionCycleWithJudges, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
+import { ENVELOPE_BUG_VOID_REASON, ingestHistory, processResolutionCycle, processResolutionCycleWithJudges, voidEnvelopeBugResolutions } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildResolutionSpec, evaluateExtractionShadow } from '../scripts/_forecast-resolution.mjs';
 import { RECEIPT_VOID_REASON_LABELS, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { resolveHardSpec, shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
@@ -269,7 +269,8 @@ describe('bootstrap prediction-market rows never grade the crowd price (#5233 au
 
   it('voids a due row with a named reason even when the feed still lists the market', () => {
     const feeds = shapeResolutionFeeds({ [BOOTSTRAP]: envelope({ geopolitical: [{ title: 'Will Israel strike 4 countries in 2026?', yesPrice: 80 }] }, T0 + 7 * DAY_MS) });
-    const { ledger, scorecard } = processResolutionCycle({}, [{ generatedAt: T0, predictions: [market] }], feeds, T0 + 8 * DAY_MS);
+    const history = [{ generatedAt: T0, predictions: [market] }];
+    const { ledger, scorecard } = processResolutionCycle(ingestHistory({}, history, T0), history, feeds, T0 + 8 * DAY_MS);
     const row = resolvedRow(ledger, 'fc-pm-israel');
     assert.equal(row.outcome, 'VOID');
     assert.equal(row.evidence.reason, 'market_price_not_outcome');

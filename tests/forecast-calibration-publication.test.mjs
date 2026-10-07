@@ -288,8 +288,9 @@ describe('seeder calibration publication (#7070)', () => {
 
     const rawAgain = buildHistoryForecastEntry({ ...pred, probability: 0.4, uncalibratedProbability: undefined });
     ledger = ingestHistory(ledger, [{ generatedAt: generatedAt + 3_600_000, predictions: [rawAgain] }], generatedAt + 3_600_000);
-    assert.equal(ledger[`fc-1@${deadline}`].probability, 0.4);
-    assert.equal('uncalibratedProbability' in ledger[`fc-1@${deadline}`], false, 'a raw republication clears the lineage');
+    assert.equal(ledger[`fc-1@${deadline}`].probability, 0.2, 'a republication of the same question is not scored (#8990)');
+    assert.equal(ledger[`fc-1@${deadline}`].uncalibratedProbability, 0.4, 'the lineage stays paired with the scored probability');
+    assert.equal(ledger[`fc-1@${deadline}`].lastSeenProbability, 0.4);
   });
 
   it('shows the publication record on the internal scorecard', () => {

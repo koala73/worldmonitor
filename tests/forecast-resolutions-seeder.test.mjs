@@ -103,8 +103,17 @@ function snapshot(generatedAt, predictions) {
   return { generatedAt, predictions };
 }
 
+// The resolver opens a window only while its deadline is ahead (#8990). A test
+// that ingests and resolves in one call opens the windows at emission time
+// first, as the hourly history read does in production. Spread into the
+// ledger and history arguments.
+function opened(history) {
+  const emittedAt = Math.min(...history.map((entry) => Number(entry.generatedAt)));
+  return [history.length ? ingestHistory({}, history, emittedAt) : {}, history];
+}
+
 describe('processResolutionCycle', () => {
-  describe('open-window calibration follows the latest snapshot (#7071)', () => {
+  describe('open-window calibration stays paired with the first emission (#8990)', () => {
     const FEEDS = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 40 }] } };
     const KEY = `fc-hormuz@${T0 + DAY_MS}`;
     const anchored = { marketTitle: 'Will Iran close the Strait of Hormuz by December 31?', marketPrice: 0.2, drift: 0.4, source: 'polymarket' };
@@ -113,27 +122,20 @@ describe('processResolutionCycle', () => {
     for (const [label, later] of [
       ['null', { calibration: null }],
       ['absent', { calibration: undefined }],
+      ['a different anchor', { calibration: { ...anchored, marketPrice: 0.3, drift: 0.32 } }],
     ]) {
-      it(`drops a stale anchor when the later snapshot's calibration is ${label}`, () => {
+      it(`keeps the first anchor and probability when the later snapshot's calibration is ${label}`, () => {
         const second = forecast({ probability: 0.62, generatedAt: T0 + 6 * 60 * 60 * 1000, deadline: T0 + DAY_MS, ...later });
         const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 6 * 60 * 60 * 1000, [second])], FEEDS, T0 + 12 * 60 * 60 * 1000);
-        assert.equal(ledger[KEY].probability, 0.62);
-        assert.equal('calibration' in ledger[KEY], false);
-        const scorecard = computeScorecard(ledger, T0 + 12 * 60 * 60 * 1000);
-        assert.equal(scorecard.vsMarketSkill, undefined);
+        assert.equal(ledger[KEY].probability, 0.6);
+        assert.equal(ledger[KEY].lastSeenProbability, 0.62);
+        assert.deepEqual(ledger[KEY].calibration, anchored);
       });
     }
 
-    it('replaces the anchor with the later snapshot calibration', () => {
-      const replacement = { ...anchored, marketPrice: 0.3, drift: 0.32 };
-      const second = forecast({ probability: 0.62, generatedAt: T0 + 6 * 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: replacement });
-      const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 6 * 60 * 60 * 1000, [second])], FEEDS, T0 + 12 * 60 * 60 * 1000);
-      assert.deepEqual(ledger[KEY].calibration, replacement);
-    });
-
     it('leaves a resolved entry calibration untouched', () => {
       const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
-      const { ledger: resolved } = processResolutionCycle({}, [snapshot(T0, [first])], resolvedFeeds, T0 + 2 * DAY_MS);
+      const { ledger: resolved } = processResolutionCycle(...opened([snapshot(T0, [first])]), resolvedFeeds, T0 + 2 * DAY_MS);
       assert.equal(resolved[KEY].status, 'resolved');
       const late = forecast({ probability: 0.1, generatedAt: T0 + 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: null });
       const { ledger } = processResolutionCycle(resolved, [snapshot(T0 + 60 * 60 * 1000, [late])], resolvedFeeds, T0 + 2 * DAY_MS);
@@ -143,7 +145,7 @@ describe('processResolutionCycle', () => {
     it('publishes the resolved entry as a public receipt and a chip for the open window (#5092)', () => {
       const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
       const reopened = forecast({ generatedAt: T0 + 1.5 * DAY_MS, deadline: T0 + 3 * DAY_MS });
-      const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(T0 + 1.5 * DAY_MS, [reopened])], resolvedFeeds, T0 + 2 * DAY_MS);
+      const { ledger, scorecard } = processResolutionCycle(...opened([snapshot(T0, [first]), snapshot(T0 + 1.5 * DAY_MS, [reopened])]), resolvedFeeds, T0 + 2 * DAY_MS);
       assert.equal(ledger[KEY].status, 'resolved');
       assert.equal(ledger[`fc-hormuz@${T0 + 3 * DAY_MS}`].status, 'pending');
       assert.deepEqual(scorecard.familyOutcomes, [{ forecastId: 'fc-hormuz', outcome: 'YES' }]);
@@ -154,7 +156,7 @@ describe('processResolutionCycle', () => {
     });
   });
 
-  it('pre-registers one open window, updates probability only before deadline, and rolls over after deadline', () => {
+  it('pre-registers one open window, scores its first emission, and rolls over after deadline', () => {
     const first = forecast({ probability: 0.6, generatedAt: T0, deadline: T0 + DAY_MS });
     const second = forecast({
       probability: 0.72,
@@ -180,7 +182,8 @@ describe('processResolutionCycle', () => {
     assert.deepEqual(Object.keys(ledger).sort(), [`fc-hormuz@${T0 + DAY_MS}`, `fc-hormuz@${T0 + 2 * DAY_MS}`]);
     const open = ledger[`fc-hormuz@${T0 + DAY_MS}`];
     assert.equal(open.firstSeenProbability, 0.6);
-    assert.equal(open.probability, 0.72);
+    assert.equal(open.probability, 0.6, 'the window is scored on the probability that came with its frozen threshold');
+    assert.equal(open.lastSeenProbability, 0.72);
     assert.equal(open.spec.threshold, 60, 'pre-deadline snapshots must not mutate the frozen spec');
     assert.equal(open.deadline, T0 + DAY_MS);
     assert.equal(ledger[`fc-hormuz@${T0 + 2 * DAY_MS}`].probability, 0.4);
@@ -261,7 +264,7 @@ describe('processResolutionCycle', () => {
       },
     });
 
-    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [countForecast])], {}, T0 + 16 * DAY_MS);
+    const { ledger, receipts } = processResolutionCycle(...opened([snapshot(T0, [countForecast])]), {}, T0 + 16 * DAY_MS);
 
     const row = ledger[`fc-mali@${T0 + DAY_MS}`];
     assert.equal(row.status, 'pending');
@@ -401,7 +404,7 @@ describe('processResolutionCycle', () => {
       },
     });
 
-    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [conflict, unrest])], {
+    const { ledger, receipts } = processResolutionCycle(...opened([snapshot(T0, [conflict, unrest])]), {
       [CONFLICT_COUNT_SOURCE_FEED]: {
         events: [
           { country: 'Ghana', occurredAt: T0 - DAY_MS },
@@ -577,7 +580,7 @@ describe('processResolutionCycle', () => {
       },
     });
 
-    const { ledger, receipts, scorecard } = processResolutionCycle({}, [snapshot(T0, [countForecast])], {
+    const { ledger, receipts, scorecard } = processResolutionCycle(...opened([snapshot(T0, [countForecast])]), {
       'conflict:ucdp-events:v1': {
         events: [
           { country: 'Ukraine', dateStart: Date.parse('2025-11-20T00:00:00Z') },
@@ -622,7 +625,7 @@ describe('processResolutionCycle', () => {
       title: 'Will the Fed cut rates in July 2026?',
     });
 
-    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [point])], {
+    const { ledger, receipts } = processResolutionCycle(...opened([snapshot(T0, [point])]), {
       'prediction:markets-bootstrap:v1': {
         markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 98 }],
       },
@@ -666,7 +669,7 @@ describe('processResolutionCycleWithJudges', () => {
   }
 
   it('resolves a due judged entry when both models agree and cite archive evidence', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({
           provider: 'openrouter',
@@ -687,7 +690,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('resolves to VOID when the two judges disagree', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
         async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'NO', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article does not establish passage.' }),
@@ -710,7 +713,7 @@ describe('processResolutionCycleWithJudges', () => {
       url: 'https://news.example/rates',
       publishedAt: T0 + DAY_MS + 1,
     }];
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, unrelatedArchive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, unrelatedArchive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
@@ -725,7 +728,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('keeps no-evidence entries pending when the archive does not cover the entry window', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, {
       available: true,
       coverageStartMs: T0 + DAY_MS,
       coverageEndMs: T0 + DAY_MS + GRACE + 2,
@@ -753,13 +756,13 @@ describe('processResolutionCycleWithJudges', () => {
   it('seals a long-horizon disagreement when a truncated archive covers the deadline window', async () => {
     const deadline = T0 + 30 * DAY_MS;
     const nowMs = deadline + GRACE + 60 * 60 * 1000;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast({
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast({
       resolution: {
         kind: 'judged',
         deadline,
         question: 'Will the emergency policy change pass before the deadline?',
       },
-    })])], {}, {
+    })])]), {}, {
       available: true,
       truncated: true,
       coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
@@ -815,7 +818,7 @@ describe('processResolutionCycleWithJudges', () => {
   it('keeps a covered no-evidence entry pending when the archive is explicitly incomplete', async () => {
     const deadline = T0 + DAY_MS;
     const nowMs = deadline + GRACE + 2;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, {
       available: true,
       coverageComplete: false,
       coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
@@ -900,7 +903,7 @@ describe('processResolutionCycleWithJudges', () => {
       }],
     };
     const evidenceByEntry = new Map();
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, forecasts)], {}, sharedArchive, nowMs, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, forecasts)]), {}, sharedArchive, nowMs, {
       judgeModels: [
         async (entry, items) => {
           evidenceByEntry.set(entry.id, items.map((item) => item.id));
@@ -917,7 +920,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('keeps weak judge outcomes pending when matching evidence comes from an incomplete archive', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, {
       available: true,
       coverageStartMs: T0 + DAY_MS,
       coverageEndMs: T0 + DAY_MS + GRACE + 2,
@@ -938,7 +941,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('resolves YES/NO judge agreement to VOID when citations lack matching excerpts', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1' }], rationale: 'The article says it passed.' }),
         async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', outcome: 'YES', citations: [{ id: 'N1', quote: 'A fabricated sentence that is not in the archive' }], rationale: 'The policy passed before the deadline.' }),
@@ -955,7 +958,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('keeps the entry pending when a judge call is unavailable or malformed', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
         async () => null,
@@ -970,7 +973,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('does not fall back to live judges when an injected judge list is incomplete', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
       ],
@@ -985,7 +988,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('keeps the entry pending when a judge returns unparseable text', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       judgeModels: [
         async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
         async () => ({ provider: 'openrouter', model: 'openai/gpt-6-luna', text: 'not-json' }),
@@ -1001,10 +1004,10 @@ describe('processResolutionCycleWithJudges', () => {
 
   it('caps judged attempts per run', async () => {
     let judgeCalls = 0;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [
       judgedForecast({ id: 'fc-judge-1' }),
       judgedForecast({ id: 'fc-judge-2' }),
-    ])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    ])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       maxJudgedEntries: 1,
       judgeModels: [
         async () => {
@@ -1076,7 +1079,7 @@ describe('processResolutionCycleWithJudges', () => {
   });
 
   it('does not start judge calls when the remaining run budget is below the admission floor', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + GRACE + 2, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedForecast()])]), {}, archive, T0 + DAY_MS + GRACE + 2, {
       deadlineMs: Date.now() + 2_000,
       minJudgeStageBudgetMs: 5_000,
       judgeModels: [
@@ -1283,7 +1286,7 @@ describe('readDigestAccumulatorArchive', () => {
       endMs: nowMs,
     });
 
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [forecast({
       id: 'judge-max-lookback',
       domain: 'political',
       region: 'Freedonia',
@@ -1293,7 +1296,7 @@ describe('readDigestAccumulatorArchive', () => {
         deadline,
         question: 'Will the emergency policy change pass before the deadline?',
       },
-    })])], {}, archive, nowMs, {
+    })])]), {}, archive, nowMs, {
       judgeModels: [
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
@@ -1340,7 +1343,7 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(archive.truncated, true);
     assert.equal(archive.coverageStartMs, deadline + 2, 'equal-score cap ties must not over-claim the boundary');
 
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [forecast({
       id: 'judge-truncated-window',
       domain: 'political',
       region: 'Freedonia',
@@ -1350,7 +1353,7 @@ describe('readDigestAccumulatorArchive', () => {
         deadline,
         question: 'Will the emergency policy change pass before the deadline?',
       },
-    })])], {}, archive, nowMs, {
+    })])]), {}, archive, nowMs, {
       judgeModels: [
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
@@ -1517,7 +1520,7 @@ describe('readDigestAccumulatorArchive', () => {
     };
 
     const archive = await readDigestAccumulatorArchive(T0 - JUDGED_EVIDENCE_LOOKBACK_MS, T0 + DAY_MS);
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [forecast({
       id: 'judge-missing-archive-row',
       domain: 'political',
       region: 'Freedonia',
@@ -1527,7 +1530,7 @@ describe('readDigestAccumulatorArchive', () => {
         deadline: T0 + 1,
         question: 'Will the emergency policy change pass before the deadline?',
       },
-    })])], {}, archive, T0 + DAY_MS, {
+    })])]), {}, archive, T0 + DAY_MS, {
       judgeModels: [
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
@@ -1926,10 +1929,11 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     ];
   }
 
-  async function runCycle(archiveInput, nowMs, options = {}, ledger = {}, snapshots = undefined) {
+  async function runCycle(archiveInput, nowMs, options = {}, ledger = undefined, snapshots = undefined) {
+    const [opening, history] = opened(snapshots ?? [snapshot(T0, [judged()])]);
     return processResolutionCycleWithJudges(
-      ledger,
-      snapshots ?? [snapshot(T0, [judged()])],
+      ledger ?? opening,
+      history,
       {},
       archiveInput,
       nowMs,
@@ -2077,7 +2081,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     let judgeCalls = 0;
     const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
     const withheld = judged({ generationOrigin: 'state_derived', stateBucketId: 'sovereign_risk', domain: 'market', title: 'Retitled pressure from Freedonia state' });
-    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges, maxJudgedEntries: 0 }, {}, [snapshot(T0, [withheld])]);
+    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges, maxJudgedEntries: 0 }, undefined, [snapshot(T0, [withheld])]);
 
     const row = rowOf(result);
     assert.equal(judgeCalls, 0);
@@ -2097,7 +2101,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     let judgeCalls = 0;
     const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
     const cyber = judged({ domain: 'cyber', region: 'Romania', title: 'Cyber threat concentration: Romania' });
-    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges }, {}, [snapshot(T0, [cyber])]);
+    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges }, undefined, [snapshot(T0, [cyber])]);
 
     const row = rowOf(result);
     assert.equal(judgeCalls, 0);
@@ -2175,7 +2179,7 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
   });
 
   it('bounds the attempt log so a churning entry cannot grow the ledger without limit', async () => {
-    let ledger = {};
+    let ledger;
     const runs = DEFAULT_JUDGE_ATTEMPT_LOG_LIMIT + 6;
     for (let run = 0; run < runs; run += 1) {
       const nowMs = T_DEADLINE + GRACE + 2 + run * DAY_MS;
@@ -2345,7 +2349,7 @@ describe('judged archive horizon (#7068)', () => {
 
   it('still seals normally at the last recoverable instant', async () => {
     const nowMs = HORIZON_MS;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judged()])], {}, productionShapedArchive(nowMs), nowMs, { judgeModels: judges });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judged()])]), {}, productionShapedArchive(nowMs), nowMs, { judgeModels: judges });
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
 
     assert.equal(row.status, 'resolved');
@@ -2355,7 +2359,7 @@ describe('judged archive horizon (#7068)', () => {
 
   it('terminates one millisecond past the horizon instead of exhausting retries', async () => {
     const nowMs = HORIZON_MS + 1;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judged()])], {}, productionShapedArchive(nowMs), nowMs, { judgeModels: judges });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judged()])]), {}, productionShapedArchive(nowMs), nowMs, { judgeModels: judges });
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
 
     assert.equal(row.status, 'resolved');
@@ -2371,7 +2375,7 @@ describe('judged archive horizon (#7068)', () => {
   });
 
   it('regression: a past-horizon entry no longer burns 14 attempts to reach judge_retry_exhausted', async () => {
-    let ledger = {};
+    let [ledger] = opened([snapshot(T0, [judged()])]);
     for (let run = 0; run < DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS + 2; run += 1) {
       const nowMs = HORIZON_MS + DAY_MS + run * DAY_MS;
       const result = await processResolutionCycleWithJudges(
@@ -2391,7 +2395,7 @@ describe('judged archive horizon (#7068)', () => {
 
   it('does not launder a transient archive outage into a horizon VOID', async () => {
     const nowMs = HORIZON_MS + 30 * DAY_MS;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judged()])], {}, { available: false }, nowMs, { judgeModels: judges });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judged()])]), {}, { available: false }, nowMs, { judgeModels: judges });
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
 
     assert.equal(row.status, 'pending-judge');
@@ -2400,7 +2404,7 @@ describe('judged archive horizon (#7068)', () => {
 
   it('does not void a past-horizon entry the archive can still prove it covers', async () => {
     const nowMs = HORIZON_MS + 5 * DAY_MS;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judged()])], {}, {
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judged()])]), {}, {
       available: true,
       coverageStartMs: T_DEADLINE - JUDGED_EVIDENCE_LOOKBACK_MS,
       coverageEndMs: nowMs,
@@ -2435,7 +2439,7 @@ describe('judged archive horizon (#7068)', () => {
 
   it('logs the dominant attempt class and the stranding alert in the run summary', async () => {
     const nowMs = HORIZON_MS + 1;
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judged()])], {}, { available: false }, nowMs, { judgeModels: judges });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judged()])]), {}, { available: false }, nowMs, { judgeModels: judges });
     const logs = [];
     const warns = [];
     const report = reportJudgedLaneObservability(result.ledger, nowMs, { leadMs: DAY_MS }, {
@@ -2605,7 +2609,7 @@ describe('untrusted archive boundary (#7068)', () => {
       async () => ({ text: JSON.stringify({ outcome: 'VOID', provider: 'p'.repeat(5_000), model: 'm'.repeat(5_000) }) }),
       async () => ({ text: JSON.stringify({ outcome: 'VOID', provider: 'p'.repeat(5_000), model: 'm'.repeat(5_000) }) }),
     ];
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, { judgeModels: overlong });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archiveWith(items, nowMs), nowMs, { judgeModels: overlong });
 
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
     for (const judgment of row.evidence.judgments) {
@@ -2622,7 +2626,7 @@ describe('untrusted archive boundary (#7068)', () => {
       async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [] }),
       async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [] }),
     ];
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, { judgeModels: compromised });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archiveWith(items, nowMs), nowMs, { judgeModels: compromised });
 
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
     assert.equal(row.outcome, 'VOID', 'an uncited YES can never seal, whoever asked for it');
@@ -2642,7 +2646,7 @@ describe('untrusted archive boundary (#7068)', () => {
       async () => ({ provider: 'openrouter', model: 'm1', outcome: 'YES', citations: [{ id: 'N42', quote: 'The bill passed before the forecast deadline' }] }),
       async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [{ id: 'N42', quote: 'The bill passed before the forecast deadline' }] }),
     ];
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, { judgeModels: invented });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archiveWith(items, nowMs), nowMs, { judgeModels: invented });
 
     const row = result.ledger[`fc-judge@${T_DEADLINE}`];
     assert.equal(row.outcome, 'VOID');
@@ -2662,12 +2666,12 @@ describe('untrusted archive boundary (#7068)', () => {
       async () => ({ provider: 'openrouter', model: 'm2', outcome: 'YES', citations: [{ id: 'N1', quote }] }),
     ];
 
-    const drifted = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, {
+    const drifted = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archiveWith(items, nowMs), nowMs, {
       judgeModels: withQuote('  "The BILL passed, before the forecast deadline!"  '),
     });
     assert.equal(drifted.ledger[`fc-judge@${T_DEADLINE}`].outcome, 'YES', 'case, whitespace and punctuation drift is harmless');
 
-    const invented = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archiveWith(items, nowMs), nowMs, {
+    const invented = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archiveWith(items, nowMs), nowMs, {
       judgeModels: withQuote('The president personally signed the decree in Geneva'),
     });
     const row = invented.ledger[`fc-judge@${T_DEADLINE}`];
@@ -2729,7 +2733,7 @@ describe('absence-based NO (#8896)', () => {
   const eventNo = (provider) => async () => ({ provider, model: `${provider}-model`, outcome: 'NO', citations: absenceCitations, rationale: 'Postponed past the deadline.' });
 
   async function run(archive, judgeModels, nowMs = NOW) {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedPrediction()])], {}, archive, nowMs, { judgeModels });
+    const result = await processResolutionCycleWithJudges(...opened([snapshot(T0, [judgedPrediction()])]), {}, archive, nowMs, { judgeModels });
     return { result, row: result.ledger[`fc-judge@${T_DEADLINE}`] };
   }
 
@@ -2909,7 +2913,7 @@ describe('terminal receipt attempt history (#7068)', () => {
       judgeRetryBackoffMaxMs: 0,
     };
 
-    let ledger = {};
+    let [ledger] = opened([snapshot(T0, [prediction])]);
     for (let run = 0; run < 3; run += 1) {
       const result = await processResolutionCycleWithJudges(
         ledger,
@@ -3368,6 +3372,12 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(horizonKeys(ledger).map((key) => key.split('@')[2]), ['h24']);
   });
 
+  it('does not register a horizon window whose deadline passed before the resolver first saw the emission (#8990)', () => {
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0 + 2 * DAY_MS);
+    assert.ok(ledger[PARENT]);
+    assert.deepEqual(horizonKeys(ledger), [`${PARENT}@d30`, `${PARENT}@d7`]);
+  });
+
   it('re-running a cycle is idempotent', () => {
     const once = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const twice = processResolutionCycle(once.ledger, [snapshot(T0, [projected()])], HORMUZ(40), T0);
@@ -3381,7 +3391,8 @@ describe('projection horizon windows (#7075)', () => {
     const later = T0 + 23 * H;
     const second = projected({ generatedAt: later, probability: 0.7, projections: { h24: 0.9, d7: 0.8, d30: 0.7 } });
     const { ledger } = processResolutionCycle({}, [snapshot(T0, [first]), snapshot(later, [second])], HORMUZ(40), later);
-    assert.equal(ledger[PARENT].probability, 0.7, 'the parent window keeps its refresh semantics');
+    assert.equal(ledger[PARENT].probability, 0.62, 'the parent window keeps its first emission');
+    assert.equal(ledger[PARENT].lastSeenProbability, 0.7);
     assert.equal(Object.keys(ledger).length, 4);
     const row = ledger[`${PARENT}@h24`];
     assert.equal(row.probability, 0.1, 'a later h24 claims a later deadline and cannot grade this window');

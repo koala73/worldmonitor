@@ -14,12 +14,14 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
+import { createHash } from 'node:crypto';
+
 import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
-import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
+import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -279,7 +281,6 @@ function promoteBetEngineEnabled() {
 
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   // Drop terminal entries that are already receipted to R2 and outside the
@@ -293,7 +294,6 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
 
 export async function processResolutionCycleWithJudges(existingLedger, historySnapshots, feedsByKey, newsArchive, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
@@ -1531,7 +1531,7 @@ export function pruneArchivedTerminalEntries(ledger, nowMs, options = {}) {
 
 function isPrunableTerminalEntry(entry, minResolvedAt) {
   if (!entry || entry.status !== 'resolved') return false;
-  if (!entry.receiptArchivedAt) return false;
+  if (!entry.receiptArchivedAt || receiptNeedsRearchive(entry)) return false;
   const resolvedAt = Number(entry.resolvedAt);
   if (!Number.isFinite(resolvedAt)) return false;
   return resolvedAt < minResolvedAt;
@@ -1540,10 +1540,21 @@ function isPrunableTerminalEntry(entry, minResolvedAt) {
 export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now()) {
   const ledger = cloneJson(normalizeLedger(existingLedger));
   migratePendingCountFeedKeys(ledger);
+  // Envelope voids first (#5233), so the window correction never rescores a
+  // row that the same run then voids.
+  voidEnvelopeBugResolutions(ledger, nowMs);
   const snapshots = [...(historySnapshots || [])]
     .filter(Boolean)
     .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
+  const openingEmissions = indexEmissions(snapshots, nowMs);
+  const historyRead = snapshots.length > 0;
+  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+  const windows = indexQuestionWindows(ledger);
 
+  // Emission order, not snapshot order: a later snapshot can carry an earlier
+  // emission, and the window a question opens must be the one its earliest
+  // emission opens, as correctLedgerWindows assumes.
+  const emissions = [];
   for (const snapshot of snapshots) {
     const snapshotAt = Number(snapshot.generatedAt || nowMs);
     for (const forecast of snapshot.predictions || []) {
@@ -1553,21 +1564,262 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
       const deadline = Number(spec.deadline);
       const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
       if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
+      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt });
+    }
+  }
+  emissions.sort((a, b) => a.generatedAt - b.generatedAt || a.snapshotAt - b.snapshotAt);
 
-      let parentKey = findOpenWindowKey(ledger, id, generatedAt);
-      if (parentKey) {
-        updateOpenWindow(ledger[parentKey], forecast, generatedAt, snapshotAt);
-      } else {
-        parentKey = `${id}@${deadline}`;
-        if (ledger[parentKey]) updateOpenWindow(ledger[parentKey], forecast, generatedAt, snapshotAt);
-        else ledger[parentKey] = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
+  for (const { forecast, spec, id, deadline, generatedAt, snapshotAt } of emissions) {
+    const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
+    const questionKey = windowQuestionKey(candidate);
+    const coveringKey = windows.covering(id, questionKey, generatedAt);
+    if (coveringKey) {
+      const window = ledger[coveringKey];
+      if (window.status === 'pending' || window.status === 'pending-judge') {
+        recordSighting(window, forecast, snapshotAt);
+        registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
       }
-      registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt);
+      continue;
+    }
+    // A window opened after its deadline would be read from whatever the
+    // feed or archive holds now, not at the deadline.
+    if (deadline < nowMs) continue;
+    const key = freeWindowKey(ledger, id, deadline, questionKey);
+    if (!key) continue;
+    ledger[key] = { ...candidate, key };
+    windows.add(key, ledger[key], questionKey);
+    registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
+  }
+
+  // A window opened this run for an emission the old code had absorbed into
+  // another question can precede an existing window of its own question, so
+  // the correction runs again and the ledger converges in one run.
+  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+  migratePendingCountFeedKeys(ledger);
+  return sortLedger(ledger);
+}
+
+// A ledger window is one question: the forecast id plus what it asks. Ids do
+// not pin the question. A state-derived or military id moves between regions
+// and titles, and a bet id keeps its id while its threshold and direction move
+// between runs (#8990). A detector re-derives its threshold from the live
+// value on every hourly run, so for detectors the threshold is a parameter of
+// one question, frozen at the first emission with the probability it came
+// with; keying on it would open a window per run. A bet is a new question on
+// each run, so its threshold is part of the key. The key is taken after the
+// count-to-judged migration, so every threshold of a migrated count maps to
+// the one judged question it became.
+//
+// The count normalization ignores the feed-availability flags: a count on a
+// feed listed in UNAVAILABLE_COUNT_FEED_MIGRATIONS always keys as its judged
+// question. Flipping a flag back to hard resolution therefore cannot give a
+// still-open judged window and a new hard emission of the same question two
+// different keys.
+export function windowQuestionKey(entry) {
+  const view = { ...entry, status: 'pending', spec: cloneJson(entry.spec) };
+  migratePendingCountEntry(view, { ignoreAvailability: true });
+  const spec = view.spec;
+  const region = view.region || '';
+  if (spec.kind === 'judged') return JSON.stringify(['judged', region, spec.question ?? '']);
+  const threshold = Number(spec.threshold);
+  const baseline = Number(spec.baselineValue);
+  const direction = spec.operator === 'crosses' && parseMetricKey(spec.metricKey)?.fn !== 'yesPrice'
+    && Number.isFinite(threshold) && Number.isFinite(baseline)
+    ? (threshold >= baseline ? 'up' : 'down')
+    : null;
+  const thresholdKey = view.generationOrigin === 'bet_engine' && Number.isFinite(threshold) ? threshold : null;
+  return JSON.stringify([spec.kind ?? null, region, spec.metricKey ?? null, spec.operator ?? null, thresholdKey, spec.window ?? null, direction]);
+}
+
+// Windows an emission can join: same id and question, not a voided duplicate,
+// and the emission falls inside [generatedAt, deadline). Status does not
+// matter. A resolved window still owns every emission it absorbed while open,
+// so re-reading history cannot reopen it.
+function indexQuestionWindows(ledger) {
+  const byId = new Map();
+  const add = (key, entry, questionKey = windowQuestionKey(entry)) => {
+    if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry)) return;
+    if (!byId.has(entry.id)) byId.set(entry.id, []);
+    byId.get(entry.id).push({ key, entry, questionKey });
+  };
+  for (const [key, entry] of Object.entries(ledger)) add(key, entry);
+  return {
+    add,
+    covering(id, questionKey, generatedAt) {
+      const match = (byId.get(id) || [])
+        .filter((window) => window.questionKey === questionKey && windowCovers(window.entry, generatedAt))
+        .sort(byEmission)[0];
+      return match?.key ?? null;
+    },
+  };
+}
+
+// A market-settlement window is the market's own question, settled once. Its
+// deadline tracks the venue's endDate and can move back before the window's
+// emission once the market closes, so it covers every later emission of the
+// same question, not a [generatedAt, deadline) span.
+// Ledger map keys identify windows; a stored row need not repeat its key.
+function byEmission(a, b) {
+  return Number(a.entry.generatedAt) - Number(b.entry.generatedAt) || a.key.localeCompare(b.key);
+}
+
+function windowCovers(entry, generatedAt) {
+  if (Number(entry.generatedAt) > generatedAt) return false;
+  return entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY || generatedAt < Number(entry.deadline);
+}
+
+// Two questions of one id can share a deadline (the same run, or a moved
+// settlement date). The first keeps the plain key; a later one is suffixed
+// with its question hash.
+function freeWindowKey(ledger, id, deadline, questionKey) {
+  const plain = `${id}@${deadline}`;
+  if (!ledger[plain]) return plain;
+  const suffixed = `${plain}~${createHash('sha256').update(questionKey).digest('hex').slice(0, 12)}`;
+  return ledger[suffixed] ? null : suffixed;
+}
+
+export const DUPLICATE_WINDOW_VOID_REASON = 'duplicate_window';
+export const FIRST_SEEN_RESCORE_REASON = 'last_seen_probability';
+// Fields an update before #8990 overwrote with a later sighting's values. The
+// ensemble passes and the post-blend lineage produced that sighting's
+// probability; the market anchor is the price at that sighting.
+const SIGHTING_FIELDS = ['passes', 'calibration', 'uncalibratedProbability'];
+
+// Corrects windows written before #8990. Re-reading history reopened windows
+// that had already resolved, and each open window was scored on its last
+// sighting's probability. Greedy over each id's windows in emission order: a
+// window whose emission falls inside an earlier kept window of the same
+// question is a duplicate, so it and its horizon windows are VOID. Any kept
+// window whose probability is not its first-seen one is rescored. Both steps
+// leave a corrected row alone, so re-running changes nothing.
+// Each emission in the history read, by id and emission time, so the
+// correction can restore a window's opening fields exactly.
+function indexEmissions(snapshots, nowMs) {
+  const emissions = new Map();
+  for (const snapshot of snapshots) {
+    for (const forecast of snapshot.predictions || []) {
+      const generatedAt = Number(forecast?.generatedAt || forecast?.createdAt || snapshot.generatedAt || nowMs);
+      const key = `${forecast?.id}|${generatedAt}`;
+      if (forecast?.id && !emissions.has(key)) emissions.set(key, forecast);
+    }
+  }
+  return emissions;
+}
+
+export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { historyRead = true } = {}) {
+  const byId = new Map();
+  const horizonByParent = new Map();
+  for (const [key, entry] of Object.entries(ledger)) {
+    if (!entry?.id) continue;
+    if (isHorizonEntry(entry)) {
+      if (!horizonByParent.has(entry.parentKey)) horizonByParent.set(entry.parentKey, []);
+      horizonByParent.get(entry.parentKey).push(entry);
+      continue;
+    }
+    if (isDuplicateWindow(entry)) continue;
+    if (!byId.has(entry.id)) byId.set(entry.id, []);
+    byId.get(entry.id).push({ key, entry, questionKey: windowQuestionKey(entry) });
+  }
+
+  let duplicates = 0;
+  for (const windows of byId.values()) {
+    windows.sort(byEmission);
+    const kept = [];
+    for (const window of windows) {
+      const keeper = kept.find(({ entry, questionKey }) => questionKey === window.questionKey && windowCovers(entry, Number(window.entry.generatedAt)));
+      if (!keeper) {
+        kept.push(window);
+        continue;
+      }
+      for (const entry of [window.entry, ...(horizonByParent.get(window.key) || [])]) {
+        voidDuplicateWindow(entry, keeper.key, nowMs);
+        duplicates += 1;
+      }
     }
   }
 
-  migratePendingCountFeedKeys(ledger);
-  return sortLedger(ledger);
+  // Only a call that read history can tell a row the old code overwrote from
+  // a correct one. The cycle's own ingest passes no history, so it never
+  // rescores.
+  let rescored = 0;
+  if (!historyRead) return { duplicates, rescored };
+  for (const entry of Object.values(ledger)) {
+    if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID' || entry.rescore) continue;
+    if (rescoreToFirstSeen(entry, nowMs, emissions.get(`${entry.id}|${Number(entry.generatedAt)}`))) rescored += 1;
+  }
+  return { duplicates, rescored };
+}
+
+// The old updateOpenWindow overwrote the probability and its opening fields
+// on every sighting of equal or higher provenance rank. A row whose
+// probability moved, or that the old code saw again, is restored to its
+// first emission. When that emission is still in the history read, its
+// provenance, base rate, passes, market anchor and lineage come back exactly
+// (every bet row's first emission is in the bet history). Otherwise the
+// fields are inferred: the later sighting's passes, anchor and lineage move
+// under `rescore`, the base rate stays, and a first-seen value equal to the
+// base rate marks a window that opened on the placeholder. A re-sighted row
+// whose probability did not move keeps its provenance and passes, which
+// produced that same probability, and only its anchor and lineage move.
+const OPENING_FIELDS = ['probabilitySource', 'baselineProbability', 'passes', 'calibration', 'uncalibratedProbability'];
+
+function rescoreToFirstSeen(entry, nowMs, firstEmission) {
+  const first = Number(entry.firstSeenProbability);
+  if (!Number.isFinite(first)) return false;
+  const probabilityMoved = Number(entry.probability) !== first;
+  if (!probabilityMoved && !sightedBeforeFix(entry)) return false;
+  if (firstEmission && Number(firstEmission.probability) === first) {
+    const opened = createEntry(entry.id, firstEmission, firstEmission.resolution || {}, entry.generatedAt, entry.firstSeenAt, entry.deadline);
+    const changed = OPENING_FIELDS.filter((field) => JSON.stringify(entry[field]) !== JSON.stringify(opened[field]));
+    if (!probabilityMoved && !changed.length) {
+      // Confirmed against its first emission: a later call without that
+      // emission must not infer a correction for it.
+      entry.openingVerifiedAt = nowMs;
+      return false;
+    }
+    const superseded = Object.fromEntries(changed.map((field) => [field, field in entry ? entry[field] : null]));
+    entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, restoredFromHistory: true, rescoredAt: nowMs };
+    for (const field of changed) {
+      if (opened[field] === undefined) delete entry[field];
+      else entry[field] = opened[field];
+    }
+    entry.probability = first;
+    return true;
+  }
+  const fields = probabilityMoved ? SIGHTING_FIELDS : ['calibration', 'uncalibratedProbability'];
+  const superseded = Object.fromEntries(fields.filter((field) => field in entry).map((field) => [field, entry[field]]));
+  if (!probabilityMoved && !Object.keys(superseded).length) return false;
+  if (probabilityMoved && 'probabilitySource' in entry) superseded.probabilitySource = entry.probabilitySource;
+  entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
+  for (const field of fields) delete entry[field];
+  if (probabilityMoved && Number.isFinite(Number(entry.baselineProbability)) && Number(entry.baselineProbability) === first) {
+    entry.probabilitySource = 'base_rate';
+  }
+  entry.probability = first;
+  return true;
+}
+
+// A later sighting before #8990 could overwrite the sighting fields without
+// moving the published probability. Since #8990 every sighting after the
+// first records lastSeenProbability, so a row seen again without it was
+// last updated by the old code, unless history already confirmed it.
+function sightedBeforeFix(entry) {
+  return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry) && !entry.openingVerifiedAt;
+}
+
+function voidDuplicateWindow(entry, keeperKey, nowMs) {
+  entry.duplicateOf = keeperKey;
+  if (entry.status === 'resolved' && entry.outcome === 'VOID') return;
+  const superseded = entry.status === 'resolved'
+    ? { resolvedAt: entry.resolvedAt, supersededOutcome: entry.outcome, supersededEvidence: entry.evidence }
+    : { supersededStatus: entry.status };
+  entry.evidence = { reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: keeperKey, ...superseded, voidedAt: nowMs };
+  entry.outcome = 'VOID';
+  if (entry.status !== 'resolved') {
+    entry.status = 'resolved';
+    entry.resolvedAt = nowMs;
+    entry.sealedAt = nowMs;
+  }
 }
 
 // One ledger window per hard projection contract (#7075), keyed
@@ -1580,7 +1832,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 // origins are held out of the headline and would otherwise multiply their
 // rows for no measurable value. A forecast without emission-time contracts
 // (history written before #7075) registers nothing.
-function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt) {
+function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt, nowMs) {
   for (const horizon of scoredHorizonKeys(forecast)) {
     const spec = forecast.horizonResolutions[horizon];
     const probability = Number(forecast.projections[horizon]);
@@ -1591,6 +1843,7 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
       if (existing.status === 'pending') existing.lastSeenAt = Math.max(Number(existing.lastSeenAt || 0), snapshotAt);
       continue;
     }
+    if (deadline < nowMs) continue;
     const { uncalibratedProbability: _parentLineage, ...parent } = forecast;
     const view = { ...parent, probability, timeHorizon: spec.timeHorizon };
     ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey };
@@ -1598,18 +1851,20 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
 }
 
 function migratePendingCountFeedKeys(ledger) {
-  for (const entry of Object.values(ledger)) {
-    if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') continue;
-    const replacement = STALE_COUNT_FEED_REPLACEMENTS.get(entry.spec.sourceFeed);
-    if (replacement) {
-      const parsed = parseMetricKey(entry.spec.metricKey);
-      entry.spec.sourceFeed = replacement;
-      if (parsed?.feedKey && STALE_COUNT_FEED_REPLACEMENTS.get(parsed.feedKey) === replacement) {
-        entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
-      }
+  for (const entry of Object.values(ledger)) migratePendingCountEntry(entry);
+}
+
+function migratePendingCountEntry(entry, options = {}) {
+  if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
+  const replacement = STALE_COUNT_FEED_REPLACEMENTS.get(entry.spec.sourceFeed);
+  if (replacement) {
+    const parsed = parseMetricKey(entry.spec.metricKey);
+    entry.spec.sourceFeed = replacement;
+    if (parsed?.feedKey && STALE_COUNT_FEED_REPLACEMENTS.get(parsed.feedKey) === replacement) {
+      entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
     }
-    migratePendingCountEntryToJudged(entry);
   }
+  migratePendingCountEntryToJudged(entry, options);
 }
 
 // Families whose count-resolution feed is unavailable (empty without ACLED
@@ -1624,10 +1879,21 @@ const UNAVAILABLE_COUNT_FEED_MIGRATIONS = [
   { feed: CYBER_COUNT_SOURCE_FEED, available: () => false, buildQuestion: buildCyberJudgedQuestionForEntry },
 ];
 
-function migratePendingCountEntryToJudged(entry) {
+// Tests flip a feed's availability to exercise a phase-2 flag change.
+const COUNT_FEED_AVAILABILITY_OVERRIDES = new Map();
+export function __setCountFeedAvailableForTests(feed, available) {
+  if (available === undefined) COUNT_FEED_AVAILABILITY_OVERRIDES.delete(feed);
+  else COUNT_FEED_AVAILABILITY_OVERRIDES.set(feed, available);
+}
+
+function countFeedAvailable(migration) {
+  return COUNT_FEED_AVAILABILITY_OVERRIDES.get(migration.feed) ?? migration.available();
+}
+
+function migratePendingCountEntryToJudged(entry, { ignoreAvailability = false } = {}) {
   if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
   const migration = UNAVAILABLE_COUNT_FEED_MIGRATIONS.find(
-    (m) => m.feed === entry.spec.sourceFeed && !m.available(),
+    (m) => m.feed === entry.spec.sourceFeed && (ignoreAvailability || !countFeedAvailable(m)),
   );
   if (!migration) return;
   const parsed = parseMetricKey(entry.spec.metricKey);
@@ -1755,15 +2021,41 @@ export function voidEnvelopeBugResolutions(ledger, nowMs) {
   return voided;
 }
 
-export function collectUnarchivedReceipts(ledger) {
-  return Object.entries(normalizeLedger(ledger))
-    .filter(([, entry]) => entry?.status === 'resolved')
-    .filter(([, entry]) => !entry.receiptArchivedAt)
+// Rows corrected after their receipt reached R2 (#5233 envelope voids,
+// #8990 duplicate voids and rescores) are written again so R2 holds the
+// correction. R2 writes are serial at about 450 ms (p90 about 780 ms), and the
+// whole run has a 150 s fetch phase, so each run rewrites at most this many
+// stale receipts, oldest first: 50 x 780 ms is about 40 s, which leaves the
+// run's own 20 to 60 s of feed reads and judge calls well inside the budget.
+// The backlog drains over later runs, and pruning keeps a stale row until its
+// receipt is rewritten.
+export const RECEIPT_REARCHIVE_PER_RUN = 50;
+
+export function collectUnarchivedReceipts(ledger, { rearchiveLimit = RECEIPT_REARCHIVE_PER_RUN } = {}) {
+  const entries = Object.entries(normalizeLedger(ledger)).filter(([, entry]) => entry?.status === 'resolved');
+  const stale = entries
+    .filter(([, entry]) => receiptNeedsRearchive(entry))
+    .sort(([keyA, a], [keyB, b]) => Number(a.resolvedAt) - Number(b.resolvedAt) || keyA.localeCompare(keyB))
+    .slice(0, rearchiveLimit);
+  return [...entries.filter(([, entry]) => !entry.receiptArchivedAt), ...stale]
     .map(([key, entry]) => ({
       key,
       entry: cloneJson(entry),
       resolvedAt: Number(entry.resolvedAt || entry.sealedAt || Date.now()),
     }));
+}
+
+// Durable: derived from the correction stamps, so it holds until a later
+// archive write stamps receiptArchivedAt after the correction.
+export function receiptNeedsRearchive(entry) {
+  const archivedAt = Number(entry?.receiptArchivedAt);
+  if (entry?.status !== 'resolved' || !entry.receiptArchivedAt || !Number.isFinite(archivedAt)) return false;
+  const reason = entry.evidence?.reason;
+  const correctedAt = Math.max(
+    reason === ENVELOPE_BUG_VOID_REASON || reason === DUPLICATE_WINDOW_VOID_REASON ? Number(entry.evidence.voidedAt) || 0 : 0,
+    Number(entry.rescore?.rescoredAt) || 0,
+  );
+  return archivedAt < correctedAt;
 }
 
 export function markReceiptsArchived(ledger, archivedReceipts, archivedAt) {
@@ -1822,7 +2114,7 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     // three-baseline contract (KTD5) and the settlement path both need their
     // fields passed through here or they silently never reach the ledger:
     // baselineProbability = the base-rate the ensemble is compared against;
-    // probabilitySource   = 'ensemble' | 'base_rate' (guards updateOpenWindow);
+    // probabilitySource   = 'ensemble' | 'base_rate';
     // passes              = per-pass ensemble probabilities (KTD1 post-hoc);
     // marketSlug/Source   = what the settlement loader tracks through close.
     baselineProbability: Number.isFinite(Number(forecast.baselineProbability)) ? Number(forecast.baselineProbability) : undefined,
@@ -1839,37 +2131,14 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
   });
 }
 
-function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
-  if (entry.status !== 'pending' && entry.status !== 'pending-judge') return;
-  if (generatedAt >= entry.deadline) return;
+// A window is scored on the probability published when it opened, with the
+// calibration, provenance and passes that came with it (#8990). A later
+// sighting of the same question is kept for audit only. Re-reading the
+// opening emission or an older sighting records nothing.
+function recordSighting(entry, forecast, snapshotAt) {
   const probability = Number(forecast.probability);
-  if (Number.isFinite(probability)) {
-    // Probability provenance is RANKED: full 3-pass ensemble (2) over a 1-2
-    // pass partial (1) over the base-rate placeholder (0). An update may keep
-    // or raise the rank, never lower it (#5525): a bet falling out of top-K
-    // (or hitting the LLM budget) on a later run re-ingests as 'base_rate',
-    // and letting it clobber EITHER derived aggregate would silently grade the
-    // placeholder prior. Same-rank refreshes and partial→full upgrades pass.
-    if (sourceRank(forecast.probabilitySource) >= sourceRank(entry.probabilitySource)) {
-      entry.probability = probability;
-      if (typeof forecast.probabilitySource === 'string') entry.probabilitySource = forecast.probabilitySource;
-      if (Number.isFinite(Number(forecast.baselineProbability))) entry.baselineProbability = Number(forecast.baselineProbability);
-      // Copy passes for full AND partial ensemble runs ('ensemble_partial'
-      // carries the failed passes too — KTD1 post-hoc calibration needs them).
-      const forecastRanEnsemble = typeof forecast.probabilitySource === 'string' && forecast.probabilitySource.startsWith('ensemble');
-      if (forecastRanEnsemble && Array.isArray(forecast.passes)) entry.passes = cloneJson(forecast.passes);
-      // Refresh the market snapshot alongside the probability: vsMarketSkill /
-      // deviationSkill compare entry.probability against calibration.marketPrice,
-      // so a re-graded probability must not be measured against the first-seen
-      // crowd price. A run with no anchor clears it: the forecast's calibration
-      // at last sight is the truth, and a kept anchor may be one the matcher
-      // has since rejected (#7071).
-      if (forecast.calibration && typeof forecast.calibration === 'object') entry.calibration = cloneJson(forecast.calibration);
-      else delete entry.calibration;
-      const uncalibrated = uncalibratedProbabilityOf(forecast);
-      if (uncalibrated === undefined) delete entry.uncalibratedProbability;
-      else entry.uncalibratedProbability = uncalibrated;
-    }
+  if (snapshotAt > Number(entry.firstSeenAt) && snapshotAt >= Number(entry.lastSeenAt || 0)) {
+    entry.lastSeenProbability = Number.isFinite(probability) ? probability : null;
   }
   // Market-settlement bets track the venue's CURRENT endDate: venues move
   // close dates, and freezing the first-seen deadline would run the settlement
@@ -1891,21 +2160,6 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
 function uncalibratedProbabilityOf(forecast) {
   const value = forecast.uncalibratedProbability;
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-// Provenance rank for updateOpenWindow's no-downgrade guard.
-function sourceRank(source) {
-  if (source === 'ensemble') return 2;
-  if (source === 'ensemble_partial') return 1;
-  return 0; // base_rate, legacy/undefined
-}
-
-function findOpenWindowKey(ledger, id, generatedAt) {
-  return Object.keys(ledger)
-    .filter((key) => ledger[key]?.id === id && !isHorizonEntry(ledger[key]))
-    .filter((key) => ledger[key].status === 'pending' || ledger[key].status === 'pending-judge')
-    .filter((key) => generatedAt < Number(ledger[key].deadline))
-    .sort((a, b) => Number(ledger[a].deadline) - Number(ledger[b].deadline))[0] || null;
 }
 
 function normalizeLedger(ledger) {
