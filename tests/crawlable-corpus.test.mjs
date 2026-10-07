@@ -4459,15 +4459,15 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /<h2>Is Strait of Hormuz open right now\?<\/h2>/);
       assert.match(
         hormuz,
-        /data-chokepoint-open-status>As of [^<]*source coverage for the Strait of Hormuz is partial\. No transit count is published for this snapshot\. World Monitor cannot verify operational passage status from this snapshot\.</,
+        /data-chokepoint-open-status>As of [^<]*the observed transit count for the Strait of Hormuz is 2\. The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\.</,
       );
       assert.match(
         hormuz,
-        /data-chokepoint-score-driver>The score of 70 \(Red\) has this evidence basis\. Configured geopolitical baseline: Active conflict — Iran-Israel war/,
+        /data-chokepoint-score-driver>The score of 75 \(Red\) has this evidence basis\. Configured geopolitical baseline: Active conflict — Iran-Israel war/,
       );
       assert.match(
         hormuz,
-        /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count unavailable\./,
+        /Observed score inputs: 0 warnings; maximum AIS congestion severity Low\. Context only \(not score inputs\): AIS event count \(1 AIS disruption\); transit count \(2\)\./,
       );
       assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
@@ -4477,24 +4477,32 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
       assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
       assert.match(hormuz, /data-chokepoint-score>\d/);
-      // #7457: the frozen pulse stores todayTransits "0" with a non-zero WoW
-      // for Hormuz. That 0 is an AIS-window zero-fill, not a measurement.
-      assert.match(hormuz, /data-chokepoint-transits>—/);
-      assert.doesNotMatch(
-        hormuz,
-        /data-chokepoint-transits>0</,
-        'absent-feed chokepoint must not render a numeric 0 transit count',
-      );
-      assert.match(
-        hormuz,
-        /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
-      );
       const hormuzDocument = htmlDocument(
         hormuz,
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
-      assert.match(hormuzDocument.querySelector('[data-chokepoint-transits-note]').textContent,
-        /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+      // The transit tile follows the capture: a measured count renders
+      // verbatim, an absent feed renders the dash and the not-published note
+      // (#7457: a stored "0" beside a non-zero WoW is a zero-fill). The
+      // per-chokepoint loop below covers the absent path for every page.
+      const hormuzTransits = clock.livePulse.chokepoints.hormuz_strait;
+      if (hormuzTransits.todayCountsAvailable === true) {
+        assert.match(hormuz, new RegExp(`data-chokepoint-transits>${hormuzTransits.todayTransits}<`));
+        assert.doesNotMatch(hormuz, /is not currently publishing a transit count for Strait of Hormuz/);
+      } else {
+        assert.match(hormuz, /data-chokepoint-transits>—/);
+        assert.doesNotMatch(
+          hormuz,
+          /data-chokepoint-transits>0</,
+          'absent-feed chokepoint must not render a numeric 0 transit count',
+        );
+        assert.match(
+          hormuz,
+          /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
+        );
+        assert.match(hormuzDocument.querySelector('[data-chokepoint-transits-note]').textContent,
+          /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+      }
       assert.match(hormuzDocument.querySelector('[data-live-chokepoint]').dataset.transitMeasurementNote,
         /Historical PortWatch totals/);
       // Visibility follows the pulse's availability flags, not a fixed

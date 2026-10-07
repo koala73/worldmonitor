@@ -15,7 +15,7 @@ import {
 } from './_forecast-scorecard.mjs';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const ACCURACY_CONTENT_VERSION = '2026-10-06';
+export const ACCURACY_CONTENT_VERSION = '2026-10-07';
 
 export const ACCURACY_PAGE_PATH = '/accuracy/';
 
