@@ -516,6 +516,20 @@ describe('buildResolutionSpec — domain-specific hard and judged families', () 
 });
 
 describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
+  it('a judged cyber forecast asks a question naming the country, threshold and window (#5233)', () => {
+    const spec = buildResolutionSpec(pred({
+      domain: 'cyber', region: 'Estonia', title: 'Cyber threat concentration: Estonia', timeHorizon: '7d',
+      signals: [{ type: 'cyber', value: '40 threats (malware)', weight: 0.5 }],
+    }), {}, GENERATED_AT);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.question, 'Within the 7d horizon after this forecast, did public threat-intelligence sources report at least 15 new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to Estonia?');
+  });
+
+  it('a judged cyber forecast without a threat tally keeps the generic question', () => {
+    const spec = buildResolutionSpec(pred({ domain: 'cyber', region: 'Estonia', title: 'Cyber threat concentration: Estonia', timeHorizon: '7d' }), {}, GENERATED_AT);
+    assert.equal(spec.question, 'Will "Cyber threat concentration: Estonia" (cyber, Estonia) resolve YES within its 7d horizon?');
+  });
+
   it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
     assert.deepEqual([...JUDGED_DOMAINS].sort(), ['cyber', 'infrastructure', 'military']);
   });

@@ -2081,6 +2081,39 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
     assert.equal(result.scorecard.totals.resolved, 0, 'the scorecard still leaves the withheld row out');
   });
 
+  // #5233: the judges' archive held 0 to 2 on-subject items for migrated cyber
+  // rows and the pair never ruled NO, so the only reachable scores were
+  // unsupported YESes. Held out until phase 2 of #8990.
+  it('seals a due cyber judged row as VOID without calling a judge (#5233)', async () => {
+    const nowMs = T_DEADLINE + 2;
+    let judgeCalls = 0;
+    const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
+    const cyber = judged({ domain: 'cyber', region: 'Romania', title: 'Cyber threat concentration: Romania' });
+    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges }, {}, [snapshot(T0, [cyber])]);
+
+    const row = rowOf(result);
+    assert.equal(judgeCalls, 0);
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'judged_evidence_unreliable');
+    assert.equal(row.judgeAttemptLog.at(-1).stage, 'terminal');
+    assert.equal(result.scorecard.totals.scored, 0);
+  });
+
+  it('leaves a cyber judged row pending before its deadline (#5233)', async () => {
+    const cyber = judged({ domain: 'cyber', region: 'Romania', title: 'Cyber threat concentration: Romania' });
+    const result = await runCycle(coveredArchive(T_DEADLINE - 1), T_DEADLINE - 1, { judgeModels: agreeingJudges() }, {}, [snapshot(T0, [cyber])]);
+    assert.equal(rowOf(result).status, 'pending-judge');
+  });
+
+  it('still sends a non-cyber judged row to the judges (#5233)', async () => {
+    const nowMs = T_DEADLINE + 2;
+    let judgeCalls = 0;
+    const countingJudges = agreeingJudges().map((judge) => async (...args) => { judgeCalls += 1; return judge(...args); });
+    const result = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: countingJudges });
+    assert.equal(judgeCalls, 2);
+    assert.equal(rowOf(result).outcome, 'YES');
+  });
+
   it('records the terminal attempt for a judged entry with no deadline', async () => {
     const nowMs = T_DEADLINE + 2;
     const ledger = {
