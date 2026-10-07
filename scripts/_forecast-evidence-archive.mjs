@@ -263,6 +263,43 @@ export function advanceForecastEvidenceCoverage(raw, nowMs) {
 }
 
 /**
+ * Keeps a stored link when a later sighting of the same story arrives with its
+ * link blanked by the publisher gate (#8990). The stored record is reused with
+ * only `lastSeen` replaced, so the index score and the record still agree for
+ * coverage recovery, and the member stays within its byte budget (no JSON
+ * re-encoding). Otherwise the new member is written as a plain SET would.
+ * KEYS[1] record key; ARGV[1] new member, ARGV[2] TTL seconds, ARGV[3] lastSeen.
+ */
+export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT = [
+  "local old = redis.call('GET', KEYS[1])",
+  'if old then',
+  '  local ok, rec = pcall(cjson.decode, old)',
+  "  if ok and type(rec) == 'table' and type(rec.link) == 'string' and rec.link ~= '' then",
+  "    local kept, n = string.gsub(old, '\"lastSeen\":%d+}$', '\"lastSeen\":' .. ARGV[3] .. '}')",
+  "    if n == 1 then return redis.call('SET', KEYS[1], kept, 'EX', ARGV[2]) end",
+  '  end',
+  'end',
+  "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+].join('\n');
+
+/**
+ * The Redis command that stores one evidence record. A member whose link was
+ * blanked goes through FORECAST_EVIDENCE_KEEP_LINK_SCRIPT so it never replaces
+ * an earlier record of the story that carried a valid link.
+ *
+ * @param {string} key
+ * @param {string} member
+ * @param {string} link
+ * @param {number} ttlSeconds
+ * @param {number} lastSeen
+ * @returns {Array<string|number>}
+ */
+export function buildForecastEvidenceRecordWrite(key, member, link, ttlSeconds, lastSeen) {
+  if (link) return ['SET', key, member, 'EX', ttlSeconds];
+  return ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', key, member, String(ttlSeconds), String(Math.floor(lastSeen))];
+}
+
+/**
  * Fields the judged path needs; everything else is deliberately dropped.
  *
  * @typedef {object} ForecastEvidenceRecord

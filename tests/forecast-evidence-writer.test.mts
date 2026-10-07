@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { FORECAST_EVIDENCE_MAX_LOOKBACK_MS } from '../scripts/_forecast-evidence-archive.mjs';
+import { FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, FORECAST_EVIDENCE_MAX_LOOKBACK_MS } from '../scripts/_forecast-evidence-archive.mjs';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
 const nowMs = 1_750_000_000_000;
@@ -226,9 +226,13 @@ describe('forecast evidence publication wiring (#7082)', () => {
       coverage,
       items: [storyItem({ link: 'https://evil.example/phish' })],
     });
-    const sets = redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:'));
-    assert.equal(sets.length, 1);
-    const payload = JSON.parse(String(sets[0][2]));
+    assert.deepEqual(redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:')), []);
+    // Written through the keep-link script, so a stored link for the story survives (#8990).
+    const evals = redis.commandsOf((verb) => verb === 'EVAL')
+      .filter((command) => String(command[3]).startsWith('forecast:evidence:record:v1:'));
+    assert.equal(evals.length, 1);
+    assert.equal(evals[0][1], FORECAST_EVIDENCE_KEEP_LINK_SCRIPT);
+    const payload = JSON.parse(String(evals[0][4]));
     assert.equal(payload.link, '');
     assert.equal(payload.title, 'Central bank holds rates');
     assert.ok(!JSON.stringify(redis.calls).includes('evil.example'), 'the hostile URL never reaches Redis');

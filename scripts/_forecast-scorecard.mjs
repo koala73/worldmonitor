@@ -7,10 +7,17 @@ export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
 
-// Service level for the judged lane (#7068): how long after its deadline a
-// judged entry may take to reach a terminal state and still count as on time.
-// Two days leaves room for one retry cycle on the daily cadence while staying
-// well inside the archive horizon.
+// Reports published up to 18h after a judged deadline are admissible, and an
+// entry is not judged before they can exist (#8990). Of the 23 post-deadline
+// citations in the scored judged rows, 11 were 2-14h late; the next was 30h
+// late and reported a later development.
+export const JUDGED_EVIDENCE_GRACE_MS = 18 * 60 * 60 * 1000;
+
+// Service level for the judged lane (#7068): how long after it becomes
+// judgeable (deadline plus the reporting grace) a judged entry may take to
+// reach a terminal state and still count as on time. The clock starts at the
+// first instant the lane may judge, so the grace never eats the retry room:
+// two days is two daily runs, a first attempt and one retry, at any deadline.
 export const DEFAULT_JUDGED_SLA_MS = 2 * DAY_MS;
 
 // Origins whose scored entries are held OUT of the headline skill Brier:
@@ -384,7 +391,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     const deadline = entryDeadline(entry);
     const resolvedAt = Number(entry?.resolvedAt);
     if (!Number.isFinite(deadline) || !Number.isFinite(resolvedAt)) return false;
-    return resolvedAt - deadline <= slaMs;
+    return resolvedAt - (deadline + JUDGED_EVIDENCE_GRACE_MS) <= slaMs;
   };
   const scoredWithinSla = judgedResolved.filter((entry) => isScoredEntry(entry) && withinSla(entry)).length;
   const voidWithinSla = judgedResolved.filter((entry) => entry?.outcome === 'VOID' && withinSla(entry)).length;
@@ -400,7 +407,7 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
 
   const pendingPastDeadline = pendingJudge.filter((entry) => {
     const deadline = entryDeadline(entry);
-    return Number.isFinite(deadline) && nowMs >= deadline;
+    return Number.isFinite(deadline) && nowMs >= deadline + JUDGED_EVIDENCE_GRACE_MS;
   }).length;
 
   return {

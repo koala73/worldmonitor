@@ -37,6 +37,14 @@ export function resolveForecastEvidenceCoverageMaxLagMs(
 export function utf8ByteLength(value: string): number;
 export function isForecastEvidenceHash(value: unknown): value is string;
 export function forecastEvidenceRecordKey(hash: string): string;
+export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT: string;
+export function buildForecastEvidenceRecordWrite(
+  key: string,
+  member: string,
+  link: string,
+  ttlSeconds: number,
+  lastSeen: number,
+): Array<string | number>;
 interface ForecastEvidenceCoverageWindow {
   v: number;
   coverageStartMs: number;
