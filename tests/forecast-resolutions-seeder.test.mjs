@@ -3345,6 +3345,12 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(horizonKeys(ledger).map((key) => key.split('@')[2]), ['h24']);
   });
 
+  it('does not register a horizon window whose deadline passed before the resolver first saw the emission (#8990)', () => {
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0 + 2 * DAY_MS);
+    assert.ok(ledger[PARENT]);
+    assert.deepEqual(horizonKeys(ledger), [`${PARENT}@d30`, `${PARENT}@d7`]);
+  });
+
   it('re-running a cycle is idempotent', () => {
     const once = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const twice = processResolutionCycle(once.ledger, [snapshot(T0, [projected()])], HORMUZ(40), T0);

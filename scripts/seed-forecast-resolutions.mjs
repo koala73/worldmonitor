@@ -281,7 +281,6 @@ function promoteBetEngineEnabled() {
 
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   // Drop terminal entries that are already receipted to R2 and outside the
@@ -295,7 +294,6 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
 
 export async function processResolutionCycleWithJudges(existingLedger, historySnapshots, feedsByKey, newsArchive, nowMs, options = {}) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
-  voidEnvelopeBugResolutions(ingested, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
@@ -1533,7 +1531,7 @@ export function pruneArchivedTerminalEntries(ledger, nowMs, options = {}) {
 
 function isPrunableTerminalEntry(entry, minResolvedAt) {
   if (!entry || entry.status !== 'resolved') return false;
-  if (!entry.receiptArchivedAt) return false;
+  if (!entry.receiptArchivedAt || receiptNeedsRearchive(entry)) return false;
   const resolvedAt = Number(entry.resolvedAt);
   if (!Number.isFinite(resolvedAt)) return false;
   return resolvedAt < minResolvedAt;
@@ -1542,6 +1540,9 @@ function isPrunableTerminalEntry(entry, minResolvedAt) {
 export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now()) {
   const ledger = cloneJson(normalizeLedger(existingLedger));
   migratePendingCountFeedKeys(ledger);
+  // Envelope voids first (#5233), so the window correction never rescores a
+  // row that the same run then voids.
+  voidEnvelopeBugResolutions(ledger, nowMs);
   correctLedgerWindows(ledger, nowMs);
   const windows = indexQuestionWindows(ledger);
   const snapshots = [...(historySnapshots || [])]
@@ -1594,9 +1595,15 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 // each run, so its threshold is part of the key. The key is taken after the
 // count-to-judged migration, so every threshold of a migrated count maps to
 // the one judged question it became.
+//
+// The count normalization ignores the feed-availability flags: a count on a
+// feed listed in UNAVAILABLE_COUNT_FEED_MIGRATIONS always keys as its judged
+// question. Flipping a flag back to hard resolution therefore cannot give a
+// still-open judged window and a new hard emission of the same question two
+// different keys.
 export function windowQuestionKey(entry) {
   const view = { ...entry, status: 'pending', spec: cloneJson(entry.spec) };
-  migratePendingCountEntry(view);
+  migratePendingCountEntry(view, { ignoreAvailability: true });
   const spec = view.spec;
   const region = view.region || '';
   if (spec.kind === 'judged') return JSON.stringify(['judged', region, spec.question ?? '']);
@@ -1633,8 +1640,13 @@ function indexQuestionWindows(ledger) {
   };
 }
 
+// A market-settlement window is the market's own question, settled once. Its
+// deadline tracks the venue's endDate and can move back before the window's
+// emission once the market closes, so it covers every later emission of the
+// same question, not a [generatedAt, deadline) span.
 function windowCovers(entry, generatedAt) {
-  return Number(entry.generatedAt) <= generatedAt && generatedAt < Number(entry.deadline);
+  if (Number(entry.generatedAt) > generatedAt) return false;
+  return entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY || generatedAt < Number(entry.deadline);
 }
 
 // Two questions of one id can share a deadline (the same run, or a moved
@@ -1649,9 +1661,10 @@ function freeWindowKey(ledger, id, deadline, questionKey) {
 
 export const DUPLICATE_WINDOW_VOID_REASON = 'duplicate_window';
 export const FIRST_SEEN_RESCORE_REASON = 'last_seen_probability';
-// Fields an update before #8990 overwrote alongside the probability. On a
-// rescored row they describe a later sighting, so they move under `rescore`.
-const LAST_SEEN_PAIRED_FIELDS = ['probabilitySource', 'baselineProbability', 'passes', 'calibration', 'uncalibratedProbability'];
+// Fields an update before #8990 overwrote with a later sighting's values. The
+// ensemble passes and the post-blend lineage produced that sighting's
+// probability; the market anchor is the price at that sighting.
+const SIGHTING_FIELDS = ['passes', 'calibration', 'uncalibratedProbability'];
 
 // Corrects windows written before #8990. Re-reading history reopened windows
 // that had already resolved, and each open window was scored on its last
@@ -1695,32 +1708,44 @@ export function correctLedgerWindows(ledger, nowMs) {
   let rescored = 0;
   for (const entry of Object.values(ledger)) {
     if (!entry || isHorizonEntry(entry) || isDuplicateWindow(entry) || entry.outcome === 'VOID' || entry.rescore) continue;
-    const first = Number(entry.firstSeenProbability);
-    if (!Number.isFinite(first)) continue;
-    const superseded = Object.fromEntries(LAST_SEEN_PAIRED_FIELDS.filter((field) => field in entry).map((field) => [field, entry[field]]));
-    const probabilityMoved = Number(entry.probability) !== first;
-    if (!probabilityMoved && !(sightedBeforeFix(entry) && Object.keys(superseded).length)) continue;
-    entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
-    for (const field of LAST_SEEN_PAIRED_FIELDS) delete entry[field];
-    entry.probability = first;
-    markReceiptForRearchive(entry);
-    rescored += 1;
+    if (rescoreToFirstSeen(entry, nowMs)) rescored += 1;
   }
   return { duplicates, rescored };
 }
 
-// A later sighting before #8990 could overwrite the paired fields without
+// The old updateOpenWindow overwrote the probability and its sighting fields
+// on every sighting of equal or higher provenance rank. A row whose
+// probability moved is rescored to its first-seen value and its sighting
+// fields move under `rescore`. Its base rate does not depend on the sighting
+// and stays. When the first-seen value equals that base rate, the window
+// opened on the base-rate placeholder, so the row says so; otherwise the
+// later provenance is kept, since the old rank guard only ever upgraded it.
+// A row the old code saw again without moving its probability keeps its
+// provenance and passes, which produced that same probability, and only its
+// market anchor and lineage move.
+function rescoreToFirstSeen(entry, nowMs) {
+  const first = Number(entry.firstSeenProbability);
+  if (!Number.isFinite(first)) return false;
+  const probabilityMoved = Number(entry.probability) !== first;
+  const fields = probabilityMoved ? SIGHTING_FIELDS : ['calibration', 'uncalibratedProbability'];
+  const superseded = Object.fromEntries(fields.filter((field) => field in entry).map((field) => [field, entry[field]]));
+  if (!probabilityMoved && !(sightedBeforeFix(entry) && Object.keys(superseded).length)) return false;
+  if (probabilityMoved && 'probabilitySource' in entry) superseded.probabilitySource = entry.probabilitySource;
+  entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
+  for (const field of fields) delete entry[field];
+  if (probabilityMoved && Number.isFinite(Number(entry.baselineProbability)) && Number(entry.baselineProbability) === first) {
+    entry.probabilitySource = 'base_rate';
+  }
+  entry.probability = first;
+  return true;
+}
+
+// A later sighting before #8990 could overwrite the sighting fields without
 // moving the published probability. Since #8990 every sighting after the
 // first records lastSeenProbability, so a row seen again without it was
 // last updated by the old code.
 function sightedBeforeFix(entry) {
   return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry);
-}
-
-// A corrected row whose receipt is already in R2 is archived again, so R2
-// holds the correction before pruning drops the ledger copy.
-function markReceiptForRearchive(entry) {
-  if (entry.status === 'resolved') delete entry.receiptArchivedAt;
 }
 
 function voidDuplicateWindow(entry, keeperKey, nowMs) {
@@ -1731,7 +1756,6 @@ function voidDuplicateWindow(entry, keeperKey, nowMs) {
     : { supersededStatus: entry.status };
   entry.evidence = { reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: keeperKey, ...superseded, voidedAt: nowMs };
   entry.outcome = 'VOID';
-  markReceiptForRearchive(entry);
   if (entry.status !== 'resolved') {
     entry.status = 'resolved';
     entry.resolvedAt = nowMs;
@@ -1771,7 +1795,7 @@ function migratePendingCountFeedKeys(ledger) {
   for (const entry of Object.values(ledger)) migratePendingCountEntry(entry);
 }
 
-function migratePendingCountEntry(entry) {
+function migratePendingCountEntry(entry, options = {}) {
   if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
   const replacement = STALE_COUNT_FEED_REPLACEMENTS.get(entry.spec.sourceFeed);
   if (replacement) {
@@ -1781,7 +1805,7 @@ function migratePendingCountEntry(entry) {
       entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
     }
   }
-  migratePendingCountEntryToJudged(entry);
+  migratePendingCountEntryToJudged(entry, options);
 }
 
 // Families whose count-resolution feed is unavailable (empty without ACLED
@@ -1796,10 +1820,10 @@ const UNAVAILABLE_COUNT_FEED_MIGRATIONS = [
   { feed: CYBER_COUNT_SOURCE_FEED, available: () => false, buildQuestion: buildCyberJudgedQuestionForEntry },
 ];
 
-function migratePendingCountEntryToJudged(entry) {
+function migratePendingCountEntryToJudged(entry, { ignoreAvailability = false } = {}) {
   if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
   const migration = UNAVAILABLE_COUNT_FEED_MIGRATIONS.find(
-    (m) => m.feed === entry.spec.sourceFeed && !m.available(),
+    (m) => m.feed === entry.spec.sourceFeed && (ignoreAvailability || !m.available()),
   );
   if (!migration) return;
   const parsed = parseMetricKey(entry.spec.metricKey);
@@ -1927,15 +1951,41 @@ export function voidEnvelopeBugResolutions(ledger, nowMs) {
   return voided;
 }
 
-export function collectUnarchivedReceipts(ledger) {
-  return Object.entries(normalizeLedger(ledger))
-    .filter(([, entry]) => entry?.status === 'resolved')
-    .filter(([, entry]) => !entry.receiptArchivedAt)
+// Rows corrected after their receipt reached R2 (#5233 envelope voids,
+// #8990 duplicate voids and rescores) are written again so R2 holds the
+// correction. R2 writes are serial at about 450 ms (p90 about 780 ms), and the
+// whole run has a 150 s fetch phase, so each run rewrites at most this many
+// stale receipts, oldest first: 50 x 780 ms is about 40 s, which leaves the
+// run's own 20 to 60 s of feed reads and judge calls well inside the budget.
+// The backlog drains over later runs, and pruning keeps a stale row until its
+// receipt is rewritten.
+export const RECEIPT_REARCHIVE_PER_RUN = 50;
+
+export function collectUnarchivedReceipts(ledger, { rearchiveLimit = RECEIPT_REARCHIVE_PER_RUN } = {}) {
+  const entries = Object.entries(normalizeLedger(ledger)).filter(([, entry]) => entry?.status === 'resolved');
+  const stale = entries
+    .filter(([, entry]) => receiptNeedsRearchive(entry))
+    .sort(([keyA, a], [keyB, b]) => Number(a.resolvedAt) - Number(b.resolvedAt) || keyA.localeCompare(keyB))
+    .slice(0, rearchiveLimit);
+  return [...entries.filter(([, entry]) => !entry.receiptArchivedAt), ...stale]
     .map(([key, entry]) => ({
       key,
       entry: cloneJson(entry),
       resolvedAt: Number(entry.resolvedAt || entry.sealedAt || Date.now()),
     }));
+}
+
+// Durable: derived from the correction stamps, so it holds until a later
+// archive write stamps receiptArchivedAt after the correction.
+export function receiptNeedsRearchive(entry) {
+  const archivedAt = Number(entry?.receiptArchivedAt);
+  if (entry?.status !== 'resolved' || !entry.receiptArchivedAt || !Number.isFinite(archivedAt)) return false;
+  const reason = entry.evidence?.reason;
+  const correctedAt = Math.max(
+    reason === ENVELOPE_BUG_VOID_REASON || reason === DUPLICATE_WINDOW_VOID_REASON ? Number(entry.evidence.voidedAt) || 0 : 0,
+    Number(entry.rescore?.rescoredAt) || 0,
+  );
+  return archivedAt < correctedAt;
 }
 
 export function markReceiptsArchived(ledger, archivedReceipts, archivedAt) {

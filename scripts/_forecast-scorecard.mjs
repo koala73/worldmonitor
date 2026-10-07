@@ -143,15 +143,25 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       slice.brier = sliceOverall.brier;
       slice.logScore = sliceOverall.logScore;
     }
-    const sliceMarket = summarizeMarketSkill(betEngineScored);
+    // The skill comparisons measure the ensemble, so they read only windows
+    // that opened on an ensemble probability. A window that opened on the
+    // base-rate placeholder is still scored above, but it would compare the
+    // base rate with itself (#8990).
+    const ensembleScored = betEngineScored.filter(isEnsembleScored);
+    slice.ensembleCount = ensembleScored.length;
+    const sliceMarket = summarizeMarketSkill(ensembleScored);
     if (sliceMarket) slice.vsMarketSkill = sliceMarket;
-    const baseline = summarizeBaselineSkill(betEngineScored);
+    const baseline = summarizeBaselineSkill(ensembleScored);
     if (baseline) slice.vsBaseRate = baseline;
-    const deviation = summarizeDeviationSkill(betEngineScored);
+    const deviation = summarizeDeviationSkill(ensembleScored);
     if (deviation) slice.deviationSkill = deviation;
     scorecard.betEngine = slice;
   }
   return scorecard;
+}
+
+function isEnsembleScored(entry) {
+  return typeof entry?.probabilitySource === 'string' && entry.probabilitySource.startsWith('ensemble');
 }
 
 // Ensemble-vs-recorded-base-rate Brier comparison (#5525 KTD5). Only entries
