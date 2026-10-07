@@ -4,6 +4,8 @@ import type {
   MarketAlertScorecard,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { selectMarketAlertScorecard, selectScorecardFields } from './scorecard-fields';
 
@@ -76,6 +78,7 @@ async function readMarketAlerts(): Promise<MarketAlertScorecard | undefined> {
     return selectMarketAlertScorecard((await getSeedJson(MARKET_ALERTS_KEY)).data);
   } catch (err) {
     console.error('[forecast] getForecastScorecard market-alerts read failed:', err instanceof Error ? err.message : String(err));
+    captureSilentError(err, { tags: { route: 'api/forecast', step: 'market-alerts-read' }, level: 'warning' });
     return undefined;
   }
 }
