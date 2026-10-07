@@ -2363,7 +2363,7 @@
       "unscored": "Scenari narrativi, non valutati per accuratezza."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li><li>Calibrata su baseline di prediction market dove disponibili</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto.",
+      "infoTooltip": "<strong>AI Forecasts</strong> Stime di probabilità generate da IA per eventi geopolitici ed economici:<ul><li>Copertura cross-domain: conflitti, mercati, supply chain, cyber, politica</li><li>Ogni previsione mostra probabilità stimata, livello di confidenza e orizzonte temporale</li></ul>Le previsioni si aggiornano all'arrivo di nuovi segnali di intelligence. Filtra per dominio usando le schede in alto.",
       "record": {
         "label": "Storico dei risultati",
         "labelHint": "Come sono state valutate le previsioni pubblicate una volta risolte, negli ultimi {{days}} giorni. Passa il cursore su un numero per vedere cosa significa.",
@@ -2384,6 +2384,46 @@
         "measuredHint": "Come i forecast pubblicati {{domain}} hanno ottenuto un punteggio su {{n}} forecast valutati negli ultimi {{days}} giorni. Il tasso di base è quello che si otterrebbe rispondendo sempre con il tasso di sì osservato del dominio. Più basso è meglio. Questo è il track record del dominio, non di questo forecast.",
         "unmeasured": "Non ancora misurato",
         "unmeasuredHint": "Le previsioni di {{domain}} hanno {{n}} risultati valutati negli ultimi {{days}} giorni. Un dominio ha bisogno di {{min}} prima che la sua accuratezza sia mostrata."
+      },
+      "resolution": {
+        "last": "Ultimo: {{outcome}}",
+        "lastSr": "La finestra precedente di questa previsione si è risolta con {{outcome}}.",
+        "history": "Finestre recenti, più recente per prima: {{list}}",
+        "outcome": {
+          "yes": "SÌ",
+          "no": "NO",
+          "void": "ANNULLATO"
+        },
+        "void": {
+          "no_establishable_metric": "Il feed non aveva una lettura per questa domanda",
+          "value_source_never_settled": "Il feed non ha mai pubblicato un valore definitivo",
+          "count_source_window_not_retained": "Il feed non ha più conservato la finestra della domanda",
+          "unsupported_window": "La domanda non poteva essere verificata rispetto al suo feed",
+          "unsupported_metric_key": "La domanda non poteva essere verificata rispetto al suo feed",
+          "not_hard_spec": "La domanda non poteva essere verificata rispetto al suo feed",
+          "missing_threshold": "Alla domanda mancava una soglia",
+          "missing_deadline": "Alla domanda mancava una scadenza",
+          "missing_generated_at": "Alla previsione mancava la data di inizio",
+          "beyond_archive_horizon": "L'archivio delle notizie non copriva più la finestra della domanda",
+          "no_archive_evidence": "L'archivio delle notizie non aveva nulla sull'argomento",
+          "all_judges_void": "Entrambi i giudici hanno ritenuto le prove insufficienti",
+          "judge_disagreement": "I giudici hanno dissentito",
+          "judge_retry_exhausted": "I giudici non hanno emesso un verdetto",
+          "withheld_unpublished": "Questo tipo di previsione non viene più pubblicato",
+          "resolver_envelope_bug": "Valutato su un feed di dati che non riuscivamo a leggere correttamente",
+          "market_price_not_outcome": "Il feed mostrava il prezzo di mercato, non come si è risolto il mercato",
+          "judged_evidence_unreliable": "Escluso dal punteggio finché le prove dei giudici non vengono corrette",
+          "other": "Non è stato possibile risolverla"
+        }
+      },
+      "horizons": {
+        "label": "Valutato anche a: {{list}}",
+        "hint": "La probabilità in evidenza è valutata all'orizzonte proprio della previsione. La proiezione a ciascuno di questi orizzonti è valutata anch'essa, rispetto al suo feed di origine, usando il valore pubblicato per primo per questa previsione. I valori di proiezione non sono mostrati perché il valore attuale può differire da quello valutato."
+      },
+      "audit": {
+        "label": "Precisione in revisione",
+        "hint": "In revisione dal {{date}}. Una revisione ha riscontrato errori nel calcolo dei punteggi delle previsioni. I punteggi sono stati ritirati mentre si apportano le correzioni. Le previsioni continuano ad essere pubblicate e registrate.",
+        "unverified": "Esito registrato, non verificato mentre la precisione è in revisione."
       }
     },
     "escalationCorrelation": {

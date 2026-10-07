@@ -60,10 +60,9 @@ message ScorecardMarketSkill {
   double brier_delta = 4;
 }
 
-// Headline "real skill" summary: Brier/log score over scored entries whose
-// generation origin is NOT synthetic backfill or an unpromoted shadow stream.
-// count 0 with excluded_scored > 0 means the headline is unmeasurable because
-// everything scored was synthetic — the honest signal for a collapsed funnel.
+// Headline Brier/log score over scored entries that are neither synthetic
+// backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
+// means every scored entry was excluded.
 message ScorecardSkill {
   int32 count = 1;
   optional double brier = 2;
@@ -132,6 +131,34 @@ message ScorecardReceipt {
   string citation_url = 10;
 }
 
+// One market-alert type's rolling hit rate beside its base rate.
+message MarketAlertRow {
+  string type = 1;
+  // Alerts resolved HIT or MISS.
+  int32 scored = 2;
+  optional double hit_rate = 3;
+  int32 base_n = 4;
+  optional double base_hit_rate = 5;
+  // Hit rate over the rows whose control scored; compare with base_hit_rate.
+  optional double paired_hit_rate = 6;
+  optional int64 median_lead_time_ms = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// Rolling scorecard of the market-alert ledger.
+message MarketAlertScorecard {
+  int64 generated_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 window_hours = 2;
+  int32 rolling_window_days = 3;
+  string methodology = 4;
+  repeated MarketAlertRow by_type = 5;
+}
+
+message ScorecardFamilyOutcome {
+  string forecast_id = 1;
+  string outcome = 2;
+  string void_reason = 3;
+}
+
 message GetForecastScorecardResponse {
   int32 schema_version = 1;
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -152,4 +179,6 @@ message GetForecastScorecardResponse {
   ScorecardUncertainty uncertainty = 16;
   ScorecardFunnel funnel = 17;
   repeated ScorecardReceipt receipts = 18;
+  MarketAlertScorecard market_alerts = 19;
+  repeated ScorecardFamilyOutcome family_outcomes = 20;
 }

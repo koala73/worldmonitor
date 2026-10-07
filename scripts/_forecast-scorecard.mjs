@@ -55,10 +55,16 @@ export function isWithheldEntry(entry) {
     && WITHHELD_STATE_DERIVED_TITLE.test(entry?.title || '');
 }
 
+// A window the resolver reopened from an emission another window had already
+// absorbed (#8990). It is VOID and kept for audit; it was never a question.
+export function isDuplicateWindow(entry) {
+  return typeof entry?.duplicateOf === 'string';
+}
+
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
-  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry));
+  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry) && !isDuplicateWindow(entry));
   const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
@@ -78,7 +84,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
-    methodology: 'Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is scored on the probability published at the time. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.',
+    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}`,
     totals: {
       entries: entries.length,
       resolved: resolved.length,
@@ -137,15 +143,25 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       slice.brier = sliceOverall.brier;
       slice.logScore = sliceOverall.logScore;
     }
-    const sliceMarket = summarizeMarketSkill(betEngineScored);
+    // The skill comparisons measure the ensemble, so they read only windows
+    // that opened on an ensemble probability. A window that opened on the
+    // base-rate placeholder is still scored above, but it would compare the
+    // base rate with itself (#8990).
+    const ensembleScored = betEngineScored.filter(isEnsembleScored);
+    slice.ensembleCount = ensembleScored.length;
+    const sliceMarket = summarizeMarketSkill(ensembleScored);
     if (sliceMarket) slice.vsMarketSkill = sliceMarket;
-    const baseline = summarizeBaselineSkill(betEngineScored);
+    const baseline = summarizeBaselineSkill(ensembleScored);
     if (baseline) slice.vsBaseRate = baseline;
-    const deviation = summarizeDeviationSkill(betEngineScored);
+    const deviation = summarizeDeviationSkill(ensembleScored);
     if (deviation) slice.deviationSkill = deviation;
     scorecard.betEngine = slice;
   }
   return scorecard;
+}
+
+function isEnsembleScored(entry) {
+  return typeof entry?.probabilitySource === 'string' && entry.probabilitySource.startsWith('ensemble');
 }
 
 // Ensemble-vs-recorded-base-rate Brier comparison (#5525 KTD5). Only entries
@@ -212,6 +228,16 @@ export function isScoredEntry(entry) {
 // Projection horizon windows (#7075) share the ledger with forecast windows
 // under `<parentKey>@<horizon>` keys. Every forecast-window reader partitions
 // on this so a projection never enters a forecast metric, fit, or cohort.
+// The #5233 correction travels with the numbers it changed: a frozen capture
+// taken before the resolver voided those rows carries no note.
+function envelopeBugNote(voided) {
+  const count = voided.filter((entry) => entry?.evidence?.reason === 'resolver_envelope_bug').length;
+  if (!count) return '';
+  return count === 1
+    ? ' 1 forecast scored against a data feed we could not read correctly is voided and left out of every score (issue #5233).'
+    : ` ${count} forecasts scored against a data feed we could not read correctly are voided and left out of every score (issue #5233).`;
+}
+
 export function isHorizonEntry(entry) {
   return typeof entry?.spec?.horizon === 'string';
 }
@@ -911,6 +937,10 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   all_judges_void: 'Both judges found the evidence insufficient',
   judge_disagreement: 'The judges disagreed',
   judge_retry_exhausted: 'The judges returned no verdict',
+  withheld_unpublished: 'This kind of forecast is no longer published',
+  resolver_envelope_bug: 'Scored against a data feed we could not read correctly',
+  market_price_not_outcome: 'The feed showed the market price, not how the market resolved',
+  judged_evidence_unreliable: "Held out of scoring while the judges' evidence is being fixed",
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);
@@ -965,12 +995,51 @@ function publicReceipt(entry) {
   return receipt;
 }
 
+// Card chips (#5092): for each published family (forecast id) with an open
+// window, its newest resolved windows, newest first. A live card is the open
+// window, so these are the family's earlier outcomes, never the card's own.
+// Open windows outlive the snapshot that published them, so the families are
+// capped, keeping those seen most recently: the current snapshot's cards come
+// first (#5092 review: production held 55 open families for a 15-card panel).
+export const FAMILY_OUTCOME_LIMIT = 5;
+export const FAMILY_OUTCOME_FAMILY_LIMIT = 24;
+export const PUBLIC_FAMILY_OUTCOME_FIELDS = Object.freeze(['forecastId', 'outcome', 'voidReason']);
+
+export function buildFamilyOutcomes(ledger, nowMs, { limit = FAMILY_OUTCOME_LIMIT } = {}) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  const windows = normalizeLedger(ledger).filter((entry) => entry && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && isPublishedOriginEntry(entry));
+  const lastSeenById = new Map();
+  for (const entry of windows) {
+    if (entry.status !== 'pending' && entry.status !== 'pending-judge') continue;
+    lastSeenById.set(entry.id, Math.max(lastSeenById.get(entry.id) ?? 0, Number(entry.lastSeenAt) || 0));
+  }
+  const byFamily = new Map();
+  for (const entry of windows) {
+    if (entry.status !== 'resolved' || !lastSeenById.has(entry.id) || !RECEIPT_OUTCOMES.has(entry.outcome)) continue;
+    const resolvedAt = Number(entry.resolvedAt);
+    if (!Number.isFinite(resolvedAt) || resolvedAt < minResolvedAt) continue;
+    if (!byFamily.has(entry.id)) byFamily.set(entry.id, []);
+    byFamily.get(entry.id).push(entry);
+  }
+  const families = [...byFamily.keys()]
+    .sort((a, b) => lastSeenById.get(b) - lastSeenById.get(a) || (a < b ? -1 : 1))
+    .slice(0, FAMILY_OUTCOME_FAMILY_LIMIT)
+    .sort();
+  return families.flatMap((id) => byFamily.get(id)
+    // One cycle can settle two overdue windows at the same instant; the later deadline is the newer window.
+    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt) || Number(b.deadline) - Number(a.deadline))
+    .slice(0, limit)
+    .map((entry) => (entry.outcome === 'VOID'
+      ? { forecastId: id, outcome: 'VOID', voidReason: Object.hasOwn(RECEIPT_VOID_REASON_LABELS, entry.evidence?.reason) ? entry.evidence.reason : 'other' }
+      : { forecastId: id, outcome: entry.outcome })));
+}
+
 // Published-origin forecast windows inside the rolling window: shadow,
 // synthetic and unattributed origins never become receipts.
 export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMIT } = {}) {
   const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
   return normalizeLedger(ledger)
-    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && isPublishedOriginEntry(entry)
+    .filter((entry) => entry?.status === 'resolved' && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && isPublishedOriginEntry(entry)
       && Number(entry.resolvedAt) >= minResolvedAt)
     .map(publicReceipt)
     .filter(Boolean)

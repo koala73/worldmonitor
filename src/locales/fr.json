@@ -2363,7 +2363,7 @@
       "unscored": "Scénarios narratifs, non évalués pour leur exactitude."
     },
     "forecast": {
-      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus.",
+      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus.",
       "record": {
         "label": "Bilan",
         "labelHint": "Comment les prévisions publiées ont été notées une fois résolues, sur les {{days}} derniers jours. Survolez un chiffre pour en connaître le sens.",
@@ -2384,6 +2384,46 @@
         "measuredHint": "Score obtenu par les prévisions publiées {{domain}} sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. Le taux de base est le score qu'on obtiendrait en répondant toujours par le taux de oui observé du domaine. Plus bas est mieux. C'est l'historique du domaine, pas de cette prévision.",
         "unmeasured": "Pas encore mesuré",
         "unmeasuredHint": "Les prévisions {{domain}} ont {{n}} résultats évalués au cours des {{days}} derniers jours. Un domaine doit en avoir {{min}} avant que sa précision soit affichée."
+      },
+      "resolution": {
+        "last": "Dernier : {{outcome}}",
+        "lastSr": "La fenêtre précédente de cette prévision a abouti à {{outcome}}.",
+        "history": "Fenêtres récentes, les plus récentes en premier : {{list}}",
+        "outcome": {
+          "yes": "OUI",
+          "no": "NON",
+          "void": "NUL"
+        },
+        "void": {
+          "no_establishable_metric": "Le flux n'avait pas de lecture pour cette question",
+          "value_source_never_settled": "Le flux n'a jamais publié de valeur définitive",
+          "count_source_window_not_retained": "Le flux ne conservait plus la fenêtre de la question",
+          "unsupported_window": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "unsupported_metric_key": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "not_hard_spec": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "missing_threshold": "Il manquait un seuil à la question",
+          "missing_deadline": "Il manquait une date limite à la question",
+          "missing_generated_at": "Il manquait la date de début de la prévision",
+          "beyond_archive_horizon": "L'archive de nouvelles ne couvrait plus la fenêtre de la question",
+          "no_archive_evidence": "L'archive de nouvelles n'avait rien sur le sujet",
+          "all_judges_void": "Les deux arbitres ont jugé les preuves insuffisantes",
+          "judge_disagreement": "Les arbitres n'étaient pas d'accord",
+          "judge_retry_exhausted": "Les arbitres n'ont rendu aucun verdict",
+          "withheld_unpublished": "Ce type de prévision n'est plus publié",
+          "resolver_envelope_bug": "Évalué sur un flux de données que nous ne pouvions pas lire correctement",
+          "market_price_not_outcome": "Le flux indiquait le prix du marché, pas la manière dont le marché a été résolu",
+          "judged_evidence_unreliable": "Exclu de la notation le temps de corriger les éléments fournis aux juges",
+          "other": "N'a pas pu être résolu"
+        }
+      },
+      "horizons": {
+        "label": "Également noté à : {{list}}",
+        "hint": "La probabilité du titre est notée à l'horizon propre de la prévision. La projection à chacun de ces horizons est également notée, par rapport à son feed source, en utilisant la valeur publiée en premier pour cette prévision. Les valeurs de projection ne sont pas affichées car la valeur actuelle peut différer de celle notée."
+      },
+      "audit": {
+        "label": "Précision en cours d'audit",
+        "hint": "En cours d'audit depuis le {{date}}. Un audit a révélé des erreurs dans la notation des prévisions. Les scores sont retirés pendant que les corrections sont apportées. Les prévisions continuent d'être publiées et enregistrées.",
+        "unverified": "Résultat enregistré, non vérifié tant que la précision est en cours d'audit."
       }
     },
     "escalationCorrelation": {

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_ROLLING_WINDOW_DAYS } from '../scripts/_forecast-scorecard.mjs';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { forecastReliability, forecastScorecardDescription } from '../api/mcp/registry/cache-tools.ts';
+import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
@@ -103,7 +105,12 @@ describe('bounded forecast list and original case transport', () => {
 
 describe('published forecast reliability transport', () => {
   const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
-  const project = (scorecard, predictions = full) => opening._postFilter({ predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+  // Pins the lifted state (#8990); the suite below pins what the tool serves while the audit switch is set.
+  const project = (scorecard, predictions = full) => {
+    const data = { predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
+    const loaded = opening._postFilter(data, {}, paid).predictions.predictions.map(prediction => prediction.domain);
+    return forecastReliability(data, loaded, null);
+  };
   it('matches the website and producer window fallback for missing or invalid windows', () => {
     const website = readFileSync(new URL('../src/components/forecast-record.ts', import.meta.url), 'utf8');
     const websiteWindowDays = Number(website.match(/const DEFAULT_WINDOW_DAYS = (\d+);/)?.[1]);
@@ -129,5 +136,44 @@ describe('published forecast reliability transport', () => {
   it('validates raw health and schema before public field selection', () => {
     const good = { schemaVersion: 2, publishedByDomain: [row()] };
     for (const value of [null, {}, { ...good, schemaVersion: 1 }, { ...good, degraded: true }, { ...good, error: 'source_failure' }, { ...good, publishedByDomain: null }]) assert.equal(project(value)?.status, 'unavailable', 'unhealthy optional reliability must be explicit and non-null');
+  });
+});
+
+describe('published forecast reliability under the accuracy audit (#8990)', () => {
+  // A fixture, not the live switch, so lifting the switch keeps this branch tested for the next audit.
+  const AUDIT = Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 205, brier: 0.074, yesCount: 9 }] };
+  const served = (card) => forecastReliability({ scorecard: card, scorecardMeta: { fetchedAt: Date.now() } }, ['energy'], AUDIT);
+  it('serves no domain score, says why, and keeps the freshness clock', () => {
+    const reliability = served(scorecard);
+    assert.equal(reliability.status, 'unavailable');
+    assert.deepEqual(reliability.byDomain, []);
+    assert.deepEqual(reliability.underAudit, { since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
+    assert.equal(reliability.windowDays, 90);
+    assert.equal(reliability.stale, false);
+    assert.doesNotMatch(JSON.stringify(reliability), /0\.074|brier/i);
+  });
+  it('still says why when the scorecard itself is unhealthy', () => {
+    assert.deepEqual(served(null).underAudit?.issue, 8990);
+    assert.deepEqual(served({ ...scorecard, degraded: true }).underAudit?.issue, 8990);
+  });
+  it('declares underAudit in the reliability output schema', () => {
+    const reliability = opening.outputSchema.properties.data.properties.reliability;
+    assert.deepEqual(reliability.properties.underAudit.type, 'object');
+    assert.deepEqual(Object.keys(reliability.properties.underAudit.properties).sort(), ['issue', 'reason', 'since']);
+  });
+  it('serves through the live switch', () => {
+    const data = { predictions: structuredClone(full), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
+    const viaTool = opening._postFilter(structuredClone(data), {}, paid).reliability;
+    const direct = forecastReliability(data, ['energy'], FORECAST_ACCURACY_AUDIT);
+    assert.deepEqual({ ...viaTool, capturedAt: null }, { ...direct, capturedAt: null });
+  });
+  it('leads the scorecard tool description with the notice, inside the tools/list sentence budget', async () => {
+    const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
+    const listed = compressDescription(forecastScorecardDescription(AUDIT), TOOL_DESCRIPTION_MAX_BYTES);
+    assert.equal(listed, 'Under audit since 2026-10-07 (issue 8990): scores are unreliable and withdrawn while corrections are made.');
+    assert.doesNotMatch(forecastScorecardDescription(null), /Under audit/);
+    const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
+    assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT));
   });
 });
