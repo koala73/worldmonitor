@@ -158,8 +158,15 @@ export function renderResolutionChips(history: FamilyHistory | null, forecastId:
     + `<span aria-hidden="true">${escapeHtml(lastText)}</span>`
     + `<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }))}${reason ? ` ${escapeHtml(reason)}` : ''}</span></span>`;
   if (windows.length < 2) return chip;
-  const marks = windows.map((w) => `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true">${OUTCOME_MARKS[w.outcome]}</span>`).join('');
-  const list = windows.map((w) => outcomeWord(w.outcome)).join(', ');
+  const reasonOf = (w: FamilyWindow) => (w.outcome === 'VOID' ? t(`components.forecast.resolution.void.${w.voidReason}`) : '');
+  const marks = windows.map((w) => {
+    const why = reasonOf(w);
+    return `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true"${why ? ` title="${escapeHtml(why)}"` : ''}>${OUTCOME_MARKS[w.outcome]}</span>`;
+  }).join('');
+  const list = windows.map((w) => {
+    const why = reasonOf(w);
+    return why ? `${outcomeWord(w.outcome)} (${why})` : outcomeWord(w.outcome);
+  }).join(', ');
   return `${chip}<span class="fc-res-history">${marks}<span class="fc-sr-only">${escapeHtml(t('components.forecast.resolution.history', { list }))}</span></span>`;
 }
 

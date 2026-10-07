@@ -986,7 +986,8 @@ export function buildFamilyOutcomes(ledger, nowMs, { limit = FAMILY_OUTCOME_LIMI
     byFamily.get(entry.id).push(entry);
   }
   return [...byFamily.keys()].sort().flatMap((id) => byFamily.get(id)
-    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt))
+    // One cycle can settle two overdue windows at the same instant; the later deadline is the newer window.
+    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt) || Number(b.deadline) - Number(a.deadline))
     .slice(0, limit)
     .map((entry) => (entry.outcome === 'VOID'
       ? { forecastId: id, outcome: 'VOID', voidReason: Object.hasOwn(RECEIPT_VOID_REASON_LABELS, entry.evidence?.reason) ? entry.evidence.reason : 'other' }

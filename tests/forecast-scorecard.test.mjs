@@ -772,6 +772,16 @@ describe('buildFamilyOutcomes (#5092 card chips)', () => {
     assert.deepEqual(buildFamilyOutcomes(ledger, NOW), []);
   });
 
+  it('puts the later window first when one cycle resolves two windows at the same instant', () => {
+    const at = NOW - DAY_MS;
+    const ledger = [
+      open('fam'),
+      { ...win('fam', at, 'NO'), key: 'fam@1', deadline: NOW - 3 * DAY_MS },
+      { ...win('fam', at, 'YES'), key: 'fam@2', deadline: NOW - 2 * DAY_MS },
+    ];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW).map((row) => row.outcome), ['YES', 'NO']);
+  });
+
   it(`caps each family at ${5} windows`, () => {
     assert.equal(FAMILY_OUTCOME_LIMIT, 5);
     assert.deepEqual([...PUBLIC_FAMILY_OUTCOME_FIELDS], ['forecastId', 'outcome', 'voidReason']);

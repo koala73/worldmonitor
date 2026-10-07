@@ -117,7 +117,10 @@ describe('ForecastPanel resolution chips', () => {
     expect(chip?.textContent).toContain('Last: YES');
     const history = card!.querySelector<HTMLElement>('.fc-res-history');
     expect(Array.from(history!.querySelectorAll<HTMLElement>('[data-outcome]')).map((el) => el.dataset.outcome)).toEqual(['YES', 'NO', 'VOID']);
-    expect(history!.textContent).toContain('Recent windows, newest first: YES, NO, VOID');
+    expect(history!.textContent).toContain('Recent windows, newest first: YES, NO, VOID (The judges disagreed)');
+    const voidMark = history!.querySelector<HTMLElement>('[data-outcome="VOID"]');
+    expect(voidMark?.getAttribute('title')).toBe('The judges disagreed');
+    expect(history!.querySelector('[data-outcome="YES"]')?.hasAttribute('title')).toBe(false);
   });
 
   it('names the reason when the last window was voided', async () => {
