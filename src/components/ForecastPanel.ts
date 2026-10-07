@@ -208,6 +208,22 @@ function injectStyles(): void {
     .fc-prob-pct { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; min-width: 30px; text-align: right; }
     .fc-trend-text { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
     .fc-domain-tag { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 2px 6px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* The four-column row needs 278px of fixed width beside the label, and the card meta goes single-line at 160px (see the 159px query below). Below 440px of table width the row stacks: title block on top, data on one wrapping line beneath (#8984). */
+    .fc-prob-table { container: fc-table / inline-size; }
+    @container fc-table (max-width: 439px) {
+      .fc-prob-hdr span:not(:first-child) { display: none; }
+      .fc-prob-row { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+      .fc-prob-label { flex: 1 0 100%; }
+      .fc-label-inner { flex-wrap: wrap; }
+      .fc-sim-chip { max-width: 100%; overflow: hidden; }
+      .fc-bar-wrap { flex: 1 1 80px; min-width: 0; }
+      .fc-prob-bar-track { min-width: 0; }
+      .fc-trend-text { white-space: nowrap; }
+      .fc-domain-tag { min-width: 0; max-width: 100%; }
+    }
+    @container fc-table (max-width: 199px) {
+      .fc-prob-hdr, .fc-prob-row { padding-left: 8px; padding-right: 8px; }
+    }
 
     /* ── Detail toggle (hidden by default; shown on item hover) ──────────── */
     .fc-hidden { display: none; }
