@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import {
+  INTERVAL_MIN_SAMPLE,
   PUBLIC_RECEIPT_FIELDS,
   RECEIPT_SOURCE_LABELS,
   RECEIPT_VOID_REASON_LABELS,
@@ -732,12 +733,53 @@ ${populated.map((bucket) => `          <tr data-calibration-bucket="${escapeHtml
       </table></div>`;
 }
 
-function domainTable(rows, intervals, escapeHtml) {
+// The forecast-card badge links here, so this table uses the badge's
+// population (publishedByDomain) and sample floor. byDomain pools shadow and
+// synthetic origins; it stays in the API and the download, not on the page.
+const PUBLISHED_BY_DOMAIN_SCHEMA = 2;
+const NOT_YET_MEASURED = 'Not yet measured';
+
+// Mirrors DOMAIN_LABELS in src/components/ForecastPanel.ts, which the badge
+// uses; scripts/ cannot import browser components, so a test pins the copy.
+export const ACCURACY_DOMAIN_LABELS = Object.freeze({
+  conflict: 'Conflict',
+  market: 'Market',
+  supply_chain: 'Supply Chain',
+  political: 'Political',
+  military: 'Military',
+  cyber: 'Cyber',
+  infrastructure: 'Infra',
+});
+
+function domainLabel(domain) {
+  return ACCURACY_DOMAIN_LABELS[domain]
+    ?? String(domain).split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
+function domainSection(scorecard, escapeHtml) {
+  const rows = scorecard.publishedByDomain;
+  if (!isFiniteNumber(scorecard.schemaVersion) || scorecard.schemaVersion < PUBLISHED_BY_DOMAIN_SCHEMA || !Array.isArray(rows)) {
+    return '      <p>This edition\'s scorecard predates the published-origin domain breakdown, so no per-domain accuracy is shown. The next weekly refresh publishes it.</p>';
+  }
+  if (rows.length === 0) {
+    return '      <p>No published forecast has been graded in any domain yet.</p>';
+  }
+  const cells = (row) => {
+    const n = Number(row.count);
+    const measured = n >= INTERVAL_MIN_SAMPLE && isFiniteNumber(row.brier)
+      && Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
+    if (!measured) return [NOT_YET_MEASURED, NOT_YET_MEASURED];
+    const p = row.yesCount / n;
+    return [formatScore(row.brier), formatScore(p * (1 - p))];
+  };
   return `      <div class="table-scroll"><table data-by-domain>
-        <caption>Accuracy by forecast domain, over every scored entry in that domain. A domain that resolved entries but scored none is marked as an insufficient sample, never left blank.</caption>
-        <thead><tr><th scope="col">Domain</th><th scope="col">Resolved</th><th scope="col">Scored</th><th scope="col">Voided</th><th scope="col">Voided, 95% interval</th><th scope="col">Brier</th><th scope="col">Log score</th></tr></thead>
+        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its Brier once it has ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} graded forecasts and reads Not yet measured below that. The base rate is what always answering the domain's observed yes rate would have scored, p(1-p); a Brier below it means the forecasts added information.</caption>
+        <thead><tr><th scope="col">Domain</th><th scope="col">Graded forecasts</th><th scope="col">Brier</th><th scope="col">Base rate</th></tr></thead>
         <tbody>
-${rows.map((row) => `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(row.domain)}</th><td>${escapeHtml(formatCount(row.resolved))}</td><td>${escapeHtml(formatCount(row.scored))}</td><td>${escapeHtml(rateOf(row.voidRate, row.resolved, 'resolved'))}</td><td>${intervalHtml(intervals.byDomain[row.domain], escapeHtml)}</td><td>${scoreCell(row.brier, escapeHtml)}</td><td>${scoreCell(row.logScore, escapeHtml)}</td></tr>`).join('\n')}
+${rows.map((row) => {
+    const [brier, base] = cells(row);
+    return `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(domainLabel(row.domain))}</th><td>${escapeHtml(formatCount(row.count))}</td><td>${escapeHtml(brier)}</td><td>${escapeHtml(base)}</td></tr>`;
+  }).join('\n')}
         </tbody>
       </table></div>`;
 }
@@ -964,8 +1006,8 @@ ${funnelSection(scorecard.funnel, escapeHtml)}
 ${receiptsSection(scorecard, escapeHtml)}
       <h2>Calibration</h2>
 ${calibrationTable(scorecard, intervals, escapeHtml)}
-      <h2>Accuracy by domain</h2>
-${domainTable(scorecard.byDomain, intervals, escapeHtml)}
+      <h2 id="by-domain">Accuracy by domain</h2>
+${domainSection(scorecard, escapeHtml)}
       <h2>Accuracy by generation origin</h2>
 ${originTable(scorecard.byGenerationOrigin, scorecard.skill, unknownOriginStatus(scorecard), intervals, escapeHtml)}
 ${marketSection(scorecard.vsMarketSkill, escapeHtml)}

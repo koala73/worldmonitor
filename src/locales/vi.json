@@ -2360,7 +2360,7 @@
         "fullRecord": "Thành tích đầy đủ"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} so với tỷ lệ cơ sở {{base}} (n={{n}})",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} so với tỷ lệ cơ sở {{base}}",
         "measuredHint": "Các dự báo {{domain}} đã công bố đạt điểm như thế nào trên {{n}} dự báo được xếp hạng trong {{days}} ngày qua. Tỷ lệ cơ sở là điểm sẽ đạt được nếu luôn trả lời tỷ lệ \"có\" được quan sát của miền. Điểm càng thấp càng tốt. Đây là kỷ lục của miền, không phải của dự báo này.",
         "unmeasured": "Chưa được đo lường",
         "unmeasuredHint": "Các dự báo {{domain}} có {{n}} kết quả được xếp loại trong {{days}} ngày qua. Một lĩnh vực cần {{min}} trước khi độ chính xác của nó được hiển thị."

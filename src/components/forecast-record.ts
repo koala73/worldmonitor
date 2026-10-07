@@ -84,7 +84,7 @@ export function projectReliability(resp: GetForecastScorecardResponse): Reliabil
   const byDomain = new Map<string, DomainReliability>();
   for (const row of resp.publishedByDomain) {
     const n = finite(row.count) && row.count > 0 ? row.count : 0;
-    const validYes = finite(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
+    const validYes = Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
     byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier) && validYes
       ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n }
       : { kind: 'unmeasured', n });
@@ -107,8 +107,9 @@ export function renderReliabilityBadge(table: ReliabilityTable | null, domain: s
         t('components.forecast.reliability.unmeasured'),
         t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
       ];
-  const text = table.stale ? `${main} · ${t('components.forecast.record.stale')}` : main;
-  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(recordHref(isDesktopRuntime()))}" title="${escapeHtml(hint)}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
+  // Stale and n lead: the badge is one line with an ellipsis, so a narrow card cuts the tail.
+  const text = table.stale ? `${t('components.forecast.record.stale')} · ${main}` : main;
+  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(reliabilityHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
@@ -143,6 +144,11 @@ function staleBadge(record: GradedRecord): string {
     ? ` title="${escapeHtml(t('components.forecast.record.staleHint', { date: formatDate(record.generatedAt) }))}"`
     : '';
   return `<span class="fc-record-stale"${title}>${escapeHtml(t('components.forecast.record.stale'))}</span>`;
+}
+
+/** The badge lands on the /accuracy/ table built from the same publishedByDomain rows. */
+export function reliabilityHref(desktop: boolean): string {
+  return `${recordHref(desktop)}#by-domain`;
 }
 
 /** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
