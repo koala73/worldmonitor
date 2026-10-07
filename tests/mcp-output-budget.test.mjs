@@ -128,10 +128,10 @@ describe('ordinary market response presentation', () => {
     assert.ok(bytes(output) <= budget);
   });
   it('distinguishes empty arrays from missing, null and unavailable collections', () => {
-    const output = presentDefaultMarketData({ data: { 'stocks-bootstrap': { quotes: [] }, crypto: null, sectors: { sectors: 'invalid' } } }, budget);
+    const output = presentDefaultMarketData({ data: { 'stocks-bootstrap': { quotes: [] }, crypto: null, sectors: { sectors: 'invalid' }, 'gulf-quotes': 'invalid', 'etf-flows': [] } }, budget);
     const coverage = output.transportCoverage.collections;
     assert.equal(coverage['stocks-bootstrap.quotes'].original_count, 0);
-    for (const [key, state] of [['crypto.quotes', 'null'], ['commodities-bootstrap.quotes', 'missing'], ['sectors.sectors', 'unavailable']]) {
+    for (const [key, state] of [['crypto.quotes', 'null'], ['commodities-bootstrap.quotes', 'missing'], ['sectors.sectors', 'unavailable'], ['gulf-quotes.quotes', 'unavailable'], ['etf-flows.etfs', 'unavailable']]) {
       assert.equal(coverage[key].state, state);
       assert.equal(coverage[key].original_count, null);
       assert.equal(coverage[key].returned_count, null);

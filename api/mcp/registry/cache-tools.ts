@@ -492,7 +492,7 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
     const rows = Array.isArray(value) ? value : null;
     const coverage: Record<string, unknown> = rows
       ? { state: 'available', original_count: rows.length, returned_count: rows.length, omitted_count: 0, omission_reason: null }
-      : { state: Array.isArray(presented.unreadable) && presented.unreadable.includes(section) ? 'unavailable' : value === null || source === null ? 'null' : value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
+      : { state: Array.isArray(presented.unreadable) && presented.unreadable.includes(section) ? 'unavailable' : value === null || source === null ? 'null' : source === undefined || node !== undefined && value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
     collections[section + '.' + field] = coverage;
     return { node, field, rows, coverage };
   });
