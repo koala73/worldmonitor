@@ -127,6 +127,7 @@ describe('ForecastPanel resolution chips', () => {
     expect(resolution('ar').void.missing_deadline).toContain('موعدًا نهائيًا');
     expect(resolution('bg').void.other, 'Bulgarian, not Russian').not.toMatch(/может/);
     expect(resolution('ja').lastSr).not.toContain('フォーキャスト');
+    expect(Object.keys(resolution('en').void)).toContain('withheld_unpublished');
   });
 
   it("shows the family's last resolved window and its recent history, newest first", async () => {
@@ -185,6 +186,54 @@ describe('ForecastPanel resolution chips', () => {
     expect(toggleRow.style.display).toBe(before);
   });
 
+  it('keeps an open VOID disclosure open across re-renders and the scorecard patch, keyed by forecast id', async () => {
+    const outcomes = [
+      { forecastId: 'fc-v', outcome: 'VOID', voidReason: 'judge_disagreement' },
+      { forecastId: 'fc-w', outcome: 'VOID', voidReason: 'no_archive_evidence' },
+    ];
+    const [card] = await cardsWith(outcomes, ['fc-v', 'fc-w']);
+    card!.querySelector<HTMLElement>('details.fc-res-void > summary')!.click();
+    await vi.waitFor(() => expect(card!.querySelector<HTMLDetailsElement>('details.fc-res-void')!.open).toBe(true));
+    panel.updateForecasts([forecast('fc-v'), forecast('fc-w')]);
+    await settled(panel);
+    const openState = () => ['fc-v', 'fc-w'].map((id) => cardFor(panel, id).querySelector<HTMLDetailsElement>('details.fc-res-void')!.open);
+    await vi.waitFor(() => expect((panel as unknown as { recordPromise: unknown }).recordPromise).toBeNull());
+    expect(openState(), 'only the opened card stays open').toEqual([true, false]);
+    cardFor(panel, 'fc-v').querySelector<HTMLElement>('details.fc-res-void > summary')!.click();
+    await vi.waitFor(() => expect(openState()[0]).toBe(false));
+    panel.updateForecasts([forecast('fc-v'), forecast('fc-w')]);
+    await vi.waitFor(() => expect((panel as unknown as { recordPromise: unknown }).recordPromise).toBeNull());
+    expect(openState(), 'a closed disclosure stays closed').toEqual([false, false]);
+  });
+
+  it('reserves the same line slots while loading and once loaded, whatever the family history', async () => {
+    let release!: (r: Response) => void;
+    stubScorecard(() => new Promise<Response>((resolve) => { release = resolve; }));
+    const ids = ['fc-none', 'fc-one', 'fc-many', 'fc-void'];
+    panel.updateForecasts(ids.map(forecast));
+    await vi.waitFor(() => cardFor(panel, 'fc-none'));
+    const shape = (id: string) => {
+      const meta = cardFor(panel, id).querySelector<HTMLElement>('[data-fc-reliability]')!;
+      const slot = meta.querySelector<HTMLElement>(':scope > .fc-res-slot');
+      const lines = slot?.querySelector(':scope > details > summary') ?? slot;
+      return {
+        children: Array.from(meta.children).map((el) => (el.classList.contains('fc-res-slot') ? 'slot' : 'badge')),
+        lines: lines ? Array.from(lines.children).filter((el) => !el.classList.contains('fc-sr-only')).length : 0,
+      };
+    };
+    const loading = ids.map(shape);
+    release(Response.json(scorecard([
+      { forecastId: 'fc-one', outcome: 'YES', voidReason: '' },
+      { forecastId: 'fc-many', outcome: 'NO', voidReason: '' },
+      { forecastId: 'fc-many', outcome: 'YES', voidReason: '' },
+      { forecastId: 'fc-void', outcome: 'VOID', voidReason: 'other' },
+      { forecastId: 'fc-void', outcome: 'NO', voidReason: '' },
+    ])));
+    await vi.waitFor(() => expect(cardFor(panel, 'fc-many').querySelector('.fc-res-chip')).not.toBeNull());
+    const loaded = ids.map(shape);
+    for (const s of [...loading, ...loaded]) expect(s).toEqual({ children: ['slot', 'badge'], lines: 2 });
+  });
+
   it('never renders an unknown reason or outcome as text', async () => {
     const [card, other] = await cardsWith([
       { forecastId: 'fc-x', outcome: 'VOID', voidReason: '<img src=x onerror=alert(1)>' },
@@ -221,26 +270,30 @@ describe('ForecastPanel resolution chips', () => {
     expect(cardFor(panel, 'fc-a').querySelector('.fc-res-chip')).toBeNull();
   });
 
-  it('keeps the chip line inside its column: no border on the chip, the badge wraps below a chip rather than collapsing to zero', () => {
+  it('lays the chip line out by column width, never by data: one line when wide, a fixed stack of line boxes when narrow', () => {
     new ForecastPanel().destroy();
     const css = Array.from(document.head.querySelectorAll('style')).map((el) => el.textContent ?? '').join('\n');
     const rule = (selector: string) => css.match(new RegExp(`(^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*\\}`))?.[0] ?? '';
     expect(rule('.fc-card-meta')).toMatch(/contain:\s*inline-size/);
     expect(rule('.fc-res-chip')).not.toMatch(/(^|[;{\s])border:/);
     expect(rule('.fc-reliability')).not.toMatch(/contain:/);
-    // A 390px card leaves ~60px beside a chip. The badge claims a small basis, so it wraps to its own line
-    // there instead of shrinking to 0px; with room it stays on the chip line and truncates with an ellipsis.
-    expect(rule('.fc-card-meta')).toMatch(/flex-wrap:\s*wrap/);
+    // Wrapping would make a card's height depend on how many outcomes it has, which shifts cards when the scorecard lands.
+    expect(rule('.fc-card-meta'), 'a closed row never wraps').not.toMatch(/flex-wrap/);
+    expect(rule('.fc-prob-label')).toMatch(/container-type:\s*inline-size/);
+    const narrow = css.match(/@container \(max-width: \d+px\) \{[\s\S]*?\n {4}\}/g) ?? [];
+    expect(narrow, 'two width steps').toHaveLength(2);
+    expect(narrow[0]).toMatch(/\.fc-card-meta \{[^}]*flex-direction:\s*column/);
+    expect(narrow[0]).toMatch(/\.fc-res-gap \{[^}]*display:\s*block/);
+    expect(narrow[1]).toMatch(/\.fc-res-slot, \.fc-res-void > summary \{[^}]*flex-direction:\s*column/);
     const badge = rule('.fc-card-meta .fc-reliability');
     expect(badge).toMatch(/flex:\s*1 1 \d+(\.\d+)?em/);
     expect(badge).toMatch(/max-width:\s*max-content/);
     // A label column narrower than one chip clips the chip inside the column instead of spilling over the probability bar.
-    for (const selector of ['.fc-res-chip, .fc-res-history', '.fc-res-void']) {
+    for (const selector of ['.fc-res-chip, .fc-res-history, .fc-res-gap', '.fc-res-void']) {
       expect(rule(selector), selector).toMatch(/min-width:\s*0/);
       expect(rule(selector), selector).not.toMatch(/flex:\s*none/);
     }
-    expect(rule('.fc-res-chip, .fc-res-history')).toMatch(/overflow:\s*hidden/);
-    expect(rule('.fc-res-void > summary'), 'chip and history wrap inside the disclosure too').toMatch(/flex-wrap:\s*wrap/);
+    expect(rule('.fc-res-chip, .fc-res-history, .fc-res-gap')).toMatch(/overflow:\s*hidden/);
   });
 
   it('patches chips in place beside the badge, on the same line slot', async () => {

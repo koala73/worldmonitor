@@ -121,7 +121,7 @@ const OUTCOME_MARKS: Record<Outcome, string> = { YES: '✓', NO: '✗', VOID: '�
 export const VOID_REASON_CODES = [
   'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained', 'unsupported_window',
   'unsupported_metric_key', 'not_hard_spec', 'missing_threshold', 'missing_deadline', 'missing_generated_at',
-  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'other',
+  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'other',
 ] as const;
 const VOID_REASONS = new Set<string>(VOID_REASON_CODES);
 
@@ -147,13 +147,17 @@ function outcomeWord(outcome: Outcome): string {
   return t(`components.forecast.resolution.outcome.${outcome.toLowerCase()}`);
 }
 
+const RES_GAP = '<span class="fc-res-gap" aria-hidden="true">&nbsp;</span>';
+
 /**
  * The card is the open window, so the chip is the family's last resolved one; the history adds up to four earlier.
- * A VOID window has a reason to read, so the row becomes a disclosure that tap and keyboard can open.
+ * A VOID window has a reason to read, so the row becomes a disclosure that tap and keyboard can open; `open`
+ * restores one the reader left open. The slot always holds two line boxes (chip, then history), filled with
+ * invisible gaps when absent, so a narrow card is the same height while loading, with history, and without.
  */
-export function renderResolutionChips(history: FamilyHistory | null, forecastId: string): string {
+export function renderResolutionChips(history: FamilyHistory | null, forecastId: string, open = false): string {
   const windows = history?.get(forecastId);
-  if (!windows?.length) return '';
+  if (!windows?.length) return `<span class="fc-res-slot">${RES_GAP}${RES_GAP}</span>`;
   const reasonOf = (w: FamilyWindow) => (w.outcome === 'VOID' ? t(`components.forecast.resolution.void.${w.voidReason}`) : '');
   const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
   const reason = reasonOf(last);
@@ -169,10 +173,10 @@ export function renderResolutionChips(history: FamilyHistory | null, forecastId:
     return `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true"${why ? ` title="${escapeHtml(why)}"` : ''}>${OUTCOME_MARKS[w.outcome]}</span>`;
   }).join('');
   const row = windows.length < 2
-    ? chip
+    ? `${chip}${RES_GAP}`
     : `${chip}<span class="fc-res-history">${marks}${disclosed ? '' : `<span class="fc-sr-only">${escapeHtml(sentence)}</span>`}</span>`;
-  if (!disclosed) return row;
-  return `<details class="fc-res-void"><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details>`;
+  if (!disclosed) return `<span class="fc-res-slot">${row}</span>`;
+  return `<span class="fc-res-slot"><details class="fc-res-void"${open ? ' open' : ''}><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details></span>`;
 }
 
 /** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */

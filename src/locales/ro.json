@@ -2409,6 +2409,7 @@
           "all_judges_void": "Ambii evaluatori au găsit dovezile insuficiente",
           "judge_disagreement": "Evaluatorii nu au fost de acord",
           "judge_retry_exhausted": "Evaluatorii nu au returnat o hotărâre",
+          "withheld_unpublished": "Acest tip de prognoză nu mai este publicat",
           "other": "Nu a putut fi rezolvată"
         }
       }

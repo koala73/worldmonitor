@@ -2419,6 +2419,7 @@
           "all_judges_void": "Oba rozhodčí shledali důkazy nedostatečnými",
           "judge_disagreement": "Rozhodčí se neshodli",
           "judge_retry_exhausted": "Rozhodčí nevydali rozhodnutí",
+          "withheld_unpublished": "Tento druh předpovědi se již nezveřejňuje",
           "other": "Nelze vyřešit"
         }
       }

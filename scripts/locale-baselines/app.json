@@ -703,6 +703,7 @@
   "components.forecast.resolution.void.unsupported_metric_key": "The question could not be checked against its feed",
   "components.forecast.resolution.void.unsupported_window": "The question could not be checked against its feed",
   "components.forecast.resolution.void.value_source_never_settled": "The feed never published a settled value",
+  "components.forecast.resolution.void.withheld_unpublished": "This kind of forecast is no longer published",
   "components.frameworkSelector.defaultNeutral": "Default (Neutral)",
   "components.frameworkSelector.label": "Analysis Framework",
   "components.frameworkSelector.titleNone": "Analysis framework",

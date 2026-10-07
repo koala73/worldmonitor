@@ -2024,6 +2024,7 @@
           "all_judges_void": "Ambos os juízes consideraram as evidências insuficientes",
           "judge_disagreement": "Os juízes discordaram",
           "judge_retry_exhausted": "Os juízes não retornaram um veredicto",
+          "withheld_unpublished": "Este tipo de previsão não é mais publicado",
           "other": "Não pôde ser resolvido"
         }
       }

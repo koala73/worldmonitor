@@ -911,6 +911,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   all_judges_void: 'Both judges found the evidence insufficient',
   judge_disagreement: 'The judges disagreed',
   judge_retry_exhausted: 'The judges returned no verdict',
+  withheld_unpublished: 'This kind of forecast is no longer published',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

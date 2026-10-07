@@ -2439,6 +2439,7 @@
           "all_judges_void": "وجد كلا الحكمين أن الأدلة غير كافية",
           "judge_disagreement": "اختلف الحكمان",
           "judge_retry_exhausted": "لم يصدر الحكمان حكماً",
+          "withheld_unpublished": "لم يعد هذا النوع من التنبؤات يُنشر",
           "other": "لم يكن من الممكن الحسم"
         }
       }

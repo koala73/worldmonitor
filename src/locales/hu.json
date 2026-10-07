@@ -2133,6 +2133,7 @@
           "all_judges_void": "Mindkét bíráló elégtelennek találta a bizonyítékot",
           "judge_disagreement": "A bírálók nem értettek egyet",
           "judge_retry_exhausted": "A bírálók nem hoztak döntést",
+          "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
           "other": "Nem lehetett eldönteni"
         }
       }

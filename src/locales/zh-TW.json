@@ -2389,6 +2389,7 @@
           "all_judges_void": "兩位裁定者都認為證據不足",
           "judge_disagreement": "裁定者意見不一致",
           "judge_retry_exhausted": "裁定者未作出裁決",
+          "withheld_unpublished": "此類預測已不再發布",
           "other": "無法確定結果"
         }
       }

@@ -2389,6 +2389,7 @@
           "all_judges_void": "両方の判定者が証拠不十分と判断しました",
           "judge_disagreement": "判定者の意見が異なります",
           "judge_retry_exhausted": "判定者が判定を下しませんでした",
+          "withheld_unpublished": "この種類の予測は現在公開されていません",
           "other": "結果を確定できませんでした"
         }
       }

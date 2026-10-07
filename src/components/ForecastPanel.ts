@@ -199,7 +199,7 @@ function injectStyles(): void {
     .fc-prob-item:last-child { border-bottom: none; }
     .fc-prob-row { display: grid; grid-template-columns: 1fr 80px 100px 60px; align-items: center; padding: 9px 14px; cursor: pointer; transition: background 0.1s; }
     .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
-    .fc-prob-label { min-width: 0; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
+    .fc-prob-label { min-width: 0; container-type: inline-size; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
     .fc-bar-wrap { display: flex; align-items: center; gap: 8px; }
     .fc-prob-bar-track { flex: 1; height: 4px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; min-width: 40px; }
     .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
@@ -268,15 +268,30 @@ function injectStyles(): void {
     .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
     .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .fc-reliability-placeholder { visibility: hidden; }
-    .fc-card-meta { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; contain: inline-size; }
+    .fc-card-meta { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; contain: inline-size; }
     .fc-card-meta .fc-reliability { flex: 1 1 5em; min-width: 0; max-width: max-content; }
-    .fc-res-chip, .fc-res-history { flex: 0 1 auto; min-width: 0; overflow: hidden; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
-    .fc-res-chip { text-overflow: ellipsis; padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
+    .fc-res-slot { display: contents; }
+    .fc-res-chip, .fc-res-history, .fc-res-gap { flex: 0 1 auto; min-width: 0; overflow: hidden; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+    .fc-res-gap { display: none; visibility: hidden; }
+    .fc-res-chip { box-sizing: border-box; text-overflow: ellipsis; padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
     .fc-res-void { flex: 0 1 auto; min-width: 0; }
-    .fc-res-void > summary { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; list-style: none; cursor: pointer; }
+    .fc-res-void > summary { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; list-style: none; cursor: pointer; }
     .fc-res-void > summary::-webkit-details-marker { display: none; }
     .fc-res-void > summary .fc-res-chip { text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-card-meta:has(.fc-res-void[open]) { flex-wrap: wrap; }
     .fc-res-void[open] { flex-basis: 100%; }
+    /* Narrow cards stack a fixed set of line boxes (badge, then chip and history), so loading, history and no history share one height. */
+    @container (max-width: 159px) {
+      .fc-card-meta { flex-direction: column; align-items: flex-start; }
+      .fc-card-meta .fc-reliability, .fc-card-meta .fc-reliability-placeholder { order: -1; flex: none; max-width: 100%; }
+      .fc-res-slot { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
+      .fc-res-gap { display: block; }
+      .fc-res-void[open] { flex-basis: auto; }
+    }
+    @container (max-width: 109px) {
+      .fc-res-slot, .fc-res-void > summary { flex-direction: column; align-items: flex-start; }
+      .fc-res-slot > *, .fc-res-void > summary > * { max-width: 100%; }
+    }
     .fc-res-reasons { margin: 2px 0 0; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); white-space: normal; }
     .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
     .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
@@ -320,6 +335,8 @@ export class ForecastPanel extends Panel {
   private reliability: ReliabilityTable | null = null;
   /** Per-card resolution chips (#5092): each family's earlier resolved windows. */
   private familyHistory: FamilyHistory | null = null;
+  /** Forecast ids whose VOID disclosure the reader left open; re-renders restore them. */
+  private readonly openDisclosures = new Set<string>();
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
@@ -329,6 +346,16 @@ export class ForecastPanel extends Panel {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
     injectStyles();
     bindActivationKeys(this.content, '[data-fc-toggle]');
+    // `toggle` does not bubble, so listen in the capture phase.
+    this.content.addEventListener('toggle', (e) => {
+      const details = e.target;
+      if (!(details instanceof HTMLDetailsElement) || !details.classList.contains('fc-res-void')) return;
+      const forecastId = details.closest<HTMLElement>('[data-fc-forecast]')?.dataset.fcForecast;
+      if (!forecastId) return;
+      if (details.open) this.openDisclosures.add(forecastId);
+      else this.openDisclosures.delete(forecastId);
+    }, true);
+
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('a.fc-reliability, .fc-res-void')) return;
@@ -517,7 +544,7 @@ export class ForecastPanel extends Panel {
   }
 
   private cardMeta(forecastId: string, domain: string): string {
-    return `${renderResolutionChips(this.familyHistory, forecastId)}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain)}`;
+    return `${renderResolutionChips(this.familyHistory, forecastId, this.openDisclosures.has(forecastId))}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain)}`;
   }
 
   updateSimulation(theaterSummariesJson: string): void {
@@ -767,7 +794,7 @@ export class ForecastPanel extends Panel {
               ${simChipHtml}
             </div>
             ${simBarHtml}
-            <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? '<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>' : this.cardMeta(f.id, domain)}</div>
+            <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

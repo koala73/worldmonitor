@@ -2389,6 +2389,7 @@
           "all_judges_void": "두 심사자 모두 증거가 부족하다고 판단했습니다",
           "judge_disagreement": "심사자 간 의견이 일치하지 않습니다",
           "judge_retry_exhausted": "심사자가 판정을 내리지 못했습니다",
+          "withheld_unpublished": "이 유형의 예측은 더 이상 게시되지 않습니다",
           "other": "판정할 수 없었습니다"
         }
       }

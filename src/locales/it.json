@@ -2409,6 +2409,7 @@
           "all_judges_void": "Entrambi i giudici hanno ritenuto le prove insufficienti",
           "judge_disagreement": "I giudici hanno dissentito",
           "judge_retry_exhausted": "I giudici non hanno emesso un verdetto",
+          "withheld_unpublished": "Questo tipo di previsione non viene più pubblicato",
           "other": "Non è stato possibile risolverla"
         }
       }

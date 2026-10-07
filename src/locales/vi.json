@@ -2389,6 +2389,7 @@
           "all_judges_void": "Cả hai người phân xử đều thấy bằng chứng không đủ",
           "judge_disagreement": "Những người phân xử không đồng ý",
           "judge_retry_exhausted": "Những người phân xử không đưa ra phán quyết",
+          "withheld_unpublished": "Loại dự báo này không còn được công bố",
           "other": "Không thể xác định kết quả"
         }
       }

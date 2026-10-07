@@ -2136,6 +2136,7 @@
           "all_judges_void": "Mahakimu wote wawili waliona ushahidi hautoshi",
           "judge_disagreement": "Mahakimu hawakukubaliana",
           "judge_retry_exhausted": "Mahakimu hawakutoa hukumu",
+          "withheld_unpublished": "Aina hii ya utabiri haichapishwi tena",
           "other": "Haikuweza kuamuliwa"
         }
       }

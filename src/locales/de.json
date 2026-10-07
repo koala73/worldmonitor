@@ -2399,6 +2399,7 @@
           "all_judges_void": "Beide Bewerter fanden die Evidenz unzureichend",
           "judge_disagreement": "Die Bewerter waren sich uneinig",
           "judge_retry_exhausted": "Die Bewerter gaben kein Urteil ab",
+          "withheld_unpublished": "Diese Art von Prognose wird nicht mehr veröffentlicht",
           "other": "Konnte nicht aufgelöst werden"
         }
       }

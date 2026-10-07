@@ -2016,6 +2016,7 @@
           "all_judges_void": "Båda domarna fann bevisen otillräckliga",
           "judge_disagreement": "Domarna var oeniga",
           "judge_retry_exhausted": "Domarna återkom utan dom",
+          "withheld_unpublished": "Den här typen av prognos publiceras inte längre",
           "other": "Kunde inte avgöras"
         }
       }

@@ -2399,6 +2399,7 @@
           "all_judges_void": "Her iki hakim de kanıtları yetersiz buldu",
           "judge_disagreement": "Hakimler anlaşamadı",
           "judge_retry_exhausted": "Hakimler karar vermedi",
+          "withheld_unpublished": "Bu tür tahminler artık yayımlanmıyor",
           "other": "Sonuçlandırılamadı"
         }
       }

@@ -2144,6 +2144,7 @@
           "all_judges_void": "Oba ocjenjivača smatrala su da dokaza nije dovoljno",
           "judge_disagreement": "Ocjenjivači se nisu slagali",
           "judge_retry_exhausted": "Ocjenjivači nisu donijeli presudu",
+          "withheld_unpublished": "Ova vrsta prognoze više se ne objavljuje",
           "other": "Nije moglo biti riješeno"
         }
       }

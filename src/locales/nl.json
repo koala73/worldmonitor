@@ -2016,6 +2016,7 @@
           "all_judges_void": "Beide beoordelaars vonden het bewijs onvoldoende",
           "judge_disagreement": "De beoordelaars waren het niet eens",
           "judge_retry_exhausted": "De beoordelaars gaven geen uitspraak",
+          "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
           "other": "Kon niet worden beslist"
         }
       }

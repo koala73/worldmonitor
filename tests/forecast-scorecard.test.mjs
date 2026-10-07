@@ -800,6 +800,11 @@ describe('buildFamilyOutcomes (#5092 card chips)', () => {
     ]);
   });
 
+  it('names the withheld seal instead of folding it into other', () => {
+    const ledger = [open('fam'), win('fam', NOW - DAY_MS, 'VOID', { evidence: { reason: 'withheld_unpublished' } })];
+    assert.deepEqual(buildFamilyOutcomes(ledger, NOW), [{ forecastId: 'fam', outcome: 'VOID', voidReason: 'withheld_unpublished' }]);
+  });
+
   it('checks the origin of every window, not only the open one', () => {
     const ledger = [
       open('fam'),

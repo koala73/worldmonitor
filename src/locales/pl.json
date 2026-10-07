@@ -2419,6 +2419,7 @@
           "all_judges_void": "Obaj sędziowie uznali dowody za niewystarczające",
           "judge_disagreement": "Sędziowie się nie zgodzili",
           "judge_retry_exhausted": "Sędziowie nie wydali wyroku",
+          "withheld_unpublished": "Ten rodzaj prognozy nie jest już publikowany",
           "other": "Nie można było rozstrzygnąć"
         }
       }
