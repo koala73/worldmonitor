@@ -936,7 +936,7 @@ successes and VOID outcomes do not clear the streak. A new scored-within-SLA
 outcome or an idle lane resets it. The normal health classifier exposes the
 failure as `SEED_ERROR`.
 
-If the evidence coverage marker expires or its version-2 proof becomes stale,
+If the evidence coverage marker expires or either proof version becomes stale,
 the resolver attempts a bounded scan of the dedicated archive. Recovery allows
 30,000 records by default, compared with 15,000 for ordinary judging reads,
 within the same 25-second total deadline. An explicit archive hash-limit override
