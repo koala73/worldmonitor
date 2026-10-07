@@ -206,10 +206,10 @@ describe('Shared shell original source host actions', () => {
         posted.push(message);
         if (message.method === 'ui/open-link') reply({ id: message.id, result: {} });
       };
-      for (let i = 0; i < 2; i++) {
+      for (let iterationIndex = 0; iterationIndex < 2; iterationIndex++) {
         assert.equal(click(document, win).defaultPrevented, true);
         assert.equal(status(document), '');
-        assert.equal(timers[i].cleared, true);
+        assert.equal(timers[iterationIndex].cleared, true);
       }
       assert.equal(links(posted).length, 2);
       assert.notEqual(links(posted)[0].id, links(posted)[1].id);

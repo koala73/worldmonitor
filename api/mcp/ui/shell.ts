@@ -173,7 +173,7 @@ const SHARED_BRIDGE_HEAD = `
     showSourceLinkStatus("Requesting this source link from the host.");
     try {
       parentWin.postMessage({ jsonrpc: "2.0", id: id, method: "ui/open-link", params: { url: url } }, "*");
-    } catch (e) {
+    } catch (error) {
       finishSourceLink(id, "The host could not open this source link.");
     }
   });
