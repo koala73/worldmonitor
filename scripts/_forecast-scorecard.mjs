@@ -582,7 +582,23 @@ function summarizeMarketSkill(scored) {
   };
 }
 
+// The feed a market bet settles on: its anchor is the question's own market.
+export const MARKET_SETTLEMENT_FEED = 'prediction:markets-resolution:v1';
+
+// An anchor without lineage was chosen by the pre-#7071 matcher, which paired
+// forecasts with unrelated markets ("Cyber threat concentration: Taiwan" with
+// "Will China invade Taiwan by 2027?"). Its price belongs to another question,
+// so no market comparison may read it. A market bet carries no lineage because
+// its market is the question.
+export function hasPreLineageAnchor(entry) {
+  const calibration = entry?.calibration;
+  if (!Number.isFinite(Number(calibration?.marketPrice))) return false;
+  if (entry?.spec?.sourceFeed === MARKET_SETTLEMENT_FEED) return false;
+  return !Number.isFinite(Number(calibration.marketBlendedProbability));
+}
+
 function marketProbability(entry) {
+  if (hasPreLineageAnchor(entry)) return NaN;
   const raw = entry?.calibration?.marketPrice;
   const n = Number(raw);
   if (!Number.isFinite(n)) return NaN;

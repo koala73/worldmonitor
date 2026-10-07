@@ -5,6 +5,7 @@ import {
   DEFAULT_ROLLING_WINDOW_DAYS,
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   INTERVAL_MIN_SAMPLE,
+  MARKET_SETTLEMENT_FEED,
   PUBLIC_RECEIPT_FIELDS,
   PUBLIC_RECEIPT_LINKS_SINCE_MS,
   PUBLIC_RECEIPT_LIMIT,
@@ -22,7 +23,7 @@ import {
   wilsonInterval,
 } from '../scripts/_forecast-scorecard.mjs';
 import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
-import { MARKET_SETTLEMENT_FEED } from '../scripts/_bet-templates-markets.mjs';
+import { MARKET_SETTLEMENT_FEED as BET_SETTLEMENT_FEED } from '../scripts/_bet-templates-markets.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -309,7 +310,7 @@ describe('market comparisons read only anchors that price the forecast question 
   const marketBet = (overrides) => resolved({
     generationOrigin: 'bet_engine',
     probabilitySource: 'ensemble',
-    spec: { kind: 'hard', sourceFeed: 'prediction:markets-resolution:v1' },
+    spec: { kind: 'hard', sourceFeed: BET_SETTLEMENT_FEED },
     calibration: { marketPrice: 13.5, source: 'polymarket' },
     ...overrides,
   });
@@ -356,7 +357,7 @@ describe('market comparisons read only anchors that price the forecast question 
   });
 
   it('names the same settlement feed the market bet templates write', () => {
-    assert.equal(MARKET_SETTLEMENT_FEED, 'prediction:markets-resolution:v1');
+    assert.equal(MARKET_SETTLEMENT_FEED, BET_SETTLEMENT_FEED);
     assert.ok(hasPreLineageAnchor(preLineage()));
     assert.ok(!hasPreLineageAnchor(lineage()));
     assert.ok(!hasPreLineageAnchor(marketBet()));
@@ -451,7 +452,7 @@ describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
     return resolved({
       generationOrigin: 'bet_engine',
       probabilitySource: 'ensemble',
-      spec: { kind: 'hard', sourceFeed: 'prediction:markets-resolution:v1' },
+      spec: { kind: 'hard', sourceFeed: BET_SETTLEMENT_FEED },
       ...overrides,
     });
   }

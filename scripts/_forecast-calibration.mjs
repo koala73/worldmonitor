@@ -14,6 +14,7 @@ import {
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   evaluateActivationGate,
   generationOriginOf,
+  hasPreLineageAnchor,
   isHorizonEntry,
   isPublishedOriginEntry,
   isScoredEntry,
@@ -103,14 +104,6 @@ function ledgerEntries(ledger) {
 
 function round6(value) {
   return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-// An anchor without lineage was chosen by the pre-#7071 matcher, which paired
-// forecasts with unrelated markets, so its blended probability is not an
-// input the current seeder can produce.
-function hasPreLineageAnchor(entry) {
-  const calibration = entry?.calibration;
-  return Number.isFinite(Number(calibration?.marketPrice)) && !Number.isFinite(Number(calibration?.marketBlendedProbability));
 }
 
 /**
