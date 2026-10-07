@@ -2019,6 +2019,10 @@
           "withheld_unpublished": "Den här typen av prognos publiceras inte längre",
           "other": "Kunde inte avgöras"
         }
+      },
+      "horizons": {
+        "label": "Också bedömt vid: {{list}}",
+        "hint": "Huvudsannolikheten graderas vid prognosens egen horisont. Projektionen vid var och en av dessa horisonter graderas också mot dess källfeed, med det värde som först publicerades för denna prognos. Projektionsvärden visas inte eftersom det aktuella värdet kan skilja sig från det graderade."
       }
     },
     "escalationCorrelation": {

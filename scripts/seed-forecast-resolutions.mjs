@@ -18,7 +18,7 @@ import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } fr
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
-import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
+import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -1450,14 +1450,10 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 // rows for no measurable value. A forecast without emission-time contracts
 // (history written before #7075) registers nothing.
 function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt) {
-  const contracts = forecast.horizonResolutions;
-  if (!contracts || typeof contracts !== 'object') return;
-  if (!isPublishedOriginEntry(forecast)) return;
-  for (const [horizon, spec] of Object.entries(contracts)) {
-    if (spec?.kind !== 'hard') continue;
-    const probability = Number(forecast.projections?.[horizon]);
+  for (const horizon of scoredHorizonKeys(forecast)) {
+    const spec = forecast.horizonResolutions[horizon];
+    const probability = Number(forecast.projections[horizon]);
     const deadline = Number(spec.deadline);
-    if (!Number.isFinite(probability) || !Number.isFinite(deadline)) continue;
     const key = `${parentKey}@${horizon}`;
     const existing = ledger[key];
     if (existing) {

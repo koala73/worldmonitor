@@ -2160,6 +2160,10 @@
           "withheld_unpublished": "This kind of forecast is no longer published",
           "other": "Could not be resolved"
         }
+      },
+      "horizons": {
+        "label": "Also scored at: {{list}}",
+        "hint": "The headline probability is graded at the forecast's own horizon. The projection at each of these horizons is graded too, against its source feed, using the value first published for this forecast. Projection values are not shown because the current value can differ from the graded one."
       }
     },
     "escalationCorrelation": {

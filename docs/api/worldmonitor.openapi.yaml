@@ -43461,6 +43461,11 @@ components:
                     description: True when a negative adjustment crossed the 0.50 acceptance threshold.
                 resolution:
                     $ref: '#/components/schemas/worldmonitor_forecast_v1_ResolutionSpec'
+                scoredHorizons:
+                    type: array
+                    items:
+                        type: string
+                        description: Horizons whose projection is graded.
         worldmonitor_forecast_v1_ForecastSignal:
             type: object
             properties:

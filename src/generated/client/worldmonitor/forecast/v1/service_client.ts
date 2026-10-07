@@ -39,6 +39,7 @@ export interface Forecast {
   simPathConfidence: number;
   demotedBySimulation: boolean;
   resolution?: ResolutionSpec;
+  scoredHorizons: string[];
 }
 
 export interface ForecastSignal {

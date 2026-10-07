@@ -11,6 +11,8 @@ import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
+// Scored-horizon labels in display order (#7075).
+const HORIZON_LABELS = { h24: '24h', d7: '7d', d30: '30d' } as const;
 
 interface ForecastSourceState {
   generatedAt: number;
@@ -298,6 +300,10 @@ function injectStyles(): void {
     .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
     .fc-res-history { display: inline-flex; gap: 2px; letter-spacing: 0.02em; }
     .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .fc-horizons { margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); }
+    .fc-horizons > summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; list-style: none; text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-horizons > summary::-webkit-details-marker { display: none; }
+    .fc-horizons-hint { margin: 2px 0 0; white-space: normal; line-height: 1.4; }
     .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
     .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
     .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
@@ -358,7 +364,7 @@ export class ForecastPanel extends Panel {
 
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest('a.fc-reliability, .fc-res-void')) return;
+      if (target.closest('a.fc-reliability, .fc-res-void, .fc-horizons')) return;
 
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
@@ -794,6 +800,7 @@ export class ForecastPanel extends Panel {
               ${simChipHtml}
             </div>
             ${simBarHtml}
+            ${this.renderScoredHorizons(f)}
             <div class="fc-card-meta${this.record.kind === 'loading' ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${this.record.kind === 'loading' ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
@@ -816,6 +823,22 @@ export class ForecastPanel extends Panel {
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;
+  }
+
+  /**
+   * Names the horizons the resolver grades (#7075). No projection value is
+   * shown: the ledger grades the value first published for each window, and
+   * the payload carries the current projection, which can differ.
+   */
+  private renderScoredHorizons(f: Forecast): string {
+    const scored = new Set(f.scoredHorizons ?? []);
+    const names = (Object.keys(HORIZON_LABELS) as (keyof typeof HORIZON_LABELS)[])
+      .filter((h) => scored.has(h))
+      .map((h) => HORIZON_LABELS[h]);
+    if (!names.length) return '';
+    const text = t('components.forecast.horizons.label', { list: names.join(', ') });
+    // A native disclosure, so the grading note opens on tap and from the keyboard.
+    return `<details class="fc-horizons"><summary>${escapeHtml(text)}</summary><p class="fc-horizons-hint">${escapeHtml(t('components.forecast.horizons.hint'))}</p></details>`;
   }
 
   // ── Simulation confidence sub-bar ───────────────────────────────────────

@@ -2412,6 +2412,10 @@
           "withheld_unpublished": "Questo tipo di previsione non viene più pubblicato",
           "other": "Non è stato possibile risolverla"
         }
+      },
+      "horizons": {
+        "label": "Valutato anche a: {{list}}",
+        "hint": "La probabilità in evidenza è valutata all'orizzonte proprio della previsione. La proiezione a ciascuno di questi orizzonti è valutata anch'essa, rispetto al suo feed di origine, usando il valore pubblicato per primo per questa previsione. I valori di proiezione non sono mostrati perché il valore attuale può differire da quello valutato."
       }
     },
     "escalationCorrelation": {

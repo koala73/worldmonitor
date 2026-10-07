@@ -153,4 +153,6 @@ message Forecast {
   // Outcome contract for this forecast (see ResolutionSpec); null when the
   // resolution enrichment pass has not run.
   ResolutionSpec resolution = 23;
+  // Horizons whose projection is graded.
+  repeated string scored_horizons = 24;
 }

@@ -2019,6 +2019,10 @@
           "withheld_unpublished": "Dit soort voorspelling wordt niet meer gepubliceerd",
           "other": "Kon niet worden beslist"
         }
+      },
+      "horizons": {
+        "label": "Ook gescoord op: {{list}}",
+        "hint": "De kans in de kop wordt beoordeeld op de eigen horizon van de prognose. De projectie op elk van deze horizons wordt ook beoordeeld, tegen de bronfeed, met de waarde die voor deze prognose eerst is gepubliceerd. Projectiewaarden worden niet weergegeven omdat de huidige waarde kan afwijken van de beoordeelde waarde."
       }
     },
     "escalationCorrelation": {

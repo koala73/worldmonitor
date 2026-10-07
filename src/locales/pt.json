@@ -2027,6 +2027,10 @@
           "withheld_unpublished": "Este tipo de previsão não é mais publicado",
           "other": "Não pôde ser resolvido"
         }
+      },
+      "horizons": {
+        "label": "Também pontuado em: {{list}}",
+        "hint": "A probabilidade da manchete é avaliada no horizonte próprio da previsão. A projeção em cada um desses horizontes também é avaliada, em relação ao seu feed de origem, usando o valor publicado inicialmente para esta previsão. Os valores de projeção não são exibidos porque o valor atual pode diferir do avaliado."
       }
     },
     "escalationCorrelation": {

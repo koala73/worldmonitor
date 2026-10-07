@@ -2402,6 +2402,10 @@
           "withheld_unpublished": "Diese Art von Prognose wird nicht mehr veröffentlicht",
           "other": "Konnte nicht aufgelöst werden"
         }
+      },
+      "horizons": {
+        "label": "Auch bewertet bei: {{list}}",
+        "hint": "Die Schlagzeilen-Wahrscheinlichkeit wird am eigenen Zeithorizont der Prognose bewertet. Die Projektion an jedem dieser Horizonte wird ebenfalls bewertet, anhand ihres Quell-Feeds, unter Verwendung des zuerst für diese Prognose veröffentlichten Wertes. Projektionswerte werden nicht angezeigt, da der aktuelle Wert vom bewerteten abweichen kann."
       }
     },
     "escalationCorrelation": {

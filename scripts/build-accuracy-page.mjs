@@ -1226,7 +1226,9 @@ export function accuracyDatasetDownload({ state, snapshotPath }) {
       },
     },
     intervals: proportionIntervals(state.scorecard),
-    horizonProjections: { scored: false, trackedIn: HORIZON_SCORING_ISSUE },
+    // Point-in-time horizons are graded internally (#8939); neither the
+    // projection values (#8967) nor those grades are published here.
+    horizonProjections: { valuesPublished: false, gradesPublished: false, trackedIn: HORIZON_SCORING_ISSUE },
     scorecard: state.scorecard,
   };
   return `${JSON.stringify(payload, null, 2)}\n`;

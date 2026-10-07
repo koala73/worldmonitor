@@ -2392,6 +2392,10 @@
           "withheld_unpublished": "Loại dự báo này không còn được công bố",
           "other": "Không thể xác định kết quả"
         }
+      },
+      "horizons": {
+        "label": "Cũng được chấm điểm tại: {{list}}",
+        "hint": "Xác suất tiêu đề được đánh giá tại đường chân trời của chính dự báo. Phép chiếu tại mỗi đường chân trời này cũng được đánh giá, so với feed nguồn của nó, sử dụng giá trị được công bố lần đầu cho dự báo này. Các giá trị phép chiếu không được hiển thị vì giá trị hiện tại có thể khác với giá trị được đánh giá."
       }
     },
     "escalationCorrelation": {

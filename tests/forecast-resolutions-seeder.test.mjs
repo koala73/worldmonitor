@@ -41,8 +41,8 @@ import {
   samplePendingEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs } from '../scripts/_forecast-resolution.mjs';
+import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildPublishedForecastPayload, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -3273,6 +3273,16 @@ describe('projection horizon windows (#7075)', () => {
       `${PARENT}@d30`, `${PARENT}@d7`, `${PARENT}@h24`,
       `${laterParent}@d30`, `${laterParent}@d7`, `${laterParent}@h24`,
     ]);
+  });
+
+  it('registers a window for exactly the horizons the published payload names as scored (#7075)', () => {
+    const fc = projected({ projections: { h24: 0.4, d7: 0.5 } });
+    fc.horizonResolutions.d7 = { ...fc.horizonResolutions.d7, deadline: undefined };
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [fc])], HORMUZ(40), T0);
+    const registered = horizonKeys(ledger).map((key) => key.split('@')[2]).sort();
+    assert.deepEqual(registered, ['h24'], 'd30 has no projection and d7 no deadline');
+    assert.deepEqual(scoredHorizonKeys(fc), ['h24']);
+    assert.deepEqual(buildPublishedForecastPayload(fc).scoredHorizons, ['h24']);
   });
 
   it('re-running a cycle is idempotent', () => {

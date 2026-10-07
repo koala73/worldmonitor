@@ -2412,6 +2412,10 @@
           "withheld_unpublished": "Este tipo de pronóstico ya no se publica",
           "other": "No se pudo resolver"
         }
+      },
+      "horizons": {
+        "label": "También puntuado en: {{list}}",
+        "hint": "La probabilidad titular se califica en el horizonte del pronóstico. La proyección en cada uno de estos horizontes también se califica, comparada con su fuente de datos, utilizando el valor publicado inicialmente para este pronóstico. Los valores de proyección no se muestran porque el valor actual puede diferir del calificado."
       }
     },
     "escalationCorrelation": {

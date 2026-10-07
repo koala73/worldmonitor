@@ -2147,6 +2147,10 @@
           "withheld_unpublished": "Ova vrsta prognoze više se ne objavljuje",
           "other": "Nije moglo biti riješeno"
         }
+      },
+      "horizons": {
+        "label": "Ocijenjeno i na: {{list}}",
+        "hint": "Naslovna vjerojatnost se ocjenjuje u vlastitom vremenskom okviru prognoze. Projekcija na svakom od ovih vremenskih okvira se također ocjenjuje prema svojem izvoru, koristeći vrijednost prvo objavljenu za ovu prognozu. Vrijednosti projekcije se ne prikazuju jer se trenutna vrijednost može razlikovati od ocijenjene."
       }
     },
     "escalationCorrelation": {

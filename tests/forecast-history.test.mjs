@@ -543,3 +543,31 @@ describe('projection horizon contracts persist into history (#7075)', () => {
     assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
   });
 });
+
+describe('published payload scored horizons (#7075 panel)', () => {
+  const hard = (horizon) => ({ horizon, kind: 'hard', semantics: 'point_in_time', deadline: HARD_CONFLICT_GENERATED_AT + 1 });
+  const unscored = (horizon) => ({ horizon, kind: 'unscored', reason: 'parent_horizon' });
+
+  it('names only the horizons with a hard point-in-time contract, in horizon order', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.horizonResolutions = { d30: hard('d30'), d7: unscored('d7'), h24: hard('h24') };
+    assert.deepEqual(buildPublishedForecastPayload(pred).scoredHorizons, ['h24', 'd30']);
+  });
+
+  it('omits the field when no horizon is scored', () => {
+    const pred = makeHardConflictPred();
+    pred.horizonResolutions = { h24: unscored('h24'), d7: unscored('d7'), d30: unscored('d30') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+    delete pred.horizonResolutions;
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+
+  it('never names a horizon for a held-out origin, whose windows the resolver does not register', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.generationOrigin = 'state_derived';
+    pred.horizonResolutions = { h24: hard('h24') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+});

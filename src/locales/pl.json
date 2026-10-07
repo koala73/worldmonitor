@@ -2422,6 +2422,10 @@
           "withheld_unpublished": "Ten rodzaj prognozy nie jest już publikowany",
           "other": "Nie można było rozstrzygnąć"
         }
+      },
+      "horizons": {
+        "label": "Również oceniany w: {{list}}",
+        "hint": "Główne prawdopodobieństwo jest oceniane na horyzoncie prognozy. Projekcja na każdym z tych horyzontów jest również oceniana względem źródła, przy użyciu wartości opublikowanej po raz pierwszy dla tej prognozy. Wartości projekcji nie są wyświetlane, ponieważ obecna wartość może różnić się od ocenianej."
       }
     },
     "escalationCorrelation": {

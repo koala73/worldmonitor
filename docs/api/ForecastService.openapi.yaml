@@ -991,6 +991,11 @@ components:
                     description: True when a negative adjustment crossed the 0.50 acceptance threshold.
                 resolution:
                     $ref: '#/components/schemas/ResolutionSpec'
+                scoredHorizons:
+                    type: array
+                    items:
+                        type: string
+                        description: Horizons whose projection is graded.
         ForecastSignal:
             type: object
             properties:

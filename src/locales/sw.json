@@ -2139,6 +2139,10 @@
           "withheld_unpublished": "Aina hii ya utabiri haichapishwi tena",
           "other": "Haikuweza kuamuliwa"
         }
+      },
+      "horizons": {
+        "label": "Pia alama zilizotolewa katika: {{list}}",
+        "hint": "Uwezekano wa kichwa ni alama iliyopeana katika mlangoni wa utabiri. Makadirio katika kila moja ya miradi hii pia alama iliyopeana, ikabadilishwa na chanzo chake cha mwili, kwa kutumia thamani iliyochapishwa kwa mara ya kwanza kwa utabiri huu. Thamani za makadirio hazijafanyiwa wazi kwa sababu thamani ya sasa inaweza kuwa tofauti na ile iliyoalama."
       }
     },
     "escalationCorrelation": {

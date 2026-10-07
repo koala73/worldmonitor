@@ -786,6 +786,23 @@ export function attachResolutionSpecs(predictions, inputs, generatedAt, options 
 // origins (the headline's excluded set; makePrediction always stamps the
 // origin) carry no contract: the lane measures the published population, and
 // the resolver applies the same gate at registration.
+// The horizons the resolver registers a scoring window for, in horizon order:
+// a hard contract with a finite deadline on a published-origin forecast that
+// carries a finite projection for it. Reads the internal forecast (history
+// entry or seed prediction), never the public payload, so dropping public
+// projections (#8967) cannot change what is scored. The resolver and the
+// published scoredHorizons both use this.
+export function scoredHorizonKeys(forecast) {
+  const contracts = forecast?.horizonResolutions;
+  if (!contracts || typeof contracts !== 'object' || !isPublishedOriginEntry(forecast)) return [];
+  return Object.keys(PROJECTION_HORIZONS).filter((horizon) => {
+    const spec = contracts[horizon];
+    return spec?.kind === 'hard'
+      && Number.isFinite(Number(spec.deadline))
+      && Number.isFinite(Number(forecast.projections?.[horizon]));
+  });
+}
+
 export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
   const specs = {};
   const excludedOrigin = !isPublishedOriginEntry(pred);

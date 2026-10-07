@@ -2136,6 +2136,10 @@
           "withheld_unpublished": "Ezt a fajta előrejelzést már nem tesszük közzé",
           "other": "Nem lehetett eldönteni"
         }
+      },
+      "horizons": {
+        "label": "Pontszáma további horizontokon: {{list}}",
+        "hint": "A főcím valószínűsége az előrejelzés saját horizontján kerül értékelésre. Az egyes horizontok vetülete szintén értékelésre kerül a forrásfeed alapján, az előrejelzéshez először közétett érték alapján. A vetület értékei nem jelennek meg, mert az aktuális érték eltérhet az értékelt értéktől."
       }
     },
     "escalationCorrelation": {

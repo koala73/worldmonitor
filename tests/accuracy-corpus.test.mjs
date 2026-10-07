@@ -882,7 +882,13 @@ describe('accuracy page honesty rules', () => {
     assert.match(download.license, /^https:\/\//);
     assert.deepEqual(download.confidenceIntervals.proportions, { published: true, method: 'wilson-95' });
     assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
-    assert.equal(download.horizonProjections.scored, false);
+    // Some horizons are graded internally since #8939, so a bare `scored: false`
+    // was untrue. The flags say what this file and page publish, nothing more.
+    assert.deepEqual(download.horizonProjections, {
+      valuesPublished: false,
+      gradesPublished: false,
+      trackedIn: 'https://github.com/koala73/worldmonitor/issues/7075',
+    });
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
     assert.deepEqual(download.pooledPopulations, {
