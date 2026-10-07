@@ -184,7 +184,7 @@ function parsePreviousArchive(value) {
   return isPlainObject(data) && isPlainObject(data.archive) ? data.archive : null;
 }
 
-function parseSnapshot(value) {
+export function parseSnapshot(value) {
   const { data } = unwrapEnvelope(value);
   if (!isPlainObject(data) || !isPlainObject(data.predictionChanges) || !isPlainObject(data.marketChanges) || !Array.isArray(data.emitted)) return null;
   if (!isPlainObject(data.activity) || !Object.values(data.activity).every(Array.isArray)) return null;
@@ -208,6 +208,21 @@ function predictionBaseline(baseline, predictionsFetchedAt) {
   return new Map(Object.entries(baseline.predictionChanges));
 }
 
+export function liveBaseline(previousSnapshot, nowMs) {
+  return previousSnapshot && nowMs - previousSnapshot.timestamp <= SNAPSHOT_MAX_AGE_MS ? previousSnapshot : null;
+}
+
+export function snapshotOf({ nowMs, predictions, predictionsFetchedAt, markets, emitted, activity }) {
+  return {
+    timestamp: nowMs,
+    predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
+    predictionsFetchedAt,
+    marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
+    emitted,
+    activity,
+  };
+}
+
 function snapshotRecords(snapshot) {
   return Object.keys(snapshot.predictionChanges).length + Object.keys(snapshot.marketChanges).length;
 }
@@ -226,20 +241,13 @@ export async function buildTick(raw, { nowMs = Date.now(), archive }) {
   const digest = freshPayload(raw, DIGEST_KEY, DIGEST_MAX_AGE_MS, nowMs, discarded, digestTimestamp);
   const runtimeMode = resolveCorrelationRuntimeMode(raw[CORRELATION_RUNTIME_MODE_KEY]);
   const previousSnapshot = parseSnapshot(raw[SNAPSHOT_KEY]);
-  const baseline = previousSnapshot && nowMs - previousSnapshot.timestamp <= SNAPSHOT_MAX_AGE_MS ? previousSnapshot : null;
+  const baseline = liveBaseline(previousSnapshot, nowMs);
   const predictionsFetchedAt = predictionsPayload?.fetchedAt ?? null;
 
   const markets = mapMarkets([stocks?.data, commodities?.data, crypto?.data]);
   const predictions = predictionsPayload ? mapPredictions(predictionsPayload.data) : [];
   const items = digest ? digestNewsItems(digest.data) : [];
-  const observed = (emitted, activity) => ({
-    timestamp: nowMs,
-    predictionChanges: Object.fromEntries(predictionChangesSnapshot(predictions)),
-    predictionsFetchedAt,
-    marketChanges: Object.fromEntries(markets.map((market) => [market.symbol, market.change])),
-    emitted,
-    activity,
-  });
+  const observed = (emitted, activity) => snapshotOf({ nowMs, predictions, predictionsFetchedAt, markets, emitted, activity });
 
   let signals = [];
   if (digest) {
