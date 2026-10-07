@@ -5607,6 +5607,30 @@ describe('live-pulse snapshot injection (#7533)', () => {
     }
   });
 
+  it('renders a stored zero-fill transit count as absent, whatever the committed capture holds (#7457)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-pulse-zero-fill-'));
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-zero-fill-'));
+    try {
+      const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+      fixture.chokepoints.hormuz_strait = {
+        ...fixture.chokepoints.hormuz_strait,
+        todayTransits: '0',
+        todayCountsAvailable: false,
+        weekMovement: '-14.3% vs prior week',
+      };
+      const snapshotPath = join(dir, 'crawlable-live-pulse-fixture.json');
+      writeFileSync(snapshotPath, JSON.stringify(fixture));
+      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app', livePulseSnapshotPath: snapshotPath });
+      const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
+      assert.match(hormuz, /data-chokepoint-transits>—</);
+      assert.doesNotMatch(hormuz, /data-chokepoint-transits>0</, 'a zero-fill must not render as a measured 0');
+      assert.match(hormuz, /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
   it('builds the full corpus against the injected fixture snapshot', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-pulse-fixture-corpus-'));
     try {

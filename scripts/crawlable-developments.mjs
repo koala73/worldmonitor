@@ -333,16 +333,17 @@ function stripRowMarkers(row, fields) {
  * complete weekly capture. Rows without a brief keep their shape.
  */
 // A country index occasionally captures a publisher's site page (privacy,
-// terms, cookies) as if it were an article. Match the title's leading words or
-// the URL's final path segment, so a news story about a policy is kept.
-const SITE_PAGE_TITLE = /^(privacy policy|privacy notice|terms of (use|service)|terms and conditions|cookie policy|contact us|about us)\b/i;
+// terms, cookies) as if it were an article. Match a title that is only the
+// page name, optionally followed by a site separator, or a one-segment URL
+// path, so a news story that merely begins with "About" or "Terms" is kept.
+const SITE_PAGE_TITLE = /^(privacy policy|privacy notice|terms of (use|service)|terms and conditions|cookie policy|contact us|about us)\s*(?:[|\-–—].*)?$/i;
 const SITE_PAGE_SLUG = /^(privacy|privacy-policy|privacy-notice|terms|terms-of-use|terms-of-service|terms-and-conditions|cookie-policy|cookies|contact|contact-us|about|about-us)$/i;
 
 function isSitePage(row) {
   if (SITE_PAGE_TITLE.test(String(row?.title ?? '').trim())) return true;
   try {
-    const segment = new URL(row?.url).pathname.split('/').filter(Boolean).at(-1) ?? '';
-    return SITE_PAGE_SLUG.test(segment.replace(/\.html?$/i, ''));
+    const segments = new URL(row?.url).pathname.split('/').filter(Boolean);
+    return segments.length === 1 && SITE_PAGE_SLUG.test(segments[0].replace(/\.html?$/i, ''));
   } catch {
     return false;
   }
@@ -353,7 +354,7 @@ export function normalizeFrozenDevelopments(developments, { countryCode = '', co
   const cleaned = {
     ...developments,
     headlines: Array.isArray(developments.headlines)
-      ? developments.headlines.filter((row) => !isSitePage(row)).map((row) => stripRowMarkers(row, ['title']))
+      ? developments.headlines.map((row) => stripRowMarkers(row, ['title'])).filter((row) => !isSitePage(row))
       : developments.headlines,
     timeline: Array.isArray(developments.timeline)
       ? developments.timeline.map((row) => stripRowMarkers(row, ['title', 'summary']))

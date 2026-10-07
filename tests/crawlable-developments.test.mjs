@@ -255,6 +255,19 @@ describe('normalizeFrozenDevelopments', () => {
     assert.deepEqual(out.headlines.map((row) => row.title), ['Malawi misses IMF target']);
     const story = { ...news, title: 'Costa Rica tightens privacy policy for tourists', url: 'https://example.net/costa-rica-privacy-policy-tourists' };
     assert.deepEqual(normalizeFrozenDevelopments({ headlines: [story] }).headlines, [story], 'a news story about a policy is kept');
+    const realStories = [
+      'About US troops leaving Iraq',
+      'About US$2bn in aid pledged',
+      'Terms of service changes spark EU probe',
+      'Privacy notice failures cost bank $5m',
+      'Contact us: hotline opened for flood victims',
+      'Terms of ceasefire agreed',
+    ].map((title, index) => ({ ...news, title, url: `https://example.net/news/story-${index}` }));
+    assert.deepEqual(normalizeFrozenDevelopments({ headlines: realStories }).headlines, realStories, 'a headline that only begins with a site-page phrase is kept');
+    const marked = { ...news, title: '**Privacy Policy** | Example Times', url: 'https://example.net/news/legal/privacy' };
+    assert.deepEqual(normalizeFrozenDevelopments({ headlines: [marked] }).headlines, [], 'markers are stripped before the site-page check');
+    const deepAbout = { ...news, title: 'Who runs the port', url: 'https://example.net/news/2026/10/about' };
+    assert.deepEqual(normalizeFrozenDevelopments({ headlines: [deepAbout] }).headlines, [deepAbout], 'a slug deep in a news path is kept');
   });
 
   it('withholds invented assets and citations to the wrong source (#7865)', () => {
