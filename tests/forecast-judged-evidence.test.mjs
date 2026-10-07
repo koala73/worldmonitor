@@ -92,6 +92,15 @@ describe('judged subject gate (#8990)', () => {
     assert.deepEqual(selected.map((row) => row.id), ['event', 'quiet', 'late']);
   });
 
+  it('accepts Taiwan reports for a Western Pacific forecast', () => {
+    const taiwan = { ...syriaEntry(), domain: 'supply_chain', region: 'Western Pacific', title: 'Semiconductor supply disruption from Taiwan Strait tension' };
+    const selected = selectJudgedArchiveItems(taiwan, [
+      item('T1', 'China drills encircle Taiwan as chip shipments slow', DEADLINE - DAY_MS),
+      item('T2', 'Chip stocks fall in New York', DEADLINE - DAY_MS),
+    ], { nowMs: judgedAt });
+    assert.deepEqual(selected.map((row) => row.id), ['T1']);
+  });
+
   it('matches multi-country regions through their aliases and excludes a neighbour that contains the name', () => {
     const sudan = { ...syriaEntry(), region: 'Sudan', title: 'Active armed conflict: Sudan' };
     const selected = selectJudgedArchiveItems(sudan, [
@@ -157,7 +166,7 @@ describe('judged evidence window (#8990)', () => {
   it('states the window and the cutoff to the judges', () => {
     const { userPrompt } = buildJudgedResolutionPrompt(syriaEntry(), [], judgedAt);
     assert.match(userPrompt, /Evidence window: .* to 2026-10-05T23:00:00\.000Z/);
-    assert.match(userPrompt, new RegExp(new Date(DEADLINE + JUDGED_EVIDENCE_GRACE_MS).toISOString().replace(/\./g, '\\.')));
+    assert.ok(userPrompt.includes(`reports accepted until ${new Date(DEADLINE + JUDGED_EVIDENCE_GRACE_MS).toISOString()}`));
   });
 });
 
@@ -172,10 +181,10 @@ describe('absence gate (#8990)', () => {
     assert.equal(DEFAULT_JUDGED_ARCHIVE_ITEMS, 32);
   });
 
-  it('ignores off-subject and post-deadline items when deciding the view was truncated', async () => {
+  it('ignores off-subject items and items past the cutoff when deciding the view was truncated', async () => {
     const offSubject = Array.from({ length: 60 }, (_, index) => item(`X${index}`, `Armed conflict risk level experience ${index}`, DEADLINE - HOUR_MS));
-    const afterDeadline = Array.from({ length: 40 }, (_, index) => item(`L${index}`, `Syria update ${index}`, DEADLINE + HOUR_MS));
-    const archive = coveredArchive([...quietItems(5), ...offSubject, ...afterDeadline], judgedAt);
+    const afterCutoff = Array.from({ length: 40 }, (_, index) => item(`L${index}`, `Syria update ${index}`, DEADLINE + JUDGED_EVIDENCE_GRACE_MS + 1));
+    const archive = coveredArchive([...quietItems(5), ...offSubject, ...afterCutoff], judgedAt);
     const result = await resolveJudgedEntry(syriaEntry(), archive, judgedAt, {
       judgeModels: [absence(['Q1', 'Q2']), absence(['Q1', 'Q3'])],
     });
@@ -185,6 +194,16 @@ describe('absence gate (#8990)', () => {
 
   it('still blocks an absence NO when on-subject reports dated by the deadline were left out', async () => {
     const archive = coveredArchive(quietItems(DEFAULT_JUDGED_ARCHIVE_ITEMS + 1), judgedAt);
+    const result = await resolveJudgedEntry(syriaEntry(), archive, judgedAt, {
+      judgeModels: [absence(['Q1', 'Q2']), absence(['Q1', 'Q3'])],
+    });
+    assert.equal(result.outcome, 'VOID');
+    assert.deepEqual(result.evidence.judgments.map((row) => row.reason), ['absence_selection_truncated', 'absence_selection_truncated']);
+  });
+
+  it('blocks an absence NO when a grace-period report was left out of the view', async () => {
+    const graceReport = item('G1', 'Syria clashes kill 40 near Hama on deadline day', DEADLINE + 2 * HOUR_MS);
+    const archive = coveredArchive([...quietItems(DEFAULT_JUDGED_ARCHIVE_ITEMS), graceReport], judgedAt);
     const result = await resolveJudgedEntry(syriaEntry(), archive, judgedAt, {
       judgeModels: [absence(['Q1', 'Q2']), absence(['Q1', 'Q3'])],
     });

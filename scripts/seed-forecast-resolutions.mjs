@@ -154,6 +154,7 @@ const JUDGED_SUBJECT_TERMS = {
   ethiopia: ['ethiopia', 'ethiopian', 'addis ababa', 'tigray', 'amhara'],
   europe: ['europe', 'european'],
   germany: ['germany', 'german', 'berlin'],
+  gaza: ['gaza', 'palestinian', 'palestinians', 'hamas'],
   haiti: ['haiti', 'haitian', 'port au prince'],
   india: ['india', 'new delhi', 'delhi'],
   iran: ['iran', 'iranian', 'tehran'],
@@ -168,19 +169,27 @@ const JUDGED_SUBJECT_TERMS = {
   'middle east': ['middle east', 'iran', 'iranian', 'israel', 'israeli', 'gaza', 'lebanon', 'lebanese', 'hezbollah', 'syria', 'syrian', 'iraq', 'iraqi', 'yemen', 'houthi', 'houthis', 'saudi', 'qatar', 'persian gulf', 'hormuz'],
   mozambique: ['mozambique', 'mozambican', 'cabo delgado'],
   myanmar: ['myanmar', 'burma', 'burmese'],
+  'north korea': ['north korea', 'north korean', 'pyongyang', 'dprk', 'kim jong un'],
   nigeria: ['nigeria', 'nigerian', 'boko haram', 'abuja'],
   'northern europe': ['northern europe', 'baltic', 'nordic', 'scandinavia', 'finland', 'finnish', 'sweden', 'swedish', 'norway', 'norwegian', 'denmark', 'danish', 'estonia', 'latvia', 'lithuania', 'kaliningrad'],
   pakistan: ['pakistan', 'pakistani', 'islamabad', 'khyber', 'balochistan', 'waziristan'],
   'persian gulf': ['persian gulf', 'gulf of oman', 'hormuz', 'iran', 'iranian', 'qatar', 'bahrain', 'kuwait', 'saudi', 'uae'],
   philippines: ['philippines', 'filipino', 'manila'],
+  romania: ['romania', 'romanian', 'bucharest'],
   'red sea': ['red sea', 'houthi', 'houthis', 'bab el mandeb', 'suez', 'gulf of aden'],
   russia: ['russia', 'russian', 'moscow', 'kremlin'],
   'south africa': ['south africa', 'south african', 'pretoria', 'johannesburg'],
+  'south china sea': ['south china sea', 'spratly', 'paracel', 'scarborough shoal', 'second thomas shoal'],
   'strait of hormuz': ['hormuz'],
   sudan: ['sudan', 'sudanese', 'khartoum', 'darfur', 'rsf', 'el fasher'],
   syria: ['syria', 'syrian', 'damascus', 'aleppo', 'idlib'],
+  taiwan: ['taiwan', 'taiwanese', 'taipei', 'taiwan strait'],
+  'taiwan strait': ['taiwan strait', 'taiwan', 'taiwanese', 'taipei'],
+  turkey: ['turkey', 'turkiye', 'turkish', 'ankara', 'erdogan'],
   ukraine: ['ukraine', 'ukrainian', 'kyiv', 'kiev', 'kharkiv', 'donbas', 'odesa'],
+  'united kingdom': ['united kingdom', 'britain', 'british', 'uk', 'london'],
   'united states': ['united states', 'u s', 'usa', 'pentagon', 'white house'],
+  'western pacific': ['western pacific', 'taiwan', 'taiwanese', 'taiwan strait', 'south china sea', 'east china sea', 'philippine sea', 'guam', 'okinawa'],
   'yemen (north yemen)': ['yemen', 'yemeni', 'houthi', 'houthis', 'sanaa'],
 };
 // Phrases removed before a subject's terms are tested, so a neighbour whose
@@ -900,9 +909,10 @@ function qualifiesAsAbsenceCoverage(item) {
  * deadline and found no event (#8896). Returns why that claim cannot hold for
  * this archive (or null) and the ids of the items that count as coverage.
  *
- * The view counts as truncated only when an on-subject item dated by the
- * deadline was left out. Off-subject items cannot report the subject's event,
- * and later reports are not coverage through the deadline (#8990).
+ * The view counts as truncated only when an on-subject item inside the window
+ * was left out, including a report from the grace period, which may confirm a
+ * deadline-day event. Off-subject items cannot report the subject's event and
+ * never count (#8990). Coverage itself counts only items dated by the deadline.
  */
 function assessAbsenceEligibility(entry, archiveInput, archiveItems, nowMs, coverageStartMs) {
   const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
@@ -915,9 +925,8 @@ function assessAbsenceEligibility(entry, archiveInput, archiveItems, nowMs, cove
     return { block: 'absence_coverage_unbounded', qualifyingIds };
   }
   if (qualifyingIds.size < JUDGED_ABSENCE_MIN_ARCHIVE_ITEMS) return { block: 'insufficient_subject_items', qualifyingIds };
-  const allQualifying = rankJudgedArchiveItems(entry, archiveInput.items, { nowMs, coverageStartMs })
-    .filter(qualifiesAsAbsenceCoverage).length;
-  return { block: allQualifying > qualifyingIds.size ? 'absence_selection_truncated' : null, qualifyingIds };
+  const onSubjectInWindow = rankJudgedArchiveItems(entry, archiveInput.items, { nowMs, coverageStartMs }).length;
+  return { block: onSubjectInWindow > archiveItems.length ? 'absence_selection_truncated' : null, qualifyingIds };
 }
 
 function normalizeJudgedArchiveInput(newsArchive) {
