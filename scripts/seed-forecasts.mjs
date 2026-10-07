@@ -11,7 +11,7 @@ import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, extractionShadowFeedKeys, HORIZON_MS, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
-import { applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
+import { alignPriorToPublication, applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import {
@@ -4918,7 +4918,10 @@ function buildForecastCases(predictions) {
 function buildPriorForecastSnapshot(pred) {
   return {
     id: pred.id,
+    domain: pred.domain,
+    generationOrigin: pred.generationOrigin,
     probability: pred.probability,
+    ...(Number.isFinite(pred.uncalibratedProbability) && { uncalibratedProbability: pred.uncalibratedProbability }),
     signals: (pred.signals || []).map(signal => signal.value),
     newsContext: pred.newsContext || [],
     calibration: pred.calibration
@@ -5050,30 +5053,34 @@ async function seedForecastFunnelHealth(predictions) {
 /**
  * Reads the map, the gate verdict and the previous record, then decides this
  * run's mode under the stateless rule in _forecast-calibration.mjs. A failed
- * read publishes raw.
+ * map or gate read publishes raw. A failed read of the previous record leaves
+ * the decision alone but returns no record, so the stored flip history is
+ * never overwritten by one built without it.
  */
 async function resolveCalibrationPublication(nowMs, { env = process.env, logger = console } = {}) {
   const forceRaw = env[CALIBRATION_FORCE_RAW_ENV] === '1';
-  let map = null;
-  let shadow = null;
-  let previous = null;
-  let readFailed = false;
-  try {
-    const { url, token } = getRedisCredentials();
-    const [rawMap, scorecard, record] = await Promise.all([
-      redisGetOrThrow(url, token, CALIBRATION_MAP_KEY),
-      redisGetOrThrow(url, token, CALIBRATION_GATE_SCORECARD_KEY),
-      redisGetOrThrow(url, token, CALIBRATION_PUBLICATION_KEY),
-    ]);
-    map = parseCalibrationMap(rawMap);
-    shadow = scorecard?.calibrationShadow ?? null;
-    previous = record;
-  } catch (err) {
-    readFailed = true;
-    logger.warn(`  [Calibration] Read failed, publishing raw: ${err.message}`);
-  }
+  const { url, token } = getRedisCredentials();
+  const read = (key) => redisGetOrThrow(url, token, key).then(
+    (value) => ({ ok: true, value }),
+    (err) => {
+      logger.warn(`  [Calibration] Read of ${key} failed: ${err.message}`);
+      return { ok: false, value: null };
+    },
+  );
+  const [mapRead, scorecardRead, previousRead] = await Promise.all([
+    read(CALIBRATION_MAP_KEY),
+    read(CALIBRATION_GATE_SCORECARD_KEY),
+    read(CALIBRATION_PUBLICATION_KEY),
+  ]);
+  const map = parseCalibrationMap(mapRead.value);
+  const shadow = scorecardRead.value?.calibrationShadow ?? null;
+  const readFailed = !mapRead.ok || !scorecardRead.ok;
   const decision = decideCalibrationPublication(map, shadow, { forceRaw, readFailed });
-  const { flipped, record } = recordCalibrationPublication(previous, decision, nowMs);
+  if (!previousRead.ok) {
+    logger.warn(`  [Calibration] mode=${decision.mode} reason=${decision.reason} map=${decision.mapVersion ?? 'none'}; previous record unreadable, so no flip is recorded this run`);
+    return { map, decision, record: null, flipped: false };
+  }
+  const { flipped, record } = recordCalibrationPublication(previousRead.value, decision, nowMs);
   const gate = decision.gate;
   const gateText = gate
     ? `eligible=${gate.eligible} forward=${gate.forwardCount} brierDeltaUpper=${gate.brierDeltaUpper} `
@@ -16554,8 +16561,8 @@ async function fetchForecasts() {
   console.log('  Extracting urgent critical event frames...');
   inputs.criticalSignalBundle = await extractCriticalSignalBundle(inputs);
   console.log(`  [CriticalSignals] source=${inputs.criticalSignalBundle.source} candidates=${inputs.criticalSignalBundle.candidateCount} frames=${inputs.criticalSignalBundle.extractedFrameCount} fallbackNewsSignals=${inputs.criticalSignalBundle.fallbackNewsSignalCount} structuredSignals=${inputs.criticalSignalBundle.structuredSignalCount}`);
-  const prior = await readPriorPredictions();
   const calibrationPublication = await resolveCalibrationPublication(runGeneratedAt);
+  const prior = alignPriorToPublication(await readPriorPredictions(), calibrationPublication.map, calibrationPublication.decision);
 
   console.log('  Running domain detectors...');
   const { url: emaUrl, token: emaToken } = getRedisCredentials();

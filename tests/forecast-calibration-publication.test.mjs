@@ -1,11 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, describe, it } from 'node:test';
 
-import { fitCalibrationMap } from '../scripts/_forecast-calibration.mjs';
+import { alignPriorToPublication, applyPublishedCalibration, fitCalibrationMap } from '../scripts/_forecast-calibration.mjs';
 import {
   CALIBRATION_PUBLICATION_KEY,
   __setRedisStoreForTests,
   buildHistoryForecastEntry,
+  buildPriorForecastSnapshot,
+  buildPublishedSeedPayload,
+  computeTrends,
   resolveCalibrationPublication,
   writeCalibrationPublication,
 } from '../scripts/seed-forecasts.mjs';
@@ -111,6 +114,69 @@ describe('seeder calibration publication (#7070)', () => {
     const run = await resolveCalibrationPublication(FIT_AT + DAY_MS, { env: { FORECAST_CALIBRATION_FORCE_RAW: '1' }, logger: captureLogger() });
     assert.deepEqual({ mode: run.decision.mode, reason: run.decision.reason }, { mode: 'raw', reason: 'force_raw' });
     assert.equal(run.flipped, false);
+  });
+
+  it('logs a revert on a failed gate read and keeps the stored flip history', async () => {
+    const store = { [CALIBRATION_MAP_KEY]: MAP, [SCORECARD_KEY]: scorecardWithGate(true) };
+    __setRedisStoreForTests(store);
+    const on = await resolveCalibrationPublication(FIT_AT + DAY_MS, { env: {}, logger: captureLogger() });
+    await writeCalibrationPublication(on.record);
+
+    __setRedisStoreForTests(new Proxy(store, {
+      get(target, key) {
+        if (key === SCORECARD_KEY) throw new Error('upstash 503');
+        return target[key];
+      },
+    }));
+    const logger = captureLogger();
+    const failed = await resolveCalibrationPublication(FIT_AT + 2 * DAY_MS, { env: {}, logger });
+    assert.deepEqual({ mode: failed.decision.mode, reason: failed.decision.reason, flipped: failed.flipped }, { mode: 'raw', reason: 'read_failed', flipped: true });
+    assert.match(logger.lines.find((line) => line.includes('FLIP')), /calibrated -> raw .*reason=read_failed/);
+    assert.equal(failed.record.lastFlip.from, 'calibrated');
+  });
+
+  it('never overwrites the stored record when the previous record cannot be read', async () => {
+    const store = { [CALIBRATION_MAP_KEY]: MAP, [SCORECARD_KEY]: scorecardWithGate(true) };
+    __setRedisStoreForTests(store);
+    const on = await resolveCalibrationPublication(FIT_AT + DAY_MS, { env: {}, logger: captureLogger() });
+    await writeCalibrationPublication(on.record);
+    const stored = structuredClone(store[CALIBRATION_PUBLICATION_KEY]);
+
+    __setRedisStoreForTests(new Proxy(store, {
+      get(target, key) {
+        if (key === CALIBRATION_PUBLICATION_KEY) throw new Error('upstash 503');
+        return target[key];
+      },
+    }));
+    const run = await resolveCalibrationPublication(FIT_AT + 2 * DAY_MS, { env: {}, logger: captureLogger() });
+    assert.equal(run.decision.mode, 'calibrated', 'the decision never depends on the previous record');
+    assert.equal(run.record, null);
+    await writeCalibrationPublication(run.record);
+    assert.deepEqual(store[CALIBRATION_PUBLICATION_KEY], stored);
+  });
+
+  it('compares trends on one scale across a flip, so a method change is not a move', () => {
+    const decision = { mode: 'calibrated', reason: 'gate_eligible', mapVersion: MAP.version, gate: null };
+    const rawPrior = { predictions: [buildPriorForecastSnapshot({ id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 })] };
+    const current = [{ id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 }];
+    applyPublishedCalibration(current, MAP, decision);
+    assert.equal(current[0].probability, 0.2);
+    computeTrends(current, alignPriorToPublication(rawPrior, MAP, decision));
+    assert.deepEqual({ trend: current[0].trend, prior: current[0].priorProbability }, { trend: 'stable', prior: 0.2 });
+
+    const calibratedPrior = { predictions: [buildPriorForecastSnapshot(current[0])] };
+    const reverted = [{ id: 'a', domain: 'cyber', generationOrigin: 'legacy_detector', probability: 0.4 }];
+    const rawDecision = { ...decision, mode: 'raw', reason: 'gate_ineligible' };
+    computeTrends(reverted, alignPriorToPublication(calibratedPrior, MAP, rawDecision));
+    assert.deepEqual({ trend: reverted[0].trend, prior: reverted[0].priorProbability }, { trend: 'stable', prior: 0.4 });
+  });
+
+  it('keeps uncalibratedProbability out of the public payload', () => {
+    const payload = buildPublishedSeedPayload({
+      generatedAt: FIT_AT,
+      predictions: [{ id: 'a', domain: 'cyber', region: 'Global', title: 't', probability: 0.2, uncalibratedProbability: 0.4, confidence: 0.5, timeHorizon: '7d', signals: [] }],
+    });
+    assert.doesNotMatch(JSON.stringify(payload), /uncalibratedProbability/);
   });
 
   it('records the published probability in the ledger and keeps the uncalibrated value beside it', () => {

@@ -443,3 +443,22 @@ export function applyPublishedCalibration(predictions, map, decision) {
   }
   return moved;
 }
+
+/**
+ * Re-expresses the prior run's probabilities on this run's scale, so a trend
+ * or change summary across a flip (or a refit) compares like with like
+ * instead of reporting the change of method as a move.
+ */
+export function alignPriorToPublication(prior, map, decision) {
+  if (!Array.isArray(prior?.predictions)) return prior;
+  const scratch = prior.predictions.map((prev) => {
+    const raw = typeof prev?.uncalibratedProbability === 'number' ? prev.uncalibratedProbability : prev?.probability;
+    const { uncalibratedProbability: _dropped, ...rest } = prev ?? {};
+    return { ...rest, probability: raw };
+  });
+  applyPublishedCalibration(scratch, map, decision);
+  return {
+    ...prior,
+    predictions: scratch.map(({ uncalibratedProbability: _dropped, ...rest }) => rest),
+  };
+}

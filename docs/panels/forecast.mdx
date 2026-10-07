@@ -185,11 +185,14 @@ The map changes published probabilities only while the activation gate below is 
 - The map is monotone and has at least one non-identity domain.
 
 Forward coverage (registered, matured, scored, VOID by reason, pending) and the generation-origin mix are reported beside the verdict, so a change in which forecasts resolve cannot read as a skill gain. The bootstrap draws 2,000 entry-level resamples from a fixed seed, so a rerun on the same ledger gives the same intervals.
+
 #### Published calibration
 
 Every `seed-forecasts` run applies the same rule. The run reads the map and the latest `calibrationShadow.activationGate`. It publishes calibrated probabilities only when the gate is eligible, the gate evaluated the current map version, and the kill switch is off. In every other case the run publishes raw probabilities. The rule does not read the previous mode, so a gate that fails on a later resolver run reverts publication on the next seeder run. No manual step is needed in either direction.
 
-The map applies to the post-blend probability, after the market anchor and the domain cap. This is the stage the map is fitted on. The map applies before confidence, projections, trends, case files, narratives, and publish selection, so every surface shows the same number. Only published-origin forecasts move. State-derived forecasts keep their raw value, because the fit excludes them.
+The map applies to the post-blend probability, after the market anchor and the domain cap. This is the stage the map is fitted on. The map applies before confidence, projections, trends, case files, narratives, and publish selection, so every surface in a run shows the same number. Trends and change summaries compare against the prior run re-expressed on the current scale, so a flip or a refit does not read as a probability move. Only published-origin forecasts move. State-derived forecasts keep their raw value, because the fit excludes them. Calibrated values are bounded to 1% and 99%, not to the market-blend domain caps, because the map is fitted on outcomes after those caps.
+
+Publish selection ranks on the published probability, so the forward cohort that the gate scores can change in composition after a flip. The gate still compares raw and calibrated values on the same entries. Coverage and origin mix beside the verdict, and the `lastFlip` time, show when the cohort's selection rule changed.
 
 A forecast that moves keeps its post-blend value as `uncalibratedProbability`. The value goes to the forecast history and the resolution ledger, but not to the public API. The ledger's `probability` is the published value, so the public scorecard scores what readers saw. The fit and the shadow read `uncalibratedProbability` as the raw value. Without it, the shadow would compare the published calibrated value with itself, and the gate would stay eligible after any flip.
 
