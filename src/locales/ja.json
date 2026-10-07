@@ -2360,7 +2360,7 @@
         "fullRecord": "完全な実績"
       },
       "reliability": {
-        "measured": "{{domain}} Brierスコア {{score}} vs ベースレート {{base}} (n={{n}})",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs ベースレート {{base}}",
         "measuredHint": "直近{{days}}日間に採点された{{n}}件の予測における{{domain}}の公開予測のスコア。ベースレートは、常にそのドメインの観測された肯定率で回答した場合のスコアです。スコアが低いほど良好です。これはドメインの記録であり、この予測の記録ではありません。",
         "unmeasured": "まだ測定されていません",
         "unmeasuredHint": "{{domain}}の予報は過去{{days}}日間に{{n}}件の採点済み結果があります。ドメインの精度を表示するには{{min}}件必要です。"

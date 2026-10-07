@@ -14,7 +14,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
-import { DOMAIN_RELIABILITY_MIN_SAMPLE } from '@/components/forecast-record';
+import { DOMAIN_RELIABILITY_MIN_SAMPLE, reliabilityHref } from '@/components/forecast-record';
+import { readdirSync, readFileSync } from 'node:fs';
 // @ts-expect-error -- untyped seeder module; this test reads one numeric constant from it.
 import { INTERVAL_MIN_SAMPLE } from '../../scripts/_forecast-scorecard.mjs';
 
@@ -127,11 +128,53 @@ describe('ForecastPanel reliability badge', () => {
     const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15)], ['conflict']);
     expect(badge!.dataset.fcReliabilityState).toBe('measured');
     // Base rate p = 15/45; always answering p scores p(1-p) = 0.2222.
-    expect(badge!.textContent).toContain('Conflict Brier 0.213 vs base rate 0.222 (n=45)');
-    expect(badge!.getAttribute('href')).toBe('/accuracy/');
-    const hint = badge!.getAttribute('title') ?? '';
+    expect(badge!.textContent).toBe('Conflict n=45 · Brier 0.213 vs base rate 0.222');
+    expect(badge!.getAttribute('href')).toBe('/accuracy/#by-domain');
+    const hint = badge!.getAttribute('aria-label') ?? '';
     expect(hint).toContain('45');
     expect(hint).not.toMatch(/coin flip/i);
+  });
+
+  it('links to the published domain table, hosted on desktop', () => {
+    expect(reliabilityHref(false)).toBe('/accuracy/#by-domain');
+    expect(reliabilityHref(true)).toBe('https://www.worldmonitor.app/accuracy/#by-domain');
+  });
+
+  it('carries its hint once, in the accessible name, with no duplicate title', async () => {
+    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15)], ['conflict']);
+    expect(badge!.hasAttribute('title')).toBe(false);
+    expect(badge!.getAttribute('aria-label')).toContain('45');
+  });
+
+  it('keeps a long badge on one line with an ellipsis', () => {
+    const css = Array.from(document.head.querySelectorAll('style')).map((el) => el.textContent ?? '').join('\n');
+    const rule = css.match(/\.fc-reliability\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/white-space:\s*nowrap/);
+    expect(rule).toMatch(/overflow:\s*hidden/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    // A block link spans the label column; fit-content keeps blank space beside it unclickable.
+    expect(rule).toMatch(/width:\s*fit-content/);
+    expect(rule).toMatch(/max-width:\s*100%/);
+  });
+
+  it('treats a non-integer yesCount as unmeasured, matching the /accuracy/ table', async () => {
+    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15.5)], ['conflict']);
+    expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
+  });
+
+  it('uses corrected hu, el and de wording', () => {
+    const locale = (code: string) => JSON.parse(readFileSync(`src/locales/${code}.json`, 'utf8')).components.forecast.reliability;
+    const hu = locale('hu');
+    expect(hu.measured).toContain('alapráta');
+    expect(JSON.stringify(hu)).not.toContain('alapsáv');
+    const el = locale('el');
+    expect(JSON.stringify(el).replace(/\{\{\w+\}\}/g, '')).not.toMatch(/base rate|domain/i);
+    expect(locale('de').unmeasuredHint).not.toContain('Domain');
+    expect(locale('de').unmeasuredHint).toContain('Bereich');
+    expect(locale('cs').measured).toContain('základní míra');
+    for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f) && f !== 'en.json')) {
+      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate/i);
+    }
   });
 
   it('never reads the pooled all-origin byDomain row', async () => {
@@ -139,9 +182,9 @@ describe('ForecastPanel reliability badge', () => {
     for (const badge of [market!, cyber!]) {
       expect(badge.dataset.fcReliabilityState).toBe('unmeasured');
       expect(badge.textContent).not.toContain('0.243');
-      expect(badge.getAttribute('title')).not.toContain('400');
+      expect(badge.getAttribute('aria-label')).not.toContain('400');
     }
-    expect(market!.getAttribute('title')).toContain('12');
+    expect(market!.getAttribute('aria-label')).toContain('12');
   });
 
   it('shows no badge when the response predates publishedByDomain', async () => {
@@ -173,9 +216,9 @@ describe('ForecastPanel reliability badge', () => {
     );
     expect(below!.dataset.fcReliabilityState).toBe('unmeasured');
     expect(below!.textContent).not.toContain('Brier');
-    expect(below!.getAttribute('title')).toContain('29');
+    expect(below!.getAttribute('aria-label')).toContain('29');
     expect(at!.dataset.fcReliabilityState).toBe('measured');
-    expect(at!.textContent).toContain('Market Brier 0.210 vs base rate 0.222 (n=30)');
+    expect(at!.textContent).toBe('Market n=30 · Brier 0.210 vs base rate 0.222');
   });
 
   it('says not yet measured below the minimum and for a domain with no published row', async () => {
@@ -185,8 +228,8 @@ describe('ForecastPanel reliability badge', () => {
       expect(badge.textContent).toContain('Not yet measured');
       expect(badge.textContent).not.toContain('Brier');
       expect(badge.textContent).not.toContain('0.310');
-      expect(badge.getAttribute('title')).toContain(n);
-      expect(badge.getAttribute('href')).toBe('/accuracy/');
+      expect(badge.getAttribute('aria-label')).toContain(n);
+      expect(badge.getAttribute('href')).toBe('/accuracy/#by-domain');
     }
   });
 
@@ -196,8 +239,9 @@ describe('ForecastPanel reliability badge', () => {
       ['conflict', 'cyber'],
       { stale: true },
     );
-    expect(measured!.textContent).toContain('Out of date');
-    expect(unmeasured!.textContent).toContain('Out of date');
+    // Stale and n lead, so an ellipsis on a narrow card never cuts them.
+    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · Brier 0.213 vs base rate 0.222');
+    expect(unmeasured!.textContent).toBe('Out of date · Not yet measured');
   });
 
   it('names the domain and says it is the domain record in the accessible name', async () => {

@@ -2390,8 +2390,8 @@
         "fullRecord": "Úplné výsledky"
       },
       "reliability": {
-        "measured": "{{domain}} Brier {{score}} vs základní sazba {{base}} (n={{n}})",
-        "measuredHint": "Jak dosáhly publikované {{domain}} předpovědi ve {{n}} ohodnocených předpovědích za poslední {{days}} dní. Základní sazba je to, co by získala vždy odpověď na základě pozorované frekvence „ano\" v dané doméně. Nižší je lepší. Toto je záznam domény, ne této předpovědi.",
+        "measured": "{{domain}} n={{n}} · Brier {{score}} vs základní míra {{base}}",
+        "measuredHint": "Jak dosáhly publikované {{domain}} předpovědi ve {{n}} ohodnocených předpovědích za poslední {{days}} dní. Základní míra je to, co by získala vždy odpověď na základě pozorované frekvence „ano\" v dané doméně. Nižší je lepší. Toto je záznam domény, ne této předpovědi.",
         "unmeasured": "Zatím neměřeno",
         "unmeasuredHint": "Předpovědi {{domain}} mají {{n}} vyhodnocených výsledků za poslední {{days}} dní. Doména potřebuje {{min}}, než se zobrazí její přesnost."
       }
