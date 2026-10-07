@@ -22,6 +22,7 @@ import schema from "../schema";
 import { internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 import {
+  DUNNING_DAY0_RETRY_MIN_AGE_MS,
   DUNNING_DAY3_AGE_MS,
   DUNNING_DAY7_AGE_MS,
   WINBACK_MIN_AGE_MS,
@@ -151,6 +152,57 @@ describe("on_hold webhook → day-0 email", () => {
     );
     expect(sub2?.onHoldAt).toBe(eventTs);
     expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+
+  test("a day-0 send lost at webhook time is recovered by the next scan, once", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    // The webhook's own send fails at Resend: sendEmail throws before the
+    // ledger write and internalActions are not auto-retried.
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 500 }));
+    const t = convexTest(schema, modules);
+    await seedSub(t, { status: "active", updatedAt: Date.now() - 5000 });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_hold_lost_day0",
+      eventType: "subscription.on_hold",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(0);
+
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.setSystemTime(Date.now() + DUNNING_DAY0_RETRY_MIN_AGE_MS + 60_000);
+    const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(summary.scheduled).toBe(1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(2);
+    expect(sends[1]!.subject).toContain("payment failed");
+    const rows = await ledgerRows(t);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.step).toBe("dunning_day0");
+
+    const again = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(again.scheduled).toBe(0);
+  });
+
+  test("scan leaves a hold younger than the retry grace to the webhook's own send", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, { onHoldAt: Date.now() - DUNNING_DAY0_RETRY_MIN_AGE_MS + 60_000 });
+
+    const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(summary.scheduled).toBe(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
   });
 });
 
@@ -390,12 +442,19 @@ describe("runDunningScan windows", () => {
     expect(resendSends(fetchMock)).toHaveLength(1);
   });
 
-  test("fresh hold (1 day old) is not emailed by the scan", async () => {
+  test("fresh hold (1 day old) whose day-0 already went out is not emailed by the scan", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = mockResend();
     const t = convexTest(schema, modules);
-    await seedSub(t, { onHoldAt: Date.now() - DAY_MS });
+    const anchor = Date.now() - DAY_MS;
+    await seedSub(t, { onHoldAt: anchor });
+    await t.mutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day0",
+      episodeAt: anchor,
+      email: EMAIL,
+    });
 
     const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     expect(summary.scheduled).toBe(0);

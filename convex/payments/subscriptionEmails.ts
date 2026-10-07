@@ -559,6 +559,11 @@ export const sendReactivationEmail = internalAction({
 // ===========================================================================
 
 const DAY_MS = 86_400_000;
+// The scan retries an unsent day-0 only once the hold is at least this old.
+// Younger holds belong to the webhook's own send, which may still be in its
+// portal mint or Resend slot wait; a scan copy started then could pass the
+// ledger check before either records and send the email twice.
+export const DUNNING_DAY0_RETRY_MIN_AGE_MS = 60 * 60 * 1000;
 export const DUNNING_DAY3_AGE_MS = 3 * DAY_MS;
 export const DUNNING_DAY7_AGE_MS = 7 * DAY_MS;
 // Winback window bounds, measured from currentPeriodEnd (access end).
@@ -1133,9 +1138,15 @@ export const runDunningScan = internalMutation({
     for (const sub of onHold) {
       const episodeAt = sub.onHoldAt ?? sub.updatedAt;
       const age = now - episodeAt;
+      // Day-0 is first enqueued by the on_hold webhook, but a send that throws
+      // (Resend error, exhausted slot OCC, RESEND_API_KEY missing at webhook
+      // time) leaves no ledger row and is never auto-retried. Retry it here
+      // until day-3 takes over; the ledger pre-check below skips a day-0
+      // that already went out.
       const step: DunningStep | null =
         age >= DUNNING_DAY7_AGE_MS ? "dunning_day7"
         : age >= DUNNING_DAY3_AGE_MS ? "dunning_day3"
+        : age >= DUNNING_DAY0_RETRY_MIN_AGE_MS ? "dunning_day0"
         : null;
       if (step) due.push({ dodoSubscriptionId: sub.dodoSubscriptionId, step, episodeAt });
     }
