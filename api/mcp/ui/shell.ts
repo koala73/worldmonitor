@@ -120,7 +120,7 @@ const SHARED_STYLE_TOKENS = `
 // The shared bridge + helper library. Injected once per shell. It exposes a
 // small helper set (q/num/listState/clampPct/pctText/setText/el/cssVar) in closure scope
 // that a widget's `renderBody` uses, then calls the widget-defined
-// `renderData(data)` on every tool-result. NOTE: no `${` / backtick here.
+// `renderData(data, renderContext)` on every tool-result. NOTE: no `${` / backtick here.
 const SHARED_BRIDGE_HEAD = `
 (function () {
   "use strict";
@@ -217,20 +217,30 @@ const SHARED_BRIDGE_HEAD = `
     notify("ui/notifications/size-changed", { height: h });
   }
 
-  function extractToolData(result) {
-    if (!result || typeof result !== "object") return null;
+  function extractToolResult(result) {
+    if (!result || typeof result !== "object") return { data: null, renderContext: { kind: "unknown" } };
     if (result.structuredContent && typeof result.structuredContent === "object") {
-      return result.structuredContent;
+      var structured = result.structuredContent;
+      var kind = "unknown";
+      if (!Array.isArray(structured)) {
+        if (Object.prototype.hasOwnProperty.call(structured, "projection")) kind = "projection-wrapped";
+        else if (!Object.prototype.hasOwnProperty.call(structured, "_attribution") && !softError(structured)) kind = "ordinary-structured";
+      }
+      return { data: structured, renderContext: { kind: kind } };
     }
     if (Array.isArray(result.content)) {
       for (var i = 0; i < result.content.length; i++) {
         var c = result.content[i];
         if (c && c.type === "text" && typeof c.text === "string") {
-          try { return JSON.parse(c.text); } catch (e) { /* not JSON */ }
+          try { return { data: JSON.parse(c.text), renderContext: { kind: "text-fallback" } }; } catch (e) { /* not JSON */ }
         }
       }
     }
-    return null;
+    return { data: null, renderContext: { kind: "unknown" } };
+  }
+
+  function extractToolData(result) {
+    return extractToolResult(result).data;
   }
 
   function applyTheme(hostContext) {
@@ -272,10 +282,10 @@ const SHARED_BRIDGE_HEAD = `
     if (empty) { empty.textContent = msg; empty.style.display = "block"; }
   }
 
-  function safeRender(data) {
+  function safeRender(data, renderContext) {
     var errMsg = softError(data);
     if (errMsg) { showError(errMsg); reportSize(); return; }
-    try { renderData(data); } catch (e) { /* never break the host on a bad payload */ }
+    try { renderData(data, renderContext); } catch (e) { /* never break the host on a bad payload */ }
     reportSize();
   }
 `;
@@ -326,8 +336,8 @@ function renderBridgeTail(appName: string): string {
       case "ui/notifications/tool-result": {
         var result = msg.params && msg.params.result ? msg.params.result : msg.params;
         showPanelUsage(result);
-        var data = extractToolData(result);
-        safeRender(data);
+        var extracted = extractToolResult(result);
+        safeRender(extracted.data, extracted.renderContext);
         break;
       }
       case "ui/notifications/tool-input":
@@ -365,7 +375,7 @@ export interface AppShellSpec {
   // Body markup placed inside <div class="wrap" id="root">. Owns its own
   // empty-state + card elements.
   body: string;
-  // JS body of `function renderData(data) { ... }`. Runs inside the shared
+  // JS body of `function renderData(data, renderContext) { ... }`. Runs inside the shared
   // bridge closure with access to q/num/listState/setText/el/cssVar/pctText/clampPct/
   // levelFor/collapseWs/paragraphs/httpUrl/countryName/probabilityBar. MUST
   // avoid backticks and `${`.
@@ -378,7 +388,7 @@ export interface AppShellSpec {
 export function buildAppHtml(spec: AppShellSpec): string {
   const bridge =
     SHARED_BRIDGE_HEAD +
-    '\n  function renderData(data) {\n' + spec.renderBody + '\n  }\n' +
+    '\n  function renderData(data, renderContext) {\n' + spec.renderBody + '\n  }\n' +
     renderBridgeTail(spec.appName);
 
   return `<!DOCTYPE html>

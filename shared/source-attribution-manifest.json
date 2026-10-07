@@ -14363,6 +14363,20 @@
       ]
     },
     {
+      "host": "www.unognewsroom.org",
+      "provider": "www.unognewsroom.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.unognewsroom.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-disease-outbreaks.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.upworthy.com",
       "provider": "www.upworthy.com",
       "kind": "feed",

@@ -58,6 +58,7 @@ const INTERNATIONAL_HOST_SUFFIXES = [
   '.unep.org',
   '.unesco.org',
   '.unhcr.org',
+  '.unognewsroom.org',
   '.who.int',
   '.worldbank.org',
   '.wto.org',

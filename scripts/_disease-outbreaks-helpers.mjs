@@ -19,6 +19,7 @@
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 import { countryCentroid } from './lib/country-centroid.mjs';
+import outbreakPlaces from './data/outbreak-places.json' with { type: 'json' };
 
 // WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
 // These override extractCountryCode for exact substring matches (checked first, case-insensitive).
@@ -103,10 +104,13 @@ export function detectDisease(title) {
     'avian flu', 'h5n1', 'h5n2', 'anthrax', 'rabies', 'meningitis', 'hepatitis',
     'nipah', 'rift valley', 'crimean-congo', 'leishmaniasis', 'malaria', 'diphtheria',
     'chikungunya', 'botulism', 'brucellosis', 'salmonella', 'listeria', 'e. coli',
-    'norovirus', 'legionella', 'campylobacter'];
+    'norovirus', 'legionella', 'campylobacter', 'cyclospora'];
   for (const d of known) {
     if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
   }
+  // Short names need word boundaries: a bare 'mers' matches 'farmers'.
+  if (/\bMERS\b/.test(title)) return 'MERS';
+  if (/\bhantavirus\b/i.test(title)) return 'Hantavirus';
   if (UNEXPLAINED_PNEUMONIA_RE.test(title)) return 'Pneumonia of unknown cause';
   return 'Unknown Disease';
 }
@@ -144,6 +148,23 @@ export function whoNormalizeItem(item, nowMs = Date.now()) {
   };
 }
 
+// CIDRAP and UN Geneva escape their HTML body twice, so `&amp;nbsp;` survives
+// the single decode as `&nbsp;`. Only entities with no markup meaning get the
+// second decode; `&lt;`, `&quot;` and numeric references stay as text.
+const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdquo);/gi;
+
+// Strip until nothing changes, then drop any `<` an unclosed tag start
+// ("<script src=x") leaves: the result is plain text.
+function stripTags(html) {
+  let text = html;
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, '');
+  } while (text !== previous);
+  return text.replace(/</g, '');
+}
+
 /**
  * Clean one RSS <description> body: decode entities, strip tags, trim,
  * truncate to 300 chars. Order matters — decode before tag-strip so escaped
@@ -151,8 +172,9 @@ export function whoNormalizeItem(item, nowMs = Date.now()) {
  * single pass via the shared decoder (#5436): `&amp;lt;` stays `&lt;`.
  */
 export function cleanRssDescription(rawDesc) {
-  return decodeHtmlEntities(rawDesc || '')
-    .replace(/<[^>]+>/g, '').trim().slice(0, 300);
+  return stripTags(decodeHtmlEntities(rawDesc || ''))
+    .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
+    .replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
 /**
@@ -217,7 +239,7 @@ export function isRoundupHeadline(title) {
 // "Disease - Country" form: the "in <Country>" fallback would capture the rest
 // of the sentence ("DR Congo grows to 7"), so the location is the detected
 // country's English name instead.
-const HEADLINE_SOURCES = new Set(['ECDC', 'CIDRAP']);
+const HEADLINE_SOURCES = new Set(['ECDC', 'CIDRAP', 'WHO briefing']);
 const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
 // Avian flu coverage names turkey farms and flocks constantly; the bird must
 // not geocode to Türkiye.
@@ -229,16 +251,20 @@ function headlineCountryCode(text) {
 
 // Headline sources also publish research, policy and opinion pieces; only a
 // story that names a known disease AND a country is treated as an outbreak.
-// WHO/CDC keep their existing path.
+// The CDC newsroom feed also carries obituaries, conference notes and
+// surveillance reports, and returns its whole archive back to 2017; a CDC item
+// must name a known disease (its location defaults to the US). WHO DON posts
+// are rare and stay current for months, so WHO DON keeps no window.
 // Every CIDRAP feed returns its last 20 items however old; match the
 // ThinkGlobalHealth window so a quiet topic cannot resurface year-old stories.
 export const HEADLINE_LOOKBACK_DAYS = 90;
 
 export function isReportableHeadline(outbreak, nowMs = Date.now()) {
-  if (!HEADLINE_SOURCES.has(outbreak.sourceName)) return true;
+  const cdc = outbreak.sourceName === 'CDC';
+  if (!cdc && !HEADLINE_SOURCES.has(outbreak.sourceName)) return true;
   // An undated item carries a "now" fallback that would pass the lookback.
   if (outbreak._publishedAtIsSynthetic === true) return false;
-  if (outbreak.disease === 'Unknown Disease' || !outbreak.countryCode) return false;
+  if (outbreak.disease === 'Unknown Disease' || (!cdc && !outbreak.countryCode)) return false;
   return outbreak.publishedAt >= nowMs - HEADLINE_LOOKBACK_DAYS * 86_400_000;
 }
 
@@ -250,12 +276,45 @@ function headlineSummary(title, desc) {
   return `${title}${/[.?!]$/.test(title) ? '' : '.'} ${desc}`.slice(0, 300);
 }
 
+// Headline sources name a city or region ("a laboratory worker in Irkutsk")
+// without coordinates. Names come from scripts/data/outbreak-places.json
+// (GeoNames, see scripts/build-outbreak-places.mjs), longest first, and are
+// searched only within the detected country. A story naming several distinct
+// places is about none of them in particular, so it keeps the centroid; a
+// name inside a longer match ("Virginia" in "West Virginia") is not counted.
+const placeRes = new Map();
+
+export function namedPlace(countryCode, text) {
+  let found = null;
+  const spans = [];
+  for (const [name, lat, lng] of outbreakPlaces[countryCode] ?? []) {
+    // Matching is case-sensitive, so a substring miss rules the name out
+    // without compiling its word-boundary regex.
+    if (!text.includes(name)) continue;
+    let re = placeRes.get(name);
+    if (!re) {
+      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
+      placeRes.set(name, re);
+    }
+    for (const { index } of text.matchAll(re)) {
+      const end = index + name.length;
+      if (spans.some(([s, e]) => index >= s && end <= e)) continue;
+      spans.push([index, end]);
+      if (!found) found = { name, lat, lng };
+      else if (found.lat !== lat || found.lng !== lng) return null;
+    }
+  }
+  return found;
+}
+
 export function mapItem(item) {
   const headline = HEADLINE_SOURCES.has(item.sourceName);
-  const headlineCountry = headline ? headlineCountryCode(`${item.title} ${item.desc}`) : '';
+  const text = `${item.title} ${item.desc}`;
+  const headlineCountry = headline ? headlineCountryCode(text) : '';
+  const place = headlineCountry ? namedPlace(headlineCountry, text) : null;
   const location = item._location
     || (headline
-      ? (headlineCountry ? REGION_NAMES.of(headlineCountry) : '')
+      ? (place?.name ?? (headlineCountry ? REGION_NAMES.of(headlineCountry) : ''))
       : extractLocationFromTitle(item.title) || (item.sourceName === 'CDC' ? 'United States' : ''));
   const disease = item._disease || detectDisease(item.title);
   const countryCode = headline
@@ -273,10 +332,11 @@ export function mapItem(item) {
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
     sourceName: item.sourceName,
-    // No source point: the country's centroid. 0,0 only when the country is unknown.
+    // No source point: a named place, else the country's centroid. 0,0 only
+    // when the country is unknown.
     ...(item._lat != null && item._lng != null
       ? { lat: item._lat, lng: item._lng }
-      : countryCentroid(countryCode) ?? { lat: 0, lng: 0 }),
+      : place ? { lat: place.lat, lng: place.lng } : countryCentroid(countryCode) ?? { lat: 0, lng: 0 }),
     cases: item._cases || 0,
     // PRE-PUBLISH HELPERS — see header comment.
     _publishedAtIsSynthetic: item._publishedAtIsSynthetic === true,

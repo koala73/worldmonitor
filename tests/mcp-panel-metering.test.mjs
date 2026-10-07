@@ -1405,3 +1405,89 @@ describe('paid prediction panel through the MCP handler', () => {
     }
   });
 });
+
+describe('public forecast reliability cache and completed output', () => {
+  const now = Date.parse('2026-10-07T00:00:00Z');
+  const predictions = { generatedAt: now, predictions: [{ id: 'reliability-case', domain: 'energy', region: 'Europe', title: 'Controlled forecast', probability: 0.4 }] };
+  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 45, brier: 0.213, yesCount: 18 }] };
+  const originals = new WeakMap();
+  async function fixture(testContext, values) {
+    if (!originals.has(testContext)) originals.set(testContext, { beforeFetch: globalThis.fetch, beforeEnv: { ...process.env }, beforeNow: Date.now });
+    const { beforeFetch, beforeEnv, beforeNow } = originals.get(testContext);
+    testContext.after(() => { globalThis.fetch = beforeFetch; Date.now = beforeNow; for (const key of Object.keys(process.env)) if (!(key in beforeEnv)) delete process.env[key]; Object.assign(process.env, beforeEnv); });
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET; process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://forecast-reliability-fixture.test'; process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
+    let clock = now; Date.now = () => clock;
+    const reads = [];
+    globalThis.fetch = async url => {
+      const parsed = new URL(url); assert.equal(parsed.hostname, 'forecast-reliability-fixture.test');
+      if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+      const key = decodeURIComponent(parsed.pathname.slice(5)); reads.push(key);
+      if (values[key] === 'unreadable') return new Response('not-json', { status: 200 });
+      return Response.json({ result: values[key] == null ? null : JSON.stringify(values[key]) });
+    };
+    const { mcpHandler } = await import('../api/mcp.ts'); const { deps, pipe } = makeProDeps();
+    const invoke = async args => { const body = await (await mcpHandler(proReq('POST', callBody('get_forecast_predictions', args)), deps)).json(); return body.result ?? { isError: true, error: body.error }; };
+    return { invoke, pipe, reads, values, advance: ms => { clock += ms; } };
+  }
+  const values = () => ({ 'forecast:predictions:v2': predictions, 'seed-meta:forecast:predictions': { fetchedAt: now }, 'forecast:scorecard:v1': scorecard, 'seed-meta:forecast:scorecard': { fetchedAt: now } });
+  it('uses four distinct production cache identities and preserves an optional outage in one signed replay', async testContext => {
+    const fixtureContext = await fixture(testContext, { ...values(), 'forecast:scorecard:v1': 'unreadable' });
+    const first = await fixtureContext.invoke({});
+    assert.deepEqual([...new Set(fixtureContext.reads)].sort(), Object.keys(values()).sort(), 'opening must read predictions and independent optional scorecard data/meta');
+    assert.equal(first.structuredContent.data.reliability.status, 'unavailable');
+    assert.equal(first.structuredContent.stale, false, 'optional scorecard failure must not relabel fresh predictions');
+    const readCount = fixtureContext.reads.length; const writes = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'); const replay = await fixtureContext.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    assert.deepEqual(replay.structuredContent.data.reliability, first.structuredContent.data.reliability);
+    assert.deepEqual(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'), writes, 'replay must not rewrite the snapshot or extend its expiry');
+    assert.equal(fixtureContext.reads.length, readCount); assert.equal(fixtureContext.pipe.count, 1);
+  });
+  it('rejects required missing/null/unreadable predictions despite healthy optional data, but accepts readable empty predictions', async testContext => {
+    for (const bad of [null, 'unreadable', { _seed: { fetchedAt: now }, data: null }]) {
+      const fixtureContext = await fixture(testContext, { ...values(), 'forecast:predictions:v2': bad }); const result = await fixtureContext.invoke({});
+      assert.equal(result.isError, true, 'required prediction source must fail closed before healthy scorecard can mask it');
+      assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET' && String(operation[1]).includes('snapshot')).length, 0);
+    }
+    const fixtureContext = await fixture(testContext, { ...values(), 'forecast:predictions:v2': { ...predictions, predictions: [] } });
+    assert.deepEqual((await fixtureContext.invoke({})).structuredContent.data.predictions.predictions, []);
+  });
+  it('keeps the original 36-hour capture verdict across five-minute replay and reports unknown scorecard clocks', async testContext => {
+    const fixtureContext = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': { fetchedAt: now - 36 * 3600000 + 60000 } });
+    const first = await fixtureContext.invoke({}); const reliability = first.structuredContent.data.reliability;
+    assert.equal(reliability?.stale, false, 'scorecard is still inside its own 36-hour clock');
+    assert.equal(reliability.asOf, new Date(now - 36 * 3600000 + 60000).toISOString());
+    assert.equal(reliability.capturedAt, new Date(now).toISOString());
+    const count = fixtureContext.reads.length; fixtureContext.advance(120000); const replay = await fixtureContext.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    assert.deepEqual(replay.structuredContent.data.reliability, reliability); assert.equal(fixtureContext.reads.length, count); assert.equal(fixtureContext.pipe.count, 1);
+    for (const meta of [null, { fetchedAt: 'bad' }, { fetchedAt: now + 60000 }, 'unreadable']) {
+      const clockFixture = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': meta }); const next = await clockFixture.invoke({});
+      assert.equal(next.structuredContent.data.reliability.freshnessUnknown, true); assert.equal(next.structuredContent.stale, false);
+    }
+    const clockFixture = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': { fetchedAt: now - 36 * 3600000 - 1 } });
+    assert.equal((await clockFixture.invoke({})).structuredContent.data.reliability.stale, true);
+  });
+  it('checks completed UTF-8 public bytes including the signed receipt before saving 131072/131073 results', async testContext => {
+    const fixtureContext = await fixture(testContext, values());
+    const tool = (await import('../api/mcp/registry/index.ts')).TOOL_REGISTRY.find(entry => entry.name === 'get_forecast_predictions');
+    const old = tool._execute; testContext.after(() => { tool._execute = old; });
+    let target = 131072;
+    tool._execute = async (unusedArguments, unusedOptions, unusedContext, execution) => {
+      const value = { data: { predictions }, panelRequest: execution.panelRequest, notice: 'é', attribution: 'Fixture source', padding: '' };
+      value.padding = 'x'.repeat(target - Buffer.byteLength(JSON.stringify(value)));
+      assert.equal(Buffer.byteLength(JSON.stringify(value)), target); return value;
+    };
+    const first = await fixtureContext.invoke({}); assert.equal(first.structuredContent._budget_exceeded, undefined);
+    target = 131073; const before = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length;
+    const second = await fixtureContext.invoke({ refresh: true, request_id: 'ee947e6a-4a49-4f7d-9c44-0dc6cdd7c041' });
+    assert.equal(second.structuredContent._budget_exceeded, true);
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'oversized completed output must not save a public snapshot');
+    const projected = await fixtureContext.invoke({ refresh: true, request_id: 'f4ef78a9-f2a6-4d45-90c5-89acd4d1aa55', jmespath: 'data.predictions' });
+    assert.equal(projected.structuredContent._budget_exceeded, true, 'a selective reply must not admit an oversized full public snapshot');
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'selective projection must not bypass the complete public snapshot limit');
+    tool._execute = undefined;
+    fixtureContext.values['forecast:predictions:v2'] = { ...predictions, predictions: [{ ...predictions.predictions[0], title: 'x'.repeat(140000) }] };
+    const summarized = await fixtureContext.invoke({ refresh: true, request_id: 'c78df96e-604c-4c23-a635-fca8dbf50daa', summary: true });
+    assert.equal(summarized.structuredContent._budget_exceeded, true, 'summary must not admit the oversized complete production cache document');
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'summary must not save oversized full public predictions');
+  });
+});

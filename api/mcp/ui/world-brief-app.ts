@@ -59,6 +59,7 @@ const BODY = `
 `;
 
 const RENDER = `
+    var linkOriginalCitations = renderContext && renderContext.kind === "ordinary-structured";
     if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, "projection")) data = data.projection;
     if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     var brief = typeof data.brief === "string" && data.brief ? data.brief
@@ -66,10 +67,35 @@ const RENDER = `
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
+    var srcs = Array.isArray(data.sources) ? data.sources : [];
     var briefEl = q("brief");
     briefEl.textContent = "";
     var paras = paragraphs(brief);
-    for (var i = 0; i < paras.length; i++) briefEl.appendChild(el("p", "para", paras[i]));
+    for (var i = 0; i < paras.length; i++) {
+      var para = el("p", "para");
+      if (!linkOriginalCitations) para.textContent = paras[i];
+      else {
+        var citation = /\\[([0-9]+)\\]/g;
+        var match;
+        var cursor = 0;
+        while ((match = citation.exec(paras[i])) !== null) {
+          para.appendChild(document.createTextNode(paras[i].slice(cursor, match.index)));
+          var index = Number(match[1]) - 1;
+          var source = Number.isSafeInteger(index) && index >= 0 && index < Math.min(12, srcs.length) ? srcs[index] : null;
+          var href = source && typeof source === "object" && !Array.isArray(source) ? httpUrl(source.url) : null;
+          if (href) {
+            var link = el("a", null, match[0]);
+            link.href = href;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            para.appendChild(link);
+          } else para.appendChild(document.createTextNode(match[0]));
+          cursor = citation.lastIndex;
+        }
+        para.appendChild(document.createTextNode(paras[i].slice(cursor)));
+      }
+      briefEl.appendChild(para);
+    }
     if (!briefEl.childNodes.length) briefEl.appendChild(el("div", "empty", "No brief text available."));
 
     var hls = Array.isArray(data.headlines) ? data.headlines : [];
@@ -82,7 +108,6 @@ const RENDER = `
     }
     q("hl-sec").style.display = hlHost.childNodes.length ? "block" : "none";
 
-    var srcs = Array.isArray(data.sources) ? data.sources : [];
     var srcHost = q("sources");
     srcHost.textContent = "";
     for (var k = 0; k < srcs.length && srcHost.childNodes.length < 8; k++) {

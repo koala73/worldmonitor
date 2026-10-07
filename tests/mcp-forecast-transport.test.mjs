@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DEFAULT_ROLLING_WINDOW_DAYS } from '../scripts/_forecast-scorecard.mjs';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
@@ -96,5 +98,36 @@ describe('bounded forecast list and original case transport', () => {
     assert.equal(detail._postFilter({ predictions: null }, args, paid).forecastCase.status, 'unavailable');
     assert.equal(detail._postFilter({ predictions: { generatedAt: generation, predictions: null } }, args, paid).forecastCase.status, 'unavailable');
     for (const bad of [{ ...args, forecast_id: '' }, { ...args, generated_at: '' }, { ...args, arbitrary: true }]) assert.throws(() => detail._postFilter({ predictions: full }, bad, paid));
+  });
+});
+
+describe('published forecast reliability transport', () => {
+  const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
+  const project = (scorecard, predictions = full) => opening._postFilter({ predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+  it('matches the website and producer window fallback for missing or invalid windows', () => {
+    const website = readFileSync(new URL('../src/components/forecast-record.ts', import.meta.url), 'utf8');
+    const websiteWindowDays = Number(website.match(/const DEFAULT_WINDOW_DAYS = (\d+);/)?.[1]);
+    assert.equal(websiteWindowDays, DEFAULT_ROLLING_WINDOW_DAYS);
+    for (const rollingWindowDays of [undefined, null, 0, -1, NaN, Infinity, '90']) {
+      assert.equal(project({ schemaVersion: 2, publishedByDomain: [row()], rollingWindowDays }).windowDays, websiteWindowDays);
+    }
+    assert.equal(project({ schemaVersion: 2, publishedByDomain: [row()], rollingWindowDays: 90 }).windowDays, 90);
+  });
+  it('projects only loaded published domains with the website sample and base-rate rules', () => {
+    const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [row(), row('conflict'), row('bet_engine')], byDomain: [row('energy', { brier: 0.001 })], receipts: ['private'], skill: 0.99 };
+    const reliability = project(scorecard);
+    assert.deepEqual(reliability?.byDomain, [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }], 'loaded energy must carry its published reliability, never pooled/headline values');
+    assert.equal(reliability.status, 'ready'); assert.equal(reliability.windowDays, 90);
+    const many = { ...full, predictions: Array.from({ length: 50 }, (unusedValue, domainIndex) => ({ ...full.predictions[0], domain: 'domain-' + domainIndex })) };
+    assert.equal(project({ ...scorecard, publishedByDomain: many.predictions.map(prediction => row(prediction.domain)) }, many).byDomain.length, 30, 'public reliability is bounded to the loaded thirty domains');
+    for (const changes of [{ count: 29 }, { yesCount: 15.5 }, { yesCount: -1 }, { yesCount: 46 }, { brier: null }]) assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', changes)] }).byDomain[0].kind, 'unmeasured');
+    assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', { count: 45.5 })] }).byDomain[0].kind, 'measured');
+    assert.equal(project({ ...scorecard, publishedByDomain: [row(), row('energy', { brier: 0.3 })] }).byDomain[0].brier, 0.3);
+    assert.deepEqual(project({ ...scorecard, publishedByDomain: [] }).byDomain, [{ domain: 'energy', kind: 'unmeasured', n: 0 }]);
+    assert.equal(project(scorecard, { ...full, predictions: [{ ...full.predictions[0], domain: 'bet_engine' }] }).byDomain.length, 0);
+  });
+  it('validates raw health and schema before public field selection', () => {
+    const good = { schemaVersion: 2, publishedByDomain: [row()] };
+    for (const value of [null, {}, { ...good, schemaVersion: 1 }, { ...good, degraded: true }, { ...good, error: 'source_failure' }, { ...good, publishedByDomain: null }]) assert.equal(project(value)?.status, 'unavailable', 'unhealthy optional reliability must be explicit and non-null');
   });
 });
