@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import { alignPriorToPublication, applyPublishedCalibration, fitCalibrationMap } from '../scripts/_forecast-calibration.mjs';
@@ -102,6 +103,22 @@ describe('seeder calibration publication (#7070)', () => {
       console.log = quiet.log;
       console.warn = quiet.warn;
     }
+  });
+
+  it('wires the calibration stages into fetchForecasts', () => {
+    // fetchForecasts needs live inputs, so its three calibration hand-offs are
+    // pinned in source; the stages themselves are exercised in the test above.
+    const source = readFileSync(new URL('../scripts/seed-forecasts.mjs', import.meta.url), 'utf8');
+    const start = source.indexOf('async function fetchForecasts() {');
+    assert.notEqual(start, -1, 'missing source marker: fetchForecasts');
+    const end = source.indexOf('\n}\n', start);
+    const body = source.slice(start, end);
+    const resolveAt = body.indexOf('const { calibrationPublication, prior } = await resolveCalibrationRun(runGeneratedAt);');
+    const scoreAt = body.indexOf('scoreDetectedPredictions(predictions, { inputs, prior, calibrationPublication, cascadeRules });');
+    assert.notEqual(resolveAt, -1, 'fetchForecasts must resolve the calibration decision and the aligned prior');
+    assert.notEqual(scoreAt, -1, 'fetchForecasts must score detector output through scoreDetectedPredictions');
+    assert.ok(resolveAt < scoreAt, 'the decision must exist before scoring');
+    assert.match(body, /\n    calibrationPublication: calibrationPublication\.record,\n/, 'the run must hand its record to afterPublish');
   });
 
   it('publishes calibrated on an eligible gate and logs the flip with the gate numbers', async () => {
