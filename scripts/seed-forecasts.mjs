@@ -1399,9 +1399,12 @@ function getStateDerivedBucketSignalTypes(domain, bucketId) {
   return [];
 }
 
+// Every bucket here has a hard-spec path in deriveStateDerivedHardMetrics
+// (_forecast-resolution.mjs). sovereign_risk, rates_inflation and fx_stress
+// have no checkable question and stay unpublished until they get one (#5234).
 function getStateDerivedAllowedBuckets(domain) {
   if (domain === 'supply_chain') return ['freight', 'energy'];
-  if (domain === 'market') return ['energy', 'sovereign_risk', 'rates_inflation', 'fx_stress'];
+  if (domain === 'market') return ['energy'];
   return [];
 }
 
@@ -19680,6 +19683,7 @@ export {
   normalizeChokepoints,
   normalizeGpsJamming,
   deriveStateDrivenForecasts,
+  getStateDerivedAllowedBuckets,
   detectUcdpConflictZones,
   detectCyberScenarios,
   detectGpsJammingScenarios,
