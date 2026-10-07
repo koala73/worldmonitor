@@ -853,11 +853,12 @@ function marketAlertCells(row) {
   const compared = isMeasurableCount(row.baseN) && isRate(row.pairedHitRate) && isRate(row.baseHitRate);
   const published = compared || !CONTROL_GATED_ALERT_TYPES.has(row.type);
   const hit = published && isMeasurableCount(row.scored) && isRate(row.hitRate);
+  const leadMeasured = hit && Math.round(row.hitRate * row.scored) >= INTERVAL_MIN_SAMPLE;
   return [
     hit ? rateOf(row.hitRate, row.scored, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.pairedHitRate, row.baseN, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.baseHitRate, row.baseN, 'earlier windows') : NOT_YET_MEASURABLE,
-    hit && isFiniteNumber(row.medianLeadTimeMs) && row.medianLeadTimeMs >= 0 ? formatLeadTime(row.medianLeadTimeMs) : NOT_YET_MEASURABLE,
+    leadMeasured && isFiniteNumber(row.medianLeadTimeMs) && row.medianLeadTimeMs >= 0 ? formatLeadTime(row.medianLeadTimeMs) : NOT_YET_MEASURABLE,
   ];
 }
 
@@ -865,7 +866,7 @@ function marketAlertsSection(marketAlerts, escapeHtml) {
   const heading = '      <h2 id="market-alerts">Market alerts: did the news follow?</h2>';
   if (!isPlainObject(marketAlerts) || !Array.isArray(marketAlerts.byType)) {
     return `${heading}
-      <p>This edition of the scorecard was captured before market alerts were scored, so no market-alert hit rates are shown. A later edition will include them.</p>`;
+      <p>This edition carries no market-alert scores, so no market-alert hit rates are shown.</p>`;
   }
   const hours = isFiniteNumber(marketAlerts.windowHours) ? marketAlerts.windowHours : 6;
   const days = isFiniteNumber(marketAlerts.rollingWindowDays) ? marketAlerts.rollingWindowDays : 30;
@@ -883,7 +884,7 @@ ${rules}`;
   return `${heading}
 ${intro}
       <div class="table-scroll"><table data-market-alerts>
-        <caption>Market-alert hit rates by alert type. Each figure is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts are behind it and reads Not yet measurable below that, the same rule as the domain table. The two comparison columns count only the alerts whose earlier window could also be checked, so both rates describe the same alerts. Prediction-market alerts are shown only once their earlier windows have been checked, because the topic words in a prediction question turn up in the news often anyway.</caption>
+        <caption>Market-alert hit rates by alert type. Each figure is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts are behind it and reads Not yet measurable below that, the same rule as the domain table. The two comparison columns count only the alerts whose earlier window could also be checked, so both rates describe the same alerts. The typical wait is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts were followed by news. Prediction-market alerts are shown only once their earlier windows have been checked, because the topic words in a prediction question turn up in the news often anyway.</caption>
         <thead><tr><th scope="col">Alert type</th><th scope="col">Alerts scored</th><th scope="col">News followed</th><th scope="col">News followed, compared alerts</th><th scope="col">News a day earlier, same markets</th><th scope="col">Typical wait for the news (median)</th></tr></thead>
         <tbody>
 ${marketAlerts.byType.map((row) => `          <tr data-alert-type="${escapeHtml(row.type)}"><th scope="row">${escapeHtml(MARKET_ALERT_TYPE_LABELS[row.type] ?? row.type)}</th><td>${escapeHtml(formatCount(row.scored))}</td>${marketAlertCells(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('\n')}

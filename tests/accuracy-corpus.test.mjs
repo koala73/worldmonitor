@@ -968,7 +968,7 @@ describe('accuracy page published-origin domain table (#8952)', () => {
 describe('accuracy page market-alert hit rates (#8867)', () => {
   const HOUR = 3_600_000;
   const row = (type, overrides = {}) => ({
-    type, scored: 40, hitRate: 0.625, baseN: 32, baseHitRate: 0.25, pairedHitRate: 0.59375, medianLeadTimeMs: 2.5 * HOUR, ...overrides,
+    type, scored: 80, hitRate: 0.625, baseN: 32, baseHitRate: 0.25, pairedHitRate: 0.59375, medianLeadTimeMs: 2.5 * HOUR, ...overrides,
   });
   const withAlerts = (byType, overrides = {}) => sectionWith({
     marketAlerts: { ...MARKET_ALERTS, methodology: buildScorecard({}, 0, { archive: {} }).methodology, byType, ...overrides },
@@ -982,8 +982,8 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
     assert.match(html, /<h2 id="market-alerts">/);
     assert.deepEqual(cellsOf(html, 'silent_divergence'), [
       MARKET_ALERT_TYPE_LABELS.silent_divergence,
-      '40',
-      '62.5% of 40 alerts',
+      '80',
+      '62.5% of 80 alerts',
       '59.4% of 32 alerts',
       '25.0% of 32 earlier windows',
       '2 h 30 min',
@@ -1001,8 +1001,17 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
     const [, , hit, paired, base, lead] = cellsOf(html, 'silent_divergence');
     assert.equal(hit, '62.5% of 30 alerts');
     assert.deepEqual([paired, base], ['Not yet measurable', 'Not yet measurable']);
-    assert.equal(lead, '2 h 30 min');
+    assert.equal(lead, 'Not yet measurable', '19 hits are too few for a median');
     assert.deepEqual(cellsOf(html, 'flow_price_divergence').slice(3, 5), ['59.4% of 30 alerts', '25.0% of 30 earlier windows']);
+  });
+
+  it('shows the median lead time only once 30 alerts were followed by news', () => {
+    const { html } = renderState(withAlerts([
+      row('silent_divergence', { scored: 48, hitRate: 0.625 }),
+      row('explained_market_move', { scored: 48, hitRate: 0.6 }),
+    ]));
+    assert.equal(cellsOf(html, 'silent_divergence')[5], '2 h 30 min', '30 hits');
+    assert.equal(cellsOf(html, 'explained_market_move')[5], 'Not yet measurable', '29 hits');
   });
 
   it('publishes nothing measured for prediction_leads_news until its control windows scored', () => {
@@ -1059,7 +1068,8 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
     const { html } = renderState(LIVE_SECTION);
     assert.match(html, /<h2 id="market-alerts">/);
     assert.equal(tableOf(html), null);
-    assert.match(stripTags(html), /captured before market alerts were scored/);
+    assert.match(stripTags(html), /This edition carries no market-alert scores/);
+    assert.doesNotMatch(stripTags(html), /captured before/, 'an absent block can also mean a failed read');
   });
 
   it('says no alert has been scored when the ledger has no rows', () => {
