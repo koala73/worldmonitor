@@ -199,7 +199,7 @@ function injectStyles(): void {
     .fc-prob-item:last-child { border-bottom: none; }
     .fc-prob-row { display: grid; grid-template-columns: 1fr 80px 100px 60px; align-items: center; padding: 9px 14px; cursor: pointer; transition: background 0.1s; }
     .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
-    .fc-prob-label { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
+    .fc-prob-label { min-width: 0; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
     .fc-bar-wrap { display: flex; align-items: center; gap: 8px; }
     .fc-prob-bar-track { flex: 1; height: 4px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; min-width: 40px; }
     .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
