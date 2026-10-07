@@ -2512,7 +2512,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         tbl.append(tHead);
         const tBody = this.el('tbody');
         const riskTierMap: Record<string, string> = {
-          WAR_RISK_TIER_UNSPECIFIED: 'Normal',
+          WAR_RISK_TIER_UNSPECIFIED: 'Unknown',
           WAR_RISK_TIER_WAR_ZONE: 'War Zone',
           WAR_RISK_TIER_CRITICAL: 'Critical',
           WAR_RISK_TIER_HIGH: 'High',
