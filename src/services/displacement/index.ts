@@ -7,9 +7,12 @@ import type {
 import { createCircuitBreaker, getCSSColor } from '@/utils';
 import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
+import { ensureHydrated } from '@/services/bootstrap';
 import { EMPTY_INTERNAL_DISPLACEMENT, toInternalDisplacementData, type InternalDisplacementData } from './internal';
+import { EMPTY_CROSS_BORDER, toCrossBorderData, type CrossBorderData } from './cross-border';
 
 export * from './internal';
+export * from './cross-border';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 
@@ -163,6 +166,23 @@ export async function fetchInternalDisplacement(): Promise<InternalDisplacementD
       .getInternalDisplacement({ countryCode: '' });
     return toInternalDisplacementData(response);
   }, EMPTY_INTERNAL_DISPLACEMENT, { shouldCache: (r) => r.operations.length > 0 });
+}
+
+// ─── Cross-border movements (UNHCR Operational Data Portal) ───
+
+const crossBorderBreaker = createCircuitBreaker<CrossBorderData>({
+  name: 'UNHCR Cross-Border Movements',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+// On-demand bootstrap key: fetched only when the panel or map layer needs it.
+export async function fetchCrossBorderArrivals(): Promise<CrossBorderData> {
+  return crossBorderBreaker.execute(async () => {
+    const data = toCrossBorderData(await ensureHydrated('crossBorderArrivals'));
+    if (data.situations.length === 0) throw new Error('cross-border arrivals unavailable');
+    return data;
+  }, EMPTY_CROSS_BORDER, { shouldCache: (r) => r.situations.length > 0 });
 }
 
 // ─── Presentation helpers (copied verbatim from legacy src/services/unhcr.ts) ───

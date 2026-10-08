@@ -427,6 +427,9 @@ const STANDALONE_KEYS = {
   // Seeded by seed-live-video-resolved (#8545); read by the live video players
   // through the on-demand bootstrap URL. Strict once activated (SEED_META).
   liveVideoResolved: BOOTSTRAP_CACHE_KEYS.liveVideoResolved,
+  // Seeded by seed-cross-border-arrivals (#9023); read by the displacement
+  // panel and map layer through the on-demand bootstrap URL.
+  crossBorderArrivals: BOOTSTRAP_CACHE_KEYS.crossBorderArrivals,
   canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
   canadaAlertsSkSource: 'alerts:canada:saskalert:v1',
@@ -1471,6 +1474,21 @@ const SEED_META = {
   // a truncated cbr.ru body still parses into a handful of well-formed rows, so
   // a shrunken table must surface as COVERAGE_PARTIAL rather than OK.
   cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320, minRecordCount: 31 },
+  // UNHCR Operational Data Portal situations (seed-cross-border-arrivals.mjs,
+  // daily health bundle, #9023). 48h = two missed ticks; report age is
+  // checked by maxContentAgeMin.
+  crossBorderArrivals: {
+    key: 'seed-meta:displacement:cross-border',
+    maxStaleMin: 2880,
+    minRecordCount: 12,
+    activationKey: 'seed-activated:displacement:cross-border',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9023,
+      activationKey: 'seed-activated:displacement:cross-border',
+    },
+  },
   // IOM DTM operations (seed-dtm-displacement.mjs, daily health bundle, #9014).
   // 48h = two missed ticks; round age is checked by maxContentAgeMin.
   dtmDisplacement: {
@@ -2013,6 +2031,8 @@ const ON_DEMAND_KEYS = new Set([
   // daily tick publishes. seed-dtm-displacement.mjs SETs the marker after its
   // first successful publish.
   'dtmDisplacement',
+  // Same bridge for the UNHCR cross-border movements (#9023).
+  'crossBorderArrivals',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
   // national-statistics seeders: bocValet (#6616) and statcanWds (#6676).
   // Softening lifts once the durable activation marker exists.
@@ -2149,6 +2169,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   // Written by scripts/seed-dtm-displacement.mjs in runSeed's afterPublish hook.
   dtmDisplacement: SEED_META.dtmDisplacement.activationKey,
+  // Written by scripts/seed-cross-border-arrivals.mjs in runSeed's afterPublish hook.
+  crossBorderArrivals: SEED_META.crossBorderArrivals.activationKey,
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.

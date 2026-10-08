@@ -1323,7 +1323,10 @@
         "undisclosed": "未披露",
         "stake": "股份",
         "internallyDisplaced": "名国内流离失所者",
-        "sourceIomDtm": "来源：IOM DTM"
+        "sourceIomDtm": "来源：IOM DTM",
+        "sinceDate": "自{{date}}起",
+        "lastMonth": "上月",
+        "sourceUnhcrOdp": "来源：联合国难民署业务数据门户"
       },
       "layerHelp": {
         "title": "地图图层指南",
@@ -1749,7 +1752,13 @@
       "count": "数量",
       "latestRound": "最新一轮",
       "internalNote": "IOM DTM：国内流离失所者，每项行动的最新一轮调查。同一国家的行动可能重叠，因此不作加总。",
-      "infoTooltip": "<strong>UNHCR流离失所数据</strong>来自UNHCR的全球难民、寻求庇护者和国内流离失所者统计。<ul><li><strong>来源国</strong>：人们逃离的国家</li><li><strong>收容国</strong>：接收难民的国家</li><li>危机标志：>100万 | 高：>50万流离失所</li></ul>数据每年更新。CC BY 4.0许可。"
+      "infoTooltip": "<strong>UNHCR流离失所数据</strong>来自UNHCR的全球难民、寻求庇护者和国内流离失所者统计。<ul><li><strong>来源国</strong>：人们逃离的国家</li><li><strong>收容国</strong>：接收难民的国家</li><li>危机标志：>100万 | 高：>50万流离失所</li></ul>数据每年更新。CC BY 4.0许可。",
+      "crossBorder": "跨境",
+      "situation": "局势",
+      "latestChange": "最新变化",
+      "accelerating": "加速中",
+      "inDays": "{{days}}天内",
+      "crossBorderNote": "联合国难民署业务数据门户：每场危机中越境的人数，依据各国最新报告。各局势相互重叠，因此不作加总。"
     },
     "climate": {
       "noAnomalies": "未检测到显著异常",

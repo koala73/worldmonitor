@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
+import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
@@ -10,11 +10,12 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
 
-type DisplacementTab = 'origins' | 'hosts' | 'internal';
+type DisplacementTab = 'origins' | 'hosts' | 'internal' | 'crossBorder';
 
 export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
   private internalData: InternalDisplacementData | null = null;
+  private crossBorderData: CrossBorderData | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
   private followedOnlyChip: FollowedOnlyChipHandle | null = null;
@@ -59,7 +60,7 @@ export class DisplacementPanel extends Panel {
     this.followedOnlyChip = renderFollowedOnlyChip({
       panelId: 'displacement',
       onChange: () => {
-        if (this.data) this.renderContent();
+        this.renderContent();
       },
     });
     if (this.followedOnlyChip.html === '') return;
@@ -78,7 +79,7 @@ export class DisplacementPanel extends Panel {
     // Re-filter on external watchlist change so a follow/unfollow from
     // another surface refreshes the displacement table immediately.
     this.followedUnsub = subscribeFollowed(() => {
-      if (this.data) this.renderContent();
+      this.renderContent();
     });
   }
 
@@ -97,61 +98,79 @@ export class DisplacementPanel extends Panel {
     this.renderContent();
   }
 
-  public hasData(): boolean {
-    return this.data !== null;
+  public setCrossBorderData(data: CrossBorderData): void {
+    this.crossBorderData = data;
+    this.renderContent();
   }
 
+  // Any one source counts: a later UNHCR failure must not replace DTM or portal tabs with an error.
+  public hasData(): boolean {
+    return this.data !== null || this.internalData !== null || this.crossBorderData !== null;
+  }
+
+  // UNHCR yearly data, IOM DTM and the UNHCR portal load independently; each
+  // tab renders as soon as its own data is there.
   private renderContent(): void {
-    // UNHCR and IOM DTM load independently; either one is enough to render.
-    if (!this.data) {
-      if (this.internalData) this.renderInternalOnly(this.internalData);
-      return;
+    const sources: { id: DisplacementTab; label: string; render?: () => string }[] = [];
+    if (this.data) {
+      sources.push({ id: 'origins', label: t('components.displacement.origins') });
+      sources.push({ id: 'hosts', label: t('components.displacement.hosts') });
     }
+    const internal = this.internalData;
+    if (internal) {
+      sources.push({ id: 'internal', label: t('components.displacement.internal'), render: () => this.renderInternalTable(internal.operations) });
+    }
+    const crossBorder = this.crossBorderData;
+    if (crossBorder) {
+      sources.push({ id: 'crossBorder', label: t('components.displacement.crossBorder'), render: () => this.renderCrossBorderTable(crossBorder.situations) });
+    }
+    if (sources.length === 0) return;
+    if (!sources.some((source) => source.id === this.activeTab)) this.activeTab = sources[0]!.id;
 
-    const g = this.data.globalTotals;
+    const tabsHtml = `
+      <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
+        ${sources.map((source) => `<button class="panel-tab ${this.activeTab === source.id ? 'active' : ''}" data-tab="${source.id}" role="tab" aria-selected="${this.activeTab === source.id}" id="disp-tab-${source.id}" aria-controls="disp-tab-panel">${source.label}</button>`).join('')}
+      </div>
+    `;
+    const statsHtml = this.data ? this.renderStats(this.data) : '';
+    const active = sources.find((source) => source.id === this.activeTab)!;
+    const bodyHtml = active.render ? active.render() : this.renderUnhcrTable(this.data!);
 
+    this.setSafeContent(unsafeRawHtml(`
+      <div class="disp-panel-content">
+        ${statsHtml ? `<div class="disp-stats-grid">${statsHtml}</div>` : ''}
+        ${tabsHtml}
+        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-${this.activeTab}">
+          ${bodyHtml}
+        </div>
+      </div>
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderStats(data: UnhcrSummary): string {
+    const g = data.globalTotals;
     const stats = [
       { label: t('components.displacement.refugees'), value: formatPopulation(g.refugees), cls: 'disp-stat-refugees' },
       { label: t('components.displacement.asylumSeekers'), value: formatPopulation(g.asylumSeekers), cls: 'disp-stat-asylum' },
       { label: t('components.displacement.idps'), value: formatPopulation(g.idps), cls: 'disp-stat-idps' },
       { label: t('components.displacement.total'), value: formatPopulation(g.total), cls: 'disp-stat-total' },
     ];
-
-    const statsHtml = stats.map(s =>
+    return stats.map(s =>
       `<div class="disp-stat-box ${s.cls}">
         <span class="disp-stat-value">${s.value}</span>
         <span class="disp-stat-label">${s.label}</span>
       </div>`
     ).join('');
+  }
 
-    const tabsHtml = `
-      <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
-        <button class="panel-tab ${this.activeTab === 'origins' ? 'active' : ''}" data-tab="origins" role="tab" aria-selected="${this.activeTab === 'origins'}" id="disp-tab-origins" aria-controls="disp-tab-panel">${t('components.displacement.origins')}</button>
-        <button class="panel-tab ${this.activeTab === 'hosts' ? 'active' : ''}" data-tab="hosts" role="tab" aria-selected="${this.activeTab === 'hosts'}" id="disp-tab-hosts" aria-controls="disp-tab-panel">${t('components.displacement.hosts')}</button>
-        ${this.internalData ? `<button class="panel-tab ${this.activeTab === 'internal' ? 'active' : ''}" data-tab="internal" role="tab" aria-selected="${this.activeTab === 'internal'}" id="disp-tab-internal" aria-controls="disp-tab-panel">${t('components.displacement.internal')}</button>` : ''}
-      </div>
-    `;
-
-    if (this.activeTab === 'internal' && this.internalData) {
-      this.setSafeContent(unsafeRawHtml(`
-        <div class="disp-panel-content">
-          <div class="disp-stats-grid">${statsHtml}</div>
-          ${tabsHtml}
-          <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-internal">
-            ${this.renderInternalTable(this.internalData.operations)}
-          </div>
-        </div>
-      `, 'legacy Panel.setContent() migration'));
-      return;
-    }
-
+  private renderUnhcrTable(data: UnhcrSummary): string {
     let countries: CountryDisplacement[];
     if (this.activeTab === 'origins') {
-      countries = [...this.data.countries]
+      countries = [...data.countries]
         .filter(c => c.refugees + c.asylumSeekers > 0)
         .sort((a, b) => (b.refugees + b.asylumSeekers) - (a.refugees + a.asylumSeekers));
     } else {
-      countries = [...this.data.countries]
+      countries = [...data.countries]
         .filter(c => (c.hostTotal || 0) > 0)
         .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
     }
@@ -212,30 +231,54 @@ export class DisplacementPanel extends Panel {
           <tbody>${rows}</tbody>
         </table>`;
     }
-
-    this.setSafeContent(unsafeRawHtml(`
-      <div class="disp-panel-content">
-        <div class="disp-stats-grid">${statsHtml}</div>
-        ${tabsHtml}
-        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-${this.activeTab}">
-          ${tableHtml}
-        </div>
-      </div>
-    `, 'legacy Panel.setContent() migration'));
+    return tableHtml;
   }
 
-  private renderInternalOnly(internal: InternalDisplacementData): void {
-    this.activeTab = 'internal';
-    this.setSafeContent(unsafeRawHtml(`
-      <div class="disp-panel-content">
-        <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
-          <button class="panel-tab active" data-tab="internal" role="tab" aria-selected="true" id="disp-tab-internal" aria-controls="disp-tab-panel">${t('components.displacement.internal')}</button>
-        </div>
-        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-internal">
-          ${this.renderInternalTable(internal.operations)}
-        </div>
-      </div>
-    `, 'legacy Panel.setContent() migration'));
+  // One row per UNHCR situation. Situations overlap (Sudanese refugees in
+  // Chad are also in the Sahel situation), so rows are never added up.
+  private renderCrossBorderTable(allSituations: CrossBorderSituation[]): string {
+    let situations = allSituations;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      situations = situations.filter(s => s.countryCodes.some(code => isFollowed(code)));
+    }
+    if (situations.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '-' : ''}${formatPopulation(Math.abs(n))}`;
+    const rows = situations.map(s => {
+      let change = '—';
+      let period = '';
+      if (s.lastMonth) {
+        change = signed(s.lastMonth.individuals);
+        period = s.lastMonth.month;
+      } else if (s.latestChange) {
+        change = signed(s.latestChange.delta);
+        period = s.latestChange.days ? t('components.displacement.inDays', { days: String(s.latestChange.days) }) : '';
+      }
+      const badge = s.accelerating ? ` <span class="disp-badge disp-crisis">${t('components.displacement.accelerating')}</span>` : '';
+      const detail = [s.asOf, s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      return `<tr class="disp-row" data-lat="${s.lat ?? ''}" data-lon="${s.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(s.name)}${badge}<div class="disp-operation">${escapeHtml(detail)}</div></td>
+          <td class="disp-round">${escapeHtml(change)}${period ? `<div class="disp-operation">${escapeHtml(period)}</div>` : ''}</td>
+          <td class="disp-count">${formatPopulation(s.total)}</td>
+        </tr>`;
+    }).join('');
+    return `
+        <table class="disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.situation')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.latestChange')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.total')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.crossBorderNote'))}</div>`;
   }
 
   // One row per IOM DTM operation. Operations in a country can overlap, so
@@ -265,8 +308,8 @@ export class DisplacementPanel extends Panel {
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>
-              <th scope="col">${t('components.displacement.latestRound')}</th>
-              <th scope="col">${t('components.displacement.idps')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.latestRound')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.idps')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

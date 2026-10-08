@@ -1178,7 +1178,10 @@
         "undisclosed": "Non divulgato",
         "stake": "palo",
         "internallyDisplaced": "sfollati interni",
-        "sourceIomDtm": "Fonte: IOM DTM"
+        "sourceIomDtm": "Fonte: IOM DTM",
+        "sinceDate": "dal {{date}}",
+        "lastMonth": "il mese scorso",
+        "sourceUnhcrOdp": "Fonte: Portale dei dati operativi dell'UNHCR"
       },
       "layerHelp": {
         "title": "Guida ai livelli della mappa",
@@ -1617,7 +1620,13 @@
       "count": "Conteggio",
       "latestRound": "Ultimo ciclo",
       "internalNote": "IOM DTM: sfollati interni, ultimo ciclo di rilevazione per operazione. Le operazioni in uno stesso paese possono sovrapporsi, quindi non vengono sommate.",
-      "infoTooltip": "<strong>Dati UNHCR sugli sfollamenti</strong> Conteggio globale di rifugiati, richiedenti asilo e sfollati interni forniti dall'UNHCR.<ul><li><strong>Origins</strong>: Paesi in cui le persone fuggono DA</li><li><strong>Ospiti</strong>: Paesi che ospitano rifugiati</li><li>Crisi distintivi: >1M | Alto: >500.000 spostati</li></ul>Aggiornamenti dei dati ogni anno. Licenza CC BY 4.0."
+      "infoTooltip": "<strong>Dati UNHCR sugli sfollamenti</strong> Conteggio globale di rifugiati, richiedenti asilo e sfollati interni forniti dall'UNHCR.<ul><li><strong>Origins</strong>: Paesi in cui le persone fuggono DA</li><li><strong>Ospiti</strong>: Paesi che ospitano rifugiati</li><li>Crisi distintivi: >1M | Alto: >500.000 spostati</li></ul>Aggiornamenti dei dati ogni anno. Licenza CC BY 4.0.",
+      "crossBorder": "Transfrontaliero",
+      "situation": "Situazione",
+      "latestChange": "Ultima variazione",
+      "accelerating": "In accelerazione",
+      "inDays": "in {{days}} giorni",
+      "crossBorderNote": "Portale dei dati operativi dell'UNHCR: persone che hanno attraversato i confini in ogni crisi, secondo gli ultimi rapporti per paese. Le situazioni si sovrappongono, quindi non vengono sommate."
     },
     "populationExposure": {
       "totalAffected": "Totale esposto",

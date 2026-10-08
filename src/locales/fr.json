@@ -1280,7 +1280,10 @@
         "undisclosed": "Non divulgué",
         "stake": "miser",
         "internallyDisplaced": "déplacés internes",
-        "sourceIomDtm": "Source : IOM DTM"
+        "sourceIomDtm": "Source : IOM DTM",
+        "sinceDate": "depuis le {{date}}",
+        "lastMonth": "le mois dernier",
+        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR"
       },
       "layerHelp": {
         "title": "Guide des couches de carte",
@@ -1629,7 +1632,13 @@
       "count": "Compter",
       "latestRound": "Dernier cycle",
       "internalNote": "IOM DTM : personnes déplacées internes, dernier cycle d'enquête par opération. Les opérations d'un même pays peuvent se chevaucher ; elles ne sont donc pas additionnées.",
-      "infoTooltip": "<strong>Données de déplacement du HCR</strong> Nombre mondial de réfugiés, de demandeurs d'asile et de personnes déplacées du HCR.<ul><li><strong>Origines</strong> : Pays où les gens fuient FROM</li><li><strong>Hôtes</strong> : Pays accueillant des réfugiés</li><li>Badges de crise : >1M | Élevé : > 500 000 déplacés</li></ul>Mises à jour des données chaque année. Licence CC BY 4.0."
+      "infoTooltip": "<strong>Données de déplacement du HCR</strong> Nombre mondial de réfugiés, de demandeurs d'asile et de personnes déplacées du HCR.<ul><li><strong>Origines</strong> : Pays où les gens fuient FROM</li><li><strong>Hôtes</strong> : Pays accueillant des réfugiés</li><li>Badges de crise : >1M | Élevé : > 500 000 déplacés</li></ul>Mises à jour des données chaque année. Licence CC BY 4.0.",
+      "crossBorder": "Transfrontalier",
+      "situation": "Situation",
+      "latestChange": "Dernière variation",
+      "accelerating": "En accélération",
+      "inDays": "en {{days}} jours",
+      "crossBorderNote": "Portail de données opérationnelles du HCR : personnes ayant franchi une frontière dans chaque crise, d'après les derniers rapports par pays. Les situations se chevauchent ; elles ne sont donc pas additionnées."
     },
     "climate": {
       "noAnomalies": "Aucune anomalie significative détectée",

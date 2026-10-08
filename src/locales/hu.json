@@ -1468,7 +1468,10 @@
         "undisclosed": "Nem nyilvánosított",
         "stake": "részesedés",
         "internallyDisplaced": "belső menekült",
-        "sourceIomDtm": "Forrás: IOM DTM"
+        "sourceIomDtm": "Forrás: IOM DTM",
+        "sinceDate": "{{date}} óta",
+        "lastMonth": "a múlt hónapban",
+        "sourceUnhcrOdp": "Forrás: az UNHCR operatív adatportálja"
       },
       "layerHelp": {
         "title": "Térképrétegek útmutatója",
@@ -1895,7 +1898,13 @@
       "count": "Szám",
       "latestRound": "Legutóbbi forduló",
       "internalNote": "IOM DTM: belső menekültek, műveletenként a legutóbbi felmérési forduló. Egy ország műveletei átfedhetik egymást, ezért nem adjuk össze őket.",
-      "infoTooltip": "<strong>UNHCR Displazációs adatok</strong> Globális menekült, menedékkérelmező és IDP számok az UNHCR-től.<ul><li><strong>Származási helyek</strong>: Országok, ahonnan az emberek menekülnek</li><li><strong>Befogadó országok</strong>: Menekülteket befogadó országok</li><li>Válság jelvények: >1M | Magas: >500K elhelyezkedett</li></ul>Az adatok évente frissülnek. CC BY 4.0 licenc."
+      "infoTooltip": "<strong>UNHCR Displazációs adatok</strong> Globális menekült, menedékkérelmező és IDP számok az UNHCR-től.<ul><li><strong>Származási helyek</strong>: Országok, ahonnan az emberek menekülnek</li><li><strong>Befogadó országok</strong>: Menekülteket befogadó országok</li><li>Válság jelvények: >1M | Magas: >500K elhelyezkedett</li></ul>Az adatok évente frissülnek. CC BY 4.0 licenc.",
+      "crossBorder": "Határon átnyúló",
+      "situation": "Helyzet",
+      "latestChange": "Legutóbbi változás",
+      "accelerating": "Gyorsul",
+      "inDays": "{{days}} nap alatt",
+      "crossBorderNote": "Az UNHCR operatív adatportálja: az egyes válságokban határt átlépő emberek, a legfrissebb országjelentések szerint. A helyzetek átfedik egymást, ezért nem adjuk össze őket."
     },
     "climate": {
       "noAnomalies": "Nem észleltek jelentős anomáliákat",

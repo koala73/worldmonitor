@@ -1476,7 +1476,10 @@
         "undisclosed": "Neobjavljen",
         "stake": "udjel",
         "internallyDisplaced": "interno raseljenih",
-        "sourceIomDtm": "Izvor: IOM DTM"
+        "sourceIomDtm": "Izvor: IOM DTM",
+        "sinceDate": "od {{date}}",
+        "lastMonth": "prošli mjesec",
+        "sourceUnhcrOdp": "Izvor: UNHCR-ov portal operativnih podataka"
       },
       "layerHelp": {
         "title": "Vodič slojeva mape",
@@ -1904,7 +1907,13 @@
       "count": "Broj",
       "latestRound": "Posljednji krug",
       "internalNote": "IOM DTM: interno raseljene osobe, posljednji krug istraživanja po operaciji. Operacije u jednoj zemlji mogu se preklapati, pa se ne zbrajaju.",
-      "infoTooltip": "<strong>UNHCR podaci o raseljenju</strong> Globalni brojevi izbjeglica, tražitelja azila i interno raseljenih osoba od UNHCR-a.<ul><li><strong>Zemlje porijekla</strong>: Zemlje iz kojih ljudi bježe</li><li><strong>Zemlje domaćina</strong>: Zemlje koje gošće izbjeglice</li><li>Znakovi krize: >1M | Visoko: >500K raseljenih</li></ul>Podaci se ažuriraju godišnje. CC BY 4.0 licenca."
+      "infoTooltip": "<strong>UNHCR podaci o raseljenju</strong> Globalni brojevi izbjeglica, tražitelja azila i interno raseljenih osoba od UNHCR-a.<ul><li><strong>Zemlje porijekla</strong>: Zemlje iz kojih ljudi bježe</li><li><strong>Zemlje domaćina</strong>: Zemlje koje gošće izbjeglice</li><li>Znakovi krize: >1M | Visoko: >500K raseljenih</li></ul>Podaci se ažuriraju godišnje. CC BY 4.0 licenca.",
+      "crossBorder": "Prekogranično",
+      "situation": "Situacija",
+      "latestChange": "Posljednja promjena",
+      "accelerating": "Ubrzava se",
+      "inDays": "u {{days}} dana",
+      "crossBorderNote": "UNHCR-ov portal operativnih podataka: ljudi koji su prešli granice u svakoj krizi, prema najnovijim izvješćima po zemljama. Situacije se preklapaju, pa se ne zbrajaju."
     },
     "climate": {
       "noAnomalies": "Nisu detektirane značajne anomalije",

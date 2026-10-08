@@ -1323,7 +1323,10 @@
         "undisclosed": "비공개",
         "stake": "지분",
         "internallyDisplaced": "명 국내 실향민",
-        "sourceIomDtm": "출처: IOM DTM"
+        "sourceIomDtm": "출처: IOM DTM",
+        "sinceDate": "{{date}} 이후",
+        "lastMonth": "지난달",
+        "sourceUnhcrOdp": "출처: UNHCR 운영 데이터 포털"
       },
       "layerHelp": {
         "title": "지도 레이어 가이드",
@@ -1749,7 +1752,13 @@
       "count": "인원",
       "latestRound": "최신 회차",
       "internalNote": "IOM DTM: 국내 실향민, 작전별 최신 조사 회차. 한 국가 내 작전은 서로 겹칠 수 있어 합산하지 않습니다.",
-      "infoTooltip": "<strong>UNHCR 실향민 데이터</strong> UNHCR의 전 세계 난민, 망명 신청자, 국내 실향민 통계.<ul><li><strong>출발국</strong>: 사람들이 떠나는 국가</li><li><strong>수용국</strong>: 난민을 수용하는 국가</li><li>위기 배지: >1M | 높음: >500K 실향</li></ul>데이터는 연간 업데이트됩니다. CC BY 4.0 라이선스."
+      "infoTooltip": "<strong>UNHCR 실향민 데이터</strong> UNHCR의 전 세계 난민, 망명 신청자, 국내 실향민 통계.<ul><li><strong>출발국</strong>: 사람들이 떠나는 국가</li><li><strong>수용국</strong>: 난민을 수용하는 국가</li><li>위기 배지: >1M | 높음: >500K 실향</li></ul>데이터는 연간 업데이트됩니다. CC BY 4.0 라이선스.",
+      "crossBorder": "국경 이동",
+      "situation": "상황",
+      "latestChange": "최근 변화",
+      "accelerating": "가속 중",
+      "inDays": "{{days}}일 동안",
+      "crossBorderNote": "UNHCR 운영 데이터 포털: 각 위기에서 국경을 넘은 사람들, 국가별 최신 보고 기준. 상황들은 서로 겹칠 수 있어 합산하지 않습니다."
     },
     "climate": {
       "noAnomalies": "중대한 이상 감지되지 않음",
