@@ -352,6 +352,11 @@ export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'm
 export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning' | 'retryOnLengthLimit'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
   signal?: AbortSignal;
+  /**
+   * Called when a provider answers a completion request with HTTP success,
+   * i.e. it has taken on billable work even if no answer content follows.
+   */
+  onProviderAccepted?: () => void;
 };
 
 /**
@@ -376,6 +381,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
     timeoutMs = 90_000,
     systemAppend,
     signal: clientSignal,
+    onProviderAccepted,
   } = opts;
 
   let messages = rawMessages;
@@ -483,6 +489,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             // HTTP success proves the provider accepted this model even if the
             // application later rejects, strips, or cannot read the payload.
             recordModelSuccess(creds.apiUrl, creds.model);
+            onProviderAccepted?.();
           }
 
           if (!resp.ok || !resp.body) {
