@@ -1259,6 +1259,9 @@ function auditSection(audit, escapeHtml) {
 // While the audit switch is set, nothing on the page presents a score as a
 // verdict: no headline, no intervals, no calibration, domain, origin or market
 // comparison, and no ledger or funnel counts built from the same windows.
+// One exception rides in the methodology: the go-forward VOID share (#4930).
+// It counts only windows opened after the audit's fixes were in production,
+// so the audit does not touch it, and it is a count, not a score.
 function auditedBody({ state, baseUrl, tpl, dataset, snapshotPath, heading, audit }) {
   const { escapeHtml } = tpl;
   const lede = '      <p class="lede">World Monitor logs every forecast it publishes and aims to score each one once its outcome is known. While the audit below is open, this page publishes no scores.</p>';

@@ -1853,8 +1853,8 @@ describe('go-forward VOID share on the page (#4930)', () => {
     id, status: 'resolved', outcome, probability: 0.4, domain: 'conflict', generationOrigin: 'detector',
     firstSeenAt: GO_FORWARD_SINCE_MS + 1, resolvedAt: AFTER - 1, evidence: outcome === 'VOID' ? { reason: 'all_judges_void' } : {},
   });
-  const NOTE = /Since 8 October 2026, 1 of 4 resolved forecasts were void \(25\.0%, 95% interval 4\.6% to 69\.9%\); the target is under 15%\./;
-  const { methodology } = computeScorecard([opened('a', 'VOID'), opened('b', 'YES'), opened('c', 'NO'), opened('d', 'NO')], AFTER);
+  const NOTE = /Since 8 October 2026, 3 of 30 resolved published forecasts were void \(10\.0%, 95% interval 3\.5% to 25\.6%\); the target is under 15%\./;
+  const { methodology } = computeScorecard(Array.from({ length: 30 }, (_, i) => opened(`f${i}`, i < 3 ? 'VOID' : 'NO')), AFTER);
 
   it('prints the producer sentence directly under the ledger totals', () => {
     const { html } = renderState(sectionWith({ methodology }));

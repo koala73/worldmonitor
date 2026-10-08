@@ -15,6 +15,7 @@ import {
   RECEIPT_VOID_REASON_LABELS,
   FAMILY_OUTCOME_FAMILY_LIMIT,
   GO_FORWARD_SINCE,
+  GO_FORWARD_MIN_RESOLVED,
   GO_FORWARD_SINCE_MS,
   GO_FORWARD_VOID_SHARE_TARGET,
   FAMILY_OUTCOME_LIMIT,
@@ -1215,6 +1216,9 @@ describe('go-forward VOID share KPI (#4930)', () => {
   const AFTER = Date.parse('2026-10-20T06:00:00Z');
   const OPENED_BEFORE = GO_FORWARD_SINCE_MS - 1;
   const opened = (at, overrides) => resolved({ firstSeenAt: at, generatedAt: at, resolvedAt: AFTER - DAY_MS, ...overrides });
+  const many = (count, voids) => Array.from({ length: count }, (_, i) => opened(GO_FORWARD_SINCE_MS + DAY_MS, {
+    id: `m${i}`, outcome: i < voids ? 'VOID' : i % 2 ? 'YES' : 'NO', evidence: i < voids ? { reason: 'all_judges_void' } : {},
+  }));
 
   it('counts only windows first seen on or after the boundary', () => {
     const scorecard = computeScorecard([
@@ -1232,6 +1236,7 @@ describe('go-forward VOID share KPI (#4930)', () => {
     assert.deepEqual(scorecard.goForward, {
       since: '2026-10-08',
       target: GO_FORWARD_VOID_SHARE_TARGET,
+      minResolved: GO_FORWARD_MIN_RESOLVED,
       windowTruncated: false,
       rollingWindowDays: DEFAULT_ROLLING_WINDOW_DAYS,
       entries: 5,
@@ -1241,8 +1246,30 @@ describe('go-forward VOID share KPI (#4930)', () => {
       voidShareCi95: wilsonInterval(2, 4),
       voidByReason: { all_judges_void: 1, late_read: 1 },
     });
-    assert.match(scorecard.methodology, /Since 8 October 2026, 2 of 4 resolved forecasts were void \(50\.0%, 95% interval 15\.0% to 85\.0%\); the target is under 15%\./);
-    assert.match(scorecard.methodology, /first published on or after that date, which leaves out the voids relabelled in the issue #8990 audit\./);
+  });
+
+  it('leaves unpublished shadow bets out and keeps published state-derived rows (#5525)', () => {
+    const rows = [
+      opened(GO_FORWARD_SINCE_MS, { id: 'bet', generationOrigin: 'bet_engine', outcome: 'YES' }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'bet-2', generationOrigin: 'bet_engine', outcome: 'NO' }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'energy', generationOrigin: 'state_derived', domain: 'energy', outcome: 'VOID' }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'detector', outcome: 'NO' }),
+    ];
+    const held = computeScorecard(rows, AFTER).goForward;
+    assert.equal(held.resolved, 2);
+    assert.equal(held.void, 1);
+    const promoted = computeScorecard(rows, AFTER, { promoteBetEngine: true }).goForward;
+    assert.equal(promoted.resolved, 4, 'a promoted bet is published, so it counts');
+  });
+
+  it('compares with the target only from the minimum sample', () => {
+    assert.equal(GO_FORWARD_MIN_RESOLVED, 30);
+    const enough = computeScorecard(many(30, 4), AFTER).methodology;
+    assert.match(enough, /Since 8 October 2026, 4 of 30 resolved published forecasts were void \(13\.3%, 95% interval 5\.3% to 29\.7%\); the target is under 15%\./);
+    assert.match(enough, /This counts published forecasts first issued on or after that date, so it leaves out unpublished shadow bets and the voids relabelled in the issue #8990 audit\./);
+    const few = computeScorecard(many(29, 1), AFTER).methodology;
+    assert.match(few, /Since 8 October 2026, 1 of 29 resolved published forecasts was void \(3\.4%, 95% interval 0\.6% to 17\.2%\)\. That is too few to compare with the target of under 15%, which needs at least 30 resolved\. Judged forecasts resolve days after hard ones and have voided more often, so early readings run low\./);
+    assert.doesNotMatch(few, /the target is under 15%/);
   });
 
   it('places a window by generatedAt when it has no first sighting', () => {
@@ -1264,20 +1291,20 @@ describe('go-forward VOID share KPI (#4930)', () => {
     assert.equal(scorecard.goForward.resolved, 0);
     assert.equal(scorecard.goForward.voidShare, null);
     assert.equal(scorecard.goForward.voidShareCi95, null);
-    assert.match(scorecard.methodology, /Since 8 October 2026, no forecast has resolved yet, so there is no void share to compare with the target of under 15%\./);
+    assert.match(scorecard.methodology, /Since 8 October 2026, no published forecast has resolved yet, so there is no void share to compare with the target of under 15%\./);
     assert.doesNotMatch(scorecard.methodology, /0\.0%/);
   });
 
   it('uses the singular for one resolved forecast', () => {
     const { methodology } = computeScorecard([opened(GO_FORWARD_SINCE_MS, { outcome: 'NO' })], AFTER);
-    assert.match(methodology, /Since 8 October 2026, 0 of 1 resolved forecast was void \(0\.0%, 95% interval 0\.0% to 79\.3%\)/);
+    assert.match(methodology, /Since 8 October 2026, 0 of 1 resolved published forecast was void \(0\.0%, 95% interval 0\.0% to 79\.3%\)/);
   });
 
   it('names the rolling window once the boundary is older than it', () => {
     const later = GO_FORWARD_SINCE_MS + (DEFAULT_ROLLING_WINDOW_DAYS + 1) * DAY_MS;
     const scorecard = computeScorecard([opened(later - DAY_MS, { outcome: 'VOID', resolvedAt: later })], later);
     assert.equal(scorecard.goForward.windowTruncated, true);
-    assert.match(scorecard.methodology, new RegExp(`In the last ${DEFAULT_ROLLING_WINDOW_DAYS} days, 1 of 1 resolved forecast was void .* first published on or after 8 October 2026,`));
+    assert.match(scorecard.methodology, new RegExp(`In the last ${DEFAULT_ROLLING_WINDOW_DAYS} days, 1 of 1 resolved published forecast was void .* first issued on or after 8 October 2026,`));
   });
 
   it('adds no note before the boundary', () => {

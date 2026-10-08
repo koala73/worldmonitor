@@ -206,7 +206,7 @@ describe('voidEnvelopeBugResolutions (#5233)', () => {
   it('explains the voids in the scorecard methodology only while the window holds them', () => {
     const nowMs = T0 + 10 * DAY_MS;
     const { scorecard } = processResolutionCycle(preFixLedger(), [], {}, nowMs);
-    assert.match(scorecard.methodology, / 2 forecasts scored against a data feed we could not read correctly are voided and left out of every score \(issue #5233\)\.$/);
+    assert.match(scorecard.methodology, / 2 forecasts scored against a data feed we could not read correctly are voided and left out of every score \(issue #5233\)\.(?: |$)/);
     assert.doesNotMatch(computeScorecard(preFixLedger(), nowMs).methodology, /could not read correctly/);
     const one = preFixLedger();
     delete one['fc-infra-zero@' + (T0 + 7 * DAY_MS)];
