@@ -149,7 +149,7 @@ describe('Cross-border tab', () => {
       expect(badge.textContent).toMatch(/^Fresh/);
     } finally {
       for (const key of Object.keys(source)) {
-        if (!Object.hasOwn(before, key)) Reflect.deleteProperty(source, key);
+        if (!Object.prototype.hasOwnProperty.call(before, key)) Reflect.deleteProperty(source, key);
       }
       Object.assign(source, before);
     }
