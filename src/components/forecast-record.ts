@@ -102,7 +102,7 @@ export function projectReliability(resp: GetForecastScorecardResponse): Reliabil
   for (const row of resp.publishedByDomain) {
     const n = finite(row.count) && row.count > 0 ? row.count : 0;
     const validYes = Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
-    byDomain.set(row.domain, finite(row.bss) && finite(row.brier) && validYes
+    byDomain.set(row.domain, n > 0 && finite(row.bss) && finite(row.brier) && validYes
       ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n, bss: row.bss }
       : { kind: 'unmeasured', n });
   }
