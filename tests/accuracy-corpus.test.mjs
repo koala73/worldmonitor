@@ -635,15 +635,16 @@ describe('accuracy page honesty rules', () => {
   });
 
   it('states the headline result in a sentence, not only in a metric tile, and never against a coin flip (#8990)', () => {
-    // p = 40/180, p(1-p) = 0.1728; the Brier interval 0.098 to 0.180 maps to skill -0.04 to +0.43.
+    // p = 40/180, p(1-p) = 0.1728, so the skill score is 1 - 0.117824 / 0.1728 = +0.32.
     const { html } = renderState(skillSection({ yesCount: 40, brier: 0.117824 }, { ci95: [0.098461, 0.18] }));
     const result = html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/);
     assert.ok(result, 'the headline result must be a sentence an extractor can lift, not a tile');
     const sentence = stripTags(result[1]);
     assert.match(sentence, /180-day window/);
-    assert.match(sentence, /were not clearly better or worse than always forecasting the historical rate/);
+    assert.match(sentence, /headline forecasts score \+0\.32 against always forecasting the historical rate/);
+    assert.match(sentence, /does not say whether the difference is real/);
     assert.match(sentence, /Brier score was 0\.118/);
-    assert.match(sentence, /a skill score of \+0\.32, 95% interval -0\.04 to \+0\.43, over 180 scored forecasts from at least 30 forecast families/);
+    assert.match(sentence, /over 180 scored forecasts from at least 30 forecast families/);
     // p = 40/180, p(1-p) = 0.1728.
     assert.match(sentence, /against 0\.173 for always forecasting the historical rate of 22\.2%/);
     assert.doesNotMatch(sentence, /0\.25|0\.5 to everything|coin/);
@@ -959,6 +960,14 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     const badgeLabels = Object.fromEntries([...panel.match(/const DOMAIN_LABELS[^{]*\{([\s\S]*?)\};/)[1].matchAll(/(\w+):\s*'([^']+)'/g)].map(([, k, v]) => [k, v]));
     delete badgeLabels.all;
     assert.deepEqual(ACCURACY_DOMAIN_LABELS, badgeLabels, 'the page and the badge must share domain labels');
+  });
+
+  it('treats a row with no graded count as not yet measured, even when it carries bss', () => {
+    for (const count of [0, -1, 2.5]) {
+      const { html } = renderState(sectionWith({ publishedByDomain: [{ domain: 'conflict', count, brier: 0.2, yesCount: 0, bss: 0.1 }] }));
+      assert.match(rowText(html, 'conflict'), /Not yet measured/, `count ${count}`);
+      assert.doesNotMatch(rowText(html, 'conflict'), /NaN/);
+    }
   });
 
   it('treats a non-integer yesCount as not yet measured, matching the badge', () => {
@@ -1540,24 +1549,18 @@ describe('accuracy verdict block', () => {
     return { verdict: paragraph[1], text: stripTags(paragraph[2]).trim() };
   };
 
-  it('leads with better than always forecasting the historical rate only when the whole interval is above 0', () => {
-    // The Brier interval 0.0833 to 0.1319 maps to skill +0.05 to +0.40 against 0.1389.
-    const better = skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.083333, 0.131944] }));
-    assert.equal(better.verdict, 'better');
-    assert.match(better.text, /^Better than always forecasting the historical rate\./);
-    assert.match(better.text, /Of 180 graded forecasts, 30 came true: 16\.7% of 180 forecasts/);
-    assert.match(better.text, /Always forecasting that historical rate would have had an error of 0\.139\. World Monitor(?:'|&#39;)s error was 0\.100\./);
-    assert.match(better.text, /that scores \+0\.28, 95% interval \+0\.05 to \+0\.40/);
-    assert.match(better.text, /They come from at least 30 forecast families\./);
-
+  it('leads with the skill score and claims no direction it cannot back with an interval (#8990)', () => {
+    const measured = skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.083333, 0.131944] }));
+    assert.equal(measured.verdict, 'measured');
+    assert.match(measured.text, /^A score of \+0\.28 against always forecasting the historical rate\./);
+    assert.match(measured.text, /Of 180 graded forecasts, 30 came true: 16\.7% of 180 forecasts/);
+    assert.match(measured.text, /Always forecasting that historical rate would have had an error of 0\.139\. World Monitor(?:'|&#39;)s error was 0\.100\./);
+    assert.match(measured.text, /They come from at least 30 forecast families\./);
+    assert.match(measured.text, /cannot say whether World Monitor is reliably better or worse than the historical rate/);
+    // Holding the rate fixed, this Brier interval maps to skill +0.05 to +0.40, which would claim "better".
+    assert.doesNotMatch(measured.text, /interval|\+0\.05|\+0\.40|^Better|^Worse/);
     const worse = skillParagraph(skillOf({ brier: 0.2 }, { ci95: [0.16, 0.25] }));
-    assert.equal(worse.verdict, 'worse');
-    assert.match(worse.text, /^Worse than always forecasting the historical rate\./);
-
-    const unclear = skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.08, 0.15] }));
-    assert.equal(unclear.verdict, 'unclear');
-    assert.match(unclear.text, /^Not clearly better or worse than always forecasting the historical rate\./);
-    assert.equal(skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.3, 0.5] })).verdict, 'unclear', 'an interval that misses its own estimate carries no verdict');
+    assert.match(worse.text, /^A score of -0\.44 against always forecasting the historical rate\./);
   });
 
   it('reads a cohort below the family minimums as a small sample, with its number, never as a result', () => {
@@ -1566,7 +1569,7 @@ describe('accuracy verdict block', () => {
     assert.match(small.text, /^Too few independent forecasts to judge yet\./);
     assert.match(small.text, /They come from too few forecast families\./);
     assert.match(small.text, /Judging skill needs at least 30 forecast families, with at least 5 that came true and 5 that did not/);
-    assert.match(small.text, /reads -0\.44, 95% interval -0\.90 to \+0\.10, which is not a result/);
+    assert.match(small.text, /reads -0\.44, which is not a result/);
     assert.doesNotMatch(small.text, /Better|Worse|Not clearly/);
     const rowLevel = sectionWith({
       skill: { ...LIVE_SCORECARD.skill, yesCount: 30 },
@@ -2026,11 +2029,11 @@ describe('accuracy page skill against the historical rate, both audit states (#8
   it('leads the lifted page and llms-full with the skill verdict and its sample', () => {
     const { html, state } = renderState(MEASURED);
     assert.equal(state.coverage, 'measurable');
-    assert.match(html, /<p data-accuracy-skill="better"><strong>Better than always forecasting the historical rate\.<\/strong>/);
+    assert.match(html, /<p data-accuracy-skill="measured"><strong>A score of \+0\.28 against always forecasting the historical rate\.<\/strong>/);
     const tile = stripTags(html.match(/<section class="grid"[\s\S]*?<\/section>/)[0]);
-    assert.match(tile, /Skill vs historical rate, headline cohort \+0\.28 180 scored forecasts from at least 30 forecast families, 95% interval \+0\.05 to \+0\.40/);
+    assert.match(tile, /Skill vs historical rate, headline cohort \+0\.28 180 scored forecasts from at least 30 forecast families, no interval on this page yet/);
     const llms = renderAccuracyLlmsSection(MEASURED, null);
-    assert.match(llms, /headline forecasts were better than always forecasting the historical rate: a skill score of \+0\.28, 95% interval \+0\.05 to \+0\.40, over 180 scored forecasts from at least 30 forecast families/);
+    assert.match(llms, /headline forecasts score \+0\.28 against always forecasting the historical rate, where 0 means no better than the historical rate, 1 means perfect, and below 0 means worse, over 180 scored forecasts from at least 30 forecast families/);
     assert.doesNotMatch(llms, /0\.5 to everything/);
   });
 
@@ -2047,13 +2050,13 @@ describe('accuracy page skill against the historical rate, both audit states (#8
     const reference = (30 / 180) * (150 / 180);
     assert.deepEqual(lifted.skillVsHistoricalRate.headline, {
       scored: 180, yesCount: 30, historicalRate: 30 / 180, historicalRateBrier: reference,
-      brier: 0.1, skillScore: 1 - 0.1 / reference, ci95: [1 - 0.131944 / reference, 1 - 0.083333 / reference], measurable: true, verdict: 'better',
+      brier: 0.1, skillScore: 1 - 0.1 / reference, measurable: true,
     });
-    assert.match(lifted.skillVsHistoricalRate.intervalBasis, /historical rate held fixed/);
+    assert.match(lifted.skillVsHistoricalRate.interval, /MCP get_forecast_scorecard result \(skill\.bssCi95/);
     assert.deepEqual(lifted.skillVsHistoricalRate.byDomain, [
       { domain: 'conflict', scored: 120, brier: 0.11, historicalRateBrier: 0.1875, skillScore: 0.413333 },
     ], 'a domain without a producer bss is not published');
-    assert.equal(lifted.confidenceIntervals.meanScores.skillScore.published, true);
+    assert.equal(lifted.confidenceIntervals.meanScores.skillScore.published, false);
     assert.equal(lifted.confidenceIntervals.meanScores.skillScore.perDomain, false);
 
     const audited = JSON.parse(accuracyDatasetDownload({ state: classifyAccuracyState(MEASURED), snapshotPath: SNAPSHOT_PATH, audit: AUDIT }));

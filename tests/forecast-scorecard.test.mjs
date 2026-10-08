@@ -1035,6 +1035,16 @@ describe('skill against the cohort base rate (#8990 item 10)', () => {
     assert.deepEqual(computeScorecard(familyLedger(options), NOW).skill.bssCi95, once.skill.bssCi95, 'seeded');
   });
 
+  it('withholds the BSS interval when more than 5% of family draws hold no minority outcome', () => {
+    // 9 families, 2 of them NO: a draw misses both with probability (7/9)^9, about 10%.
+    const sparse = computeScorecard(familyLedger({ families: 9, yes: (i) => i >= 2 }), NOW).skill;
+    assert.ok(Number.isFinite(sparse.bss));
+    assert.equal(sparse.bssCi95, null);
+    // 40 families, 10 NO: a draw misses them all with probability (30/40)^40, under 0.01%.
+    const dense = computeScorecard(familyLedger({ families: 40, yes: (i) => i >= 10 }), NOW).skill;
+    assert.equal(dense.bssCi95.length, 2);
+  });
+
   it('leaves BSS undefined, never NaN, when every outcome went one way', () => {
     const { skill } = computeScorecard(familyLedger({ families: 35, yes: () => false }), NOW);
     assert.equal(skill.referenceBrier, 0);
