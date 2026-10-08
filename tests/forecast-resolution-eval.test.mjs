@@ -13,7 +13,7 @@ import {
 } from '../scripts/_forecast-resolution-eval.mjs';
 import { attachResolutionSpecs, buildHorizonResolutionSpecs } from '../scripts/_forecast-resolution.mjs';
 import { MARITIME_REGIONS, detectGpsJammingScenarios, normalizeGpsJamming } from '../scripts/seed-forecasts.mjs';
-import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MAX_UNCERTAIN_HEXES, GPS_ZONE_MIN_HEXES, GPS_ZONE_PERSISTENCE_PROBABILITY } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const START = Date.parse('2026-07-07T00:00:00Z');
@@ -747,6 +747,25 @@ describe('gpsjam hexCount measures what the GPS detector measured (#8990)', () =
     assert.equal(GPS_ZONE_MIN_HEXES, 3);
     assert.deepEqual(emitted(GPS_ZONE_MIN_HEXES), ['Eastern Mediterranean']);
     assert.deepEqual(emitted(GPS_ZONE_MIN_HEXES - 1), []);
+  });
+
+  it('the detector skips a zone whose count is too high for the floor to be in doubt (#9012)', () => {
+    const zone = (count) => ({ hexes: Array.from({ length: count }, () => hex(57, 20)) });
+    const emitted = (count) => detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(zone(count)) }).map((p) => p.region);
+    assert.equal(GPS_ZONE_MAX_UNCERTAIN_HEXES, 9);
+    assert.deepEqual(emitted(GPS_ZONE_MAX_UNCERTAIN_HEXES), ['Baltic Sea']);
+    assert.deepEqual(emitted(GPS_ZONE_MAX_UNCERTAIN_HEXES + 1), []);
+    assert.deepEqual(emitted(300), [], 'a Baltic-sized zone never falls to the floor within a week');
+  });
+
+  it('every emitted GPS forecast carries the measured persistence rate, whatever its count (#9012)', () => {
+    const zone = (count) => ({ hexes: Array.from({ length: count }, () => hex(15, 40)) });
+    for (let count = GPS_ZONE_MIN_HEXES; count <= GPS_ZONE_MAX_UNCERTAIN_HEXES; count++) {
+      const [prediction] = detectGpsJammingScenarios({ gpsJamming: normalizeGpsJamming(zone(count)) });
+      assert.equal(prediction.region, 'Red Sea', String(count));
+      assert.equal(prediction.probability, GPS_ZONE_PERSISTENCE_PROBABILITY, String(count));
+    }
+    assert.equal(GPS_ZONE_PERSISTENCE_PROBABILITY, 0.5);
   });
 
   it('an emitted GPS forecast resolves on the detector floor: YES while the zone holds it, NO once it drops below', () => {

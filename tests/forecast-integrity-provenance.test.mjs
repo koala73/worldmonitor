@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { GPS_ZONE_MAX_UNCERTAIN_HEXES, GPS_ZONE_MIN_HEXES, GPS_ZONE_PERSISTENCE_PROBABILITY } from '../scripts/_gps-maritime-regions.mjs';
 
 import { fileURLToPath } from 'node:url';
 
@@ -109,7 +110,10 @@ describe('forecast integrity and provenance surfaces', () => {
     );
     assert.match(docs, /Market probability ceiling \| 0\.85/);
     assert.match(docs, /Supply-chain \/ maritime probability ceiling \| 0\.85/);
-    assert.match(docs, /GPS supply-chain detector probability ceiling \| 0\.60/);
+    assert.ok(
+      docs.includes(`| GPS supply-chain detector probability (zones holding ${GPS_ZONE_MIN_HEXES} to ${GPS_ZONE_MAX_UNCERTAIN_HEXES} hexes) | ${formatProbabilityFixed(GPS_ZONE_PERSISTENCE_PROBABILITY)} |`),
+      'forecast panel doc must disclose the GPS emission range and probability from _gps-maritime-regions.mjs',
+    );
     assert.match(docs, /Political probability ceiling \| 0\.80/);
     assert.match(docs, /Military probability ceiling \| 0\.90/);
     assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);

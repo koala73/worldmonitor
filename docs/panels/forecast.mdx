@@ -67,7 +67,7 @@ Published forecasts are capped and deduplicated before they reach the panel:
 | Conflict velocity-spike override ceiling | 0.99 |
 | Market probability ceiling | 0.85 |
 | Supply-chain / maritime probability ceiling | 0.85 |
-| GPS supply-chain detector probability ceiling | 0.60 |
+| GPS supply-chain detector probability (zones holding 3 to 9 hexes) | 0.50 |
 | Political probability ceiling | 0.80 |
 | Military probability ceiling | 0.90 |
 | Infrastructure probability ceiling | 0.85 |
@@ -141,7 +141,7 @@ Every published forecast carries a **resolution spec** — a machine-checkable c
 - **Market**: commodity-future price moves measured from the emission-time baseline.
 - **Prediction-market**: the spec still carries the market's end date, but the resolver seals it as VOID with reason `market_price_not_outcome`. Its feed, `prediction:markets-bootstrap:v1`, lists only open markets and clips `yesPrice` to 10 to 90, so a read at the end date is the crowd's price, not the outcome (issue #5233).
 - **Supply chain**: the chokepoint's disruption score on the deadline reading. A route whose standing threat score is below the feed's red boundary resolves YES at a score of at least 50 (`CHOKEPOINT_DISRUPTED_MIN_SCORE`, the boundary `scoreToStatus` calls red). The supply-chain detector emits at that boundary, recorded as `rule: disrupted` with a `ruleVersion`. A state-derived freight forecast attaches the same contract at any score, on the most disrupted chokepoint in its sea. Hormuz and Kerch carry a fixed war-zone base of 70, which is already red, so a reading cannot fall through 50. Their contract is a score above that base (`rule: above_fixed_base`). Pending rows move to the current contract before they resolve and keep the earlier threshold as `supersededThreshold`. Resolved rows keep the threshold they were graded on (issues #8990 and #9033).
-- **GPS interference**: the number of gpsjam.org hexes inside the shipping-zone box on the snapshot dated on or after the deadline day. The forecast resolves YES when the zone still holds at least 3 hexes, the same floor at which the detector emits it. The spec records this as `rule: persistence` with a `ruleVersion`. Pending rows written under the earlier emission-count threshold move to this rule before they resolve, and keep the old value as `supersededThreshold` (issue #8990).
+- **GPS interference**: the number of gpsjam.org hexes inside the shipping-zone box on the snapshot dated on or after the deadline day. The forecast resolves YES when the zone still holds at least 3 hexes, the same floor at which the detector emits it. The detector emits a zone only while it holds 9 hexes or fewer, at a probability of 0.50. Over 120 days of snapshots, zones in that range held the floor a week later about half the time, while the Eastern Mediterranean, Persian Gulf, Black Sea and Baltic never held fewer than 28 hexes and never fell to the floor, so a forecast there could not resolve NO (issue #9012). The spec records this as `rule: persistence` with a `ruleVersion`. Pending rows written under the earlier emission-count threshold move to this rule before they resolve, and keep the old value as `supersededThreshold` (issue #8990).
 - **Infrastructure**: reported outage events for the forecast's country.
 
 **Judged specs** apply to forecasts in domains where signal-to-outcome mapping is editorial or composite:
