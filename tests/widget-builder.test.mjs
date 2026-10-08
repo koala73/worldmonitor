@@ -54,11 +54,16 @@ describe('widget relay spend identity trust', () => {
       const run = vm.runInNewContext(`${functions}\nhandleWidgetAgentRequest`, context);
       for (const relayKey of [undefined, 'legacy-pro-key', 'wrong-secret', 'server-only-secret']) {
         for (const spendId of ['user:rotated-one', 'user:rotated-two']) {
-          await run({ headers: {
-            'x-pro-key': 'legacy-pro-key', 'x-wm-widget-spend-id': spendId,
-            ...(relayKey ? { 'x-relay-key': relayKey } : {}),
-          }, socket: { remoteAddress: '192.0.2.1' } }, {});
-          assert.equal(buckets.at(-1), secret && relayKey === secret ? `id:${spendId}` : '192.0.2.1');
+          // GHSA-rcgv-gv2h-87fp: a direct caller controls these headers, so an
+          // unattested request must not get a fresh bucket by rotating them.
+          for (const ipHeaders of [{}, { 'cf-connecting-ip': '8.8.8.1' }, { 'x-real-ip': '9.9.9.10' }]) {
+            await run({ headers: {
+              'x-pro-key': 'legacy-pro-key', 'x-wm-widget-spend-id': spendId,
+              ...ipHeaders,
+              ...(relayKey ? { 'x-relay-key': relayKey } : {}),
+            }, socket: { remoteAddress: '192.0.2.1' } }, {});
+            assert.equal(buckets.at(-1), secret && relayKey === secret ? `id:${spendId}` : 'key:pro');
+          }
         }
       }
     });
