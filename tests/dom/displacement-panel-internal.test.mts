@@ -11,6 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { toInternalDisplacementData } from '@/services/displacement/internal';
 import { toCrossBorderData } from '@/services/displacement/cross-border';
 import { formatPopulation } from '@/services/displacement';
+import { dataFreshness } from '@/services/data-freshness';
 import type { GetInternalDisplacementResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
@@ -117,6 +118,32 @@ describe('Cross-border tab', () => {
           countries: [{ country: 'Spain', iso2: 'ES', individuals: 24646, date: '2026-09-30' }] }],
       },
     ],
+  });
+
+  it('keeps annual freshness scoped to annual tabs through tab and health updates', async () => {
+    dataFreshness.recordSeedHealth([{ sourceId: 'unhcr', status: 'OK', records: 212, seedAgeMin: 3, maxStaleMin: 3600, checkedAtMs: Date.now() }]);
+    dataFreshness.setEnabled('unhcr', false);
+    mount();
+    panel.setData({ year: 2026, globalTotals: { refugees: 28500000, asylumSeekers: 9000000, idps: 64200000, stateless: 0, total: 106200000 }, countries: [], topFlows: [] });
+    panel.setInternalData(toInternalDisplacementData(RESPONSE));
+    panel.setCrossBorderData(CROSS_BORDER);
+    await flush();
+    const badge = panel.getElement().querySelector<HTMLElement>('.panel-freshness-badge')!;
+    expect(badge.textContent).toBe('Disabled');
+    expect(badge.style.display).toBe('inline-flex');
+    for (const tab of ['crossBorder', 'internal']) {
+      panel.getElement().querySelector<HTMLElement>(`[data-tab="${tab}"]`)!.click();
+      await flush();
+      expect(rows()).toHaveLength(2);
+      expect(badge.style.display).toBe('none');
+      dataFreshness.setEnabled('unhcr', true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(badge.style.display).toBe('none');
+    }
+    panel.getElement().querySelector<HTMLElement>('[data-tab="hosts"]')!.click();
+    await flush();
+    expect(badge.style.display).toBe('inline-flex');
+    expect(badge.textContent).toMatch(/^Fresh/);
   });
 
   it('lists situations with their latest change next to the DTM tab, without UNHCR data', async () => {
