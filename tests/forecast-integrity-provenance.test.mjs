@@ -68,6 +68,7 @@ describe('forecast integrity and provenance surfaces', () => {
 
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
+    const zhDocs = read('docs/zh/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
     const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
     const conflictBaseMax = parseNumericConst(seeder, 'CONFLICT_BASE_DETECTOR_PROB_MAX');
@@ -113,6 +114,10 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.ok(
       docs.includes(`| GPS supply-chain detector probability (zones holding ${GPS_ZONE_MIN_HEXES} to ${GPS_ZONE_MAX_UNCERTAIN_HEXES} hexes) | ${formatProbabilityFixed(GPS_ZONE_PERSISTENCE_PROBABILITY)} |`),
       'forecast panel doc must disclose the GPS emission range and probability from _gps-maritime-regions.mjs',
+    );
+    assert.ok(
+      zhDocs.includes(`| GPS 供应链检测器概率（区域内 ${GPS_ZONE_MIN_HEXES} 至 ${GPS_ZONE_MAX_UNCERTAIN_HEXES} 个六边形） | ${formatProbabilityFixed(GPS_ZONE_PERSISTENCE_PROBABILITY)} |`),
+      'Chinese forecast panel doc must disclose the same GPS emission range and probability',
     );
     assert.match(docs, /Political probability ceiling \| 0\.80/);
     assert.match(docs, /Military probability ceiling \| 0\.90/);

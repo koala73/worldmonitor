@@ -21,15 +21,18 @@ export const GPS_RESOLUTION_RULE_VERSION = 1;
 
 // Above this many hexes the floor is never in doubt (#9012). Over 120 days of
 // gpsjam.org snapshots (2026-06-09 to 10-06) the Red Sea peaked at 9 hexes and
-// fell to the floor within a week in 23 of 55 windows. The other four zones
-// never held fewer than 28 and never fell to it in 452 windows, so a forecast
-// there could not resolve NO. The detector emits only zones at or under this.
+// was below the floor on the day-7 snapshot in 23 of 55 windows. The other four
+// zones never held fewer than 28 and were at or above it in 452 of 452 windows,
+// so a forecast there could not resolve NO. The detector emits only zones at or
+// under this. Counts from 10 to 27 were never observed, so a zone there emits
+// nothing until its rate is measured.
 export const GPS_ZONE_MAX_UNCERTAIN_HEXES = 9;
 
-// The share of emitted zones that still held the floor a week later: 32 of 55
-// in the replay above and 7 of 21 resolvable ledger rows, 39 of 76 together.
-// The count inside the uncertain range did not separate the outcomes.
-export const GPS_ZONE_PERSISTENCE_PROBABILITY = 0.5;
+// The share of emitted windows that still held the floor on the day-7
+// snapshot: 32 of 55 in the replay above. Zones at 7 to 9 hexes held it 8 of 9
+// times, too few to fit a separate rate; recalibrate once more Red Sea windows
+// resolve.
+export const GPS_ZONE_PERSISTENCE_PROBABILITY = 0.58;
 
 export function hexesInMaritimeRegion(hexes, bounds) {
   return hexes.filter((h) => {

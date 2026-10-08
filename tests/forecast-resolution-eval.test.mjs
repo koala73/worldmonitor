@@ -765,7 +765,7 @@ describe('gpsjam hexCount measures what the GPS detector measured (#8990)', () =
       assert.equal(prediction.region, 'Red Sea', String(count));
       assert.equal(prediction.probability, GPS_ZONE_PERSISTENCE_PROBABILITY, String(count));
     }
-    assert.equal(GPS_ZONE_PERSISTENCE_PROBABILITY, 0.5);
+    assert.equal(GPS_ZONE_PERSISTENCE_PROBABILITY, 0.58);
   });
 
   it('an emitted GPS forecast resolves on the detector floor: YES while the zone holds it, NO once it drops below', () => {
