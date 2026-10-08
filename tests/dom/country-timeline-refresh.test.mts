@@ -1,10 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
+import { CountryTimeline } from '@/components/CountryTimeline';
 
 describe('country timeline refresh', () => {
+  it.each(['resize', 'theme'] as const)('renders empty lanes after a hidden timeline becomes visible on %s', (trigger) => {
+    let notifyResize: ResizeObserverCallback = () => {};
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    const mount = document.createElement('div');
+    mount.hidden = true;
+    Object.defineProperty(mount, 'clientWidth', { get: () => mount.hidden ? 0 : 900 });
+    document.body.append(mount);
+    const timeline = new CountryTimeline(mount);
+    try {
+      timeline.render([]);
+      expect(mount.querySelector('svg')).toBeNull();
+      mount.hidden = false;
+      if (trigger === 'resize') notifyResize([], {} as ResizeObserver);
+      else window.dispatchEvent(new Event('theme-changed'));
+      expect([...mount.querySelectorAll('.lane-label')].map(label => label.textContent))
+        .toEqual(['Protest', 'Conflict', 'Natural', 'Military']);
+      expect(mount.querySelectorAll('.empty-label')).toHaveLength(4);
+      expect(mount.querySelectorAll('.event-circle')).toHaveLength(0);
+      expect(mount.querySelectorAll('svg')).toHaveLength(1);
+    } finally {
+      timeline.destroy();
+      mount.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders country events that arrive after the brief opens', () => {
     const mount = document.createElement('div');
     Object.defineProperty(mount, 'clientWidth', { value: 900 });
