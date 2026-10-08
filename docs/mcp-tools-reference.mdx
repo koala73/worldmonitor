@@ -2635,6 +2635,22 @@ curl -s https://worldmonitor.app/mcp \
 
 ## Humanitarian & displacement
 
+### `get_cross_border_arrivals`
+
+Public UNHCR Operational Data Portal cross-border situations, arrivals, returns and reported deaths/missing people. Reads the same published aggregate snapshot as the website's Cross-border tab. This is separate from annual UNHCR statistics and IOM DTM.
+
+**Parameters (tool-specific):** none.
+
+- **API endpoints:** none. The public bootstrap equivalent is `GET /api/bootstrap?keys=crossBorderArrivals&public=1`; this tool does not claim coverage of other bootstrap datasets.
+- **Access:** `free-account`. Uses existing signed-in account access and allowance/quota rules. Accepts universal `summary` and `jmespath` arguments.
+- **Kind:** cache read. No provider request, seed refresh, private history or panel admission.
+- **Freshness budget:** up to **2 d**. Fewer than 12 published situations also set `stale: true`. The producer's 45-day freshest-content age is checked independently from seed age. This does not assert freshness of every situation.
+- **Response:** normal cache envelope with `data.crossBorderArrivals.source`, `situations`, `unavailable` and `attribution`. Source `asOf`, country dates, monthly values and trends remain intact. `cached_at` is the seed clock. A nonempty `unavailable` list identifies partial failed situations. A missing cache is a tool execution failure, not a successful zero-displacement snapshot. A published empty list remains an empty, stale snapshot.
+- **Interpretation:** situations overlap; do not add their totals. Stock and monthly-arrival measures are distinct. The website selects the last complete monthly period separately from cumulative totals. This tool returns the source snapshot without deriving a global total.
+- **Attribution:** [ODP dataset terms](https://data.unhcr.org/en/disclaimer/) specify [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) except where otherwise indicated. Keep credit, original situation URLs, license and transformation notice with the values. The existing attribution rider retains that notice and the original situation URLs after projection. No UNHCR endorsement is implied.
+
+Call `get_cross_border_arrivals({})` for the full public snapshot. An optional `jmespath: "data.crossBorderArrivals.situations[].{name:name,asOf:asOf}"` selects situation names and report dates while keeping the attribution rider.
+
 ### `get_displacement_data`
 
 Refugee and IDP counts by country (UNHCR annual data).

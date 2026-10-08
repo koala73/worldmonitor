@@ -2173,6 +2173,75 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'get_cross_border_arrivals',
+    _outputBudgetBytes: 262144,
+    description: 'UNHCR Operational Data Portal cross-border displacement situations, arrivals and returns. Public cached aggregates with source dates and partial unavailable situation IDs. Situations overlap: never sum them into a global total. Stock totals and monthly arrivals are different measures. Not annual UNHCR statistics or IOM DTM. No request-time provider fetch.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: cacheEnvelope({
+      crossBorderArrivals: {
+        type: ['object', 'null'],
+        properties: {
+          source: { type: 'string' },
+          unavailable: { type: 'array', items: { type: 'string' }, description: 'Situation IDs that failed during publication. Partial failure, not zero displacement.' },
+          situations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, name: { type: 'string' },
+                origin: { type: ['string', 'null'] }, sourceUrl: { type: 'string' },
+                asOf: { type: 'string', description: 'Upstream report date; distinct from cached_at.' },
+                accelerating: { type: 'boolean' },
+                flows: {
+                  type: 'array', items: {
+                    type: 'object', properties: {
+                      kind: { type: 'string', enum: ['outflow', 'return', 'arrival', 'death'] },
+                      label: { type: 'string' }, measure: { type: 'string', enum: ['stock', 'monthly'] },
+                      origin: { type: ['string', 'null'] }, total: { type: 'number' }, asOf: { type: 'string' },
+                      months: { type: 'array', items: { type: 'object', properties: { month: { type: 'string' }, individuals: { type: 'number' } } } },
+                      countries: { type: 'array', items: { type: 'object', properties: {
+                        country: { type: 'string' }, iso2: { type: ['string', 'null'] }, individuals: { type: 'number' }, date: { type: 'string' },
+                        change: { type: 'object', properties: { since: { type: 'string' }, delta: { type: 'number' } } },
+                      } } },
+                    },
+                  },
+                },
+                trend: { type: 'object', properties: {
+                  measure: { type: 'string', enum: ['stock', 'monthly'] },
+                  points: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, number: { type: 'number' } } } },
+                  latestDelta: { type: ['number', 'null'] }, latestDays: { type: ['number', 'null'] }, accelerating: { type: 'boolean' },
+                } },
+              },
+            },
+          },
+          attribution: { type: 'object', properties: {
+            source: { type: 'string' }, sourceUrl: { type: 'string' }, license: { type: 'string' },
+            licenseUrl: { type: 'string' }, termsUrl: { type: 'string' }, changes: { type: 'string' }, notice: { type: 'string' },
+          } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _cacheKeys: ['displacement:cross-border:v1'],
+    _cacheLabels: { 'displacement:cross-border:v1': 'crossBorderArrivals' },
+    _freshnessChecks: [{ key: 'seed-meta:displacement:cross-border', maxStaleMin: 2880, minRecordCount: 12, honorContentAge: true }],
+    _apiPaths: [],
+    _attribution: 'data.crossBorderArrivals.{attribution: attribution, sources: situations[].{sourceUrl: sourceUrl, asOf: asOf}}',
+    _project: (data) => {
+      const snapshot = data.crossBorderArrivals;
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;
+      return { ...data, crossBorderArrivals: { ...snapshot, attribution: {
+        source: 'UNHCR Operational Data Portal',
+        sourceUrl: 'https://data.unhcr.org/',
+        license: 'CC BY 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+        termsUrl: 'https://data.unhcr.org/en/disclaimer/',
+        changes: 'WorldMonitor normalizes portal aggregate reports and derives change figures; per-situation source URLs and dates are retained.',
+        notice: 'ODP dataset license applies except where otherwise indicated. No UNHCR endorsement. Situations overlap; do not sum totals.',
+      } } };
+    },
+  },
+  {
     name: 'get_displacement_data',
     _outputBudgetBytes: 131072,
     description: 'Refugee and IDP counts by country (UNHCR annual data).',
