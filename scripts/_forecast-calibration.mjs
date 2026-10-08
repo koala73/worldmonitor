@@ -39,9 +39,9 @@ import {
  *   positives: number,
  *   mode: CalibrationMode,
  *   knots: CalibrationKnot[],
- *   inputs?: Record<string, 'YES' | 'NO'>,
+ *   inputs?: Record<string, string>,
  * }} CalibrationDomain
- * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_input_withdrawn' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth'} RefitReason
+ * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_input_withdrawn' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth' | 'fit_aged_out'} RefitReason
  * @typedef {{
  *   schemaVersion: number,
  *   version: string,
@@ -73,20 +73,32 @@ export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 // share a generator, a region and much of an outcome history. A domain fits
 // only with at least CALIBRATION_MIN_OUTCOME_FAMILIES families that resolved
 // YES and as many that resolved NO; one-sided data has no curve to fit. With
-// published-origin probabilities resampled from the live ledger, a fit on
-// fewer than 10 minority-class families lost to identity on expected
-// out-of-sample Brier by more than the activation gate's 0.005 margin in every
-// miscalibration simulated (calibrated, over- and underconfident, biased), so
-// it could only spend a refit. At 10 the biased case is within the margin,
-// and PAV first beats identity at 12. The family floor keeps the per-domain
-// sample the row floor used to require (30) and makes it independent.
+// published-origin probabilities resampled from the live ledger, PAV lost to
+// identity on expected out-of-sample Brier below 12 minority-class families
+// in every miscalibration simulated (calibrated, over- and underconfident,
+// biased); at 12 it first wins, for a biased forecaster. The family floor
+// keeps the per-domain sample the row floor used to require (30) and makes
+// it independent.
 export const CALIBRATION_MIN_FAMILIES = 30;
-export const CALIBRATION_MIN_OUTCOME_FAMILIES = 10;
-// A fitted domain refits when its families reach this multiple of the count
-// it was fitted on. Each refit restarts the forward cohort the activation
-// gate needs, and the PAV standard error falls with the square root of the
-// sample, so a refit waits until the error can fall by about 30%.
+export const CALIBRATION_MIN_OUTCOME_FAMILIES = 12;
+// A fitted domain keeps its fit until its families fall below half of each
+// minimum. Without the band, a domain at the floor flips between fitted and
+// identity as one family ages out and the next resolves, and each refit
+// empties the forward cohort the activation gate needs. The band is a pure
+// function of the ledger, unlike a count of consecutive ineligible runs,
+// which would have to be stored and could drift from the data.
+export const CALIBRATION_RETAIN_FRACTION = 0.5;
+// A fitted domain refits when the families resolved since its fit bring its
+// evidence to this multiple of the families it was fitted on. Each refit
+// empties the forward cohort, and the PAV standard error falls with the
+// square root of the sample, so a refit waits until the error can fall by
+// about 30%. New evidence is counted since fittedAt, not as the rolling-window
+// total, which plateaus at the arrival rate times the window.
 export const CALIBRATION_REFIT_FAMILY_GROWTH = 2;
+// A passing activation gate holds every trigger except a withdrawn input,
+// but only for one rolling window after the fit: past that, every input of
+// the published map has left the cohort the scorecard grades.
+export const CALIBRATION_MAX_HOLD_DAYS = DEFAULT_ROLLING_WINDOW_DAYS;
 // A domain with no YES outcomes fits to 0. Publishing 0% is a claim of
 // impossibility the sample cannot support, so knots are bounded.
 export const CALIBRATION_PROBABILITY_FLOOR = 0.01;
@@ -267,7 +279,7 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
     // A fitted domain keeps its input rows, so a later correction to any of
     // them is visible (refitTrigger).
     domains[domain] = eligibility.eligible
-      ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds), inputs: Object.fromEntries(entries.map((entry) => [entry.key, entry.outcome])) }
+      ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds), inputs: Object.fromEntries(entries.map((entry) => [entry.key, inputFingerprint(entry)])) }
       : { ...base, mode: 'identity', knots: [] };
   }
 
@@ -347,38 +359,59 @@ export function parseCalibrationMap(value) {
   return value;
 }
 
-/**
- * A fitted domain's input that the ledger still holds but the fit would now
- * refuse, or that resolved the other way: a void, duplicate, rescore or
- * re-grade written after the fit. An input pruned from the ledger is absent,
- * not withdrawn, and the rolling window is not consulted, so ageing out is
- * not a correction.
- */
-function hasWithdrawnInput(fit, entriesByKey) {
-  return Object.entries(fit.inputs ?? {}).some(([key, outcome]) => {
-    const entry = entriesByKey.get(key);
-    return entry !== undefined && (!isFitInput(entry) || entry.outcome !== outcome);
-  });
+// What the fit read from a row. Any later change to it is a correction.
+function inputFingerprint(entry) {
+  return `${entry.outcome}|${sourceProbability(entry)}|${domainOf(entry)}`;
 }
 
 /**
- * Why the current ledger calls for a refit of `map`, or null. Rules, in order:
- * a fitted domain one of whose inputs was corrected, a fitted domain the
- * cohort no longer supports (its rows were voided or aged out), an identity
- * domain that became eligible, and a fitted domain whose families grew by
- * CALIBRATION_REFIT_FAMILY_GROWTH.
+ * A fitted domain's input that the ledger still holds but the fit would now
+ * refuse or read differently: a void, duplicate, rescore, withheld bucket,
+ * re-grade, or a changed probability or domain written after the fit. An
+ * input pruned from the ledger is absent, not withdrawn, and the rolling
+ * window is not consulted, so ageing out is not a correction.
+ */
+function hasWithdrawnInput(fit, entriesByKey) {
+  return Object.entries(fit.inputs).some(([key, fingerprint]) => {
+    const entry = entriesByKey.get(key);
+    return entry !== undefined && (!isFitInput(entry) || inputFingerprint(entry) !== fingerprint);
+  });
+}
+
+function retainsFit(eligibility, { minFamilies, minOutcomeFamilies }) {
+  const floor = (minimum) => Math.ceil(minimum * CALIBRATION_RETAIN_FRACTION);
+  return Boolean(eligibility)
+    && eligibility.families >= floor(minFamilies)
+    && eligibility.yesFamilies >= floor(minOutcomeFamilies)
+    && eligibility.noFamilies >= floor(minOutcomeFamilies);
+}
+
+/**
+ * Why the current ledger calls for a refit of `map`, or null. Rules, in
+ * order: a fitted domain one of whose inputs was corrected; a fitted domain
+ * below half the minimums; an identity domain that became eligible; a fitted
+ * domain whose families since the fit match its fitted families; and an
+ * eligible fitted domain none of whose inputs is left in the window.
  * @returns {{ reason: RefitReason, domain: string } | null}
  */
-function refitTrigger(map, eligibility, entriesByKey) {
-  const domains = [...new Set([...Object.keys(map.domains), ...Object.keys(eligibility)])].sort();
+function refitTrigger(map, ledger, nowMs, options) {
+  const minimums = eligibilityMinimums(options);
+  const cohort = cohortByDomain(selectFitCohort(ledger, nowMs, options));
+  const entriesByKey = new Map(ledgerEntries(ledger).map((entry) => [entry.key, entry]));
+  const eligibility = (domain) => (cohort.has(domain) ? domainEligibility(cohort.get(domain), minimums) : null);
   const fitted = (domain) => map.domains[domain]?.mode === 'isotonic';
+  const rows = (domain) => cohort.get(domain) ?? [];
+  const familiesSinceFit = (domain) => new Set(rows(domain).filter((entry) => Number(entry.resolvedAt) > map.fittedAt).map((entry) => entry.id)).size;
+  const inputsInWindow = (domain) => rows(domain).some((entry) => Object.hasOwn(map.domains[domain].inputs, entry.key));
   const rules = [
     ['fit_input_withdrawn', (domain) => fitted(domain) && hasWithdrawnInput(map.domains[domain], entriesByKey)],
-    ['fit_invalidated', (domain) => fitted(domain) && !eligibility[domain]?.eligible],
-    ['domain_became_eligible', (domain) => !fitted(domain) && eligibility[domain]?.eligible],
+    ['fit_invalidated', (domain) => fitted(domain) && !retainsFit(eligibility(domain), minimums)],
+    ['domain_became_eligible', (domain) => !fitted(domain) && eligibility(domain)?.eligible],
     ['family_growth', (domain) => fitted(domain)
-      && eligibility[domain].families >= CALIBRATION_REFIT_FAMILY_GROWTH * map.domains[domain].families],
+      && map.domains[domain].families + familiesSinceFit(domain) >= CALIBRATION_REFIT_FAMILY_GROWTH * map.domains[domain].families],
+    ['fit_aged_out', (domain) => fitted(domain) && eligibility(domain)?.eligible && !inputsInWindow(domain)],
   ];
+  const domains = [...new Set([...Object.keys(map.domains), ...cohort.keys()])].sort();
   for (const [reason, applies] of rules) {
     const domain = domains.find(applies);
     if (domain) return { reason, domain };
@@ -386,15 +419,19 @@ function refitTrigger(map, eligibility, entriesByKey) {
   return null;
 }
 
-const INVALIDATING_REFITS = new Set(['fit_input_withdrawn', 'fit_invalidated']);
+function holdsRefit(trigger, map, ledger, nowMs) {
+  if (trigger.reason === 'fit_input_withdrawn') return false;
+  if (nowMs - map.fittedAt > CALIBRATION_MAX_HOLD_DAYS * DAY_MS) return false;
+  return evaluateCalibrationShadow(ledger, map, nowMs).activationGate.eligible;
+}
 
 /**
  * Keep the persisted map unless it is unusable, from another code version, or
- * the cohort gives a refit trigger. Refitting on every run would move
+ * the ledger gives a refit trigger. Refitting on every run would move
  * fittedAt forward daily and the forward cohort would never accumulate.
- * A map the activation gate currently passes is held against growth and new
- * eligibility: a refit would discard its forward evidence and revert a
- * validated publication. A fit the data no longer supports refits anyway.
+ * While the activation gate passes, a trigger other than a withdrawn input is
+ * held for up to CALIBRATION_MAX_HOLD_DAYS after the fit: a refit would
+ * discard the forward evidence and revert a validated publication.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
@@ -403,12 +440,9 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
     const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
     return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, refitReason: reason }), action: 'fitted', reason };
   }
-  const entriesByKey = new Map(ledgerEntries(ledger).map((entry) => [entry.key, entry]));
-  const trigger = refitTrigger(parsed, evaluateFitEligibility(ledger, nowMs, options), entriesByKey);
+  const trigger = refitTrigger(parsed, ledger, nowMs, options);
   if (!trigger) return { map: parsed, action: 'kept' };
-  if (!INVALIDATING_REFITS.has(trigger.reason) && evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate.eligible) {
-    return { map: parsed, action: 'kept', held: trigger };
-  }
+  if (holdsRefit(trigger, parsed, ledger, nowMs)) return { map: parsed, action: 'kept', held: trigger };
   const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason });
   return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
 }
