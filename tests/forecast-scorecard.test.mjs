@@ -1022,6 +1022,28 @@ describe('skill against the cohort base rate (#8990 item 10)', () => {
     assert.equal(measurable({ families: SKILL_MIN_FAMILIES, yes: (i) => i >= SKILL_MIN_OUTCOME_FAMILIES - 1 }), false, 'too few NO families');
   });
 
+  it('counts a family with both outcomes as a YES family and as a NO family', () => {
+    // 25 one-way families plus 5 mixed ones: the minority side reaches 5 only through the mixed families.
+    const mixed = (oneWay) => {
+      const ledger = familyLedger({ families: 25, yes: () => oneWay === 'YES', prefix: 'oneway' });
+      for (let i = 0; i < 5; i += 1) {
+        ledger[`mixed-${i}-yes`] = resolved({ id: `mixed-${i}`, probability: 0.4, outcome: 'YES' });
+        ledger[`mixed-${i}-no`] = resolved({ id: `mixed-${i}`, probability: 0.4, outcome: 'NO' });
+      }
+      return computeScorecard(ledger, NOW);
+    };
+    const mostlyYes = mixed('YES');
+    assert.equal(mostlyYes.skill.families, 30);
+    assert.equal(mostlyYes.skill.yesFamilies, 30);
+    assert.equal(mostlyYes.skill.noFamilies, 5);
+    assert.equal(mostlyYes.skill.measurable, true);
+    assert.equal(mostlyYes.uncertainty.skillBrier.insufficientSample, false, 'the interval flag counts mixed families on both sides too');
+    const mostlyNo = mixed('NO');
+    assert.equal(mostlyNo.skill.yesFamilies, 5);
+    assert.equal(mostlyNo.skill.measurable, true);
+    assert.equal(mostlyNo.uncertainty.skillBrier.insufficientSample, false);
+  });
+
   it('bootstraps BSS by whole family, so repeating every family leaves the interval unchanged', () => {
     const options = { families: 40, yes: (i) => i % 3 === 0, p: (i) => (i % 10) / 10 + 0.05 };
     const once = computeScorecard(familyLedger(options), NOW);
@@ -1039,7 +1061,7 @@ describe('skill against the cohort base rate (#8990 item 10)', () => {
     // 9 families, 2 of them NO: a draw misses both with probability (7/9)^9, about 10%.
     const sparse = computeScorecard(familyLedger({ families: 9, yes: (i) => i >= 2 }), NOW).skill;
     assert.ok(Number.isFinite(sparse.bss));
-    assert.equal(sparse.bssCi95, null);
+    assert.equal('bssCi95' in sparse, false);
     // 40 families, 10 NO: a draw misses them all with probability (30/40)^40, under 0.01%.
     const dense = computeScorecard(familyLedger({ families: 40, yes: (i) => i >= 10 }), NOW).skill;
     assert.equal(dense.bssCi95.length, 2);
@@ -1049,7 +1071,7 @@ describe('skill against the cohort base rate (#8990 item 10)', () => {
     const { skill } = computeScorecard(familyLedger({ families: 35, yes: () => false }), NOW);
     assert.equal(skill.referenceBrier, 0);
     assert.equal(skill.bss, null);
-    assert.equal(skill.bssCi95, null);
+    assert.equal('bssCi95' in skill, false);
     assert.equal(skill.measurable, false);
     assert.ok(!JSON.stringify(skill).includes('NaN'));
   });

@@ -600,7 +600,8 @@ function summarizeBaseRateSkill(entries, scope) {
     noFamilies,
     referenceBrier: round(rate * (1 - rate)),
     bss: Number.isFinite(bss) ? round(bss) : null,
-    bssCi95: Number.isFinite(bss) ? familyBootstrap(families, skillScore, `bss:${scope}`) : null,
+    // Omitted, not null, when it cannot be computed: the contract field is a repeated double.
+    bssCi95: (Number.isFinite(bss) ? familyBootstrap(families, skillScore, `bss:${scope}`) : null) ?? undefined,
     measurable: meetsFamilyMinimums(families),
   };
 }
