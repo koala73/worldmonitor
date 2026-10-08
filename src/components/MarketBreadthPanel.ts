@@ -73,9 +73,9 @@ type NumericSeriesKey = 'pctAbove20d' | 'pctAbove50d' | 'pctAbove200d';
 type SeriesRun = Array<{ x: number; y: number }>;
 
 const SERIES: { key: NumericSeriesKey; color: string; label: string; fillOpacity: number }[] = [
-  { key: 'pctAbove20d',  color: '#3b82f6', label: '20-day SMA', fillOpacity: 0.08 },
-  { key: 'pctAbove50d',  color: '#f59e0b', label: '50-day SMA', fillOpacity: 0.06 },
-  { key: 'pctAbove200d', color: '#22c55e', label: '200-day SMA', fillOpacity: 0.04 },
+  { key: 'pctAbove20d',  color: '#3b82f6', label: '20-day moving average', fillOpacity: 0.08 },
+  { key: 'pctAbove50d',  color: '#f59e0b', label: '50-day moving average', fillOpacity: 0.06 },
+  { key: 'pctAbove200d', color: '#22c55e', label: '200-day moving average', fillOpacity: 0.04 },
 ];
 
 function xPos(i: number, total: number): number {

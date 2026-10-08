@@ -815,3 +815,44 @@ test('country brief shows unavailable temporal evidence after a failed feed read
   await expect(signals).toContainText('Temporal observations unavailable');
   await page.screenshot({ path: testInfo.outputPath('country-temporal-unavailable.png') });
 });
+
+for (const mobile of [false, true]) {
+  test(`China activity labels use plain language on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    const snapshot = JSON.parse(await readFile(new URL('./fixtures/china-activity-labels.json', import.meta.url), 'utf8'));
+    await page.route('**/api/intelligence/v1/get-china-decision-signals*', route => route.fulfill({ json: { payloadJson: JSON.stringify(snapshot) } }));
+    await page.goto(`/dashboard?country=CN${mobile ? '' : '&expanded=1'}`);
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel.locator('.cdp-country-name')).toHaveText('China');
+    await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
+    const activity = panel.locator('.cdp-china-summary-group').filter({ has: page.getByRole('heading', { name: 'Cross-Strait Activity', exact: true }) });
+    await activity.scrollIntoViewIfNeeded();
+    await expect(activity).toContainText('Taiwan Ministry of National Defense activity');
+    await expect(activity).toContainText('Chinese military aircraft flights: 3');
+    await expect(activity).toContainText('Chinese navy ships: 6');
+    await expect(activity).toContainText('Other official vessels: 1');
+    await expect(activity).toContainText('Air defense identification zone entries: 1');
+    await expect(activity).not.toContainText(/plaAircraftSorties|planShips|adizEntries|taiwan-mnd/);
+    await expect(activity.locator('.cdp-china-summary-source-link')).toHaveCount(1);
+    expect(await activity.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    const path = testInfo.outputPath(`china-plain-language-${mobile ? 'mobile' : 'desktop'}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach('China activity with controlled source data', { path, contentType: 'image/png' });
+  });
+}
+
+test('English panel picker names financial and regional topics in plain language', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  await page.goto('/dashboard');
+  await page.locator('#unifiedSettingsBtn').click();
+  await page.locator('#us-tab-panels').click();
+  const panels = page.locator('#usPanelToggles');
+  await expect(panels).toBeVisible();
+  await expect(panels).toContainText('Bitcoin fund flows');
+  await expect(panels).toContainText('Venture capital insights');
+  await expect(panels).not.toContainText(/BTC ETF Tracker|Funding & VC/);
+  const path = testInfo.outputPath('english-panel-labels.png');
+  await page.screenshot({ path });
+  await testInfo.attach('English panel names', { path, contentType: 'image/png' });
+});

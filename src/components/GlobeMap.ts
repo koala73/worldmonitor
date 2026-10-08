@@ -980,7 +980,7 @@ export class GlobeMap {
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
-        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
+        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>Country instability: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
         if (d._kind === 'conflict') {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;

@@ -591,7 +591,7 @@ export class ConsumerPricesPanel extends Panel {
           <tr>
             <th scope="col">Category</th>
             <th scope="col">WoW</th>
-            <th scope="col">MoM</th>
+            <th scope="col">Month-over-month change</th>
             <th scope="col">Trend</th>
             <th scope="col">Coverage</th>
           </tr>

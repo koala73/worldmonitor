@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-08T03:00:00Z",
+  "groups": [
+    {
+      "id": "macro",
+      "state": "unavailable",
+      "reason": "No launched, provenance-valid signal is currently available.",
+      "items": [],
+      "metadata": {
+        "unavailableCause": "unknown",
+        "totalValidItems": 0,
+        "omittedItemCount": 0
+      }
+    },
+    {
+      "id": "policy-enforcement",
+      "state": "unavailable",
+      "reason": "No launched, provenance-valid signal is currently available.",
+      "items": [],
+      "metadata": {
+        "unavailableCause": "unknown",
+        "totalValidItems": 0,
+        "omittedItemCount": 0
+      }
+    },
+    {
+      "id": "cross-strait-activity",
+      "state": "stale",
+      "reason": null,
+      "items": [
+        {
+          "id": "signal:operational-activity:unknown-metadata:2026-07-24",
+          "lineageId": "reuters:event:unknown-metadata:2026-07-24",
+          "label": "taiwan-mnd activity",
+          "summary": "plaAircraftSorties: 3 · planShips: 6 · officialShips: 1 · adizEntries: 1",
+          "sourceName": "Reuters",
+          "sourceUrl": "https://www.reuters.com/example/unknown-metadata-event",
+          "publisherType": "wire_service",
+          "observedAt": "2026-07-24",
+          "publishedAt": null,
+          "effectiveAt": null,
+          "retrievedAt": "2026-07-24T12:00:00Z",
+          "stale": true,
+          "metadata": {
+            "sourceId": "taiwan-mnd",
+            "observationKind": "official_daily_claim",
+            "reportingDay": "2026-07-25",
+            "revision": null,
+            "supersession": {
+              "state": "current"
+            },
+            "translation": null,
+            "extractionConfidence": {
+              "score": 0.6,
+              "method": "event-parser/v1"
+            },
+            "classificationConfidence": {
+              "score": 0.5,
+              "method": "activity-classifier/v1"
+            },
+            "corroboration": null
+          },
+          "provenance": {
+            "contractVersion": "decision-signal-provenance/v1",
+            "signalId": "signal:operational-activity:unknown-metadata:2026-07-24",
+            "familyId": "operational_activity_record",
+            "claims": {
+              "publisher": {
+                "status": "known",
+                "value": {
+                  "id": "publisher:reuters",
+                  "name": "Reuters",
+                  "type": "wire_service",
+                  "registryReference": {
+                    "sourceName": "Reuters",
+                    "sourceType": "wire",
+                    "propagandaRisk": "low"
+                  }
+                }
+              },
+              "source_url": {
+                "status": "known",
+                "value": "https://www.reuters.com/example/unknown-metadata-event"
+              },
+              "original_reference": {
+                "status": "known",
+                "value": {
+                  "kind": "event",
+                  "id": "reuters:event:unknown-metadata:2026-07-24"
+                }
+              },
+              "original_language": {
+                "status": "unknown",
+                "reason": "The upstream payload omits language metadata."
+              },
+              "translation": {
+                "status": "unknown",
+                "reason": "Translation state cannot be established without language metadata."
+              },
+              "observation_time": {
+                "status": "known",
+                "value": {
+                  "role": "observation",
+                  "value": "2026-07-24",
+                  "precision": "day"
+                }
+              },
+              "effective_time": {
+                "status": "unknown",
+                "reason": "No effective time was supplied."
+              },
+              "publication_time": {
+                "status": "unknown",
+                "reason": "No publication timestamp was supplied."
+              },
+              "retrieval_time": {
+                "status": "known",
+                "value": {
+                  "role": "retrieval",
+                  "value": "2026-07-24T12:00:00Z",
+                  "precision": "instant"
+                }
+              },
+              "revision": {
+                "status": "unknown",
+                "reason": "No revision metadata was supplied."
+              },
+              "supersession": {
+                "status": "known",
+                "value": {
+                  "state": "current"
+                }
+              },
+              "extraction_confidence": {
+                "status": "known",
+                "value": {
+                  "score": 0.6,
+                  "method": "event-parser/v1"
+                }
+              },
+              "classification_confidence": {
+                "status": "known",
+                "value": {
+                  "score": 0.5,
+                  "method": "activity-classifier/v1"
+                }
+              },
+              "corroboration": {
+                "status": "unknown",
+                "reason": "No corroboration assessment was supplied."
+              },
+              "transport_freshness": {
+                "status": "known",
+                "value": {
+                  "state": "fresh",
+                  "assessedAt": "2026-07-24T12:00:00Z",
+                  "lastSuccessAt": "2026-07-24T12:00:00Z"
+                }
+              },
+              "content_freshness": {
+                "status": "known",
+                "value": {
+                  "state": "timestamp_unknown",
+                  "assessedAt": "2026-07-24T12:00:00Z"
+                }
+              },
+              "derivation": {
+                "status": "not_applicable",
+                "reason": "This is a normalized source event."
+              }
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "baselineSemantics": null,
+        "baselineBands": [],
+        "coverage": null,
+        "totalValidItems": 1,
+        "omittedItemCount": 0
+      }
+    },
+    {
+      "id": "corporate-disclosures",
+      "state": "unavailable",
+      "reason": "upstream_unavailable: The corporate-disclosure upstream snapshot is unavailable or degraded.",
+      "items": [],
+      "metadata": {
+        "unavailableCause": "upstream_unavailable",
+        "totalValidItems": 0,
+        "omittedItemCount": 0
+      }
+    },
+    {
+      "id": "corridor-conditions",
+      "state": "unavailable",
+      "reason": "upstream_unavailable: The upstream snapshot explicitly reports unavailable or degraded state.",
+      "items": [],
+      "metadata": {
+        "unavailableCause": "upstream_unavailable",
+        "totalValidItems": 0,
+        "omittedItemCount": 0
+      }
+    },
+    {
+      "id": "activity-nowcast",
+      "state": "unavailable",
+      "reason": "upstream_unavailable: The activity-nowcast upstream snapshot is unavailable.",
+      "items": [],
+      "metadata": {
+        "methodVersion": null,
+        "comparisonWindow": null,
+        "confidence": null,
+        "missingInputs": [],
+        "missingInputFamilies": [],
+        "deterministic": false,
+        "llmNumericComputation": false,
+        "unavailableCause": "upstream_unavailable",
+        "totalValidItems": 0,
+        "omittedItemCount": 0
+      }
+    }
+  ],
+  "access": {
+    "anonymous": "bounded_public_summary",
+    "pro": "same_provenance_via_mcp",
+    "operator": "source_health_only"
+  }
+}

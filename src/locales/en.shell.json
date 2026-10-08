@@ -1,7 +1,7 @@
 {
   "shell": {
     "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, open-source intelligence in one view.",
     "offlineTitle": "You're Offline",
     "offlineMessage": "World Monitor requires an internet connection for real-time intelligence data.",
     "offlineRetry": "Retry"
@@ -44,21 +44,21 @@
     "sourceRegionTopical": "Topical",
     "sourceRegionIntel": "Intelligence",
     "sourceRegionTechNews": "Tech News",
-    "sourceRegionAiMl": "AI & ML",
-    "sourceRegionStartupsVc": "Startups & VC",
+    "sourceRegionAiMl": "AI & Machine learning",
+    "sourceRegionStartupsVc": "Startups & Venture capital",
     "sourceRegionRegionalTech": "Regional Ecosystems",
     "sourceRegionDeveloper": "Developer",
     "sourceRegionCybersecurity": "Cybersecurity",
     "sourceRegionTechPolicy": "Policy & Research",
     "sourceRegionTechMedia": "Media & Podcasts",
     "sourceRegionMarkets": "Markets & Analysis",
-    "sourceRegionFixedIncomeFx": "Fixed Income & FX",
+    "sourceRegionFixedIncomeFx": "Fixed Income & Foreign exchange",
     "sourceRegionCommodities": "Commodities",
     "sourceRegionCryptoDigital": "Crypto & Digital",
     "sourceRegionCentralBanks": "Central Banks & Economy",
     "sourceRegionDeals": "Deals & Corporate",
     "sourceRegionFinRegulation": "Financial Regulation",
-    "sourceRegionGulfMena": "Gulf & MENA",
+    "sourceRegionGulfMena": "Gulf & Middle East and North Africa",
     "filterPanels": "Filter panels...",
     "resetLayout": "Reset Layout",
     "resetLayoutTooltip": "Restore default panel arrangement",
@@ -71,15 +71,15 @@
     "panelCatTopical": "Topical",
     "panelCatDataTracking": "Data & Tracking",
     "panelCatTechAi": "Tech & AI",
-    "panelCatStartupsVc": "Startups & VC",
+    "panelCatStartupsVc": "Startups & Venture capital",
     "panelCatSecurityPolicy": "Security & Policy",
     "panelCatMarkets": "Markets",
-    "panelCatFixedIncomeFx": "Fixed Income & FX",
+    "panelCatFixedIncomeFx": "Fixed Income & Foreign exchange",
     "panelCatCommodities": "Commodities",
     "panelCatCryptoDigital": "Crypto & Digital",
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
-    "panelCatGulfMena": "Gulf & MENA",
+    "panelCatGulfMena": "Gulf & Middle East and North Africa",
     "panelCatCommodityPrices": "Prices & Markets",
     "panelCatMining": "Mining & Supply Chain",
     "panelCatCommodityEcon": "Economy & Trade",
@@ -124,26 +124,26 @@
     "tech": "Technology",
     "crypto": "Crypto",
     "heatmap": "Sector Heatmap",
-    "ai": "AI/ML",
+    "ai": "AI & machine learning",
     "layoffs": "Layoffs Tracker",
     "monitors": "My Monitors",
     "satelliteFires": "Fires",
-    "macroSignals": "BTC Regime",
-    "etfFlows": "BTC ETF Tracker",
+    "macroSignals": "Bitcoin market conditions",
+    "etfFlows": "Bitcoin fund flows",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
-    "wsbTickerScanner": "WSB Ticker Scanner",
+    "wsbTickerScanner": "WallStreetBets ticker scanner",
     "ucdpEvents": "Armed Conflict Events",
     "giving": "Global Giving",
-    "displacement": "UNHCR Displacement",
+    "displacement": "Refugees and displacement",
     "climate": "Climate Anomalies",
     "populationExposure": "Population Exposure",
     "securityAdvisories": "Security Advisories",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Intel",
     "xIntel": "X News Accounts",
-    "startups": "Startups & VC",
-    "vcblogs": "VC Insights & Essays",
+    "startups": "Startups & venture capital",
+    "vcblogs": "Venture capital insights & essays",
     "regionalStartups": "Global Startup News",
     "unicorns": "Unicorn Tracker",
     "accelerators": "Accelerators & Demo Days",
@@ -155,8 +155,8 @@
     "cloud": "Cloud & Infrastructure",
     "dev": "Developer Community",
     "github": "GitHub Trending",
-    "ipo": "IPO & SPAC",
-    "funding": "Funding & VC",
+    "ipo": "Public listings & shell-company mergers",
+    "funding": "Funding & venture capital",
     "producthunt": "Product Hunt",
     "events": "Tech Events",
     "serviceStatus": "Service Status",
@@ -167,7 +167,7 @@
       "anomalies": "Anomalies"
     },
     "techReadiness": "Tech Readiness Index",
-    "gccInvestments": "GCC Investments",
+    "gccInvestments": "Gulf investments",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams",
     "windyWebcams": "Windy Live Webcam",
@@ -175,9 +175,9 @@
     "groceryBasket": "Grocery Index",
     "groceryItem": "Item",
     "bigmac": "Real Big Mac Index",
-    "fx": "FX Rates",
+    "fx": "Foreign exchange rates",
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
-    "bigmacWow": "WoW",
+    "bigmacWow": "Week-over-week",
     "bigmacCountry": "Country",
     "faoFoodPriceIndex": "FAO Food Price Index",
     "fuelPrices": "Fuel Prices",
@@ -211,14 +211,14 @@
     "scanningThermalData": "Scanning thermal data",
     "calculatingExposure": "Calculating exposure",
     "computingSignals": "Computing signals...",
-    "loadingEtfData": "Loading ETF data...",
+    "loadingEtfData": "Loading exchange-traded fund data...",
     "loadingGiving": "Loading global giving data",
     "loadingDisplacement": "Loading displacement data",
     "loadingClimateData": "Loading climate data",
     "failedTechReadiness": "Tech readiness data temporarily unavailable",
     "failedRiskOverview": "Risk overview temporarily unavailable",
     "failedPredictions": "Predictions temporarily unavailable",
-    "failedCII": "CII data temporarily unavailable",
+    "failedCII": "Country Instability Index data temporarily unavailable",
     "failedDependencyGraph": "Dependency graph temporarily unavailable",
     "failedIntelFeed": "Intelligence feed temporarily unavailable",
     "failedMarketData": "Market data temporarily unavailable",
@@ -270,7 +270,7 @@
     "features": {
       "orefSirens1": "Real-time Israel missile & rocket alerts",
       "orefSirens2": "Siren zone mapping with threat classification",
-      "telegramIntel1": "Curated Telegram OSINT channels",
+      "telegramIntel1": "Curated Telegram open-source intelligence channels",
       "telegramIntel2": "Near-real-time conflict & geopolitical updates",
       "xIntel1": "Curated X news accounts",
       "xIntel2": "API-fresh posts and permalinks"
@@ -398,11 +398,11 @@
       "expenditure": "Military spend",
       "personnel": "Personnel",
       "armsImports": "Arms imports",
-      "concentration": "Supplier HHI",
+      "concentration": "Supplier concentration index",
       "coverage": "Mapped coverage",
       "suppliers": "Arms suppliers ({{start}}–{{end}})",
       "supplierRetained": "Supplier data retained from the last successful importer refresh.",
-      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. The transfer volume indicator measures relative arms transfers, not financial value.",
       "sourceWorldBank": "Source: World Bank.",
       "unavailable": "Not available"
     },
@@ -429,8 +429,8 @@
       "entities": "Entities:",
       "translation": "Translation:",
       "source": "Source:",
-      "imfGrowth": "IMF growth forecast",
-      "creditGdp": "Credit to GDP",
+      "imfGrowth": "International Monetary Fund growth forecast",
+      "creditGdp": "Credit relative to economic output",
       "strategicTrade": "Strategic trade exposure",
       "crudeImports": "Crude oil imports",
       "gasDemand": "Gas demand",
@@ -474,7 +474,7 @@
       "views": {
         "global": "Global",
         "americas": "Americas",
-        "mena": "MENA",
+        "mena": "Middle East and North Africa",
         "europe": "Europe",
         "asia": "Asia",
         "latam": "Latin America",
@@ -528,19 +528,19 @@
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "fx": {
-      "infoTooltip": "<strong>FX Rates</strong> Currency stress and spot rates:<ul><li>FX Stress ranks 45 currencies by their worst peak-to-trough drawdown over the last 24 months, alongside the 12-month change</li><li>Coverage includes ARS, TRY, EGP, NGN, PKR and UAH — currencies the BIS and ECB reference sets omit</li><li>Spot lists rates against the US dollar and the ECB euro reference rates separately, because the two are quoted from different bases</li><li>RUB — Bank of Russia rates, rubles per unit</li></ul>Sources: Yahoo Finance, the ECB and the Bank of Russia."
+      "infoTooltip": "<strong>Currency rates</strong> Stress ranks 45 currencies by their largest decline over 24 months, with the 12-month change. Spot rates use separate US dollar and euro bases. Russian ruble rates are rubles per unit. Sources include Yahoo Finance, the European Central Bank and Bank of Russia."
     },
     "cascade": {
       "infoTooltip": "<strong>Cascade Analysis</strong> Models infrastructure dependencies:<ul><li>Subsea cables, pipelines, ports, chokepoints</li><li>Select infrastructure to simulate failure</li><li>Shows affected countries and capacity loss</li><li>Identifies redundant routes</li></ul>Data from TeleGeography and industry sources."
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, European Central Bank, Bank of England, and other major central banks worldwide."
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM Analyst</strong> AI analyst with live context across geopolitical, market, military, and economic domains. Powered by Claude with real-time data injected from active WorldMonitor feeds."
     },
     "chokepointStrip": {
-      "infoTooltip": "Live status for the seven global oil & gas shipping chokepoints. Flow estimates calibrated from Portwatch DWT + AIS observations. See /docs/methodology/chokepoints for methodology.",
+      "infoTooltip": "Live status for the seven global oil & gas shipping chokepoints. Flow estimates calibrated from Portwatch vessel carrying capacity + ship tracking observations. See /docs/methodology/chokepoints for methodology.",
       "title": "Chokepoint Status"
     },
     "cii": {
@@ -559,10 +559,10 @@
       "infoTooltip": "<strong>Conservation Wins</strong> Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications."
     },
     "consumerPrices": {
-      "infoTooltip": "<strong>Consumer Prices</strong> Real-time basket price tracking:<ul><li><strong>Overview</strong>: Essentials index, value basket, and week-on-week change</li><li><strong>Categories</strong>: Per-category price trends with 30-day range</li><li><strong>Movers</strong>: Biggest rising and falling items this week</li><li><strong>Spread</strong>: Price variance across retailers for the same basket</li><li><strong>World</strong>: Official IMF annual inflation for every reporting economy</li></ul>Data sourced from live retailer price scraping and IMF WEO."
+      "infoTooltip": "<strong>Consumer prices</strong> Live grocery baskets, weekly changes, category trends, price movers and differences between retailers. The world view uses annual inflation from the International Monetary Fund World Economic Outlook."
     },
     "cotPositioning": {
-      "infoTooltip": "<strong>CFTC COT Positioning</strong> Commitments of Traders report: net positioning of commercials, large speculators, and small traders across commodity and financial futures. Published weekly (Friday). Source: CFTC."
+      "infoTooltip": "<strong>Futures positioning</strong> Weekly net positions for commercial traders, large speculators and small traders across commodity and financial futures. Source is the Commodity Futures Trading Commission Commitments of Traders report, published on Fridays."
     },
     "counters": {
       "infoTooltip": "<strong>Live Counters</strong> Real-time extrapolated counters for global metrics: military spending, natural disasters, disease burden, and more. Figures are statistical estimates based on annual data rates."
@@ -575,7 +575,7 @@
     },
     "defensePatents": {
       "infoTooltip": "Weekly defense and dual-use patent filings by Raytheon, Lockheed, Huawei, DARPA, and other strategic organizations. Categories: H04B (comms), H01L (semiconductors), F42B (ammunition), G06N (AI), C12N (biotech). Source: USPTO Open Data Portal.",
-      "title": "R&D Signal"
+      "title": "Research and development signals"
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
@@ -589,43 +589,43 @@
       "title": "Disease Outbreaks"
     },
     "displacement": {
-      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
+      "infoTooltip": "<strong>Displacement</strong> Refugees, asylum seekers and people displaced within their country. Origin and host views show where people flee from and to. Crisis badges mark over one million displaced; high marks over 500,000. Annual UN Refugee Agency data, CC BY 4.0 license."
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Earnings Calendar</strong> Upcoming and recent earnings releases for major public companies. Shows EPS estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers.",
+      "infoTooltip": "<strong>Earnings Calendar</strong> Upcoming and recent earnings releases for major public companies. Shows earnings per share estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers.",
       "title": "Earnings Calendar"
     },
     "economic": {
-      "infoTooltip": "<strong>Macro Stress</strong> Macro gauges, government spending, and central bank data:<ul><li><strong>Indicators</strong>: VIX, rates, yield curve, labor, inflation</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: BIS policy rates and exchange rate data</li></ul>"
+      "infoTooltip": "<strong>Macro Stress</strong> Macro gauges, government spending, and central bank data:<ul><li><strong>Indicators</strong>: VIX, rates, yield curve, labor, inflation</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: Bank for International Settlements policy rates and exchange rate data</li></ul>"
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
+      "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: consumer price index, nonfarm payrolls, gross domestic product, purchasing managers index, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "economicCorrelation": {
       "infoTooltip": "<strong>Economic Warfare</strong> Detects converging economic pressure signals:<ul><li>Sanctions, trade restrictions, and currency movements</li><li>Commodity disruptions linked to geopolitical actors</li><li>Cross-domain correlation between economic and security events</li></ul>Click a card to zoom to the affected region."
     },
     "energyComplex": {
-      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>EIA metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
+      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>US Energy Information Administration metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Detects converging geopolitical signals:<ul><li>Correlates military movements, conflict events, and news spikes</li><li>Scores convergence zones by severity (critical/high/medium/low)</li><li>Tracks escalation or de-escalation trends over time</li></ul>Click a card to zoom to the region on the map."
     },
     "etfFlows": {
       "netNeutral": "NET NEUTRAL",
-      "infoTooltip": "<strong>BTC ETF Tracker</strong> Tracks daily estimated fund flows for US spot Bitcoin ETFs:<ul><li>Inflow/outflow direction and magnitude</li><li>Volume and price change per fund</li><li>Net aggregate flow across all tracked ETFs</li></ul>"
+      "infoTooltip": "<strong>Bitcoin fund flows</strong> Tracks daily estimated fund flows for US spot Bitcoin exchange-traded funds:<ul><li>Inflow/outflow direction and magnitude</li><li>Volume and price change per fund</li><li>Net aggregate flow across all tracked funds</li></ul>"
     },
     "faoFoodPriceIndex": {
-      "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's FFPI tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month."
+      "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's Food Price Index tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Financial Stress Indicator"
     },
     "fuelPrices": {
-      "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. WoW change shown when prior week data is available."
+      "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. Week-over-week change shown when prior week data is available."
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Real-time global news monitoring:<ul><li>Curated topic categories (conflicts, cyber, etc.)</li><li>Articles from 100+ languages translated</li><li>Updates every 15 minutes</li><li>14-day media tone &amp; volume trend per topic</li><li>14-day media tone &amp; volume trend per topic</li></ul>Source: GDELT Project (gdeltproject.org)"
@@ -638,19 +638,19 @@
       "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity."
     },
     "goldIntelligence": {
-      "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."
+      "infoTooltip": "<strong>Gold intelligence</strong> Gold prices in several currencies, gold/silver and gold/platinum ratios, and managed-money futures positions. Sources include Yahoo Finance and the Commodity Futures Trading Commission."
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline consumer price index."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for Gulf Cooperation Council economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
       "title": "Hormuz Trade Tracker"
     },
     "insights": {
@@ -666,17 +666,17 @@
       "infoTooltip": "Database of Saudi Arabia and UAE foreign direct investments in global critical infrastructure. Click a row to fly to the investment on the map."
     },
     "liquidityShifts": {
-      "infoTooltip": "<strong>Liquidity Shifts</strong> High-liquidity positioning and daily shift monitor for oil, gold, silver, equity index futures, and top US stocks. COT asset-manager net and leveraged-funds net vs daily price change.",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> High-liquidity positioning and daily shift monitor for oil, gold, silver, equity index futures, and top US stocks. Commitments of Traders asset-manager net and leveraged-funds net vs daily price change.",
       "title": "Liquidity Shifts"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live Webcams</strong> Live feeds from geopolitically significant locations worldwide: conflict zones, capital cities, border crossings, and strategic chokepoints. Streams sourced from YouTube and public networks."
     },
     "macroSignals": {
-      "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
+      "infoTooltip": "<strong>Bitcoin market conditions</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "macroTiles": {
-      "infoTooltip": "<strong>Macro Indicators</strong> Key macroeconomic indicators for the US, Euro Area, and China. China appears only when current price, activity, policy, and FX coverage passes the launch gate; each China tile keeps its source and observation date visible. Sources: FRED, Eurostat, ECB, OECD, BIS, and HKMA."
+      "infoTooltip": "<strong>Macro indicators</strong> US, euro area and China prices, activity, policy and currency indicators. China requires current coverage. Each tile shows its source and observation date."
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI Market Implications</strong> LLM-generated trade signals derived from live geopolitical, commodity, and macro state after each forecast cycle.<ul><li><strong>Direction</strong>: LONG / SHORT / HEDGE</li><li><strong>Timeframe</strong>: 1W, 2W, 1M, or 3M horizon</li><li><strong>Driver</strong>: Key catalyst behind the signal</li><li><strong>Risk</strong>: Caveat or invalidation condition</li></ul><em>For informational purposes only. Not investment advice.</em>",
@@ -696,7 +696,7 @@
       "infoTooltip": "<strong>Keyword Monitors</strong> Add any term to track live news mentions across all WorldMonitor sources. Results update in real time as matching articles are ingested."
     },
     "oilInventories": {
-      "infoTooltip": "<strong>Oil Inventories</strong> US crude oil and SPR stockpiles (EIA weekly), natural gas storage, EU gas fill percentage (GIE AGSI+), and OECD oil stocks days-of-cover (IEA monthly)."
+      "infoTooltip": "<strong>Oil inventories</strong> US commercial crude and strategic reserves, natural gas stocks, European gas storage, and oil stock cover. Sources include the US Energy Information Administration and International Energy Agency."
     },
     "orefSirens": {
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
@@ -722,10 +722,10 @@
       "infoTooltip": "<strong>Regulation</strong> Regulatory actions, policy changes, and enforcement updates from global regulators: financial, tech, energy, and trade authorities. Sourced from official government and regulatory body publications."
     },
     "renewable": {
-      "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and EIA."
+      "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and US Energy Information Administration."
     },
     "sanctionsPressure": {
-      "infoTooltip": "OFAC SDN and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designations. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designations. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
       "title": "Sanctions & Designations"
     },
     "satelliteFires": {
@@ -750,13 +750,13 @@
       "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
     },
     "strategicPosture": {
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>"
+      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>"
     },
     "strategicRisk": {
       "infoTooltip": "<strong>Methodology</strong> Composite score (0-100) blending:<ul><li>50% Country Instability (top 5 weighted)</li><li>30% Geographic convergence zones</li><li>20% Infrastructure incidents</li></ul>Auto-refreshes every 5 minutes."
     },
     "supplyChain": {
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (producer concentration index) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
     },
     "techEvents": {
       "infoTooltip": "<strong>Tech Events</strong> Upcoming and recent technology events: conferences, product launches, regulatory hearings, and earnings calls. Aggregated from official event calendars and industry sources."
@@ -765,17 +765,17 @@
       "infoTooltip": "<strong>Tech Hub Activity</strong><br>Shows tech hubs with the most news activity.<br><br><em>Activity levels:</em><br>• <span style=\"color: {{highColor}}\">High</span> — Breaking news or 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Elevated</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Low</span> — Score below 20<br><br>Click a hub to zoom to its location."
     },
     "techReadiness": {
-      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Composite score (0-100) based on World Bank data:<br><br><strong>Metrics shown:</strong><br>🌐 Internet Users (% of population)<br>📱 Mobile Subscriptions (per 100 people)<br>🔬 R&D Expenditure (% of GDP)<br><br><strong>Weights:</strong> R&D (35%), Internet (30%), Broadband (20%), Mobile (15%)<br><br><em>— = No recent data available</em><br><em>Source: World Bank Open Data (2019-2024)</em>"
+      "infoTooltip": "<strong>Technology readiness</strong> World Bank composite score, 0–100. Weights are research and development 35%, internet 30%, broadband 20%, and mobile 15%. Internet users are a population percentage; mobile subscriptions are per 100 people; research spending is a share of economic output. Missing values show a dash. Data spans 2019–2024."
     },
     "telegramIntel": {
-      "infoTooltip": "Real-time signals from monitored Telegram OSINT channels"
+      "infoTooltip": "Real-time signals from monitored Telegram open-source intelligence channels"
     },
     "thermalEscalation": {
       "infoTooltip": "Seeded FIRMS/VIIRS thermal anomaly clusters with baseline comparison, persistence tracking, and strategic context. This panel answers where thermal activity is abnormal and which clusters may signal conflict, industrial disruption, or escalation.",
       "title": "Thermal Escalation"
     },
     "tradePolicy": {
-      "infoTooltip": "<strong>Trade Policy</strong> WTO baseline and tariff-impact monitoring:<ul><li><strong>Overview</strong>: WTO MFN baseline rates with US effective-rate context when available</li><li><strong>Tariffs</strong>: WTO MFN tariff trends vs the US effective tariff estimate</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li><li><strong>Revenue</strong>: Monthly US customs duties revenue (US Treasury MTS data)</li></ul>"
+      "infoTooltip": "<strong>Trade policy</strong> General non-preferential tariff baselines from the World Trade Organization, with US effective rates where available. Includes tariff trends, trade flows, technical and food safety barriers, and monthly US customs revenue."
     },
     "ucdpEvents": {
       "infoTooltip": "<strong>Armed Conflict Events</strong> Event-level conflict data from Uppsala University (UCDP).<ul><li><strong>State-Based</strong>: Government vs rebel group</li><li><strong>Non-State</strong>: Armed group vs armed group</li><li><strong>One-Sided</strong>: Violence against civilians</li></ul>Deaths shown as best estimate (low-high range). ACLED duplicates are filtered out automatically."
@@ -787,10 +787,10 @@
       "infoTooltip": "<strong>World Clock</strong> Live local times and market session status for major global financial centers. Shows open/closed status for NYSE, LSE, TSE, SGX, and other exchanges."
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing. Ranked by mention frequency and engagement. Velocity measures how rapidly a ticker gains momentum across posts."
+      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing. Ranked by mention frequency and engagement. Velocity measures how rapidly a ticker gains momentum across posts."
     },
     "yieldCurve": {
-      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including the 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: FRED."
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including the 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: Federal Reserve Economic Data."
     },
     "liveNews": {
       "readyStatus": "Ready when you are",
@@ -896,7 +896,7 @@
       }
     },
     "gpsJamming": {
-      "title": "GPS/GNSS Interference"
+      "title": "Satellite navigation interference"
     },
     "pipeline": {
       "title": "PIPELINE"

@@ -92,7 +92,7 @@ test('getResilienceOverallDisplay treats negative and non-finite scores as insuf
     scoreLabel: 'n/a',
     visualLevel: 'unknown',
     visualLevelLabel: 'Insufficient data',
-    serverLevelLabel: 'API level: unknown',
+    serverLevelLabel: 'Reported level: unknown',
   });
   assert.deepEqual(getResilienceOverallDisplay({ overallScore: Number.NaN, level: 'low' }), {
     hasScore: false,
@@ -100,7 +100,7 @@ test('getResilienceOverallDisplay treats negative and non-finite scores as insuf
     scoreLabel: 'n/a',
     visualLevel: 'unknown',
     visualLevelLabel: 'Insufficient data',
-    serverLevelLabel: 'API level: low',
+    serverLevelLabel: 'Reported level: low',
   });
 });
 
@@ -116,7 +116,7 @@ test('getResilienceOverallDisplay treats null, undefined, and API unknown zero a
     scoreLabel: 'n/a',
     visualLevel: 'unknown',
     visualLevelLabel: 'Insufficient data',
-    serverLevelLabel: 'API level: unknown',
+    serverLevelLabel: 'Reported level: unknown',
   });
 });
 
@@ -128,7 +128,7 @@ test('getResilienceOverallDisplay keeps explicit zero scores when API level is r
     scoreLabel: '0',
     visualLevel: 'very_low',
     visualLevelLabel: 'Visual band: VERY LOW',
-    serverLevelLabel: 'API level: low',
+    serverLevelLabel: 'Reported level: low',
   });
 });
 
@@ -142,7 +142,7 @@ test('getResilienceOverallDisplay distinguishes positive sub-1 scores from expli
     scoreLabel: '<1',
     visualLevel: 'very_low',
     visualLevelLabel: 'Visual band: VERY LOW',
-    serverLevelLabel: 'API level: low',
+    serverLevelLabel: 'Reported level: low',
   });
 });
 
@@ -153,7 +153,7 @@ test('getResilienceOverallDisplay separates visual band from API level', () => {
     scoreLabel: '61',
     visualLevel: 'high',
     visualLevelLabel: 'Visual band: HIGH',
-    serverLevelLabel: 'API level: medium',
+    serverLevelLabel: 'Reported level: medium',
   });
 });
 
@@ -172,7 +172,7 @@ test('resilience methodology help copy derives current counts from the preview f
   assert.match(title, new RegExp(`${summary.activeDimensionCount} active dimensions`));
   assert.match(title, new RegExp(`${summary.domainCount} domains`));
   assert.match(title, new RegExp(`${summary.pillarCount} pillars`));
-  assert.match(title, /pillar detail appears when the API response includes it/i);
+  assert.match(title, /pillar detail appears when the data response includes it/i);
 });
 
 test('getResilienceTrendArrow renders the expected glyphs', () => {

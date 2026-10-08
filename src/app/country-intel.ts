@@ -1321,7 +1321,7 @@ export class CountryIntelManager implements AppModule {
         label: 'Instability Regime',
         value: `${score.score}/100 (${score.level})`,
         trend,
-        source: 'CII',
+        source: 'Country Instability Index',
       });
     }
 

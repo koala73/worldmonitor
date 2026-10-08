@@ -376,7 +376,7 @@ export class HeatmapPanel extends Panel {
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">YTD</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Year to date</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;
