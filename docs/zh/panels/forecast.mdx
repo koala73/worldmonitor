@@ -172,7 +172,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 在 issue #8995 之前，裁判通道按问题模板中的词语挑选存档条目，且不以截止时间为限。对以这种方式封存的 27 条裁判 YES 与 NO 结论的审计发现，其中 14 条得不到自身引用的支持，1 条可能有误。重新裁判要求存档覆盖截止前的最后 7 天，而这些窗口都在 2026-08-23 之前结束，早于保留 15 天的存档中最早的证据。因此每次运行都会把 #8995 上线（`SUBJECT_GATED_SELECTION_SINCE_MS`，2026-10-07T14:39Z）之前结算的每条裁判 YES 或 NO 以原因 `judged_old_selection` 封存为 VOID。记录保留 `resolvedAt`，把原始结果和证据保留在 `supersededOutcome` 与 `supersededEvidence` 中，并记录 `voidedAt`。该步骤在窗口更正之后运行，因此重复窗口保留 `duplicate_window`。作废的记录不再是 YES 或 NO，因此重复运行不会再改变任何内容。
 
-自 issue #9011 起，每条裁判结论都以 `evidence.selectionVersion` 记录其裁判时所用的证据选取方式（`JUDGED_EVIDENCE_SELECTION_VERSION`，目前为 3：1 为按问题模板词语选取，2 为 #8995，3 为 #8999）。该步骤把低于 `JUDGED_MIN_TRUSTED_SELECTION_VERSION`（2）的每条裁判 YES 或 NO 封存为 VOID。在该标记出现之前封存的记录按上述截止时间判定：之前为版本 1，之后为版本 3，因为在 #8995 与 #8999 上线之间没有封存任何裁判 YES 或 NO。今后证据选取方式改变时提升版本号，再提高最低版本，就恰好覆盖按旧选取方式封存的记录。
+自 issue #9011 起，每条裁判结论都以 `evidence.selectionVersion` 记录其裁判时所用的证据选取方式（`JUDGED_EVIDENCE_SELECTION_VERSION`，目前为 3：1 为按问题模板词语选取，2 为 #8995，3 为 #8999 及 #9002）。每条裁判封存都带有该标记，包括 VOID；包装证据的更正会把它保留在 `supersededEvidence` 下。该步骤把低于 `JUDGED_MIN_TRUSTED_SELECTION_VERSION`（2）的每条裁判 YES 或 NO 封存为 VOID。在该标记出现之前封存的记录按上述截止时间判定：之前为版本 1，之后为版本 3，因为在 #8995 与 #8999 上线之间没有封存任何裁判 YES 或 NO。今后证据选取方式改变时提升版本号，再提高最低版本，就恰好覆盖按旧选取方式封存的记录。
 
 回执已存入 R2 之后才被更正的记录（`resolver_envelope_bug`、`duplicate_window`、`judged_old_selection`、`late_read`、`resolver_could_not_read_feed`、改评分或迟读重新判定）会重新写入回执。R2 写入逐条进行，每条约 450 毫秒，且在运行 150 秒的抓取阶段内完成，因此每次运行最多重写 `RECEIPT_REARCHIVE_PER_RUN`（50）条此类回执，最早的优先。积压会在之后的运行中逐步清空，在更正后的回执写入之前，清理不会删除该记录。
 

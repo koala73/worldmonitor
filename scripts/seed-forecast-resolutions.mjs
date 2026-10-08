@@ -758,10 +758,13 @@ function collectNormalizeClasses(judgments) {
 
 // Bump whenever the judged lane changes which evidence the judges see, so a
 // later correction finds the verdicts sealed under the old selection by their
-// stamp rather than by a deploy time (#9011).
+// stamp rather than by a deploy time (#9011). Any change to which archive items
+// reach the judges (subject matching, ranking, the window, the item cap) needs
+// a bump. Every judged seal carries the stamp, VOIDs included.
 //  1: stock words from the question template, no deadline cutoff (before #8995).
 //  2: subject-gated evidence through the deadline (#8995).
-//  3: subject table, title-first ranking, event-word absence floor (#8999).
+//  3: subject table, title-first ranking, event-word absence floor (#8999), and
+//     the country-match fix (#9002), which deployed before any judged YES or NO.
 export const JUDGED_EVIDENCE_SELECTION_VERSION = 3;
 
 export function selectJudgedArchiveItems(entry, archiveItems, options = {}) {
@@ -2143,7 +2146,7 @@ export const JUDGED_MIN_TRUSTED_SELECTION_VERSION = 2;
 // existed are dated by the #8995 deploy. No judged YES or NO was sealed
 // between that deploy and #8999's, so every later unstamped row is version 3.
 export function judgedSelectionVersion(entry) {
-  const stamp = entry?.evidence?.selectionVersion;
+  const stamp = entry?.evidence?.selectionVersion ?? entry?.evidence?.supersededEvidence?.selectionVersion;
   if (Number.isInteger(stamp)) return stamp;
   const resolvedAt = Number(entry?.resolvedAt);
   if (!Number.isFinite(resolvedAt)) return null;

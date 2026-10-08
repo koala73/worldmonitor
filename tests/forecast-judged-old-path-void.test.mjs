@@ -252,6 +252,9 @@ describe('judged verdicts carry the evidence-selection version they were sealed 
 
   it('reads the stamp first and dates only unstamped rows by the #8995 cutoff', () => {
     assert.equal(judgedSelectionVersion(stamped('a', 3, CUTOFF - DAY_MS)), 3, 'the stamp wins over the seal time');
+    const wrapped = stamped('w', 4);
+    wrapped.evidence = { reason: 'later_correction', supersededEvidence: wrapped.evidence };
+    assert.equal(judgedSelectionVersion(wrapped), 4, 'a correction that wraps the evidence keeps its stamp');
     assert.equal(judgedSelectionVersion(judgedRow('b', { resolvedAt: CUTOFF - 1 })), 1);
     assert.equal(judgedSelectionVersion(judgedRow('c', { resolvedAt: CUTOFF })), 3);
     const undated = judgedRow('d');
