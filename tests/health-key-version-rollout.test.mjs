@@ -10,6 +10,8 @@ const {
   KEY_VERSION_ROLLOUT_DEADLINE_PREFIX,
   writerKeyVersionBehind,
   keyVersionRolloutCommands,
+  keyVersionRolloutDurationMs,
+  KEY_VERSION_ROLLOUT_MAX_MS,
 } = __testing__;
 
 // Production on 2026-10-08: #9044 moved this reader from v11 to v12 at 08:55
@@ -175,4 +177,13 @@ test('a rollout window also covers keys whose missing data is otherwise a failur
   });
   assert.equal(classifyKey(name, key, { allowOnDemand: false }, ctx(null)).status, 'EMPTY');
   assert.equal(classifyKey(name, key, { allowOnDemand: false }, ctx(NOW + 60_000)).status, 'ROLLOUT_PENDING');
+});
+
+// Review on #9046: staleness budgets reach 400 days (resilienceStaticIndex).
+// A writer that never moves to the new version would keep an absent key at
+// warn for that long. The gap being covered is one writer tick, not the budget.
+test('the window is the staleness budget, capped at one day', () => {
+  assert.equal(KEY_VERSION_ROLLOUT_MAX_MS, 24 * 60 * 60 * 1_000);
+  assert.equal(keyVersionRolloutDurationMs(SEED_META[NAME]), BUDGET_MS);
+  assert.equal(keyVersionRolloutDurationMs(SEED_META.resilienceStaticIndex), KEY_VERSION_ROLLOUT_MAX_MS);
 });

@@ -2278,10 +2278,17 @@ function parseFredRatesRolloutUntil(results) {
 // three hours beside a fresh seed-meta written by the v11 code. A fresh writer
 // whose `sourceVersion` names an older version of the read key's family is that
 // state, so the absent key gets the ROLLOUT_PENDING window the FRED rollout
-// uses. The window is the key's own staleness budget, claimed once per data key
-// version in production; a writer that still writes the old version after it
-// reads EMPTY again.
+// uses. The window is the key's own staleness budget capped at one day, claimed
+// once per data key version in production; a writer that still writes the old
+// version after it reads EMPTY again. The cap matters for budgets of weeks or
+// months (resilienceStaticIndex: 400 days): the gap is one writer tick, and a
+// writer that never moves to the new version must not keep the key at warn.
 const KEY_VERSION_ROLLOUT_DEADLINE_PREFIX = 'health:rollout-deadline:key-version:';
+const KEY_VERSION_ROLLOUT_MAX_MS = 24 * 60 * 60 * 1_000;
+
+function keyVersionRolloutDurationMs(seedCfg) {
+  return Math.min(seedCfg.maxStaleMin * 60_000, KEY_VERSION_ROLLOUT_MAX_MS);
+}
 
 function versionedKeyFamily(dataKey) {
   const match = /^(.+?):v(\d+)(?=:|$)/.exec(dataKey);
@@ -2306,7 +2313,7 @@ function keyVersionRolloutCandidates(registries, keyStrens, keyErrors, keyMetaVa
       if (!seedMeta.hasMeta || seedMeta.seedError || seedMeta.seedStale !== false) continue;
       const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
       if (!writerKeyVersionBehind(dataKey, meta?.sourceVersion)) continue;
-      candidates.push({ name, dataKey, durationMs: seedCfg.maxStaleMin * 60_000 });
+      candidates.push({ name, dataKey, durationMs: keyVersionRolloutDurationMs(seedCfg) });
     }
   }
   return candidates;
@@ -5658,6 +5665,8 @@ export const __testing__ = {
   FRED_RATES_ROLLOUT_DEADLINE_KEY,
   FRED_RATES_ROLLOUT_DURATION_MS,
   KEY_VERSION_ROLLOUT_DEADLINE_PREFIX,
+  KEY_VERSION_ROLLOUT_MAX_MS,
+  keyVersionRolloutDurationMs,
   writerKeyVersionBehind,
   keyVersionRolloutCommands,
   fredRatesRolloutCommands,
