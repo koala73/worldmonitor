@@ -301,6 +301,21 @@ describe('getForecastScorecard backend status', () => {
     assert.deepEqual([...PUBLISHED_DOMAIN_FIELDS], [...SCORECARD_NESTED_ROW_FIELDS.publishedByDomain], 'and the same domain members');
   });
 
+  // Internal until the audit-lift checklist reads it (#9010): no public
+  // surface may serve the count of headline rows with pre-#7071 anchors.
+  it('keeps skill.preLineageAnchorCount off REST, MCP and the /accuracy/ capture', () => {
+    for (const list of [SKILL_FIELDS, SKILL_EXTENDED_FIELDS, SCORECARD_NESTED_OBJECT_FIELDS.skill]) {
+      assert.ok(!list.includes('preLineageAnchorCount'));
+    }
+    const data = { skill: { count: 3, preLineageAnchorCount: 1 } };
+    for (const extended of [false, true]) {
+      const { skill } = selectScorecardFields(data, { extended });
+      assert.equal(skill?.count, 3);
+      assert.ok(!Object.hasOwn(skill ?? {}, 'preLineageAnchorCount'));
+    }
+    assert.ok(!Object.hasOwn((selectDeclaredScorecardFields(data) as { skill?: object }).skill ?? {}, 'preLineageAnchorCount'));
+  });
+
   it('filters the interval and funnel blocks with the same member lists the /accuracy/ page uses', () => {
     for (const [block, { fields, children }] of Object.entries(SCORECARD_BLOCK_FIELDS)) {
       assert.deepEqual([...fields], [...SCORECARD_NESTED_OBJECT_FIELDS[block]], `${block} members`);

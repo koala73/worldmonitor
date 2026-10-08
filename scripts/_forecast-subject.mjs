@@ -63,11 +63,20 @@ export function subjectTermsForRegion(region) {
  * token match case-sensitively on the raw text ("Polish" is a country,
  * "polish" a verb). A country's exclusions are removed first, and an
  * ambiguous name ("Georgia", "Jordan", "Chad") counts only beside a co-term.
+ *
+ * `regionMembers: false` keeps a named region to its own terms plus the
+ * member countries its label names ("Israel/Gaza", "Iran Theater"). A news
+ * item about one member is evidence about the region; a market about one
+ * member asks a narrower question than the region's forecast (#9010).
  */
-export function subjectMatcherForRegion(region) {
+export function subjectMatcherForRegion(region, { regionMembers = true } = {}) {
   const table = loadJudgedSubjectTable();
   const subject = resolveJudgedSubject(region, table);
-  const countries = subject.countries.map((code) => table.countries[code]);
+  const label = ` ${normalizeSubjectText(region)} `;
+  const codes = regionMembers || subject.kind !== 'region'
+    ? subject.countries
+    : subject.countries.filter((code) => table.countries[code].terms.some((term) => label.includes(` ${term} `)));
+  const countries = codes.map((code) => table.countries[code]);
   return {
     /**
      * `contextText` is the item's other field: an ambiguous name in the title

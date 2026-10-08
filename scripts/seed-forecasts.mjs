@@ -2214,11 +2214,12 @@ const MARKET_PRICE_EVENT_PATTERNS = [
 // (#7071). Region overlap alone let invasion, leadership, and territory markets
 // calibrate cyber and posture forecasts. A domain or title family with no entry
 // gets no anchor. Cyber has none: its forecasts resolve on a threat count, and
-// no market prices a count. `adverse` serves forecasts whose YES outcome is escalation,
+// no market prices a count. Military has none: its forecasts (theater posture,
+// airlift and air-activity surges) assert an observed force posture, and a
+// strike or invasion market is a sub-event of it at best (#9010). `adverse` serves forecasts whose YES outcome is escalation,
 // `deescalatory` serves ceasefire-style forecasts; a missing slot means no anchor.
 const MARKET_ANCHOR_EVENT_CLASSES = {
   conflict: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
-  military: { adverse: ARMED_ESCALATION_EVENT_PATTERNS, deescalatory: DE_ESCALATION_EVENT_PATTERNS },
   // Leadership-identity questions ("next prime minister", "become president
   // before 2045") are not instability outcomes, so bare office titles do not count.
   political: {
@@ -2720,7 +2721,7 @@ function calibrateWithMarkets(predictions, markets) {
   for (const pred of predictions) {
     const keywords = REGION_KEYWORDS[pred.region] || [];
     const regionTerms = [...new Set([...getSearchTermsForRegion(pred.region), pred.region])];
-    const subject = subjectMatcherForRegion(pred.region);
+    const subject = subjectMatcherForRegion(pred.region, { regionMembers: false });
     const expectedTags = buildExpectedRegionTags(regionTerms, pred.region);
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
@@ -2760,8 +2761,9 @@ function calibrateWithMarkets(predictions, markets) {
         }
         // A shared macro tag or an entity-graph neighbour is not the same subject:
         // "Escalation risk: Syria" must not anchor to a US-invades-Iran market.
-        // The judged lane's subject table names a region's members, so
-        // "Middle East" matches an Israel market and "Baltic" never "Baltimore".
+        // The judged lane's subject table, without a region's unnamed members:
+        // "Red Sea" matches Bab el-Mandeb, "Baltic" never "Baltimore", and a
+        // Middle East forecast never borrows a one-country market's price.
         const hasSpecificRegionSignal = subject.matches(item.market.title);
         const hasTitleOverlap = item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
         if (!hasSpecificRegionSignal || (requireTitleOverlap && !hasTitleOverlap)) {

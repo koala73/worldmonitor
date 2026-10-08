@@ -771,7 +771,7 @@ describe('accuracy page honesty rules', () => {
     const market = (html) => { const text = stripTags(html).replaceAll('&#39;', "'"); return text.slice(text.indexOf('Against prediction markets')); };
     const section = market(renderState(LIVE_SECTION).html);
     assert.match(section, /every scored entry that carried a liquid prediction market's price/);
-    assert.match(section, /For a market bet the price is for the bet's own question\. For any other forecast it is the price of a market on the same subject and kind of event that settles inside the forecast's window, and that market can ask a narrower or broader question than the forecast\./);
+    assert.match(section, /For a market bet the price is for the bet's own question\. For any other forecast it is the price of a market on the same subject and kind of event that settles after the forecast was issued and no later than one more horizon, at least a week, past its deadline\. That market can ask a narrower or broader question than the forecast\./);
     assert.match(section, /On 78 such resolved entries/);
     assert.doesNotMatch(stripTags(renderState(LIVE_SECTION).html), /own question a liquid|covered the same question|overlapped/);
   });

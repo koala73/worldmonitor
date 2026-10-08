@@ -967,9 +967,9 @@ ${rows.map((row) => `          <tr data-origin="${escapeHtml(row.generationOrigi
 
 // A market bet carries its own market's price. Any other forecast carries
 // the price of the market it was blended toward (#7071): same subject, same
-// kind of event, settling inside the forecast's window, but not its exact
-// question (#9010).
-const MARKET_COMPARISON_SCOPE = "For a market bet the price is for the bet's own question. For any other forecast it is the price of a market on the same subject and kind of event that settles inside the forecast's window, and that market can ask a narrower or broader question than the forecast.";
+// kind of event, settling by one more horizon (at least a week) past the
+// forecast's deadline, but not its exact question (#9010).
+const MARKET_COMPARISON_SCOPE = "For a market bet the price is for the bet's own question. For any other forecast it is the price of a market on the same subject and kind of event that settles after the forecast was issued and no later than one more horizon, at least a week, past its deadline. That market can ask a narrower or broader question than the forecast.";
 
 function marketSection(vsMarketSkill, escapeHtml) {
   if (!isPlainObject(vsMarketSkill) || !isFiniteNumber(vsMarketSkill.count) || vsMarketSkill.count === 0) {
