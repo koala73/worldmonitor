@@ -6,6 +6,7 @@ import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 import {
   MARKET_ALERT_MIN_SAMPLE,
+  marketAlertMedianPublished,
   SCORECARD_DECLARED_FIELDS,
   SCORECARD_LIVE_ONLY_FIELDS,
   SCORECARD_NESTED_CHILD_FIELDS,
@@ -24,6 +25,7 @@ import {
   SCORECARD_BLOCK_FIELDS,
   SKILL_EXTENDED_FIELDS,
   SKILL_FIELDS,
+  selectMarketAlertScorecard,
   selectScorecardFields,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
@@ -346,6 +348,33 @@ describe('getForecastScorecard backend status', () => {
     const median = Object.fromEntries((res.marketAlerts?.byType ?? []).map((row) => [row.type, row.medianLeadTimeMs]));
     assert.deepEqual(median, { 'at-floor': 3600000, 'below-floor': undefined, 'no-hit-count': undefined });
     assert.equal(MARKET_ALERT_MEDIAN_MIN_HITS, MARKET_ALERT_MIN_SAMPLE, 'the API and the page share one floor');
+  });
+
+  it('withholds the median exactly where /accuracy/ reads Not yet measurable, control gate included (#8985)', () => {
+    const rows = [];
+    for (const type of ['silent_divergence', 'prediction_leads_news']) {
+      for (const hit of [29, 30, 40]) {
+        for (const baseN of [0, 12, 29, 30]) {
+          for (const paired of [null, 0.5]) {
+            rows.push({
+              type, pending: 0, resolved: hit + 10, hit, miss: 10, void: 0, n: hit + 10, hitRate: hit / (hit + 10),
+              baseN, pairedHitRate: baseN > 0 ? paired : null, baseHitRate: baseN > 0 ? 0.25 : null, medianLeadTimeMs: 3600000,
+            });
+          }
+        }
+      }
+    }
+    const served = selectMarketAlertScorecard({ ...MARKET_ALERTS_STORED, byType: rows })?.byType ?? [];
+    assert.equal(served.length, rows.length);
+    let shown = 0;
+    served.forEach((row, index) => {
+      const pageShows = marketAlertMedianPublished({ ...row, medianLeadTimeMs: rows[index].medianLeadTimeMs });
+      shown += Number(pageShows);
+      assert.equal(Object.hasOwn(row, 'medianLeadTimeMs'), pageShows, JSON.stringify(rows[index]));
+    });
+    assert.ok(shown > 0 && shown < rows.length, 'the grid must cover both outcomes');
+    const gated = served.find((row, index) => row.type === 'prediction_leads_news' && rows[index].hit === 40 && rows[index].baseN === 12);
+    assert.equal(gated && Object.hasOwn(gated, 'medianLeadTimeMs'), false, 'prediction_leads_news waits for 30 scored controls');
   });
 
   it('starts both Redis reads before either answers', async () => {

@@ -1695,7 +1695,7 @@ components:
                     type: string
                     description: |-
                         Set when run_id was supplied but the latest outcome is returned instead; the
-                         text tells an expired run_id from a failed by-run lookup.
+                         text says why (run expired or not found, or its by-run record failed).
                 error:
                     type: string
                     description: |-

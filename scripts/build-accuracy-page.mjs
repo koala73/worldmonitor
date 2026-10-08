@@ -999,16 +999,27 @@ function formatLeadTime(ms) {
   return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
 }
 
-function marketAlertCells(row) {
+function marketAlertGates(row) {
   const compared = isMeasurableCount(row.baseN) && isRate(row.pairedHitRate) && isRate(row.baseHitRate);
   const published = compared || !CONTROL_GATED_ALERT_TYPES.has(row.type);
   const hit = published && isMeasurableCount(row.scored) && isRate(row.hitRate);
-  const leadMeasured = hit && Math.round(row.hitRate * row.scored) >= MARKET_ALERT_MIN_SAMPLE;
+  return { compared, published, hit };
+}
+
+// hitRate × scored is the hit count exactly: the ledger's hitRate is hit / n.
+// The API applies the same gate (selectMarketAlertRow, test-pinned).
+export function marketAlertMedianPublished(row) {
+  return marketAlertGates(row).hit && Math.round(row.hitRate * row.scored) >= MARKET_ALERT_MIN_SAMPLE
+    && isFiniteNumber(row.medianLeadTimeMs) && row.medianLeadTimeMs >= 0;
+}
+
+function marketAlertCells(row) {
+  const { compared, published, hit } = marketAlertGates(row);
   return [
     hit ? rateOf(row.hitRate, row.scored, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.pairedHitRate, row.baseN, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.baseHitRate, row.baseN, 'earlier windows') : NOT_YET_MEASURABLE,
-    leadMeasured && isFiniteNumber(row.medianLeadTimeMs) && row.medianLeadTimeMs >= 0 ? formatLeadTime(row.medianLeadTimeMs) : NOT_YET_MEASURABLE,
+    marketAlertMedianPublished(row) ? formatLeadTime(row.medianLeadTimeMs) : NOT_YET_MEASURABLE,
   ];
 }
 
@@ -1422,6 +1433,24 @@ function skillDownload(scorecard) {
   };
 }
 
+// A capture taken before the API applied the median floor can still carry a
+// median the page withholds; the download must not publish it either.
+function withPublishedMarketAlertMedians(scorecard) {
+  const marketAlerts = scorecard?.marketAlerts;
+  if (!isPlainObject(marketAlerts) || !Array.isArray(marketAlerts.byType)) return scorecard;
+  return {
+    ...scorecard,
+    marketAlerts: {
+      ...marketAlerts,
+      byType: marketAlerts.byType.map((row) => {
+        if (!isPlainObject(row) || !('medianLeadTimeMs' in row) || marketAlertMedianPublished(row)) return row;
+        const { medianLeadTimeMs: _withheld, ...rest } = row;
+        return rest;
+      }),
+    },
+  };
+}
+
 export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_ACCURACY_AUDIT }) {
   const skill = isPlainObject(state.scorecard?.skill) ? state.scorecard.skill : null;
   const payload = {
@@ -1477,7 +1506,7 @@ export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_
     // Point-in-time horizons are graded internally (#8939); neither the
     // projection values (#8967) nor those grades are published here.
     horizonProjections: { valuesPublished: false, gradesPublished: false, trackedIn: HORIZON_SCORING_ISSUE },
-    scorecard: state.scorecard,
+    scorecard: withPublishedMarketAlertMedians(state.scorecard),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
