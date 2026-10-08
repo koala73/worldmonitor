@@ -2131,12 +2131,12 @@
         "labelHint": "How the published forecasts scored once they resolved, over the last {{days}} days. Hover a number for what it means.",
         "unavailable": "Unavailable right now",
         "insufficient": "Too few independent forecasts yet",
-        "skill": "Skill {{score}} vs historical rate",
-        "skillHint": "Skill over the same {{n}} graded forecasts, against always forecasting how often they came true: above 0 is better, 0 is no better, below 0 is worse, and 1 is perfect.",
+        "skill": "Skill {{score}} vs actual rate",
+        "skillHint": "Skill over the same {{n}} graded forecasts, against always forecasting how often they actually came true in the period: 0 means the same error as that rate, 1 is perfect, and below 0 means a larger error. The full record shows whether the difference is clear.",
         "brier": "Brier {{score}} (n={{n}})",
         "brierHint": "Brier score over {{n}} graded forecasts: the average squared gap between the forecast probability and what happened. 0 is perfect, 0.25 is a coin flip, lower is better.",
-        "baseRate": "Historical rate {{score}} (n={{n}})",
-        "baseRateHint": "What always forecasting the historical rate would have scored on the same {{n}} forecasts ({{pct}}% resolved yes). Beating it means the forecasts add information.",
+        "baseRate": "Actual rate {{score}} (n={{n}})",
+        "baseRateHint": "What always forecasting how often these {{n}} forecasts actually came true ({{pct}}% resolved yes) would have scored. That rate is known only afterwards.",
         "void": "Void {{pct}}% ({{count}} of {{resolved}})",
         "voidHint": "Forecasts that resolved but could not be graded, out of {{resolved}} resolved in the window.",
         "stale": "Out of date",
@@ -2144,10 +2144,10 @@
         "fullRecord": "Full record"
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · skill {{skill}} vs historical rate",
-        "measuredHint": "How published {{domain}} forecasts have scored over {{n}} graded forecasts in the last {{days}} days, against always forecasting how often the domain's forecasts came true: above 0 is better, below 0 is worse. Brier {{score}} against {{base}} for the historical rate, where lower is better. This is the domain's record, not this forecast's.",
+        "measured": "{{domain}} n={{n}} · skill {{skill}} vs actual rate",
+        "measuredHint": "How published {{domain}} forecasts scored over {{n}} graded forecasts in the last {{days}} days, against always forecasting how often the domain's forecasts actually came true: 0 means the same error as that rate, 1 is perfect, and below 0 means a larger error. Brier {{score}} against {{base}} for that rate, where lower is better. A domain score has no uncertainty interval yet. This is the domain's record, not this forecast's.",
         "unmeasured": "Not yet measured",
-        "unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain's accuracy is shown once its results come from at least {{min}} separate forecast questions, with at least {{outcomes}} that came true and {{outcomes}} that did not."
+        "unmeasuredHint": "{{domain}} forecasts have {{n}} graded results in the last {{days}} days. A domain's accuracy is shown once its results come from at least {{min}} forecast families, with at least {{outcomes}} that came true and as many that did not."
       },
       "audit": {
         "label": "Accuracy under audit",

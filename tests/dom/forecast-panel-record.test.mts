@@ -162,7 +162,7 @@ describe('ForecastPanel track-record strip', () => {
     expect(recordHref(true)).toBe('https://www.worldmonitor.app/accuracy/');
   });
 
-  it('leads with skill against the historical rate, then the Brier, historical-rate Brier and void rate', async () => {
+  it('leads with skill against the actual rate, then the Brier, actual-rate Brier and void rate', async () => {
     stubScorecardFetch(async () => Response.json(readyScorecard()));
 
     panel.updateForecasts([forecast()]);
@@ -170,10 +170,10 @@ describe('ForecastPanel track-record strip', () => {
     const text = strip.textContent ?? '';
 
     // p = 13/42; always answering p scores p(1-p) = 0.2137, so skill is 1 - 0.182 / 0.2137 = +0.15.
-    expect(text).toContain('Skill +0.15 vs historical rate');
+    expect(text).toContain('Skill +0.15 vs actual rate');
     expect(text.indexOf('Skill')).toBeLessThan(text.indexOf('Brier'));
     expect(text).toContain('Brier 0.182 (n=42)');
-    expect(text).toContain('Historical rate 0.214 (n=42)');
+    expect(text).toContain('Actual rate 0.214 (n=42)');
     expect(text).toContain('Void 8.3% (5 of 60)');
     expect(text).not.toContain('Out of date');
 
@@ -194,7 +194,7 @@ describe('ForecastPanel track-record strip', () => {
     panel.updateForecasts([forecast()]);
     const strip = await stripIn(panel, 'ready');
     expect(strip.textContent).toContain('Brier 0.182 (n=42)');
-    expect(strip.textContent).not.toContain('Historical rate');
+    expect(strip.textContent).not.toContain('Actual rate');
     expect(strip.textContent).not.toContain('Skill');
   });
 

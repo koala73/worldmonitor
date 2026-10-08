@@ -5,7 +5,7 @@
  * published-origin per-domain rows (`publishedByDomain`) of the same
  * get-forecast-scorecard response the track-record strip reads. The pooled
  * `byDomain` rows mix shadow and synthetic origins, so the badge must never
- * read them. The domain's skill against its historical rate shows once the
+ * read them. The domain's skill against its actual rate shows once the
  * seeder wrote the row's bss, which it does only for a domain that meets the
  * family minimums (#8990); "not yet measured" otherwise, and nothing when the
  * scorecard is unavailable. The badge links to /accuracy/.
@@ -131,20 +131,21 @@ describe('ForecastPanel reliability badge', () => {
     expect(SKILL_MIN_OUTCOME_FAMILIES).toBe(producer.SKILL_MIN_OUTCOME_FAMILIES);
   });
 
-  it('leads with the domain skill against its historical rate, with the Brier pair in the hint', async () => {
+  it('leads with the domain skill against its actual rate, with the Brier pair in the hint', async () => {
     // p = 15/45, p(1-p) = 0.2222, so the seeder's bss is 1 - 0.2134 / 0.2222 = 0.04.
     const [badge, worse] = await badgesFor(
       [published('conflict', 45, 0.2134, 15, 0.0398), published('market', 45, 0.3, 15, -0.35)],
       ['conflict', 'market'],
     );
     expect(badge!.dataset.fcReliabilityState).toBe('measured');
-    expect(badge!.textContent).toBe('Conflict n=45 · skill +0.04 vs historical rate');
-    expect(worse!.textContent).toBe('Market n=45 · skill -0.35 vs historical rate');
+    expect(badge!.textContent).toBe('Conflict n=45 · skill +0.04 vs actual rate');
+    expect(worse!.textContent).toBe('Market n=45 · skill -0.35 vs actual rate');
     expect(badge!.getAttribute('href')).toBe('/accuracy/#by-domain');
     const hint = badge!.getAttribute('aria-label') ?? '';
     expect(hint).toContain('45');
-    expect(hint).toContain('Brier 0.213 against 0.222 for the historical rate');
-    expect(hint).toContain('above 0 is better, below 0 is worse');
+    expect(hint).toContain('Brier 0.213 against 0.222 for that rate');
+    expect(hint).toContain('A domain score has no uncertainty interval yet');
+    expect(hint).not.toMatch(/better than|worse than|beats/i);
     expect(hint).not.toMatch(/coin flip/i);
   });
 
@@ -183,16 +184,16 @@ describe('ForecastPanel reliability badge', () => {
   it('uses corrected hu, el and de wording', () => {
     const locale = (code: string) => JSON.parse(readFileSync(`src/locales/${code}.json`, 'utf8')).components.forecast.reliability;
     const hu = locale('hu');
-    expect(hu.measured).toContain('történelmi arány');
+    expect(hu.measured).toContain('tényleges arány');
     expect(JSON.stringify(hu)).not.toContain('alapsáv');
     const el = locale('el');
     expect(JSON.stringify(el).replace(/\{\{\w+\}\}/g, '')).not.toMatch(/base rate|domain/i);
     expect(locale('de').unmeasuredHint).not.toContain('Domain');
     expect(locale('de').unmeasuredHint).toContain('Bereich');
-    expect(locale('cs').measured).toContain('historická míra');
+    expect(locale('cs').measured).toContain('skutečná četnost');
     expect(JSON.stringify(locale('de'))).not.toContain('Domain');
     for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f) && f !== 'en.json')) {
-      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate|historical rate/i);
+      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate|actual rate|actual rate/i);
     }
   });
 
@@ -237,9 +238,9 @@ describe('ForecastPanel reliability badge', () => {
     expect(many!.textContent).not.toContain('skill');
     const hint = many!.getAttribute('aria-label') ?? '';
     expect(hint).toContain('300');
-    expect(hint).toContain('at least 30 separate forecast questions, with at least 5 that came true and 5 that did not');
+    expect(hint).toContain('at least 30 forecast families, with at least 5 that came true and as many that did not');
     expect(gated!.dataset.fcReliabilityState).toBe('measured');
-    expect(gated!.textContent).toBe('Market n=30 · skill +0.06 vs historical rate');
+    expect(gated!.textContent).toBe('Market n=30 · skill +0.06 vs actual rate');
   });
 
   it('says not yet measured below the minimum and for a domain with no published row', async () => {
@@ -261,7 +262,7 @@ describe('ForecastPanel reliability badge', () => {
       { stale: true },
     );
     // Stale and n lead, so an ellipsis on a narrow card never cuts them.
-    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · skill +0.04 vs historical rate');
+    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · skill +0.04 vs actual rate');
     expect(unmeasured!.textContent).toBe('Out of date · Not yet measured');
   });
 

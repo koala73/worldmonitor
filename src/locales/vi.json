@@ -2365,21 +2365,21 @@
         "insufficient": "Chưa có đủ dự báo độc lập",
         "brier": "Điểm Brier {{score}} (n={{n}})",
         "brierHint": "Điểm Brier trên {{n}} dự báo đã chấm: trung bình bình phương chênh lệch giữa xác suất dự báo và kết quả thực tế. 0 là hoàn hảo, 0,25 tương đương tung đồng xu, càng thấp càng tốt.",
-        "baseRate": "Tỷ lệ lịch sử {{score}} (n={{n}})",
-        "baseRateHint": "Điểm số nếu luôn dự báo theo tỷ lệ lịch sử trên {{n}} dự báo tương tự ({{pct}}% được xác nhận có). Vượt qua nó có nghĩa là các dự báo cung cấp thông tin bổ sung.",
+        "baseRate": "Tỷ lệ thực tế {{score}} (n={{n}})",
+        "baseRateHint": "Những gì luôn dự báo tần suất {{n}} dự báo này thực sự trở thành sự thật ({{pct}}% được giải quyết là đúng) sẽ đạt được. Tỷ lệ đó chỉ được biết sau này.",
         "void": "Vô hiệu {{pct}}% ({{count}} trên {{resolved}})",
         "voidHint": "Dự báo đã có kết quả nhưng không thể chấm điểm, trong số {{resolved}} dự báo có kết quả trong kỳ.",
         "stale": "Đã lỗi thời",
         "staleHint": "Chấm điểm lần cuối {{date}}. Bộ chấm điểm chưa chạy lại từ đó, nên các con số này cũ hơn mức cần thiết.",
         "fullRecord": "Thành tích đầy đủ",
-        "skill": "Kỹ năng {{score}} so với tỷ lệ lịch sử",
-        "skillHint": "Kỹ năng trên {{n}} dự báo được đánh giá tương tự, so với việc luôn dự báo tần suất chúng xảy ra: trên 0 là tốt hơn, 0 là không tốt hơn, dưới 0 là tệ hơn, và 1 là hoàn hảo."
+        "skill": "Kỹ năng {{score}} so với tỷ lệ thực tế",
+        "skillHint": "Kỹ năng trên {{n}} dự báo được chấm điểm tương tự, so với việc luôn dự báo tần suất thực tế của chúng trong khoảng thời gian: 0 có nghĩa là sai số tương tự như tỷ lệ đó, 1 là hoàn hảo, và dưới 0 có nghĩa là sai số lớn hơn. Hồ sơ đầy đủ cho thấy liệu sự khác biệt có rõ ràng không."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · kỹ năng {{skill}} so với tỷ lệ lịch sử",
-        "measuredHint": "Các dự báo {{domain}} được công bố đã đạt điểm như thế nào trên {{n}} dự báo được đánh giá trong {{days}} ngày qua, so với việc luôn dự báo tần suất các dự báo của miền đó xảy ra: trên 0 là tốt hơn, dưới 0 là tệ hơn. Brier {{score}} so với {{base}} cho tỷ lệ lịch sử, nơi thấp hơn là tốt hơn. Đây là hồ sơ của miền, không phải của dự báo này.",
+        "measured": "{{domain}} n={{n}} · kỹ năng {{skill}} so với tỷ lệ thực tế",
+        "measuredHint": "Các dự báo được công bố của {{domain}} đạt được bao nhiêu điểm trên {{n}} dự báo được chấm điểm trong {{days}} ngày qua, so với việc luôn dự báo tần suất thực tế của các dự báo từ miền đó: 0 có nghĩa là sai số tương tự như tỷ lệ đó, 1 là hoàn hảo, và dưới 0 có nghĩa là sai số lớn hơn. Brier {{score}} so với {{base}} cho tỷ lệ đó, thấp hơn tốt hơn. Một điểm miền chưa có khoảng không chắc chắn. Đây là hồ sơ của miền, không phải của dự báo này.",
         "unmeasured": "Chưa được đo lường",
-        "unmeasuredHint": "Các dự báo {{domain}} có {{n}} kết quả được đánh giá trong {{days}} ngày qua. Độ chính xác của một miền được hiển thị khi kết quả của nó đến từ ít nhất {{min}} câu hỏi dự báo riêng biệt, với ít nhất {{outcomes}} kết quả đúng và {{outcomes}} kết quả sai."
+        "unmeasuredHint": "Các dự báo của {{domain}} có {{n}} kết quả được chấm điểm trong {{days}} ngày qua. Độ chính xác của một miền được hiển thị khi kết quả đến từ ít nhất {{min}} họ dự báo, với ít nhất {{outcomes}} kết quả đã xảy ra và cũng ngần ấy kết quả không xảy ra."
       },
       "resolution": {
         "last": "Lần trước: {{outcome}}",

@@ -2395,21 +2395,21 @@
         "insufficient": "Zbyt mało niezależnych prognoz na razie",
         "brier": "Wynik Briera {{score}} (n={{n}})",
         "brierHint": "Wynik Briera dla {{n}} ocenionych prognoz: średni kwadrat różnicy między prognozowanym prawdopodobieństwem a tym, co się wydarzyło. 0 to ideał, 0,25 to rzut monetą, niżej znaczy lepiej.",
-        "baseRate": "Średnia historyczna {{score}} (n={{n}})",
-        "baseRateHint": "Wynik zawsze prognozowania średniej historycznej dla tych samych {{n}} prognoz ({{pct}}% rozstrzygnięto jako tak). Jej przebicie oznacza, że prognozy wnoszą nową informację.",
+        "baseRate": "Rzeczywisty wskaźnik {{score}} (n={{n}})",
+        "baseRateHint": "Co byśmy uzyskali, zawsze prognozując rzeczywistą częstość realizacji tych {{n}} prognoz ({{pct}}% rozstrzygnięto pozytywnie). Ten wskaźnik znamy dopiero później.",
         "void": "Unieważnione {{pct}}% ({{count}} z {{resolved}})",
         "voidHint": "Prognozy rozstrzygnięte, których nie dało się ocenić, spośród {{resolved}} rozstrzygniętych w okresie.",
         "stale": "Nieaktualne",
         "staleHint": "Ostatnia ocena {{date}}. Od tego czasu ocenianie nie zostało uruchomione, więc te liczby są starsze, niż powinny.",
         "fullRecord": "Pełne wyniki",
-        "skill": "Umiejętność {{score}} vs średnia historyczna",
-        "skillHint": "Umiejętność dla {{n}} ocenionych prognoz w stosunku do zawsze prognozowania faktycznej częstości: powyżej 0 jest lepsze, 0 oznacza brak poprawy, poniżej 0 jest gorsze, a 1 to doskonałość."
+        "skill": "Umiejętność {{score}} vs rzeczywisty wskaźnik",
+        "skillHint": "Umiejętność na tej samej liczbie {{n}} ocenionych prognoz, w porównaniu do zawsze prognozowania rzeczywistej częstości ich realizacji w tym okresie: 0 oznacza taki sam błąd jak ten wskaźnik, 1 to ideał, a poniżej 0 oznacza większy błąd. Pełna historia pokazuje, czy różnica jest wyraźna."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · umiejętność {{skill}} vs średnia historyczna",
-        "measuredHint": "Wynik opublikowanych prognoz {{domain}} dla {{n}} ocenionych prognoz w ciągu ostatnich {{days}} dni w stosunku do zawsze prognozowania faktycznej częstości prognoz domeny: powyżej 0 jest lepsze, poniżej 0 jest gorsze. Brier {{score}} vs {{base}} dla średniej historycznej, gdzie niższe wartości są lepsze. To zapis domeny, nie konkretna prognoza.",
+        "measured": "{{domain}} n={{n}} · umiejętność {{skill}} vs rzeczywisty wskaźnik",
+        "measuredHint": "Jak opublikowane prognozy {{domain}} osiągnęły wynik na {{n}} ocenionych prognozach w ciągu ostatnich {{days}} dni, w porównaniu do zawsze prognozowania rzeczywistej częstości realizacji prognoz domeny: 0 oznacza taki sam błąd jak ten wskaźnik, 1 to ideał, a poniżej 0 oznacza większy błąd. Brier {{score}} w stosunku do {{base}} dla tego wskaźnika, gdzie niższe wartości są lepsze. Wynik domeny nie ma jeszcze przedziału niepewności. To historia domeny, a nie tej prognozy.",
         "unmeasured": "Jeszcze nie zmierzone",
-        "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Dokładność domeny jest wyświetlana, gdy wyniki pochodzą z co najmniej {{min}} oddzielnych pytań prognostycznych, z co najmniej {{outcomes}} wynikami potwierdzającymi i {{outcomes}} wynikami przeczącymi."
+        "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Dokładność domeny jest wyświetlana, gdy jej wyniki pochodzą z co najmniej {{min}} rodzin prognoz, w tym co najmniej {{outcomes}} spełnionych i tyle samo niespełnionych."
       },
       "resolution": {
         "last": "Ostatnio: {{outcome}}",

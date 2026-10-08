@@ -2375,21 +2375,21 @@
         "insufficient": "Henüz çok az bağımsız tahmin",
         "brier": "Brier puanı {{score}} (n={{n}})",
         "brierHint": "{{n}} puanlanmış tahmin üzerinden Brier puanı: tahmin edilen olasılık ile gerçekleşen sonuç arasındaki farkın karesinin ortalaması. 0 mükemmel, 0,25 yazı tura atmaya denk; düşük olan daha iyidir.",
-        "baseRate": "Geçmiş oran {{score}} (n={{n}})",
-        "baseRateHint": "Her zaman geçmiş oranını tahmin etmenin aynı {{n}} tahminlerde ne skora sahip olacağı ({{pct}}% evet olarak çözümlendi). Bunu geçmek tahminlerin bilgi katması anlamına gelir.",
+        "baseRate": "Gerçek oran {{score}} (n={{n}})",
+        "baseRateHint": "Bu {{n}} tahminin gerçekte ne sıklıkla doğru çıktıklarını ({{pct}}% evet ile çözüldü) her zaman tahmin etmenin alacağı puan. O oran yalnızca sonradan bilinir.",
         "void": "Geçersiz %{{pct}} ({{resolved}} içinden {{count}})",
         "voidHint": "Sonuçlanan ancak puanlanamayan tahminler; dönemde sonuçlanan {{resolved}} tahmin içinden.",
         "stale": "Güncel değil",
         "staleHint": "Son puanlama: {{date}}. Puanlayıcı o zamandan beri çalışmadı, bu yüzden bu sayılar olması gerekenden eski.",
         "fullRecord": "Tüm kayıt",
-        "skill": "Yetenek {{score}} vs geçmiş oran",
-        "skillHint": "Aynı {{n}} puanlanan tahminin üzerindeki yetenek, her zaman ne sıklıkta doğru çıktığını tahmin etmeye karşı: 0 üstü iyidir, 0 iyileştirme değildir, 0 altı kötüdür ve 1 mükemmeldir."
+        "skill": "Beceri {{score}} ile gerçek oran karşılaştırması",
+        "skillHint": "Aynı {{n}} derecelendirilmiş tahmin üzerinden beceri, her zaman gerçekte ne sıklıkla doğru çıktıklarını tahmin etmeye karşı: 0 o oran kadar hata anlamına gelir, 1 mükemmeltir ve 0'ın altı daha büyük hata anlamına gelir. Tam kayıt farkın açık olup olmadığını gösterir."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · yetenek {{skill}} vs geçmiş oran",
-        "measuredHint": "Yayınlanan {{domain}} tahminlerinin {{n}} puanlanan tahminlerde son {{days}} gün içinde nasıl puanlandığı, her zaman etki alanının tahminlerinin ne sıklıkta doğru çıktığını tahmin etmeye karşı: 0 üstü iyidir, 0 altı kötüdür. Geçmiş oran için {{base}}'e karşı Brier {{score}}, düşük daha iyi. Bu etki alanının kaydıdır, bu tahmine değil.",
+        "measured": "{{domain}} n={{n}} · beceri {{skill}} ile gerçek oran karşılaştırması",
+        "measuredHint": "Yayınlanan {{domain}} tahminleri son {{days}} günde {{n}} derecelendirilmiş tahmin üzerinden nasıl puanlandığı, alanın tahminleri gerçekte ne sıklıkla doğru çıktıklarını her zaman tahmin etmeye karşı: 0 o oran kadar hata anlamına gelir, 1 mükemmeltir ve 0'ın altı daha büyük hata anlamına gelir. O oran için {{base}} karşısında Brier {{score}}, düşük daha iyidir. Alan puanının henüz belirsizlik aralığı yoktur. Bu alanın kaydıdır, bu tahminin değil.",
         "unmeasured": "Henüz ölçülmedi",
-        "unmeasuredHint": "{{domain}} tahminlerinin son {{days}} gün içinde {{n}} puanlanan sonucu vardır. Bir etki alanının doğruluğu, sonuçları en az {{min}} ayrı tahmin sorusundan geldiğinde, en az {{outcomes}} doğru olan ve {{outcomes}} olmayan ile gösterilir."
+        "unmeasuredHint": "{{domain}} tahminleri son {{days}} günde {{n}} derecelendirilmiş sonuca sahiptir. Bir alanın doğruluğu, sonuçları en az {{min}} tahmin ailesinden, en az {{outcomes}} doğru çıkan ve aynı kadar doğru çıkmayan olduğunda gösterilir."
       },
       "resolution": {
         "last": "Son: {{outcome}}",
