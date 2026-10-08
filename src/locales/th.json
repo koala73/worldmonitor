@@ -7,7 +7,7 @@
     "closeBtn": "ปิด",
     "limitedCoverage": "ครอบคลุมจำกัด",
     "instabilityIndex": "ดัชนีความไม่มั่นคง",
-    "notTracked": "ไม่ได้ติดตาม — {{country}} ไม่อยู่ในรายการ CII ระดับ 1",
+    "notTracked": "ไม่ได้รับการติดตามตรวจสอบ — {{country}} ไม่อยู่ในรายชั้น 1 ของดัชนีความไม่มั่นคงของประเทศ",
     "intelBrief": "สรุปข่าวกรอง",
     "generatingBrief": "กำลังสร้างสรุปข่าวกรอง...",
     "topNews": "ข่าวเด่น",
@@ -38,7 +38,7 @@
       "conflictEvents": "เหตุการณ์ความขัดแย้ง",
       "activeStrikes": "การนัดหยุดงาน",
       "aviationDisruptions": "การหยุดชะงักสนามบิน",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "โซนรบกวนการนำทาง"
     },
     "timeAgo": {
       "m": "{{count}}น. ที่แล้ว",
@@ -72,9 +72,9 @@
       "expenditure": "Military spend",
       "personnel": "Personnel",
       "armsImports": "Arms imports",
-      "concentration": "Supplier HHI",
+      "concentration": "ดัชนีความเข้มข้นของผู้จัดจำหน่าย",
       "suppliers": "Arms suppliers ({{start}}–{{end}})",
-      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "source": "แหล่งที่มา: World Bank และ SIPRI Arms Transfers Database ตัวชี้วัดปริมาณการโอนวัตรวัดการโอนอาวุธโดยสัมพัทธ์ ไม่ใช่มูลค่าทางการเงิน",
       "sourceWorldBank": "Source: World Bank.",
       "snapshotAssembled": "รวบรวมภาพรวมข้อมูล {{source}} เมื่อ {{time}}",
       "unavailable": "Not available",
@@ -97,14 +97,14 @@
     "nearbyPorts": "ท่าเรือใกล้เคียง",
     "detected": "ตรวจพบ",
     "notDetected": "ไม่พบ",
-    "ciiUnavailable": "ไม่มีคะแนน CII สำหรับประเทศนี้",
+    "ciiUnavailable": "คะแนนดัชนีความไม่มั่นคงของประเทศไม่พร้อมใช้งานสำหรับประเทศนี้",
     "chips": {
       "criticalNews": "ข่าวสำคัญ",
       "protests": "การประท้วง",
       "militaryAir": "การบินทหาร",
       "navalVessels": "เรือรบ",
       "outages": "ขัดข้อง",
-      "aisDisruptions": "AIS ขัดข้อง",
+      "aisDisruptions": "การขัดขวางการติดตามเรือ",
       "satelliteFires": "ไฟจากดาวเทียม",
       "temporalAnomalies": "ความผิดปกติเชิงเวลา",
       "cyberThreats": "ภัยคุกคามไซเบอร์",
@@ -121,7 +121,7 @@
       "activeSirens": "ไซเรนทำงาน",
       "sirens24h": "ไซเรน / 24 ชม.",
       "aviationDisruptions": "การหยุดชะงักด้านการบิน",
-      "gpsJammingZones": "เขตรบกวน GPS",
+      "gpsJammingZones": "โซนรบกวนการนำทาง",
       "temporalUnavailable": "ข้อมูลการสังเกตการณ์ตามเวลาไม่พร้อมใช้งาน"
     },
     "fallback": {
@@ -160,8 +160,8 @@
       "entities": "หน่วยงาน:",
       "translation": "การแปล:",
       "source": "แหล่งที่มา:",
-      "imfGrowth": "คาดการณ์การเติบโตของ IMF",
-      "creditGdp": "สินเชื่อต่อ GDP",
+      "imfGrowth": "การพยากรณ์การเติบโตของกองทุนการเงินระหว่างประเทศ",
+      "creditGdp": "สินเชื่อเทียบกับผลผลิตเศรษฐกิจ",
       "strategicTrade": "ความเสี่ยงทางการค้าเชิงยุทธศาสตร์",
       "crudeImports": "การนำเข้าน้ำมันดิบ",
       "gasDemand": "ความต้องการก๊าซ",
@@ -193,7 +193,7 @@
       "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
+    "foodStocksHelp": "สต็อกสินค้าโภคภัณฑ์อาหาร USDA ด้านการผลิต อุปทาน และการจัดจำหน่าย ตามปีการตลาด พร้อมอัตราส่วนโลกเพื่ออ้างอิง FAOSTAT Food Balances ให้ข้อมูลการผลิตและอุปทานภายในประเทศเมื่อ Production Supply and Distribution ไม่มีบัญชีประเทศที่สมบูรณ์",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -211,7 +211,7 @@
     },
     "demographicsCapability": {
       "title": "Demographics & Workforce",
-      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "help": "โครงสร้างอายุ ท่อการศึกษา และกำลังแรงงานภาคอุตสาหกรรม จาก UN World Population Prospects UNESCO Institute for Statistics และ World Bank World Development Indicators และ ILOSTAT",
       "loading": "Loading demographics and workforce data…",
       "unavailable": "Demographics and workforce data unavailable.",
       "proLocked": "Upgrade to PRO for demographics and workforce data",
@@ -225,7 +225,7 @@
       "workingAgePopulation": "Working-age population",
       "workingAgeProjection": "Working-age population (+10 years)",
       "tertiaryEnrollment": "Tertiary enrollment",
-      "stemGraduates": "STEM graduates",
+      "stemGraduates": "บัณฑิตด้านวิทยาศาสตร์ เทคโนโลยี วิศวกรรม และคณิตศาสตร์",
       "researchers": "Researchers",
       "craftTrades": "Craft and trades workers",
       "plantOperators": "Plant and machine operators",
@@ -279,7 +279,7 @@
         "demographics_workingAgeProjection": "การคาดการณ์ประชากรวัยทำงาน",
         "demographics_tertiaryEnrollment": "อัตราการเข้าเรียนระดับอุดมศึกษา",
         "demographics_researchersPerMillion": "นักวิจัยต่อประชากร 1 ล้านคน",
-        "demographics_stemGraduateShare": "สัดส่วนผู้สำเร็จการศึกษาด้าน STEM",
+        "demographics_stemGraduateShare": "สัดส่วนบัณฑิตด้านวิทยาศาสตร์ เทคโนโลยี วิศวกรรม และคณิตศาสตร์",
         "demographics_trainedIndustrialShare": "สัดส่วนแรงงานอุตสาหกรรมที่ผ่านการฝึกอบรม",
         "demographics_manufacturingEmploymentShare": "สัดส่วนการจ้างงานในภาคการผลิต",
         "technology_internetUse": "การใช้งานอินเทอร์เน็ต",
@@ -287,7 +287,7 @@
         "technology_fixedBroadband": "บรอดแบนด์แบบสาย",
         "technology_rdSpend": "การใช้จ่ายด้านการวิจัยและพัฒนา",
         "technology_researchersPerMillion": "นักวิจัยต่อประชากร 1 ล้านคน",
-        "technology_stemGraduateShare": "สัดส่วนผู้สำเร็จการศึกษาด้าน STEM",
+        "technology_stemGraduateShare": "สัดส่วนบัณฑิตด้านวิทยาศาสตร์ เทคโนโลยี วิศวกรรม และคณิตศาสตร์",
         "technology_electricityAccess": "การเข้าถึงไฟฟ้า",
         "defense_expenditureUsd": "การใช้จ่ายทางทหาร",
         "defense_expenditurePctGdp": "ภาระทางทหาร",
@@ -332,21 +332,21 @@
     "sourceRegionTopical": "เฉพาะเรื่อง",
     "sourceRegionIntel": "ข่าวกรอง",
     "sourceRegionTechNews": "Tech News",
-    "sourceRegionAiMl": "AI & ML",
-    "sourceRegionStartupsVc": "Startups & VC",
+    "sourceRegionAiMl": "AI และการเรียนรู้ของเครื่อง",
+    "sourceRegionStartupsVc": "บริษัทเริ่มต้นและเงินทุนสนับสนุน",
     "sourceRegionRegionalTech": "Regional Ecosystems",
     "sourceRegionDeveloper": "Developer",
     "sourceRegionCybersecurity": "Cybersecurity",
     "sourceRegionTechPolicy": "Policy & Research",
     "sourceRegionTechMedia": "Media & Podcasts",
     "sourceRegionMarkets": "Markets & Analysis",
-    "sourceRegionFixedIncomeFx": "Fixed Income & FX",
+    "sourceRegionFixedIncomeFx": "รายได้คงที่และอัตราแลกเปลี่ยนเงินตราต่างประเทศ",
     "sourceRegionCommodities": "Commodities",
     "sourceRegionCryptoDigital": "Crypto & Digital",
     "sourceRegionCentralBanks": "Central Banks & Economy",
     "sourceRegionDeals": "Deals & Corporate",
     "sourceRegionFinRegulation": "Financial Regulation",
-    "sourceRegionGulfMena": "อ่าวเปอร์เซีย & MENA",
+    "sourceRegionGulfMena": "อ่าวเปอร์เซีย และตะวันออกกลาง แอฟริกาเหนือ",
     "filterPanels": "กรองแผงควบคุม...",
     "resetLayout": "รีเซ็ตเลย์เอาต์",
     "resetLayoutTooltip": "คืนค่าการจัดเรียงแผงควบคุมเริ่มต้น",
@@ -358,15 +358,15 @@
     "panelCatTopical": "ตามหัวข้อ",
     "panelCatDataTracking": "ข้อมูล & การติดตาม",
     "panelCatTechAi": "เทคโนโลยี & AI",
-    "panelCatStartupsVc": "สตาร์ทอัพ & VC",
+    "panelCatStartupsVc": "บริษัทเริ่มต้นและเงินทุนสนับสนุน",
     "panelCatSecurityPolicy": "ความมั่นคง & นโยบาย",
     "panelCatMarkets": "ตลาด",
-    "panelCatFixedIncomeFx": "ตราสารหนี้ & อัตราแลกเปลี่ยน",
+    "panelCatFixedIncomeFx": "รายได้คงที่และอัตราแลกเปลี่ยนเงินตราต่างประเทศ",
     "panelCatCommodities": "สินค้าโภคภัณฑ์",
     "panelCatCryptoDigital": "คริปโต & ดิจิทัล",
     "panelCatCentralBanks": "ธนาคารกลาง & เศรษฐกิจ",
     "panelCatDeals": "ดีล & สถาบัน",
-    "panelCatGulfMena": "อ่าวเปอร์เซีย & MENA",
+    "panelCatGulfMena": "อ่าวเปอร์เซีย และตะวันออกกลาง แอฟริกาเหนือ",
     "cached": "แคช",
     "unavailable": "ไม่พร้อมใช้งาน",
     "commodity": "สินค้าโภค",
@@ -413,25 +413,25 @@
     "tech": "เทคโนโลยี",
     "crypto": "คริปโต",
     "heatmap": "แผนที่ความร้อนรายเซกเตอร์",
-    "ai": "AI/ML",
+    "ai": "AI และการเรียนรู้ของเครื่อง",
     "layoffs": "ตัวติดตามการเลิกจ้าง",
     "monitors": "จอมอนิเตอร์ของฉัน",
     "satelliteFires": "ไฟ",
-    "macroSignals": "เรดาร์ตลาด",
-    "etfFlows": "ตัวติดตาม BTC ETF",
+    "macroSignals": "สภาวะตลาด Bitcoin",
+    "etfFlows": "กระแสเงินทุน Bitcoin",
     "stablecoins": "เหรียญ Stablecoin",
     "deduction": "วิเคราะห์สถานการณ์",
     "ucdpEvents": "เหตุการณ์ความขัดแย้ง UCDP",
     "giving": "การบริจาคทั่วโลก",
-    "displacement": "การพลัดถิ่น UNHCR",
+    "displacement": "ผู้อพยพและการแสวงหาที่อยู่ใหม่",
     "climate": "ความผิดปกติของสภาพภูมิอากาศ",
     "populationExposure": "ประชากรที่ได้รับผลกระทบ",
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "ข่าวกรอง Telegram",
     "xIntel": "X News Accounts",
-    "startups": "สตาร์ทอัพและ VC",
-    "vcblogs": "ข้อมูลเชิงลึกและบทความ VC",
+    "startups": "บริษัทเริ่มต้นและเงินทุนสนับสนุน",
+    "vcblogs": "ข้อมูลเชิงลึกและบทความเงินทุนสนับสนุน",
     "regionalStartups": "ข่าวสตาร์ทอัพทั่วโลก",
     "unicorns": "ตัวติดตามยูนิคอร์น",
     "accelerators": "แอคเซเลอเรเตอร์และ Demo Days",
@@ -443,13 +443,13 @@
     "cloud": "คลาวด์และโครงสร้างพื้นฐาน",
     "dev": "ชุมชนนักพัฒนา",
     "github": "GitHub มาแรง",
-    "ipo": "IPO และ SPAC",
-    "funding": "การระดมทุนและ VC",
+    "ipo": "บริษัทจดทะเบียนในตลาดสาธารณะและการควบรวมบริษัทเชลล์",
+    "funding": "การจัดหาเงินทุนและเงินทุนสนับสนุน",
     "producthunt": "Product Hunt",
     "events": "งานเทคโนโลยี",
     "serviceStatus": "สถานะบริการ",
     "techReadiness": "ดัชนีความพร้อมด้านเทคโนโลยี",
-    "gccInvestments": "การลงทุน GCC",
+    "gccInvestments": "การลงทุนของสภาความร่วมมือของประเทศในอ่าวเปอร์เซีย",
     "geoHubs": "ศูนย์กลางภูมิรัฐศาสตร์",
     "gulfEconomies": "เศรษฐกิจอ่าว",
     "gulfIndices": "ดัชนีอ่าว",
@@ -461,7 +461,7 @@
     "oilInventories": "คลังสินค้าน้ำมัน",
     "energyCrisis": "ตัวติดตามวิกฤตพลังงาน",
     "goldIntelligence": "ข่าวกรรมการทอง",
-    "wsbTickerScanner": "สแกนเนอร์ Ticker WSB",
+    "wsbTickerScanner": "WallStreetBets ticker scanner",
     "internetDisruptions": "การหยุดชะงักของอินเทอร์เน็ต",
     "internetDisruptionsTabs": {
       "outages": "การหยุดให้บริการ",
@@ -473,7 +473,7 @@
     "groceryBasket": "ดัชนีสินค้าชุมชน",
     "groceryItem": "สินค้า",
     "bigmacDesc": "ราคา Big Mac ในประเทศตะวันออกกลาง (Big Mac Index)",
-    "bigmacWow": "WoW",
+    "bigmacWow": "เปลี่ยนแปลงสัปดาห์ต่อสัปดาห์",
     "bigmacCountry": "ประเทศ",
     "faoFoodPriceIndex": "ดัชนีราคาอาหาร FAO",
     "fuelPrices": "ราคาน้ำมันเชื้อเพลิง",
@@ -488,7 +488,7 @@
     "fearGreed": "ความกลัวและความโลภ",
     "marketBreadth": "ความกว้างของตลาด",
     "climateNews": "ข่าวสภาพอากาศ",
-    "fx": "อัตราแลกเปลี่ยน"
+    "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ"
   },
   "commands": {
     "prefixes": {
@@ -553,7 +553,7 @@
         "minimal": "เลเยอร์ขั้นต่ำ (ความขัดแย้ง + จุดร้อน)"
       },
       "layer": {
-        "ais": "สลับการติดตามเรือ AIS",
+        "ais": "สลับการติดตามเรือ",
         "flights": "สลับเที่ยวบินทหาร",
         "conflicts": "สลับเขตความขัดแย้ง",
         "hotspots": "สลับจุดร้อนข่าวกรอง",
@@ -688,8 +688,8 @@
     },
     "mobileWarning": {
       "title": "มุมมองมือถือ",
-      "description": "คุณกำลังดูเวอร์ชันมือถือแบบย่อที่เน้นภูมิภาค MENA พร้อมเลเยอร์สำคัญที่เปิดใช้งาน",
-      "tip": "เคล็ดลับ: ใช้ปุ่มดู (GLOBAL/US/MENA) เพื่อสลับภูมิภาค แตะเครื่องหมายเพื่อดูรายละเอียด",
+      "description": "คุณกำลังดูเวอร์ชั่นมือถือที่เรียบง่ายซึ่งมุ่งเน้นไปที่ภูมิภาคตะวันออกกลาง แอฟริกาเหนือ โดยเปิดใช้งานเลเยอร์ที่จำเป็น",
+      "tip": "คำแนะนำ: ใช้ปุ่มมุมมอง (GLOBAL/US/Middle East and North Africa) เพื่อสลับภูมิภาค แตะเครื่องหมายเพื่อดูรายละเอียด",
       "dontShowAgain": "ไม่แสดงอีก",
       "gotIt": "เข้าใจแล้ว"
     },
@@ -804,7 +804,7 @@
       "locating": "กำลังค้นหาภูมิภาค...",
       "limitedCoverage": "ครอบคลุมจำกัด",
       "instabilityIndex": "ดัชนีความไม่มั่นคง",
-      "notTracked": "ไม่ได้ติดตาม — {{country}} ไม่อยู่ในรายการ CII ระดับ 1",
+      "notTracked": "ไม่ได้รับการติดตามตรวจสอบ — {{country}} ไม่อยู่ในรายชั้น 1 ของดัชนีความไม่มั่นคงของประเทศ",
       "intelBrief": "สรุปข่าวกรอง",
       "generatingBrief": "กำลังสร้างสรุปข่าวกรอง...",
       "topNews": "ข่าวเด่น",
@@ -835,7 +835,7 @@
         "conflictEvents": "เหตุการณ์ความขัดแย้ง",
         "activeStrikes": "การนัดหยุดงาน",
         "aviationDisruptions": "การหยุดชะงักสนามบิน",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "โซนรบกวนการนำทาง"
       },
       "timeAgo": {
         "m": "{{count}}น. ที่แล้ว",
@@ -927,16 +927,16 @@
       "gov": "รัฐบาล",
       "noSpending": "ไม่มีสัญญาจัดซื้อจัดจ้างล่าสุด",
       "awards": "สัญญา",
-      "noIndicatorData": "ยังไม่มีข้อมูลตัวชี้วัด - FRED อาจกำลังโหลด",
-      "fredKeyMissing": "ต้องการคีย์ API ของ FRED — เพิ่มในการตั้งค่าเพื่อเปิดใช้ตัวชี้วัดทางเศรษฐกิจ",
+      "noIndicatorData": "ยังไม่มีข้อมูลตัวชี้วัด - Federal Reserve Economic Data อาจกำลังโหลด",
+      "fredKeyMissing": "ต้องใช้ API key Federal Reserve Economic Data เพิ่มใน Settings เพื่อเปิดใช้งานตัวชี้วัดเศรษฐกิจ",
       "in": "ใน",
       "centralBanks": "Central Banks",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
-      "noBisData": "BIS data temporarily unavailable - will retry",
+      "noBisData": "ข้อมูล Bank for International Settlements ไม่พร้อมใช้งานชั่วคราว - จะลองใหม่",
       "policyRate": "Policy Rate",
-      "creditToGdp": "Credit / GDP",
-      "realEer": "Real EER",
+      "creditToGdp": "สินเชื่อเทียบกับผลผลิตเศรษฐกิจ",
+      "realEer": "อัตราแลกเปลี่ยนที่มีประสิทธิผลจริง",
       "cut": "cut",
       "hike": "hike",
       "hold": "hold",
@@ -949,7 +949,7 @@
         "watchDetail": "เงื่อนไขข้ามตลาดต้องการการติดตามอย่างใกล้ชิด",
         "steadyDetail": "เงื่อนไขมหภาคมีเสถียรภาพในขณะนี้"
       },
-      "infoTooltip": "<strong>ความเครียดมหภาค</strong> มาตรวัดมหภาค การใช้จ่ายของรัฐบาล และข้อมูลธนาคารกลาง:<ul><li><strong>ตัวชี้วัด</strong>: VIX อัตราผลตอบแทน เส้นอัตราผลตอบแทน แรงงาน และเงินเฟ้อ</li><li><strong>รัฐบาล</strong>: รางวัลสัญญาของรัฐบาล US ล่าสุด</li><li><strong>ธนาคารกลาง</strong>: อัตรานโยบายของ BIS และข้อมูลอัตราแลกเปลี่ยน</li></ul>"
+      "infoTooltip": "<strong>ความเครียดมหภาค</strong> เกจมหภาค การใช้จ่ายของรัฐบาล และข้อมูลธนาคารกลาง:<ul><li><strong>ตัวชี้วัด</strong>: VIX อัตราผลตอบแทน เส้นโค้งผลตอบแทน แรงงาน เงินเฟ้อ</li><li><strong>รัฐบาล</strong>: รางวัลสัญญาเมืองหลวงสหรัฐฯ ล่าสุด</li><li><strong>ธนาคารกลาง</strong>: Bank for International Settlements อัตราดำเนินการและข้อมูลอัตราแลกเปลี่ยน</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "จุดคอขวด",
@@ -961,7 +961,7 @@
       "upstreamUnavailable": "ข้อมูลห่วงโซ่อุปทานไม่พร้อมใช้งานชั่วคราว — แสดงข้อมูลจากแคช",
       "spikeAlert": "ตรวจพบการพุ่งสูง — อัตราสูงกว่าค่าเฉลี่ย 52 สัปดาห์อย่างมีนัยสำคัญ (รายสัปดาห์)",
       "warnings": "คำเตือน",
-      "aisDisruptions": "AIS ขัดข้อง",
+      "aisDisruptions": "การขัดขวางการติดตามเรือ",
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
@@ -971,7 +971,7 @@
       "mineral": "แร่ธาตุ",
       "topProducers": "ผู้ผลิตรายใหญ่",
       "risk": "ความเสี่ยง",
-      "wowChange": "การเปลี่ยนแปลง WoW",
+      "wowChange": "เปลี่ยนแปลงสัปดาห์ต่อสัปดาห์",
       "riskLevel": "ระดับความเสี่ยง",
       "flowUnavailable": "ไม่มีข้อมูลการไหลเวียน",
       "containerRates": "อัตราคอนเทนเนอร์",
@@ -980,13 +980,13 @@
       "loadingHistory": "กำลังโหลดประวัติการขนส่ง…",
       "historyUnavailable": "ไม่มีประวัติการขนส่ง",
       "transitDataUnavailable": "ไม่มีข้อมูลการขนส่ง (บางส่วนต้นน้ำ)",
-      "infoTooltip": "<strong>ตัวติดตามห่วงโซ่อุปทาน</strong> การติดตามโลจิสติกส์และทรัพยากรทั่วโลก:<ul><li><strong>จุดคอขวด</strong>: สถานะการขนส่งทางทะเล คะแนนการหยุดชะงัก และจำนวนเรือ</li><li><strong>การขนส่ง</strong>: ดัชนี Baltic Dry และแนวโน้มค่าขนส่ง</li><li><strong>แร่ธาตุ</strong>: ความเสี่ยงจากความเข้มข้นของแร่ธาตุหาค่ายาก (HHI) และผู้ผลิตชั้นนำ</li></ul>คลิกการ์ดจุดคอขวดเพื่อขยายแผนภูมิประวัติการขนส่ง",
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> ติดตามโลจิสติกส์และทรัพยากรระดับโลก:<ul><li><strong>จุดคอขวด</strong>: สถานะการขนส่งทางทะเล คะแนนการหยุดชะงัก และจำนวนเรือ</li><li><strong>การขนส่งทางเรือ</strong>: ดัชนี Baltic Dry และแนวโน้มอัตราค่าขนส่ง</li><li><strong>แร่ธาตุ</strong>: ความเสี่ยงจากการรวมศูนย์แร่ธาตุที่สำคัญ (ดัชนีความเข้มข้นของผู้ผลิต) และผู้ผลิตชั้นนำ</li></ul>คลิกการ์ดจุดคอขวดเพื่อขยายแผนภูมิประวัติการขนส่ง",
       "mineStage": "Mine",
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "อัปเกรดเป็น PRO เพื่อดูส่วนแบ่งประเทศของเหมืองและโรงกลั่น พร้อมความเข้มข้น (HHI) ตามขั้นตอน"
+      "productionProLocked": "อัปเกรดเป็น PRO สำหรับสัดส่วนประเทศเหมืองและสถานกลั่นพร้อมความเข้มข้น (ดัชนีความเข้มข้นของผู้ผลิต) ตามขั้นตอน"
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",
@@ -995,37 +995,37 @@
       "noTariffData": "ไม่มีข้อมูลภาษีศุลกากร",
       "noFlowData": "ไม่มีข้อมูลกระแสการค้า",
       "noBarriers": "ไม่มีรายงานอุปสรรคทางการค้า",
-      "apiKeyMissing": "ต้องใช้คีย์ API ของ WTO — เพิ่มในการตั้งค่า",
-      "upstreamUnavailable": "ข้อมูล WTO ไม่พร้อมใช้งานชั่วคราว — แสดงข้อมูลแคช",
+      "apiKeyMissing": "ต้องมีคีย์ API ขององค์การการค้าโลก — เพิ่มในการตั้งค่า",
+      "upstreamUnavailable": "ข้อมูลองค์การการค้าโลกไม่พร้อมใช้งานชั่วคราว — แสดงข้อมูลที่แคชไว้",
       "exports": "การส่งออก",
       "imports": "การนำเข้า",
-      "yoyChange": "เปลี่ยนแปลงรายปี",
+      "yoyChange": "การเปลี่ยนแปลงแบบปีต่อปี",
       "highTariff": "สูง",
       "moderateTariff": "ปานกลาง",
       "lowTariff": "ต่ำ",
       "overview": "ภาพรวม",
       "noOverviewData": "ไม่มีข้อมูลภาพรวมอัตราศุลกากร",
-      "mfnAppliedRate": "อัตรา MFN ที่นำไปใช้",
-      "baselineMfnTariff": "อัตราศุลกากร MFN เบื้องต้น",
+      "mfnAppliedRate": "อัตราภาษีอากรทั่วไปที่ไม่มีสิทธิพิเศษ",
+      "baselineMfnTariff": "พื้นฐานภาษีอากรทั่วไป",
       "effectiveTariffRateLabel": "อัตราศุลกากรที่มีผล",
       "gapLabel": "ช่องว่าง",
-      "gapVsMfnLabel": "ช่องว่างเทียบกับ MFN",
+      "gapVsMfnLabel": "ส่วนต่างจากภาษีอากรทั่วไป",
       "noEffectiveCoverageForCountry": "ไม่มีความคุ้มครองอัตราที่มีผลสำหรับประเทศนี้",
-      "effectiveMinusBaseline": "อัตราที่มีผลลบจากเบื้องต้น WTO MFN",
-      "wtoBaselineMeta": "อัตรา MFN ที่นำไปใช้ WTO | {{year}}",
-      "overviewNoteNoEffective": "ตัวเลขเหล่านี้เป็นอัตราเบื้องต้น WTO MFN ไม่ใช่ภาระศุลกากรปัจจุบันจากการกระทำด้านศุลกากรที่เป็นฝ่ายเดียว",
-      "usBaselineLabel": "เบื้องต้น WTO MFN ของสหรัฐฯ",
-      "overviewNoteTail": "การ์ดเหล่านี้แสดงข้อผูกมัดเบื้องต้น WTO ไม่ใช่ภาระศุลกากรที่มีผลแบบเรียลไทม์",
+      "effectiveMinusBaseline": "อัตราที่มีผลบังคับใช้ลบด้วยพื้นฐานภาษีอากรทั่วไป",
+      "wtoBaselineMeta": "พื้นฐานภาษีอากรทั่วไปขององค์การการค้าโลก | {{year}}",
+      "overviewNoteNoEffective": "ตัวเลขเหล่านี้เป็นอัตราพื้นฐานที่ได้รับสิทธิพิเศษมากที่สุดขององค์การการค้าโลก ไม่ใช่ภาระภาษีอากรปัจจุบันจากมาตรการภาษีอากรด้านข้าง",
+      "usBaselineLabel": "พื้นฐานภาษีอากรทั่วไปของสหรัฐฯ",
+      "overviewNoteTail": "การ์ดเหล่านี้แสดงอัตราภาษีศุลกากรพื้นฐานทั่วไป ไม่ใช่ภาระภาษีศุลกากรที่มีผลบังคับใช้ในปัจจุบัน",
       "revenue": "รายได้สหรัฐฯ",
       "noRevenueData": "ไม่มีข้อมูลรายได้จากอากรศุลกากร",
       "treasuryUnavailable": "ข้อมูล Treasury ไม่พร้อมใช้งานชั่วคราว",
-      "fytdLabel": "FY{{year}} YTD",
+      "fytdLabel": "ปีงบประมาณ{{year}} ตั้งแต่ต้นปี",
       "vsPriorFy": "เทียบกับ FY{{year}}",
-      "sourceWto": "WTO",
+      "sourceWto": "องค์การการค้าโลก",
       "sourceTreasury": "กระทรวงการคลังสหรัฐฯ",
       "colDate": "วันที่",
       "colMonthly": "รายเดือน",
-      "colFytd": "FY YTD",
+      "colFytd": "ปีงบประมาณ ตั้งแต่ต้นปี",
       "strategicFlows": "การไหลเวียนเชิงกลยุทธ์",
       "noComtradeData": "ไม่มีข้อมูลการไหลเวียนเชิงกลยุทธ์",
       "comtradeUnavailable": "ข้อมูล UN Comtrade ไม่พร้อมใช้งานชั่วคราว",
@@ -1035,7 +1035,7 @@
       "colReporter": "ประเทศ",
       "colCommodity": "สินค้า",
       "colTradeValue": "มูลค่าการค้า",
-      "infoTooltip": "<strong>นโยบายการค้า</strong> การติดตามเบื้องต้น WTO และผลกระทบของศุลกากร:<ul><li><strong>ภาพรวม</strong>: อัตราเบื้องต้น WTO MFN พร้อมบริบทอัตราที่มีผลของสหรัฐฯ (เมื่อมี)</li><li><strong>ศุลกากร</strong>: แนวโน้มศุลกากร WTO MFN เทียบกับการประมาณการศุลกากรที่มีผลของสหรัฐฯ</li><li><strong>การไหลเวียนการค้า</strong>: ปริมาณการส่งออก/นำเข้าพร้อมการเปลี่ยนแปลงเมื่อเทียบกับปีที่แล้ว</li><li><strong>อุปสรรค</strong>: อุปสรรคด้านเทคนิคต่อการค้า (TBT/SPS notifications)</li><li><strong>รายได้</strong>: รายได้ภาษีศุลกากรรายเดือนของสหรัฐฯ (ข้อมูล US Treasury MTS)</li></ul>"
+      "infoTooltip": "<strong>นโยบายการค้า</strong> พื้นฐานภาษีอากรทั่วไปที่ไม่มีสิทธิพิเศษจากองค์การการค้าโลก พร้อมอัตราสหรัฐฯ ที่มีผลบังคับใช้เมื่อมี รวมถึงแนวโน้มภาษีอากร กระแสการค้า อุปสรรคเทคนิคและความปลอดภัยอาหาร และรายได้ศุลกากรสหรัฐฯ รายเดือน"
     },
     "gdelt": {
       "empty": "ไม่มีบทความล่าสุดสำหรับหัวข้อนี้"
@@ -1118,7 +1118,7 @@
       "units": {
         "fighters": "เครื่องบินรบ",
         "tankers": "เครื่องบินเติมเชื้อเพลิง",
-        "awacs": "AWACS",
+        "awacs": "ระบบเตือนล่วงหน้าทางอากาศ",
         "recon": "ลาดตระเวน",
         "transport": "ขนส่ง",
         "bombers": "เครื่องบินทิ้งระเบิด",
@@ -1132,17 +1132,17 @@
         "auxiliary": "สนับสนุน",
         "navalVessels": "เรือรบ"
       },
-      "infoTooltip": "<strong>วิธีการ</strong><p>รวบรวมอากาศยานทหารและเรือรบตามพื้นที่ปฏิบัติการ</p><ul><li><strong>ปกติ:</strong> กิจกรรมพื้นฐาน</li><li><strong>ยกระดับ:</strong> เหนือเกณฑ์ (50+ อากาศยาน)</li><li><strong>วิกฤต:</strong> ความหนาแน่นสูง (100+ อากาศยาน)</li></ul><p><strong>พร้อมโจมตี:</strong> เครื่องบินเติมเชื้อเพลิง + AWACS + เครื่องบินรบ มีจำนวนเพียงพอสำหรับปฏิบัติการต่อเนื่อง</p>",
+      "infoTooltip": "<strong>ระเบียบวิธี</strong><p>รวบรวมเครื่องบินทางทหาร และเรือทางทหารตามสนามรบ</p><ul><li><strong>ปกติ:</strong> กิจกรรมพื้นฐาน</li><li><strong>เพิ่มขึ้น:</strong> สูงกว่าเกณฑ์ (50+ เครื่องบิน)</li><li><strong>วิกฤต:</strong> ความเข้มข้นสูง (100+ เครื่องบิน)</li></ul><p><strong>สามารถโจมตีได้:</strong> มีแทนเกอร์ ระบบเตือนล่วงหน้าทางอากาศ และเครื่องบินรบในจำนวนที่เพียงพอสำหรับการปฏิบัติการที่ยั่งยืน</p>",
       "scanningTheaters": "กำลังสแกนพื้นที่ปฏิบัติการ",
       "positions": "ตำแหน่งอากาศยาน",
       "navalVesselsLoading": "เรือรบ",
       "theaterAnalysis": "การวิเคราะห์พื้นที่ปฏิบัติการ",
-      "connectingStreams": "กำลังเชื่อมต่อกับสตรีม ADS-B และ AIS สด...",
+      "connectingStreams": "กำลังเชื่อมต่อกับสตรีมการติดตามเรือและสตรีมท่ระบบปลอดภัยการบิน...",
       "initialLoadNote": "การโหลดครั้งแรกใช้เวลา 30-60 วินาทีขณะรวบรวมข้อมูลการติดตาม",
       "acquiringData": "กำลังรับข้อมูล",
-      "acquiringDesc": "กำลังเชื่อมต่อกับเครือข่าย ADS-B สำหรับข้อมูลเที่ยวบินทหาร อาจใช้เวลา 30-60 วินาทีในการโหลดครั้งแรก",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "สตรีมเรือ AIS",
+      "acquiringDesc": "กำลังเชื่อมต่อกับเครือข่าย Transponder เครื่องบิน เพื่อรับข้อมูลการบินทางทหาร อาจใช้เวลา 30-60 วินาที ในการโหลดครั้งแรก",
+      "openSkyAdsb": "OpenSky Transponder เครื่องบิน",
+      "aisVesselStream": "สตรีมเรือติดตามเรือ",
       "retryNow": "ลองใหม่ตอนนี้",
       "feedRateLimited": "ฟีดถูกจำกัดอัตรา",
       "rateLimitedDesc": "OpenSky API มีขีดจำกัดคำขอ แผงจะลองใหม่อัตโนมัติในอีกไม่กี่นาที หรือคุณสามารถลองใหม่ได้ตอนนี้",
@@ -1238,7 +1238,7 @@
       "views": {
         "global": "ทั่วโลก",
         "americas": "อเมริกา",
-        "mena": "MENA",
+        "mena": "ตะวันออกกลางและแอฟริกาเหนือ",
         "europe": "ยุโรป",
         "asia": "เอเชีย",
         "latam": "ละตินอเมริกา",
@@ -1280,11 +1280,11 @@
         "financialCenters": "ศูนย์กลางการเงิน",
         "centralBanks": "ธนาคารกลาง",
         "commodityHubs": "ศูนย์กลางสินค้าโภคภัณฑ์",
-        "gulfInvestments": "การลงทุน GCC",
+        "gulfInvestments": "การลงทุนของสภาความร่วมมือของประเทศในอ่าวเปอร์เซีย",
         "tradeRoutes": "เส้นทางการค้า",
         "iranAttacks": "การโจมตีอิหร่าน",
-        "gpsJamming": "GPS JAMMING",
-        "ciiChoropleth": "ดัชนีความไม่มั่นคง CII",
+        "gpsJamming": "การรบกวนการนำทาง",
+        "ciiChoropleth": "ความไม่เสถียรของประเทศ",
         "dayNight": "กลางวัน/กลางคืน",
         "positiveEvents": "เหตุการณ์เชิงบวก",
         "kindness": "ความเมตตา",
@@ -1387,7 +1387,7 @@
           "infraCablesFull": "สายเคเบิลไฟเบอร์ออปติกใต้ทะเลหลัก (20 เส้นทางโครงข่ายหลัก)",
           "infraPipelinesFull": "ท่อน้ำมัน/ก๊าซ (Nord Stream, TAPI ฯลฯ)",
           "infraDatacentersFull": "คลัสเตอร์คำนวณ AI >=10,000 GPU เท่านั้น",
-          "transportShipping": "เรือ, จุดคอขวด, ท่าเรือยุทธศาสตร์ 61 แห่ง",
+          "transportShipping": "ตำแหน่งเรือสด จากเครื่องส่งสัญญาณเรือ",
           "transportDelays": "ความล่าช้าของสนามบินและการหยุดบินภาคพื้น (FAA)",
           "naturalEventsFull": "แผ่นดินไหว (USGS) + พายุ ไฟ ภูเขาไฟ น้ำท่วม (NASA EONET)",
           "firesFull": "ไฟป่าที่กำลังลุกไหม้และขอบเขตไฟ (NASA FIRMS)",
@@ -1401,11 +1401,11 @@
           "techCyberThreats": "การโจมตีทางไซเบอร์และเหตุการณ์ด้านความปลอดภัย",
           "techEvents": "การประชุมและงานเทคโนโลยีสำคัญ",
           "techFires": "ไฟป่าที่กำลังลุกไหม้ใกล้โครงสร้างพื้นฐานเทคโนโลยี",
-          "financeGulfInvestments": "การลงทุนกองทุนความมั่งคั่งแห่งชาติ GCC และการลงทุนโดยตรงจากต่างประเทศ",
+          "financeGulfInvestments": "การลงทุนของกองทุนอธิปไตยและการลงทุนโดยตรงจากต่างประเทศของสภาความร่วมมือของประเทศในอ่าวเปอร์เซีย",
           "tradeRoutes": "เส้นทางเดินเรือหลักของโลกที่เชื่อมต่อท่าเรือผ่านจุดยุทธศาสตร์",
           "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน",
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
-          "ciiChoropleth": "แผนที่ความร้อนดัชนีความไม่มั่นคงของประเทศ — ระบายสีประเทศตามคะแนน CII (เขียว=มั่นคง, แดง=วิกฤต)",
+          "ciiChoropleth": "แผนความร้อน Country Instability Index — แสดงสีประเทศตามคะแนน (เขียว=เสถียร แดง=วิกฤต)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
@@ -1490,7 +1490,7 @@
       "briefCommodity": "บทสรุปสินค้าโภคนำ",
       "briefEnergy": "บทสรุปพลังงาน",
       "briefWorld": "บทสรุปโลก",
-      "mlDetected": "ตรวจพบโดย AI",
+      "mlDetected": "การตรวจสอบด้วยการเรียนรู้ของเครื่อง",
       "geographicConvergence": "การบรรจบกันทางภูมิศาสตร์",
       "focalPoints": "จุดสำคัญ",
       "toneMixed": "ผสมผสาน",
@@ -1571,7 +1571,7 @@
       "noData": "ไม่มีข้อมูล",
       "enable": "เปิดใช้งาน",
       "convergenceMetric": "การบรรจบกัน",
-      "ciiDeviation": "ค่าเบี่ยงเบน CII",
+      "ciiDeviation": "การเบี่ยงเบนของดัชนีความไม่เสถียรของประเทศ",
       "infraEvents": "เหตุการณ์โครงสร้างพื้นฐาน",
       "highAlerts": "การแจ้งเตือนสูง",
       "topRisks": "ความเสี่ยงสูงสุด",
@@ -1583,7 +1583,7 @@
         "hoursAgo": "{{count}}ชม. ที่แล้ว"
       },
       "infoTooltip": "<strong>วิธีการ</strong> คะแนนรวม (0-100) ผสมผสาน:<ul><li>50% ความไม่มั่นคงของประเทศ (5 อันดับแรกถ่วงน้ำหนัก)</li><li>30% เขตการบรรจบทางภูมิศาสตร์</li><li>20% เหตุการณ์โครงสร้างพื้นฐาน</li></ul>รีเฟรชอัตโนมัติทุก 5 นาที",
-      "cachedCiiStatus": "CII ที่แคชไว้ {{states}}",
+      "cachedCiiStatus": "ดัชนีความไม่เสถียรของประเทศที่แคชไว้ {{states}}",
       "sourceStates": {
         "degraded": "เสื่อมสภาพ",
         "stale": "ล้าสมัย"
@@ -1610,16 +1610,16 @@
     "techReadiness": {
       "internetUsers": "ผู้ใช้อินเทอร์เน็ต",
       "mobileSubscriptions": "การสมัครมือถือ",
-      "rdSpending": "ค่าใช้จ่าย R&D",
+      "rdSpending": "การใช้จ่ายด้านการวิจัยและพัฒนา",
       "fetchingData": "กำลังดึงข้อมูล World Bank",
       "internetUsersIndicator": "ผู้ใช้อินเทอร์เน็ต",
       "mobileSubscriptionsIndicator": "การสมัครมือถือ",
       "broadbandAccess": "การเข้าถึงบรอดแบนด์",
-      "rdExpenditure": "ค่าใช้จ่าย R&D",
+      "rdExpenditure": "การใช้จ่ายด้านการวิจัยและพัฒนา",
       "analyzingCountries": "กำลังวิเคราะห์ 200+ ประเทศ...",
       "source": "แหล่งที่มา: World Bank",
       "updated": "อัปเดต: {{date}}",
-      "infoTooltip": "<strong>ความพร้อมด้านเทคโนโลยีโลก</strong><br>คะแนนรวม (0-100) จากข้อมูล World Bank:<br><br><strong>ตัวชี้วัดที่แสดง:</strong><br>🌐 ผู้ใช้อินเทอร์เน็ต (% ของประชากร)<br>📱 การสมัครมือถือ (ต่อ 100 คน)<br>🔬 ค่าใช้จ่าย R&D (% ของ GDP)<br><br><strong>น้ำหนัก:</strong> R&D (35%), อินเทอร์เน็ต (30%), บรอดแบนด์ (20%), มือถือ (15%)<br><br><em>— = ไม่มีข้อมูลล่าสุด</em><br><em>แหล่งที่มา: World Bank Open Data (2019-2024)</em>",
+      "infoTooltip": "<strong>ความพร้อมด้านเทคโนโลยี</strong> คะแนนรวมของธนาคารโลก 0-100 ระดับน้ำหนักคือ การวิจัยและพัฒนา 35% อินเทอร์เน็ต 30% บรอดแบนด์ 20% และมือถือ 15% ผู้ใช้อินเทอร์เน็ตคือเปอร์เซ็นต์ประชากร การสมัครใจมือถือต่อ 100 คน การใช้จ่ายการวิจัยคือส่วนแบ่งของผลผลิตทางเศรษฐกิจ ค่าที่ขาดหายไป แสดงเป็นขีด ข้อมูลช่วง 2019-2024",
       "dataPreparing": "กำลังรีเฟรชข้อมูลความพร้อมใช้เทคโนโลยี — ข้อมูลนี้จะปรากฏในไม่ช้า"
     },
     "populationExposure": {
@@ -1673,7 +1673,7 @@
       },
       "infoTooltip": "การตรวจจับความร้อนจากดาวเทียม NASA FIRMS VIIRS ในภูมิภาคความขัดแย้งที่เฝ้าระวัง ความเข้มข้นสูง = ความสว่าง >360K และความเชื่อมั่น >80%",
       "possibleExplosions": "ตรวจพบการระเบิด {{count}} ครั้ง",
-      "explosionTooltip": "ลายเซ็นความร้อนสอดคล้องกับการระเบิด (FRP >80 MW, brightness >380 K)"
+      "explosionTooltip": "ลายเซนเชอร์ความร้อนที่สอดคล้องกับการระเบิด (พลังงานรังสีไฟ >80 MW ความสว่าง >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "ระหว่างรัฐ",
@@ -1709,7 +1709,7 @@
       "wallets": "กระเป๋าเงิน",
       "ofTotal": "% ของทั้งหมด",
       "topReceivers": "ผู้รับสูงสุด",
-      "oecdOda": "OECD ODA",
+      "oecdOda": "ความช่วยเหลือด้านการพัฒนาอย่างเป็นทางการขององค์การเพื่อความร่วมมือและการพัฒนาทางเศรษฐกิจ",
       "cafIndex": "ดัชนี CAF",
       "candidGrants": "ทุน Candid",
       "dataLag": "ความล่าช้าของข้อมูล",
@@ -1752,13 +1752,13 @@
       "count": "จำนวน",
       "latestRound": "รอบล่าสุด",
       "internalNote": "IOM DTM: ผู้พลัดถิ่นภายในประเทศ รอบการสำรวจล่าสุดของแต่ละปฏิบัติการ ปฏิบัติการในประเทศเดียวกันอาจทับซ้อนกัน จึงไม่นำมารวมกัน",
-      "infoTooltip": "<strong>ข้อมูลการพลัดถิ่น UNHCR</strong> จำนวนผู้ลี้ภัย ผู้ขอลี้ภัย และผู้พลัดถิ่นภายในประเทศทั่วโลกจาก UNHCR<ul><li><strong>ต้นทาง</strong>: ประเทศที่ผู้คนหนีออกมา</li><li><strong>ประเทศเจ้าบ้าน</strong>: ประเทศที่รับผู้ลี้ภัย</li><li>ป้ายวิกฤต: >1 ล้าน | สูง: >500,000 ผู้พลัดถิ่น</li></ul>ข้อมูลอัปเดตรายปี สัญญาอนุญาต CC BY 4.0",
+      "infoTooltip": "<strong>การพลัดถิ่น</strong> ผู้ลี้ภัย ผู้ขอลี่ภัย และผู้ที่ถูกแม่ข่ายภายในประเทศของตน มุมมองต้นทางและเจ้าภาพแสดงว่าผู้คนไปจากที่ไหนและไปที่ไหน ป้ายวิกฤตทำเครื่องหมายกว่าหนึ่งล้านคนพลัดถิ่น สูงถึงกว่า 500,000 ข้อมูลประจำปีจากองค์การสหประชาชาติ ใบอนุญาต CC BY 4.0",
       "crossBorder": "ข้ามพรมแดน",
       "situation": "สถานการณ์",
       "latestChange": "การเปลี่ยนแปลงล่าสุด",
       "accelerating": "กำลังเร่งตัว",
       "inDays": "ใน {{days}} วัน",
-      "crossBorderNote": "พอร์ทัลข้อมูลปฏิบัติการของ UNHCR: ผู้คนที่ข้ามพรมแดนในแต่ละวิกฤต ตามรายงานรายประเทศล่าสุด สถานการณ์ต่าง ๆ ทับซ้อนกัน จึงไม่นำมารวมกัน"
+      "crossBorderNote": "สำนักงานข้อมูลปฏิบัติการของสำนักงานอาณเมืองสหประชาชาติ: คนที่ข้ามพรมแดนในแต่ละวิกฤตจากรายงานประเทศล่าสุด สถานการณ์ทับซ้อนกัน ดังนั้นจึงไม่รวมกัน"
     },
     "climate": {
       "noAnomalies": "ไม่พบความผิดปกติที่สำคัญ",
@@ -1839,7 +1839,7 @@
       "infoTooltip": "<strong>ข่าวกรองข่าว</strong> การเฝ้าระวังข่าวทั่วโลกเรียลไทม์:<ul><li>หมวดหมู่หัวข้อที่คัดสรร (ความขัดแย้ง, ไซเบอร์ ฯลฯ)</li><li>บทความจาก 100+ ภาษาที่แปลแล้ว</li><li>อัปเดตทุก 15 นาที</li><li>14-day media tone &amp; volume trend per topic</li></ul>แหล่งที่มา: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
-      "infoTooltip": "สัญญาณเรียลไทม์จากช่อง OSINT บน Telegram ที่ถูกติดตาม",
+      "infoTooltip": "สัญญาณแบบเรียลไทม์จากช่องสัญญาณสื่อสารกลุ่มทำเนียบที่ติดตามการรวบรวมข้อมูลจากแหล่งเปิด",
       "loading": "กำลังเชื่อมต่อรีเลย์ Telegram...",
       "empty": "ไม่มีข้อความ",
       "disabled": "รีเลย์ Telegram ไม่ทำงาน",
@@ -1856,7 +1856,7 @@
       "filterAll": "ทั้งหมด",
       "filterBreaking": "ด่วน",
       "filterConflict": "ความขัดแย้ง",
-      "filterOsint": "OSINT",
+      "filterOsint": "การรวบรวมข้อมูลจากแหล่งเปิด",
       "filterMiddleeast": "ตะวันออกกลาง",
       "live": "สด",
       "viewSource": "ดูแหล่งที่มา",
@@ -1871,7 +1871,7 @@
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
-      "filterOsint": "OSINT",
+      "filterOsint": "การรวบรวมข้อมูลจากแหล่งเปิด",
       "filterMiddleeast": "Middle East",
       "live": "LIVE",
       "viewSource": "View Source",
@@ -1918,12 +1918,12 @@
       "infoTooltip": "<strong>ตลาดพยากรณ์</strong> ตลาดพยากรณ์ที่ใช้เงินจริง:<ul><li>ราคาสะท้อนการประมาณความน่าจะเป็นของกลุ่ม</li><li>ปริมาณสูง = สัญญาณที่น่าเชื่อถือกว่า</li><li>เน้นภูมิรัฐศาสตร์และเหตุการณ์ปัจจุบัน</li></ul>แหล่งที่มา: Polymarket (polymarket.com)"
     },
     "etfFlows": {
-      "unavailable": "ข้อมูล ETF ไม่พร้อมใช้งานชั่วคราว",
-      "rateLimited": "ข้อมูล ETF ไม่พร้อมใช้งานชั่วคราว (ถูกจำกัดอัตรา) — กำลังลองใหม่ในไม่ช้า",
+      "unavailable": "ข้อมูลกองทุนที่อนุญาตให้ซื้อขายในตลาดหุ้น ไม่พร้อมใช้งานชั่วคราว",
+      "rateLimited": "ข้อมูลกองทุนที่อนุญาตให้ซื้อขายในตลาดหุ้น ไม่พร้อมใช้งานชั่วคราว (จำกัดอัตรา) — กำลังลองใหม่ในไม่ช้า",
       "netFlow": "กระแสสุทธิ",
       "estFlow": "กระแสประมาณการ",
       "totalVol": "ปริมาณทั้งหมด",
-      "etfs": "ETF",
+      "etfs": "กองทุนที่อนุญาตให้ซื้อขายในตลาดหุ้น",
       "netInflow": "กระแสเข้าสุทธิ",
       "netOutflow": "กระแสออกสุทธิ",
       "netNeutral": "กระแสสุทธิเป็นกลาง",
@@ -1934,7 +1934,7 @@
         "volume": "ปริมาณ",
         "change": "เปลี่ยนแปลง"
       },
-      "infoTooltip": "<strong>BTC ETF Tracker</strong> ติดตามการไหลของกองทุนโดยประมาณรายวันสำหรับ ETF Bitcoin spot ของสหรัฐอเมริกา:<ul><li>ทิศทางและขนาดของการไหลเข้า/ไหลออก</li><li>ปริมาณการซื้อขายและการเปลี่ยนแปลงราคาต่อกองทุน</li><li>การไหลสุทธิรวมกันในทั้งหมด ETF ที่ติดตาม</li></ul>"
+      "infoTooltip": "<strong>กระแสเงินกองทุน Bitcoin</strong> ติดตามการไหลของเงินทุนรายวันโดยประมาณสำหรับกองทุน Bitcoin แบบ Spot ของสหรัฐฯ:<ul><li>ทิศทางและขนาดของการไหลเข้า/ไหลออก</li><li>ปริมาณและการเปลี่ยนแปลงราคาต่อกองทุน</li><li>การไหลสุทธิโดยรวมในทุกกองทุนที่ติดตาม</li></ul>"
     },
     "macroSignals": {
       "overall": "ภาพรวม",
@@ -1952,7 +1952,7 @@
         "momentum": "Momentum",
         "fearGreed": "ความกลัวและความโลภ"
       },
-      "infoTooltip": "<strong>BTC Regime</strong> แผงควบคุมสัญญาณประกอบสำหรับการวางตำแหน่ง Bitcoin และความต้องการความเสี่ยง:<ul><li><strong>สภาพคล่อง</strong>: พร็อกซีสภาพคล่องสุทธิของ Fed</li><li><strong>การไหล</strong>: ผลตอบแทน 5 วันของ BTC เทียบกับ QQQ</li><li><strong>ระบบ</strong>: การหมุนเวียน QQQ เทียบกับ XLP (ความเสี่ยงสูง/ต่ำ)</li><li><strong>แนวโน้ม BTC</strong>: ราคาเทียบกับ SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: การเปลี่ยนแปลง hash ของเครือข่าย 30 วัน</li><li><strong>Fear & Greed</strong>: ดัชนีความรู้สึกของตลาด</li></ul>แผงนี้สำหรับระบบและการวางตำแหน่ง ไม่ใช่ข้อมูลมหภาคอย่างกว้างๆ"
+      "infoTooltip": "<strong>สภาวะตลาด Bitcoin</strong> แดชบอร์ดสัญญาณประกอบสำหรับการวางตำแหน่ง Bitcoin และความชื่นชอบในความเสี่ยง:<ul><li><strong>สภาพคล่อง</strong>: พร็อกซีสภาพคล่องสุทธิของธนาคารกลาง</li><li><strong>กระแส</strong>: ผลตอบแทน BTC vs QQQ 5 วัน</li><li><strong>ระบอบ</strong>: การหมุนเวียน QQQ vs XLP (ความเสี่ยงเปิด/ปิด)</li><li><strong>แนวโน้ม BTC</strong>: ราคา vs SMA50/200 Mayer Multiple</li><li><strong>Hash Rate</strong>: การเปลี่ยนแปลง Hash ของเครือข่าย 30 วัน</li><li><strong>Fear & Greed</strong>: ดัชนีความรู้สึกของตลาด</li></ul>แผงนี้ใช้สำหรับระบอบและการวางตำแหน่ง ไม่ใช่ข้อมูล Macro กว้าง"
     },
     "panel": {
       "showMethodologyInfo": "แสดงข้อมูลวิธีการ",
@@ -2095,10 +2095,10 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> ดัชนีหุ้นอ่าวเพาะปลูก อัตราแลกเปลี่ยนเงินตรา และราคาน้ำมันสำหรับเศรษฐกิจสภาความร่วมมือประเทศกลุ่มอ่าว (ซาอุดีอาระเบีย สหรัฐอาหรับเอมิเรตส์ คูเวต กาตาร์ บาห์เรน โอมาน)"
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+      "infoTooltip": "<strong>Grocery Index</strong> การเปรียบเทียบราคาสินค้าชำ ทั่วโลกในประเทศ 24 แห่ง ติดตามอัตราเงินเฟ้อสินค้าอุปโภคบริโภคในโลกจริงนอกเหนือดัชนีราคาอุปโภคบริโภคหลัก"
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
@@ -2122,7 +2122,7 @@
       "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+      "infoTooltip": "<strong>Central Bank Watch</strong> งบประมาณล่าสุด การตัดสินใจด้านอัตราดอกบัญชี และการสื่อสารจากธนาคารกลาง เฟดรัลเริ่ฟ ธนาคารกลางยุโรป ธนาคารแห่งประเทศอังกฤษ และธนาคารกลางครั้งสำคัญอื่น ๆ ทั่วโลก"
     },
     "airlineIntel": {
       "infoTooltip": "<strong>ข่าวกรองการบิน</strong> ข้อมูลปฏิบัติการสายการบินแบบเรียลไทม์: การระงับเส้นทาง, การปิดน่านฟ้า, คำเตือนจากสายการบิน และการเบี่ยงเบนฉุกเฉิน แหล่งข้อมูล: NOTAM จากหน่วยงานการบินและแถลงการณ์ของสายการบิน",
@@ -2145,7 +2145,7 @@
       "infoTooltip": "<strong>นักวิเคราะห์ WM</strong> นักวิเคราะห์ AI พร้อมบริบทสดในด้านภูมิรัฐศาสตร์ ตลาด ทหาร และเศรษฐกิจ ขับเคลื่อนโดย Claude พร้อมข้อมูลเรียลไทม์จากฟีด WorldMonitor ที่ใช้งานอยู่"
     },
     "cotPositioning": {
-      "infoTooltip": "<strong>การวางตำแหน่ง CFTC COT</strong> รายงานภาระผูกพันของผู้ค้า: สถานะสุทธิของผู้ค้าเชิงพาณิชย์ นักเก็งกำไรรายใหญ่ และผู้ค้ารายย่อยในตลาดฟิวเจอร์สสินค้าโภคภัณฑ์และการเงิน เผยแพร่รายสัปดาห์ (วันศุกร์) แหล่งข้อมูล: CFTC"
+      "infoTooltip": "<strong>Futures positioning</strong> ตำแหน่งสุทธิรายสัปดาห์สำหรับผู้ค้าพาณิชย์ นักเก็งกำไรขนาดใหญ่ และผู้ค้าขนาดเล็ก ในสินค้าโภคนะและ futures ทางการเงิน แหล่งที่มาคือรายงาน Commitments of Traders ของ Commodity Futures Trading Commission ซึ่งเผยแพร่ในวันศุกร์"
     },
     "counters": {
       "infoTooltip": "<strong>ตัวนับสด</strong> ตัวนับแบบประมาณค่าเรียลไทม์สำหรับตัวชี้วัดระดับโลก: การใช้จ่ายทางทหาร ภัยพิบัติทางธรรมชาติ ภาระโรค และอื่น ๆ ตัวเลขเป็นการประมาณทางสถิติจากอัตราข้อมูลรายปี"
@@ -2178,12 +2178,12 @@
       "methodologyNote": "ระดับการแจ้งเตือน / คำเตือน / การเฝ้าระวัง มาจากตัวแยกประเภทคำหลักที่บรรณาธิการ — ดู /docs/methodology/disease-alert-level สำหรับตารางคำหลักและข้อจำกัด"
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>ปฏิทินผลประกอบการ</strong> การประกาศผลประกอบการที่จะมาถึงและล่าสุดของบริษัทมหาชนรายใหญ่ แสดงประมาณการ EPS เทียบกับจริง รายได้ และการจัดประเภทเกิน/พลาดเป้า แหล่งข้อมูล: ผู้ให้บริการข้อมูลทางการเงิน",
+      "infoTooltip": "<strong>Earnings Calendar</strong> การเปิดเผยรายได้ที่จะเกิดขึ้นและเมื่อเร็ว ๆ นี้สำหรับบริษัทสาธารณะชั้นนำ แสดง earnings per share ที่คาดการณ์เทียบกับ actuals รายได้ และการจำแนก beat/miss แหล่งที่มา: ผู้ให้บริการข้อมูลทางการเงิน",
       "title": "ปฏิทินรายงานกำไร",
       "today": "วันนี้ · {{date}}",
       "tomorrow": "พรุ่งนี้ · {{date}}",
-      "epsActual": "EPS {{value}}",
-      "epsEstimate": "EPS โดยประมาณ {{value}}",
+      "epsActual": "earnings per share {{value}}",
+      "epsEstimate": "earnings per share est {{value}}",
       "revenueActual": "{{value}} รายได้",
       "revenueEstimate": "{{value}} โดยประมาณ",
       "surprise": {
@@ -2197,12 +2197,12 @@
       }
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>ปฏิทินเศรษฐกิจ</strong> การเผยแพร่ข้อมูลเศรษฐกิจมหภาคตามกำหนด: CPI, NFP, GDP, PMI และการตัดสินใจของธนาคารกลาง แสดงคาดการณ์ เทียบกับจริง เทียบกับก่อนหน้า เหตุการณ์ที่มีผลกระทบสูงถูกเน้น แหล่งข้อมูล: ผู้ให้บริการข้อมูลเศรษฐกิจ"
+      "infoTooltip": "<strong>Economic Calendar</strong> การปล่อยเศรษฐกิจมหภาคตามกำหนดเวลา: ดัชนีราคาอุปโภคบริโภค nonfarm payrolls GDP ดัชนีผู้จัดการจัดซื้อ และการตัดสินใจธนาคารกลาง แสดงการคาดการณ์เทียบกับ actual เทียบกับ prior เหตุการณ์ที่มีผลกระทบสูงจะถูกไฮไลต์ แหล่งที่มา: ผู้ให้บริการข้อมูลเศรษฐกิจ"
     },
     "fsi": {
-      "infoTooltip": "<strong>ตัวบ่งชี้ความเครียดทางการเงิน</strong> อัตราส่วนของ WorldMonitor ระหว่างเครดิตผลตอบแทนสูงกับพันธบัตรรัฐบาลสหรัฐฯ ระยะยาว ซึ่งปรับด้วยความผันผวนของหุ้นและส่วนต่างผลตอบแทนสูง: (HYG / TLT) / (VIX × HY spread / 100) นี่ไม่ใช่ดัชนีความเครียดทางการเงินของธนาคารกลางสหรัฐฯ สาขาแคนซัสซิตี ค่า 1.5 หรือสูงกว่าหมายถึงความเครียดต่ำ; ต่ำกว่า 0.3 หมายถึงความเครียดสูง",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> อัตราส่วน World Monitor ของสินเชื่อ high-yield ต่อพันธบัตรระยะยาว ปรับสำหรับความผันผวนของ equity และ high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100) นี่ไม่ใช่ Kansas City Fed Financial Stress Index การอ่าน 1.5 หรือมากกว่าคือความเครียดต่ำ ต่ำกว่า 0.3 คือความเครียดสูง",
       "title": "ตัวชี้วัดความเครียดทางการเงิน",
-      "usFsiValue": "ค่า FSI ของสหรัฐฯ",
+      "usFsiValue": "ค่า US Financial Stress Indicator",
       "cissTitle": "EU CISS (ความเครียดระบบในพื้นที่ยูโร)",
       "notAvailable": "ไม่มี",
       "interpretation": {
@@ -2231,15 +2231,15 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "HY Spread",
+        "hySpread": "High-yield Spread",
         "hygPrice": "HYG Price",
         "tltPrice": "TLT Price"
       },
       "errors": {
-        "unavailable": "ข้อมูล FSI ไม่พร้อมใช้งาน",
+        "unavailable": "ข้อมูล Financial Stress Indicator ไม่มีอยู่",
         "failedToLoad": "การโหลดล้มเหลว"
       },
-      "cissStale": "ECB ยังไม่ได้เผยแพร่ค่าที่ใหม่กว่า — การอ่านค่านี้อาจล้าสมัยแล้ว"
+      "cissStale": "European Central Bank ไม่ได้เผยแพร่ค่าที่ใหม่กว่า การอ่านนี้อาจล้าสมัย"
     },
     "supplyVulnerability": {
       "title": "ความเปราะบางด้านสินค้าโภคภัณฑ์",
@@ -2262,7 +2262,7 @@
       "proLocked": "อัปเกรดเป็น PRO เพื่อดูคะแนนความเสี่ยงสินค้าโภคนัย"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>ตัวติดตามการค้าฮอร์มุซ</strong> การติดตามเรือ AIS แบบสดผ่านช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ตรวจสอบจำนวนเรือบรรทุกน้ำมัน เหตุการณ์หยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ อุปทานน้ำมันโลกประมาณ 20% ผ่านที่นี่ทุกวัน",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> การติดตามเรือสดในช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ติดตามจำนวนเรือบรรทุกน้ำมัน เหตุการณ์การหยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ ประมาณ 20% ของอุปทานน้ำมันโลกผ่านที่นี่ทุกวัน",
       "title": "ตัวติดตามการค้าในช่องแคบฮอร์มุซ",
       "noData": "ไม่มีข้อมูล",
       "notAvailable": "ไม่พร้อมใช้งาน",
@@ -2281,13 +2281,13 @@
       "infoTooltip": "<strong>เว็บแคมสด</strong> ถ่ายทอดสดจากสถานที่ที่มีความสำคัญทางภูมิรัฐศาสตร์ทั่วโลก: เขตขัดแย้ง เมืองหลวง จุดข้ามพรมแดน และจุดคอขวดเชิงยุทธศาสตร์ สตรีมจาก YouTube และเครือข่ายสาธารณะ"
     },
     "macroTiles": {
-      "infoTooltip": "<strong>ตัวชี้วัดมหภาค</strong> ตัวชี้วัดเศรษฐกิจมหภาคหลักสำหรับสหรัฐฯ และยูโรโซน: CPI อัตราการว่างงาน GDP และอัตราดอกเบี้ยธนาคารกลาง ค่าแสดงพร้อมเดลต้าจากช่วงก่อนหน้า แหล่งข้อมูล: FRED (Federal Reserve Economic Data)"
+      "infoTooltip": "<strong>Macro indicators</strong> ราคา US euro area และ China กิจกรรม นโยบาย และตัวบ่งชี้สกุลเงิน China ต้องการหลักฐานการครอบคลุมปัจจุบัน แต่ละไทล์แสดงแหล่งที่มาและวันที่สังเกตการณ์"
     },
     "monitors": {
       "infoTooltip": "<strong>ตัวตรวจสอบคำสำคัญ</strong> เพิ่มคำใด ๆ เพื่อติดตามการกล่าวถึงในข่าวแบบเรียลไทม์จากแหล่งข้อมูล WorldMonitor ทั้งหมด ผลลัพธ์อัปเดตแบบเรียลไทม์เมื่อบทความที่ตรงกันถูกรวบรวม"
     },
     "renewable": {
-      "infoTooltip": "<strong>พลังงานหมุนเวียน</strong> สัดส่วนพลังงานหมุนเวียนในการผลิตไฟฟ้าตามภูมิภาคและปี รวมถึงกำลังการผลิตติดตั้งในสหรัฐฯ ของพลังงานแสงอาทิตย์ ลม และถ่านหิน (เมกะวัตต์) แหล่งที่มา: ธนาคารโลก (EG.ELC.RNEW.ZS) และ EIA"
+      "infoTooltip": "<strong>Renewable Energy</strong> ส่วนแบ่งการผลิตไฟฟ้าจากพลังงานหมุนเวียนตามภูมิภาคและปี บวกกับความจุที่ติดตั้ง US สำหรับโซลาร์ ลม และถ่านหิน (MW) แหล่งที่มา: World Bank (EG.ELC.RNEW.ZS) และ US Energy Information Administration"
     },
     "socialVelocity": {
       "infoTooltip": "<strong>ความเร็วทางสังคม</strong> หัวข้อที่กำลังเป็นกระแสและเนื้อหาไวรัลที่มีความสำคัญทางภูมิรัฐศาสตร์ วัดความเร็วของโซเชียลมีเดีย: เรื่องราวแพร่กระจายเร็วแค่ไหนเมื่อเทียบกับเส้นฐาน ช่วยเปิดเผยเรื่องเล่าที่กำลังเกิดขึ้นก่อนที่จะถึงสื่อกระแสหลัก"
@@ -2299,7 +2299,7 @@
       "infoTooltip": "<strong>นาฬิกาโลก</strong> เวลาท้องถิ่นแบบสดและสถานะเซสชันตลาดสำหรับศูนย์กลางการเงินโลกหลัก แสดงสถานะเปิด/ปิดสำหรับ NYSE, LSE, TSE, SGX และตลาดหลักทรัพย์อื่น ๆ"
     },
     "yieldCurve": {
-      "infoTooltip": "<strong>เส้นอัตราผลตอบแทน &amp; อัตราดอกเบี้ย</strong> เส้นอัตราผลตอบแทน US Treasury (2Y, 5Y, 10Y, 30Y) และสเปรดอัตราดอกเบี้ยหลัก รวมถึงตัวบ่งชี้การกลับตัวของ 10Y-2Y แสดงอัตราดอกเบี้ยยูโรโซนด้วย (EURIBOR, ESTR) เส้นกลับด้านมักนำหน้าภาวะถดถอยในประวัติศาสตร์ แหล่งข้อมูล: FRED"
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> เส้นอัตราผลตอบแทนพันธบัตรสหรัฐฯ (2Y, 5Y, 10Y, 30Y) และสเปรดอัตราสำคัญรวมถึงตัวบ่งชี้การกลับด้าน 10Y-2Y นอกจากนี้ยังแสดงอัตรา Euro area (EURIBOR, ESTR) เส้นโค้งแบบกลับด้านในอดีตนำหน้าการถดถอย แหล่งที่มา: Federal Reserve Economic Data"
     },
     "pinnedWebcams": {
       "pinFromMap": "ปักหมุดกล้องเว็บแคมจากแผนที่"
@@ -2308,13 +2308,13 @@
       "noData": "ยังไม่มีความก้าวหน้าทางวิทยาศาสตร์"
     },
     "oilInventories": {
-      "infoTooltip": "<strong>สตอกน้ำมัน</strong> สตอกน้ำมันดิบ US และ SPR (EIA รายสัปดาห์) การเก็บรักษาก๊าซธรรมชาติ เปอร์เซ็นต์การเติมแก๊สของ EU (GIE AGSI+) และวันครอบคลุมสตอกน้ำมัน OECD (IEA รายเดือน)"
+      "infoTooltip": "<strong>สต็อกน้ำมัน</strong> ธุรเชิงพาณิชย์สหรัฐฯ น้ำมันดิบและสต็อกเชิงยุทธศาสตร์ สต็อกแก๊สธรรมชาติ พื้นที่เก็บแก๊สยุโรป และปกคลุมสต็อกน้ำมัน แหล่งที่มา ได้แก่ สำนักงานสารสนเทศด้านพลังงานสหรัฐฯ และหน่วยงานพลังงานระหว่างประเทศ"
     },
     "energyComplex": {
       "noData": "ข้อมูลพลังงานไม่พร้อมใช้งานชั่วคราว - จะลองใหม่",
       "liveTape": "เทปสด",
       "liveTapeSource": "ใบเสนอราคาตลาด",
-      "infoTooltip": "<strong>กลุ่มพลังงาน</strong> สัญญาณพลังงานทางกายภาพและเทพลังงานในที่เดียว:<ul><li><strong>เมตริก EIA</strong>: WTI Brent การผลิต US และสตอก</li><li><strong>เทปสด</strong>: ราคาพลังงานที่เทพเช่นน้ำมันดิบและก๊าซธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดพลังงานทางกายภาพจากแผงมหภาคและสินค้าโภคนะที่กว้างขึ้น</li></ul>"
+      "infoTooltip": "<strong>สัญญาณพลังงาน</strong> สัญญาณพลังงานจริงและสามารถซื้อขายได้ในที่เดียว:<ul><li><strong>เมตริก US Energy Information Administration</strong>: WTI, Brent การผลิตสหรัฐฯ และสต็อก</li><li><strong>Live tape</strong>: ราคาพลังงานที่สามารถซื้อขายได้เช่น น้ำมันดิบและแก๊สธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดด้านพลังงานจริงจากแผงมหภาคและสินค้าที่กว้างขึ้น</li></ul>"
     },
     "consumerPrices": {
       "tabs": {
@@ -2325,17 +2325,17 @@
         "health": "สุขภาพของข้อมูล",
         "world": "World"
       },
-      "infoTooltip": "<strong>ราคาผู้บริโภค</strong> การติดตามราคาตะกร้าสินค้าแบบเรียลไทม์:<ul><li><strong>ภาพรวม</strong>: ดัชนีสินค้าจำเป็น ตะกร้าสินค้าราคาประหยัด และการเปลี่ยนแปลงสัปดาห์ต่อสัปดาห์</li><li><strong>หมวดหมู่</strong>: แนวโน้มราคาตามหมวดหมู่พร้อมช่วง 30 วัน</li><li><strong>การเปลี่ยนแปลงราคา</strong>: รายการที่ขึ้นและลงมากที่สุดในสัปดาห์นี้</li><li><strong>ส่วนต่าง</strong>: ความแตกต่างของราคาระหว่างผู้ค้าปลีกสำหรับตะกร้าสินค้าเดียวกัน</li></ul>ข้อมูลมาจากการสกัดราคาจากผู้ค้าปลีกแบบเรียลไทม์",
+      "infoTooltip": "<strong>ราคาผู้บริโภค</strong> ตะกร้าสินค้าเด็จ การเปลี่ยนแปลงรายสัปดาห์ แนวโน้มหมวดหมู่ ราคาที่เคลื่อนไหว และความแตกต่างระหว่างผู้ค้าปลีก มุมมองโลกใช้อัตราเงินเฟ้อรายปีจากมูลนิธิเพื่อพัฒนาวิทยาการสถาบันอเมริกัน",
       "world": {
         "country": "Country",
-        "inflationYoY": "Inflation YoY",
+        "inflationYoY": "อัตราเงินเฟ้อรายปี",
         "endOfPeriod": "End-of-Period",
         "year": "Year",
         "filterPlaceholder": "Filter countries…",
         "loading": "Loading global inflation…",
         "empty": "Inflation data not yet available",
         "noMatches": "No matching countries",
-        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "source": "แหล่งที่มา: มูลนิธิเพื่อพัฒนาวิทยาการสถาบันอเมริกัน · ดัชนีราคาผู้บริโภครายปี เศรษฐกิจทั้งหมดที่รายงาน",
         "countSingular": "country",
         "countPlural": "countries"
       }
@@ -2460,16 +2460,16 @@
       "infoTooltip": "<strong>Sector Heatmap</strong> ประสิทธิภาพของภาคส่วน S&P 500 ในแวบแรก ความเข้มของสีสะท้อนขนาดของการเปลี่ยนแปลงรายวัน เขียว = กำไร แดง = ขาดทุน"
     },
     "fuelPrices": {
-      "infoTooltip": "<strong>Fuel Prices</strong> ราคาปั๊มน้ำมันเบนซินและดีเซลทั่วทั้ง 30+ ประเทศ ปกติไป USD/ลิตรเพื่อการเปรียบเทียบ ราคามาจากโปรแกรมข้อมูลเปิดของรัฐบาลอย่างเป็นทางการและอัปเดตรายสัปดาห์ ประเทศที่ถูกที่สุดและแพงที่สุดจะถูกเน้น การเปลี่ยนแปลง WoW แสดงเมื่อข้อมูลของสัปดาห์ที่แล้วพร้อม",
+      "infoTooltip": "<strong>Fuel Prices</strong> ราคาปั๊มขายปลีกสำหรับน้ำมันเบนซินและดีเซลในประเทศกว่า 30 แห่ง ปรับเป็นเอกสารสหรัฐฯ/ลิตรเพื่อเปรียบเทียบ ราคาได้มาจากโปรแกรมข้อมูลเปิดอย่างเป็นทางการของรัฐบาลและอัปเดตรายสัปดาห์ ประเทศที่ถูกและแพงที่สุดจะถูกไฮไลต์ การเปลี่ยนแปลงสัปดาห์ต่อสัปดาห์จะแสดงเมื่อมีข้อมูลสัปดาห์ก่อนหน้า",
       "countries": "ประเทศ"
     },
     "faoFoodPriceIndex": {
-      "infoTooltip": "<strong>FAO Food Price Index</strong> ดัชนี FFPI ขององค์การอาหารและการเกษตรแห่งสหประชาชาติติดตามราคาส่งออกระหว่างประเทศสำหรับตะกร้าสินค้าอาหาร (ธัญพืช นม เนื้อ น้ำมัน น้ำตาล) ฐาน 2014-2016=100 อัปเดตรายเดือนในวันศุกร์แรกของเดือนแต่ละเดือน",
-      "indexLabel": "FFPI (2014-16=100)",
-      "mom": "เดือนต่อเดือน",
-      "yoy": "ปีต่อปี",
+      "infoTooltip": "<strong>FAO Food Price Index</strong> ดัชนีราคาอาหารขององค์การอาหารและการเกษตรของสหประชาชาติติดตามราคาการส่งออกระหว่างประเทศสำหรับตะกร้าสินค้าอาหาร (ธัญพืช นม เนื้อสัตว์ น้ำมัน น้ำตาล) ฐาน 2014-2016=100 อัปเดตรายเดือนในวันศุกร์แรกของแต่ละเดือน",
+      "indexLabel": "ราคาอาหาร (2014–2016 = 100)",
+      "mom": "เปรียบเทียบเดือนต่อเดือน",
+      "yoy": "เปรียบเทียบปีต่อปี",
       "asOf": "ณ วันที่",
-      "baseNote": "ฐาน: 2014-2016 = 100 | แหล่งที่มา: UN FAO",
+      "baseNote": "ฐาน: 2014–2016 = 100 | แหล่งที่มา: องค์การอาหารและการเกษตรของสหประชาชาติ",
       "ffpi": "อาหาร",
       "cereals": "ธัญพืช",
       "meat": "เนื้อสัตว์",
@@ -2483,14 +2483,14 @@
     },
     "liquidityShifts": {
       "title": "การเปลี่ยนแปลงสภาพคล่อง",
-      "infoTooltip": "<strong>Liquidity Shifts</strong> ระบบติดตามตำแหน่งสภาพคล่องสูงและการเปลี่ยนแปลงรายวันสำหรับน้ำมัน ทองคำ เงิน ฟิวเจอร์สดัชนีหุ้น และหุ้นสหรัฐฯ ชั้นนำ COT asset-manager net และ leveraged-funds net เทียบกับการเปลี่ยนแปลงราคารายวัน",
-      "cotSection": "ตำแหน่ง Oil / Gold / Silver + Index (COT)",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> การติดตามตำแหน่งสภาพคล่องสูงและการเปลี่ยนแปลงรายวันสำหรับน้ำมัน ทอง เงิน ดัชนี futures และหุ้น US ชั้นนำ สุทธิผู้จัดการสินทรัพย์ Commitments of Traders และสุทธิกองทุน leveraged เทียบกับการเปลี่ยนแปลงราคารายวัน",
+      "cotSection": "น้ำมัน / ทอง / เงิน + ตำแหน่งดัชนี (Commitments of Traders)",
       "stocksSection": "หุ้นสหรัฐฯ ชั้นนำ: การเปลี่ยนแปลงรายวัน",
       "longShort": "Long {{long}} / Short {{short}}",
       "lev": "Lev",
-      "noCot": "ไม่มีแถว COT ที่พร้อมใช้งาน",
+      "noCot": "ไม่มีแถว Commitments of Traders ที่ใช้ได้",
       "noStocks": "ไม่มีราคาหุ้นชั้นนำที่พร้อมใช้งาน",
-      "reportDate": "วันที่รายงาน COT: {{date}}",
+      "reportDate": "วันที่รายงาน Commitments of Traders: {{date}}",
       "unavailable": "ข้อมูลสภาพคล่องไม่พร้อมใช้งาน",
       "failed": "ไม่สามารถโหลด"
     },
@@ -2499,15 +2499,15 @@
       "infoTooltip": "<strong>24/7 Positioning</strong> ความกดดันตำแหน่งสัญญาถาวรจาก Hyperliquid การซื้อขายตลอดเวลา แสดงสิ่งที่กำลังสร้างเมื่อตลาดแบบดั้งเดิมปิด คะแนนประกอบ (0-100) จากอัตราการจัดหาเงิน ปริมาณ ดอกเบี้ยเปิด และพื้นฐาน spot-perp สีเขียว = ลองส์แน่น (แนวโน้มเชิงบวก) สีแดง = ชอร์ตแน่น (แนวโน้มเชิงลบ)",
       "commodities": "สินค้าโภคนะ",
       "crypto": "สกุลเงินดิจิทัล",
-      "fx": "อัตราแลกเปลี่ยน",
-      "warmup": "กำลังสร้างเส้นฐาน ประวัติปริมาณและ OI จะเติมเต็มในชั่วโมงถัดไป",
+      "fx": "อัตราแลกเปลี่ยนเงินตรา",
+      "warmup": "กำลังสร้างเส้นฐาน ประวัติปริมาณและ Open interest จะเต็มไปในชั่วโมงถัดไป",
       "footer": "5นาที · Hyperliquid perps · 24/7"
     },
     "goldIntelligence": {
-      "infoTooltip": "<strong>Gold Intelligence</strong> ราคาทองคำสด อัตราส่วนทองคำต่อเงิน พรีเมียมทองคำต่อแพลตตินัม ราคา XAU ข้ามสกุลเงิน (EUR, GBP, JPY, CNY, INR, CHF) และการจัดตำแหน่งเงินที่จัดการโดย CFTC แหล่งข้อมูล: Yahoo Finance, CFTC COT"
+      "infoTooltip": "<strong>Gold intelligence</strong> ราคาทองคำในสกุลเงินหลายประเภท อัตราส่วนทอง/เงิน และทอง/แพลตินัม และตำแหน่ง futures เงินจัดการ แหล่งที่มารวมถึง Yahoo Finance และ Commodity Futures Trading Commission"
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WSB Ticker Scanner</strong> การกล่าวถึง Ticker แบบเรียลไทม์จาก r/wallstreetbets, r/stocks และ r/investing จัดอันดับตามความถี่และการมีส่วนร่วม ความเร็วจะวัดว่า ticker ได้รับโมเมนตัมอย่างรวดเร็วเพียงใดในโพสต์"
+      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> การกล่าวถึง ticker แบบเรียลไทม์จาก r/wallstreetbets r/stocks และ r/investing จัดอันดับตามความถี่การกล่าวถึงและการมีส่วนร่วม ความเร็ววัดความเร็วของการที่ ticker ได้รับโมเมนตัมในโพสต์"
     },
     "proBanner": {
       "badge": "PRO",
@@ -2620,7 +2620,7 @@
     },
     "sanctionsPressure": {
       "title": "การคว่ำบาตรและการระบุตัวตน",
-      "infoTooltip": "รายชื่อ SDN และรายชื่อรวมของ OFAC รวมถึงการระบุตัวตน SEMA/JVCFOA ของ Global Affairs Canada แสดงว่าประเทศใดที่เผชิญกับความกดดันในการระบุตัวตนมากที่สุด โปรแกรมใดที่เป็นตัวขับเคลื่อน และสิ่งใดที่ได้รับการเพิ่มเข้ามาใหม่นับตั้งแต่การอัปเดตครั้งล่าสุด",
+      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists บวก Global Affairs Canada SEMA/JVCFOA designations แสดงประเทศใดที่เผชิญแรงกดดันการ designation สูงสุด โปรแกรมใดที่ขับเคลื่อน และสิ่งใหม่ที่เพิ่มเข้ามาตั้งแต่การอัปเดตครั้งสุดท้าย",
       "loading": "กำลังโหลดข้อมูลการคว่ำบาตร...",
       "unavailable": "ข้อมูลการคว่ำบาตรไม่พร้อมใช้งาน",
       "summary": {
@@ -2642,7 +2642,7 @@
       "footer": {
         "updated": "อัปเดตแล้ว {{time}}",
         "dataset": "ชุดข้อมูล {{date}}",
-        "source": "แหล่งที่มา: OFAC · GAC SEMA"
+        "source": "แหล่งที่มา: Office of Foreign Assets Control · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} ใหม่",
@@ -2696,9 +2696,9 @@
       }
     },
     "defensePatents": {
-      "title": "R&D Signal",
+      "title": "สัญญาณวิจัยและพัฒนา",
       "infoTooltip": "การยื่นสิทธิบัตรด้านการป้องกันและการใช้ประโยชน์ร่วมกันรายสัปดาห์โดย Raytheon, Lockheed, Huawei, DARPA และองค์กรเชิงกลยุทธ์อื่นๆ หมวดหมู่: H04B (การสื่อสาร), H01L (เซมิคอนดักเตอร์), F42B (弹药), G06N (AI), C12N (เทคโนโลยีชีววิทยา) แหล่งที่มา: USPTO Open Data Portal",
-      "loading": "กำลังโหลด R&D filings…",
+      "loading": "กำลังโหลดการยื่นวิจัยและพัฒนา…",
       "error": "ไม่สามารถโหลดข้อมูลสิทธิบัตร",
       "empty": "ไม่มี filings ในหมวดหมู่นี้",
       "viewOnUspto": "ดูใน USPTO",
@@ -2759,7 +2759,7 @@
     },
     "chokepointStrip": {
       "title": "สถานะจุดคอขวด",
-      "infoTooltip": "สถานะสดใจสำหรับจุดคอขวดการขนส่งน้ำมันและก๊าซธรรมชาติทั่วโลกทั้งเจ็ด การประมาณการไหลคำนวณจาก Portwatch DWT + การสังเกต AIS ดูรายละเอียดที่ /docs/methodology/chokepoints",
+      "infoTooltip": "สถานะสดของจุดคอขวดการขนส่งน้ำมันและแก๊สทั่วโลกเจ็ดแห่ง การประมาณการไหลจากความจุการบรรทุกเรือ Portwatch + การสังเกตการณ์การติดตามเรือ ดู /docs/methodology/chokepoints สำหรับวิธีการ",
       "unknown": "ไม่ทราบ",
       "shortName": {
         "hormuzStrait": "ฮอร์มุซ",
@@ -2779,9 +2779,9 @@
         "noData": "ยังไม่มีข้อมูลจุดคอขวด"
       },
       "attribution": {
-        "method": "Portwatch DWT + การสอบเทียม AIS",
-        "sampleLabel": "สัญญาณการหยุดชะงัก AIS",
-        "creditName": "จุดคอขวดการขนส่งน้ำมันโลก EIA"
+        "method": "ความจุการบรรทุก Portwatch + การสอบเทียมการติดตามเรือ",
+        "sampleLabel": "สัญญาณการหยุดชะงักการติดตามเรือ",
+        "creditName": "US Energy Information Administration World Oil Transit Chokepoints"
       }
     },
     "mobileNav": {
@@ -2840,9 +2840,9 @@
       "unlockedAnnouncement": "ยกเลิกขีดจำกัดแท็บแดชบอร์ดแล้ว"
     },
     "fx": {
-      "infoTooltip": "<strong>อัตราแลกเปลี่ยน</strong> ความเครียดของ通货 และอัตราสปอต:<ul><li>FX Stress จัดอันดับ 45 สกุลเงินตามการลดลงแบบ peak-to-trough ที่เลวร้ายที่สุดในช่วง 24 เดือนที่ผ่านมา พร้อมกับการเปลี่ยนแปลงใน 12 เดือน</li><li>ครอบคลุม ARS, TRY, EGP, NGN, PKR และ UAH — สกุลเงินที่ชุดอ้างอิงของ BIS และ ECB ไม่รวม</li><li>Spot แสดงอัตราต่อดอลลาร์สหรัฐและอัตราอ้างอิงยูโรของ ECB แยกกัน เพราะทั้งสองมาจากฐานต่างกัน</li><li>RUB — อัตราของธนาคารกลางรัสเซีย รูเบิลต่อหน่วย</li></ul> แหล่งที่มา: Yahoo Finance ธนาคารกลางยุโรป และธนาคารกลางรัสเซีย",
+      "infoTooltip": "<strong>Currency rates</strong> ความเครียดจัดอันดับ 45 สกุลเงินตามการลดลงสูงสุดในช่วง 24 เดือน พร้อมการเปลี่ยนแปลง 12 เดือน อัตราสปอตใช้ฐาน US dollar และ euro แยกกัน อัตรารูเบิลรัสเซีย รูเบิลต่อหน่วย แหล่งที่มารวมถึง Yahoo Finance European Central Bank และ Bank of Russia",
       "tabs": {
-        "stress": "FX Stress",
+        "stress": "ความเครียดสกุลเงิน",
         "spot": "Spot",
         "rub": "RUB"
       },
@@ -2856,15 +2856,15 @@
       "perUsd": "ต่อ 1 ดอลลาร์สหรัฐ",
       "usdPerUnit": "ดอลลาร์สหรัฐต่อหน่วย",
       "usdBase": "เทียบกับดอลลาร์สหรัฐ",
-      "eurBase": "อัตราอ้างอิงยูโรของ ECB",
+      "eurBase": "อัตราอ้างอิง euro European Central Bank",
       "stressedCount": "{{stressed}} จาก {{total}} สกุลเงินลดลงต่ำกว่า {{threshold}}",
       "sourceYahoo": "แหล่งที่มา: Yahoo Finance",
-      "sourceEcb": "แหล่งที่มา: ECB",
+      "sourceEcb": "แหล่งที่มา: European Central Bank",
       "degraded": "ไม่พร้อมใช้งานในขณะนี้: {{sources}} จะลองใหม่ในไม่ช้า",
       "source": {
-        "stress": "ความเครียด FX",
+        "stress": "ความเครียด Foreign exchange",
         "usd": "อัตราดอลลาร์สหรัฐ",
-        "eur": "อัตราユーโรของ ECB",
+        "eur": "อัตรา euro European Central Bank",
         "rub": "อัตราของธนาคารกลางรัสเซีย"
       },
       "rubBase": "ธนาคารกลางรัสเซีย — รูเบิลต่อ 1 หน่วย",
@@ -2977,7 +2977,7 @@
       "highSeverity": "ความรุนแรงสูง"
     },
     "gpsJamming": {
-      "title": "การรบกวนสัญญาณ GPS/GNSS",
+      "title": "การรบกวนการนำทางดาวเทียม",
       "navPerformance": "อากาศยานที่ได้รับผลกระทบ",
       "samples": "จำนวนอากาศยานที่ได้รับผลกระทบ",
       "aircraft": "จำนวนอากาศยานที่ตรวจพบทั้งหมด",
@@ -3106,7 +3106,7 @@
     "operator": "ผู้ดำเนินการ",
     "countries": "ประเทศ",
     "waypoints": "จุดเส้นทาง",
-    "repairEta": "เวลาถึงโดยประมาณของการซ่อม",
+    "repairEta": "เวลาซ่อมแซมที่คาดหวัง",
     "timeUnits": {
       "m": "น.",
       "h": "ชม.",
@@ -3117,7 +3117,7 @@
       "baseline": "เส้นฐาน",
       "components": {
         "news": "ข่าว",
-        "cii": "CII",
+        "cii": "Country Instability Index",
         "geo": "ภูมิศาสตร์",
         "military": "ทหาร"
       },
@@ -3142,7 +3142,7 @@
     "time": "เวลา",
     "area": "พื้นที่",
     "expires": "หมดอายุ",
-    "aisGapSpike": "AIS GAP SPIKE",
+    "aisGapSpike": "การเพิ่มขึ้นของช่องว่างการติดตามเรือ",
     "chokepointCongestion": "ความแออัดที่จุดคอขวด",
     "darkening": "สูญเสียสัญญาณ",
     "density": "ความหนาแน่น",
@@ -3167,7 +3167,7 @@
     "cableAdvisory": {
       "reported": "รายงานแล้ว",
       "impact": "ผลกระทบ",
-      "eta": "เวลาถึงโดยประมาณ"
+      "eta": "เวลาที่คาดหวังในการมาถึง"
     },
     "outage": {
       "levels": {
@@ -3262,10 +3262,10 @@
         "bomber": "เครื่องบินทิ้งระเบิด",
         "transport": "ขนส่ง",
         "tanker": "เครื่องบินเติมเชื้อเพลิง",
-        "awacs": "AWACS/AEW",
+        "awacs": "ระบบเตือนภัยอากาศยานพลาธรรม",
         "reconnaissance": "ลาดตระเวน",
         "helicopter": "เฮลิคอปเตอร์",
-        "drone": "อากาศยานไร้คนขับ",
+        "drone": "อากาศยานไร้คนขับ/โดรน",
         "patrol": "ลาดตระเวน",
         "specialOps": "ปฏิบัติการพิเศษ",
         "vip": "ขนส่ง VIP"
@@ -3283,24 +3283,24 @@
       "builtYear": "ปีที่ผลิต"
     },
     "militaryVessel": {
-      "aisDark": "AIS มืด",
+      "aisDark": "สูญเสียการติดตามเรือ",
       "vessel": "เรือ",
       "speed": "ความเร็ว",
       "heading": "ทิศทาง",
-      "mmsi": "MMSI",
+      "mmsi": "Marine Mobile Service Identity",
       "region": "ภูมิภาค",
       "strikeGroup": "กองเรือโจมตี",
-      "usniIntel": "ข่าวกรอง USNI",
-      "usniSource": "แหล่งที่มา: USNI News Fleet Tracker",
-      "approximatePosition": "ตำแหน่งโดยประมาณ — อ้างอิงจากรายงานรายสัปดาห์ของ USNI ไม่ใช่ AIS แบบเรียลไทม์",
-      "darkDescription": "⚠ เรือสูญเสียสัญญาณ - สัญญาณ AIS หายไป อาจบ่งชี้ปฏิบัติการลับ",
+      "usniIntel": "US Naval Institute Intel",
+      "usniSource": "แหล่งข้อมูล: US Naval Institute News Fleet Tracker",
+      "approximatePosition": "ตำแหน่งโดยประมาณ — จากรายงานประจำสัปดาห์ของ US Naval Institute ไม่ใช่การติดตามเรือแบบเรียลไทม์",
+      "darkDescription": "⚠ เรือหายตัวไป - สูญเสียสัญญาณการติดตามเรือ อาจบ่งชี้ถึงปฏิบัติการที่ละเอียดอ่อน",
       "recentTracking": "Recent Tracking",
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
       "lastSeen": "LAST SEEN",
       "estPosition": "ตำแหน่งคาดการณ์",
-      "aisLive": "AIS LIVE"
+      "aisLive": "การติดตามเรือแบบเรียลไทม์"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -3345,7 +3345,7 @@
       "types": {
         "container": "ตู้คอนเทนเนอร์",
         "oil": "ท่าขนส่งน้ำมัน",
-        "lng": "ท่าขนส่ง LNG",
+        "lng": "สถานีก๊าซธรรมชาติเหลว",
         "naval": "ท่าเรือทหาร",
         "mixed": "ผสม",
         "bulk": "สินค้าเทกอง"
@@ -3464,7 +3464,7 @@
       },
       "geo_convergence": {
         "whyItMatters": "เหตุการณ์ข่าวหลายรายการรวมกลุ่มรอบตำแหน่งทางภูมิศาสตร์เดียวกัน — อาจเป็นการยกระดับหรือกิจกรรมที่ประสานงาน",
-        "actionableInsight": "เพิ่มลำดับความสำคัญในการเฝ้าระวังสำหรับภูมิภาคนี้ เชื่อมโยงกับข้อมูลดาวเทียม/AIS หากมี",
+        "actionableInsight": "เพิ่มลำดับความสำคัญการติดตามสำหรับภูมิภาคนี้ โปรดเชื่อมโยงกับข้อมูลดาวเทียม/การติดตามเรือหากมี",
         "confidenceNote": "ความเชื่อมั่นสูงขึ้นหากเหตุการณ์ครอบคลุมแหล่งข้อมูลหลายประเภทและหลายช่วงเวลา"
       },
       "explained_market_move": {
@@ -3550,14 +3550,14 @@
     "scanningThermalData": "กำลังสแกนข้อมูลความร้อน",
     "calculatingExposure": "กำลังคำนวณความเสี่ยง",
     "computingSignals": "กำลังคำนวณสัญญาณ...",
-    "loadingEtfData": "กำลังโหลดข้อมูล ETF...",
+    "loadingEtfData": "กำลังโหลดข้อมูล exchange-traded fund...",
     "loadingGiving": "กำลังโหลดข้อมูลการบริจาคทั่วโลก",
     "loadingDisplacement": "กำลังโหลดข้อมูลผู้พลัดถิ่น",
     "loadingClimateData": "กำลังโหลดข้อมูลสภาพอากาศ",
     "failedTechReadiness": "โหลดข้อมูลความพร้อมด้านเทคโนโลยีไม่สำเร็จ",
     "failedRiskOverview": "คำนวณภาพรวมความเสี่ยงไม่สำเร็จ",
     "failedPredictions": "โหลดการพยากรณ์ไม่สำเร็จ",
-    "failedCII": "คำนวณ CII ไม่สำเร็จ",
+    "failedCII": "ข้อมูล Country Instability Index ไม่พร้อมใช้งานชั่วคราว",
     "failedDependencyGraph": "สร้างกราฟการพึ่งพาไม่สำเร็จ",
     "failedIntelFeed": "โหลดฟีดข่าวกรองไม่สำเร็จ",
     "failedMarketData": "โหลดข้อมูลตลาดไม่สำเร็จ",
@@ -3625,7 +3625,7 @@
   },
   "shell": {
     "documentTitle": "World Monitor — แดชบอร์ดข่าวกรรมการระดับโลกแบบเรียลไทม์",
-    "metaDescription": "แพลตฟอร์มข่าวกรรมการระดับโลกแบบเรียลไทม์ ลงนามในวิจารณ์ WIRED ใช้งานโดยผู้ใช้ 2 ล้านคนขึ้นไปทั่วโลก 190 ประเทศ ข้อมูลความขัดแย้ง ตลาด ทหาร OSINT ในมุมมองเดียว",
+    "metaDescription": "แพลตฟอร์มสติปัญญาโลกแบบเรียลไทม์ มีลักษณะใน WIRED ใช้โดยผู้คน 2 ล้านคนขึ้นไปใน 190 ประเทศ ความขัดแย้ง ตลาด ทหาร และข่าวกรรมการจากแหล่งเปิด ในมุมมองเดียว",
     "offlineTitle": "คุณออนไลน์ไม่ได้",
     "offlineMessage": "World Monitor ต้องการการเชื่อมต่ออินเทอร์เน็ตเพื่อรับข้อมูลข่าวกรรมการแบบเรียลไทม์",
     "offlineRetry": "ลองใหม่"
@@ -3707,7 +3707,7 @@
     "features": {
       "orefSirens1": "การแจ้งเตือนจรวดและขีปนาวุธของอิสราเอลแบบเรียลไทม์",
       "orefSirens2": "การแมปโซนไซเรนพร้อมการจำแนกภัยคุกคาม",
-      "telegramIntel1": "ช่องข่าวกรรมการ OSINT ที่เลือกสรร",
+      "telegramIntel1": "ช่องทาง open-source intelligence ของ Telegram ที่คัดสรรมา",
       "telegramIntel2": "การอัปเดตข้อขัดแย้งและภูมิรัฐศาสตร์เกือบเรียลไทม์",
       "xIntel1": "Curated public news accounts on X",
       "xIntel2": "API-fresh posts with official permalinks"

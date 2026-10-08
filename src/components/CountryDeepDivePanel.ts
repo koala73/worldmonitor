@@ -63,6 +63,7 @@ import type {
   VulnerabilityInput,
 } from '@/services/supply-chain';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
+import { formatChinaSignalText } from './china-signal-labels';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
@@ -980,7 +981,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const table = this.el('table', 'cdp-pro-flow-table');
     const thead = this.el('thead');
     const hr = this.el('tr');
-    for (const col of ['Partner', 'Commodity', 'Value', 'YoY']) {
+    for (const col of ['Partner', 'Commodity', 'Value', 'Year-over-year change']) {
       hr.append(this.el('th', '', col));
     }
     thead.append(hr);
@@ -1412,7 +1413,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         { label: 'Gasoline', key: 'gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
         { label: 'Diesel', key: 'diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
         { label: 'Jet fuel', key: 'jet', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
-        { label: 'LPG', key: 'lpg', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
+        { label: 'Liquefied petroleum gas', key: 'lpg', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
       ];
       for (const r of rows) {
         const tr = this.el('tr', '');
@@ -1458,7 +1459,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const gasLabel = this.el('span', '', `Gas demand${gasMonth}: ${totalBcmMonth} BCM/mo`);
       const lngBadge = this.el('span', '');
       lngBadge.style.cssText = `background:${lngColor};color:#fff;padding:1px 5px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))`;
-      lngBadge.textContent = `LNG ${lngShare.toFixed(0)}%`;
+      lngBadge.textContent = `Liquefied natural gas ${lngShare.toFixed(0)}%`;
       const pipeBadge = this.el('span', '');
       pipeBadge.style.cssText = 'background:#6b7280;color:#fff;padding:1px 5px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))';
       pipeBadge.textContent = `Pipeline ${pipeShare.toFixed(0)}%`;
@@ -1999,7 +2000,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const fuelModeSelect = this.el('select', '') as HTMLSelectElement;
     fuelModeSelect.style.cssText = disruptionSelect.style.cssText;
-    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (LNG)'], ['both', 'Both']] as const) {
+    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (liquefied natural gas)'], ['both', 'Both']] as const) {
       const opt = this.el('option', '') as HTMLOptionElement;
       opt.value = val;
       opt.textContent = label;
@@ -2178,14 +2179,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const gasTitle = this.el('div', '');
       gasTitle.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#e5e7eb;margin-bottom:4px';
-      gasTitle.textContent = 'Gas / LNG assumed sensitivity';
+      gasTitle.textContent = 'Gas / liquefied natural gas assumed sensitivity';
       gasSection.append(gasTitle);
 
       const metrics = this.el('div', 'cdp-economic-source');
       const lngShare = gi.lngShareOfImports == null ? 'unknown' : `${(gi.lngShareOfImports * 100).toFixed(0)}%`;
       const loss = gi.lngDisruptionTj > 0 && gi.lngDisruptionTj < 0.1 ? '<0.1' : gi.lngDisruptionTj.toFixed(1);
       const demandPct = gi.deficitPct > 0 && gi.deficitPct < 0.1 ? '<0.1' : gi.deficitPct.toFixed(1);
-      metrics.textContent = `Recorded LNG share: ${lngShare} | Assumed monthly loss: ${loss} TJ | Share of recorded demand: ${demandPct}%`;
+      metrics.textContent = `Recorded liquefied natural gas share: ${lngShare} | Assumed monthly loss: ${loss} terajoules | Share of recorded demand: ${demandPct}%`;
       gasSection.append(metrics);
 
       if (gi.storage) {
@@ -2225,7 +2226,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const table = this.el('table', 'cdp-maritime-table');
     const thead = this.el('thead');
     const headerRow = this.el('tr');
-    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import DWT', 'Export DWT']) {
+    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import vessel capacity (tonnes)', 'Export vessel capacity (tonnes)']) {
       const th = this.el('th', '', col);
       headerRow.append(th);
     }
@@ -4027,15 +4028,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         children.push(this.el(
           'div',
           'cdp-china-summary-empty',
-          group.unavailableReason || t(`countryBrief.china.status.${group.state}`),
+          formatChinaSignalText(group.unavailableReason || t(`countryBrief.china.status.${group.state}`)),
         ));
       } else {
         for (const signal of group.signals) {
           const item = this.el('div', 'cdp-china-summary-signal');
           if (signal.stale) item.dataset.stale = 'true';
           item.append(
-            this.el('div', 'cdp-china-summary-signal-label', signal.label),
-            this.el('div', 'cdp-china-summary-signal-value', signal.value),
+            this.el('div', 'cdp-china-summary-signal-label', ['policy-enforcement', 'corporate-disclosures'].includes(group.id) ? signal.label : formatChinaSignalText(signal.label)),
+            this.el('div', 'cdp-china-summary-signal-value', formatChinaSignalText(signal.value)),
           );
           if (signal.observedAt) {
             item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
@@ -4072,7 +4073,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           children.push(item);
         }
         if (group.unavailableReason) {
-          children.push(this.el('div', 'cdp-china-summary-note', group.unavailableReason));
+          children.push(this.el('div', 'cdp-china-summary-note', formatChinaSignalText(group.unavailableReason)));
         }
       }
       section.replaceChildren(...children);

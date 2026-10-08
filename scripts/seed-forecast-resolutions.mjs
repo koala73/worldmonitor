@@ -21,7 +21,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
-import { CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
+import { chokepointHardContract, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -1923,24 +1923,34 @@ function migratePendingCountEntry(entry, options = {}) {
 
 // The rule each detector-gated metric resolves on, keyed by metric function.
 // GPS rows emitted before the persistence rule carry the emission-day hex
-// count as their threshold, and chokepoint rows emitted before #8990 carry
-// 60 where the detector emits at the feed's red boundary. No GPS row was ever
-// scored on its old threshold (every GPS row resolved before #8990 is VOID).
+// count as their threshold. Chokepoint rows resolve through
+// chokepointHardContract, which is per route. No GPS row was ever scored on
+// its old threshold (every GPS row resolved before #8990 is VOID).
 const CURRENT_HARD_RULES = new Map([
   ['hexCount', { threshold: GPS_ZONE_MIN_HEXES, rule: GPS_RESOLUTION_RULE, ruleVersion: GPS_RESOLUTION_RULE_VERSION }],
-  ['riskScore', { threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE, rule: CHOKEPOINT_RESOLUTION_RULE, ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION }],
 ]);
 
 // Each pending row moves to the current rule before it can resolve, and keeps
-// its first threshold for audit. A resolved row keeps the rule it was graded
+// its first threshold for audit. A chokepoint row takes the contract for its
+// route, so a war-zone route moves above its fixed base while every other
+// route stays on the red boundary. A resolved row keeps the rule it was graded
 // on. Re-running is a no-op.
 function migratePendingRule(entry) {
   const spec = entry.spec;
-  const current = CURRENT_HARD_RULES.get(parseMetricKey(spec.metricKey)?.fn);
+  const parsed = parseMetricKey(spec.metricKey);
+  const current = parsed?.fn === 'riskScore'
+    ? chokepointHardContract(parsed.value)
+    : CURRENT_HARD_RULES.get(parsed?.fn);
   if (!current) return;
-  if (spec.rule === current.rule && spec.ruleVersion === current.ruleVersion) return;
+  const operator = current.operator ?? '>=';
+  if (
+    spec.operator === operator
+    && spec.threshold === current.threshold
+    && spec.rule === current.rule
+    && spec.ruleVersion === current.ruleVersion
+  ) return;
   if (spec.supersededThreshold === undefined) spec.supersededThreshold = spec.threshold;
-  spec.operator = '>=';
+  spec.operator = operator;
   spec.threshold = current.threshold;
   spec.rule = current.rule;
   spec.ruleVersion = current.ruleVersion;
@@ -2144,6 +2154,9 @@ export function voidOldSelectionJudgedResolutions(ledger, nowMs) {
 // The relabel keeps the outcome and resolvedAt and moves the old evidence
 // under supersededEvidence. A relabelled row no longer carries
 // no_establishable_metric, so re-running is a no-op.
+// These timestamps are Railway deploy creation times, not activation times.
+// Creation is earlier than activation, so a row sealed between creation and
+// activation is left alone. The comparison can relabel too few rows, not too many.
 export const RESOLVER_COULD_NOT_READ_FEED_VOID_REASON = 'resolver_could_not_read_feed';
 const UNREADABLE_FEED_READER_FIXED_AT = new Map([
   ['intelligence:gpsjam:v2', Date.parse('2026-10-07T19:28:03.541Z')],

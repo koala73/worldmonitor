@@ -992,7 +992,7 @@ export class SearchManager implements AppModule {
       return {
         id: code,
         title: `${CountryIntelManager.toFlagEmoji(code)} ${name}`,
-        subtitle: score ? `CII: ${score.score}/100 • ${score.level}` : 'Country Brief',
+        subtitle: score ? `Country instability: ${score.score}/100 • ${score.level}` : 'Country Brief',
         data: { code, name },
       };
     });

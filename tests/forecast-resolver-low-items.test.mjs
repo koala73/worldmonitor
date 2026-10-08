@@ -31,12 +31,12 @@ async function run(ledger, nowMs, feeds = {}) {
   return processResolutionCycleWithJudges(ingestHistory(ledger, [], nowMs), [], feeds, [], nowMs, noJudges);
 }
 
-const chokepointFeed = (score) => ({
-  chokepoints: [{ id: 'kerch', name: 'Kerch Strait', disruptionScore: score, status: scoreToStatus(score) }],
-});
-
-function emittedChokepointForecast(score, generatedAt) {
-  const inputs = { chokepoints: normalizeChokepoints(chokepointFeed(score)) };
+function emittedChokepointForecast(score, generatedAt, name = 'Kerch Strait') {
+  const inputs = {
+    chokepoints: normalizeChokepoints({
+      chokepoints: [{ id: 'route', name, disruptionScore: score, status: scoreToStatus(score) }],
+    }),
+  };
   const predictions = detectSupplyChainScenarios(inputs);
   attachResolutionSpecs(predictions, inputs, generatedAt);
   return predictions;
@@ -66,9 +66,12 @@ describe('chokepoint forecasts resolve on the gate that emitted them (#8990)', (
 
   it('the shared floor is the feed\'s own red boundary', async () => {
     const { CHOKEPOINT_DISRUPTED_MIN_SCORE } = await import('../scripts/_forecast-resolution.mjs');
+    const [suez] = emittedChokepointForecast(CHOKEPOINT_DISRUPTED_MIN_SCORE, generatedAt, 'Suez Canal');
     assert.equal(scoreToStatus(CHOKEPOINT_DISRUPTED_MIN_SCORE), 'red');
     assert.notEqual(scoreToStatus(CHOKEPOINT_DISRUPTED_MIN_SCORE - 1), 'red');
-    assert.equal(emitted.resolution.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE);
+    assert.equal(suez.resolution.operator, '>=');
+    assert.equal(suez.resolution.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE);
+    assert.equal(suez.resolution.rule, 'disrupted');
   });
 
   it('a current emission read back from history opens windows already on the rule, with nothing superseded', () => {
@@ -106,7 +109,7 @@ describe('chokepoint forecasts resolve on the gate that emitted them (#8990)', (
     const nowMs = at('2026-10-09T06:02:00Z');
     const first = await run(structuredClone(ledger), nowMs);
     const fields = (spec) => [spec.operator, spec.threshold, spec.rule, spec.ruleVersion, spec.supersededThreshold];
-    const expected = ['>=', CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION, 60];
+    const expected = ['>', 70, 'above_fixed_base', 1, 60];
     assert.deepEqual(fields(first.ledger[pending.key].spec), expected);
     assert.deepEqual(fields(first.ledger[horizon.key].spec), expected);
     assert.deepEqual(first.ledger[resolved.key], resolved, 'a resolved row keeps the rule it was graded on');
@@ -116,11 +119,115 @@ describe('chokepoint forecasts resolve on the gate that emitted them (#8990)', (
 
   it('migrates a row that carries an older rule version without losing its original threshold', async () => {
     const { CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION } = await import('../scripts/_forecast-resolution.mjs');
-    const current = row('k@current', { status: 'pending', spec: legacySpec({ threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE, rule: CHOKEPOINT_RESOLUTION_RULE, ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION }) });
+    const suezSpec = legacySpec({
+      metricKey: `${CHOKEPOINT_FEED}|riskScore(route==Suez Canal)`,
+      threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
+      rule: CHOKEPOINT_RESOLUTION_RULE,
+      ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
+    });
+    const current = row('k@current', { region: 'Suez Canal', title: 'Supply chain disruption: Suez Canal', status: 'pending', spec: suezSpec });
     const older = row('k@older', { id: 'fc-other', status: 'pending', spec: legacySpec({ threshold: 55, rule: CHOKEPOINT_RESOLUTION_RULE, ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION - 1, supersededThreshold: 60 }) });
     const { ledger } = processResolutionCycle({ [current.key]: structuredClone(current), [older.key]: structuredClone(older) }, [], {}, at('2026-10-09T06:02:00Z'));
     assert.deepEqual(ledger[current.key].spec, current.spec);
-    assert.deepEqual([ledger[older.key].spec.threshold, ledger[older.key].spec.ruleVersion, ledger[older.key].spec.supersededThreshold], [CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE_VERSION, 60]);
+    assert.deepEqual(
+      [ledger[older.key].spec.operator, ledger[older.key].spec.threshold, ledger[older.key].spec.rule, ledger[older.key].spec.ruleVersion, ledger[older.key].spec.supersededThreshold],
+      ['>', 70, 'above_fixed_base', 1, 60],
+    );
+  });
+});
+
+describe('a war-zone chokepoint is not YES by construction (#9033)', () => {
+  const generatedAt = at('2026-10-01T06:00:00Z');
+
+  const outcomeAt = (emitted, score) => {
+    const deadline = Number(emitted.resolution.deadline);
+    return resolveHardSpec(
+      { generatedAt, deadline, spec: emitted.resolution },
+      null,
+      [{ ts: deadline + HOUR_MS, value: score }],
+      deadline + 2 * HOUR_MS,
+    ).outcome;
+  };
+
+  it('does not emit Hormuz or Kerch at the standing base of 70, and that reading resolves NO', () => {
+    for (const name of ['Strait of Hormuz', 'Kerch Strait']) {
+      assert.equal(emittedChokepointForecast(70, generatedAt, name).length, 0, `${name} emitted at its fixed base`);
+      const [emitted] = emittedChokepointForecast(75, generatedAt, name);
+      assert.equal(emitted.resolution.operator, '>', name);
+      assert.equal(emitted.resolution.threshold, 70, name);
+      assert.equal(emitted.resolution.rule, 'above_fixed_base', name);
+      assert.equal(outcomeAt(emitted, 70), 'NO', name);
+      assert.equal(outcomeAt(emitted, 75), 'YES', name);
+    }
+  });
+
+  it('still emits every other route at the red boundary of 50', async () => {
+    const { CANONICAL_CHOKEPOINTS } = await import('../server/worldmonitor/supply-chain/v1/_chokepoint-ids.ts');
+    const { CHOKEPOINT_THREAT_LEVELS } = await import('../shared/chokepoint-threat-levels.js');
+    const { THREAT_LEVEL } = await import('../server/worldmonitor/supply-chain/v1/_scoring.mjs');
+    const mismatches = [];
+    for (const cp of CANONICAL_CHOKEPOINTS) {
+      const base = THREAT_LEVEL[CHOKEPOINT_THREAT_LEVELS[cp.id]] ?? 0;
+      if (base >= 50) {
+        if (emittedChokepointForecast(base, generatedAt, cp.relayName).length !== 0) mismatches.push(`${cp.relayName} emitted at ${base}`);
+        const [above] = emittedChokepointForecast(base + 5, generatedAt, cp.relayName);
+        if (above?.resolution.operator !== '>' || above?.resolution.threshold !== base) mismatches.push(`${cp.relayName} want > ${base}`);
+        continue;
+      }
+      if (emittedChokepointForecast(49, generatedAt, cp.relayName).length !== 0) mismatches.push(`${cp.relayName} emitted below 50`);
+      const [red] = emittedChokepointForecast(50, generatedAt, cp.relayName);
+      if (red?.resolution.operator !== '>=' || red?.resolution.threshold !== 50 || red?.resolution.rule !== 'disrupted') mismatches.push(`${cp.relayName} want >= 50`);
+    }
+    assert.deepEqual(mismatches, []);
+  });
+});
+
+describe('a live feed still requires a sample at or after the deadline (#9007)', () => {
+  it('does not grade a quote fetched earlier on the deadline day', () => {
+    const deadline = at('2026-07-19T06:01:00Z');
+    const entry = {
+      generatedAt: at('2026-07-15T06:01:00Z'),
+      deadline,
+      spec: {
+        kind: 'hard',
+        deadline,
+        metricKey: `${CHOKEPOINT_FEED}|riskScore(route==Suez Canal)`,
+        sourceFeed: CHOKEPOINT_FEED,
+        operator: '>=',
+        threshold: 50,
+        window: 'at-deadline',
+      },
+    };
+    const early = { ts: at('2026-07-19T05:52:00Z'), value: 40 };
+    const pending = resolveHardSpec(entry, null, [early], at('2026-07-19T06:02:00Z'));
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.outcome, undefined);
+    const graded = resolveHardSpec(entry, null, [early, { ts: deadline + 60_000, value: 80 }], deadline + 2 * 60_000);
+    assert.equal(graded.outcome, 'YES');
+    assert.equal(graded.evidence.metricValue, 80);
+    assert.equal(graded.evidence.readTs, deadline + 60_000);
+  });
+});
+
+describe('horizon history keeps the chokepoint rule (#9028)', () => {
+  it('writes rule and ruleVersion onto each horizon contract', () => {
+    const generatedAt = at('2026-10-01T06:00:00Z');
+    const [emitted] = emittedChokepointForecast(60, generatedAt, 'Suez Canal');
+    emitted.projections = { h24: 0.4, d7: 0.55, d30: 0.7 };
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(emitted)));
+    assert.equal(entry.horizonResolutions.h24.rule, 'disrupted');
+    assert.equal(entry.horizonResolutions.h24.ruleVersion, 1);
+    assert.equal(entry.horizonResolutions.d30.rule, 'disrupted');
+    assert.equal(entry.horizonResolutions.d30.ruleVersion, 1);
+    assert.equal(entry.horizonResolutions.d7, undefined);
+    const { ledger } = processResolutionCycle({}, [{ generatedAt, predictions: [entry] }], {}, generatedAt + HOUR_MS);
+    const windows = Object.values(ledger);
+    assert.equal(windows.length, 3);
+    for (const window of windows) {
+      assert.equal(window.spec.rule, 'disrupted', window.key);
+      assert.equal(window.spec.ruleVersion, 1, window.key);
+      assert.equal(window.spec.supersededThreshold, undefined, window.key);
+    }
   });
 });
 
@@ -190,16 +297,22 @@ describe('VOIDs from a feed the resolver could not read are labelled so (#9013)'
   const CHOKE = [CHOKEPOINT_FEED, `${CHOKEPOINT_FEED}|riskScore(route==Suez Canal)`];
   const COMMODITY = ['market:commodities-bootstrap:v1', 'market:commodities-bootstrap:v1|price(symbol==BZ=F)'];
 
+  const GPS_READER_FIXED_AT = Date.parse('2026-10-07T19:28:03.541Z');
+  const MARKETS_READER_FIXED_AT = Date.parse('2026-10-07T12:43:54.342Z');
   const relabelled = [
     voidRow('gps-last-before-fix@1', ...GPS, at('2026-10-07T14:46:00Z'), { evidence: { reason: 'no_establishable_metric', metricKey: GPS[1], envelopeAware: true } }),
     voidRow('gps-early@1', ...GPS, at('2026-07-19T06:03:00Z')),
+    voidRow('gps-cutoff-minus-1@1', ...GPS, GPS_READER_FIXED_AT - 1),
     voidRow('infra@1', ...INFRA, at('2026-07-09T03:42:45Z'), { samples: { count: 0, recent: [] } }),
     voidRow('market@1', ...MARKET, at('2026-10-01T06:03:00Z')),
     voidRow('chokepoint@1', ...CHOKE, at('2026-09-30T06:00:00Z')),
   ];
   const kept = [
     voidRow('gps-after-fix@1', ...GPS, at('2026-10-08T06:01:00Z')),
+    voidRow('gps-at-cutoff@1', ...GPS, GPS_READER_FIXED_AT),
     voidRow('infra-after-fix@1', ...INFRA, at('2026-10-07T12:44:00Z')),
+    voidRow('market-at-cutoff@1', ...MARKET, MARKETS_READER_FIXED_AT),
+    voidRow('market-after-cutoff@1', ...MARKET, MARKETS_READER_FIXED_AT + 1),
     voidRow('chokepoint-after-fix@1', ...CHOKE, at('2026-10-06T04:57:00Z')),
     voidRow('gps-other-reason@1', ...GPS, at('2026-07-19T06:03:00Z'), { evidence: { reason: 'unsupported_window', metricKey: GPS[1] } }),
     voidRow('commodity@1', ...COMMODITY, at('2026-09-01T06:03:00Z')),

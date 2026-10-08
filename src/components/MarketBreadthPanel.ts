@@ -73,9 +73,9 @@ type NumericSeriesKey = 'pctAbove20d' | 'pctAbove50d' | 'pctAbove200d';
 type SeriesRun = Array<{ x: number; y: number }>;
 
 const SERIES: { key: NumericSeriesKey; color: string; label: string; fillOpacity: number }[] = [
-  { key: 'pctAbove20d',  color: '#3b82f6', label: '20-day SMA', fillOpacity: 0.08 },
-  { key: 'pctAbove50d',  color: '#f59e0b', label: '50-day SMA', fillOpacity: 0.06 },
-  { key: 'pctAbove200d', color: '#22c55e', label: '200-day SMA', fillOpacity: 0.04 },
+  { key: 'pctAbove20d',  color: '#3b82f6', label: 'Stocks above 20-day moving average (%)', fillOpacity: 0.08 },
+  { key: 'pctAbove50d',  color: '#f59e0b', label: 'Stocks above 50-day moving average (%)', fillOpacity: 0.06 },
+  { key: 'pctAbove200d', color: '#22c55e', label: 'Stocks above 200-day moving average (%)', fillOpacity: 0.04 },
 ];
 
 function xPos(i: number, total: number): number {
@@ -247,7 +247,7 @@ export class MarketBreadthPanel extends Panel {
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0">
         <span style="display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span style="width:8px;height:3px;border-radius:1px;background:${s.color}"></span>
-          % Above ${escapeHtml(s.label)}
+          ${escapeHtml(s.label)}
         </span>
         ${hasCurrent ? readingBadge(val as number, s.color) : '<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">\u2014</span>'}
       </div>`;

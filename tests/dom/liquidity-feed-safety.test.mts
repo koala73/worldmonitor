@@ -39,13 +39,13 @@ it('shows report dates verbatim once, hides a missing date, and keeps missing da
   let { panel, ok } = await render();
   expect(ok).toBe(true);
   expect(panel.getElement().querySelector('[data-cot-injected]')).toBeNull();
-  expect(panel.getElement().querySelector('.liquidity-report-date')!.textContent).toBe(`COT report date: ${cot.reportDate}`);
+  expect(panel.getElement().querySelector('.liquidity-report-date')!.textContent).toBe(`Commitments of Traders report date: ${cot.reportDate}`);
   panel.destroy();
 
   cot.reportDate = '2026-08-04';
   ({ panel, ok } = await render());
   expect(ok).toBe(true);
-  expect(panel.getElement().querySelector('.liquidity-report-date')!.textContent).toBe('COT report date: 2026-08-04');
+  expect(panel.getElement().querySelector('.liquidity-report-date')!.textContent).toBe('Commitments of Traders report date: 2026-08-04');
   panel.destroy();
 
   cot.reportDate = '';

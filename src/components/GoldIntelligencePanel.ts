@@ -212,7 +212,7 @@ export class GoldIntelligencePanel extends Panel {
       ? `<div style="display:flex;gap:4px;margin-top:6px">
           ${returnChip('1W', d.returns.w1)}
           ${returnChip('1M', d.returns.m1)}
-          ${returnChip('YTD', d.returns.ytd)}
+          ${returnChip('Year to date', d.returns.ytd)}
           ${returnChip('1Y', d.returns.y1)}
         </div>`
       : '';

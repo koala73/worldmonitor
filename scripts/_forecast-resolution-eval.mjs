@@ -596,6 +596,7 @@ function voidResult(reason, entry, spec, parsed, nowMs, extraEvidence = {}) {
 
 function compare(value, operator, threshold, baselineValue, parsed) {
   if (operator === '>=') return value >= threshold;
+  if (operator === '>') return value > threshold;
   if (operator === '<=') return value <= threshold;
   if (operator === 'crosses' && parsed?.fn === 'yesPrice') return value >= threshold;
   if (operator === 'crosses') return crossesThreshold(value, threshold, baselineValue);

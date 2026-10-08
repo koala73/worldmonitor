@@ -18,7 +18,7 @@ import {
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
-import { CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION, CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, chokepointHardContract } from '../scripts/_forecast-resolution.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -26,6 +26,8 @@ const T0 = Date.UTC(2026, 6, 15, 0, 4);
 const CHOKEPOINT_FEED = 'supply_chain:chokepoints:v4';
 const COMMODITY_FEED = 'market:commodities-bootstrap:v1';
 const CYBER_FEED = 'cyber:threats-bootstrap:v2';
+const HORMUZ_CONTRACT = chokepointHardContract('Strait of Hormuz');
+const HORMUZ_YES_SCORE = HORMUZ_CONTRACT.threshold + 5;
 
 const noJudges = {
   judgeModels: [
@@ -48,10 +50,10 @@ function chokepoint(generatedAt, probability, overrides = {}) {
     resolution: {
       kind: 'hard',
       metricKey: `${CHOKEPOINT_FEED}|riskScore(route==Strait of Hormuz)`,
-      operator: '>=',
-      threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
-      rule: CHOKEPOINT_RESOLUTION_RULE,
-      ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
+      operator: HORMUZ_CONTRACT.operator,
+      threshold: HORMUZ_CONTRACT.threshold,
+      rule: HORMUZ_CONTRACT.rule,
+      ruleVersion: HORMUZ_CONTRACT.ruleVersion,
       window: 'at-deadline',
       deadline,
       sourceFeed: CHOKEPOINT_FEED,
@@ -136,7 +138,7 @@ describe('ghost windows (#8990 item 4)', () => {
 
   it('never reopens a resolved window from the emissions it already absorbed', async () => {
     let ledger = (await processResolutionCycleWithJudges({}, history, chokepointFeed(40), [], T0 + 6 * DAY_MS + HOUR_MS, noJudges)).ledger;
-    ledger = (await processResolutionCycleWithJudges(ledger, history, chokepointFeed(70), [], T0 + 7 * DAY_MS + HOUR_MS, noJudges)).ledger;
+    ledger = (await processResolutionCycleWithJudges(ledger, history, chokepointFeed(HORMUZ_YES_SCORE), [], T0 + 7 * DAY_MS + HOUR_MS, noJudges)).ledger;
     assert.deepEqual(windowsOf(ledger, 'fc-supply_chain-hormuz').map((entry) => [entry.status, entry.outcome]), [['resolved', 'YES']]);
 
     const again = await processResolutionCycleWithJudges(ledger, history, chokepointFeed(10), [], T0 + 7 * DAY_MS + 2 * HOUR_MS, noJudges);
@@ -223,7 +225,7 @@ describe('one window per question (#8990 item 11)', () => {
     const runs = [0, 1, 2, 3].map((hour) => chokepoint(T0 + hour * HOUR_MS, 0.2 + hour / 10, {}));
     runs.forEach((fc, index) => { fc.resolution = { ...fc.resolution, threshold: 60 + index }; });
     const ledger = ingestHistory({}, runs.map((fc) => snap(fc.generatedAt, [fc])), T0 + 4 * HOUR_MS);
-    assert.deepEqual(windowsOf(ledger, 'fc-supply_chain-hormuz').map((entry) => [entry.spec.threshold, entry.probability, entry.lastSeenProbability]), [[60, 0.2, 0.5]]);
+    assert.deepEqual(windowsOf(ledger, 'fc-supply_chain-hormuz').map((entry) => [entry.spec.threshold, entry.probability, entry.lastSeenProbability]), [[HORMUZ_CONTRACT.threshold, 0.2, 0.5]]);
   });
 
   it('keeps one window when a count feed comes back after its rows moved to the judges', () => {

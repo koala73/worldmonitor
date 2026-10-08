@@ -95,7 +95,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   // the SVG/mobile fallback has no CII paint path, so this is deck + globe,
   // NOT svg. Previously mislabeled `['flat']`, which wrongly kept it out of
   // the globe layer picker even though GlobeMap renders it (#6773 / R8).
-  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['deck', 'globe'], _desktop ? 'enhanced' : undefined),
+  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'Country instability', ['deck', 'globe'], _desktop ? 'enhanced' : undefined),
   // DeckGLMap owns the resilience choropleth; only DeckGL has a paint path.
   resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['deck'], 'locked'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['svg', 'deck']),
@@ -157,9 +157,9 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     confidence: 'Good for geographic orientation; not a real-time incident confirmation by itself.',
     limitations: [
       'Static zones can lag fast tactical changes.',
-      'Some conflict evidence appears in UCDP Events, CII, or related panels rather than as a conflict-zone polygon.',
+      'Some conflict evidence appears in conflict events, country instability, or related panels rather than as a conflict-zone polygon.',
     ],
-    related: ['UCDP Events', 'CII panel', 'Strategic Risk', 'Country brief'],
+    related: ['UCDP Events', 'Country Instability Index panel', 'Strategic Risk', 'Country brief'],
     evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts'],
   },
   ucdpEvents: {
@@ -174,7 +174,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
       'Annual/research-grade release cadence can miss very recent events.',
       'Fatality ranges are estimates and should be interpreted as ranges, not exact counts.',
     ],
-    related: ['UCDP Events panel', 'CII conflict component', 'Country timeline'],
+    related: ['UCDP Events panel', 'Country Instability Index conflict component', 'Country timeline'],
     evidence: ['docs/architecture.mdx', 'src/services/conflict/index.ts', 'scripts/seed-ucdp-events.mjs'],
   },
   ciiChoropleth: {
@@ -182,14 +182,14 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     coverage: 'curated',
     category: 'Country Risk',
     purpose: 'Colors countries by the current Country Instability Index score for broad strategic-risk triage.',
-    source: 'WorldMonitor CII scoring service using conflict, unrest, advisories, cyber, AIS, aviation, natural-event, and news signals.',
+    source: 'WorldMonitor Country Instability Index scoring service using conflict, unrest, advisories, cyber, ship tracking, aviation, natural-event, and news signals.',
     freshness: 'Risk-score cache is warm-pinged every 8 minutes; seed-meta and health.riskScores expose live, stale, partial, or degraded state against a 30-minute freshness budget.',
     confidence: 'Composite model signal, not an official country rating or probability forecast.',
     limitations: [
       'Sparse or degraded source families can reduce confidence even when a country still has a score.',
       'Country-level color can hide subnational variation and should be checked against panels before citation.',
     ],
-    related: ['CII panel', 'Strategic Risk panel', 'Data freshness status', 'Country brief'],
+    related: ['Country Instability Index panel', 'Strategic Risk panel', 'Data freshness status', 'Country brief'],
     evidence: ['docs/strategic-risk.mdx', 'docs/architecture.mdx', 'src/services/cached-risk-scores.ts'],
   },
   natural: {
@@ -327,7 +327,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
       'IP geolocation can point to hosting infrastructure rather than an operator or victim.',
       'Feed availability, API keys, and per-feed abuse reports can bias coverage.',
     ],
-    related: ['Cyber Threats map popups', 'CII cyber supplemental boost', 'Data freshness status'],
+    related: ['Cyber Threats map popups', 'country instability cyber contribution', 'Data freshness status'],
     evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'scripts/seed-cyber-threats.mjs', 'server/worldmonitor/cyber/v1/list-cyber-threats.ts'],
   },
   hotspots: {
@@ -335,7 +335,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     coverage: 'curated',
     category: 'News / Hotspots',
     purpose: 'Highlights monitored geopolitical hotspots and raises their level when related news and escalation signals converge.',
-    source: 'WorldMonitor hotspot registry, RSS/GDELT news intelligence, hotspot escalation scoring, military activity, and CII context.',
+    source: 'WorldMonitor hotspot registry, RSS/GDELT news intelligence, hotspot escalation scoring, military activity, and country instability context.',
     freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; hotspot levels are recomputed when the dashboard news feeds refresh, around 20 minutes apart, while GDELT intelligence has longer seeded/cache budgets.',
     confidence: 'Useful as a triage cue, not a citation-grade claim without opening the underlying news and country context.',
     limitations: [

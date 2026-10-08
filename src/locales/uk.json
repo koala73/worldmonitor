@@ -1,7 +1,7 @@
 {
   "shell": {
     "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "metaDescription": "Платформа глобальної розвідки в реальному часі. Згадана у WIRED. Використовується 2M+ людей у 190 країнах. Конфлікти, ринки, військові операції, відкрита розвідка в одному місці.",
     "offlineTitle": "You're Offline",
     "offlineMessage": "World Monitor requires an internet connection for real-time intelligence data.",
     "offlineRetry": "Retry"
@@ -78,7 +78,7 @@
     "instabilityIndex": "Instability Index",
     "loadingResilienceScore": "Loading resilience score…",
     "resilienceScoreUnavailable": "Resilience score unavailable.",
-    "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
+    "notTracked": "Не отслідковується — {{country}} не входить у список рівня 1 Country Instability Index",
     "intelBrief": "Intelligence Brief",
     "generatingBrief": "Generating intelligence brief...",
     "topNews": "Top News",
@@ -109,7 +109,7 @@
       "conflictEvents": "conflict events",
       "activeStrikes": "active strikes",
       "aviationDisruptions": "airport disruptions",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "Зони навігаційних перешкод"
     },
     "timeAgo": {
       "m": "{{count}}m ago",
@@ -143,9 +143,9 @@
       "expenditure": "Military spend",
       "personnel": "Personnel",
       "armsImports": "Arms imports",
-      "concentration": "Supplier HHI",
+      "concentration": "Індекс концентрації постачальників",
       "suppliers": "Arms suppliers ({{start}}–{{end}})",
-      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "source": "Джерела: World Bank та SIPRI Arms Transfers Database. Показник обсягу передач вимірює відносні військові поставки, а не фінансову вартість.",
       "sourceWorldBank": "Source: World Bank.",
       "snapshotAssembled": "Знімок даних {{source}} сформовано {{time}}",
       "unavailable": "Not available",
@@ -171,8 +171,8 @@
       "entities": "Entities:",
       "translation": "Translation:",
       "source": "Source:",
-      "imfGrowth": "IMF growth forecast",
-      "creditGdp": "Credit to GDP",
+      "imfGrowth": "Прогноз росту Міжнародного валютного фонду",
+      "creditGdp": "Кредит відносно економічного випуску",
       "strategicTrade": "Strategic trade exposure",
       "crudeImports": "Crude oil imports",
       "gasDemand": "Gas demand",
@@ -219,14 +219,14 @@
     "nearbyPorts": "Nearby Ports",
     "detected": "Detected",
     "notDetected": "No",
-    "ciiUnavailable": "CII score unavailable for this country.",
+    "ciiUnavailable": "Оцінка Country Instability Index недоступна для цієї країни.",
     "chips": {
       "criticalNews": "Critical News",
       "protests": "Protests",
       "militaryAir": "Military Air",
       "navalVessels": "Naval Vessels",
       "outages": "Outages",
-      "aisDisruptions": "AIS Disruptions",
+      "aisDisruptions": "Збої у відстеженні суден",
       "satelliteFires": "Satellite Fires",
       "temporalAnomalies": "Temporal Anomalies",
       "cyberThreats": "Cyber Threats",
@@ -243,7 +243,7 @@
       "activeSirens": "Active Sirens",
       "sirens24h": "Sirens / 24h",
       "aviationDisruptions": "Aviation Disruptions",
-      "gpsJammingZones": "GPS Jamming Zones",
+      "gpsJammingZones": "Зони навігаційних перешкод",
       "temporalUnavailable": "Дані часових спостережень недоступні"
     },
     "fallback": {
@@ -268,7 +268,7 @@
       "area": "Area"
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
+    "foodStocksHelp": "Виробництво, пропозиція та розподіл запасів товарів USDA за маркетинговим роком із світовим співвідношенням як контекст. Продовольчі баланси FAOSTAT надають виробництво та внутрішню пропозицію, коли Production, Supply and Distribution не має повного балансу за країною.",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -286,7 +286,7 @@
     },
     "demographicsCapability": {
       "title": "Demographics & Workforce",
-      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "help": "Вікова структура, освітній потенціал та потужність виробничої робочої сили з UN World Population Prospects, UNESCO Institute for Statistics та World Bank World Development Indicators, та ILOSTAT.",
       "loading": "Loading demographics and workforce data…",
       "unavailable": "Demographics and workforce data unavailable.",
       "proLocked": "Upgrade to PRO for demographics and workforce data",
@@ -300,7 +300,7 @@
       "workingAgePopulation": "Working-age population",
       "workingAgeProjection": "Working-age population (+10 years)",
       "tertiaryEnrollment": "Tertiary enrollment",
-      "stemGraduates": "STEM graduates",
+      "stemGraduates": "Випускники природничих, технологічних, інженерних та математичних спеціальностей",
       "researchers": "Researchers",
       "craftTrades": "Craft and trades workers",
       "plantOperators": "Plant and machine operators",
@@ -354,7 +354,7 @@
         "demographics_workingAgeProjection": "Прогноз частки працездатного населення",
         "demographics_tertiaryEnrollment": "Рівень охоплення третинною освітою",
         "demographics_researchersPerMillion": "Дослідники на мільйон населення",
-        "demographics_stemGraduateShare": "Частка випускників STEM",
+        "demographics_stemGraduateShare": "Частка випускників природничих, технологічних, інженерних та математичних спеціальностей",
         "demographics_trainedIndustrialShare": "Частка кваліфікованих промислових кадрів",
         "demographics_manufacturingEmploymentShare": "Частка зайнятості у виробництві",
         "technology_internetUse": "Використання інтернету",
@@ -362,7 +362,7 @@
         "technology_fixedBroadband": "Стільовий широкополосний інтернет",
         "technology_rdSpend": "Витрати на дослідження та розробки",
         "technology_researchersPerMillion": "Дослідники на мільйон населення",
-        "technology_stemGraduateShare": "Частка випускників STEM",
+        "technology_stemGraduateShare": "Частка випускників природничих, технологічних, інженерних та математичних спеціальностей",
         "technology_electricityAccess": "Доступ до електроенергії",
         "defense_expenditureUsd": "Витрати на оборону",
         "defense_expenditurePctGdp": "Оборонне навантаження",
@@ -413,21 +413,21 @@
     "sourceRegionTopical": "Topical",
     "sourceRegionIntel": "Intelligence",
     "sourceRegionTechNews": "Tech News",
-    "sourceRegionAiMl": "AI & ML",
-    "sourceRegionStartupsVc": "Startups & VC",
+    "sourceRegionAiMl": "AI та машинне навчання",
+    "sourceRegionStartupsVc": "Стартапи та венчурний капітал",
     "sourceRegionRegionalTech": "Regional Ecosystems",
     "sourceRegionDeveloper": "Developer",
     "sourceRegionCybersecurity": "Cybersecurity",
     "sourceRegionTechPolicy": "Policy & Research",
     "sourceRegionTechMedia": "Media & Podcasts",
     "sourceRegionMarkets": "Markets & Analysis",
-    "sourceRegionFixedIncomeFx": "Fixed Income & FX",
+    "sourceRegionFixedIncomeFx": "Облігаційний ринок та валютний обмін",
     "sourceRegionCommodities": "Commodities",
     "sourceRegionCryptoDigital": "Crypto & Digital",
     "sourceRegionCentralBanks": "Central Banks & Economy",
     "sourceRegionDeals": "Deals & Corporate",
     "sourceRegionFinRegulation": "Financial Regulation",
-    "sourceRegionGulfMena": "Gulf & MENA",
+    "sourceRegionGulfMena": "Затока та Близький Схід та Північна Африка",
     "filterPanels": "Filter panels...",
     "resetLayout": "Reset Layout",
     "resetLayoutTooltip": "Restore default panel arrangement",
@@ -440,15 +440,15 @@
     "panelCatTopical": "Topical",
     "panelCatDataTracking": "Data & Tracking",
     "panelCatTechAi": "Tech & AI",
-    "panelCatStartupsVc": "Startups & VC",
+    "panelCatStartupsVc": "Стартапи та венчурний капітал",
     "panelCatSecurityPolicy": "Security & Policy",
     "panelCatMarkets": "Markets",
-    "panelCatFixedIncomeFx": "Fixed Income & FX",
+    "panelCatFixedIncomeFx": "Облігаційний ринок та валютний обмін",
     "panelCatCommodities": "Commodities",
     "panelCatCryptoDigital": "Crypto & Digital",
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
-    "panelCatGulfMena": "Gulf & MENA",
+    "panelCatGulfMena": "Затока та Близький Схід та Північна Африка",
     "panelCatCommodityPrices": "Prices & Markets",
     "panelCatMining": "Mining & Supply Chain",
     "panelCatCommodityEcon": "Economy & Trade",
@@ -493,26 +493,26 @@
     "tech": "Technology",
     "crypto": "Crypto",
     "heatmap": "Sector Heatmap",
-    "ai": "AI/ML",
+    "ai": "AI та машинне навчання",
     "layoffs": "Layoffs Tracker",
     "monitors": "My Monitors",
     "satelliteFires": "Fires",
-    "macroSignals": "BTC Regime",
-    "etfFlows": "BTC ETF Tracker",
+    "macroSignals": "Умови ринку Bitcoin",
+    "etfFlows": "Потоки Bitcoin фондів",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
-    "wsbTickerScanner": "WSB Ticker Scanner",
+    "wsbTickerScanner": "Сканер тікерів WallStreetBets",
     "ucdpEvents": "Armed Conflict Events",
     "giving": "Global Giving",
-    "displacement": "UNHCR Displacement",
+    "displacement": "Біженці та переміщені особи",
     "climate": "Climate Anomalies",
     "populationExposure": "Population Exposure",
     "securityAdvisories": "Security Advisories",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Intel",
     "xIntel": "X News Accounts",
-    "startups": "Startups & VC",
-    "vcblogs": "VC Insights & Essays",
+    "startups": "Стартапи та венчурний капітал",
+    "vcblogs": "Вибіркові матеріали та статті венчурного капіталу",
     "regionalStartups": "Global Startup News",
     "unicorns": "Unicorn Tracker",
     "accelerators": "Accelerators & Demo Days",
@@ -524,8 +524,8 @@
     "cloud": "Cloud & Infrastructure",
     "dev": "Developer Community",
     "github": "GitHub Trending",
-    "ipo": "IPO & SPAC",
-    "funding": "Funding & VC",
+    "ipo": "Публічні листинги та злиття з компаніями-оболонками",
+    "funding": "Фінансування та венчурний капітал",
     "producthunt": "Product Hunt",
     "events": "Tech Events",
     "serviceStatus": "Service Status",
@@ -536,7 +536,7 @@
       "anomalies": "Anomalies"
     },
     "techReadiness": "Tech Readiness Index",
-    "gccInvestments": "GCC Investments",
+    "gccInvestments": "Інвестиції Ради співпраці країн Затоки",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams",
     "windyWebcams": "Windy Live Webcam",
@@ -545,7 +545,7 @@
     "groceryItem": "Item",
     "bigmac": "Real Big Mac Index",
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
-    "bigmacWow": "WoW",
+    "bigmacWow": "Тижневої динаміки",
     "bigmacCountry": "Country",
     "faoFoodPriceIndex": "FAO Food Price Index",
     "fuelPrices": "Fuel Prices",
@@ -563,7 +563,7 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
-    "fx": "Курси валют"
+    "fx": "Курси іноземних валют"
   },
   "commands": {
     "prefixes": {
@@ -628,7 +628,7 @@
         "minimal": "Minimal layers (conflicts + hotspots)"
       },
       "layer": {
-        "ais": "Toggle AIS vessel tracking",
+        "ais": "Перемкнути відстеження суден",
         "flights": "Toggle military flights",
         "conflicts": "Toggle conflict zones",
         "hotspots": "Toggle intel hotspots",
@@ -766,8 +766,8 @@
     },
     "mobileWarning": {
       "title": "Mobile View",
-      "description": "You're viewing a simplified mobile version focused on MENA region with essential layers enabled.",
-      "tip": "Tip: Use the view buttons (GLOBAL/US/MENA) to switch regions. Tap markers to see details.",
+      "description": "Ви переглядаєте спрощену мобільну версію зі сфокусом на регіон Близького Сходу та Північної Африки з увімкненими основними шарами.",
+      "tip": "Порада: використовуйте кнопки вигляду (GLOBAL/US/Близький Схід та Північна Африка) для перемикання регіонів. Торкніться маркерів для перегляду деталей.",
       "dontShowAgain": "Don't show again",
       "gotIt": "Got it"
     },
@@ -882,7 +882,7 @@
       "locating": "Locating region...",
       "limitedCoverage": "Limited coverage",
       "instabilityIndex": "Instability Index",
-      "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
+      "notTracked": "Не отслідковується — {{country}} не входить у список рівня 1 Country Instability Index",
       "intelBrief": "Intelligence Brief",
       "generatingBrief": "Generating intelligence brief...",
       "topNews": "Top News",
@@ -913,7 +913,7 @@
         "conflictEvents": "conflict events",
         "activeStrikes": "active strikes",
         "aviationDisruptions": "airport disruptions",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "Зони навігаційних перешкод"
       },
       "timeAgo": {
         "m": "{{count}}m ago",
@@ -1029,15 +1029,15 @@
       "centralBanks": "Central Banks",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
-      "noIndicatorData": "No indicator data yet - FRED may be loading",
-      "fredKeyMissing": "FRED API key required. Add it in Settings to enable economic indicators.",
+      "noIndicatorData": "Дані показників ще немає - Federal Reserve Economic Data може завантажуватися",
+      "fredKeyMissing": "Потрібен API-ключ Federal Reserve Economic Data. Додайте його в Параметрах, щоб увімкнути економічні показники.",
       "noSpending": "No recent government awards",
       "awards": "awards",
       "in": "in",
-      "noBisData": "BIS data temporarily unavailable - will retry",
+      "noBisData": "Дані Bank for International Settlements тимчасово недоступні - спробуємо ще раз",
       "policyRate": "Policy Rate",
-      "creditToGdp": "Credit / GDP",
-      "realEer": "Real EER",
+      "creditToGdp": "Кредит відносно економічного випуску",
+      "realEer": "Реальний ефективний курс обміну",
       "cut": "cut",
       "hike": "hike",
       "hold": "hold",
@@ -1050,16 +1050,16 @@
         "watchDetail": "Cross-market conditions need closer monitoring.",
         "steadyDetail": "Macro conditions are stable for now."
       },
-      "infoTooltip": "<strong>Macro Stress</strong> Macro gauges, government spending, and central bank data:<ul><li><strong>Indicators</strong>: VIX, rates, yield curve, labor, inflation</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: BIS policy rates and exchange rate data</li></ul>"
+      "infoTooltip": "<strong>Макро-стрес</strong> Макро-показники, державні видатки та дані центральних банків:<ul><li><strong>Показники</strong>: VIX, ставки, крива дохідності, праця, інфляція</li><li><strong>Держ.</strong>: Недавні контракти U.S. уряду</li><li><strong>Центральні банки</strong>: Bank for International Settlements базові ставки та дані курсів обміну</li></ul>"
     },
     "oilInventories": {
-      "infoTooltip": "<strong>Oil Inventories</strong> US crude oil and SPR stockpiles (EIA weekly), natural gas storage, EU gas fill percentage (GIE AGSI+), and OECD oil stocks days-of-cover (IEA monthly)."
+      "infoTooltip": "<strong>Запаси нафти</strong> Комерційна сира нафта США та стратегічні резерви, запаси природного газу, зберігання європейського газу та покриття запасів нафти. Джерела включають US Energy Information Administration та International Energy Agency."
     },
     "energyComplex": {
       "noData": "Energy data temporarily unavailable - will retry",
       "liveTape": "Live Tape",
       "liveTapeSource": "Market quotes",
-      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>EIA metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
+      "infoTooltip": "<strong>Енергетичний комплекс</strong> Фізичні та торговельні енергетичні сигнали в одному місці:<ul><li><strong>Метрики US Energy Information Administration</strong>: WTI, Brent, виробництво США та запаси</li><li><strong>Жива стрічка</strong>: Торговельні енергетичні ціни як сира нафта та природний газ</li><li><strong>Мета</strong>: Розділити фізичний енергетичний стрес від ширших макро та товарних панелей</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Chokepoints",
@@ -1071,8 +1071,8 @@
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
-      "aisDisruptions": "AIS disruption(s)",
-      "wowChange": "WoW change",
+      "aisDisruptions": "Збої у відстеженні суден",
+      "wowChange": "Тижневої динаміки",
       "riskLevel": "Risk level",
       "disruption": "Disruption",
       "vessels": "vessels",
@@ -1090,13 +1090,13 @@
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart.",
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Глобальне відстеження логістики та ресурсів:<ul><li><strong>Вузькі місця</strong>: Статус морських перевезень, оцінки порушень та кількість суден</li><li><strong>Морські перевезення</strong>: Baltic Dry Index та тренди ставок фрахту</li><li><strong>Мінерали</strong>: Ризик концентрації критичних мінералів (індекс концентрації виробників) та провідні виробники</li></ul>Натисніть карточку вузького місця, щоб розгорнути діаграму історії транзиту.",
       "mineStage": "Mine",
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Перейдіть на PRO для доступу до часток країн у видобутку та переробці з концентрацією (HHI) за етапом"
+      "productionProLocked": "Виконайте оновлення до PRO для поділу гірництва та нафтопереробних заводів за країнами з концентрацією (індекс концентрації виробників) за етапом."
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -1107,35 +1107,35 @@
       "noTariffData": "No tariff data available",
       "noFlowData": "No trade flow data available",
       "noBarriers": "No trade barriers reported",
-      "apiKeyMissing": "WTO API key required — add it in Settings",
-      "upstreamUnavailable": "WTO data temporarily unavailable — showing cached data",
-      "mfnAppliedRate": "MFN Applied Rate",
-      "baselineMfnTariff": "Baseline MFN tariff",
+      "apiKeyMissing": "Потрібен ключ API Світової організації торгівлі — додайте його в Налаштуваннях",
+      "upstreamUnavailable": "Дані Світової організації торгівлі тимчасово недоступні — показуються кешовані дані",
+      "mfnAppliedRate": "Загальна непривілейована тариф",
+      "baselineMfnTariff": "Загальна тарифна базова ставка",
       "effectiveTariffRateLabel": "Effective tariff rate",
       "gapLabel": "Gap",
-      "gapVsMfnLabel": "Gap vs MFN",
+      "gapVsMfnLabel": "Різниця від загальної тарифної ставки",
       "noEffectiveCoverageForCountry": "No effective-rate coverage for this country",
-      "effectiveMinusBaseline": "Effective rate minus WTO MFN baseline",
-      "wtoBaselineMeta": "WTO MFN applied rate | {{year}}",
-      "overviewNoteNoEffective": "These figures are WTO MFN baseline rates, not the current tariff burden from unilateral tariff actions.",
-      "usBaselineLabel": "US WTO MFN baseline",
-      "overviewNoteTail": "These cards show WTO baseline commitments, not the live effective tariff burden.",
+      "effectiveMinusBaseline": "Ефективна ставка мінус загальна тарифна базова ставка",
+      "wtoBaselineMeta": "Світова організація торгівлі загальна тарифна базова ставка | {{year}}",
+      "overviewNoteNoEffective": "Ці цифри — базові ставки найбільшого сприяння Світової організації торгівлі, а не поточне тарифне навантаження від односторонніх тарифних дій.",
+      "usBaselineLabel": "US загальна тарифна базова ставка",
+      "overviewNoteTail": "Ці картки показують загальні базові митні ставки, а не поточне фактичне митне навантаження.",
       "exports": "Exports",
       "imports": "Imports",
-      "yoyChange": "YoY Change",
+      "yoyChange": "Зміна рік до року",
       "highTariff": "High",
       "moderateTariff": "Moderate",
       "lowTariff": "Low",
       "revenue": "US Revenue",
       "noRevenueData": "No customs revenue data available",
       "treasuryUnavailable": "Treasury data temporarily unavailable",
-      "fytdLabel": "FY{{year}} YTD",
+      "fytdLabel": "FY{{year}} рік до сьогодні",
       "vsPriorFy": "vs FY{{year}}",
-      "sourceWto": "WTO",
+      "sourceWto": "Світова організація торгівлі",
       "sourceTreasury": "US Treasury",
       "colDate": "Date",
       "colMonthly": "Monthly",
-      "colFytd": "FY YTD",
+      "colFytd": "FY рік до сьогодні",
       "strategicFlows": "Strategic Flows",
       "noComtradeData": "No strategic flow data available",
       "comtradeUnavailable": "UN Comtrade data temporarily unavailable",
@@ -1145,7 +1145,7 @@
       "colReporter": "Country",
       "colCommodity": "Commodity",
       "colTradeValue": "Trade Value",
-      "infoTooltip": "<strong>Trade Policy</strong> WTO baseline and tariff-impact monitoring:<ul><li><strong>Overview</strong>: WTO MFN baseline rates with US effective-rate context when available</li><li><strong>Tariffs</strong>: WTO MFN tariff trends vs the US effective tariff estimate</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li><li><strong>Revenue</strong>: Monthly US customs duties revenue (US Treasury MTS data)</li></ul>"
+      "infoTooltip": "<strong>Торгова політика</strong> Загальні непривілейовані тарифні базові ставки від Світової організації торгівлі з ефективними ставками США, де доступні. Включає тарифні тренди, торгові потоки, технічні та фітосанітарні бар'єри та щомісячні надходження США від мит."
     },
     "consumerPrices": {
       "tabs": {
@@ -1158,18 +1158,18 @@
       },
       "world": {
         "country": "Country",
-        "inflationYoY": "Inflation YoY",
+        "inflationYoY": "Річна інфляція",
         "endOfPeriod": "End-of-Period",
         "year": "Year",
         "filterPlaceholder": "Filter countries…",
         "loading": "Loading global inflation…",
         "empty": "Inflation data not yet available",
         "noMatches": "No matching countries",
-        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "source": "Джерело: Міжнародний валютний фонд World Economic Outlook · річна інфляція індексу споживчих цін, усі економіки, що звітують",
         "countSingular": "country",
         "countPlural": "countries"
       },
-      "infoTooltip": "<strong>Consumer Prices</strong> Real-time basket price tracking:<ul><li><strong>Overview</strong>: Essentials index, value basket, and week-on-week change</li><li><strong>Categories</strong>: Per-category price trends with 30-day range</li><li><strong>Movers</strong>: Biggest rising and falling items this week</li><li><strong>Spread</strong>: Price variance across retailers for the same basket</li><li><strong>World</strong>: Official IMF annual inflation for every reporting economy</li></ul>Data sourced from live retailer price scraping and IMF WEO."
+      "infoTooltip": "<strong>Ціни споживачів</strong> Прямі гроцерійні кошики, тижневі зміни, тренди категорій, лідери цін та різниці між роздрібниками. Глобальний вид використовує річну інфляцію з Міжнародного валютного фонду World Economic Outlook."
     },
     "gdelt": {
       "empty": "No recent articles for this topic"
@@ -1271,7 +1271,7 @@
       "units": {
         "fighters": "Fighters",
         "tankers": "Tankers",
-        "awacs": "AWACS",
+        "awacs": "Повітряна дозорна система",
         "recon": "Recon",
         "transport": "Transport",
         "bombers": "Bombers",
@@ -1285,17 +1285,17 @@
         "auxiliary": "Auxiliary",
         "navalVessels": "Naval Vessels"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>",
+      "infoTooltip": "<strong>Методологія</strong><p>Агрегує військові літаки та військові кораблі за театром операцій.</p><ul><li><strong>Нормальна:</strong> Базова активність</li><li><strong>Підвищена:</strong> Вище порога (50+ літаків)</li><li><strong>Критична:</strong> Висока концентрація (100+ літаків)</li></ul><p><strong>Здатні до удару:</strong> Танкери + Повітряна дозорна система + Винищувачі присутні в достатній кількості для тривалих операцій.</p>",
       "scanningTheaters": "Scanning Theaters",
       "positions": "Aircraft positions",
       "navalVesselsLoading": "Naval vessels",
       "theaterAnalysis": "Theater analysis",
-      "connectingStreams": "Connecting to live ADS-B & AIS streams...",
+      "connectingStreams": "Підключення до потоків трансмітерів літаків та відстеження суден в реальному часі...",
       "initialLoadNote": "Initial load takes 30-60 seconds as tracking data accumulates",
       "acquiringData": "Acquiring Data",
-      "acquiringDesc": "Connecting to ADS-B network for military flight data. This may take 30-60 seconds on first load.",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "AIS Vessel Stream",
+      "acquiringDesc": "Підключення до мережі трансмітерів літаків для даних військових польотів. На першому завантаженні це може займати 30-60 секунд.",
+      "openSkyAdsb": "OpenSky трансмітер літаків",
+      "aisVesselStream": "Потік відстеження суден",
       "retryNow": "Retry Now",
       "feedRateLimited": "Feed Rate Limited",
       "rateLimitedDesc": "OpenSky API has request limits. The panel will automatically retry in a few minutes, or you can try again now.",
@@ -1391,7 +1391,7 @@
       "views": {
         "global": "Global",
         "americas": "Americas",
-        "mena": "MENA",
+        "mena": "Близький Схід та Північна Африка",
         "europe": "Europe",
         "asia": "Asia",
         "latam": "Latin America",
@@ -1435,11 +1435,11 @@
         "financialCenters": "Financial Centers",
         "centralBanks": "Central Banks",
         "commodityHubs": "Commodity Hubs",
-        "gulfInvestments": "GCC Investments",
+        "gulfInvestments": "Інвестиції Ради співпраці країн Перської затоки",
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
-        "gpsJamming": "GPS JAMMING",
-        "ciiChoropleth": "CII Instability",
+        "gpsJamming": "Перешкода навігації",
+        "ciiChoropleth": "Нестабільність країни",
         "dayNight": "Day/Night",
         "positiveEvents": "Positive Events",
         "kindness": "Acts of Kindness",
@@ -1540,7 +1540,7 @@
           "infraCablesFull": "Major undersea fiber optic cables (20 backbone routes)",
           "infraPipelinesFull": "Oil/gas pipelines (Nord Stream, TAPI, etc.)",
           "infraDatacentersFull": "AI compute clusters >=10,000 GPUs only",
-          "transportShipping": "Live vessel tracking via AIS (ship positions)",
+          "transportShipping": "Живі позиції суден з трансмітерів суден",
           "transportDelays": "Airport delays, ground stops, and NOTAM closures",
           "naturalEventsFull": "Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)",
           "firesFull": "Active wildfires and fire perimeters (NASA FIRMS)",
@@ -1554,11 +1554,11 @@
           "techCyberThreats": "Cyber attacks and security events",
           "techEvents": "Major tech conferences and events",
           "techFires": "Active wildfires near tech infrastructure",
-          "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI",
+          "financeGulfInvestments": "Інвестиції суверенного фонду багатства та прямі іноземні інвестиції Ради співпраці країн Перської затоки",
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
-          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
+          "ciiChoropleth": "Теплова карта Country Instability Index — країни розфарбовані за балом (зелений=стабільна, червоний=критична)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
@@ -1644,7 +1644,7 @@
       "briefCommodity": "COMMODITY BRIEF",
       "briefEnergy": "ENERGY BRIEF",
       "briefWorld": "WORLD BRIEF",
-      "mlDetected": "ML DETECTED",
+      "mlDetected": "Machine learning ВИЯВЛЕНО",
       "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
       "focalPoints": "FOCAL POINTS",
       "toneMixed": "Mixed",
@@ -1720,7 +1720,7 @@
       "enableDataSources": "Enable data sources to begin monitoring.",
       "requiredDataSources": "Required Data Sources",
       "optionalSources": "Optional Sources",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кешовані Country Instability Index {{states}}",
       "sourceStates": {
         "degraded": "degraded",
         "stale": "stale"
@@ -1732,7 +1732,7 @@
       "noData": "no data",
       "enable": "Enable",
       "convergenceMetric": "Convergence",
-      "ciiDeviation": "CII Deviation",
+      "ciiDeviation": "Відхилення Country Instability Index",
       "infraEvents": "Infra Events",
       "highAlerts": "High Alerts",
       "dataFreshness": "Data Freshness",
@@ -1766,17 +1766,17 @@
     "techReadiness": {
       "internetUsers": "Internet Users",
       "mobileSubscriptions": "Mobile Subscriptions",
-      "rdSpending": "R&D Spending",
+      "rdSpending": "Видатки на дослідження та розробки",
       "fetchingData": "Fetching World Bank Data",
       "internetUsersIndicator": "Internet Users",
       "mobileSubscriptionsIndicator": "Mobile Subscriptions",
       "broadbandAccess": "Broadband Access",
-      "rdExpenditure": "R&D Expenditure",
+      "rdExpenditure": "Видатки на дослідження та розробки",
       "analyzingCountries": "Analyzing 200+ countries...",
       "dataPreparing": "Refreshing tech readiness data — this will appear shortly.",
       "source": "Source: World Bank",
       "updated": "Updated: {{date}}",
-      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Composite score (0-100) based on World Bank data:<br><br><strong>Metrics shown:</strong><br>🌐 Internet Users (% of population)<br>📱 Mobile Subscriptions (per 100 people)<br>🔬 R&D Expenditure (% of GDP)<br><br><strong>Weights:</strong> R&D (35%), Internet (30%), Broadband (20%), Mobile (15%)<br><br><em>— = No recent data available</em><br><em>Source: World Bank Open Data (2019-2024)</em>"
+      "infoTooltip": "<strong>Готовність технологій</strong> Композитний бал Світового банку, 0–100. Ваги: дослідження та розробки 35%, інтернет 30%, широкосмуговий 20%, мобільний 15%. Користувачі інтернету — це відсоток населення; мобільні підписки — на 100 людей; видатки на дослідження — це частка економічного випуску. Відсутні значення позначаються прочерком. Дані охоплюють 2019–2024."
     },
     "populationExposure": {
       "totalAffected": "Total Affected",
@@ -1829,7 +1829,7 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%.",
       "possibleExplosions": "{{count}} possible explosion(s) detected",
-      "explosionTooltip": "Thermal signature consistent with explosion (FRP >80 MW, brightness >380 K)"
+      "explosionTooltip": "Теплова сигнатура, сумісна з вибухом (потужність радіативного випромінювання пожежі >80 МВт, яскравість >380 К)"
     },
     "ucdpEvents": {
       "stateBased": "State-Based",
@@ -1884,7 +1884,7 @@
       "wallets": "Wallets",
       "ofTotal": "% of Total",
       "topReceivers": "Top Receivers",
-      "oecdOda": "OECD ODA",
+      "oecdOda": "Офіційна допомога на розвиток Організації економічного співробітництва та розвитку",
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Data Lag",
@@ -1908,13 +1908,13 @@
       "count": "Count",
       "latestRound": "Останній раунд",
       "internalNote": "IOM DTM: внутрішньо переміщені особи, останній раунд опитування для кожної операції. Операції в одній країні можуть перетинатися, тому їх не підсумовують.",
-      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license.",
+      "infoTooltip": "<strong>Переміщення</strong> Біженці, особи, що шукають притулку та люди, переміщені всередині своєї країни. Вид походження та хост показує, звідки люди утікають та куди. Значки криз позначають понад один мільйон переміщених; вищі значки позначають понад 500 000. Річні дані Агентства ООН у справах біженців, ліцензія CC BY 4.0.",
       "crossBorder": "Транскордонні",
       "situation": "Ситуація",
       "latestChange": "Остання зміна",
       "accelerating": "Пришвидшується",
       "inDays": "за {{days}} дн.",
-      "crossBorderNote": "Портал оперативних даних УВКБ ООН: люди, які перетнули кордони в кожній кризі, за останніми звітами по країнах. Ситуації перетинаються, тому їх не підсумовують."
+      "crossBorderNote": "Портал операційних даних Агентства ООН у справах біженців: люди, які перетнули кордони в кожній кризі, з останніх звітів країни. Ситуації перекриваються, тому вони не додаються разом."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -1998,7 +1998,7 @@
       "infoTooltip": "<strong>News Intelligence</strong> Real-time global news monitoring:<ul><li>Curated topic categories (conflicts, cyber, etc.)</li><li>Articles from 100+ languages translated</li><li>Updates every 15 minutes</li><li>14-day media tone &amp; volume trend per topic</li><li>14-day media tone &amp; volume trend per topic</li></ul>Source: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
-      "infoTooltip": "Real-time signals from monitored Telegram OSINT channels",
+      "infoTooltip": "Сигнали в реальному часі з моніторованих каналів відкритої інформаційної розвідки Telegram",
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
@@ -2015,7 +2015,7 @@
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
-      "filterOsint": "OSINT",
+      "filterOsint": "відкрита інформаційна розвідка",
       "filterMiddleeast": "Middle East",
       "live": "LIVE",
       "viewSource": "View Source",
@@ -2030,7 +2030,7 @@
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
-      "filterOsint": "OSINT",
+      "filterOsint": "відкрита інформаційна розвідка",
       "filterMiddleeast": "Middle East",
       "live": "LIVE",
       "viewSource": "View Source",
@@ -2077,12 +2077,12 @@
       "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Sources: Polymarket, Kalshi"
     },
     "etfFlows": {
-      "unavailable": "ETF data temporarily unavailable",
-      "rateLimited": "ETF data temporarily unavailable (rate limited) — retrying shortly",
+      "unavailable": "дані обмінних фондів тимчасово недоступні",
+      "rateLimited": "дані обмінних фондів тимчасово недоступні (обмеження за швидкістю) — повторне спробування незабаром",
       "netFlow": "Net Flow",
       "estFlow": "Est. Flow",
       "totalVol": "Total Vol",
-      "etfs": "ETFs",
+      "etfs": "Обмінні фонди",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
       "netNeutral": "ЧИСТИЙ НЕЙТРАЛ",
@@ -2093,7 +2093,7 @@
         "volume": "Volume",
         "change": "Change"
       },
-      "infoTooltip": "<strong>BTC ETF Tracker</strong> Tracks daily estimated fund flows for US spot Bitcoin ETFs:<ul><li>Inflow/outflow direction and magnitude</li><li>Volume and price change per fund</li><li>Net aggregate flow across all tracked ETFs</li></ul>"
+      "infoTooltip": "<strong>Потоки Bitcoin фондів</strong> Відстежує щодобові оцінені потоки капіталу для американських спот-Bitcoin обмінних фондів:<ul><li>Напрямок і величина припливу/відпливу</li><li>Обсяг і зміна ціни на фонд</li><li>Чистий сукупний потік на всіх відстежених фондах</li></ul>"
     },
     "macroSignals": {
       "overall": "Overall",
@@ -2111,7 +2111,7 @@
         "momentum": "Momentum",
         "fearGreed": "Fear & Greed"
       },
-      "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
+      "infoTooltip": "<strong>Умови ринку Bitcoin</strong> Інформаційна панель композитного сигналу для позиціонування Bitcoin та апетиту до ризику:<ul><li><strong>Ліквідність</strong>: Проксі чистої ліквідності Федеральної резервної системи</li><li><strong>Потік</strong>: Поради BTC vs QQQ 5-денні</li><li><strong>Режим</strong>: Ротація QQQ vs XLP (ризик увімкнений/вимкнений)</li><li><strong>Тренд BTC</strong>: Ціна vs SMA50/200, Множник Майєра</li><li><strong>Хеш-рейт</strong>: 30-денна зміна хеш-рейту мережі</li><li><strong>Страх і Жадібність</strong>: Індекс настрою ринку</li></ul>Ця панель призначена для режиму та позиціонування, а не для широких макродан."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above.",
@@ -2267,28 +2267,28 @@
       "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+      "infoTooltip": "<strong>Central Bank Watch</strong> Останні заяви, рішення щодо ставок та комунікація від Федеральної резервної системи, Європейського центрального банку, Банку Англії та інших великих центральних банків світу."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Індекси акцій країн Перської затоки, обмінні курси валют та ціни на нафту для економік Ради співробітництва держав Перської затоки (Саудівська Аравія, ОАЕ, Кувейт, Катар, Бахрейн, Оман)."
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+      "infoTooltip": "<strong>Grocery Index</strong> Глобальне порівняння цін на продукти харчування в 24 країнах — відстежує інфляцію споживчих товарів у реальному світі поза межами основного індексу цін споживача."
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "fuelPrices": {
-      "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. WoW change shown when prior week data is available.",
+      "infoTooltip": "<strong>Fuel Prices</strong> Роздрібні ціни на бензин та дизель у 30+ країнах, нормалізовані до USD/літр для порівняння. Ціни надходять з офіційних програм відкритих даних урядів та оновлюються щотижня. Найдешевші та найдорожчі країни виділені. Зміни з тижня на тиждень показані, коли доступні дані попереднього тижня.",
       "countries": "countries"
     },
     "faoFoodPriceIndex": {
-      "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's FFPI tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month.",
-      "indexLabel": "FFPI (2014-16=100)",
-      "mom": "MoM",
-      "yoy": "YoY",
+      "infoTooltip": "<strong>FAO Food Price Index</strong> Індекс цін на продовольство Продовольчої та сільськогосподарської організації ООН відстежує міжнародні експортні ціни на кошик продовольчих товарів (Зернові, Молочні, М'ясо, Масла, Цукор) з базою 2014–2016=100. Оновлюється щомісяця в першу п'ятницю кожного місяця.",
+      "indexLabel": "Ціни на продовольство (2014–2016 = 100)",
+      "mom": "Місяць за місяцем",
+      "yoy": "Рік за роком",
       "asOf": "As of",
-      "baseNote": "Base: 2014-2016 = 100 | Source: UN FAO",
+      "baseNote": "База: 2014–2016 = 100 | Джерело: Продовольча та сільськогосподарська організація ООН",
       "ffpi": "Food",
       "cereals": "Cereals",
       "meat": "Meat",
@@ -2412,18 +2412,18 @@
       "infoTooltip": "<strong>WM Analyst</strong> AI analyst with live context across geopolitical, market, military, and economic domains. Powered by Claude with real-time data injected from active WorldMonitor feeds."
     },
     "cotPositioning": {
-      "infoTooltip": "<strong>CFTC COT Positioning</strong> Commitments of Traders report: net positioning of commercials, large speculators, and small traders across commodity and financial futures. Published weekly (Friday). Source: CFTC."
+      "infoTooltip": "<strong>Futures positioning</strong> Щотижневі чисті позиції комерційних трейдерів, великих спекулянтів та малих трейдерів у товарних та фінансових фʼютчерсах. Джерело — звіт Commitments of Traders Комісії з торгівлі товарними фʼютчерсами, опублікований у п'ятниці."
     },
     "liquidityShifts": {
       "title": "Liquidity Shifts",
-      "infoTooltip": "<strong>Liquidity Shifts</strong> High-liquidity positioning and daily shift monitor for oil, gold, silver, equity index futures, and top US stocks. COT asset-manager net and leveraged-funds net vs daily price change.",
-      "cotSection": "Oil / Gold / Silver + Index Positioning (COT)",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> Позиціонування високої ліквідності та щоденний монітор змін для нафти, золота, срібла, фʼютчерсів індексів акцій та найбільших американських акцій. Commitments of Traders активи-менеджери чисті та важелі фонди чисті проти щоденної зміни ціни.",
+      "cotSection": "Позиціонування нафти / золота / срібла + індексів (Commitments of Traders)",
       "stocksSection": "Top US Stocks: Daily Shift",
       "longShort": "Long {{long}} / Short {{short}}",
       "lev": "Lev",
-      "noCot": "No COT rows available.",
+      "noCot": "Жодних рядків Commitments of Traders недоступно.",
       "noStocks": "No top stock quotes available.",
-      "reportDate": "COT report date: {{date}}",
+      "reportDate": "Дата звіту Commitments of Traders: {{date}}",
       "unavailable": "Liquidity data unavailable",
       "failed": "Failed to load"
     },
@@ -2432,12 +2432,12 @@
       "infoTooltip": "<strong>24/7 Positioning</strong> Perpetual contract positioning stress from Hyperliquid. Trades around the clock, showing what's building when traditional markets are closed. Composite score (0-100) from funding rate, volume, open interest, and spot-perp basis. Green = longs crowded (bullish lean), red = shorts crowded (bearish lean).",
       "commodities": "COMMODITIES",
       "crypto": "CRYPTO",
-      "fx": "FX",
-      "warmup": "Building baselines. Volume and OI history populates over the next hour.",
+      "fx": "Іноземна валюта",
+      "warmup": "Формування базових значень. Історія обсягу та відкритого інтересу заповнятиметься протягом наступної години.",
       "footer": "5min · Hyperliquid perps · 24/7"
     },
     "goldIntelligence": {
-      "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."
+      "infoTooltip": "<strong>Gold intelligence</strong> Ціни золота в кількох валютах, коефіцієнти золото/срібло та золото/платина, та позиції керованих грошей у фʼютчерсах. Джерела включають Yahoo Finance та Комісію з торгівлі товарними фʼютчерсами."
     },
     "counters": {
       "infoTooltip": "<strong>Live Counters</strong> Real-time extrapolated counters for global metrics: military spending, natural disasters, disease burden, and more. Figures are statistical estimates based on annual data rates."
@@ -2485,12 +2485,12 @@
       }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Earnings Calendar</strong> Upcoming and recent earnings releases for major public companies. Shows EPS estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers.",
+      "infoTooltip": "<strong>Earnings Calendar</strong> Надходження та недавні результати по дивідендах для великих відкритих компаній. Показує прогнози vs фактичні дані прибутку на акцію, дохід та класифікацію beat/miss. Джерело: постачальники фінансових даних.",
       "title": "Earnings Calendar",
       "today": "TODAY · {{date}}",
       "tomorrow": "TOMORROW · {{date}}",
-      "epsActual": "EPS {{value}}",
-      "epsEstimate": "EPS est {{value}}",
+      "epsActual": "прибуток на акцію {{value}}",
+      "epsEstimate": "прибуток на акцію прогноз {{value}}",
       "revenueActual": "{{value}} rev",
       "revenueEstimate": "{{value}} est",
       "surprise": {
@@ -2504,14 +2504,14 @@
       }
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
+      "infoTooltip": "<strong>Economic Calendar</strong> Заплановані випуски макроекономічних даних: індекс цін споживача, несільськогосподарські робочі місця, валовий внутрішній продукт, індекс менеджерів закупівель та рішення центральних банків. Показує прогноз vs фактичні дані vs попередні. Висока-впливові події виділені. Джерело: постачальники економічних даних."
     },
     "fsi": {
-      "infoTooltip": "<strong>Індикатор фінансового стресу</strong> Співвідношення WorldMonitor високодохідного кредиту до довгострокових казначейських облігацій США, скориговане на волатильність акцій і спред високодохідних облігацій: (HYG / TLT) / (VIX × HY spread / 100). Це не Індекс фінансового стресу Федерального резервного банку Канзас-Сіті. Значення 1.5 або вище означає низький стрес; нижче 0.3 — високий стрес.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> Коефіцієнт World Monitor високодохідного кредиту до довгострокових казначейських облігацій, скорегований на волатильність акцій та спред високодохідного кредиту: (HYG / TLT) / (VIX × High-yield spread / 100). Це не Індекс фінансового стресу Федеральної резервної системи Канзасу. Значення 1,5 або вище є низьким стресом; нижче 0,3 є високим стресом.",
       "title": "Financial Stress Indicator",
-      "usFsiValue": "US FSI VALUE",
+      "usFsiValue": "Значення показника фінансового стресу США",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
-      "cissStale": "ECB has not published a newer value — this reading may be out of date.",
+      "cissStale": "Європейський центральний банк не опублікував новіше значення — це значення може бути застарілим.",
       "notAvailable": "N/A",
       "interpretation": {
         "low": "Credit markets functioning normally, equity/bond ratio healthy.",
@@ -2539,12 +2539,12 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "HY Spread",
+        "hySpread": "Спред високодохідного кредиту",
         "hygPrice": "HYG Price",
         "tltPrice": "TLT Price"
       },
       "errors": {
-        "unavailable": "FSI data unavailable",
+        "unavailable": "Дані показника фінансового стресу недоступні",
         "failedToLoad": "Failed to load"
       }
     },
@@ -2569,7 +2569,7 @@
       "proLocked": "Перейдіть на PRO для оцінки вразливості сировини"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Прямий моніторинг суден через Ормузьку протоку, найбільш критичну точку розподілу нафти у світі. Відстежує кількість танкерів, події перебоїв та щотижневі зміни потоків. Приблизно 20% світової нафти щодня проходить через цю протоку.",
       "title": "Hormuz Trade Tracker",
       "noData": "No data",
       "notAvailable": "N/A",
@@ -2588,19 +2588,19 @@
       "infoTooltip": "<strong>Live Webcams</strong> Live feeds from geopolitically significant locations worldwide: conflict zones, capital cities, border crossings, and strategic chokepoints. Streams sourced from YouTube and public networks."
     },
     "macroTiles": {
-      "infoTooltip": "<strong>Macro Indicators</strong> Key macroeconomic indicators for the US, Euro Area, and China. China appears only when current price, activity, policy, and FX coverage passes the launch gate; each China tile keeps its source and observation date visible. Sources: FRED, Eurostat, ECB, OECD, BIS, and HKMA."
+      "infoTooltip": "<strong>Macro indicators</strong> Показники цін, активності, політики та валюти США, зони євро та Китаю. Китай вимагає поточного охоплення. Кожна плитка показує своє джерело та дату спостереження."
     },
     "monitors": {
       "infoTooltip": "<strong>Keyword Monitors</strong> Add any term to track live news mentions across all WorldMonitor sources. Results update in real time as matching articles are ingested."
     },
     "renewable": {
-      "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and EIA."
+      "infoTooltip": "<strong>Renewable Energy</strong> Частка генерування електроенергії з відновлюваних джерел за регіонами та роками, а також встановлена потужність США для сонячної енергії, вітроенергії та вугілля (МВт). Джерела: Світовий банк (EG.ELC.RNEW.ZS) та Адміністрація інформації з енергетики США."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trending topics and viral content with geopolitical significance. Measures social media velocity: how rapidly a story spreads relative to baseline. Helps surface emerging narratives before they hit mainstream news."
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing. Ranked by mention frequency and engagement. Velocity measures how rapidly a ticker gains momentum across posts."
+      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> Моніторинг згадок тикерів у реальному часі з r/wallstreetbets, r/stocks та r/investing. Ранжовані за частотою згадок та залученням. Швидкість вимірює, наскільки швидко тикер набирає імпульс в допостах."
     },
     "conservationWins": {
       "infoTooltip": "<strong>Conservation Wins</strong> Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications."
@@ -2609,7 +2609,7 @@
       "infoTooltip": "<strong>World Clock</strong> Live local times and market session status for major global financial centers. Shows open/closed status for NYSE, LSE, TSE, SGX, and other exchanges."
     },
     "yieldCurve": {
-      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including the 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: FRED."
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> Крива дохідності казначейських облігацій США (2Y, 5Y, 10Y, 30Y) та ключові спреди ставок включаючи індикатор інверсії 10Y-2Y. Також показує ставки зони євро (EURIBOR, ESTR). Інвертована крива історично передує рецесіям. Джерело: Федеральні дані економічних досліджень."
     },
     "proBanner": {
       "badge": "PRO",
@@ -2738,7 +2738,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions & Designations",
-      "infoTooltip": "Списки SDN і зведені списки OFAC плюс визначення SEMA/JVCFOA Global Affairs Canada. Показує, які країни зазнають найбільшого тиску визначень, які програми це зумовлюють і що було додано з останнього оновлення.",
+      "infoTooltip": "Бюро контролю іноземних активів Спеціально визначені громадяни та консолідовані списки плюс позначення Global Affairs Canada SEMA/JVCFOA. Показує, які країни стикаються з найбільшим тиском позначення, які програми його спричиняють та що було недавно додано з моменту останнього оновлення.",
       "loading": "Loading sanctions data...",
       "unavailable": "Sanctions data unavailable.",
       "summary": {
@@ -2760,7 +2760,7 @@
       "footer": {
         "updated": "Updated {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Джерело: OFAC · GAC SEMA"
+        "source": "Джерело: Бюро контролю іноземних активів · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} new",
@@ -2823,9 +2823,9 @@
       }
     },
     "defensePatents": {
-      "title": "R&D Signal",
+      "title": "Сигнали досліджень та розроблень",
       "infoTooltip": "Weekly defense and dual-use patent filings by Raytheon, Lockheed, Huawei, DARPA, and other strategic organizations. Categories: H04B (comms), H01L (semiconductors), F42B (ammunition), G06N (AI), C12N (biotech). Source: USPTO Open Data Portal.",
-      "loading": "Loading R&D filings…",
+      "loading": "Завантаження подань з досліджень та розроблень…",
       "error": "Failed to load patent data.",
       "empty": "No filings in this category.",
       "viewOnUspto": "View on USPTO",
@@ -2904,7 +2904,7 @@
     },
     "chokepointStrip": {
       "title": "Chokepoint Status",
-      "infoTooltip": "Live status for the seven global oil & gas shipping chokepoints. Flow estimates calibrated from Portwatch DWT + AIS observations. See /docs/methodology/chokepoints for methodology.",
+      "infoTooltip": "Живий статус семи глобальних точок розподілу нафти та газу. Кошторис потоків калібрований з вантажопідйомності суден Portwatch + спостереження моніторингу суден. Див. /docs/methodology/chokepoints для методики.",
       "unknown": "unknown",
       "shortName": {
         "hormuzStrait": "Hormuz",
@@ -2924,9 +2924,9 @@
         "noData": "No chokepoint data yet"
       },
       "attribution": {
-        "method": "Portwatch DWT + AIS calibration",
-        "sampleLabel": "AIS disruption signals",
-        "creditName": "EIA World Oil Transit Chokepoints"
+        "method": "Вантажопідйомність суден Portwatch + калібрування моніторингу суден",
+        "sampleLabel": "сигнали перебоїв моніторингу суден",
+        "creditName": "Світові нафтові транзитні точки розподілу Адміністрації інформації з енергетики США"
       }
     },
     "panelFreshness": {
@@ -2966,9 +2966,9 @@
       }
     },
     "fx": {
-      "infoTooltip": "<strong>Курси валют</strong> Стрес валют і спотові курси:<ul><li>FX Stress ранжирує 45 валют за найгіршим падінням від піку до дна за останні 24 місяці, поряд зі змінами за 12 місяців</li><li>Охоплення включає ARS, TRY, EGP, NGN, PKR та UAH — валути, які референтні набори BIS та ECB не включають</li><li>Спотові курси наведені окремо проти долара США та референтних курсів євро ECB, оскільки вони котируються на різних базах</li><li>RUB — курси Банку Росії, рублів за одиницю</li></ul> Джерела: Yahoo Finance, Європейський центральний банк та Банк Росії.",
+      "infoTooltip": "<strong>Currency rates</strong> Стрес ранжує 45 валют за їх найбільшим падінням протягом 24 місяців, зі змінами за 12 місяців. Спот ставки використовують окремі базові дані в доларах США та євро. Ставки російського рубля — рублі за одиницю. Джерела включають Yahoo Finance, Європейський центральний банк та Банк Росії.",
       "tabs": {
-        "stress": "FX Stress",
+        "stress": "Стрес валют",
         "spot": "Спот",
         "rub": "RUB"
       },
@@ -2982,15 +2982,15 @@
       "perUsd": "За 1 USD",
       "usdPerUnit": "USD за одиницю",
       "usdBase": "Проти долара США",
-      "eurBase": "Референтні курси євро ECB",
+      "eurBase": "Довідкові ставки євро Європейського центрального банку",
       "stressedCount": "{{stressed}} з {{total}} валют нижче {{threshold}}",
       "sourceYahoo": "Джерело: Yahoo Finance",
-      "sourceEcb": "Джерело: ECB",
+      "sourceEcb": "Джерело: Європейський центральний банк",
       "degraded": "Недоступно зараз: {{sources}}. Повторна спроба незабаром.",
       "source": {
-        "stress": "FX стрес",
+        "stress": "Стрес іноземної валюти",
         "usd": "Курси US долара",
-        "eur": "Курси євро ECB",
+        "eur": "Ставки євро Європейського центрального банку",
         "rub": "Курси Банку Росії"
       },
       "rubBase": "Банк Росії — рублів за 1 одиницю",
@@ -3106,7 +3106,7 @@
       "highSeverity": "High Severity"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS Interference",
+      "title": "Перешкоди супутниковій навігації",
       "navPerformance": "Aircraft Affected",
       "samples": "Affected Count",
       "aircraft": "Aircraft Seen",
@@ -3235,7 +3235,7 @@
     "operator": "OPERATOR",
     "countries": "COUNTRIES",
     "waypoints": "WAYPOINTS",
-    "repairEta": "REPAIR ETA",
+    "repairEta": "Орієнтовний час ремонту",
     "timeUnits": {
       "m": "m",
       "h": "h",
@@ -3246,7 +3246,7 @@
       "baseline": "Baseline",
       "components": {
         "news": "News",
-        "cii": "CII",
+        "cii": "Індекс нестабільності країни",
         "geo": "Geo",
         "military": "Military"
       },
@@ -3271,7 +3271,7 @@
     "time": "Time",
     "area": "Area",
     "expires": "Expires",
-    "aisGapSpike": "AIS GAP SPIKE",
+    "aisGapSpike": "Стрибок у перервах моніторингу суден",
     "chokepointCongestion": "CHOKEPOINT CONGESTION",
     "darkening": "DARKENING",
     "density": "DENSITY",
@@ -3296,7 +3296,7 @@
     "cableAdvisory": {
       "reported": "REPORTED",
       "impact": "IMPACT",
-      "eta": "ETA"
+      "eta": "Орієнтовний час прибуття"
     },
     "outage": {
       "levels": {
@@ -3391,10 +3391,10 @@
         "bomber": "Bomber",
         "transport": "Transport",
         "tanker": "Tanker",
-        "awacs": "AWACS/AEW",
+        "awacs": "Повітряне радіолокаційне попередження",
         "reconnaissance": "Reconnaissance",
         "helicopter": "Helicopter",
-        "drone": "UAV/Drone",
+        "drone": "Безпілотний літак/БПЛА",
         "patrol": "Patrol",
         "specialOps": "Special Operations",
         "vip": "VIP Transport"
@@ -3412,19 +3412,19 @@
       "builtYear": "РІК ВИПУСКУ"
     },
     "militaryVessel": {
-      "aisDark": "AIS DARK",
+      "aisDark": "Втрачено сигнал відстеження судна",
       "vessel": "Vessel",
       "speed": "SPEED",
       "heading": "HEADING",
-      "mmsi": "MMSI",
+      "mmsi": "Морська мобільна службова ідентичність",
       "region": "REGION",
       "strikeGroup": "STRIKE GROUP",
-      "usniIntel": "USNI Intel",
-      "usniSource": "Source: USNI News Fleet Tracker",
-      "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ Vessel has gone dark - AIS signal lost. May indicate sensitive operations.",
+      "usniIntel": "Розвідка US Naval Institute",
+      "usniSource": "Джерело: US Naval Institute News Fleet Tracker",
+      "approximatePosition": "Позиція приблизна — на основі тижневого звіту US Naval Institute, не в режимі реального часу.",
+      "darkDescription": "⚠ Судно втратило сигнал — втрачено сигнал відстеження судна. Може свідчити про закриті операції.",
       "estPosition": "EST. POSITION",
-      "aisLive": "AIS LIVE",
+      "aisLive": "Відстеження судна в реальному часі",
       "recentTracking": "Recent Tracking",
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
@@ -3474,7 +3474,7 @@
       "types": {
         "container": "CONTAINER",
         "oil": "OIL TERMINAL",
-        "lng": "LNG TERMINAL",
+        "lng": "Термінал зрідженого природного газу",
         "naval": "NAVAL PORT",
         "mixed": "MIXED",
         "bulk": "BULK"
@@ -3593,7 +3593,7 @@
       },
       "geo_convergence": {
         "whyItMatters": "Multiple news events clustering around same geographic location—potential escalation or coordinated activity.",
-        "actionableInsight": "Increase monitoring priority for this region; correlate with satellite/AIS data if available.",
+        "actionableInsight": "Збільшіть пріоритет моніторингу для цього регіону; перехресно порівняйте з даними супутникового та морського спостереження, якщо доступні.",
         "confidenceNote": "Higher confidence if events span multiple source types and time periods."
       },
       "explained_market_move": {
@@ -3679,14 +3679,14 @@
     "scanningThermalData": "Scanning thermal data",
     "calculatingExposure": "Calculating exposure",
     "computingSignals": "Computing signals...",
-    "loadingEtfData": "Loading ETF data...",
+    "loadingEtfData": "Завантаження даних біржових фондів...",
     "loadingGiving": "Loading global giving data",
     "loadingDisplacement": "Loading displacement data",
     "loadingClimateData": "Loading climate data",
     "failedTechReadiness": "Tech readiness data temporarily unavailable",
     "failedRiskOverview": "Risk overview temporarily unavailable",
     "failedPredictions": "Predictions temporarily unavailable",
-    "failedCII": "CII data temporarily unavailable",
+    "failedCII": "Дані Індексу нестабільності країни тимчасово недоступні",
     "failedDependencyGraph": "Dependency graph temporarily unavailable",
     "failedIntelFeed": "Intelligence feed temporarily unavailable",
     "failedMarketData": "Market data temporarily unavailable",
@@ -3763,7 +3763,7 @@
     "features": {
       "orefSirens1": "Real-time Israel missile & rocket alerts",
       "orefSirens2": "Siren zone mapping with threat classification",
-      "telegramIntel1": "Curated Telegram OSINT channels",
+      "telegramIntel1": "Кураторські канали відкритої розвідки Telegram",
       "telegramIntel2": "Near-real-time conflict & geopolitical updates",
       "xIntel1": "Curated public news accounts on X",
       "xIntel2": "API-fresh posts with official permalinks"

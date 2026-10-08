@@ -215,7 +215,7 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#priceInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
         }
         const today = localDateStr();
@@ -242,7 +242,7 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#datesInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
         }
         if (!start || !end) {

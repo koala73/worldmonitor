@@ -1333,9 +1333,9 @@ function detectSupplyChainScenarios(inputs) {
   const seenRoutes = new Set();
 
   for (const cp of chokepoints) {
-    if (!isChokepointDisrupted(cp.riskScore)) continue;
-
     const route = cp.route || cp.name || cp.region || '';
+    const region = cp.region || route;
+    if (!isChokepointDisrupted(cp.riskScore, region)) continue;
     if (!route || seenRoutes.has(route)) continue;
     seenRoutes.add(route);
 
@@ -1366,7 +1366,7 @@ function detectSupplyChainScenarios(inputs) {
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
-      'supply_chain', cp.region || route,
+      'supply_chain', region,
       `Supply chain disruption: ${route}`,
       prob, confidence, '7d', signals,
     ));

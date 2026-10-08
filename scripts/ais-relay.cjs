@@ -99,6 +99,7 @@ const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.j
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
+const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -9315,13 +9316,22 @@ const CHOKEPOINTS = [
 ];
 
 const chokepointCrossings = new Map();
-const transitCooldowns = new Map();
-const transitPendingEntry = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
+// How long zone membership outlives a vessel's last report inside the zone.
+// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
+// silent minutes, and an exit reported after that gap is still an exit.
+const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
+const transitTracker = createTransitTracker({
+  zones: CHOKEPOINTS,
+  minDwellMs: MIN_DWELL_MS,
+  cooldownMs: TRANSIT_COOLDOWN_MS,
+  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
+  crossings: chokepointCrossings,
+});
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -9433,7 +9443,6 @@ function updateVesselChokepoints(mmsi, lat, lon) {
   }
 
   const previous = vesselChokepoints.get(mmsi) || new Set();
-  const now = Date.now();
 
   for (const cpName of previous) {
     if (next.has(cpName)) continue;
@@ -9441,28 +9450,9 @@ function updateVesselChokepoints(mmsi, lat, lon) {
     if (!bucket) continue;
     bucket.delete(mmsi);
     if (bucket.size === 0) chokepointBuckets.delete(cpName);
-
-    const pendingKey = mmsi + ':' + cpName;
-    const entryTs = transitPendingEntry.get(pendingKey);
-    if (entryTs !== undefined && now - entryTs >= MIN_DWELL_MS) {
-      const cooldownKey = mmsi + ':' + cpName;
-      const lastCrossing = transitCooldowns.get(cooldownKey);
-      if (!lastCrossing || now - lastCrossing >= TRANSIT_COOLDOWN_MS) {
-        const vessel = vessels.get(mmsi);
-        const vType = classifyVesselType(vessel?.shipType);
-        let crossings = chokepointCrossings.get(cpName);
-        if (!crossings) { crossings = []; chokepointCrossings.set(cpName, crossings); }
-        crossings.push({ mmsi, type: vType, ts: now });
-        transitCooldowns.set(cooldownKey, now);
-      }
-    }
-    transitPendingEntry.delete(pendingKey);
   }
 
   for (const cpName of next) {
-    if (!previous.has(cpName)) {
-      transitPendingEntry.set(mmsi + ':' + cpName, now);
-    }
     let bucket = chokepointBuckets.get(cpName);
     if (!bucket) {
       bucket = new Set();
@@ -9625,6 +9615,7 @@ function processPositionReportForSnapshot(data) {
 
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
+  transitTracker.observe(mmsi, lat, lon, classifyVesselType(effectiveShipType), now);
 
   if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
@@ -9771,19 +9762,7 @@ function cleanupAggregates() {
     if (filtered.length === 0) chokepointCrossings.delete(cpName);
     else chokepointCrossings.set(cpName, filtered);
   }
-  for (const [key, ts] of transitCooldowns) {
-    if (now - ts > TRANSIT_COOLDOWN_MS) transitCooldowns.delete(key);
-  }
-  const pendingCutoff = 48 * 60 * 60 * 1000;
-  for (const [key, ts] of transitPendingEntry) {
-    if (now - ts > pendingCutoff) {
-      const sep = key.indexOf(':');
-      const pmsi = key.substring(0, sep);
-      const cpN = key.substring(sep + 1);
-      const memberships = vesselChokepoints.get(pmsi);
-      if (!memberships || !memberships.has(cpN)) transitPendingEntry.delete(key);
-    }
-  }
+  transitTracker.prune(now);
 }
 
 // Vessels seen again after extended AIS silence: mmsi → the return-seen
