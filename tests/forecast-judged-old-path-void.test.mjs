@@ -3,8 +3,14 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  JUDGED_EVIDENCE_GRACE_MS,
+  JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
+  JUDGED_EVIDENCE_SELECTION_VERSION,
+  JUDGED_MIN_TRUSTED_SELECTION_VERSION,
   JUDGED_OLD_SELECTION_VOID_REASON,
   SUBJECT_GATED_SELECTION_SINCE_MS,
+  judgedSelectionVersion,
+  resolveJudgedEntry,
   collectUnarchivedReceipts,
   ingestHistory,
   markReceiptsArchived,
@@ -216,5 +222,59 @@ describe('judged verdicts sealed on the stock-word selection (#8990)', () => {
     assert.match(source, new RegExp(`'${JUDGED_OLD_SELECTION_VOID_REASON}'`));
     const en = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
     assert.equal(en.components.forecast.resolution.void[JUDGED_OLD_SELECTION_VOID_REASON], 'Judged with an evidence method later found unreliable');
+  });
+});
+
+describe('judged verdicts carry the evidence-selection version they were sealed under (#9011)', () => {
+  const stamped = (id, version, resolvedAt = CUTOFF + DAY_MS) => {
+    const row = judgedRow(id, { resolvedAt });
+    row.evidence.selectionVersion = version;
+    return row;
+  };
+  const ledgerOf = (rows) => Object.fromEntries(rows.map((row) => [row.key, row]));
+  const voidedIds = (ledger) => Object.values(ledger).filter((row) => row.evidence?.reason === JUDGED_OLD_SELECTION_VOID_REASON).map((row) => row.id).sort();
+
+  it('stamps every judged verdict with the current selection version', async () => {
+    const deadline = Date.parse('2026-10-05T23:00:00Z');
+    const judgedAt = deadline + JUDGED_EVIDENCE_GRACE_MS + 60 * 60 * 1000;
+    const entry = {
+      id: 'fc-Mali', domain: 'conflict', region: 'Mali', title: 'Active armed conflict: Mali',
+      generatedAt: deadline - 7 * DAY_MS, deadline, status: 'pending-judge',
+      spec: { kind: 'judged', deadline, question: 'Did Mali escalate?' },
+    };
+    const items = ['A', 'B', 'C'].map((id) => ({ id, title: `Mali item ${id}: ceasefire holds in the north`, url: `https://news.example/${id}`, publishedAt: deadline - DAY_MS }));
+    const archive = { available: true, coverageStartMs: judgedAt - JUDGED_EVIDENCE_MAX_LOOKBACK_MS, coverageEndMs: judgedAt, items };
+    const judge = (id) => async () => ({ provider: 'p', model: 'm', outcome: 'NO', basis: 'absence', citations: [{ id, quote: `Mali item ${id}` }], rationale: 'fixture' });
+    const verdict = await resolveJudgedEntry(entry, archive, judgedAt, { judgeModels: [judge('A'), judge('B')] });
+    assert.equal(verdict.outcome, 'NO');
+    assert.equal(verdict.evidence.selectionVersion, JUDGED_EVIDENCE_SELECTION_VERSION);
+  });
+
+  it('reads the stamp first and dates only unstamped rows by the #8995 cutoff', () => {
+    assert.equal(judgedSelectionVersion(stamped('a', 3, CUTOFF - DAY_MS)), 3, 'the stamp wins over the seal time');
+    assert.equal(judgedSelectionVersion(judgedRow('b', { resolvedAt: CUTOFF - 1 })), 1);
+    assert.equal(judgedSelectionVersion(judgedRow('c', { resolvedAt: CUTOFF })), 3);
+    const undated = judgedRow('d');
+    delete undated.resolvedAt;
+    assert.equal(judgedSelectionVersion(undated), null);
+  });
+
+  it('a version bump voids exactly the verdicts sealed under older versions', () => {
+    assert.equal(JUDGED_MIN_TRUSTED_SELECTION_VERSION, 2);
+    const rows = () => [
+      stamped('fc-v1', 1),
+      stamped('fc-v3', 3),
+      stamped('fc-v4', 4),
+      judgedRow('fc-legacy-old', { resolvedAt: CUTOFF - DAY_MS }),
+      judgedRow('fc-legacy-new', { resolvedAt: CUTOFF + DAY_MS }),
+    ];
+    const today = ledgerOf(rows());
+    assert.equal(voidOldSelectionJudgedResolutions(today, NOW), 2);
+    assert.deepEqual(voidedIds(today), ['fc-legacy-old', 'fc-v1']);
+    const bumped = ledgerOf(rows());
+    assert.equal(voidOldSelectionJudgedResolutions(bumped, NOW, 4), 4);
+    assert.deepEqual(voidedIds(bumped), ['fc-legacy-new', 'fc-legacy-old', 'fc-v1', 'fc-v3']);
+    assert.equal(byId(bumped)['fc-v4'].outcome, 'YES');
+    assert.equal(voidOldSelectionJudgedResolutions(bumped, NOW + DAY_MS, 4), 0, 'a second pass changes nothing');
   });
 });

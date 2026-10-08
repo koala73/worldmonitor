@@ -756,6 +756,14 @@ function collectNormalizeClasses(judgments) {
   return classes.length ? classes : undefined;
 }
 
+// Bump whenever the judged lane changes which evidence the judges see, so a
+// later correction finds the verdicts sealed under the old selection by their
+// stamp rather than by a deploy time (#9011).
+//  1: stock words from the question template, no deadline cutoff (before #8995).
+//  2: subject-gated evidence through the deadline (#8995).
+//  3: subject table, title-first ranking, event-word absence floor (#8999).
+export const JUDGED_EVIDENCE_SELECTION_VERSION = 3;
+
 export function selectJudgedArchiveItems(entry, archiveItems, options = {}) {
   return selectNormalizedJudgedArchiveItems(entry, normalizeJudgedArchiveItems(archiveItems), options);
 }
@@ -1431,6 +1439,7 @@ function resolvedJudgedResult(outcome, reason, entry, judgments, archiveItems, n
       reason,
       basis: outcome === 'VOID' ? undefined : judgments[0]?.basis,
       resolvedAt: nowMs,
+      selectionVersion: JUDGED_EVIDENCE_SELECTION_VERSION,
       question: spec.question,
       deadline: Number.isFinite(Number(spec.deadline ?? entry?.deadline)) ? Number(spec.deadline ?? entry?.deadline) : undefined,
       judgedBy: judgments.map((judgment) => pruneUndefined({
@@ -2126,13 +2135,28 @@ export function voidEnvelopeBugResolutions(ledger, nowMs) {
 // Re-running is a no-op: a voided row is no longer YES or NO.
 export const JUDGED_OLD_SELECTION_VOID_REASON = 'judged_old_selection';
 export const SUBJECT_GATED_SELECTION_SINCE_MS = Date.parse('2026-10-07T14:39:00Z');
+// Verdicts sealed under an older selection than this are voided. Raise it to
+// retire a selection; the stamp says which rows that reaches.
+export const JUDGED_MIN_TRUSTED_SELECTION_VERSION = 2;
 
-export function voidOldSelectionJudgedResolutions(ledger, nowMs) {
+// The selection a verdict was sealed under. Rows sealed before the stamp
+// existed are dated by the #8995 deploy. No judged YES or NO was sealed
+// between that deploy and #8999's, so every later unstamped row is version 3.
+export function judgedSelectionVersion(entry) {
+  const stamp = entry?.evidence?.selectionVersion;
+  if (Number.isInteger(stamp)) return stamp;
+  const resolvedAt = Number(entry?.resolvedAt);
+  if (!Number.isFinite(resolvedAt)) return null;
+  return resolvedAt < SUBJECT_GATED_SELECTION_SINCE_MS ? 1 : 3;
+}
+
+export function voidOldSelectionJudgedResolutions(ledger, nowMs, minTrustedVersion = JUDGED_MIN_TRUSTED_SELECTION_VERSION) {
   let voided = 0;
   for (const entry of Object.values(ledger)) {
     if (entry?.status !== 'resolved' || entry.spec?.kind !== 'judged') continue;
     if (entry.outcome !== 'YES' && entry.outcome !== 'NO') continue;
-    if (!(Number(entry.resolvedAt) < SUBJECT_GATED_SELECTION_SINCE_MS)) continue;
+    const version = judgedSelectionVersion(entry);
+    if (version == null || version >= minTrustedVersion) continue;
     entry.evidence = {
       reason: JUDGED_OLD_SELECTION_VOID_REASON,
       resolvedAt: entry.resolvedAt,
