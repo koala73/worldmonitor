@@ -1907,6 +1907,20 @@ test('Docker rejects native administration without changing configuration, cache
         assert.equal(response.status, 403);
       });
     }
+    // GHSA-wf3p-9m55-6vm8: nginx matches `\\` literally but the sidecar's URL
+    // parser reads it as `/`, so this spelling slips past nginx's prefix block.
+    // Sent raw because fetch() would normalize it before it left the client.
+    await t.test('a backslash-spelled admin path is still denied', async () => {
+      const status = await new Promise((resolve, reject) => {
+        const req = httpRequest({
+          host: '127.0.0.1', port, method: 'POST', path: '/api/x\\..\\local-env-update',
+          headers: { ...proxyHeaders, 'Content-Type': 'application/json' },
+        }, (res) => { res.resume(); resolve(res.statusCode); });
+        req.on('error', reject);
+        req.end(JSON.stringify({ key: 'WS_RELAY_URL', value: otherRelay }));
+      });
+      assert.equal(status, 403);
+    });
     await t.test('spoofed and native credentials cannot override Docker mode', async () => {
       for (const headers of [{}, { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` }, {
         Authorization: 'Bearer caller-oauth', Origin: 'https://tauri.localhost',

@@ -197,6 +197,39 @@ describe("api/chat-analyst direct LLM quota lifecycle", () => {
     expect(quotaCounter).toBe(0);
   });
 
+  // GHSA-cgm2-fpj5-427h: cancelling after a provider accepted the request but
+  // before answer content refunded work the provider had already taken on.
+  test("a client abort after a provider accepted the request keeps the quota charge", async () => {
+    let cancelCalled = false;
+    callLlmReasoningStream.mockImplementation((opts: { onProviderAccepted?: () => void }) =>
+      new ReadableStream<Uint8Array>({
+        start() {
+          opts.onProviderAccepted?.();
+        },
+        cancel() {
+          cancelCalled = true;
+        },
+      }));
+
+    const response = await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+    await response.body?.cancel("client disconnected");
+
+    expect(cancelCalled).toBe(true);
+    expect(quotaCounter).toBe(1);
+  });
+
+  test("an accepted request that ends without an answer keeps the quota charge", async () => {
+    callLlmReasoningStream.mockImplementation((opts: { onProviderAccepted?: () => void }) => {
+      opts.onProviderAccepted?.();
+      return llmEvents([{ error: "llm_unavailable" }]);
+    });
+
+    const response = await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+    await response.text();
+
+    expect(quotaCounter).toBe(1);
+  });
+
   test("a client abort after answer content keeps the quota charge", async () => {
     let cancelCalled = false;
     callLlmReasoningStream.mockReturnValue(new ReadableStream<Uint8Array>({

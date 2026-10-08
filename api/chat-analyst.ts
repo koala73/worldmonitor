@@ -285,6 +285,10 @@ export default async function handler(req: Request): Promise<Response> {
       timeoutMs: 25_000,
       signal: req.signal,
       stage: 'chat-analyst',
+      // A provider that took the request has done billable work, so the
+      // reservation stands even if the client cancels before any answer
+      // content (GHSA-cgm2-fpj5-427h).
+      onProviderAccepted: () => { rollbackQuota = null; },
     });
 
     // Always prepend a meta event so the client knows which sources are live

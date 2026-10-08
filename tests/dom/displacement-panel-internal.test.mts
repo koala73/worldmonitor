@@ -9,6 +9,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { toInternalDisplacementData } from '@/services/displacement/internal';
+import { toCrossBorderData } from '@/services/displacement/cross-border';
+import { formatPopulation } from '@/services/displacement';
 import type { GetInternalDisplacementResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
@@ -75,6 +77,16 @@ describe('Internal tab', () => {
     expect(rows().map((row) => row.querySelector('.disp-name')?.firstChild?.textContent)).toEqual(['Sudan', 'Burundi']);
   });
 
+  it('keeps DTM data when the UNHCR load fails afterwards', async () => {
+    mount();
+    panel.setInternalData(toInternalDisplacementData(RESPONSE));
+    await flush();
+    // DataLoaderManager.showColdLoadError: an error only replaces a panel holding no data.
+    if (!panel.hasData()) panel.showError();
+    await flush();
+    expect(rows()).toHaveLength(2);
+  });
+
   it('focuses the map on a placed operation and ignores an unplaced one', async () => {
     mount();
     const onClick = vi.fn();
@@ -86,5 +98,45 @@ describe('Internal tab', () => {
     expect(onClick).not.toHaveBeenCalled();
     sudan!.click();
     expect(onClick).toHaveBeenCalledWith(15.66, 35.87);
+  });
+});
+
+describe('Cross-border tab', () => {
+  const CROSS_BORDER = toCrossBorderData({
+    situations: [
+      {
+        id: 'nigeria', name: 'Nigeria situation', origin: 'NG', asOf: '2026-08-31', accelerating: true,
+        flows: [{ kind: 'outflow', label: 'Refugees from Nigeria', origin: 'NG', measure: 'stock', total: 472619, asOf: '2026-08-31',
+          countries: [{ country: 'Niger', iso2: 'NE', individuals: 324219, date: '2026-08-31', location: { latitude: 17.6, longitude: 8.1 } }] }],
+        trend: { measure: 'stock', points: [], latestDelta: 46171, latestDays: 31, accelerating: true },
+      },
+      {
+        id: 'mediterranean', name: 'Mediterranean routes', origin: '', asOf: '2026-10-04', accelerating: false,
+        flows: [{ kind: 'arrival', label: 'Sea and land arrivals', origin: '', measure: 'monthly', total: 78128, asOf: '2026-10-04',
+          months: [{ month: '2026-10', individuals: 349 }, { month: '2026-09', individuals: 12033 }],
+          countries: [{ country: 'Spain', iso2: 'ES', individuals: 24646, date: '2026-09-30' }] }],
+      },
+    ],
+  });
+
+  it('lists situations with their latest change next to the DTM tab, without UNHCR data', async () => {
+    mount();
+    panel.setInternalData(toInternalDisplacementData(RESPONSE));
+    panel.setCrossBorderData(CROSS_BORDER);
+    await flush();
+    const tabIds = Array.from(panel.getElement().querySelectorAll<HTMLElement>('.panel-tab')).map((tab) => tab.dataset.tab);
+    expect(tabIds).toEqual(['internal', 'crossBorder']);
+    panel.getElement().querySelector<HTMLElement>('[data-tab="crossBorder"]')!.click();
+    await flush();
+    const [nigeria, med] = rows().map((row) => Array.from(row.querySelectorAll('td')));
+    expect(nigeria![0]!.textContent).toContain('Nigeria situation');
+    expect(nigeria![0]!.querySelector('.disp-badge')?.textContent).toBe(tt('components.displacement.accelerating'));
+    expect(nigeria![0]!.textContent).toContain('2026-08-31 · Niger');
+    expect(nigeria![1]!.textContent).toContain(`+${formatPopulation(46171)}`);
+    expect(nigeria![1]!.textContent).toContain(tt('components.displacement.inDays', { days: '31' }));
+    expect(nigeria![2]!.textContent).toBe(formatPopulation(472619));
+    expect(med![1]!.textContent).toContain(`+${formatPopulation(12033)}`);
+    expect(med![1]!.textContent).toContain('2026-09');
+    expect(med![2]!.textContent).toBe(formatPopulation(78128));
   });
 });

@@ -12,6 +12,7 @@ import type {
 import { callLlm } from '../../../_shared/llm';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
+import { sha256Hex } from '../../../_shared/hash';
 import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 import { storeStockAnalysisSnapshot } from './premium-stock-store';
 import { searchRecentStockHeadlines } from './stock-news-search';
@@ -1984,6 +1985,21 @@ export type AnalyzeStockOptions = {
   now?: Date;
 };
 
+// The cached row returns `name` verbatim and feeds it to the LLM, so the key
+// must cover the whole name. A lossy form let distinct names share one row
+// across callers (GHSA-2fp6-mhpm-9gvh).
+export async function buildAnalyzeStockCacheKey(
+  symbol: string,
+  name: string,
+  includeNews: boolean,
+): Promise<string> {
+  const nameSuffix = name !== symbol ? `:${(await sha256Hex(name)).slice(0, 32)}` : '';
+  // v7 -> v8: expose the fundamentals-blended rating through the additive
+  // ratingSignal field while preserving the legacy technical signal/signalScore
+  // pair for already-loaded web, desktop, and API clients.
+  return `market:analyze-stock:v8:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+}
+
 export async function analyzeStock(
   _ctx: ServerContext,
   req: AnalyzeStockRequest,
@@ -1996,11 +2012,7 @@ export async function analyzeStock(
 
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
-  const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v7 -> v8: expose the fundamentals-blended rating through the additive
-  // ratingSignal field while preserving the legacy technical signal/signalScore
-  // pair for already-loaded web, desktop, and API clients.
-  const cacheKey = `market:analyze-stock:v8:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  const cacheKey = await buildAnalyzeStockCacheKey(symbol, name, includeNews);
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [historyOutcome, analystData] = await Promise.all([

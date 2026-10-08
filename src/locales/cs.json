@@ -1320,7 +1320,10 @@
         "undisclosed": "Nezveřejněno",
         "stake": "podíl",
         "internallyDisplaced": "vnitřně vysídlených",
-        "sourceIomDtm": "Zdroj: IOM DTM"
+        "sourceIomDtm": "Zdroj: IOM DTM",
+        "sinceDate": "od {{date}}",
+        "lastMonth": "minulý měsíc",
+        "sourceUnhcrOdp": "Zdroj: Portál operačních dat UNHCR"
       },
       "layerHelp": {
         "title": "Průvodce mapovými vrstvami",
@@ -1740,7 +1743,13 @@
       "count": "Počet",
       "latestRound": "Poslední kolo",
       "internalNote": "IOM DTM: vnitřně vysídlené osoby, poslední kolo průzkumu pro každou operaci. Operace v jedné zemi se mohou překrývat, proto se nesčítají.",
-      "infoTooltip": "<strong>Data o vysídlení UNHCR</strong> Globální počty uprchlíků, žadatelů o azyl a IDP (vnitřně přesídlených) od UNHCR.<ul><li><strong>Původy</strong>: Země, ze kterých lidé utíkají</li><li><strong>Hostitelé</strong>: Země hostící uprchlíky</li><li>Odznaky krizí: >1M | Vysoká: >500K vysídlených</li></ul>Data se aktualizují ročně. Licence CC BY 4.0."
+      "infoTooltip": "<strong>Data o vysídlení UNHCR</strong> Globální počty uprchlíků, žadatelů o azyl a IDP (vnitřně přesídlených) od UNHCR.<ul><li><strong>Původy</strong>: Země, ze kterých lidé utíkají</li><li><strong>Hostitelé</strong>: Země hostící uprchlíky</li><li>Odznaky krizí: >1M | Vysoká: >500K vysídlených</li></ul>Data se aktualizují ročně. Licence CC BY 4.0.",
+      "crossBorder": "Přeshraniční",
+      "situation": "Situace",
+      "latestChange": "Poslední změna",
+      "accelerating": "Zrychluje se",
+      "inDays": "za {{days}} dní",
+      "crossBorderNote": "Portál operačních dat UNHCR: lidé, kteří při jednotlivých krizích překročili hranice, podle posledních zpráv za jednotlivé země. Situace se překrývají, proto se nesčítají."
     },
     "climate": {
       "noAnomalies": "Nebyly zjištěny žádné významné anomálie",

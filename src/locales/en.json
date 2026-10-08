@@ -1468,7 +1468,10 @@
         "undisclosed": "Undisclosed",
         "stake": "stake",
         "internallyDisplaced": "internally displaced",
-        "sourceIomDtm": "Source: IOM DTM"
+        "sourceIomDtm": "Source: IOM DTM",
+        "sinceDate": "since {{date}}",
+        "lastMonth": "last month",
+        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1895,7 +1898,13 @@
       "count": "Count",
       "latestRound": "Latest round",
       "internalNote": "IOM DTM: internally displaced people, latest survey round per operation. Operations in one country can overlap, so they are not added together.",
-      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
+      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license.",
+      "crossBorder": "Cross-border",
+      "situation": "Situation",
+      "latestChange": "Latest change",
+      "accelerating": "Accelerating",
+      "inDays": "in {{days}} days",
+      "crossBorderNote": "UNHCR Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",

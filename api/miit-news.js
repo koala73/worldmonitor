@@ -8,6 +8,10 @@ export const config = { runtime: 'edge' };
 const SOURCE_URL = 'https://www.miit.gov.cn/';
 const CACHE_KEY = 'miit:news-listing:v1';
 const CACHE_TTL_SECONDS = 300;
+// www.miit.gov.cn times out from the edge often enough to page Sentry
+// (WORLDMONITOR-17C). Keep the last good parse for the whole listing window
+// and serve it, re-filtered by age, when the live listing fails.
+const LAST_GOOD_KEY = 'miit:news-listing:last-good:v1';
 // Official homepage listings can go quiet across multi-day Chinese public
 // holidays (National Day, Spring Festival). A wall-clock seven-day ms window
 // measured from listing midnight +08 cliffs at the next China midnight and
@@ -15,6 +19,7 @@ const CACHE_TTL_SECONDS = 300;
 // articles (Sentry WORLDMONITOR-17K). Keep calendar days in Asia/Shanghai and
 // allow two weeks so holiday gaps do not 502 the adapter.
 const MAX_LISTING_AGE_DAYS = 14;
+const LAST_GOOD_TTL_SECONDS = MAX_LISTING_AGE_DAYS * 86400;
 const XML_CONTROLS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
 function chinaCalendarDaysBetween(day, nowMs) {
@@ -80,6 +85,34 @@ export function parseMiitNews(html, nowMs = Date.now()) {
   return [...items.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
 }
 
+function withinListingWindow(item, nowMs) {
+  const dateMs = Date.parse(item?.date ?? '');
+  if (!Number.isFinite(dateMs) || dateMs > nowMs) return false;
+  const day = new Date(dateMs + 8 * 3600000).toISOString().slice(0, 10);
+  return chinaCalendarDaysBetween(day, nowMs) <= MAX_LISTING_AGE_DAYS;
+}
+
+async function readLastGood() {
+  try {
+    const stored = await readRawJsonFromUpstash(LAST_GOOD_KEY);
+    if (!Array.isArray(stored)) return [];
+    const nowMs = Date.now();
+    return stored.filter((item) => withinListingWindow(item, nowMs));
+  } catch {
+    return [];
+  }
+}
+
+function rssResponse(items, maxAgeSeconds) {
+  return new Response(renderMiitRss(items), {
+    headers: {
+      ...getPublicCorsHeaders(),
+      'Content-Type': 'application/rss+xml; charset=utf-8',
+      'Cache-Control': `public, max-age=${maxAgeSeconds}, s-maxage=${maxAgeSeconds}`,
+    },
+  });
+}
+
 export function renderMiitRss(items) {
   return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
 <title>MIIT (China)</title><link>${SOURCE_URL}</link><language>zh-CN</language>
@@ -110,19 +143,18 @@ export default async function handler(req, ctx) {
       if (html.length > 1_000_000) throw new Error('MIIT listing exceeds size limit');
       items = parseMiitNews(html);
       if (items.length === 0) throw new Error('MIIT listing has no dated official articles');
-      try { await setCachedData(CACHE_KEY, items, CACHE_TTL_SECONDS); } catch { /* Cache is a load shield. */ }
+      try {
+        await Promise.all([
+          setCachedData(CACHE_KEY, items, CACHE_TTL_SECONDS),
+          setCachedData(LAST_GOOD_KEY, items, LAST_GOOD_TTL_SECONDS),
+        ]);
+      } catch { /* Cache is a load shield. */ }
     }
-    return new Response(renderMiitRss(items), {
-      headers: {
-        ...getPublicCorsHeaders(),
-        'Content-Type': 'application/rss+xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-      },
-    });
+    return rssResponse(items, CACHE_TTL_SECONDS);
   } catch (error) {
     // AbortSignal.timeout(10000) on the official listing fetch surfaces as
     // TimeoutError / AbortError when www.miit.gov.cn is slow or unreachable
-    // from the edge. The handler already returns 502; downgrade the Sentry
+    // from the edge. The handler falls back to last-good; downgrade the Sentry
     // capture to warning so one-shot upstream timeouts stay queryable without
     // drowning real listing bugs (empty parse, HTTP non-ok, size limit).
     // Same gate as api/brief/carousel and api/_relay (WORLDMONITOR-17C).
@@ -134,6 +166,9 @@ export default async function handler(req, ctx) {
       ctx,
       ...(isTransientTimeout ? { level: 'warning' } : {}),
     });
+    // Short CDN lifetime so the edge retries the live listing soon.
+    const lastGood = await readLastGood();
+    if (lastGood.length > 0) return rssResponse(lastGood, 60);
     return jsonResponse({ error: 'MIIT official news unavailable' }, 502, {
       ...cors, 'Cache-Control': 'no-store',
     });
