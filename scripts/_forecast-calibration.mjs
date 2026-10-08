@@ -40,6 +40,7 @@ import {
  *   mode: CalibrationMode,
  *   knots: CalibrationKnot[],
  *   inputs?: Record<string, string>,
+ *   carriedFrom?: string,
  * }} CalibrationDomain
  * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_input_withdrawn' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth' | 'fit_aged_out'} RefitReason
  * @typedef {{
@@ -95,10 +96,10 @@ export const CALIBRATION_RETAIN_FRACTION = 0.5;
 // about 30%. New evidence is counted since fittedAt, not as the rolling-window
 // total, which plateaus at the arrival rate times the window.
 export const CALIBRATION_REFIT_FAMILY_GROWTH = 2;
-// A passing activation gate holds every trigger except a withdrawn input,
-// but only for one rolling window after the fit: past that, every input of
-// the published map has left the cohort the scorecard grades.
-export const CALIBRATION_MAX_HOLD_DAYS = DEFAULT_ROLLING_WINDOW_DAYS;
+// A passing activation gate holds every trigger except a withdrawn input, with
+// no time limit. The gate scores only forward outcomes resolved inside the
+// scorecard's rolling window, so a map stays held only while recent evidence
+// still validates it.
 // A domain with no YES outcomes fits to 0. Publishing 0% is a claim of
 // impossibility the sample cannot support, so knots are bounded.
 export const CALIBRATION_PROBABILITY_FLOOR = 0.01;
@@ -278,9 +279,10 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
     const base = { n: points.length, positives: points.reduce((sum, point) => sum + point.y, 0), ...eligibility };
     // A fitted domain keeps its input rows, so a later correction to any of
     // them is visible (refitTrigger).
+    const carried = options.carry?.[domain];
     domains[domain] = eligibility.eligible
       ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds), inputs: Object.fromEntries(entries.map((entry) => [entry.key, inputFingerprint(entry)])) }
-      : { ...base, mode: 'identity', knots: [] };
+      : carried ?? { ...base, mode: 'identity', knots: [] };
   }
 
   const emissions = cohort.map(emissionTime);
@@ -390,9 +392,9 @@ function retainsFit(eligibility, { minFamilies, minOutcomeFamilies }) {
  * Why the current ledger calls for a refit of `map`, or null. Rules, in
  * order: a fitted domain one of whose inputs was corrected; a fitted domain
  * below half the minimums; an identity domain that became eligible; a fitted
- * domain whose families since the fit match its fitted families; and an
- * eligible fitted domain none of whose inputs is left in the window.
- * @returns {{ reason: RefitReason, domain: string } | null}
+ * domain whose families since the fit match its fitted families; and a fitted
+ * domain none of whose inputs is left in the window.
+ * @returns {{ trigger: { reason: RefitReason, domain: string } | null, carry: Record<string, CalibrationDomain> }}
  */
 function refitTrigger(map, ledger, nowMs, options) {
   const minimums = eligibilityMinimums(options);
@@ -413,25 +415,31 @@ function refitTrigger(map, ledger, nowMs, options) {
       .map((entry) => entry.id)).size;
   };
   const inputsInWindow = (domain) => rows(domain).some((entry) => Object.hasOwn(map.domains[domain].inputs, entry.key));
+  const withdrawn = (domain) => hasWithdrawnInput(map.domains[domain], entriesByKey);
   const rules = [
-    ['fit_input_withdrawn', (domain) => fitted(domain) && hasWithdrawnInput(map.domains[domain], entriesByKey)],
+    ['fit_input_withdrawn', (domain) => fitted(domain) && withdrawn(domain)],
     ['fit_invalidated', (domain) => fitted(domain) && !retainsFit(eligibility(domain), minimums)],
     ['domain_became_eligible', (domain) => !fitted(domain) && eligibility(domain)?.eligible],
     ['family_growth', (domain) => fitted(domain)
       && map.domains[domain].families + familiesSinceFit(domain) >= CALIBRATION_REFIT_FAMILY_GROWTH * map.domains[domain].families],
-    ['fit_aged_out', (domain) => fitted(domain) && eligibility(domain)?.eligible && !inputsInWindow(domain)],
+    ['fit_aged_out', (domain) => fitted(domain) && !inputsInWindow(domain)],
   ];
   const domains = [...new Set([...Object.keys(map.domains), ...cohort.keys()])].sort();
+  // A fit inside the retain band that gives no trigger of its own survives a
+  // refit another domain caused; a fresh fit would drop it to identity.
+  const carry = Object.fromEntries(domains
+    .filter((domain) => fitted(domain) && !eligibility(domain)?.eligible && retainsFit(eligibility(domain), minimums)
+      && !withdrawn(domain) && inputsInWindow(domain))
+    .map((domain) => [domain, { ...map.domains[domain], carriedFrom: map.domains[domain].carriedFrom ?? map.version }]));
   for (const [reason, applies] of rules) {
     const domain = domains.find(applies);
-    if (domain) return { reason, domain };
+    if (domain) return { trigger: { reason, domain }, carry };
   }
-  return null;
+  return { trigger: null, carry };
 }
 
 function holdsRefit(trigger, map, ledger, nowMs) {
   if (trigger.reason === 'fit_input_withdrawn') return false;
-  if (nowMs - map.fittedAt > CALIBRATION_MAX_HOLD_DAYS * DAY_MS) return false;
   return evaluateCalibrationShadow(ledger, map, nowMs).activationGate.eligible;
 }
 
@@ -440,8 +448,9 @@ function holdsRefit(trigger, map, ledger, nowMs) {
  * the ledger gives a refit trigger. Refitting on every run would move
  * fittedAt forward daily and the forward cohort would never accumulate.
  * While the activation gate passes, a trigger other than a withdrawn input is
- * held for up to CALIBRATION_MAX_HOLD_DAYS after the fit: a refit would
- * discard the forward evidence and revert a validated publication.
+ * held: a refit would discard the forward evidence and revert a validated
+ * publication. The gate reads only the recent window, so the hold ends when
+ * recent evidence stops validating the map.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
@@ -450,10 +459,10 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
     const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
     return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, refitReason: reason }), action: 'fitted', reason };
   }
-  const trigger = refitTrigger(parsed, ledger, nowMs, options);
+  const { trigger, carry } = refitTrigger(parsed, ledger, nowMs, options);
   if (!trigger) return { map: parsed, action: 'kept' };
   if (holdsRefit(trigger, parsed, ledger, nowMs)) return { map: parsed, action: 'kept', held: trigger };
-  const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason });
+  const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason, carry });
   return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
 }
 
@@ -525,11 +534,16 @@ function forwardContext(forwardEntries, nowMs) {
 /**
  * Shadow block for the scorecard: the forward cohort is every ledger entry
  * emitted after the map's fit window, so the evaluation never sees an outcome
- * the fit used.
+ * the fit used, less outcomes resolved before the scorecard's rolling window.
  */
 export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
   if (!map) return { status: 'no_map' };
-  const forwardEntries = ledgerEntries(ledger).filter((entry) => emissionTime(entry) > map.fitWindow.to);
+  // Same window as the scorecard: an outcome the public record no longer
+  // grades cannot keep validating the map. An unresolved entry has no
+  // resolvedAt, so it stays.
+  const minResolvedAt = nowMs - (options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS) * DAY_MS;
+  const forwardEntries = ledgerEntries(ledger).filter((entry) => emissionTime(entry) > map.fitWindow.to
+    && !(Number(entry.resolvedAt) < minResolvedAt));
   const { forward, activationGate } = evaluateCalibrationCohort(forwardEntries, map, forwardContext(forwardEntries, nowMs), options);
   return {
     status: 'shadow',
