@@ -132,7 +132,7 @@ export const SCORECARD_NESTED_ROW_FIELDS = Object.freeze({
 
 const ISSUE_URL = 'https://github.com/koala73/worldmonitor/issues';
 const CONFIDENCE_INTERVAL_ISSUE = `${ISSUE_URL}/7072`;
-const HORIZON_SCORING_ISSUE = `${ISSUE_URL}/7075`;
+const HORIZON_SCORING_ISSUE = `${ISSUE_URL}/9057`;
 const DATASET_IDENTIFIER = 'forecast-resolution-scorecard';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -1214,7 +1214,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
         <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
-        <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
+        <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #9057</a>.</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
 }

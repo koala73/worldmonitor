@@ -915,8 +915,12 @@ describe('accuracy page honesty rules', () => {
     assert.deepEqual(download.horizonProjections, {
       valuesPublished: false,
       gradesPublished: false,
-      trackedIn: 'https://github.com/koala73/worldmonitor/issues/7075',
+      trackedIn: 'https://github.com/koala73/worldmonitor/issues/9057',
     });
+    // #7075 closed with internal grading; publishing those grades is #9057.
+    const html = renderState(LIVE_SECTION).html;
+    assert.match(html, /Those horizon grades are not published yet\. Tracking: <a href="https:\/\/github\.com\/koala73\/worldmonitor\/issues\/9057">issue #9057<\/a>\./);
+    assert.doesNotMatch(html, /issues\/7075/);
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
     assert.deepEqual(download.pooledPopulations, {
