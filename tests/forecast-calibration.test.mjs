@@ -4,20 +4,23 @@ import { describe, it } from 'node:test';
 
 import {
   CALIBRATION_CODE_VERSION,
-  CALIBRATION_MIN_DOMAIN_SAMPLE,
-  CALIBRATION_MIN_TOTAL_SAMPLE,
+  CALIBRATION_MIN_FAMILIES,
+  CALIBRATION_MIN_OUTCOME_FAMILIES,
+  CALIBRATION_REFIT_FAMILY_GROWTH,
   CalibrationCohortOverlapError,
   applyCalibration,
   applyPublishedCalibration,
   decideCalibrationPublication,
   evaluateCalibrationCohort,
   evaluateCalibrationShadow,
+  evaluateFitEligibility,
   fitCalibrationMap,
   isotonicKnots,
   knotsAreMonotone,
   parseCalibrationMap,
   recordCalibrationPublication,
   resolveCalibrationMapForRun,
+  selectFitCohort,
 } from '../scripts/_forecast-calibration.mjs';
 import {
   ACTIVATION_MIN_FORWARD_DOMAIN,
@@ -29,6 +32,7 @@ import {
   CALIBRATION_MAP_KEY,
   CALIBRATION_MAP_META_KEY,
   buildScorecard,
+  buildScorecardForRun,
   declareCalibrationMapRecords,
   resolveCalibrationMap,
 } from '../scripts/seed-forecast-resolutions.mjs';
@@ -77,16 +81,29 @@ function repeat(count, make) {
   return Array.from({ length: count }, (_, index) => make(index));
 }
 
+// 60 forward NO rows at p=0.1 from 30 families, two windows each: the map's
+// 0.4 is worse than raw on all of them.
+function forward60NoAt(fitAt) {
+  return repeat(60, (i) => ({ ...entry({ outcome: 'NO', probability: 0.1, generatedAt: fitAt + DAY_MS + i }), id: `c1-${i % 30}` }));
+}
+
+// `families` one-row families, the first `yes` of them resolved YES.
+function twoSided(families, yes, options = {}) {
+  return repeat(families, (index) => entry({ ...options, outcome: index < yes ? 'YES' : 'NO' }));
+}
+
 describe('golden fit on the frozen published-origin ledger', () => {
-  // The map persisted on 2026-10-06 also fitted 9 unknown-origin rows
-  // (7 conflict, 1 market, 1 supply_chain). Excluding them (#5240) changes only
-  // identity domains, so the applied curve is the same as that map's.
+  // The map persisted on 2026-10-06 fitted cyber to a constant 0.01 from 197
+  // all-NO rows. They come from 19 families and no family resolved YES, so
+  // under family minimums every domain is identity.
   it('fits the frozen 2026-10-06 ledger exactly', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT);
     assert.deepEqual(map, {
       schemaVersion: 1,
-      version: `forecast-calibration-pav-v2@${FIT_AT}`,
-      codeVersion: 'forecast-calibration-pav-v2',
+      version: `forecast-calibration-pav-v3@${FIT_AT}`,
+      codeVersion: 'forecast-calibration-pav-v3',
+      dataVersion: 1,
+      refitReason: 'absent',
       fittedAt: FIT_AT,
       fitWindow: { from: 1783494135407, to: FIT_AT },
       cohortFilter: {
@@ -96,29 +113,36 @@ describe('golden fit on the frozen published-origin ledger', () => {
         emissionField: 'generatedAt',
       },
       sourceStage: 'marketBlendedProbability',
-      minTotalSample: 60,
-      minDomainSample: 30,
+      minFamilies: 30,
+      minOutcomeFamilies: 12,
       probabilityBounds: { floor: 0.01, ceiling: 0.99 },
       totalSample: 232,
       domains: {
-        conflict: { n: 11, positives: 8, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
-        cyber: { n: 197, positives: 0, mode: 'isotonic', knots: [{ x: 0.011, y: 0.01 }, { x: 0.53, y: 0.01 }] },
-        infrastructure: { n: 11, positives: 0, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
-        market: { n: 7, positives: 5, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
-        military: { n: 6, positives: 4, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] },
+        conflict: { n: 11, positives: 8, families: 9, yesFamilies: 7, noFamilies: 3, eligible: false, ineligibleReason: 'insufficient_families', mode: 'identity', knots: [] },
+        cyber: { n: 197, positives: 0, families: 19, yesFamilies: 0, noFamilies: 19, eligible: false, ineligibleReason: 'insufficient_families', mode: 'identity', knots: [] },
+        infrastructure: { n: 11, positives: 0, families: 4, yesFamilies: 0, noFamilies: 4, eligible: false, ineligibleReason: 'insufficient_families', mode: 'identity', knots: [] },
+        market: { n: 7, positives: 5, families: 4, yesFamilies: 4, noFamilies: 2, eligible: false, ineligibleReason: 'insufficient_families', mode: 'identity', knots: [] },
+        military: { n: 6, positives: 4, families: 4, yesFamilies: 2, noFamilies: 2, eligible: false, ineligibleReason: 'insufficient_families', mode: 'identity', knots: [] },
       },
     });
   });
 
-  it('pools adjacent violators on real mixed outcomes when the domain minimum is lowered', () => {
-    const map = fitCalibrationMap(FIXTURE.data, FIT_AT, { minDomainSample: 10 });
-    assert.deepEqual(map.domains.conflict, {
+  it('pools adjacent violators on real mixed outcomes when the family minimums are lowered', () => {
+    const map = fitCalibrationMap(FIXTURE.data, FIT_AT, { minFamilies: 5, minOutcomeFamilies: 2 });
+    const { inputs, ...conflict } = map.domains.conflict;
+    assert.equal(Object.keys(inputs).length, 11, 'a fitted domain keeps its input rows');
+    assert.deepEqual(conflict, {
       n: 11,
       positives: 8,
+      families: 9,
+      yesFamilies: 7,
+      noFamilies: 3,
+      eligible: true,
       mode: 'isotonic',
       knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.777778 }, { x: 0.85, y: 0.777778 }, { x: 0.93, y: 0.99 }],
     });
-    assert.equal(map.domains.market.mode, 'identity', 'n=7 stays below the lowered minimum');
+    assert.equal(map.domains.market.mode, 'identity', '4 families stay below the lowered minimum');
+    assert.equal(map.domains.cyber.ineligibleReason, 'insufficient_yes_families', 'all-NO cyber cannot fit at any minimum');
   });
 
   it('is deterministic across repeated fits', () => {
@@ -159,32 +183,88 @@ describe('monotonicity property', () => {
   });
 });
 
-describe('identity fallback', () => {
-  const published = (count, domain, positives = 0) =>
-    repeat(count, (index) => entry({ domain, probability: 0.2 + (index % 5) / 10, outcome: index < positives ? 'YES' : 'NO' }));
+describe('fit eligibility counts families, not rows', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const fitRows = (rows, options) => fitCalibrationMap(ledgerOf(rows), fitAt, options);
+  const verdict = (domain) => {
+    const { mode, families, yesFamilies, noFamilies, ineligibleReason } = domain;
+    return { mode, families, yesFamilies, noFamilies, ineligibleReason };
+  };
+  // Rows of one forecast id, the shape the resolver writes when a detector
+  // re-emits the same family into window after window.
+  const family = (id, rows, outcome, options = {}) => repeat(rows, () => ({ ...entry({ ...options, outcome }), id }));
 
-  it('keeps every domain identity below the total minimum, and fits at the total minimum', () => {
-    assert.equal(CALIBRATION_MIN_TOTAL_SAMPLE, 60);
-    const under = fitCalibrationMap(ledgerOf([...published(35, 'cyber'), ...published(24, 'conflict', 6)]), T0 + 30 * DAY_MS);
-    assert.equal(under.totalSample, 59);
-    assert.deepEqual(Object.values(under.domains).map((fit) => [fit.mode, fit.identityReason]), [
-      ['identity', 'insufficient_total_sample'],
-      ['identity', 'insufficient_total_sample'],
-    ]);
-
-    const at = fitCalibrationMap(ledgerOf([...published(35, 'cyber'), ...published(25, 'conflict', 6)]), T0 + 30 * DAY_MS);
-    assert.equal(at.totalSample, 60);
-    assert.equal(at.domains.cyber.mode, 'isotonic', 'positive control: total minimum met');
+  it('keeps the minimums at 30 families with 12 YES and 12 NO', () => {
+    assert.deepEqual([CALIBRATION_MIN_FAMILIES, CALIBRATION_MIN_OUTCOME_FAMILIES], [30, 12]);
   });
 
-  it('keeps a domain identity below the domain minimum, and fits it at the domain minimum', () => {
-    assert.equal(CALIBRATION_MIN_DOMAIN_SAMPLE, 30);
-    const map = fitCalibrationMap(ledgerOf([...published(29, 'conflict', 9), ...published(30, 'military', 9), ...published(40, 'cyber')]), T0 + 30 * DAY_MS);
-    assert.equal(map.domains.conflict.mode, 'identity');
-    assert.equal(map.domains.conflict.identityReason, 'insufficient_domain_sample');
-    assert.deepEqual(map.domains.conflict.knots, []);
-    assert.equal(map.domains.military.mode, 'isotonic', 'positive control: domain minimum met');
-    assert.equal(applyCalibration(map, 'conflict', 0.37), 0.37);
+  it('fits at the minimums and stays identity one family under each', () => {
+    assert.deepEqual(verdict(fitRows(twoSided(30, 12)).domains.cyber),
+      { mode: 'isotonic', families: 30, yesFamilies: 12, noFamilies: 18, ineligibleReason: undefined });
+    assert.deepEqual(verdict(fitRows(twoSided(29, 12)).domains.cyber),
+      { mode: 'identity', families: 29, yesFamilies: 12, noFamilies: 17, ineligibleReason: 'insufficient_families' });
+    assert.deepEqual(verdict(fitRows(twoSided(30, 11)).domains.cyber),
+      { mode: 'identity', families: 30, yesFamilies: 11, noFamilies: 19, ineligibleReason: 'insufficient_yes_families' });
+    assert.deepEqual(verdict(fitRows(twoSided(30, 19)).domains.cyber),
+      { mode: 'identity', families: 30, yesFamilies: 19, noFamilies: 11, ineligibleReason: 'insufficient_no_families' });
+    assert.deepEqual(fitRows(twoSided(29, 12)).domains.cyber.knots, []);
+    assert.equal(applyCalibration(fitRows(twoSided(29, 12)), 'cyber', 0.37), 0.37);
+  });
+
+  it('never fits a one-sided domain, however many rows or families it has (the pav-v1 cyber fit)', () => {
+    const pavV1Shape = repeat(17, (index) => family(`fc-cyber-${index}`, index < 12 ? 9 : 8, 'NO', { probability: 0.05 + index / 40 })).flat();
+    assert.equal(pavV1Shape.length, 148);
+    const v1 = fitRows(pavV1Shape).domains.cyber;
+    assert.deepEqual(verdict(v1), { mode: 'identity', families: 17, yesFamilies: 0, noFamilies: 17, ineligibleReason: 'insufficient_families' });
+    assert.equal(v1.n, 148);
+    const allNo = fitRows(repeat(200, () => entry({ outcome: 'NO' }))).domains.cyber;
+    assert.deepEqual(verdict(allNo), { mode: 'identity', families: 200, yesFamilies: 0, noFamilies: 200, ineligibleReason: 'insufficient_yes_families' });
+    const allYes = fitRows(repeat(200, () => entry({ outcome: 'YES' }))).domains.cyber;
+    assert.equal(allYes.ineligibleReason, 'insufficient_no_families');
+  });
+
+  it('does not let repeated windows of one family stand in for independent families', () => {
+    const rows = [
+      ...repeat(10, (index) => family(`yes-${index}`, 5, 'YES')).flat(),
+      ...repeat(19, (index) => family(`no-${index}`, 5, 'NO')).flat(),
+    ];
+    const domain = fitRows(rows).domains.cyber;
+    assert.equal(domain.n, 145, 'the row count the old 30-row minimum passed');
+    assert.deepEqual(verdict(domain), { mode: 'identity', families: 29, yesFamilies: 10, noFamilies: 19, ineligibleReason: 'insufficient_families' });
+  });
+
+  it('counts a family that resolved both ways on both sides', () => {
+    const mixed = repeat(12, (index) => [...family(`mixed-${index}`, 1, 'YES'), ...family(`mixed-${index}`, 1, 'NO')]).flat();
+    const domain = fitRows([...mixed, ...twoSided(18, 0)]).domains.cyber;
+    assert.deepEqual(verdict(domain), { mode: 'isotonic', families: 30, yesFamilies: 12, noFamilies: 30, ineligibleReason: undefined });
+  });
+
+  it('judges each domain on its own families', () => {
+    const map = fitRows([...twoSided(30, 12, { domain: 'conflict' }), ...twoSided(12, 4, { domain: 'military' })]);
+    assert.equal(map.domains.conflict.mode, 'isotonic');
+    assert.equal(map.domains.military.ineligibleReason, 'insufficient_families');
+    assert.deepEqual(evaluateFitEligibility(ledgerOf([...twoSided(30, 12, { domain: 'conflict' })]), fitAt), {
+      conflict: { families: 30, yesFamilies: 12, noFamilies: 18, eligible: true },
+    });
+  });
+
+  it('counts no row the scorecard excludes', () => {
+    const excluded = [
+      { ...entry({ outcome: 'YES' }), duplicateOf: 'f-1@1' },
+      { ...entry({ outcome: 'YES' }), stateBucketId: 'fx_stress' },
+      { ...entry({ outcome: 'VOID' }), evidence: { reason: 'late_read', supersededOutcome: 'YES' } },
+      { ...entry({ outcome: 'VOID' }), evidence: { reason: 'judged_old_selection', supersededOutcome: 'YES' } },
+      { ...entry({ outcome: 'VOID' }), evidence: { reason: 'resolver_envelope_bug' } },
+      { ...entry({ outcome: 'YES' }), calibration: { marketPrice: 0.12, drift: 0.3, source: 'polymarket' } },
+      entry({ outcome: 'YES', origin: 'bet_engine' }),
+      entry({ outcome: 'YES', origin: 'state_derived' }),
+      entry({ outcome: 'YES', origin: 'unknown' }),
+      { ...entry({ outcome: 'YES' }), rescore: { reason: 'last_seen_probability', supersededProbability: 0.5 } },
+    ];
+    const ledger = ledgerOf([...twoSided(30, 9), ...excluded]);
+    assert.deepEqual(selectFitCohort(ledger, fitAt).filter((row) => excluded.includes(row)), []);
+    assert.deepEqual(evaluateFitEligibility(ledger, fitAt).cyber,
+      { families: 30, yesFamilies: 9, noFamilies: 21, eligible: false, ineligibleReason: 'insufficient_yes_families' });
   });
 });
 
@@ -230,7 +310,7 @@ describe('population filter', () => {
   });
 
   it('excludes market anchors recorded without lineage, which predate the #7071 matcher', () => {
-    const clean = repeat(60, () => entry({ domain: 'cyber', probability: 0.4, outcome: 'NO' }));
+    const clean = twoSided(60, 12, { domain: 'cyber', probability: 0.4 });
     const stale = repeat(20, () => ({
       ...entry({ domain: 'cyber', probability: 0.2, outcome: 'YES' }),
       calibration: { marketTitle: 'Will China invade Taiwan by December 31, 2027?', marketPrice: 0.12, drift: 0.3, source: 'polymarket' },
@@ -241,7 +321,7 @@ describe('population filter', () => {
     }));
     const map = fitCalibrationMap(ledgerOf([...clean, ...stale, ...lineage]), T0 + 30 * DAY_MS);
     assert.equal(map.totalSample, 65);
-    assert.equal(map.domains.cyber.positives, 0, 'a stale-anchor YES would have raised this');
+    assert.equal(map.domains.cyber.positives, 12, 'a stale-anchor YES would have raised this');
     assert.equal(map.domains.cyber.knots.at(-1).x, 0.54, 'the fit reads calibration.marketBlendedProbability');
   });
 });
@@ -295,7 +375,7 @@ describe('fit and evaluation separation', () => {
 describe('activation gate', () => {
   const fitAt = T0 + 30 * DAY_MS;
   const map = fitCalibrationMap(ledgerOf([
-    ...repeat(60, () => entry({ domain: 'cyber', probability: 0.35, outcome: 'NO' })),
+    ...twoSided(110, 12, { domain: 'cyber', probability: 0.35 }),
     ...repeat(10, () => entry({ domain: 'conflict', probability: 0.5, outcome: 'YES' })),
   ]), fitAt);
   const forward = (count, options) => repeat(count, (i) => entry({ generatedAt: fitAt + DAY_MS + i, ...options }));
@@ -355,7 +435,7 @@ describe('shadow metrics', () => {
     assert.ok(Math.abs(hi - 0.277532) < 1e-6);
     assert.equal(wilsonInterval(0, 0), null);
     const fitAt = T0 + 30 * DAY_MS;
-    const map = fitCalibrationMap(ledgerOf(repeat(60, () => entry({ probability: 0.35 }))), fitAt);
+    const map = fitCalibrationMap(ledgerOf(twoSided(140, 12, { probability: 0.35 })), fitAt);
     const shadow = evaluateCalibrationShadow(ledgerOf(repeat(12, (i) => entry({ generatedAt: fitAt + 1 + i, probability: 0.32, outcome: i < 3 ? 'YES' : 'NO' }))), map, fitAt + 60 * DAY_MS);
     assert.deepEqual(shadow.forward.raw.reliability, [{ bucket: '30-40', count: 12, predictedMean: 0.32, realizedRate: 0.25, realizedWilson95: wilsonInterval(3, 12) }]);
     assert.equal(shadow.forward.calibrated.reliability[0].bucket, '0-10');
@@ -430,6 +510,14 @@ describe('map lifecycle', () => {
   it('rolls back to identity: an identity map reproduces every raw probability', () => {
     const identity = fitCalibrationMap({}, fitAt);
     for (const p of [0, 0.05, 0.35, 0.5, 0.99, 1]) assert.equal(applyCalibration(identity, 'cyber', p), p);
+  });
+
+  it('builds the run scorecard at the run clock the map was resolved at, so the hold and the publication read one verdict', () => {
+    const map = fitCalibrationMap(ledger, fitAt);
+    const runState = { nowMs: fitAt + 3 * DAY_MS, map, publication: null };
+    const scorecard = buildScorecardForRun(ledger, runState);
+    assert.equal(scorecard.generatedAt, runState.nowMs);
+    assert.deepEqual(scorecard.calibrationShadow, buildScorecard(ledger, runState.nowMs, map).calibrationShadow);
   });
 
   it('attaches the shadow block to the scorecard without touching canonical skill', () => {
@@ -592,9 +680,541 @@ describe('published calibration (#7070 activation)', () => {
   });
 
   it('fits on the uncalibrated value of a calibrated publication', () => {
-    const rows = repeat(60, () => ({ ...entry({ domain: 'cyber', probability: 0.2, outcome: 'NO' }), uncalibratedProbability: 0.4 }));
+    const rows = twoSided(60, 12, { domain: 'cyber', probability: 0.2 }).map((row) => ({ ...row, uncalibratedProbability: 0.4 }));
     const refit = fitCalibrationMap(ledgerOf(rows), fitAt);
     assert.deepEqual(refit.domains.cyber.knots.map((knot) => knot.x), [0.4]);
+  });
+});
+
+describe('data-version refit', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const later = fitAt + 40 * DAY_MS;
+  // Forward rows, emitted after fitAt and resolved before `later`.
+  const forward = (count, options) => repeat(count, (i) => entry({ generatedAt: fitAt + DAY_MS + i, probability: 0.35, ...options }));
+  const voidRows = (rows) => rows.map((row) => ({ ...row, outcome: 'VOID', evidence: { reason: 'late_read', supersededOutcome: row.outcome, voidedAt: later } }));
+
+  it('keeps the map while the cohort gives no trigger', () => {
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf(base), fitAt);
+    const run = resolveCalibrationMapForRun(existing, ledgerOf([...base, ...forward(29, { outcome: 'NO' })]), later);
+    assert.deepEqual({ action: run.action, held: run.held, fittedAt: run.map.fittedAt, dataVersion: run.map.dataVersion },
+      { action: 'kept', held: undefined, fittedAt: fitAt, dataVersion: 1 });
+  });
+
+  it('refits when an identity domain becomes eligible, bumping the data version and not the code version', () => {
+    const base = twoSided(25, 10);
+    const existing = fitCalibrationMap(ledgerOf(base), fitAt);
+    assert.equal(existing.domains.cyber.mode, 'identity');
+    assert.equal(resolveCalibrationMapForRun(existing, ledgerOf([...base, ...forward(4, { outcome: 'YES' })]), later).action, 'kept');
+
+    const grown = ledgerOf([...base, ...forward(2, { outcome: 'YES' }), ...forward(3, { outcome: 'NO' })]);
+    const run = resolveCalibrationMapForRun(existing, grown, later);
+    assert.deepEqual({ action: run.action, reason: run.reason, domain: run.domain }, { action: 'fitted', reason: 'domain_became_eligible', domain: 'cyber' });
+    assert.deepEqual({ codeVersion: run.map.codeVersion, dataVersion: run.map.dataVersion, refitReason: run.map.refitReason, fittedAt: run.map.fittedAt },
+      { codeVersion: CALIBRATION_CODE_VERSION, dataVersion: 2, refitReason: 'domain_became_eligible', fittedAt: later });
+    assert.equal(run.map.domains.cyber.mode, 'isotonic');
+    assert.notEqual(run.map.version, existing.version);
+    assert.deepEqual(resolveCalibrationMapForRun(run.map, grown, later + DAY_MS).action, 'kept', 'the refit converges: the next run keeps it');
+  });
+
+  it('refits a fitted domain only once its families double', () => {
+    assert.equal(CALIBRATION_REFIT_FAMILY_GROWTH, 2);
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf(base), fitAt);
+    assert.equal(existing.domains.cyber.families, 30);
+    // Forward NO at p=0.1: the map's 0.4 is worse than raw, so a gate with its sample fails.
+    const twoWindows = (families) => forward(2 * families, { outcome: 'NO', probability: 0.1 }).map((row, i) => ({ ...row, id: `g-${i % families}` }));
+    const under = resolveCalibrationMapForRun(existing, ledgerOf([...base, ...twoWindows(29)]), later);
+    assert.equal(under.action, 'kept');
+    const thin = resolveCalibrationMapForRun(existing, ledgerOf([...base, ...forward(30, { outcome: 'NO', probability: 0.7 })]), later);
+    assert.deepEqual({ action: thin.action, held: thin.held?.reason }, { action: 'kept', held: 'family_growth' }, '30 forward rows the map handles well: the gate cannot judge it yet');
+    const at = resolveCalibrationMapForRun(existing, ledgerOf([...base, ...twoWindows(30)]), later);
+    assert.deepEqual({ action: at.action, reason: at.reason, dataVersion: at.map.dataVersion, families: at.map.domains.cyber.families },
+      { action: 'fitted', reason: 'family_growth', dataVersion: 2, families: 60 });
+  });
+
+  it('does not count rows the scorecard excludes toward a trigger', () => {
+    const base = twoSided(25, 8);
+    const existing = fitCalibrationMap(ledgerOf(base), fitAt);
+    const excludedOnly = [
+      ...repeat(5, () => ({ ...entry({ generatedAt: fitAt + DAY_MS, outcome: 'YES' }), duplicateOf: 'x' })),
+      ...voidRows(forward(5, { outcome: 'YES' })),
+      ...forward(5, { outcome: 'YES', origin: 'bet_engine' }),
+    ];
+    assert.equal(resolveCalibrationMapForRun(existing, ledgerOf([...base, ...excludedOnly]), later).action, 'kept');
+  });
+
+  it('refits to identity when rows a fit used are later excluded', () => {
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(18, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    assert.equal(existing.domains.cyber.mode, 'isotonic');
+    const run = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes.slice(0, 1)), ...yes.slice(1), ...no]), later);
+    assert.deepEqual({ action: run.action, reason: run.reason, dataVersion: run.map.dataVersion }, { action: 'fitted', reason: 'fit_input_withdrawn', dataVersion: 2 });
+    assert.deepEqual({ mode: run.map.domains.cyber.mode, reason: run.map.domains.cyber.ineligibleReason }, { mode: 'identity', reason: 'insufficient_families' });
+  });
+
+  it('refits to identity when a fitted domain ages out of the window with no correction', () => {
+    const existing = fitCalibrationMap(ledgerOf(twoSided(30, 12, { probability: 0.35 })), fitAt);
+    const run = resolveCalibrationMapForRun(existing, ledgerOf(twoSided(30, 12, { probability: 0.35 })), fitAt + 200 * DAY_MS);
+    assert.deepEqual({ action: run.action, reason: run.reason, mode: run.map.domains.cyber?.mode ?? 'absent' }, { action: 'fitted', reason: 'fit_invalidated', mode: 'absent' });
+  });
+
+  it('refits when rows a fit used are withdrawn, even when replacement families keep the domain eligible', () => {
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(18, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const replacements = forward(12, { outcome: 'YES', probability: 0.9 });
+    const run = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes), ...no, ...replacements]), later);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'fit_input_withdrawn' });
+    assert.equal(run.map.domains.cyber.mode, 'isotonic', 'the refit reads the replacement families');
+
+    const regraded = yes.map((row, index) => (index === 0 ? { ...row, outcome: 'NO', evidence: { regradedAt: later, supersededOutcome: 'YES' } } : row));
+    const flipped = resolveCalibrationMapForRun(existing, ledgerOf([...regraded, ...no, ...replacements]), later);
+    assert.equal(flipped.reason, 'fit_input_withdrawn', 'a re-graded outcome is a withdrawn input');
+  });
+
+  it('does not treat inputs pruned from the ledger or aged past the window as withdrawn', () => {
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(25, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    assert.equal(resolveCalibrationMapForRun(existing, ledgerOf([...yes, ...no.slice(1)]), later).action, 'kept', 'a pruned row is absent, not withdrawn');
+    const replacements = twoSided(35, 10, { generatedAt: fitAt + 100 * DAY_MS, probability: 0.35 });
+    const aged = resolveCalibrationMapForRun(existing, ledgerOf([...yes, ...no, ...replacements]), fitAt + 200 * DAY_MS);
+    assert.equal(aged.reason, 'fit_aged_out', 'rows that left the rolling window are not corrections, so the reason is not fit_input_withdrawn');
+  });
+
+  it('holds growth and new eligibility while the gate passes, but never holds an invalidated fit', () => {
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(18, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    // 70 forward cyber NO at p=0.7: the map's 0.333 beats raw, so the gate passes, and families reach 100.
+    const passing = forward(70, { outcome: 'NO', probability: 0.7 });
+    const newDomain = twoSided(30, 12, { domain: 'conflict' });
+    const ledger = ledgerOf([...yes, ...no, ...passing, ...newDomain]);
+    assert.equal(evaluateCalibrationShadow(ledger, existing, later).activationGate.eligible, true);
+    const held = resolveCalibrationMapForRun(existing, ledger, later);
+    assert.deepEqual({ action: held.action, held: held.held, version: held.map.version },
+      { action: 'kept', held: { reason: 'domain_became_eligible', domain: 'conflict' }, version: existing.version });
+
+    const invalidated = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes), ...no, ...passing]), later);
+    assert.deepEqual({ action: invalidated.action, reason: invalidated.reason }, { action: 'fitted', reason: 'fit_input_withdrawn' });
+  });
+
+  it('refits an old code version as data version 1, and rejects a current-version map without one', () => {
+    const ledger = ledgerOf(twoSided(30, 12));
+    const old = { ...fitCalibrationMap(ledger, fitAt, { codeVersion: 'forecast-calibration-pav-v2' }), dataVersion: undefined };
+    const run = resolveCalibrationMapForRun(old, ledger, later);
+    assert.deepEqual({ reason: run.reason, dataVersion: run.map.dataVersion, refitReason: run.map.refitReason },
+      { reason: 'code_version_changed', dataVersion: 1, refitReason: 'code_version_changed' });
+    assert.equal(parseCalibrationMap({ ...fitCalibrationMap(ledger, fitAt), dataVersion: undefined }), null);
+  });
+});
+
+describe('refit triggers in a rolling-window steady state (review of #9027)', () => {
+  // Distinct families, each resolving 7 days after emission.
+  const family = (generatedAt, outcome, options = {}) => entry({ generatedAt, outcome, probability: 0.35, ...options });
+
+  it('A1: keeps a gate-passing map whose inputs only aged out, and publication stays calibrated', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    assert.equal(map.domains.cyber.mode, 'isotonic');
+    const forward = repeat(70, (i) => ({ ...entry({ outcome: 'NO', probability: 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }), id: `fam-${i % 3}` }));
+    const now = T0 + 188 * DAY_MS;
+    const ledger = ledgerOf([...base, ...forward]);
+    assert.equal(evaluateCalibrationShadow(ledger, map, now).activationGate.eligible, true);
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, held: run.held?.reason, version: run.map.version }, { action: 'kept', held: 'fit_invalidated', version: map.version });
+    const scorecard = buildScorecard(ledger, now, run.map);
+    const decision = decideCalibrationPublication(run.map, scorecard.calibrationShadow, { nowMs: now + 3_600_000, gateGeneratedAt: scorecard.generatedAt });
+    assert.equal(decision.mode, 'calibrated');
+  });
+
+  it('A2: a domain hovering at the family floor refits once, not on every crossing', () => {
+    const base = repeat(30, (i) => family(T0 + i * DAY_MS, i % 5 < 2 ? 'YES' : 'NO'));
+    const map0 = fitCalibrationMap(ledgerOf(base), T0 + 37 * DAY_MS);
+    assert.equal(map0.domains.cyber.mode, 'isotonic');
+    let map = map0;
+    const rows = [...base];
+    for (let day = 0; day < 6; day += 1) {
+      const nowOut = T0 + (187 + day) * DAY_MS + DAY_MS / 2;
+      map = resolveCalibrationMapForRun(map, ledgerOf(rows), nowOut).map;
+      rows.push(family(nowOut - 7 * DAY_MS, day % 3 === 0 ? 'YES' : 'NO', { resolvedAt: nowOut + DAY_MS / 4 }));
+      map = resolveCalibrationMapForRun(map, ledgerOf(rows), nowOut + DAY_MS / 3).map;
+    }
+    assert.equal(map.dataVersion, 1, 'one family short of the floor is not evidence against the fit');
+  });
+
+  it('A6: a failing map refits once the families resolved since the fit match its own, though the window count plateaus', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = [...repeat(12, () => entry({ outcome: 'YES', probability: 0.8 })), ...repeat(18, () => entry({ outcome: 'NO', probability: 0.2 }))];
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const forward = repeat(150, (i) => entry({ outcome: i % 3 === 0 ? 'NO' : 'YES', probability: i % 3 === 0 ? 0.8 : 0.2, generatedAt: T0 + 31 * DAY_MS + i * 4 * DAY_MS }));
+    const at = (day) => {
+      const now = T0 + day * DAY_MS;
+      return resolveCalibrationMapForRun(map, ledgerOf([...base, ...forward.filter((row) => row.resolvedAt <= now)]), now);
+    };
+    assert.equal(at(120).action, 'kept', '23 families since the fit');
+    for (const day of [250, 400, 600]) {
+      const run = at(day);
+      assert.deepEqual({ day, action: run.action, reason: run.reason }, { day, action: 'fitted', reason: 'family_growth' }, 'the window holds about 45 families, under twice the fitted 30');
+    }
+  });
+
+  it('does not count a fitted family re-emitting a window as growth', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const reemitted = base.map((row, i) => ({ ...entry({ outcome: row.outcome, probability: 0.35, generatedAt: fitAt + DAY_MS + i }), id: row.id }));
+    const run = resolveCalibrationMapForRun(map, ledgerOf([...base, ...reemitted]), fitAt + 20 * DAY_MS);
+    assert.deepEqual({ action: run.action, held: run.held }, { action: 'kept', held: undefined }, 'thirty new windows of the thirty fitted families add no family');
+    const fresh = repeat(30, (i) => entry({ outcome: i < 12 ? 'YES' : 'NO', probability: 0.35, generatedAt: fitAt + DAY_MS + i }));
+    const pruned = resolveCalibrationMapForRun(map, ledgerOf([...base.slice(1), reemitted[0], ...fresh.slice(1)]), fitAt + 20 * DAY_MS);
+    assert.deepEqual({ action: pruned.action, held: pruned.held }, { action: 'kept', held: undefined }, '29 new families: a pruned input still names its family through its key');
+    const grown = resolveCalibrationMapForRun(map, ledgerOf([...base, ...fresh]), fitAt + 20 * DAY_MS);
+    assert.deepEqual({ action: grown.action, held: grown.held?.reason }, { action: 'kept', held: 'family_growth' }, '30 new families trigger growth, held until the gate has its sample');
+  });
+
+  it('refits a map whose inputs all aged out when new families plateau below its own count', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(60, 20, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const forward = repeat(60, (i) => entry({ outcome: i % 3 === 0 ? 'YES' : 'NO', probability: 0.35, generatedAt: fitAt + i * 4 * DAY_MS }));
+    const now = T0 + 230 * DAY_MS;
+    const ledger = ledgerOf([...base, ...forward.filter((row) => row.resolvedAt <= now)]);
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'fit_aged_out' });
+  });
+
+  it('invalidates a fitted domain only below half the minimums', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(18, 0, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const later = fitAt + 10 * DAY_MS;
+    assert.equal(resolveCalibrationMapForRun(map, ledgerOf([...yes.slice(6), ...no]), later).action, 'kept', '6 YES families is half the minimum');
+    const stillPruned = resolveCalibrationMapForRun(map, ledgerOf([...yes.slice(7), ...no]), later);
+    assert.deepEqual({ action: stillPruned.action, reason: stillPruned.reason, mode: stillPruned.map.domains.cyber.mode },
+      { action: 'fitted', reason: 'fit_invalidated', mode: 'identity' }, 'a fit below half is not carried');
+  });
+
+  for (const rowsPerFamily of [1, 2, 3]) {
+    it(`R3: with ${rowsPerFamily} forward row(s) per family, growth waits for the gate's verdict instead of emptying its cohort`, () => {
+      const fitAt = T0 + 30 * DAY_MS;
+      const base = twoSided(30, 12, { probability: 0.35 });
+      const map = fitCalibrationMap(ledgerOf(base), fitAt);
+      const forward = [];
+      let outcome = null;
+      for (let i = 0; i < 200 && !outcome; i += 1) {
+        forward.push({
+          ...entry({ outcome: i % 10 < 3 ? 'YES' : 'NO', probability: i % 10 < 3 ? 0.4 : 0.7, generatedAt: fitAt + DAY_MS + (i * DAY_MS) / 2 }),
+          id: `r${rowsPerFamily}-${Math.floor(i / rowsPerFamily)}`,
+        });
+        const now = fitAt + 10 * DAY_MS + (i * DAY_MS) / 2;
+        const run = resolveCalibrationMapForRun(map, ledgerOf([...base, ...forward]), now);
+        if (run.action === 'fitted') outcome = `refit ${run.reason} at ${forward.length} forward rows`;
+        else if (run.held && evaluateCalibrationShadow(ledgerOf([...base, ...forward]), map, now).activationGate.eligible) outcome = 'gate passed';
+      }
+      assert.equal(outcome, 'gate passed');
+    });
+  }
+
+  it('R3: holds new eligibility in another domain until the gate can judge the stored map, but never for an all-identity map', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const later = fitAt + 40 * DAY_MS;
+    const cyber = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(cyber), fitAt);
+    const conflict = twoSided(30, 12, { domain: 'conflict', generatedAt: fitAt + DAY_MS });
+    const run = resolveCalibrationMapForRun(map, ledgerOf([...cyber, ...conflict]), later);
+    assert.deepEqual({ action: run.action, held: run.held?.reason }, { action: 'kept', held: 'domain_became_eligible' });
+    const identity = fitCalibrationMap(ledgerOf(twoSided(25, 10)), fitAt);
+    assert.equal(resolveCalibrationMapForRun(identity, ledgerOf(conflict), later).reason, 'domain_became_eligible');
+  });
+
+  it('R3: refits on a later trigger the gate does not hold when an earlier one waits for the sample', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const recent = T0 + 150 * DAY_MS;
+    const cyber = repeat(20, (i) => entry({ outcome: i < 8 ? 'YES' : 'NO', probability: i < 8 ? 0.4 : 0.7, generatedAt: recent + i }));
+    const conflict = twoSided(30, 12, { domain: 'conflict', generatedAt: recent });
+    const now = T0 + 200 * DAY_MS;
+    const ledger = ledgerOf([...base, ...cyber, ...conflict]);
+    const gate = evaluateCalibrationShadow(ledger, map, now).activationGate;
+    assert.ok(gate.reasons.every((reason) => reason.startsWith('insufficient_forward_')), gate.reasons.join(','));
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, reason: run.reason, domain: run.domain }, { action: 'fitted', reason: 'fit_aged_out', domain: 'cyber' });
+  });
+
+  // Review round 4: on a partial forward sample the bootstrap interval is wide,
+  // so "not yet shown non-inferior" must not release a held growth refit.
+  // Each trial fits on 40 one-row families from a forecaster biased high by
+  // 0.2, then adds one forward family a day.
+  const noisyTrial = (truth, trialSeed) => {
+    const random = mulberry32(trialSeed);
+    const fitAt = T0 + 30 * DAY_MS;
+    let base;
+    let map;
+    do {
+      base = repeat(40, () => {
+        const p = 0.1 + 0.8 * random();
+        return entry({ probability: p, outcome: random() < Math.max(0.01, p - 0.2) ? 'YES' : 'NO' });
+      });
+      map = fitCalibrationMap(ledgerOf(base), fitAt);
+    } while (map.domains.cyber.mode !== 'isotonic');
+    const forward = [];
+    const inferiorAt = [];
+    for (let i = 0; i < 70; i += 1) {
+      const p = 0.1 + 0.8 * random();
+      forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
+      const now = fitAt + 10 * DAY_MS + i * DAY_MS;
+      const ledger = ledgerOf([...base, ...forward]);
+      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now);
+      const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
+        .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
+      if (inferior) inferiorAt.push(forward.length);
+      const run = resolveCalibrationMapForRun(map, ledger, now);
+      if (run.action === 'fitted') return { refitAt: forward.length, reason: run.reason, inferiorAt, fitted: map.domains.cyber.families };
+    }
+    return { refitAt: null, inferiorAt, fitted: map.domains.cyber.families };
+  };
+
+  it('R4: a map that helps reaches its gate verdict despite a noisy partial sample (seeded)', () => {
+    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t));
+    const premature = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60);
+    assert.ok(premature.length <= 2, `${premature.length} of 20 refit before 60 forward outcomes`);
+    for (const trial of premature) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'only demonstrated inferiority releases the hold');
+  });
+
+  it('R4: an inverted map is released as soon as its inferiority is demonstrated, and not before (seeded)', () => {
+    const trials = repeat(20, (t) => noisyTrial((p) => 1 - p, 9130 + t));
+    // Growth exists once the new families match the fitted ones. The interval
+    // moves as rows arrive, so the release is the first such row on which
+    // inferiority holds.
+    for (const trial of trials) {
+      const release = trial.inferiorAt.find((row) => row >= trial.fitted) ?? null;
+      if (release !== null && release < 60) assert.equal(trial.refitAt, release, 'demonstrated inferiority releases the held growth refit at once');
+      if (trial.refitAt !== null && trial.refitAt < 60) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'a refit before the sample minimum needs demonstrated inferiority');
+    }
+    const released = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60).length;
+    assert.ok(released >= 10, `${released} of 20 released before 60 forward outcomes`);
+  });
+
+  it('R4: once the gate has its sample and fails, growth refits though inferiority is not demonstrated', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    // Against the map's 0.4, these four rows move Brier by +0.11, +0.07, -0.13 and -0.09.
+    const pattern = [[0.5, 'YES'], [0.3, 'NO'], [0.3, 'YES'], [0.5, 'NO']];
+    const forward = repeat(60, (i) => ({
+      ...entry({ probability: pattern[i % 4][0], outcome: pattern[i % 4][1], generatedAt: fitAt + DAY_MS + i }),
+      id: `mixed-${i % 30}`,
+    }));
+    const now = fitAt + 40 * DAY_MS;
+    const ledger = ledgerOf([...base, ...forward]);
+    const shadow = evaluateCalibrationShadow(ledger, map, now);
+    assert.deepEqual(shadow.activationGate.reasons, ['overall_not_non_inferior', 'domain_not_non_inferior:cyber']);
+    assert.ok(shadow.forward.brierDelta.ci95[0] <= shadow.activationGate.thresholds.nonInferiorityMargin, 'raw is not shown better');
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'family_growth' });
+  });
+
+  it('C1: does not refit for growth of a retained domain that a refit would only carry unchanged', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const failing = forward60NoAt(fitAt);
+    const ledger = ledgerOf([...base.slice(4), ...failing]);
+    const cohort = evaluateFitEligibility(ledger, fitAt + 40 * DAY_MS).cyber;
+    assert.deepEqual({ eligible: cohort.eligible, yes: cohort.yesFamilies }, { eligible: false, yes: 8 });
+    assert.equal(evaluateCalibrationShadow(ledger, map, fitAt + 40 * DAY_MS).activationGate.reasons.some((reason) => reason.startsWith('insufficient_forward')), false);
+    assert.equal(resolveCalibrationMapForRun(map, ledger, fitAt + 40 * DAY_MS).action, 'kept');
+  });
+
+  it('H1: no calibrated-to-raw flip while the stored map passes on recent evidence, however old the map', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const forward = repeat(400, (i) => ({
+      ...entry({ outcome: i % 10 < 3 ? 'YES' : 'NO', probability: i % 10 < 3 ? 0.4 : 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }),
+      id: `fw-${i % 40}`,
+    }));
+    let persisted = map;
+    let record = null;
+    const flips = [];
+    for (let day = 100; day <= 400; day += 5) {
+      const now = fitAt + day * DAY_MS;
+      const ledger = ledgerOf([...base, ...forward.filter((row) => row.resolvedAt <= now)]);
+      const { map: next } = resolveCalibrationMapForRun(persisted, ledger, now);
+      const scorecard = buildScorecard(ledger, now, next);
+      const decision = decideCalibrationPublication(next, scorecard.calibrationShadow, { nowMs: now + 3_600_000, gateGeneratedAt: scorecard.generatedAt });
+      const recorded = recordCalibrationPublication(record, decision, now + 3_600_000);
+      if (recorded.flipped) flips.push(`d${day}:${recorded.record.lastFlip.from}->${recorded.record.lastFlip.to}`);
+      persisted = next;
+      record = recorded.record;
+    }
+    assert.equal(persisted.version, map.version, 'the inputs aged out at about day 157, and the passing map is kept');
+    assert.deepEqual(flips, ['d100:raw->calibrated']);
+  });
+
+  it('refits a held map once its gate fails on the recent window, though all forward evidence since the fit would pass', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const passing = repeat(150, (i) => entry({ outcome: 'NO', probability: 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }));
+    const at = (day) => {
+      const now = fitAt + day * DAY_MS;
+      return { now, ledger: ledgerOf([...base, ...passing]) };
+    };
+    const held = at(200);
+    assert.equal(evaluateCalibrationShadow(held.ledger, map, held.now).activationGate.eligible, true);
+    assert.equal(resolveCalibrationMapForRun(map, held.ledger, held.now).held?.reason, 'fit_invalidated');
+
+    const stale = at(340);
+    const shadow = evaluateCalibrationShadow(stale.ledger, map, stale.now);
+    assert.equal(shadow.forward.count, 0, 'every forward outcome resolved before the 180-day window');
+    assert.equal(shadow.activationGate.eligible, false);
+    const run = resolveCalibrationMapForRun(map, stale.ledger, stale.now);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'fit_invalidated' });
+  });
+
+  it('scores the gate on forward outcomes resolved inside the scorecard window, and keeps pending ones', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const map = fitCalibrationMap(ledgerOf(twoSided(30, 12, { probability: 0.35 })), fitAt);
+    const now = fitAt + 300 * DAY_MS;
+    const old = repeat(5, (i) => entry({ generatedAt: fitAt + DAY_MS + i }));
+    const recent = repeat(4, (i) => entry({ generatedAt: now - 30 * DAY_MS + i }));
+    const pending = entry({ generatedAt: now - DAY_MS, status: 'pending' });
+    const shadow = evaluateCalibrationShadow(ledgerOf([...old, ...recent, pending]), map, now);
+    assert.equal(shadow.forward.count, 4);
+    assert.equal(shadow.activationGate.context.registered, 5);
+  });
+
+  it('B2: refreshes a stale retained fit to identity once its inputs have all aged out, though the domain is ineligible', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const slow = repeat(120, (i) => entry({ outcome: i % 5 < 2 ? 'YES' : 'NO', generatedAt: T0 + 31 * DAY_MS + Math.round(i * 8.75 * DAY_MS) }));
+    const now = T0 + 500 * DAY_MS;
+    const ledger = ledgerOf([...base, ...slow.filter((row) => row.resolvedAt <= now)]);
+    const cohort = evaluateFitEligibility(ledger, now).cyber;
+    assert.ok(!cohort.eligible && cohort.families >= 15, `inside the retain band: ${cohort.families} families`);
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, reason: run.reason, mode: run.map.domains.cyber.mode }, { action: 'fitted', reason: 'fit_aged_out', mode: 'identity' });
+  });
+
+  it('B6: a refit for another domain carries a retained fit unchanged', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const cyber = twoSided(30, 12, { probability: 0.35 });
+    const military = twoSided(30, 12, { domain: 'military', probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf([...cyber, ...military]), fitAt);
+    const retained = [...cyber.slice(0, 8), ...cyber.slice(12, 24)];
+    const withdrawn = [{ ...military[0], outcome: 'VOID', evidence: { reason: 'late_read', supersededOutcome: 'YES' } }, ...military.slice(1)];
+    const run = resolveCalibrationMapForRun(map, ledgerOf([...retained, ...withdrawn]), fitAt + 20 * DAY_MS);
+    assert.deepEqual({ action: run.action, reason: run.reason, domain: run.domain }, { action: 'fitted', reason: 'fit_input_withdrawn', domain: 'military' });
+    const { carriedFrom, ...carried } = run.map.domains.cyber;
+    assert.equal(carriedFrom, map.version);
+    assert.deepEqual(carried, map.domains.cyber);
+    assert.equal(resolveCalibrationMapForRun(run.map, ledgerOf([...retained, ...withdrawn]), fitAt + 21 * DAY_MS).action, 'kept', 'the carried fit converges');
+  });
+
+  it('B3: retains a fit at exactly half of each minimum and invalidates it one family under, on either side', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const yes = twoSided(12, 12, { probability: 0.35 });
+    const no = twoSided(18, 0, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const run = (y, n) => resolveCalibrationMapForRun(map, ledgerOf([...yes.slice(0, y), ...no.slice(0, n)]), fitAt + DAY_MS);
+    assert.equal(run(6, 9).action, 'kept', '15 families, 6 YES, 9 NO');
+    assert.equal(run(9, 6).action, 'kept', '15 families, 9 YES, 6 NO');
+    assert.equal(run(6, 8).reason, 'fit_invalidated', '14 families');
+    assert.equal(run(5, 10).reason, 'fit_invalidated', '5 YES');
+    assert.equal(run(10, 5).reason, 'fit_invalidated', '5 NO');
+  });
+
+  it('catches an input withdrawn by rescore or a withheld bucket while it still reads YES or NO', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const swap = (row) => ledgerOf(base.map((original, index) => (index === 0 ? row(original) : original)));
+    const rescored = swap((row) => ({ ...row, rescore: { reason: 'last_seen_probability', supersededProbability: 0.6 } }));
+    assert.equal(resolveCalibrationMapForRun(map, rescored, fitAt + DAY_MS).reason, 'fit_input_withdrawn');
+    const withheld = swap((row) => ({ ...row, stateBucketId: 'fx_stress' }));
+    assert.equal(resolveCalibrationMapForRun(map, withheld, fitAt + DAY_MS).reason, 'fit_input_withdrawn');
+    const moved = swap((row) => ({ ...row, probability: 0.9 }));
+    assert.equal(resolveCalibrationMapForRun(map, moved, fitAt + DAY_MS).reason, 'fit_input_withdrawn', 'the fingerprint covers the fitted probability');
+    const recast = swap((row) => ({ ...row, domain: 'conflict' }));
+    assert.equal(resolveCalibrationMapForRun(map, recast, fitAt + DAY_MS).reason, 'fit_input_withdrawn', 'the fingerprint covers the domain');
+  });
+
+  it('rejects a current-version fitted domain that carries no inputs', () => {
+    const map = fitCalibrationMap(ledgerOf(twoSided(30, 12)), T0 + 30 * DAY_MS);
+    assert.ok(parseCalibrationMap(map));
+    const { inputs: _dropped, ...bare } = map.domains.cyber;
+    assert.equal(parseCalibrationMap({ ...map, domains: { cyber: bare } }), null);
+  });
+});
+
+describe('publication across a data refit (#8973 gate)', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const yes = twoSided(12, 12, { probability: 0.35 });
+  const no = twoSided(18, 0, { probability: 0.35 });
+  const passing = repeat(70, (i) => entry({ generatedAt: fitAt + DAY_MS + i, outcome: 'NO', probability: 0.7 }));
+  const decideAt = (map, scorecard, nowMs) => decideCalibrationPublication(map, scorecard.calibrationShadow, { nowMs, gateGeneratedAt: scorecard.generatedAt });
+  // One resolver run, then one seeder run that reads what the resolver wrote.
+  const cycle = (persisted, ledger, nowMs, previousRecord) => {
+    const { map } = resolveCalibrationMapForRun(persisted, ledger, nowMs);
+    const scorecard = buildScorecard(ledger, nowMs, map);
+    const decision = decideAt(map, scorecard, nowMs + 3_600_000);
+    return { map, scorecard, decision, ...recordCalibrationPublication(previousRecord, decision, nowMs + 3_600_000) };
+  };
+
+  it('a refit from raw cannot flip to calibrated, on its own verdict or on the old map\'s', () => {
+    const identity = fitCalibrationMap(ledgerOf(twoSided(25, 8)), fitAt);
+    const ledger = ledgerOf([...yes, ...no]);
+    const now = fitAt + 40 * DAY_MS;
+    const run = cycle(identity, ledger, now, null);
+    assert.equal(run.map.dataVersion, 2, 'the domain became eligible and the map refitted');
+    assert.deepEqual({ mode: run.decision.mode, reason: run.decision.reason }, { mode: 'raw', reason: 'gate_ineligible' });
+    assert.equal(run.scorecard.calibrationShadow.forward.count, 0, 'a refit starts an empty forward cohort');
+    const staleEligible = { generatedAt: now, calibrationShadow: { mapVersion: identity.version, activationGate: { eligible: true, reasons: [] } } };
+    assert.equal(decideAt(run.map, staleEligible, now + 3_600_000).reason, 'gate_map_mismatch');
+    assert.deepEqual({ flipped: run.flipped, lastFlip: run.record.lastFlip }, { flipped: false, lastFlip: null });
+  });
+
+  it('growth while calibrated neither refits nor reverts, and the flip history keeps one entry', () => {
+    const fitted = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const firstAt = fitAt + 80 * DAY_MS;
+    const ledger = ledgerOf([...yes, ...no, ...passing]);
+    const on = cycle(fitted, ledger, firstAt, null);
+    assert.deepEqual({ mode: on.decision.mode, flipped: on.flipped, mapVersion: on.map.version }, { mode: 'calibrated', flipped: true, mapVersion: fitted.version });
+
+    const moreNo = repeat(40, (i) => entry({ generatedAt: firstAt + i, outcome: 'NO', probability: 0.7 }));
+    const next = cycle(on.map, ledgerOf([...yes, ...no, ...passing, ...moreNo]), firstAt + 20 * DAY_MS, on.record);
+    assert.equal(next.map.version, fitted.version, 'families tripled, yet the validated map is held');
+    assert.deepEqual({ mode: next.decision.mode, flipped: next.flipped }, { mode: 'calibrated', flipped: false });
+    assert.deepEqual(next.record.lastFlip, on.record.lastFlip);
+  });
+
+  it('an invalidated fit reverts once, with the reason recorded, and the next run keeps that flip', () => {
+    const fitted = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const firstAt = fitAt + 80 * DAY_MS;
+    const on = cycle(fitted, ledgerOf([...yes, ...no, ...passing]), firstAt, null);
+    assert.equal(on.decision.mode, 'calibrated');
+
+    const voided = yes.map((row) => ({ ...row, outcome: 'VOID', evidence: { reason: 'late_read', supersededOutcome: 'YES', voidedAt: firstAt + DAY_MS } }));
+    const corrected = ledgerOf([...voided, ...no, ...passing]);
+    const off = cycle(on.map, corrected, firstAt + DAY_MS, on.record);
+    assert.deepEqual({ dataVersion: off.map.dataVersion, refitReason: off.map.refitReason }, { dataVersion: 2, refitReason: 'fit_input_withdrawn' });
+    assert.deepEqual({ mode: off.decision.mode, reason: off.decision.reason, flipped: off.flipped }, { mode: 'raw', reason: 'gate_ineligible', flipped: true });
+    assert.deepEqual({ from: off.record.lastFlip.from, to: off.record.lastFlip.to, at: off.record.lastFlip.at }, { from: 'calibrated', to: 'raw', at: firstAt + DAY_MS + 3_600_000 });
+    // The seeder can read the new map before the resolver's scorecard lands; the old verdict does not carry over.
+    assert.equal(decideAt(off.map, on.scorecard, firstAt + DAY_MS).reason, 'gate_map_mismatch');
+
+    const after = cycle(off.map, corrected, firstAt + 2 * DAY_MS, off.record);
+    assert.equal(after.map.version, off.map.version);
+    assert.deepEqual({ mode: after.decision.mode, flipped: after.flipped }, { mode: 'raw', flipped: false });
+    assert.deepEqual(after.record.lastFlip, off.record.lastFlip);
   });
 });
 
