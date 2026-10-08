@@ -69,3 +69,38 @@ it('Umami selects only Hono versions with the JSX escaping fix', () => {
   assert.ok(versions.length > 0);
   for (const version of versions) assert.ok(semver.gte(version, '4.13.7'));
 });
+
+function npmLockVersions(path, name) {
+  const lock = JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+  return Object.entries(lock.packages)
+    .filter(([key]) => key === `node_modules/${name}` || key.endsWith(`/node_modules/${name}`))
+    .map(([, entry]) => entry.version);
+}
+
+function pnpmLockVersions(path, name) {
+  const lock = load(readFileSync(new URL(path, import.meta.url), 'utf8'));
+  return Object.keys(lock.packages).filter((key) => key.startsWith(`${name}@`)).map((key) => key.slice(name.length + 1));
+}
+
+const patchedLocks = [
+  ['sharp', '0.35.5', npmLockVersions, '../package-lock.json'],
+  ['sharp', '0.35.5', npmLockVersions, '../blog-site/package-lock.json'],
+  ['sharp', '0.35.5', npmLockVersions, '../workers/railway-reconcile-control/package-lock.json'],
+  ['shell-quote', '1.11.0', npmLockVersions, '../package-lock.json'],
+  ['shell-quote', '1.11.0', npmLockVersions, '../pro-test/package-lock.json'],
+  ['shell-quote', '1.11.0', pnpmLockVersions, '../docker/umami/runtime/pnpm-lock.yaml'],
+];
+
+for (const [name, patched, versionsOf, path] of patchedLocks) {
+  it(`${path.slice(3)} selects only ${name} >= ${patched}`, () => {
+    const versions = versionsOf(path, name);
+    assert.ok(versions.length > 0);
+    for (const version of versions) assert.ok(semver.gte(version, patched), `${name}@${version}`);
+  });
+}
+
+it('shell-quote rejects a line terminator after a comment token', () => {
+  const { quote } = require('shell-quote');
+  assert.throws(() => quote(['echo', 'ok', { comment: 'x' }, 'a\nid;#']), TypeError);
+  assert.equal(quote(['echo', 'a b']), "echo 'a b'");
+});
