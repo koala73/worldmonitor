@@ -63,6 +63,15 @@ describe('chokepoint transit tracker', () => {
     assert.equal(count(), 1);
   });
 
+  it('starts a new visit when a vessel reappears inside after the exit gap bound', () => {
+    const gap = relayConst('TRANSIT_MAX_EXIT_GAP_MS');
+    const { t, count } = tracker();
+    t.observe('1', ...INSIDE, 'cargo', 0);
+    t.observe('1', ...INSIDE, 'cargo', gap + HOUR);
+    t.observe('1', ...OUTSIDE, 'cargo', gap + HOUR + MIN);
+    assert.equal(count(), 0);
+  });
+
   it('does not count an exit reported after the exit gap bound', () => {
     const gap = relayConst('TRANSIT_MAX_EXIT_GAP_MS');
     const { t, count } = tracker();
