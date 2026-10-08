@@ -149,6 +149,10 @@ function stableFetch(features, metadata = null, objectIdField = 'OBJECTID') {
         objectIds: features.map((row) => row.attributes[objectIdField]),
       });
     }
+    if (parsed.searchParams.has('outStatistics')) {
+      const dates = features.map((row) => row.attributes.REPORT_DATE).filter(Number.isFinite);
+      return jsonResponse({ features: [{ attributes: { newestReportDate: dates.length ? Math.max(...dates) : null } }] });
+    }
     const params = requestParams(url, init);
     if (!params.has('objectIds')) return jsonResponse(metadata);
     const ids = params.get('objectIds').split(',').map(Number);
@@ -650,34 +654,37 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
   // and its data was last edited 2026-07-16. A window counted back from the
   // run date started 2026-07-10, matched no rows, and published an empty MCI
   // key. TPS publishes quarterly, so the window ends where the data does.
-  it('counts the MCI lookback back from the layer data edit date, not the run date', async () => {
+  function capturedWheres(newestReportDate) {
     const wheres = [];
     const fetchImpl = async (url, init = {}) => {
       const params = requestParams(url, init);
       if (params.get('returnIdsOnly') === 'true') wheres.push(params.get('where'));
-      return stableFetch([feature(mciAttrs())])(url, init);
+      return stableFetch([feature(mciAttrs({ REPORT_DATE: newestReportDate }))])(url, init);
     };
+    return { wheres, fetchImpl };
+  }
+
+  // The data edit date sits months after the newest row here, as it does when
+  // TPS corrects an old record. Anchoring on it would skip every row.
+  it('counts the MCI lookback back from the newest REPORT_DATE, not the run or edit date', async () => {
+    const { wheres, fetchImpl } = capturedWheres(Date.UTC(2026, 5, 30));
     const result = await fetchTpsMci({
       metadata: {
         maxRecordCount: 2000,
         fields: TPS_MCI_REQUIRED_FIELDS,
-        editingInfo: { dataLastEditDate: Date.UTC(2026, 6, 16) },
+        editingInfo: { dataLastEditDate: Date.UTC(2026, 8, 20) },
         serviceItemId: TPS_MCI_SERVICE_ITEM_ID,
       },
       now: Date.UTC(2026, 9, 8),
       fetchImpl,
     });
     assert.equal(result.ok, true);
-    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-06-01T00:00:00'"]);
+    assert.equal(result.snapshot.records.length, 1);
+    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-05-31T00:00:00'"]);
   });
 
-  it('never counts the MCI lookback from a data edit date after the run date', async () => {
-    const wheres = [];
-    const fetchImpl = async (url, init = {}) => {
-      const params = requestParams(url, init);
-      if (params.get('returnIdsOnly') === 'true') wheres.push(params.get('where'));
-      return stableFetch([feature(mciAttrs())])(url, init);
-    };
+  it('never counts the MCI lookback from a REPORT_DATE after the run date', async () => {
+    const { wheres, fetchImpl } = capturedWheres(Date.UTC(2026, 11, 1));
     await fetchTpsMci({
       metadata: {
         maxRecordCount: 2000,
@@ -688,7 +695,21 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
       now: Date.UTC(2026, 9, 8),
       fetchImpl,
     });
-    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-08-24T00:00:00'"]);
+    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-09-08T00:00:00'"]);
+  });
+
+  it('fails closed when the layer reports no newest REPORT_DATE', async () => {
+    const result = await fetchTpsMci({
+      metadata: {
+        maxRecordCount: 2000,
+        fields: TPS_MCI_REQUIRED_FIELDS,
+        editingInfo: { dataLastEditDate: 1 },
+        serviceItemId: TPS_MCI_SERVICE_ITEM_ID,
+      },
+      fetchImpl: stableFetch([]),
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /schema_drift:mci:newest_report_date/);
   });
 
   it('pins each fetched source to its current official identity', async () => {

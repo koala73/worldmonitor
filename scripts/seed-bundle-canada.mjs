@@ -86,7 +86,7 @@ const CANADA_SECTIONS = [
   //
   // WHY THE CAPACITY OBJECTION NO LONGER APPLIES: the adapter header rules this
   // out on the cost of a full 486k-row MCI walk (~243 pages), which the adapter
-  // never performs — it is a bounded worker (45-day lookback, maxPages 3,
+  // never performs — it is a bounded worker (30-day lookback, maxPages 3,
   // 2,000-row page cap). Measured live 2026-09-04: MCI 3,195 records in 7.9s,
   // Calls 5,982 in 7.1s, 22.1s for the pair — ~4% of this runner's 570s budget,
   // against the ~33s this bundle already accepts for the rest of the pack.
