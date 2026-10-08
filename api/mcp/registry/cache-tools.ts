@@ -3526,7 +3526,8 @@ export const CACHE_TOOLS: ToolDef[] = [
           methodology: { type: 'string' },
           byType: { type: 'array', items: { type: 'object', properties: {
             type: { type: 'string' }, scored: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
-            baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' }, medianLeadTimeMs: { type: 'number' },
+            baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' },
+            medianLeadTimeMs: { type: 'number', description: 'Median over hits; omitted below 30 hits.' },
           } } },
         },
       },

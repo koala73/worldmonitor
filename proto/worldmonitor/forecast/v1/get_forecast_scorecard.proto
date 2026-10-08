@@ -143,6 +143,7 @@ message MarketAlertRow {
   optional double base_hit_rate = 5;
   // Hit rate over the rows whose control scored; compare with base_hit_rate.
   optional double paired_hit_rate = 6;
+  // Median over hits; omitted below 30 hits.
   optional int64 median_lead_time_ms = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 

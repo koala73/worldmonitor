@@ -11657,8 +11657,8 @@ paths:
                 - name: runId
                   in: query
                   description: |-
-                    Optional run identifier. The latest package is always returned; when it
-                     differs from this value, note says so.
+                    Optional run identifier. It does not select a package yet: the latest is
+                     always returned, and note says when it differs.
                   required: false
                   example: "example-id"
                   schema:
@@ -44326,7 +44326,7 @@ components:
                 medianLeadTimeMs:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Median over hits; omitted below 30 hits.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: One market-alert type's rolling hit rate beside its base rate.
         worldmonitor_forecast_v1_ScorecardFamilyOutcome:
             type: object
@@ -44353,8 +44353,8 @@ components:
                 runId:
                     type: string
                     description: |-
-                        Optional run identifier. The latest package is always returned; when it
-                         differs from this value, note says so.
+                        Optional run identifier. It does not select a package yet: the latest is
+                         always returned, and note says when it differs.
         worldmonitor_forecast_v1_GetSimulationPackageResponse:
             type: object
             properties:
@@ -44370,7 +44370,7 @@ components:
                 generatedAt:
                     type: integer
                     format: int64
-                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Unix timestamp in milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
                     description: Set when run_id differs from the returned package's run_id.
@@ -44408,10 +44408,12 @@ components:
                 generatedAt:
                     type: integer
                     format: int64
-                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Unix timestamp in milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
-                    description: Set when run_id was supplied but the latest outcome is returned instead.
+                    description: |-
+                        Set when run_id was supplied but the latest outcome is returned instead; the
+                         text tells an expired run_id from a failed by-run lookup.
                 error:
                     type: string
                     description: |-

@@ -5,8 +5,8 @@ package worldmonitor.forecast.v1;
 import "sebuf/http/annotations.proto";
 
 message GetSimulationPackageRequest {
-  // Optional run identifier. The latest package is always returned; when it
-  // differs from this value, note says so.
+  // Optional run identifier. It does not select a package yet: the latest is
+  // always returned, and note says when it differs.
   string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
 }
 
@@ -17,7 +17,7 @@ message GetSimulationPackageResponse {
   reserved "pkg_key";
   string schema_version = 4;
   int32 theater_count = 5;
-  // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.
+  // Unix timestamp in milliseconds.
   int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Set when run_id differs from the returned package's run_id.
   string note = 7;

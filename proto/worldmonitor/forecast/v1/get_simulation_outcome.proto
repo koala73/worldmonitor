@@ -24,9 +24,10 @@ message GetSimulationOutcomeResponse {
   reserved "outcome_key";
   string schema_version = 4;
   int32 theater_count = 5;
-  // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.
+  // Unix timestamp in milliseconds.
   int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Set when run_id was supplied but the latest outcome is returned instead.
+  // Set when run_id was supplied but the latest outcome is returned instead; the
+  // text tells an expired run_id from a failed by-run lookup.
   string note = 7;
   // Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
   // Value: "redis_unavailable" on Redis errors.

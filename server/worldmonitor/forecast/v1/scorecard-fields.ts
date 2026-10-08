@@ -171,12 +171,18 @@ export function selectMarketAlertScorecard(value: unknown): MarketAlertScorecard
   return selected as unknown as MarketAlertScorecard;
 }
 
+// The median lead time is taken over HIT rows only, and the contract carries
+// no hit count beside it, so a median over a handful of hits is withheld at
+// the floor the /accuracy/ page applies (MARKET_ALERT_MIN_SAMPLE, test-pinned).
+export const MARKET_ALERT_MEDIAN_MIN_HITS = 30;
+
 // The ledger names the count n, which sebuf's JSON output turns into the
 // property "false" (YAML 1.1), so the contract calls it scored. The ledger's
 // median of an even count can end in .5, and the contract field is int64.
 function selectMarketAlertRow(row: Record<string, unknown>): Record<string, unknown> {
   const selected = pickNonNull(row, MARKET_ALERT_ROW_FIELDS);
   if (row.n != null) selected.scored = row.n;
+  if (!(Number.isInteger(row.hit) && (row.hit as number) >= MARKET_ALERT_MEDIAN_MIN_HITS)) delete selected.medianLeadTimeMs;
   if (typeof selected.medianLeadTimeMs === 'number') selected.medianLeadTimeMs = Math.round(selected.medianLeadTimeMs);
   return selected;
 }

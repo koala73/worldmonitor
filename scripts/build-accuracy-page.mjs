@@ -14,7 +14,6 @@ import {
   SKILL_MIN_OUTCOME_FAMILIES,
   wilsonInterval,
 } from './_forecast-scorecard.mjs';
-import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE } from './_market-alert-ledger.mjs';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
@@ -988,7 +987,9 @@ const CONTROL_GATED_ALERT_TYPES = new Set(['prediction_leads_news']);
 
 const isRate = (value) => isFiniteNumber(value) && value >= 0 && value <= 1;
 // Alerts are not forecast families, so they keep their own row count floor.
-const MARKET_ALERT_MIN_SAMPLE = 30;
+// The API withholds the median below MARKET_ALERT_MEDIAN_MIN_HITS in
+// server/worldmonitor/forecast/v1/scorecard-fields.ts (a test pins the parity).
+export const MARKET_ALERT_MIN_SAMPLE = 30;
 const isMeasurableCount = (value) => Number.isInteger(value) && value >= MARKET_ALERT_MIN_SAMPLE;
 
 function formatLeadTime(ms) {
@@ -1023,9 +1024,11 @@ function marketAlertsSection(marketAlerts, escapeHtml, audited = false) {
   const days = isFiniteNumber(marketAlerts.rollingWindowDays) ? marketAlerts.rollingWindowDays : 30;
   const generated = isFiniteNumber(marketAlerts.generatedAt) ? ` and were generated ${formatUtcDateTime(marketAlerts.generatedAt)}` : '';
   const intro = `      <p>World Monitor raises a market alert when a market or a prediction market makes an unusual move. Some alerts fire when there is no news behind the move, and one type fires when related news is already out. Each alert is checked ${escapeHtml(formatCount(hours))} hours later. It counts as a hit if an established news outlet published a new story about the same company, commodity or topic in that time. The same check also runs on the same market for a stretch of the same length one day earlier, when no alert was raised, and that gives the base rate. An alert type is useful only when its hit rate is clearly above the base rate on the same alerts. The figures cover the last ${escapeHtml(formatCount(days))} days${escapeHtml(generated)}.</p>`;
+  // The rules come from the capture, so a rule change after it never sits
+  // beside figures scored under the old rules.
+  const methodology = typeof marketAlerts.methodology === 'string' ? marketAlerts.methodology.trim() : '';
   const rules = `      <h3>How an alert is scored</h3>
-      <p>${escapeHtml(MARKET_ALERT_RESOLUTION_RULE)}</p>
-      <p>${escapeHtml(MARKET_ALERT_BASE_RATE_RULE)}</p>`;
+      <p>${escapeHtml(methodology || 'This edition did not capture the rules these alerts were scored under.')}</p>`;
   if (marketAlerts.byType.length === 0) {
     return `${heading}
 ${intro}

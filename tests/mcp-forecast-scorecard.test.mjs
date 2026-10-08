@@ -40,10 +40,10 @@ const MARKET_ALERTS_STORED = {
   windowHours: 6,
   rollingWindowDays: 30,
   methodology: 'market-alert methodology',
-  totals: { pending: 1, resolved: 4, hit: 3, miss: 1, void: 0 },
+  totals: { pending: 1, resolved: 40, hit: 30, miss: 10, void: 0 },
   archive: { readFailed: false, truncated: false, unproven: false, coveredFromMs: 1, readAt: 2 },
   byType: [
-    { type: 'market', pending: 1, resolved: 4, hit: 3, miss: 1, void: 0, n: 4, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'market', pending: 1, resolved: 40, hit: 30, miss: 10, void: 0, n: 40, hitRate: 0.75, pairedHitRate: 0.5, baseN: 2, baseHitRate: 0.5, medianLeadTimeMs: 3600000 },
     { type: 'prediction-market', pending: 0, resolved: 0, hit: 0, miss: 0, void: 0, n: 0, hitRate: null, pairedHitRate: null, baseN: 0, baseHitRate: null, medianLeadTimeMs: null },
   ],
 };
@@ -53,7 +53,7 @@ const MARKET_ALERTS = {
   rollingWindowDays: 30,
   methodology: 'market-alert methodology',
   byType: [
-    { type: 'market', scored: 4, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
+    { type: 'market', scored: 40, hitRate: 0.75, baseN: 2, baseHitRate: 0.5, pairedHitRate: 0.5, medianLeadTimeMs: 3600000 },
     { type: 'prediction-market', scored: 0, baseN: 0 },
   ],
 };
@@ -165,6 +165,13 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     const serialized = JSON.stringify(result);
     assert.equal(serialized.includes('archive'), false);
     assert.equal(serialized.includes('coveredFromMs'), false);
+  });
+
+  it('withholds a median lead time built on fewer than 30 hits (#8985)', () => {
+    const fewHits = { ...MARKET_ALERTS_STORED, byType: [{ ...MARKET_ALERTS_STORED.byType[0], hit: 29 }] };
+    const [row] = tool._project({ scorecard: DECLARED, marketAlerts: fewHits }).marketAlerts.byType;
+    assert.equal(Object.hasOwn(row, 'medianLeadTimeMs'), false);
+    assert.equal(row.scored, 40);
   });
 
   it('serves marketAlerts as null when its key is absent', async () => {

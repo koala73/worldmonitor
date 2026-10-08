@@ -1104,6 +1104,25 @@ describe('accuracy page market-alert hit rates (#8867)', () => {
       'the quoted rules are the ones the ledger scores under');
   });
 
+  it('quotes the rules captured with the figures, not the rules in the current code (#8985)', () => {
+    const captured = 'Captured rule: an alert resolves HIT when a fixture story names it.';
+    const text = stripTags(renderState(withAlerts([row('silent_divergence')], { methodology: captured })).html);
+    assert.ok(text.includes(captured), 'the page quotes the rules the figures were scored under');
+    for (const rule of [MARKET_ALERT_RESOLUTION_RULE, MARKET_ALERT_BASE_RATE_RULE]) {
+      assert.equal(text.replaceAll('&#39;', "'").includes(rule), false, 'a rule changed after the capture must not sit beside the old figures');
+    }
+  });
+
+  it('says the rules were not captured rather than quoting the current code', () => {
+    for (const methodology of [undefined, '', '   ']) {
+      for (const byType of [[row('silent_divergence')], []]) {
+        const text = stripTags(renderState(withAlerts(byType, { methodology })).html);
+        assert.match(text, /This edition did not capture the rules these alerts were scored under\./);
+        assert.equal(text.replaceAll('&#39;', "'").includes(MARKET_ALERT_RESOLUTION_RULE), false);
+      }
+    }
+  });
+
   it('labels every alert type the ledger scores in plain words', () => {
     assert.deepEqual(Object.keys(MARKET_ALERT_TYPE_LABELS).sort(), [...MARKET_ALERT_TYPES].sort());
     const { html } = renderState(withAlerts(MARKET_ALERT_TYPES.map((type) => row(type))));
