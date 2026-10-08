@@ -720,7 +720,7 @@ function summarizeProjectionHorizons(entries, nowMs) {
   return {
     semantics: 'point_in_time',
     minSample: SKILL_MIN_FAMILIES,
-    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only once its scored windows come from at least ${SKILL_MIN_FAMILIES} forecast families with ${SKILL_MIN_OUTCOME_FAMILIES} YES and ${SKILL_MIN_OUTCOME_FAMILIES} NO families, and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID. The realized rate is the YES share of scored windows with a 95% Wilson interval; that interval treats each window as independent, so read it beside the family count. Slices by domain and by projection-curve version (null: registered before the version stamp) repeat the same per-horizon rows.`,
+    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only once its scored windows come from at least ${SKILL_MIN_FAMILIES} forecast families with ${SKILL_MIN_OUTCOME_FAMILIES} YES and ${SKILL_MIN_OUTCOME_FAMILIES} NO families, and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID. The realized rate is the YES share of scored windows with a 95% Wilson interval; that interval treats each window as independent, so read it beside the family count. Slices by domain and by projection-curve version (null: the window was registered from a history emission that carries no version stamp) repeat the same per-horizon rows.`,
     byHorizon: summarizeHorizonRows(entries, nowMs, 'projection'),
     byDomain: sliceHorizonRows(entries, (entry) => entry?.domain || 'unknown').map(([domain, group]) => ({
       domain,

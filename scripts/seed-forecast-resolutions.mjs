@@ -1932,7 +1932,8 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
 // window grades, so a window that carried them would misdescribe itself.
 const HORIZON_PARENT_FIELDS = ['domain', 'region', 'title', 'generationOrigin', 'origin', 'stateBucketId'];
 // What createEntry copies from a parent beyond HORIZON_PARENT_FIELDS. Windows
-// registered before the whitelist carry these and lose them on the next run.
+// registered before the whitelist carry these; each run strips them from the
+// live ledger. Receipts already archived to R2 keep them.
 const HORIZON_STALE_PARENT_FIELDS = ['uncalibratedProbability', 'calibration', 'baselineProbability', 'probabilitySource', 'passes', 'marketSlug', 'marketSource'];
 
 function pickHorizonParentFields(forecast) {

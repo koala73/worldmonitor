@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import {
@@ -2890,6 +2891,29 @@ describe('computeProjections', () => {
       cyber:          { h24: 1.0, d7: 0.78, d30: 0.4 },
       infrastructure: { h24: 1.0, d7: 0.5, d30: 0.25 },
     });
+  });
+
+  it('pins the whole projection mapping to its version: anchor rule, peak anchoring, floor and cap (#7075)', () => {
+    // A fingerprint of computeProjections over every domain, emitted horizon
+    // and a probability at the floor, mid-range and the cap. If it changes,
+    // bump PROJECTION_CURVES_VERSION and then update this hash.
+    const rows = [];
+    for (const domain of ['conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure', 'unknown_domain']) {
+      for (const timeHorizon of ['24h', '7d', '14d', '30d']) {
+        for (const probability of [0.02, 0.35, 0.5, 0.9]) {
+          const pred = makePrediction(domain, 'R', 't', probability, 0.5, timeHorizon, []);
+          pred.probability = probability;
+          computeProjections([pred]);
+          rows.push([domain, timeHorizon, probability, pred.projections.h24, pred.projections.d7, pred.projections.d30]);
+        }
+      }
+    }
+    const fingerprint = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+    assert.deepEqual(
+      [PROJECTION_CURVES_VERSION, fingerprint],
+      [1, '77a8e30669eef158301224614076c84f57b1b20d5d70682cffdea53676844086'],
+      'computeProjections changed: bump PROJECTION_CURVES_VERSION, then update the fingerprint',
+    );
   });
 });
 

@@ -3396,6 +3396,17 @@ describe('projection horizon windows (#7075)', () => {
     assert.equal(ledger[PARENT].marketSlug, 'slug');
   });
 
+  it('a re-emission with a different curve version keeps the window at its first stamp (#7075)', () => {
+    const first = processResolutionCycle({}, [snapshot(T0, [projected({ projectionCurvesVersion: 1 })])], HORMUZ(40), T0);
+    const later = T0 + 6 * 60 * 60 * 1000;
+    const { ledger } = processResolutionCycle(first.ledger, [snapshot(later, [projected({ projectionCurvesVersion: 2 })])], HORMUZ(40), later);
+    for (const horizon of Object.keys(PROJECTION_HORIZONS)) {
+      const row = ledger[`${PARENT}@${horizon}`];
+      assert.equal(row.projectionCurvesVersion, 1, horizon);
+      assert.equal(row.lastSeenAt, later, `${horizon} saw the re-emission`);
+    }
+  });
+
   it('the same forecast at two deadlines and three horizons creates six distinct keys', () => {
     const first = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const later = T0 + 15 * DAY_MS;
