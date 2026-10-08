@@ -59,8 +59,9 @@ function scorecardWithGate(eligible) {
         eligible,
         reasons: eligible ? [] : ['overall_not_non_inferior'],
         forwardCount: 72,
+        forwardFamilies: 64,
         overall: { brierDeltaUpper: eligible ? -0.011 : 0.012, nonInferior: eligible },
-        domains: [{ domain: 'cyber', count: 41, sufficient: true, brierDeltaUpper: -0.02, nonInferior: true }],
+        domains: [{ domain: 'cyber', count: 41, families: 33, sufficient: true, brierDeltaUpper: -0.02, nonInferior: true }],
       },
     },
   };
@@ -132,9 +133,9 @@ describe('seeder calibration publication (#7070)', () => {
     const flipLine = logger.lines.find((line) => line.includes('FLIP'));
     assert.match(flipLine, /raw -> calibrated/);
     assert.match(flipLine, /reason=gate_eligible/);
-    assert.match(flipLine, /forward=72/);
+    assert.match(flipLine, /forward=72 forwardFamilies=64/);
     assert.match(flipLine, /brierDeltaUpper=-0\.011/);
-    assert.match(flipLine, /cyber:41:-0\.02/);
+    assert.match(flipLine, /cyber:41:33:-0\.02/);
 
     await writeCalibrationPublication(run.record);
     assert.equal(store[CALIBRATION_PUBLICATION_KEY].mode, 'calibrated');

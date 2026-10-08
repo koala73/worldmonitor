@@ -5082,8 +5082,8 @@ async function resolveCalibrationPublication(nowMs, { env = process.env, logger 
   const { flipped, record } = recordCalibrationPublication(previousRead.value, decision, nowMs);
   const gate = decision.gate;
   const gateText = gate
-    ? `eligible=${gate.eligible} forward=${gate.forwardCount} brierDeltaUpper=${gate.brierDeltaUpper} `
-      + `domains=${gate.domains.map((row) => `${row.domain}:${row.count}:${row.brierDeltaUpper}`).join(',') || 'none'} `
+    ? `eligible=${gate.eligible} forward=${gate.forwardCount} forwardFamilies=${gate.forwardFamilies} brierDeltaUpper=${gate.brierDeltaUpper} `
+      + `domains=${gate.domains.map((row) => `${row.domain}:${row.count}:${row.families}:${row.brierDeltaUpper}`).join(',') || 'none'} `
       + `gateReasons=${gate.reasons.join(',') || 'none'}`
     : 'gate=none';
   const line = `mode=${decision.mode} reason=${decision.reason} map=${decision.mapVersion ?? 'none'} ${gateText}`;

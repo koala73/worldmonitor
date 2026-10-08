@@ -526,8 +526,9 @@ function meetsFamilyMinimums(families) {
 }
 
 // A family is one forecast id (#8990): its windows ask the same question of
-// the same detector, so they are resampled together and counted once.
-function familyKey(entry) {
+// the same detector, so they are resampled together and counted once. The
+// scorecard, the calibration fit and the activation gate (#9034) all use this.
+export function familyKey(entry) {
   return typeof entry?.id === 'string' && entry.id ? entry.id : '';
 }
 
@@ -544,6 +545,14 @@ function familyTotals(entries) {
   return [...byFamily.values()];
 }
 
+// One cluster-bootstrap resample: as many families as the cohort holds, drawn
+// with replacement.
+function drawFamilies(families, random) {
+  const drawn = new Array(families.length);
+  for (let i = 0; i < families.length; i += 1) drawn[i] = families[Math.floor(random() * families.length)];
+  return drawn;
+}
+
 // Percentile bootstrap over whole families: each resample draws families with
 // replacement and pools their rows. A statistic that is undefined on a draw
 // (a resample whose outcomes all went one way has no base rate to beat) is
@@ -553,8 +562,7 @@ function familyBootstrap(families, statistic, scope) {
   const draws = [];
   for (let r = 0; r < CALIBRATION_BOOTSTRAP_RESAMPLES; r += 1) {
     const sum = { rows: 0, yes: 0, brier: 0 };
-    for (let i = 0; i < families.length; i += 1) {
-      const family = families[Math.floor(random() * families.length)];
+    for (const family of drawFamilies(families, random)) {
       sum.rows += family.rows;
       sum.yes += family.yes;
       sum.brier += family.brier;
@@ -740,17 +748,21 @@ function summarizeProjectionHorizons(entries, nowMs) {
 // ---------------------------------------------------------------------------
 // Calibration shadow metrics and activation gate (#7070).
 //
-// Input rows are forward-cohort pairs { domain, y, raw, calibrated }: one
-// resolved YES/NO published-origin entry, its stored probability, and what the
-// calibration map would have published instead. Building those rows (and
-// refusing in-sample entries) belongs to _forecast-calibration.mjs; this is the
-// measurement half and holds no opinion on how the map was fitted.
+// Input rows are forward-cohort pairs { domain, family, y, raw, calibrated }:
+// one resolved YES/NO published-origin entry, its family key, its stored
+// probability, and what the calibration map would have published instead.
+// Building those rows (and refusing in-sample entries) belongs to
+// _forecast-calibration.mjs; this is the measurement half and holds no opinion
+// on how the map was fitted.
 // ---------------------------------------------------------------------------
 
 export const CALIBRATION_BOOTSTRAP_RESAMPLES = 2000;
 export const CALIBRATION_BOOTSTRAP_SEED = 7070;
-export const ACTIVATION_MIN_FORWARD_TOTAL = 60;
-export const ACTIVATION_MIN_FORWARD_DOMAIN = 30;
+// Forward minimums count families, not rows (#9034, amended preregistration on
+// #7070, 2026-10-08): a recurring question resolves window after window, so a
+// row count let three families pass on 70 rows.
+export const ACTIVATION_MIN_FORWARD_FAMILIES = 60;
+export const ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES = 30;
 // Upper bound of the paired 95% interval on (calibrated − raw) Brier must sit
 // at or below this margin. Preregistered here so the gate cannot be tuned
 // after the forward cohort is seen.
@@ -852,23 +864,44 @@ function percentile(sorted, q) {
 }
 
 /**
- * Entry-level paired bootstrap: each resample draws entries (not raw and
- * calibrated values separately), so every statistic sees the same pairs.
+ * Family-cluster paired bootstrap (#9034): each resample draws whole families
+ * with replacement and pools their rows, and a row carries its raw and
+ * calibrated values together, so every statistic sees the same pairs. Windows
+ * of one family share an outcome history; resampling them one by one read a
+ * repeated question as independent evidence and narrowed the interval.
+ * Families keep first-seen order, so with one row per family the draws are
+ * those of a row bootstrap.
  */
 export function pairedBootstrap(rows, statistics, options = {}) {
   const resamples = options.resamples ?? CALIBRATION_BOOTSTRAP_RESAMPLES;
   const random = mulberry32(seedFor(options.scope ?? 'overall', options.seed ?? CALIBRATION_BOOTSTRAP_SEED));
   const names = Object.keys(statistics);
   const draws = Object.fromEntries(names.map((name) => [name, []]));
-  const sample = new Array(rows.length);
+  const families = rowsByFamily(rows);
+  const sample = [];
   for (let r = 0; r < resamples; r += 1) {
-    for (let i = 0; i < rows.length; i += 1) sample[i] = rows[Math.floor(random() * rows.length)];
+    sample.length = 0;
+    for (const family of drawFamilies(families, random)) for (const row of family) sample.push(row);
     for (const name of names) draws[name].push(statistics[name](sample));
   }
   return Object.fromEntries(names.map((name) => {
     const sorted = draws[name].sort((a, b) => a - b);
     return [name, [round(percentile(sorted, 0.025)), round(percentile(sorted, 0.975))]];
   }));
+}
+
+function rowsByFamily(rows) {
+  const byFamily = new Map();
+  for (const row of rows) {
+    if (typeof row?.family !== 'string') throw new TypeError('pairedBootstrap rows need a family key');
+    if (!byFamily.has(row.family)) byFamily.set(row.family, []);
+    byFamily.get(row.family).push(row);
+  }
+  return [...byFamily.values()];
+}
+
+function familyCount(rows) {
+  return new Set(rows.map((row) => row.family)).size;
 }
 
 const brierDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row, 'calibrated') - rowBrier(row, 'raw')));
@@ -887,6 +920,7 @@ function summarizeShadowRows(rows, scope, options) {
   });
   return {
     count: rows.length,
+    families: familyCount(rows),
     positives: rows.reduce((sum, row) => sum + row.y, 0),
     raw: side('raw', intervals.rawEce),
     calibrated: side('calibrated', intervals.calibratedEce),
@@ -901,7 +935,7 @@ function summarizeShadowRows(rows, scope, options) {
  * their delta is zero by construction and shows the map stayed out of them.
  */
 export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}) {
-  if (!rows.length) return { count: 0, positives: 0, byDomain: [] };
+  if (!rows.length) return { count: 0, families: 0, positives: 0, byDomain: [] };
   const domains = [...new Set(rows.map((row) => row.domain))].sort();
   return {
     ...summarizeShadowRows(rows, 'overall', options),
@@ -912,6 +946,7 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
         domain,
         mode: modeByDomain[domain] ?? 'identity',
         count: summary.count,
+        families: summary.families,
         positives: summary.positives,
         rawBrier: summary.raw.brier,
         calibratedBrier: summary.calibrated.brier,
@@ -922,7 +957,9 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
 }
 
 /**
- * The #7070 activation gate. Reports eligibility and every failing reason;
+ * The #7070 activation gate. Its minimums count forward families and its
+ * interval is the family-cluster bootstrap (#9034). Reports eligibility and
+ * every failing reason;
  * seed-forecasts publishes calibrated probabilities only while `eligible`
  * holds for the current map. Coverage, VOID
  * and origin mix ride beside the verdict (from `context`) so a cohort that
@@ -930,8 +967,8 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
  */
 export function evaluateActivationGate(shadow, modeByDomain, context = {}, options = {}) {
   const thresholds = {
-    minForwardTotal: options.minForwardTotal ?? ACTIVATION_MIN_FORWARD_TOTAL,
-    minForwardDomain: options.minForwardDomain ?? ACTIVATION_MIN_FORWARD_DOMAIN,
+    minForwardFamilies: options.minForwardFamilies ?? ACTIVATION_MIN_FORWARD_FAMILIES,
+    minForwardDomainFamilies: options.minForwardDomainFamilies ?? ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES,
     nonInferiorityMargin: options.nonInferiorityMargin ?? ACTIVATION_NON_INFERIORITY_MARGIN,
     bootstrapResamples: options.resamples ?? CALIBRATION_BOOTSTRAP_RESAMPLES,
     bootstrapSeed: options.seed ?? CALIBRATION_BOOTSTRAP_SEED,
@@ -941,7 +978,8 @@ export function evaluateActivationGate(shadow, modeByDomain, context = {}, optio
   if (options.mapMonotone === false) reasons.push('map_not_monotone');
   if (!activated.length) reasons.push('no_non_identity_domain');
   const forwardCount = shadow?.count ?? 0;
-  if (forwardCount < thresholds.minForwardTotal) reasons.push('insufficient_forward_total');
+  const forwardFamilies = shadow?.families ?? 0;
+  if (forwardFamilies < thresholds.minForwardFamilies) reasons.push('insufficient_forward_total');
 
   const nonInferior = (delta) => Array.isArray(delta?.ci95) && delta.ci95[1] <= thresholds.nonInferiorityMargin;
   const overallNonInferior = forwardCount > 0 && nonInferior(shadow.brierDelta);
@@ -950,13 +988,15 @@ export function evaluateActivationGate(shadow, modeByDomain, context = {}, optio
   const domains = activated.map((domain) => {
     const row = shadow?.byDomain?.find((candidate) => candidate.domain === domain);
     const count = row?.count ?? 0;
-    const sufficient = count >= thresholds.minForwardDomain;
+    const families = row?.families ?? 0;
+    const sufficient = families >= thresholds.minForwardDomainFamilies;
     const domainNonInferior = count > 0 && nonInferior(row.brierDelta);
     if (!sufficient) reasons.push(`insufficient_forward_domain:${domain}`);
     if (count > 0 && !domainNonInferior) reasons.push(`domain_not_non_inferior:${domain}`);
     return {
       domain,
       count,
+      families,
       sufficient,
       brierDeltaUpper: row?.brierDelta?.ci95?.[1] ?? null,
       nonInferior: domainNonInferior,
@@ -968,6 +1008,7 @@ export function evaluateActivationGate(shadow, modeByDomain, context = {}, optio
     reasons,
     thresholds,
     forwardCount,
+    forwardFamilies,
     overall: {
       brierDeltaUpper: shadow?.brierDelta?.ci95?.[1] ?? null,
       nonInferior: overallNonInferior,

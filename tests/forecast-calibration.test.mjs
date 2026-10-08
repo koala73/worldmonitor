@@ -23,8 +23,8 @@ import {
   selectFitCohort,
 } from '../scripts/_forecast-calibration.mjs';
 import {
-  ACTIVATION_MIN_FORWARD_DOMAIN,
-  ACTIVATION_MIN_FORWARD_TOTAL,
+  ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES,
+  ACTIVATION_MIN_FORWARD_FAMILIES,
   pairedBootstrap,
   wilsonInterval,
 } from '../scripts/_forecast-scorecard.mjs';
@@ -81,10 +81,10 @@ function repeat(count, make) {
   return Array.from({ length: count }, (_, index) => make(index));
 }
 
-// 60 forward NO rows at p=0.1 from 30 families, two windows each: the map's
+// 120 forward NO rows at p=0.1 from 60 families, two windows each: the map's
 // 0.4 is worse than raw on all of them.
-function forward60NoAt(fitAt) {
-  return repeat(60, (i) => ({ ...entry({ outcome: 'NO', probability: 0.1, generatedAt: fitAt + DAY_MS + i }), id: `c1-${i % 30}` }));
+function forwardNoAt(fitAt) {
+  return repeat(120, (i) => ({ ...entry({ outcome: 'NO', probability: 0.1, generatedAt: fitAt + DAY_MS + i }), id: `c1-${i % 60}` }));
 }
 
 // `families` one-row families, the first `yes` of them resolved YES.
@@ -100,8 +100,8 @@ describe('golden fit on the frozen published-origin ledger', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT);
     assert.deepEqual(map, {
       schemaVersion: 1,
-      version: `forecast-calibration-pav-v3@${FIT_AT}`,
-      codeVersion: 'forecast-calibration-pav-v3',
+      version: `forecast-calibration-pav-v4@${FIT_AT}`,
+      codeVersion: 'forecast-calibration-pav-v4',
       dataVersion: 1,
       refitReason: 'absent',
       fittedAt: FIT_AT,
@@ -139,7 +139,10 @@ describe('golden fit on the frozen published-origin ledger', () => {
       noFamilies: 3,
       eligible: true,
       mode: 'isotonic',
-      knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.777778 }, { x: 0.85, y: 0.777778 }, { x: 0.93, y: 0.99 }],
+      // The 0.34-0.85 block holds 7 YES and 2 NO rows from 8 families; two
+      // YES families have 2 rows each, so it is 5.5 of 7.5 family weight
+      // (0.733), not 7 of 9 rows (0.778).
+      knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.733333 }, { x: 0.85, y: 0.733333 }, { x: 0.93, y: 0.99 }],
     });
     assert.equal(map.domains.market.mode, 'identity', '4 families stay below the lowered minimum');
     assert.equal(map.domains.cyber.ineligibleReason, 'insufficient_yes_families', 'all-NO cyber cannot fit at any minimum');
@@ -384,7 +387,7 @@ describe('activation gate', () => {
   it('passes with enough forward outcomes and a non-inferior calibrated Brier', () => {
     assert.equal(map.domains.cyber.mode, 'isotonic');
     assert.equal(map.domains.conflict.mode, 'identity');
-    const gate = gateFor([...forward(ACTIVATION_MIN_FORWARD_DOMAIN + 10, { domain: 'cyber', probability: 0.3 }), ...forward(25, { domain: 'conflict', probability: 0.5, outcome: 'YES' })]);
+    const gate = gateFor([...forward(ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES + 10, { domain: 'cyber', probability: 0.3 }), ...forward(25, { domain: 'conflict', probability: 0.5, outcome: 'YES' })]);
     assert.deepEqual(gate.reasons, []);
     assert.equal(gate.eligible, true);
     assert.equal(gate.forwardCount, 65);
@@ -393,13 +396,13 @@ describe('activation gate', () => {
   });
 
   it('fails on too few forward outcomes overall', () => {
-    const gate = gateFor(forward(ACTIVATION_MIN_FORWARD_TOTAL - 1, { domain: 'cyber', probability: 0.3 }));
+    const gate = gateFor(forward(ACTIVATION_MIN_FORWARD_FAMILIES - 1, { domain: 'cyber', probability: 0.3 }));
     assert.equal(gate.eligible, false);
     assert.deepEqual(gate.reasons, ['insufficient_forward_total']);
   });
 
   it('fails when an activated domain has too few forward outcomes', () => {
-    const gate = gateFor([...forward(ACTIVATION_MIN_FORWARD_DOMAIN - 1, { domain: 'cyber', probability: 0.3 }), ...forward(40, { domain: 'conflict', probability: 0.5, outcome: 'YES' })]);
+    const gate = gateFor([...forward(ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES - 1, { domain: 'cyber', probability: 0.3 }), ...forward(40, { domain: 'conflict', probability: 0.5, outcome: 'YES' })]);
     assert.equal(gate.eligible, false);
     assert.deepEqual(gate.reasons, ['insufficient_forward_domain:cyber']);
   });
@@ -443,10 +446,119 @@ describe('shadow metrics', () => {
   });
 
   it('seeds the bootstrap so intervals are reproducible', () => {
-    const rows = repeat(40, (i) => ({ domain: 'd', y: i % 4 === 0 ? 1 : 0, raw: 0.3, calibrated: 0.1 + (i % 3) / 10 }));
+    const rows = repeat(40, (i) => ({ domain: 'd', family: `f-${i}`, y: i % 4 === 0 ? 1 : 0, raw: 0.3, calibrated: 0.1 + (i % 3) / 10 }));
     const stat = { mean: (sample) => sample.reduce((sum, row) => sum + row.calibrated, 0) / sample.length };
     assert.deepEqual(pairedBootstrap(rows, stat), pairedBootstrap(rows, stat));
+    // One row per family draws exactly what the row bootstrap before #9034 drew.
     assert.deepEqual(pairedBootstrap(rows, stat), { mean: [0.1725, 0.2225] }, 'pinned to the seeded PRNG');
+  });
+});
+
+describe('family-counted activation gate (#9034)', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const map = fitCalibrationMap(ledgerOf(twoSided(110, 12, { domain: 'cyber', probability: 0.35 })), fitAt);
+  const gateFor = (entries) => evaluateCalibrationShadow(ledgerOf(entries), map, fitAt + 60 * DAY_MS).activationGate;
+  // `rows` forward windows spread over `families` forecast ids.
+  const forwardFamilies = (families, rows, options) => repeat(rows, (i) => ({
+    ...entry({ domain: 'cyber', probability: 0.3, generatedAt: fitAt + DAY_MS + i, ...options }),
+    id: `fwd-${i % families}`,
+  }));
+  const deltaStatistic = { delta: (sample) => sample.reduce((sum, row) => sum + (row.calibrated - row.y) ** 2 - (row.raw - row.y) ** 2, 0) / sample.length };
+  const width = ([lo, hi]) => hi - lo;
+
+  it('keeps the preregistered minimums, now counted in families', () => {
+    assert.deepEqual([ACTIVATION_MIN_FORWARD_FAMILIES, ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES], [60, 30]);
+    const docs = readFileSync(new URL('../docs/panels/forecast.mdx', import.meta.url), 'utf8');
+    const zhDocs = readFileSync(new URL('../docs/zh/panels/forecast.mdx', import.meta.url), 'utf8');
+    assert.match(docs, new RegExp(`at least ${ACTIVATION_MIN_FORWARD_FAMILIES} distinct forecast families \\(\`ACTIVATION_MIN_FORWARD_FAMILIES\`\\)`));
+    assert.match(docs, new RegExp(`at least ${ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES} families in every domain`));
+    assert.match(zhDocs, new RegExp(`至少 ${ACTIVATION_MIN_FORWARD_FAMILIES} 个不同预测家族.*至少 ${ACTIVATION_MIN_FORWARD_DOMAIN_FAMILIES} 个家族`));
+  });
+
+  it('a few recurring families cannot meet the minimums however many windows they resolve', () => {
+    const gate = gateFor(forwardFamilies(3, 70));
+    assert.equal(gate.forwardCount, 70);
+    assert.equal(gate.forwardFamilies, 3);
+    assert.deepEqual(gate.domains.map((row) => [row.domain, row.count, row.families, row.sufficient]), [['cyber', 70, 3, false]]);
+    assert.deepEqual(gate.reasons, ['insufficient_forward_total', 'insufficient_forward_domain:cyber']);
+    assert.equal(gate.eligible, false);
+  });
+
+  it('passes at the family minimums and fails one family under each', () => {
+    assert.equal(gateFor(forwardFamilies(60, 120)).eligible, true);
+    assert.deepEqual(gateFor(forwardFamilies(59, 120)).reasons, ['insufficient_forward_total']);
+    const conflict = repeat(40, (i) => entry({ domain: 'conflict', probability: 0.5, outcome: 'YES', generatedAt: fitAt + DAY_MS + i }));
+    assert.deepEqual(gateFor([...forwardFamilies(29, 60), ...conflict]).reasons, ['insufficient_forward_domain:cyber']);
+    assert.equal(gateFor([...forwardFamilies(30, 60), ...conflict]).eligible, true);
+  });
+
+  it('resamples whole families, so clustered outcomes widen the interval', () => {
+    // Ten families of ten windows; each family resolves one way, so its rows
+    // carry one observation's worth of evidence, not ten.
+    const rows = repeat(100, (i) => {
+      const family = Math.floor(i / 10);
+      return { domain: 'd', family: `c-${family}`, y: family % 2, raw: 0.5, calibrated: 0.3 + (family % 5) / 10 };
+    });
+    const rowWise = rows.map((row, i) => ({ ...row, family: `r-${i}` }));
+    const cluster = width(pairedBootstrap(rows, deltaStatistic).delta);
+    const rowLevel = width(pairedBootstrap(rowWise, deltaStatistic).delta);
+    assert.ok(cluster > 2 * rowLevel, `cluster ${cluster} vs row ${rowLevel}`);
+  });
+
+  it('a single family repeated cannot tighten the interval', () => {
+    const base = repeat(20, (i) => ({ domain: 'd', family: `b-${i}`, y: i % 2, raw: 0.5, calibrated: 0.2 + (i % 4) / 10 }));
+    const repeated = [...base, ...repeat(200, () => ({ ...base[0] }))];
+    const asRows = repeated.map((row, i) => ({ ...row, family: `r-${i}` }));
+    const baseWidth = width(pairedBootstrap(base, deltaStatistic).delta);
+    assert.ok(width(pairedBootstrap(asRows, deltaStatistic).delta) < baseWidth / 2, 'row resampling reads the copies as evidence');
+    assert.ok(width(pairedBootstrap(repeated, deltaStatistic).delta) >= baseWidth, 'family resampling does not');
+  });
+
+  it('refuses rows without a family key', () => {
+    assert.throws(() => pairedBootstrap([{ y: 1, raw: 0.5, calibrated: 0.5 }], { n: (sample) => sample.length }), TypeError);
+  });
+
+  it('labels each shadow row with the forecast id that names its family', () => {
+    const shadow = evaluateCalibrationShadow(ledgerOf(forwardFamilies(4, 12)), map, fitAt + 60 * DAY_MS);
+    assert.equal(shadow.forward.count, 12);
+    assert.equal(shadow.forward.families, 4);
+    assert.equal(shadow.forward.byDomain[0].families, 4);
+  });
+
+  it('carries the family counts into the publication decision', () => {
+    const shadow = evaluateCalibrationShadow(ledgerOf(forwardFamilies(3, 70)), map, fitAt + 60 * DAY_MS);
+    const decision = decideCalibrationPublication(map, shadow, { nowMs: fitAt + 60 * DAY_MS, gateGeneratedAt: fitAt + 60 * DAY_MS });
+    assert.equal(decision.mode, 'raw');
+    assert.equal(decision.gate.forwardFamilies, 3);
+    assert.deepEqual(decision.gate.domains.map((row) => [row.domain, row.count, row.families]), [['cyber', 70, 3]]);
+  });
+});
+
+describe('family-weighted isotonic fit (#9034)', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const family = (id, rows, outcome, probability) => repeat(rows, () => ({ ...entry({ outcome, probability }), id }));
+
+  it('weights points by their weight, and an unweighted point by 1', () => {
+    assert.deepEqual(isotonicKnots([{ x: 0.5, y: 0 }, { x: 0.5, y: 1 }]), [{ x: 0.5, y: 0.5 }]);
+    assert.deepEqual(isotonicKnots([{ x: 0.5, y: 0, weight: 1 / 3 }, { x: 0.5, y: 1, weight: 1 }]), [{ x: 0.5, y: 0.75 }]);
+    // A pooled violator block takes the weighted mean.
+    assert.deepEqual(isotonicKnots([{ x: 0.2, y: 1, weight: 3 }, { x: 0.4, y: 0, weight: 1 }]), [{ x: 0.2, y: 0.75 }, { x: 0.4, y: 0.75 }]);
+  });
+
+  it('gives each family one unit of weight, so a family with many windows counts once', () => {
+    // At p=0.5, one family resolved NO in 10 windows; 10 families resolved YES once each.
+    const rows = [...family('no-heavy', 10, 'NO', 0.5), ...repeat(10, (i) => family(`yes-${i}`, 1, 'YES', 0.5)).flat()];
+    const domain = fitCalibrationMap(ledgerOf(rows), fitAt, { minFamilies: 5, minOutcomeFamilies: 1 }).domains.cyber;
+    assert.equal(domain.mode, 'isotonic');
+    assert.equal(domain.n, 20, 'the sample still reports rows');
+    assert.deepEqual(domain.knots, [{ x: 0.5, y: 0.909091 }], '10 of 11 families resolved YES; row weighting gave 0.5');
+  });
+
+  it('matches the row-weighted fit when every family has one window', () => {
+    const rows = twoSided(40, 15, { probability: 0.4 });
+    const domain = fitCalibrationMap(ledgerOf(rows), fitAt).domains.cyber;
+    assert.deepEqual(domain.knots, isotonicKnots(rows.map((row) => ({ x: 0.4, y: row.outcome === 'YES' ? 1 : 0 }))));
+    assert.deepEqual(domain.knots, [{ x: 0.4, y: 0.375 }]);
   });
 });
 
@@ -544,8 +656,9 @@ describe('published calibration (#7070 activation)', () => {
       eligible: true,
       reasons: [],
       forwardCount: 72,
+      forwardFamilies: 64,
       overall: { brierDeltaUpper: -0.011, nonInferior: true },
-      domains: [{ domain: 'cyber', count: 41, sufficient: true, brierDeltaUpper: -0.02, nonInferior: true }],
+      domains: [{ domain: 'cyber', count: 41, families: 33, sufficient: true, brierDeltaUpper: -0.02, nonInferior: true }],
     },
   };
   const failingShadow = {
@@ -576,8 +689,9 @@ describe('published calibration (#7070 activation)', () => {
       eligible: true,
       reasons: [],
       forwardCount: 72,
+      forwardFamilies: 64,
       brierDeltaUpper: -0.011,
-      domains: [{ domain: 'cyber', count: 41, brierDeltaUpper: -0.02 }],
+      domains: [{ domain: 'cyber', count: 41, families: 33, brierDeltaUpper: -0.02 }],
     });
     const batch = preds();
     assert.equal(applyPublishedCalibration(batch, map, decision), 1);
@@ -820,7 +934,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     const base = twoSided(30, 12, { probability: 0.35 });
     const map = fitCalibrationMap(ledgerOf(base), fitAt);
     assert.equal(map.domains.cyber.mode, 'isotonic');
-    const forward = repeat(70, (i) => ({ ...entry({ outcome: 'NO', probability: 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }), id: `fam-${i % 3}` }));
+    const forward = repeat(70, (i) => entry({ outcome: 'NO', probability: 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }));
     const now = T0 + 188 * DAY_MS;
     const ledger = ledgerOf([...base, ...forward]);
     assert.equal(evaluateCalibrationShadow(ledger, map, now).activationGate.eligible, true);
@@ -1009,7 +1123,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     const pattern = [[0.5, 'YES'], [0.3, 'NO'], [0.3, 'YES'], [0.5, 'NO']];
     const forward = repeat(60, (i) => ({
       ...entry({ probability: pattern[i % 4][0], outcome: pattern[i % 4][1], generatedAt: fitAt + DAY_MS + i }),
-      id: `mixed-${i % 30}`,
+      id: `mixed-${i}`,
     }));
     const now = fitAt + 40 * DAY_MS;
     const ledger = ledgerOf([...base, ...forward]);
@@ -1024,7 +1138,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     const fitAt = T0 + 30 * DAY_MS;
     const base = twoSided(30, 12, { probability: 0.35 });
     const map = fitCalibrationMap(ledgerOf(base), fitAt);
-    const failing = forward60NoAt(fitAt);
+    const failing = forwardNoAt(fitAt);
     const ledger = ledgerOf([...base.slice(4), ...failing]);
     const cohort = evaluateFitEligibility(ledger, fitAt + 40 * DAY_MS).cyber;
     assert.deepEqual({ eligible: cohort.eligible, yes: cohort.yesFamilies }, { eligible: false, yes: 8 });
@@ -1038,7 +1152,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     const map = fitCalibrationMap(ledgerOf(base), fitAt);
     const forward = repeat(400, (i) => ({
       ...entry({ outcome: i % 10 < 3 ? 'YES' : 'NO', probability: i % 10 < 3 ? 0.4 : 0.7, generatedAt: fitAt + DAY_MS + i * DAY_MS }),
-      id: `fw-${i % 40}`,
+      id: `fw-${i % 90}`,
     }));
     let persisted = map;
     let record = null;

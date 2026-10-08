@@ -2,7 +2,7 @@
 //
 // A CalibrationMap is data: per-domain monotone knots fitted by
 // pool-adjacent-violators over individual resolved YES/NO published-origin
-// ledger entries. `applyCalibration` is the only interpretation of that data.
+// ledger entries, each family weighted equally. `applyCalibration` is the only interpretation of that data.
 // `decideCalibrationPublication` runs the same rule on every seeder run: the
 // seeder publishes calibrated probabilities only while the activation gate is
 // eligible for the current map and the kill switch is off.
@@ -13,6 +13,7 @@ import {
   DEFAULT_ROLLING_WINDOW_DAYS,
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   evaluateActivationGate,
+  familyKey,
   generationOriginOf,
   hasPreLineageAnchor,
   isDuplicateWindow,
@@ -67,8 +68,9 @@ export const CALIBRATION_MAP_SCHEMA_VERSION = 1;
 // dataVersion instead (resolveCalibrationMapForRun).
 // v2 refit without the rows voided under #5233. v3 counts families, not rows:
 // v2 kept every domain identity on 25 rows, and v1 fit cyber to a constant
-// 0.01 from 148 all-NO rows that came from 17 families.
-export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v3';
+// 0.01 from 148 all-NO rows that came from 17 families. v4 weights PAV by
+// family (#9034).
+export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v4';
 export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 // Fit eligibility counts families (forecast ids), because windows of one id
 // share a generator, a region and much of an outcome history. A domain fits
@@ -176,19 +178,19 @@ function isFitInput(entry) {
 }
 
 /**
- * Weighted pool-adjacent-violators over (x, y) points. Returns monotone
- * non-decreasing knots: each pooled block contributes its x-extent at the
- * block mean, so interpolation is flat inside a block and linear between
- * blocks.
+ * Weighted pool-adjacent-violators over (x, y, weight?) points; a point
+ * without a weight weighs 1. Returns monotone non-decreasing knots: each
+ * pooled block contributes its x-extent at the block's weighted mean, so
+ * interpolation is flat inside a block and linear between blocks.
  */
 export function isotonicKnots(points, bounds = {}) {
   const floor = bounds.floor ?? CALIBRATION_PROBABILITY_FLOOR;
   const ceiling = bounds.ceiling ?? CALIBRATION_PROBABILITY_CEILING;
   const byX = new Map();
-  for (const { x, y } of points) {
+  for (const { x, y, weight = 1 } of points) {
     const cell = byX.get(x) ?? { x, sum: 0, weight: 0 };
-    cell.sum += y;
-    cell.weight += 1;
+    cell.sum += y * weight;
+    cell.weight += weight;
     byX.set(x, cell);
   }
   const blocks = [];
@@ -235,9 +237,10 @@ function cohortByDomain(cohort) {
 function domainEligibility(entries, { minFamilies, minOutcomeFamilies }) {
   const families = new Map();
   for (const entry of entries) {
-    const outcomes = families.get(entry.id) ?? new Set();
+    const key = familyKey(entry);
+    const outcomes = families.get(key) ?? new Set();
     outcomes.add(entry.outcome);
-    families.set(entry.id, outcomes);
+    families.set(key, outcomes);
   }
   const counts = {
     families: families.size,
@@ -274,7 +277,18 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
   const domains = {};
   for (const domain of [...byDomain.keys()].sort()) {
     const entries = byDomain.get(domain);
-    const points = entries.map((entry) => ({ x: sourceProbability(entry), y: entry.outcome === 'YES' ? 1 : 0 }));
+    const rowsPerFamily = new Map();
+    for (const entry of entries) rowsPerFamily.set(familyKey(entry), (rowsPerFamily.get(familyKey(entry)) ?? 0) + 1);
+    // Each family carries a total weight of 1 (#9034): a family that resolved
+    // in ten windows is one observation of its outcome process, not ten. The
+    // published loss stays per row; in the #9027 review's simulation (1 to 12
+    // rows per family, within-family outcome correlation 0.7) family weights
+    // beat row weights by 0.001 to 0.003 expected Brier in every scenario.
+    const points = entries.map((entry) => ({
+      x: sourceProbability(entry),
+      y: entry.outcome === 'YES' ? 1 : 0,
+      weight: 1 / rowsPerFamily.get(familyKey(entry)),
+    }));
     const eligibility = domainEligibility(entries, minimums);
     const base = { n: points.length, positives: points.reduce((sum, point) => sum + point.y, 0), ...eligibility };
     // A fitted domain keeps its input rows, so a later correction to any of
@@ -406,13 +420,13 @@ function refitTrigger(map, ledger, nowMs, options) {
   // A ledger key is `<id>@<deadline>`, optionally with a `~<hash>` suffix, so a
   // pruned input still names its family.
   const fittedFamilies = (domain) => new Set(Object.keys(map.domains[domain].inputs)
-    .map((key) => entriesByKey.get(key)?.id ?? key.slice(0, key.lastIndexOf('@'))));
+    .map((key) => (entriesByKey.has(key) ? familyKey(entriesByKey.get(key)) : key.slice(0, key.lastIndexOf('@')))));
   // A new window of a fitted family is not a new family.
   const familiesSinceFit = (domain) => {
     const known = fittedFamilies(domain);
     return new Set(rows(domain)
-      .filter((entry) => Number(entry.resolvedAt) > map.fittedAt && !known.has(entry.id))
-      .map((entry) => entry.id)).size;
+      .filter((entry) => Number(entry.resolvedAt) > map.fittedAt && !known.has(familyKey(entry)))
+      .map(familyKey)).size;
   };
   const inputsInWindow = (domain) => rows(domain).some((entry) => Object.hasOwn(map.domains[domain].inputs, entry.key));
   const withdrawn = (domain) => hasWithdrawnInput(map.domains[domain], entriesByKey);
@@ -516,7 +530,7 @@ export function evaluateCalibrationCohort(entries, map, context = {}, options = 
     .map((entry) => {
       const domain = domainOf(entry);
       const raw = sourceProbability(entry);
-      return { domain, y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, raw) };
+      return { domain, family: familyKey(entry), y: entry.outcome === 'YES' ? 1 : 0, raw, calibrated: applyCalibration(map, domain, raw) };
     });
   const modeByDomain = modeByDomainOf(map);
   const forward = summarizeCalibrationShadow(rows, modeByDomain, options);
@@ -589,8 +603,9 @@ export function evaluateCalibrationShadow(ledger, map, nowMs, options = {}) {
  *   eligible: boolean,
  *   reasons: string[],
  *   forwardCount: number,
+ *   forwardFamilies: number,
  *   brierDeltaUpper: number | null,
- *   domains: { domain: string, count: number, brierDeltaUpper: number | null }[],
+ *   domains: { domain: string, count: number, families: number, brierDeltaUpper: number | null }[],
  * }} PublicationGate
  * @typedef {{ mode: PublicationMode, reason: PublicationReason, mapVersion: string | null, gate: PublicationGate | null }} CalibrationPublicationDecision
  * @typedef {{ at: number, from: PublicationMode, to: PublicationMode, reason: PublicationReason, gate: PublicationGate | null }} CalibrationFlip
@@ -607,8 +622,9 @@ function publicationGate(gate) {
     eligible: gate.eligible === true,
     reasons: Array.isArray(gate.reasons) ? [...gate.reasons] : [],
     forwardCount: gate.forwardCount ?? 0,
+    forwardFamilies: gate.forwardFamilies ?? 0,
     brierDeltaUpper: gate.overall?.brierDeltaUpper ?? null,
-    domains: (gate.domains ?? []).map(({ domain, count, brierDeltaUpper }) => ({ domain, count, brierDeltaUpper })),
+    domains: (gate.domains ?? []).map(({ domain, count, families, brierDeltaUpper }) => ({ domain, count, families: families ?? 0, brierDeltaUpper })),
   };
 }
 
