@@ -2421,7 +2421,8 @@
           "other": "No se pudo resolver",
           "judged_old_selection": "Resuelto con un método de evidencia posteriormente considerado no confiable",
           "late_read": "El feed no se leyó lo bastante cerca de la fecha límite",
-          "feed_unavailable": "El feed de datos no estuvo disponible después de la fecha límite"
+          "feed_unavailable": "El feed de datos no estuvo disponible después de la fecha límite",
+          "resolver_could_not_read_feed": "Nuestro sistema de resolución no pudo leer correctamente esta fuente de datos"
         }
       },
       "horizons": {

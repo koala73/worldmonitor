@@ -2401,7 +2401,8 @@
           "other": "판정할 수 없었습니다",
           "judged_old_selection": "나중에 신뢰할 수 없는 것으로 판명된 증거 방법으로 판정됨",
           "late_read": "마감일에 충분히 가까운 시점에 피드를 읽지 못했습니다",
-          "feed_unavailable": "마감일 이후 데이터 피드를 사용할 수 없음"
+          "feed_unavailable": "마감일 이후 데이터 피드를 사용할 수 없음",
+          "resolver_could_not_read_feed": "판정 시스템이 이 데이터 피드를 올바르게 읽지 못했습니다"
         }
       },
       "horizons": {

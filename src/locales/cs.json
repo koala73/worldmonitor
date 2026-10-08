@@ -2431,7 +2431,8 @@
           "other": "Nelze vyřešit",
           "judged_old_selection": "Posouzeno metodou výběru důkazů, která se později ukázala jako nespolehlivá",
           "late_read": "Zdroj dat nebyl přečten dostatečně blízko termínu",
-          "feed_unavailable": "Zdroj dat byl po termínu nedostupný"
+          "feed_unavailable": "Zdroj dat byl po termínu nedostupný",
+          "resolver_could_not_read_feed": "Náš vyhodnocovací systém nedokázal tento zdroj dat správně přečíst"
         }
       },
       "horizons": {

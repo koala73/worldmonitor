@@ -2028,7 +2028,8 @@
           "other": "Kon niet worden beslist",
           "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn",
           "late_read": "De feed is niet dicht genoeg bij de deadline uitgelezen",
-          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar"
+          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar",
+          "resolver_could_not_read_feed": "Ons beoordelingssysteem kon deze datafeed niet correct lezen"
         }
       },
       "horizons": {

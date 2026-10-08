@@ -715,6 +715,7 @@
   "components.forecast.resolution.void.no_establishable_metric": "The feed had no reading for this question",
   "components.forecast.resolution.void.not_hard_spec": "The question could not be checked against its feed",
   "components.forecast.resolution.void.other": "Could not be resolved",
+  "components.forecast.resolution.void.resolver_could_not_read_feed": "Our resolver could not read this feed correctly",
   "components.forecast.resolution.void.resolver_envelope_bug": "Scored against a data feed we could not read correctly",
   "components.forecast.resolution.void.unsupported_metric_key": "The question could not be checked against its feed",
   "components.forecast.resolution.void.unsupported_window": "The question could not be checked against its feed",

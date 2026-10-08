@@ -134,7 +134,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 - **UCDP 区域**：UCDP 冲突区事件计数。
 - **市场**：自发射时基线衡量的商品期货价格变动。
 - **预测市场**：规范仍记录市场结束日期，但结算器会以原因 `market_price_not_outcome` 将其封存为 VOID。其数据源 `prediction:markets-bootstrap:v1` 只列出未结束的市场，并把 `yesPrice` 截在 10 到 90 之间，因此在结束日期读到的是市场价格，而不是结算结果（issue #5233）。
-- **供应链**：咽喉要道中断评分。
+- **供应链**：截止时读数中的咽喉要道中断评分。评分仍至少为 50 时结算为 YES，这是数据源自身的红色界限，也是检测器发出该预测的评分。两者都读取 `CHOKEPOINT_DISRUPTED_MIN_SCORE`。规范以 `rule: disrupted` 及 `ruleVersion` 记录这一规则。按早先阈值 60 写入的待结算行会在结算前迁移到此规则，并以 `supersededThreshold` 保留旧值。已结算的行保留其判定时的阈值（issue #8990）。
 - **GPS 干扰**：截止日当天或之后日期的 gpsjam.org 快照中，航运区域框内的六边形数量。区域内仍有至少 3 个六边形时结算为 YES，这与检测器发出该预测的门槛相同。规范以 `rule: persistence` 及 `ruleVersion` 记录这一规则。按早先发射时计数阈值写入的待结算行会在结算前迁移到此规则，并以 `supersededThreshold` 保留旧值（issue #8990）。
 - **基础设施**：预测所在国家的已报告中断事件。
 
@@ -158,7 +158,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 `sovereign_risk`、`rates_inflation` 和 `fx_stress` 分桶中的状态派生市场预测不再发布，因为没有数据源可以校验它们（issue #5234）。它们此前的记录仍保留在 `forecast:resolutions:v1` 中，但成绩单报告的所有数字都不计入这些记录，包括 VOID 率。结算器会把其中未结算的记录以原因 `withheld_unpublished` 封存为 VOID，不调用任何裁判。状态派生的 `energy` 和 `freight` 预测仍会发布。发布时若价格或咽喉要道数据源有匹配的数值，就按该数据源结算，否则交由裁判结算。
 
-在 issue #5233 修复之前，结算器把 `cyber:threats-bootstrap:v2` 和 `infra:outages:v1` 当作原始种子信封（`{_seed, data}`）读取，在其中找不到任何记录，于是把每一个网络威胁计数和每一个断网存在性检查都记为 0。这些 NO 结果衡量的是读取器，而不是现实世界。结算器现在会在读取任何数据源之前先解开信封，发布时的提取检查也读取同一份解开后的视图。每次运行都会把修复前以这个零读数结算的记录以原因 `resolver_envelope_bug` 封存为 VOID，把原始结果和证据保留在 `supersededOutcome` 与 `supersededEvidence` 中，并在 `voidedAt` 中记录作废时间。已经更正的记录保持不变，修复后的结算器读到的零值保留其结果。只要作废记录仍在滚动窗口内，成绩单的方法说明就会写明其数量。`prediction:markets-bootstrap:v1` 上的价格检查也受同一读取器影响，以 `no_establishable_metric` 封存为 VOID，并保留该原因。
+在 issue #5233 修复之前，结算器把 `cyber:threats-bootstrap:v2` 和 `infra:outages:v1` 当作原始种子信封（`{_seed, data}`）读取，在其中找不到任何记录，于是把每一个网络威胁计数和每一个断网存在性检查都记为 0。这些 NO 结果衡量的是读取器，而不是现实世界。结算器现在会在读取任何数据源之前先解开信封，发布时的提取检查也读取同一份解开后的视图。每次运行都会把修复前以这个零读数结算的记录以原因 `resolver_envelope_bug` 封存为 VOID，把原始结果和证据保留在 `supersededOutcome` 与 `supersededEvidence` 中，并在 `voidedAt` 中记录作废时间。已经更正的记录保持不变，修复后的结算器读到的零值保留其结果。只要作废记录仍在滚动窗口内，成绩单的方法说明就会写明其数量。`prediction:markets-bootstrap:v1` 上的价格检查也受同一读取器影响，以 `no_establishable_metric` 封存为 VOID。
 
 解开信封后，网络威胁数据源暴露出第二个问题。只有 AbuseIPDB 和 URLhaus 的记录带有国家，而数据源对每条记录的保留时间都不到一天。因此，每天读取一次的 7 天计数取决于截止时间距离读取时刻有多少小时。同一条判断在截止后 1 小时读到 112 条威胁，在 18 小时读到 0 条。网络预测现在与基础设施和军事预测一样交由裁判判定，每次运行都会把待结算的硬性网络记录转入裁判通道。新闻存档中这类主题的条目很少，因此裁判通道中的网络记录也暂不计分。到期时，结算器以原因 `judged_evidence_unreliable` 将其封存为 VOID，不调用裁判。裁判证据修复后，常量 `CYBER_JUDGING_HELD` 会解除这一限制（#8990）。校准映射的代码版本已改为 `forecast-calibration-pav-v2`，因此映射会在排除这些作废记录后重新拟合。
 
@@ -172,7 +172,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 在 issue #8995 之前，裁判通道按问题模板中的词语挑选存档条目，且不以截止时间为限。对以这种方式封存的 27 条裁判 YES 与 NO 结论的审计发现，其中 14 条得不到自身引用的支持，1 条可能有误。重新裁判要求存档覆盖截止前的最后 7 天，而这些窗口都在 2026-08-23 之前结束，早于保留 15 天的存档中最早的证据。因此每次运行都会把 #8995 上线（`SUBJECT_GATED_SELECTION_SINCE_MS`，2026-10-07T14:39Z）之前结算的每条裁判 YES 或 NO 以原因 `judged_old_selection` 封存为 VOID。记录保留 `resolvedAt`，把原始结果和证据保留在 `supersededOutcome` 与 `supersededEvidence` 中，并记录 `voidedAt`。该步骤在窗口更正之后运行，因此重复窗口保留 `duplicate_window`。作废的记录不再是 YES 或 NO，因此重复运行不会再改变任何内容。
 
-回执已存入 R2 之后才被更正的记录（`resolver_envelope_bug`、`duplicate_window`、`judged_old_selection`、`late_read`、改评分或迟读重新判定）会重新写入回执。R2 写入逐条进行，每条约 450 毫秒，且在运行 150 秒的抓取阶段内完成，因此每次运行最多重写 `RECEIPT_REARCHIVE_PER_RUN`（50）条此类回执，最早的优先。积压会在之后的运行中逐步清空，在更正后的回执写入之前，清理不会删除该记录。
+回执已存入 R2 之后才被更正的记录（`resolver_envelope_bug`、`duplicate_window`、`judged_old_selection`、`late_read`、`resolver_could_not_read_feed`、改评分或迟读重新判定）会重新写入回执。R2 写入逐条进行，每条约 450 毫秒，且在运行 150 秒的抓取阶段内完成，因此每次运行最多重写 `RECEIPT_REARCHIVE_PER_RUN`（50）条此类回执，最早的优先。积压会在之后的运行中逐步清空，在更正后的回执写入之前，清理不会删除该记录。
 
 ### 迟读与缺失的数据源
 
@@ -181,6 +181,21 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 `intelligence:gpsjam:v2` 每个 UTC 日发布一份快照，日期由其 `date` 字段标注。GPS 干扰问题按截止时间所在 UTC 日的快照判定。`seed-gpsjam` 每 8 小时运行一次，第 D 天的快照最早在 D+1 日 08:00 的运行中写入，因此结算器在 D+2 日 06:00 的运行是第一次能读到它。`GPS_JAM_SNAPSHOT_MAX_LAG_MS` 从截止日零点起算为 3 天 7 小时：包括这第一次运行、为延迟发布的快照多留的一个周期，以及一小时的启动抖动。若数据源中的快照日期晚于截止日，说明截止日的快照在结算器读取之前已被替换，记录封存为 VOID `late_read`。界限过后仍只有更早的快照时，记录封存为 VOID `value_source_never_settled`；数据源缺失时为 `feed_unavailable`。
 
 在 issue #8990 之前没有这个界限，结算器晚了数天才处理的窗口会按当天的价格判定。每次运行都会在 `duplicate_window` 作废之后更正这些记录。读取时间超过界限的实时数据源 YES 或 NO 记录，会按同一指标任一窗口采到的第一个及时读数重新判定；账本中没有这样的读数时，封存为 VOID `late_read`。被替换的结果和证据移入 `supersededOutcome` 与 `supersededEvidence`。重新判定的记录写入 `regradedAt`，作废的记录写入 `voidedAt`，`resolvedAt` 保持不变。更正后的记录要么读数及时，要么是 VOID，因此重复运行更正不会再改变任何内容。
+
+### 结算器无法读取的数据源所产生的 VOID
+
+有些数据源当时含有读数，但结算器无法读取，这期间封存的记录带有 `no_establishable_metric`，显示为“数据源没有该问题的读数”。这把结算器的故障归咎于数据源（issue #9013）。每次运行都会把这些记录重新标注为 `resolver_could_not_read_feed`（“我们的结算系统未能正确读取此数据源”）。一条记录满足以下条件时会被重新标注：它是已结算的硬性 VOID，原因为 `no_establishable_metric`，数据源属于下表之一，且封存时间早于能够读取该数据源的结算器首次部署：
+
+| 数据源 | 结算器故障 | 修复 | 部署时间 |
+|---|---|---|---|
+| `intelligence:gpsjam:v2` | 读取了逐六边形记录从不携带的 `hexCount` 字段 | #9003 | 2026-10-07 19:28 UTC |
+| `infra:outages:v1` | 读取原始种子信封，找不到任何记录 | #8986 | 2026-10-07 12:43 UTC |
+| `prediction:markets-bootstrap:v1` | 读取原始种子信封，找不到任何记录 | #8986 | 2026-10-07 12:43 UTC |
+| `supply_chain:chokepoints:v4` | 读取 `riskScore`，而数据源发布的是 `disruptionScore` | #8893 | 2026-10-06 04:56 UTC |
+
+结果和 `resolvedAt` 保持不变。原先的证据移入 `supersededEvidence`，`voidedAt` 记录重新标注的时间，因此 R2 回执会重新写入。重新标注后的记录不再带有 `no_establishable_metric`，因此重复运行不会再改变任何内容。VOID 不计入准确度计算，因此没有任何评分发生变化。
+
+周期型数据源（EIA、FRED）以观测日（UTC 零点）标注每个样本。对这类数据源的时点读取，按截止时间所在 UTC 日当天或之后日期的第一个样本判定，与结算门槛接受的日期界限相同。在 issue #8990 之前，选取要求样本时间不早于截止时刻，因此截止日当天的观测被跳过，结算器改读实时数值。
 
 ## 层级与门控
 
