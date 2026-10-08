@@ -636,7 +636,10 @@
         "undisclosed": "Ej avslöjad",
         "stake": "insats",
         "internallyDisplaced": "internflyktingar",
-        "sourceIomDtm": "Källa: IOM DTM"
+        "sourceIomDtm": "Källa: IOM DTM",
+        "sinceDate": "sedan {{date}}",
+        "lastMonth": "förra månaden",
+        "sourceUnhcrOdp": "Källa: UNHCR:s portal för operativa data"
       },
       "layerHelp": {
         "title": "Kartlagerguide",
@@ -1089,7 +1092,13 @@
       "count": "Räkna",
       "latestRound": "Senaste omgång",
       "internalNote": "IOM DTM: internflyktingar, senaste undersökningsomgång per insats. Insatser i samma land kan överlappa, så de summeras inte.",
-      "infoTooltip": "<strong>UNHCR fördrivningsdata</strong> Globala flyktingar, asylsökande och internflyktingar från UNHCR.<ul><li><strong>Ursprung</strong>: Länder som människor flyr FROM</li><li><strong>värdar__PH_1:värdar__PH_1 flyktingar</li><li>Krismärken: >1M | Hög: >500K förskjutna</li></ul>Datauppdateringar årligen. CC BY 4.0-licens."
+      "infoTooltip": "<strong>UNHCR fördrivningsdata</strong> Globala flyktingar, asylsökande och internflyktingar från UNHCR.<ul><li><strong>Ursprung</strong>: Länder som människor flyr FROM</li><li><strong>värdar__PH_1:värdar__PH_1 flyktingar</li><li>Krismärken: >1M | Hög: >500K förskjutna</li></ul>Datauppdateringar årligen. CC BY 4.0-licens.",
+      "crossBorder": "Gränsöverskridande",
+      "situation": "Situation",
+      "latestChange": "Senaste förändring",
+      "accelerating": "Accelererar",
+      "inDays": "på {{days}} dagar",
+      "crossBorderNote": "UNHCR:s portal för operativa data: människor som har korsat gränser i varje kris, enligt de senaste landrapporterna. Situationerna överlappar, så de summeras inte."
     },
     "populationExposure": {
       "totalAffected": "Totalt påverkad",
@@ -2028,7 +2037,8 @@
           "other": "Kunde inte avgöras",
           "judged_old_selection": "Bedömd med en bevismetod som senare visade sig opålitlig",
           "late_read": "Källan lästes inte tillräckligt nära tidsfristen",
-          "feed_unavailable": "Dataflödet var inte tillgängligt efter tidsfristen"
+          "feed_unavailable": "Dataflödet var inte tillgängligt efter tidsfristen",
+          "resolver_could_not_read_feed": "Vårt bedömningssystem kunde inte läsa den här datakällan korrekt"
         }
       },
       "horizons": {

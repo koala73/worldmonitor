@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  buildStockNewsSearchCacheKey,
   buildStockNewsSearchQuery,
   resetStockNewsSearchStateForTests,
   searchRecentStockHeadlines,
@@ -22,6 +23,34 @@ describe('stock news search query', () => {
   it('builds the same stock-news style query used by the source project', () => {
     assert.equal(buildStockNewsSearchQuery('aapl', 'Apple'), 'Apple AAPL stock latest news');
     assert.equal(buildStockNewsSearchQuery(' msft ', ''), 'MSFT stock latest news');
+  });
+});
+
+// GHSA-4wq2-wqrh-9x7v: the key carried a 32-bit FNV hash of the query, so a
+// Pro caller could pick a name whose query collided with another caller's and
+// seed the shared row with headlines fetched for a different search.
+describe('stock news search cache key', () => {
+  it('separates queries whose 32-bit FNV hashes collide', async () => {
+    const collisions: Array<[string, string]> = [
+      ['Apple', 'Apple fraud investigation recall lawsuitfaT5h4'],
+      ['Apple Inc.', 'QyF B('],
+    ];
+    for (const [a, b] of collisions) {
+      assert.notEqual(
+        await buildStockNewsSearchCacheKey('AAPL', a, 7, 5, 'default'),
+        await buildStockNewsSearchCacheKey('AAPL', b, 7, 5, 'default'),
+        `${JSON.stringify(a)} and ${JSON.stringify(b)} must not share a row`,
+      );
+    }
+  });
+
+  it('reuses one row for an identical search and keeps the other key dimensions', async () => {
+    const key = await buildStockNewsSearchCacheKey('aapl', 'Apple', 7, 5, 'default');
+    assert.equal(key, await buildStockNewsSearchCacheKey('AAPL', 'Apple', 7, 5, 'default'));
+    assert.match(key, /^market:stock-news-search:v3:default:AAPL:7:5:[0-9a-f]{32}$/);
+    assert.notEqual(key, await buildStockNewsSearchCacheKey('AAPL', 'Apple', 7, 5, 'other'));
+    assert.notEqual(key, await buildStockNewsSearchCacheKey('AAPL', 'Apple', 3, 5, 'default'));
+    assert.notEqual(key, await buildStockNewsSearchCacheKey('AAPL', 'Apple', 7, 10, 'default'));
   });
 });
 

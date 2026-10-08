@@ -60,6 +60,16 @@ function periodFeedMaxLagMs(feedKey) {
   return null;
 }
 
+// The earliest sample a point read may grade on. A period feed stamps each
+// sample with its own date, and the settlement gate accepts a reading dated
+// the deadline's UTC day, so selection starts at that day too. A live feed's
+// sample is stamped with its fetch time and must be taken at or after the
+// deadline itself.
+function pointReadFloorMs(parsed, spec, deadline) {
+  if (periodFeedMaxLagMs(parsed.feedKey || spec.sourceFeed) == null) return deadline;
+  return Math.floor(deadline / DAY_MS) * DAY_MS;
+}
+
 function valueSettlementMaxLagMs(feedKey) {
   return periodFeedMaxLagMs(feedKey) ?? VALUE_SETTLEMENT_MAX_LAG_MS;
 }
@@ -246,7 +256,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   if (spec.window === 'at-deadline' || spec.window === 'at-endDate') {
-    const sample = selectFirstSampleAtOrAfter(samples, deadline);
+    const sample = selectFirstSampleAtOrAfter(samples, pointReadFloorMs(parsed, spec, deadline));
     const feedValue = extractMetricValue(parsed, feedData);
     if (feedData == null && !sample) {
       if (nowMs >= deadline + valueSettlementMaxLagMs(parsed.feedKey || spec.sourceFeed)) {
@@ -633,12 +643,16 @@ function normalizeComparable(value) {
 // alias file's "...of the Congo"). A conflict forecast's region is UCDP-named
 // but now resolves against the ACLED feed, so canonicalize both toward a shared
 // token — parenthetical alternate and the "the" article removed — before
-// bridging through country-names.json. Verified collision-free against that
-// file (no two ISO codes collapse to the same canonical form).
+// bridging through country-names.json. The detector names countries from
+// scripts/data/country-codes.json ("Guinea-Bissau", "Timor-Leste") while the
+// alias file spells them without the hyphen, so a hyphen reads as a space.
+// Verified collision-free against that file (no two ISO codes collapse to the
+// same canonical form).
 function canonicalCountryToken(value) {
   return normalizeComparable(value)
     .replace(/\s*\([^)]*\)/g, '')
     .replace(/\bthe\b/g, '')
+    .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

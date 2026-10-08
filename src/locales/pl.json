@@ -1144,7 +1144,10 @@
         "undisclosed": "Nieujawnione",
         "stake": "stawka",
         "internallyDisplaced": "wewnętrznie przesiedlonych",
-        "sourceIomDtm": "Źródło: IOM DTM"
+        "sourceIomDtm": "Źródło: IOM DTM",
+        "sinceDate": "od {{date}}",
+        "lastMonth": "w zeszłym miesiącu",
+        "sourceUnhcrOdp": "Źródło: Portal danych operacyjnych UNHCR"
       },
       "layerHelp": {
         "title": "Przewodnik po warstwach mapy",
@@ -1529,7 +1532,13 @@
       "count": "Liczyć",
       "latestRound": "Ostatnia runda",
       "internalNote": "IOM DTM: osoby wewnętrznie przesiedlone, ostatnia runda badania dla każdej operacji. Operacje w jednym kraju mogą się nakładać, dlatego nie są sumowane.",
-      "infoTooltip": "<strong>Dane UNHCR dotyczące przesiedleń</strong> Globalna liczba uchodźców, osób ubiegających się o azyl i osób wewnętrznie przesiedlonych z UNHCR.<ul><li><strong>Początki</strong>: Kraje, z których uciekają ludzie FROM</li><li><strong>Goście</strong>: Kraje przyjmujące uchodźców</li><li>Odznaki kryzysowe: >1M | Wysoki: >500 tys. wysiedlonych</li></ul>Dane są aktualizowane co roku. Licencja CC BY 4.0."
+      "infoTooltip": "<strong>Dane UNHCR dotyczące przesiedleń</strong> Globalna liczba uchodźców, osób ubiegających się o azyl i osób wewnętrznie przesiedlonych z UNHCR.<ul><li><strong>Początki</strong>: Kraje, z których uciekają ludzie FROM</li><li><strong>Goście</strong>: Kraje przyjmujące uchodźców</li><li>Odznaki kryzysowe: >1M | Wysoki: >500 tys. wysiedlonych</li></ul>Dane są aktualizowane co roku. Licencja CC BY 4.0.",
+      "crossBorder": "Transgraniczne",
+      "situation": "Sytuacja",
+      "latestChange": "Ostatnia zmiana",
+      "accelerating": "Przyspiesza",
+      "inDays": "w ciągu {{days}} dni",
+      "crossBorderNote": "Portal danych operacyjnych UNHCR: osoby, które przekroczyły granice w każdym kryzysie, według najnowszych raportów krajowych. Sytuacje nakładają się, dlatego nie są sumowane."
     },
     "populationExposure": {
       "totalAffected": "Całkowita liczba dotkniętych",
@@ -2431,7 +2440,8 @@
           "other": "Nie można było rozstrzygnąć",
           "judged_old_selection": "Oceniono metodą doboru dowodów, którą później uznano za niewiarygodną",
           "late_read": "Źródło danych nie zostało odczytane wystarczająco blisko terminu",
-          "feed_unavailable": "Źródło danych było niedostępne po terminie"
+          "feed_unavailable": "Źródło danych było niedostępne po terminie",
+          "resolver_could_not_read_feed": "Nasz system rozstrzygania nie mógł poprawnie odczytać tego źródła danych"
         }
       },
       "horizons": {

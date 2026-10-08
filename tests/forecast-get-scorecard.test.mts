@@ -19,12 +19,17 @@ import {
   SCORECARD_BLOCK_FIELDS,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
+import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
 const originalEnv = { ...process.env };
 
 const REDIS_KEY = 'forecast:scorecard:v1';
+const AUDIT = { since: '2026-10-07', issue: 8990, reason: 'Scoring errors found.' };
+const LIVE_UNDER_AUDIT = FORECAST_ACCURACY_AUDIT
+  ? { underAudit: { since: FORECAST_ACCURACY_AUDIT.since, reason: FORECAST_ACCURACY_AUDIT.reason, issue: FORECAST_ACCURACY_AUDIT.issue } }
+  : {};
 const MARKET_ALERTS_KEY = 'correlation:market-alerts:scorecard:v1';
 
 const FORECAST_DATA = {
@@ -214,12 +219,43 @@ describe('getForecastScorecard backend status', () => {
     }));
     assert.equal(response.status, 200);
     const serialized = await response.json();
-    assert.deepEqual(Object.keys(serialized).sort(), [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].sort());
+    assert.deepEqual(
+      Object.keys(serialized).sort(),
+      [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].filter((field) => field !== 'underAudit' || FORECAST_ACCURACY_AUDIT).sort(),
+    );
     assert.deepEqual(
       serialized,
-      { ...data, marketAlerts: MARKET_ALERTS_SERVED },
+      { ...data, marketAlerts: MARKET_ALERTS_SERVED, ...LIVE_UNDER_AUDIT },
       'every declared field must survive the real gateway and serializer, and a null interval is omitted',
     );
+  });
+
+  it('flags the response under audit from the shared switch (#8993)', async () => {
+    const { scorecardUnderAudit } = await import('../server/worldmonitor/forecast/v1/get-forecast-scorecard.ts');
+    assert.deepEqual(scorecardUnderAudit(AUDIT), { underAudit: { since: '2026-10-07', reason: 'Scoring errors found.', issue: 8990 } });
+    assert.deepEqual(scorecardUnderAudit(null), {}, 'a lifted audit leaves the field absent');
+    assert.deepEqual(scorecardUnderAudit(), LIVE_UNDER_AUDIT, 'defaults to FORECAST_ACCURACY_AUDIT');
+  });
+
+  it('serves the live audit state on healthy, empty and degraded responses (#8993)', async () => {
+    console.error = () => {};
+    const cases: Array<[string, Record<string, unknown>, string[]]> = [
+      ['healthy', { [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED) }, []],
+      ['empty', {}, []],
+      ['degraded', {}, [REDIS_KEY, MARKET_ALERTS_KEY]],
+    ];
+    for (const [label, stored, failing] of cases) {
+      serveRedis(stored, failing);
+      const res = await getForecastScorecard(makeCtx(), {});
+      assert.equal(Object.hasOwn(res, 'underAudit'), Boolean(FORECAST_ACCURACY_AUDIT), label);
+      assert.deepEqual(res.underAudit, LIVE_UNDER_AUDIT.underAudit, label);
+    }
+  });
+
+  it('never passes a seeder underAudit through (#8993)', async () => {
+    serveRedis({ [REDIS_KEY]: envelope({ ...FORECAST_DATA, underAudit: { since: 'seeder', reason: 'x', issue: 1 } }) });
+    const res = await getForecastScorecard(makeCtx(), {});
+    assert.deepEqual(res.underAudit, LIVE_UNDER_AUDIT.underAudit);
   });
 
   it('filters the market-alert block with the member lists the /accuracy/ page keeps', () => {

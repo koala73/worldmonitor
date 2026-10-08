@@ -636,7 +636,10 @@
         "undisclosed": "Niet openbaar gemaakt",
         "stake": "inzet",
         "internallyDisplaced": "binnenlands ontheemden",
-        "sourceIomDtm": "Bron: IOM DTM"
+        "sourceIomDtm": "Bron: IOM DTM",
+        "sinceDate": "sinds {{date}}",
+        "lastMonth": "vorige maand",
+        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal"
       },
       "layerHelp": {
         "title": "Gids voor kaartlagen",
@@ -1089,7 +1092,13 @@
       "count": "Graaf",
       "latestRound": "Laatste ronde",
       "internalNote": "IOM DTM: binnenlands ontheemden, laatste onderzoeksronde per operatie. Operaties in één land kunnen overlappen en worden daarom niet opgeteld.",
-      "infoTooltip": "<strong>UNHCR-ontheemdingsgegevens</strong> Wereldwijde aantallen vluchtelingen, asielzoekers en IDP's van UNHCR.<ul><li><strong>Herkomst</strong>: landen waar mensen vluchten VANUIT</li><li><strong>Hosts</strong>: gastlanden voor vluchtelingen</li><li>Crisisbadges: >1 miljoen | Hoog: >500.000 ontheemden</li></ul>Gegevens worden jaarlijks bijgewerkt. CC BY 4.0-licentie."
+      "infoTooltip": "<strong>UNHCR-ontheemdingsgegevens</strong> Wereldwijde aantallen vluchtelingen, asielzoekers en IDP's van UNHCR.<ul><li><strong>Herkomst</strong>: landen waar mensen vluchten VANUIT</li><li><strong>Hosts</strong>: gastlanden voor vluchtelingen</li><li>Crisisbadges: >1 miljoen | Hoog: >500.000 ontheemden</li></ul>Gegevens worden jaarlijks bijgewerkt. CC BY 4.0-licentie.",
+      "crossBorder": "Grensoverschrijdend",
+      "situation": "Situatie",
+      "latestChange": "Laatste verandering",
+      "accelerating": "Versnelt",
+      "inDays": "in {{days}} dagen",
+      "crossBorderNote": "UNHCR Operational Data Portal: mensen die in elke crisis een grens zijn overgestoken, volgens de laatste landenrapporten. Situaties overlappen en worden daarom niet opgeteld."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",
@@ -2028,7 +2037,8 @@
           "other": "Kon niet worden beslist",
           "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn",
           "late_read": "De feed is niet dicht genoeg bij de deadline uitgelezen",
-          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar"
+          "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar",
+          "resolver_could_not_read_feed": "Ons beoordelingssysteem kon deze datafeed niet correct lezen"
         }
       },
       "horizons": {

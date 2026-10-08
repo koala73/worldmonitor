@@ -221,6 +221,7 @@ async function makeLoader() {
     },
     statusPanel: { updateApi: vi.fn(), updateFeed: vi.fn() },
     panels: {},
+    panelSettings: {},
     isDestroyed: false,
   } as unknown as AppContext;
   const { DataLoaderManager } = await import('@/app/data-loader');

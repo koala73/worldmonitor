@@ -1175,7 +1175,10 @@
         "undisclosed": "Nicht bekannt gegeben",
         "stake": "Anteil",
         "internallyDisplaced": "Binnenvertriebene",
-        "sourceIomDtm": "Quelle: IOM DTM"
+        "sourceIomDtm": "Quelle: IOM DTM",
+        "sinceDate": "seit {{date}}",
+        "lastMonth": "letzten Monat",
+        "sourceUnhcrOdp": "Quelle: UNHCR Operational Data Portal"
       },
       "layerHelp": {
         "title": "Leitfaden zu Kartenebenen",
@@ -1614,7 +1617,13 @@
       "count": "Anzahl",
       "latestRound": "Letzte Runde",
       "internalNote": "IOM DTM: Binnenvertriebene, letzte Erhebungsrunde je Einsatz. Einsätze in einem Land können sich überschneiden und werden daher nicht addiert.",
-      "infoTooltip": "<strong>UNHCR-Vertreibungsdaten</strong> Weltweite Flüchtlings-, Asylbewerber- und Binnenvertriebenenzahlen vom UNHCR.<ul><li><strong>Herkunftsländer</strong>: Länder, aus denen Menschen fliehen</li><li><strong>Aufnahmeländer</strong>: Länder, die Flüchtlinge aufnehmen</li><li>Kennzeichnung Krise: >1 Mio. | Hoch: >500.000 Vertriebene</li></ul>Daten werden jährlich aktualisiert. Lizenz CC BY 4.0."
+      "infoTooltip": "<strong>UNHCR-Vertreibungsdaten</strong> Weltweite Flüchtlings-, Asylbewerber- und Binnenvertriebenenzahlen vom UNHCR.<ul><li><strong>Herkunftsländer</strong>: Länder, aus denen Menschen fliehen</li><li><strong>Aufnahmeländer</strong>: Länder, die Flüchtlinge aufnehmen</li><li>Kennzeichnung Krise: >1 Mio. | Hoch: >500.000 Vertriebene</li></ul>Daten werden jährlich aktualisiert. Lizenz CC BY 4.0.",
+      "crossBorder": "Grenzüberschreitend",
+      "situation": "Lage",
+      "latestChange": "Letzte Veränderung",
+      "accelerating": "Beschleunigt",
+      "inDays": "in {{days}} Tagen",
+      "crossBorderNote": "UNHCR Operational Data Portal: Menschen, die in jeder Krise Grenzen überquert haben, nach den neuesten Länderberichten. Lagen überschneiden sich und werden daher nicht addiert."
     },
     "populationExposure": {
       "totalAffected": "Insgesamt betroffen",
@@ -2411,7 +2420,8 @@
           "other": "Konnte nicht aufgelöst werden",
           "judged_old_selection": "Bewertet mit einer später als unzuverlässig befundenen Nachweismethode",
           "late_read": "Der Feed wurde nicht nah genug an der Frist ausgelesen",
-          "feed_unavailable": "Der Datenfeed war nach der Frist nicht verfügbar"
+          "feed_unavailable": "Der Datenfeed war nach der Frist nicht verfügbar",
+          "resolver_could_not_read_feed": "Unser Auswertungssystem konnte diesen Datenfeed nicht korrekt lesen"
         }
       },
       "horizons": {

@@ -167,6 +167,7 @@ export interface GetForecastScorecardResponse {
   receipts: ScorecardReceipt[];
   marketAlerts?: MarketAlertScorecard;
   familyOutcomes: ScorecardFamilyOutcome[];
+  underAudit?: ScorecardUnderAudit;
 }
 
 export interface ScorecardTotals {
@@ -306,6 +307,12 @@ export interface ScorecardFamilyOutcome {
   forecastId: string;
   outcome: string;
   voidReason: string;
+}
+
+export interface ScorecardUnderAudit {
+  since: string;
+  reason: string;
+  issue: number;
 }
 
 export interface GetSimulationPackageRequest {

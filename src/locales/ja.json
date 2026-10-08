@@ -1323,7 +1323,10 @@
         "undisclosed": "非公開",
         "stake": "出資比率",
         "internallyDisplaced": "人の国内避難民",
-        "sourceIomDtm": "出典：IOM DTM"
+        "sourceIomDtm": "出典：IOM DTM",
+        "sinceDate": "{{date}}以降",
+        "lastMonth": "先月",
+        "sourceUnhcrOdp": "出典：UNHCR運用データポータル"
       },
       "layerHelp": {
         "title": "マップレイヤーガイド",
@@ -1749,7 +1752,13 @@
       "count": "人数",
       "latestRound": "最新ラウンド",
       "internalNote": "IOM DTM：国内避難民。各オペレーションの最新調査ラウンド。同じ国のオペレーションは重複することがあるため、合算していません。",
-      "infoTooltip": "<strong>UNHCR避難民データ</strong> UNHCRによる世界の難民、庇護申請者、国内避難民の数。<ul><li><strong>出身国</strong>: 人々が逃れる元の国</li><li><strong>受入国</strong>: 難民を受け入れている国</li><li>危機バッジ: 100万人超 | 高: 50万人超の避難民</li></ul>データは年次更新。CC BY 4.0ライセンス。"
+      "infoTooltip": "<strong>UNHCR避難民データ</strong> UNHCRによる世界の難民、庇護申請者、国内避難民の数。<ul><li><strong>出身国</strong>: 人々が逃れる元の国</li><li><strong>受入国</strong>: 難民を受け入れている国</li><li>危機バッジ: 100万人超 | 高: 50万人超の避難民</li></ul>データは年次更新。CC BY 4.0ライセンス。",
+      "crossBorder": "越境",
+      "situation": "状況",
+      "latestChange": "直近の変化",
+      "accelerating": "加速中",
+      "inDays": "{{days}}日間で",
+      "crossBorderNote": "UNHCR運用データポータル：各危機で国境を越えた人々。各国の最新報告に基づく。状況は互いに重複するため、合算していません。"
     },
     "climate": {
       "noAnomalies": "重大な異常は検出されず",
@@ -2401,7 +2410,8 @@
           "other": "結果を確定できませんでした",
           "judged_old_selection": "後に信頼できないと判明した証拠選定方法で判定",
           "late_read": "締め切りに十分近い時点でフィードを読み取れませんでした",
-          "feed_unavailable": "締め切り後、データフィードが利用できませんでした"
+          "feed_unavailable": "締め切り後、データフィードが利用できませんでした",
+          "resolver_could_not_read_feed": "当社の判定システムがこのデータフィードを正しく読み取れませんでした"
         }
       },
       "horizons": {

@@ -1323,7 +1323,10 @@
         "undisclosed": "Không công bố",
         "stake": "cổ phần",
         "internallyDisplaced": "người di tản trong nước",
-        "sourceIomDtm": "Nguồn: IOM DTM"
+        "sourceIomDtm": "Nguồn: IOM DTM",
+        "sinceDate": "kể từ {{date}}",
+        "lastMonth": "tháng trước",
+        "sourceUnhcrOdp": "Nguồn: Cổng dữ liệu hoạt động của UNHCR"
       },
       "layerHelp": {
         "title": "Hướng dẫn Lớp Bản đồ",
@@ -1749,7 +1752,13 @@
       "count": "Số lượng",
       "latestRound": "Vòng gần nhất",
       "internalNote": "IOM DTM: người di tản trong nước, vòng khảo sát gần nhất của mỗi hoạt động. Các hoạt động trong cùng một quốc gia có thể chồng lấn nên không được cộng dồn.",
-      "infoTooltip": "<strong>Dữ liệu Di dời UNHCR</strong> Số liệu người tị nạn, xin tị nạn và di dời nội bộ toàn cầu từ UNHCR.<ul><li><strong>Nguồn gốc</strong>: Quốc gia người dân bỏ đi</li><li><strong>Nước tiếp nhận</strong>: Quốc gia tiếp nhận người tị nạn</li><li>Nhãn khủng hoảng: >1 triệu | Cao: >500 nghìn người di dời</li></ul>Dữ liệu cập nhật hàng năm. Giấy phép CC BY 4.0."
+      "infoTooltip": "<strong>Dữ liệu Di dời UNHCR</strong> Số liệu người tị nạn, xin tị nạn và di dời nội bộ toàn cầu từ UNHCR.<ul><li><strong>Nguồn gốc</strong>: Quốc gia người dân bỏ đi</li><li><strong>Nước tiếp nhận</strong>: Quốc gia tiếp nhận người tị nạn</li><li>Nhãn khủng hoảng: >1 triệu | Cao: >500 nghìn người di dời</li></ul>Dữ liệu cập nhật hàng năm. Giấy phép CC BY 4.0.",
+      "crossBorder": "Xuyên biên giới",
+      "situation": "Tình huống",
+      "latestChange": "Thay đổi gần nhất",
+      "accelerating": "Đang tăng tốc",
+      "inDays": "trong {{days}} ngày",
+      "crossBorderNote": "Cổng dữ liệu hoạt động của UNHCR: những người đã vượt biên giới trong từng cuộc khủng hoảng, theo báo cáo quốc gia mới nhất. Các tình huống chồng lấn nên không được cộng dồn."
     },
     "climate": {
       "noAnomalies": "Không phát hiện bất thường đáng kể",
@@ -2401,7 +2410,8 @@
           "other": "Không thể xác định kết quả",
           "judged_old_selection": "Được xác định bằng phương pháp chọn bằng chứng mà sau này được phát hiện là không đáng tin cậy",
           "late_read": "Nguồn dữ liệu không được đọc đủ gần thời hạn",
-          "feed_unavailable": "Feed dữ liệu không khả dụng sau thời hạn"
+          "feed_unavailable": "Feed dữ liệu không khả dụng sau thời hạn",
+          "resolver_could_not_read_feed": "Hệ thống phân định của chúng tôi không đọc đúng được nguồn dữ liệu này"
         }
       },
       "horizons": {

@@ -62,6 +62,7 @@ import {
   carouselUrlsFrom,
   digestWindowStartMs,
   getDigestScoreMin,
+  isDigestDeliveryTier,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -1467,10 +1468,11 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
  * usable number. Callers MUST treat null as "unknown" — never "free"
  * — so a transient relay outage doesn't accidentally clamp legitimate
  * paying users out of paywalled affordances. The digest cron's
- * `isUserPro` uses null → fail-open (true); the followed-country
- * composer clamp uses null → "skip clamp" (treat as Pro for the
- * duration of the outage). Same fail-open polarity in both call
- * sites, but explicit so future readers can audit the choice.
+ * `isUserPro` treats null as not-Pro and skips the rule until a later
+ * run can resolve the tier (fail-closed, see isDigestDeliveryTier).
+ * The followed-country composer clamp uses null → "skip clamp": it only
+ * widens a ranking bias, so a transient outage must not demote a
+ * paying user's brief.
  */
 async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
@@ -1499,9 +1501,7 @@ async function getUserTier(userId) {
 }
 
 async function isUserPro(userId) {
-  const tier = await getUserTier(userId);
-  if (tier === null) return true; // fail-open — preserve historic polarity
-  return tier >= 1;
+  return isDigestDeliveryTier(await getUserTier(userId));
 }
 
 // ── Per-channel body composition ─────────────────────────────────────────────

@@ -1468,7 +1468,10 @@
         "undisclosed": "Haijafichuliwa",
         "stake": "hisa",
         "internallyDisplaced": "wakimbizi wa ndani",
-        "sourceIomDtm": "Chanzo: IOM DTM"
+        "sourceIomDtm": "Chanzo: IOM DTM",
+        "sinceDate": "tangu {{date}}",
+        "lastMonth": "mwezi uliopita",
+        "sourceUnhcrOdp": "Chanzo: Tovuti ya Data za Kiutendaji ya UNHCR"
       },
       "layerHelp": {
         "title": "Mwongozo wa Tabaka za Ramani",
@@ -1895,7 +1898,13 @@
       "count": "Hesabu",
       "latestRound": "Duru ya hivi karibuni",
       "internalNote": "IOM DTM: wakimbizi wa ndani, duru ya hivi karibuni ya utafiti kwa kila operesheni. Operesheni ndani ya nchi moja zinaweza kuingiliana, kwa hivyo hazijumlishwi.",
-      "infoTooltip": "<strong>Data za Uhamisho wa UNHCR</strong> Idadi ya wakimbizi, mtafuta hifadhi, na IDP duniani kote kutoka UNHCR.<ul><li><strong>Chimbuko</strong>: Nchi ambazo watu hukimbia KUTOKA</li><li><strong>Wenyeji</strong>: Nchi zinazohifadhi wakimbizi</li><li>Beji za Mgogoro: >1M | Juu: >500K waliohamishwa</li></ul>Data husasishwa kila mwaka. Leseni ya CC BY 4.0."
+      "infoTooltip": "<strong>Data za Uhamisho wa UNHCR</strong> Idadi ya wakimbizi, mtafuta hifadhi, na IDP duniani kote kutoka UNHCR.<ul><li><strong>Chimbuko</strong>: Nchi ambazo watu hukimbia KUTOKA</li><li><strong>Wenyeji</strong>: Nchi zinazohifadhi wakimbizi</li><li>Beji za Mgogoro: >1M | Juu: >500K waliohamishwa</li></ul>Data husasishwa kila mwaka. Leseni ya CC BY 4.0.",
+      "crossBorder": "Kuvuka mipaka",
+      "situation": "Hali",
+      "latestChange": "Mabadiliko ya hivi karibuni",
+      "accelerating": "Inaongezeka kwa kasi",
+      "inDays": "ndani ya siku {{days}}",
+      "crossBorderNote": "Tovuti ya Data za Kiutendaji ya UNHCR: watu waliovuka mipaka katika kila mgogoro, kulingana na ripoti za hivi karibuni za kila nchi. Hali zinaingiliana, kwa hivyo hazijumlishwi."
     },
     "climate": {
       "noAnomalies": "Hakuna hitilafu muhimu zilizogunduliwa",
@@ -2148,7 +2157,8 @@
           "other": "Haikuweza kuamuliwa",
           "judged_old_selection": "Iliamuliwa kwa njia ya ushahidi ambayo baadaye ilionekana kuwa si ya kuaminika",
           "late_read": "Chanzo cha data hakikusomwa karibu vya kutosha na tarehe ya mwisho",
-          "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho"
+          "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho",
+          "resolver_could_not_read_feed": "Mfumo wetu wa kuamua matokeo haukuweza kusoma chanzo hiki cha data ipasavyo"
         }
       },
       "horizons": {

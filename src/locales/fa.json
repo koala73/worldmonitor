@@ -1468,7 +1468,10 @@
         "undisclosed": "Undisclosed",
         "stake": "stake",
         "internallyDisplaced": "آواره داخلی",
-        "sourceIomDtm": "منبع: IOM DTM"
+        "sourceIomDtm": "منبع: IOM DTM",
+        "sinceDate": "از {{date}}",
+        "lastMonth": "ماه گذشته",
+        "sourceUnhcrOdp": "منبع: درگاه داده‌های عملیاتی کمیساریای پناهندگان"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1895,7 +1898,13 @@
       "count": "Count",
       "latestRound": "آخرین دور",
       "internalNote": "IOM DTM: آوارگان داخلی، آخرین دور پیمایش برای هر عملیات. عملیات‌های یک کشور ممکن است همپوشانی داشته باشند، بنابراین با هم جمع نمی‌شوند.",
-      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
+      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license.",
+      "crossBorder": "فرامرزی",
+      "situation": "وضعیت",
+      "latestChange": "آخرین تغییر",
+      "accelerating": "در حال شتاب",
+      "inDays": "در {{days}} روز",
+      "crossBorderNote": "درگاه داده‌های عملیاتی کمیساریای پناهندگان: افرادی که در هر بحران از مرزها عبور کرده‌اند، بر اساس آخرین گزارش‌های کشوری. وضعیت‌ها همپوشانی دارند، بنابراین با هم جمع نمی‌شوند."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -2148,7 +2157,8 @@
           "other": "نتیجه‌ای تعیین نشد",
           "judged_old_selection": "داوری با روشی برای گزینش شواهد که بعداً نامعتبر شناخته شد",
           "late_read": "فید به اندازه کافی نزدیک به موعد خوانده نشد",
-          "feed_unavailable": "فید داده‌ها پس از موعد در دسترس نبود"
+          "feed_unavailable": "فید داده‌ها پس از موعد در دسترس نبود",
+          "resolver_could_not_read_feed": "سامانهٔ داوری ما نتوانست این فید داده را درست بخواند"
         }
       },
       "horizons": {

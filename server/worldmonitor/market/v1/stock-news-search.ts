@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 
 import type { StockAnalysisHeadline } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
+import { sha256Hex } from '../../../_shared/hash';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 
@@ -61,15 +62,6 @@ function splitApiKeys(raw: string | undefined): string[] {
 
 function normalizeSymbol(raw: string): string {
   return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
-}
-
-function stableHash(input: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0).toString(16).padStart(8, '0');
 }
 
 function extractDomain(url: string): string {
@@ -405,6 +397,21 @@ async function fetchGoogleNewsRss(
   }
 }
 
+// The row is shared across callers and the name is caller-supplied, so the
+// query digest must be collision-resistant (GHSA-4wq2-wqrh-9x7v).
+export async function buildStockNewsSearchCacheKey(
+  symbol: string,
+  name: string,
+  days: number,
+  maxResults: number,
+  cacheNamespace?: string,
+): Promise<string> {
+  const symbolKey = normalizeSymbol(symbol) || 'UNKNOWN';
+  const namespace = cacheNamespace?.trim() || 'default';
+  const queryHash = (await sha256Hex(buildStockNewsSearchQuery(symbol, name))).slice(0, 32);
+  return `market:stock-news-search:v3:${namespace}:${symbolKey}:${days}:${maxResults}:${queryHash}`;
+}
+
 export async function searchRecentStockHeadlines(
   symbol: string,
   name: string,
@@ -413,10 +420,7 @@ export async function searchRecentStockHeadlines(
 ): Promise<StockNewsSearchResult> {
   const query = buildStockNewsSearchQuery(symbol, name);
   const days = getSearchDays();
-  const symbolKey = normalizeSymbol(symbol) || 'UNKNOWN';
-  const queryHash = stableHash(query).slice(0, 12);
-  const namespace = options.cacheNamespace?.trim() || 'default';
-  const cacheKey = `market:stock-news-search:v3:${namespace}:${symbolKey}:${days}:${maxResults}:${queryHash}`;
+  const cacheKey = await buildStockNewsSearchCacheKey(symbol, name, days, maxResults, options.cacheNamespace);
 
   const cached = await cachedFetchJson<StockNewsSearchResult>(cacheKey, SEARCH_CACHE_TTL_SECONDS, async () => {
     options.signal?.throwIfAborted();

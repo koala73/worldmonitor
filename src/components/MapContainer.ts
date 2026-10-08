@@ -42,7 +42,7 @@ import type {
   CableHealthRecord,
 } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { DisplacementFlow, InternalDisplacementData } from '@/services/displacement';
+import type { CrossBorderData, DisplacementFlow, InternalDisplacementData } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
@@ -245,6 +245,7 @@ export class MapContainer {
   private cachedUcdpEvents: UcdpGeoEvent[] | null = null;
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
   private cachedInternalDisplacement: InternalDisplacementData | null = null;
+  private cachedCrossBorderArrivals: CrossBorderData | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
   private cachedRadiationObservations: RadiationObservation[] | null = null;
   private cachedGpsJamming: GpsJamHex[] | null = null;
@@ -823,6 +824,7 @@ export class MapContainer {
     if (this.cachedUcdpEvents) this.setUcdpEvents(this.cachedUcdpEvents);
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedInternalDisplacement) this.setInternalDisplacement(this.cachedInternalDisplacement);
+    if (this.cachedCrossBorderArrivals) this.setCrossBorderArrivals(this.cachedCrossBorderArrivals);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
     if (this.cachedGpsJamming) {
@@ -1249,6 +1251,15 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setDisplacementFlows(flows); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementFlows(flows);
+    }
+  }
+
+  // Like the DTM layer, cross-border points are drawn by deck.gl only.
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    this.cachedCrossBorderArrivals = data;
+    if (this.useGlobe) return;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCrossBorderArrivals(data);
     }
   }
 

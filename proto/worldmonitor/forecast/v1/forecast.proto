@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.forecast.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 message ForecastSignal {
@@ -38,24 +39,26 @@ message Perspectives {
 
 // Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
 // comparing metric_key from source_feed to threshold with operator ">=", "<="
-// or "crosses") or "judged" (an LLM judge answers question). kind and deadline
-// are always set; other fields apply per kind. baseline_value applies only to
-// "crosses" specs. A judged spec's threshold is absent, never 0.
+// or "crosses") or "judged" (an LLM judge answers question). Other fields apply
+// per kind. baseline_value applies only to "crosses" specs. A judged spec's
+// threshold is absent, never 0.
 message ResolutionSpec {
-  string kind = 1;
+  string kind = 1 [(buf.validate.field).required = true];
   optional string metric_key = 2;
   optional string operator = 3;
   optional double threshold = 4;
   optional double baseline_value = 5;
   optional string window = 6;
-  int64 deadline = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 deadline = 7 [
+    (buf.validate.field).required = true,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   optional string source_feed = 8;
   optional string question = 9;
 }
 
 // Deprecated (#8967): newly seeded payloads omit it; a payload cached
-// before the change may carry it until the next seed-forecasts run. The
-// seeder keeps these unscored horizon curves internal for horizon scoring.
+// before the change may carry it until the next seed-forecasts run.
 message Projections {
   double h24 = 1;
   double d7 = 2;

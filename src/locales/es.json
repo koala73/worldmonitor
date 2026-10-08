@@ -1178,7 +1178,10 @@
         "undisclosed": "No revelado",
         "stake": "apostar",
         "internallyDisplaced": "desplazados internos",
-        "sourceIomDtm": "Fuente: IOM DTM"
+        "sourceIomDtm": "Fuente: IOM DTM",
+        "sinceDate": "desde {{date}}",
+        "lastMonth": "el mes pasado",
+        "sourceUnhcrOdp": "Fuente: Portal de Datos Operacionales de ACNUR"
       },
       "layerHelp": {
         "title": "Guía de capas de mapas",
@@ -1617,7 +1620,13 @@
       "count": "Contar",
       "latestRound": "Última ronda",
       "internalNote": "IOM DTM: personas desplazadas internas, última ronda de encuesta por operación. Las operaciones de un mismo país pueden solaparse, por lo que no se suman.",
-      "infoTooltip": "<strong>Datos de desplazamiento del ACNUR</strong> Conteos globales de refugiados, solicitantes de asilo y desplazados internos del ACNUR.<ul><li><strong>Orígenes</strong>: Países de los que huye la gente</li><li><strong>Anfitriones</strong>: Países que acogen refugiados</li><li>Insignias de crisis: >1M | Alto: >500K desplazados</li></ul>Actualizaciones de datos anualmente. Licencia CC BY 4.0."
+      "infoTooltip": "<strong>Datos de desplazamiento del ACNUR</strong> Conteos globales de refugiados, solicitantes de asilo y desplazados internos del ACNUR.<ul><li><strong>Orígenes</strong>: Países de los que huye la gente</li><li><strong>Anfitriones</strong>: Países que acogen refugiados</li><li>Insignias de crisis: >1M | Alto: >500K desplazados</li></ul>Actualizaciones de datos anualmente. Licencia CC BY 4.0.",
+      "crossBorder": "Transfronterizo",
+      "situation": "Situación",
+      "latestChange": "Último cambio",
+      "accelerating": "Acelerando",
+      "inDays": "en {{days}} días",
+      "crossBorderNote": "Portal de Datos Operacionales de ACNUR: personas que cruzaron fronteras en cada crisis, según los últimos informes por país. Las situaciones se solapan, por lo que no se suman."
     },
     "populationExposure": {
       "totalAffected": "Total de afectados",
@@ -2421,7 +2430,8 @@
           "other": "No se pudo resolver",
           "judged_old_selection": "Resuelto con un método de evidencia posteriormente considerado no confiable",
           "late_read": "El feed no se leyó lo bastante cerca de la fecha límite",
-          "feed_unavailable": "El feed de datos no estuvo disponible después de la fecha límite"
+          "feed_unavailable": "El feed de datos no estuvo disponible después de la fecha límite",
+          "resolver_could_not_read_feed": "Nuestro sistema de resolución no pudo leer correctamente esta fuente de datos"
         }
       },
       "horizons": {

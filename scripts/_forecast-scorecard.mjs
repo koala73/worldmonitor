@@ -967,6 +967,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   judged_old_selection: 'Judged with an evidence method later found unreliable',
   late_read: 'The feed was not read close enough to the deadline',
   feed_unavailable: 'The data feed was unavailable after the deadline',
+  resolver_could_not_read_feed: 'Our resolver could not read this feed correctly',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

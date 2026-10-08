@@ -1476,7 +1476,10 @@
         "undisclosed": "Undisclosed",
         "stake": "stake",
         "internallyDisplaced": "внутрішньо переміщених",
-        "sourceIomDtm": "Джерело: IOM DTM"
+        "sourceIomDtm": "Джерело: IOM DTM",
+        "sinceDate": "з {{date}}",
+        "lastMonth": "минулого місяця",
+        "sourceUnhcrOdp": "Джерело: портал оперативних даних УВКБ ООН"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1905,7 +1908,13 @@
       "count": "Count",
       "latestRound": "Останній раунд",
       "internalNote": "IOM DTM: внутрішньо переміщені особи, останній раунд опитування для кожної операції. Операції в одній країні можуть перетинатися, тому їх не підсумовують.",
-      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license."
+      "infoTooltip": "<strong>UNHCR Displacement Data</strong> Global refugee, asylum seeker, and IDP counts from UNHCR.<ul><li><strong>Origins</strong>: Countries people flee FROM</li><li><strong>Hosts</strong>: Countries hosting refugees</li><li>Crisis badges: >1M | High: >500K displaced</li></ul>Data updates yearly. CC BY 4.0 license.",
+      "crossBorder": "Транскордонні",
+      "situation": "Ситуація",
+      "latestChange": "Остання зміна",
+      "accelerating": "Пришвидшується",
+      "inDays": "за {{days}} дн.",
+      "crossBorderNote": "Портал оперативних даних УВКБ ООН: люди, які перетнули кордони в кожній кризі, за останніми звітами по країнах. Ситуації перетинаються, тому їх не підсумовують."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -2158,7 +2167,8 @@
           "other": "Не вдалося визначити результат",
           "judged_old_selection": "Оцінено методом доказування, який пізніше виявився ненадійним",
           "late_read": "Джерело даних не було прочитано достатньо близько до терміну",
-          "feed_unavailable": "Джерело даних було недоступне після терміну"
+          "feed_unavailable": "Джерело даних було недоступне після терміну",
+          "resolver_could_not_read_feed": "Наша система оцінювання не змогла правильно прочитати це джерело даних"
         }
       },
       "horizons": {

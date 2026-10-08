@@ -126,6 +126,7 @@ const BOOTSTRAP = [
   { key: "progressData", group: "Science, Health & Society", holds: "World Bank global life expectancy, literacy, child mortality, poverty: annual points (up to 64)" },
   { key: "techEvents", group: "Science, Health & Society", holds: "125 upcoming tech conferences and events: title, location, start/end date, url" },
   { key: "positiveGeoEvents", group: "Science, Health & Society", holds: "~230 positive-news counts by country and category (e.g. humanity-kindness) with lat/lon" },
+  { key: "crossBorderArrivals", group: "Science, Health & Society", holds: "16 UNHCR refugee situations: refugees by host country, returns, Mediterranean monthly arrivals, latest change" },
   { key: "giving", group: "Science, Health & Society", holds: "Global giving summary: estimated daily flow USD, platforms, categories, OECD aid" },
 ];
 

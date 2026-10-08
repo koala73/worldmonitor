@@ -1468,7 +1468,10 @@
         "undisclosed": "Undisclosed",
         "stake": "stake",
         "internallyDisplaced": "internally displaced",
-        "sourceIomDtm": "Source: IOM DTM"
+        "sourceIomDtm": "Source: IOM DTM",
+        "sinceDate": "since {{date}}",
+        "lastMonth": "last month",
+        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1895,7 +1898,13 @@
       "count": "Count",
       "latestRound": "Latest round",
       "internalNote": "IOM DTM: internally displaced people, latest survey round per operation. Operations in one country can overlap, so they are not added together.",
-      "infoTooltip": "<strong>Displacement</strong> Refugees, asylum seekers and people displaced within their country. Origin and host views show where people flee from and to. Crisis badges mark over one million displaced; high marks over 500,000. Annual UN Refugee Agency data, CC BY 4.0 license."
+      "infoTooltip": "<strong>Displacement</strong> Refugees, asylum seekers and people displaced within their country. Origin and host views show where people flee from and to. Crisis badges mark over one million displaced; high marks over 500,000. Annual UN Refugee Agency data, CC BY 4.0 license.",
+      "crossBorder": "Cross-border",
+      "situation": "Situation",
+      "latestChange": "Latest change",
+      "accelerating": "Accelerating",
+      "inDays": "in {{days}} days",
+      "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -2174,6 +2183,7 @@
           "judged_old_selection": "Judged with an evidence method later found unreliable",
           "late_read": "The feed was not read close enough to the deadline",
           "feed_unavailable": "The data feed was unavailable after the deadline",
+          "resolver_could_not_read_feed": "Our resolver could not read this feed correctly",
           "other": "Could not be resolved"
         }
       },
