@@ -178,6 +178,7 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
       "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
@@ -204,6 +205,7 @@
       "scripts/seed-forecasts.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
@@ -1509,6 +1511,7 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
       "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
@@ -1556,6 +1559,7 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
       "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
@@ -1581,6 +1585,7 @@
       "scripts/seed-forecasts.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
@@ -1911,6 +1916,7 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
       "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
@@ -1937,6 +1943,7 @@
       "scripts/seed-forecasts.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"

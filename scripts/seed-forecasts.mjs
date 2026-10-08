@@ -8,6 +8,7 @@ import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getRespo
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
+import { subjectMatcherForRegion } from './_forecast-subject.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, isChokepointDisrupted, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, buildFunnelHealthMeta, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
@@ -2709,21 +2710,27 @@ function calibrateWithMarkets(predictions, markets) {
     noPrice: 0,
     lowVolume: 0,
     direction: 0,
-    region: 0,
     semantic: 0,
     eventClass: 0,
     horizon: 0,
     capNoop: 0,
     noClass: 0,
+    marketCopy: 0,
   };
   for (const pred of predictions) {
     const keywords = REGION_KEYWORDS[pred.region] || [];
     const regionTerms = [...new Set([...getSearchTermsForRegion(pred.region), pred.region])];
-    const subjectTerms = getSubjectTermsForRegion(pred.region);
+    const subject = subjectMatcherForRegion(pred.region);
     const expectedTags = buildExpectedRegionTags(regionTerms, pred.region);
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
+    // A forecast copied from a market already asks that market's question;
+    // any other market on its subject asks a different one (#9010).
+    if (pred.signals?.some((signal) => signal.type === 'prediction_market')) {
+      stats.marketCopy++;
+      continue;
+    }
     const eventPatterns = resolveMarketAnchorEventPatterns(pred, predictionDeEscalatoryOutcome);
     if (!eventPatterns) {
       stats.noClass++;
@@ -2751,13 +2758,11 @@ function calibrateWithMarkets(predictions, markets) {
           stats.direction++;
           return false;
         }
-        if (item.tagMismatch && item.regionHits === 0) {
-          stats.region++;
-          return false;
-        }
         // A shared macro tag or an entity-graph neighbour is not the same subject:
         // "Escalation risk: Syria" must not anchor to a US-invades-Iran market.
-        const hasSpecificRegionSignal = countTermMatches(item.market.title, subjectTerms).hits > 0;
+        // The judged lane's subject table names a region's members, so
+        // "Middle East" matches an Israel market and "Baltic" never "Baltimore".
+        const hasSpecificRegionSignal = subject.matches(item.market.title);
         const hasTitleOverlap = item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
         if (!hasSpecificRegionSignal || (requireTitleOverlap && !hasTitleOverlap)) {
           stats.semantic++;
@@ -2801,9 +2806,9 @@ function calibrateWithMarkets(predictions, markets) {
       stats.applied++;
     }
   }
-  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.eventClass + stats.horizon + stats.capNoop;
-  if (stats.applied > 0 || dropped > 0 || stats.noClass > 0) {
-    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} event_class=${stats.eventClass} horizon=${stats.horizon} cap_noop=${stats.capNoop} no_class_forecasts=${stats.noClass}`);
+  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.semantic + stats.eventClass + stats.horizon + stats.capNoop;
+  if (stats.applied > 0 || dropped > 0 || stats.noClass > 0 || stats.marketCopy > 0) {
+    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} semantic=${stats.semantic} event_class=${stats.eventClass} horizon=${stats.horizon} cap_noop=${stats.capNoop} no_class_forecasts=${stats.noClass} market_copy_forecasts=${stats.marketCopy}`);
   }
 }
 

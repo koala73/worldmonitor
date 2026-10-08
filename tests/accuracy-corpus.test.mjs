@@ -762,7 +762,18 @@ describe('accuracy page honesty rules', () => {
     const tied = sectionWith({ vsMarketSkill: { count: 4, forecastBrier: 0.1, marketBrier: 0.1, brierDelta: 0 } });
     assert.match(stripTags(renderState(tied).html), /tied|the same/i);
     const absent = sectionWith({ vsMarketSkill: { count: 0, forecastBrier: 0, marketBrier: 0, brierDelta: 0 } });
-    assert.match(stripTags(renderState(absent).html), /no resolved forecast .{0,40}overlapped/i);
+    assert.match(stripTags(renderState(absent).html), /No resolved forecast in this window carried a liquid prediction market's price/);
+  });
+
+  // Matched #7071 anchors are not the forecast's own question, so the market
+  // comparison may not claim every price answered the scored question (#9010).
+  it('does not claim every market price was for the forecast\'s own question', () => {
+    const market = (html) => { const text = stripTags(html).replaceAll('&#39;', "'"); return text.slice(text.indexOf('Against prediction markets')); };
+    const section = market(renderState(LIVE_SECTION).html);
+    assert.match(section, /every scored entry that carried a liquid prediction market's price/);
+    assert.match(section, /For a market bet the price is for the bet's own question\. For any other forecast it is the price of a market on the same subject and kind of event that settles inside the forecast's window, and that market can ask a narrower or broader question than the forecast\./);
+    assert.match(section, /On 78 such resolved entries/);
+    assert.doesNotMatch(stripTags(renderState(LIVE_SECTION).html), /own question a liquid|covered the same question|overlapped/);
   });
 
   it('describes the headline cohort by what it excludes, not by a publication property', () => {
@@ -1557,13 +1568,13 @@ describe('accuracy verdict block', () => {
   });
 
   it('states the market comparison in words that follow the delta sign', () => {
-    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 cases where a liquid prediction market covered the same question, the market's odds were closer to what happened than World Monitor's/);
+    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 graded cases that carried a liquid prediction market's price, the market's odds were closer to what happened than World Monitor's\. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question\./);
     const flipped = sectionWith({ vsMarketSkill: { count: 78, forecastBrier: 0.073136, marketBrier: 0.154623, brierDelta: 0.081487 } });
     assert.match(verdictText(renderState(flipped).html), /World Monitor's odds were closer to what happened than the market's/);
     const tied = sectionWith({ vsMarketSkill: { count: 4, forecastBrier: 0.1, marketBrier: 0.1, brierDelta: 0 } });
     assert.match(verdictText(renderState(tied).html), /the two were equally close/);
     const absent = sectionWith({ vsMarketSkill: { count: 0, forecastBrier: 0, marketBrier: 0, brierDelta: 0 } });
-    assert.match(verdictText(renderState(absent).html), /No graded forecast overlapped a liquid prediction market/);
+    assert.match(verdictText(renderState(absent).html), /No graded forecast carried a liquid prediction market's price, so there is no market comparison\./);
   });
 
   it('reports the all-scored count from the calibration buckets but never judges skill on the pooled rate (#8990)', () => {

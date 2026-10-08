@@ -366,6 +366,20 @@ describe('market comparisons read only anchors that price the forecast question 
     assert.ok(!hasPreLineageAnchor(resolved({})));
   });
 
+  it('counts headline rows blended toward a pre-#7071 anchor (#9010)', () => {
+    const scorecard = computeScorecard({
+      stale: preLineage({ probability: 0.388, outcome: 'YES' }),
+      staleExcluded: preLineage({ generationOrigin: 'state_derived', probability: 0.4, outcome: 'NO' }),
+      matched: lineage({ probability: 0.33, outcome: 'NO' }),
+      bet: marketBet({ probability: 0.2, outcome: 'NO' }),
+      clean: resolved({ probability: 0.2, outcome: 'NO' }),
+    }, NOW);
+    assert.equal(scorecard.skill.count, 3);
+    assert.equal(scorecard.skill.preLineageAnchorCount, 1);
+    const none = computeScorecard({ clean: resolved({ probability: 0.2, outcome: 'NO' }) }, NOW);
+    assert.equal(none.skill.preLineageAnchorCount, 0);
+  });
+
   it('treats a null or blank blend as missing lineage', () => {
     for (const marketBlendedProbability of [null, '', '0.33']) {
       const entry = lineage({ calibration: { ...lineage().calibration, marketBlendedProbability } });

@@ -702,10 +702,6 @@ describe('market anchor event-class equivalence (#7071)', () => {
     ['market', 'Iran', 'FX stress from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
     ['conflict', 'Iran', 'Escalation risk: Iran', '7d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
     ['supply_chain', 'Persian Gulf', 'GPS interference in Persian Gulf shipping zone', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
-    ['military', 'Middle East', 'USA-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
-    ['military', 'Middle East', 'Military posture escalation: Middle East', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
-    ['military', 'Middle East', 'Unknown-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
-    ['military', 'Middle East', 'Elevated military air activity near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
   ]) {
     it(`rejects the pre-#7071 anchor "${title}" <= "${marketTitle}" even when it settles in window`, () => {
       const pred = anchorFor(domain, region, title, marketTitle, { timeHorizon, yesPrice: 20 });
@@ -714,16 +710,58 @@ describe('market anchor event-class equivalence (#7071)', () => {
     });
   }
 
+  // Event-class pins: the market names the forecast's subject and resolves on
+  // the same class of event inside its window. That is the matcher's whole
+  // definition of a match; none of these markets asks the forecast's own
+  // question. The four Middle East rows were labelled rejects on 2026-10-07
+  // only because the region gate knew no member states (#9010).
   for (const [domain, region, title, marketTitle] of [
     ['conflict', 'Iran', 'Escalation risk: Iran', 'Will Israel strike Iran by October 13?'],
     ['conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a major new offensive in Ukraine by October 13?'],
     ['supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', 'Strait of Hormuz closed to shipping by October 13?'],
     ['supply_chain', 'Kerch Strait', 'Supply chain disruption: Kerch Strait', 'Kerch Strait shipping halted by October 13?'],
+    ['military', 'Middle East', 'USA-linked airlift surge near Iran Theater', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Military posture escalation: Middle East', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Unknown-linked airlift surge near Iran Theater', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Elevated military air activity near Iran Theater', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
   ]) {
-    it(`anchors the production forecast "${title}" to the same-question market "${marketTitle}"`, () => {
+    it(`pins the event-class anchor "${title}" <= "${marketTitle}"`, () => {
       const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
       assert.equal(pred.calibration?.marketTitle, marketTitle);
       assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+    });
+  }
+
+  // Region forecasts share the judged lane's subject table (#9010): a region
+  // matches its own terms and its member states, with the same word
+  // boundaries, exclusions and ambiguous-name co-terms.
+  for (const [domain, region, title, marketTitle] of [
+    ['conflict', 'Middle East', 'Escalation risk: Middle East', 'Will Israel strike Iran by October 13?'],
+    ['military', 'Korean Peninsula', 'Military posture escalation: Korean Peninsula', 'Will North Korea launch a missile strike on South Korea by October 13?'],
+    ['military', 'Northern Europe', 'Military posture escalation: Northern Europe', 'Will Russia attack a Baltic state by October 13?'],
+    ['supply_chain', 'Red Sea', 'Supply chain disruption: Red Sea', 'Bab el-Mandeb Strait effectively closed by October 13?'],
+    ['supply_chain', 'Persian Gulf', 'Supply chain disruption: Persian Gulf', 'Strait of Hormuz closed to shipping by October 13?'],
+  ]) {
+    it(`anchors the region forecast "${title}" to the member-subject market "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration?.marketTitle, marketTitle);
+      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+    });
+  }
+
+  for (const [domain, region, title, marketTitle, why] of [
+    ['conflict', 'Korean Peninsula', 'Escalation risk: Korean Peninsula', 'Will China invade Taiwan by October 13?', 'another subject'],
+    ['political', 'Americas', 'Political instability: Americas', 'Will Nick Fuentes become President of the United States before 2045?', 'another subject and a succession market'],
+    ['political', 'Middle East', 'Political instability: Middle East', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?', 'a succession market'],
+    ['military', 'Korean Peninsula', 'Military posture escalation: Korean Peninsula', 'Will Koreatown protesters clash with police by October 13?', 'a word that only starts with a region term'],
+    ['conflict', 'Middle East', 'Escalation risk: Middle East', 'Will Jordan Chiles clash with gymnastics judges by October 13?', 'an ambiguous member name with no co-term'],
+    ['conflict', 'Black Sea', 'Escalation risk: Black Sea', 'Will Odessa, Texas see a bombing by October 13?', 'an excluded place name'],
+    ['conflict', 'Syria', 'Escalation risk: Syria', 'Will the U.S. invade Iran by October 13?', 'an entity-graph neighbour'],
+  ]) {
+    it(`does not anchor the region forecast "${title}" to "${marketTitle}" (${why})`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
     });
   }
 
@@ -750,7 +788,18 @@ describe('market anchor event-class equivalence (#7071)', () => {
       'conflict|Colombia|Active armed conflict: Colombia': 'US strike on Colombia by December 31?',
       'conflict|China|Escalation risk: China': 'Will China invade Taiwan by December 31, 2027?',
       'conflict|Iran|Escalation risk: Iran': 'Will the U.S. invade Iran before 2027?',
+      'military|Middle East|Military posture escalation: Middle East': 'Will the U.S. invade Iran before 2027?',
+      'military|Middle East|Qatar-linked airlift surge near Iran Theater': 'Will the U.S. invade Iran before 2027?',
     }, 'only the settlement window separates these same-subject, same-event-class pairs');
+  });
+
+  it('does not anchor a market-copy forecast to another market on its subject', () => {
+    const marketSignal = [{ type: 'prediction_market', value: 'Polymarket: 78%', weight: 0.8 }];
+    const pred = anchorFor('conflict', 'Middle East', 'Will Israel strike 4 countries in 2026?', 'Will the U.S. invade Iran by October 13?', { signals: marketSignal, yesPrice: 20 });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.35);
+    const control = anchorFor('conflict', 'Middle East', 'Escalation risk: Middle East', 'Will the U.S. invade Iran by October 13?', { yesPrice: 20 });
+    assert.equal(control.calibration?.marketTitle, 'Will the U.S. invade Iran by October 13?');
   });
 });
 

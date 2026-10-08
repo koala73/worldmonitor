@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { countryMentionTerms } from '../shared/country-mention.js';
-import { normalizeSubjectText as normalize } from './seed-forecast-resolutions.mjs';
+import { normalizeSubjectText as normalize } from './_forecast-subject.mjs';
 
 const OUTPUT = fileURLToPath(new URL('./shared/judged-subject-terms.json', import.meta.url));
 const COUNTRY_NAMES = JSON.parse(readFileSync(new URL('../shared/country-names.json', import.meta.url), 'utf8'));
@@ -161,7 +161,7 @@ export function buildJudgedSubjectTerms() {
 async function main() {
   const table = buildJudgedSubjectTerms();
   const { EMITTED_REGION_LABELS } = await import('./seed-forecasts.mjs');
-  const { judgedSubjectKind } = await import('./seed-forecast-resolutions.mjs');
+  const { judgedSubjectKind } = await import('./_forecast-subject.mjs');
   const uncovered = [...EMITTED_REGION_LABELS, ...CHOKEPOINT_LABELS].filter((label) => judgedSubjectKind(label, table) === 'fallback');
   if (uncovered.length) throw new Error(`emitted region labels without a subject entry: ${uncovered.join(', ')}`);
   const text = `${JSON.stringify(table, null, 1)}\n`;

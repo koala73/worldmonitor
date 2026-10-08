@@ -1,5 +1,5 @@
 {
-  "description": "Frozen #7071 replay: production forecasts that carried, or would carry, a market anchor, plus every market the pre-#7071 or post-#7071 matcher selected. internalProbability is reconstructed as marketPrice + drift.",
+  "description": "Frozen #7071 replay: production forecasts that carried, or would carry, a market anchor, plus every market the pre-#7071 or post-#7071 matcher selected. internalProbability is reconstructed as marketPrice + drift. Market-copy rows (question titles) carry the prediction_market signal detectFromPredictionMarkets always sets; rows reconstructed without signals get a placeholder one (#9010).",
   "capturedAt": "2026-10-06T00:41:29.395Z",
   "forecasts": [
     {
@@ -150,7 +150,13 @@
       "title": "Will Israel strike 4 countries in 2026?",
       "timeHorizon": "30d",
       "internalProbability": 0.785,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
     },
     {
@@ -350,7 +356,13 @@
       "title": "US x China tariff agreement by December 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.893,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Tariff increase on Canada in effect by December 31, 2026?"
     },
     {
@@ -359,7 +371,13 @@
       "title": "Will China’s 2026 annual GDP growth (Y/Y) be between 4.0% and 5.0%?",
       "timeHorizon": "30d",
       "internalProbability": 0.9,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": null
     },
     {
@@ -460,7 +478,13 @@
       "title": "How much will the US acquire Greenland for?: $0 / No Acquisition",
       "timeHorizon": "30d",
       "internalProbability": 0.9,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "How much will the US acquire Greenland for?: $0 / No Acquisition"
     },
     {
@@ -469,7 +493,13 @@
       "title": "Israel x Hamas Ceasefire Phase II by December 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.805,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Israel x Hamas Ceasefire Phase II by December 31?"
     },
     {
@@ -478,7 +508,13 @@
       "title": "Israel x Iran ceasefire continues through August 2?",
       "timeHorizon": "30d",
       "internalProbability": 0.815,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
     },
     {
@@ -487,7 +523,13 @@
       "title": "Israel x Iran ceasefire continues through August 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.865,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
     },
     {
@@ -496,7 +538,13 @@
       "title": "Israel x Iran ceasefire continues through July 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
     },
     {
@@ -525,7 +573,13 @@
       "title": "Israel x Iran ceasefire continues through September 30?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
     },
     {
@@ -534,7 +588,13 @@
       "title": "Saudi Oil Pipeline (East-West) restarts by September 30?",
       "timeHorizon": "30d",
       "internalProbability": 0.875,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Iran leadership change by December 31?"
     },
     {
@@ -543,7 +603,13 @@
       "title": "US ceasefire against Iran continues through August 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -552,7 +618,13 @@
       "title": "US x Iran ceasefire continues through September 30?",
       "timeHorizon": "30d",
       "internalProbability": 0.89,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -561,7 +633,13 @@
       "title": "US x Iran diplomatic meeting by September 30, 2026?",
       "timeHorizon": "30d",
       "internalProbability": 0.88,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -570,7 +648,13 @@
       "title": "US x Iran Effective Ceasefire by August 31?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -579,7 +663,13 @@
       "title": "US x Iran Effective Ceasefire by September 30?",
       "timeHorizon": "30d",
       "internalProbability": 0.9,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -588,7 +678,13 @@
       "title": "Who will become Prime Minister of India after next general election?: Rahul Gandhi",
       "timeHorizon": "30d",
       "internalProbability": 0.88,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
     },
     {
@@ -626,7 +722,13 @@
       "title": "Will no qualifying diplomatic US-Iran meeting occur by September 30, 2026?",
       "timeHorizon": "30d",
       "internalProbability": 0.862,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -653,7 +755,13 @@
       "title": "Will the ECB announce a 25 bps increase at the September 2026 meeting?",
       "timeHorizon": "30d",
       "internalProbability": 0.885,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will Russia capture all of Stepnohirsk by December 31, 2026?"
     },
     {
@@ -662,7 +770,13 @@
       "title": "Will the ECB announce no change at the October 2026 meeting?",
       "timeHorizon": "30d",
       "internalProbability": 0.875,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will Russia capture all of Stepnohirsk by December 31, 2026?"
     },
     {
@@ -671,7 +785,13 @@
       "title": "Will the median home value in the US be less than $419,000 on September 30?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": null
     },
     {
@@ -680,7 +800,13 @@
       "title": "Will the Reserve Bank of India make no change to the policy repo rate after the August Meeting?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
     },
     {
@@ -689,7 +815,13 @@
       "title": "Will Trump and Putin not meet?",
       "timeHorizon": "30d",
       "internalProbability": 0.645,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will Trump buy at least part of Greenland?: Before January 20, 2029"
     },
     {
@@ -698,7 +830,13 @@
       "title": "Will Utah use a new congressional map for the 2026 United States midterm elections?",
       "timeHorizon": "30d",
       "internalProbability": 0.9,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
     },
     {
@@ -707,7 +845,13 @@
       "title": "Will Xi Jinping visit US before 2027?",
       "timeHorizon": "30d",
       "internalProbability": 0.895,
-      "signals": [],
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
       "legacyAnchor": "Will Kash Patel leave the Trump administration before 2027?"
     },
     {

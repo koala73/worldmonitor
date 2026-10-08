@@ -965,10 +965,16 @@ ${rows.map((row) => `          <tr data-origin="${escapeHtml(row.generationOrigi
       </table></div>`;
 }
 
+// A market bet carries its own market's price. Any other forecast carries
+// the price of the market it was blended toward (#7071): same subject, same
+// kind of event, settling inside the forecast's window, but not its exact
+// question (#9010).
+const MARKET_COMPARISON_SCOPE = "For a market bet the price is for the bet's own question. For any other forecast it is the price of a market on the same subject and kind of event that settles inside the forecast's window, and that market can ask a narrower or broader question than the forecast.";
+
 function marketSection(vsMarketSkill, escapeHtml) {
   if (!isPlainObject(vsMarketSkill) || !isFiniteNumber(vsMarketSkill.count) || vsMarketSkill.count === 0) {
     return `      <h2>Against prediction markets</h2>
-      <p>No resolved forecast in this window overlapped a liquid market, so there is no head-to-head comparison to publish.</p>`;
+      <p>No resolved forecast in this window carried a liquid prediction market's price, so there is no head-to-head comparison to publish.</p>`;
   }
   const delta = Number(vsMarketSkill.brierDelta);
   const verdict = delta < 0
@@ -977,7 +983,7 @@ function marketSection(vsMarketSkill, escapeHtml) {
       ? 'the forecast scored better'
       : 'the two tied';
   return `      <h2>Against prediction markets</h2>
-      <p>Measured over every scored entry whose own question a liquid prediction market priced, not over the narrower headline cohort. On ${escapeHtml(formatCount(vsMarketSkill.count))} such resolved questions the forecast Brier was ${escapeHtml(formatScore(vsMarketSkill.forecastBrier))} and the market Brier was ${escapeHtml(formatScore(vsMarketSkill.marketBrier))}. ${escapeHtml(BRIER_DELTA_CONVENTION)} Here the delta is ${escapeHtml(formatScore(delta))}, so on this sample ${escapeHtml(verdict)}.</p>`;
+      <p>Measured over every scored entry that carried a liquid prediction market's price, not over the narrower headline cohort. ${escapeHtml(MARKET_COMPARISON_SCOPE)} On ${escapeHtml(formatCount(vsMarketSkill.count))} such resolved entries the forecast Brier was ${escapeHtml(formatScore(vsMarketSkill.forecastBrier))} and the market Brier was ${escapeHtml(formatScore(vsMarketSkill.marketBrier))}. ${escapeHtml(BRIER_DELTA_CONVENTION)} Here the delta is ${escapeHtml(formatScore(delta))}, so on this sample ${escapeHtml(verdict)}.</p>`;
 }
 
 const NOT_YET_MEASURABLE = 'Not yet measurable';
@@ -1124,7 +1130,7 @@ function bandSentence({ band, count, yesCount }, escapeHtml) {
 
 function marketVerdictSentence(vsMarketSkill) {
   if (!isPlainObject(vsMarketSkill) || !isFiniteNumber(vsMarketSkill.count) || vsMarketSkill.count === 0) {
-    return 'No graded forecast overlapped a liquid prediction market, so there is no market comparison.';
+    return "No graded forecast carried a liquid prediction market's price, so there is no market comparison.";
   }
   const delta = Number(vsMarketSkill.brierDelta);
   const closer = delta < 0
@@ -1132,7 +1138,7 @@ function marketVerdictSentence(vsMarketSkill) {
     : delta > 0
       ? "World Monitor's odds were closer to what happened than the market's"
       : 'the two were equally close to what happened';
-  return `In the ${formatCount(vsMarketSkill.count)} cases where a liquid prediction market covered the same question, ${closer}.`;
+  return `In the ${formatCount(vsMarketSkill.count)} graded cases that carried a liquid prediction market's price, ${closer}. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question.`;
 }
 
 // One rate over every graded forecast mixes domains whose outcomes come true

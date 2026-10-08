@@ -332,6 +332,10 @@ function summarizeSkill(scored, excludeSet) {
     // Always an array (proto `repeated string` is non-optional): a typed client
     // reads skill.excludedOrigins.length on the healthy path, where it is [].
     excludedOrigins,
+    // Headline rows published after a blend toward a pre-#7071 anchor stay
+    // scored on what was published; this count keeps them visible (#9010).
+    // Internal: the public contract selects skill members by name.
+    preLineageAnchorCount: real.filter(hasPreLineageAnchor).length,
     brier: summary?.brier,
     logScore: summary?.logScore,
   });
