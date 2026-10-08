@@ -207,12 +207,14 @@ export function buildScorecardForRun(ledger, runState) {
 
 // Published forecasts the extraction gate withheld from scoring (#7067). They
 // open no ledger window, so without this count a withheld forecast would leave
-// the record and lower VOID by deletion. Counted once per id@deadline over the
-// forecast history the run read (its oldest snapshot is `since`), by reason and
-// by the hard family it lost, or its domain when it never had one.
+// the record and lower VOID by deletion. Counted the way the ledger counts
+// windows: each hourly run re-emits a forecast with a new deadline, so an
+// emission inside the [generatedAt, deadline) span of an earlier counted
+// emission of the same id is the same forecast. Over the forecast history the
+// run read (its oldest snapshot is `since`), by reason and by the hard family
+// it lost, or its domain when it never had one.
 export function summarizeWithheldEmissions(historySnapshots) {
-  const seen = new Set();
-  const byReason = {};
+  const emissions = [];
   let since = null;
   for (const snapshot of historySnapshots || []) {
     const at = Number(snapshot?.generatedAt);
@@ -220,16 +222,28 @@ export function summarizeWithheldEmissions(historySnapshots) {
     for (const forecast of snapshot?.predictions || []) {
       const spec = forecast?.resolution;
       if (spec?.kind !== 'unscored' || !forecast.id) continue;
-      const key = `${forecast.id}@${spec.deadline}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const reason = spec.reason || 'unknown';
-      const family = spec.originalFamily || forecast.domain || 'unknown';
-      const bucket = byReason[reason] ??= {};
-      bucket[family] = (bucket[family] || 0) + 1;
+      const generatedAt = Number(forecast.generatedAt || forecast.createdAt || at);
+      if (!Number.isFinite(generatedAt)) continue;
+      emissions.push({ forecast, spec, generatedAt });
     }
   }
-  return { forecasts: seen.size, since, byReason };
+  emissions.sort((a, b) => a.generatedAt - b.generatedAt);
+  const spansById = new Map();
+  const byReason = {};
+  let forecasts = 0;
+  for (const { forecast, spec, generatedAt } of emissions) {
+    const spans = spansById.get(forecast.id) || [];
+    if (spans.some(([start, end]) => generatedAt >= start && generatedAt < end)) continue;
+    const deadline = Number(spec.deadline);
+    spans.push([generatedAt, Number.isFinite(deadline) ? deadline : generatedAt + 1]);
+    spansById.set(forecast.id, spans);
+    forecasts += 1;
+    const reason = spec.reason || 'unknown';
+    const family = spec.originalFamily || forecast.domain || 'unknown';
+    const bucket = byReason[reason] ??= {};
+    bucket[family] = (bucket[family] || 0) + 1;
+  }
+  return { forecasts, since, byReason };
 }
 
 export async function resolveCalibrationMap(ledger, nowMs, readJson = readRedisJson) {
@@ -1555,7 +1569,9 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
       const window = ledger[coveringKey];
       if (window.status === 'pending' || window.status === 'pending-judge') {
         recordSighting(window, forecast, snapshotAt);
-        registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
+        // A hard emission absorbed by its downgrade's judged window brings no
+        // horizon windows: they would hang hard contracts off a judged parent.
+        if (window.spec?.kind === spec.kind) registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
       }
       continue;
     }
@@ -1643,6 +1659,11 @@ function indexQuestionWindows(ledger) {
 // beside the hard one. Whichever kind registered first owns the window.
 function isSameWindowQuestion(a, b) {
   if (a.questionKey === b.questionKey) return true;
+  // Two downgrades of one forecast: the judged question embeds the title and
+  // region, which drift between runs; the metric that failed does not.
+  const downgradedMetric = (window) => (window.entry.specOrigin === SPEC_ORIGIN_HARD_DOWNGRADED
+    && typeof window.entry.spec?.originalMetricKey === 'string' ? window.entry.spec.originalMetricKey : null);
+  if (downgradedMetric(a) && downgradedMetric(a) === downgradedMetric(b)) return true;
   const twin = (downgraded, hard) => downgraded.entry.specOrigin === SPEC_ORIGIN_HARD_DOWNGRADED
     && hard.entry.spec?.kind === 'hard'
     && (downgraded.entry.region || '') === (hard.entry.region || '')

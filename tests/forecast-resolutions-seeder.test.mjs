@@ -3415,6 +3415,57 @@ describe('extraction gate enforcement end to end (#7067)', () => {
     assert.deepEqual([twin.outcome, twin.evidence.reason, twin.duplicateOf], ['VOID', 'duplicate_window', liveParents(converged)[0].key]);
   });
 
+  it('two downgrades of one forecast share a window when the title drifts: fail(A), pass, fail(B)', () => {
+    const H = 60 * 60 * 1000;
+    const healthy = { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
+    const snapshots = [['Escalation risk: Mali', false], ['Escalation risk: Mali', true], ['Escalation surge: Mali', false]].map(([title, pass], run) => {
+      const at = T0 + run * H;
+      const forecasts = attachResolutionSpecs([forecast({ id: 'fc-mali', generatedAt: at, domain: 'conflict', region: 'Mali', title, signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] })], {}, at, { conflictCountFeedAvailable: true });
+      // Count specs never fail the dry run; force the verdict to exercise a
+      // judged downgrade whose question embeds the title.
+      const verdicts = pass ? [] : [{ id: 'fc-mali', outcome: 'fail', family: 'ucdp_zone', reason: 'metric_not_found' }];
+      applyExtractionGate(forecasts, verdicts, at, healthy);
+      return buildHistorySnapshot({ generatedAt: at, predictions: forecasts });
+    });
+    const [first, , third] = snapshots.map((snapshot) => snapshot.predictions[0].resolution);
+    assert.notEqual(first.question, third.question, 'fixture: the judged questions differ');
+    assert.equal(first.originalMetricKey, third.originalMetricKey);
+    const live = liveParents(ingestHistory({}, snapshots, T0 + 3 * H));
+    assert.deepEqual(live.map((entry) => [entry.spec.kind, entry.specOrigin]), [['judged', 'hard_downgraded_unextractable']]);
+    const converged = ingestHistory({ ...ingestHistory({}, [snapshots[0]], T0 + 3 * H), ...ingestHistory({}, [snapshots[2]], T0 + 3 * H) }, [], T0 + 3 * H);
+    assert.equal(liveParents(converged).length, 1);
+  });
+
+  it('a hard emission absorbed by its downgrade\'s judged window registers no horizon windows', () => {
+    const H = 60 * 60 * 1000;
+    const healthy = { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
+    const run = (at, pass) => {
+      const forecasts = attachResolutionSpecs([forecast({ id: 'fc-gps', generatedAt: at, timeHorizon: '30d', domain: 'supply_chain', region: 'Persian Gulf', title: 'GPS jamming: Persian Gulf', projections: { h24: 0.5, d7: 0.6, d30: 0.6 }, signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Persian Gulf', weight: 0.5 }] })], {}, at);
+      // A GPS downgrade is withheld today (supply_chain has only the generic
+      // question); a conflict domain stands in for a family that gains a
+      // specific question while keeping hard horizons.
+      forecasts[0].domain = 'conflict';
+      applyExtractionGate(forecasts, pass ? [] : [{ id: 'fc-gps', outcome: 'fail', family: 'gps', reason: 'metric_not_found' }], at, healthy);
+      return buildHistorySnapshot({ generatedAt: at, predictions: forecasts });
+    };
+    const control = ingestHistory({}, [run(T0, true)], T0 + H);
+    assert.ok(Object.values(control).some((entry) => entry.parentKey), 'control: a hard parent registers horizon windows');
+    const ledger = ingestHistory({}, [run(T0, false), run(T0 + H, true)], T0 + 2 * H);
+    assert.deepEqual(liveParents(ledger).map((entry) => entry.spec.kind), ['judged']);
+    assert.ok(!Object.values(ledger).some((entry) => entry.parentKey), 'no hard horizon hangs off the judged parent');
+  });
+
+  it('counts a withheld forecast once across hourly re-emissions, and again after its window closes', () => {
+    const H = 60 * 60 * 1000;
+    const emit = (at) => {
+      const forecasts = attachResolutionSpecs([forecast({ id: 'fc-mil', generatedAt: at, domain: 'military', region: 'Baltic', title: 'Naval posture shift: Baltic', signals: [] })], {}, at);
+      applyExtractionGate(forecasts, [], at, { mode: 'enforce', downgrade: false, reason: 'judged_lane_backlogged' });
+      return buildHistorySnapshot({ generatedAt: at, predictions: forecasts });
+    };
+    assert.deepEqual(summarizeWithheldEmissions([emit(T0 + H), emit(T0)]), { forecasts: 1, since: T0, byReason: { generic_judged_question: { military: 1 } } });
+    assert.equal(summarizeWithheldEmissions([emit(T0), emit(T0 + H), emit(T0 + HORIZON_MS['7d'])]).forecasts, 2);
+  });
+
   it('counts published-but-withheld forecasts into the stored scorecard by reason and family', async () => {
     const forecasts = emitted();
     const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { generatedAt: T0, judgedLane: { pendingJudge: 3, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
