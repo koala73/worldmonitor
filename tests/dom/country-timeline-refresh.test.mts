@@ -16,9 +16,17 @@ describe('country timeline refresh', () => {
     const mount = document.createElement('div');
     mount.hidden = true;
     Object.defineProperty(mount, 'clientWidth', { get: () => mount.hidden ? 0 : 900 });
+    const provenance = document.createElement('p');
+    provenance.textContent = 'Controlled source state: unknown';
+    mount.append(provenance);
     document.body.append(mount);
     const timeline = new CountryTimeline(mount);
     try {
+      mount.hidden = false;
+      notifyResize([], {} as ResizeObserver);
+      window.dispatchEvent(new Event('theme-changed'));
+      expect(mount.querySelector('svg')).toBeNull();
+      mount.hidden = true;
       timeline.render([]);
       expect(mount.querySelector('svg')).toBeNull();
       mount.hidden = false;
@@ -29,6 +37,8 @@ describe('country timeline refresh', () => {
       expect(mount.querySelectorAll('.empty-label')).toHaveLength(4);
       expect(mount.querySelectorAll('.event-circle')).toHaveLength(0);
       expect(mount.querySelectorAll('svg')).toHaveLength(1);
+      expect(provenance.textContent).toBe('Controlled source state: unknown');
+      expect(mount.contains(provenance)).toBe(true);
     } finally {
       timeline.destroy();
       mount.remove();
