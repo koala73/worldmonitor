@@ -99,6 +99,10 @@ describe('forecast public request errors', () => {
         { error: { code: '-32602', message: publicErrors[1][1] } },
         { result: { isError: true, content: [{ type: 'text', text: 'private-token-sentinel <img src=x>' }] } },
         { result: { isError: true, structuredContent: { error: 'private-token-sentinel' } } },
+        { result: { structuredContent: { error: 'private-token-sentinel https://private.invalid/token' } } },
+        { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'private-token-sentinel' }) }] } },
+        { result: { isError: true, structuredContent: { unknown: true }, content: [{ type: 'text', text: JSON.stringify({ _budget_exceeded: true }) }] } },
+        { result: { isError: true, structuredContent: { _budget_exceeded: 'true', _jmespath_error: {} } } },
       ]) {
         const { win, doc, target, request, messages } = await start();
         win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', id: request.id, ...envelope } }));
@@ -106,6 +110,23 @@ describe('forecast public request errors', () => {
         assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|Panel request expired/);
         assert.equal(doc.querySelector('img'), null);
         assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+      }
+    });
+    it('preserves safe budget and projection notices in ' + kind + ' tool errors and soft results', async () => {
+      for (const isError of [true, false]) {
+        for (const [sentinel, expected] of [[{ _budget_exceeded: true }, /too large/], [{ _jmespath_error: 'invalid_expression: private-token-sentinel' }, /projection could not be applied/]]) {
+          for (const structured of [true, false]) {
+            const { win, doc, target, request, messages } = await start();
+            const payload = { ...sentinel, error: 'private-token-sentinel', token: 'private-token-sentinel', account: 'private-account-sentinel' };
+            const result = structured ? { isError, structuredContent: payload, content: [{ type: 'text', text: 'private-token-sentinel' }] } : { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] };
+            hostReply(win, request.id, result, null); assert.match(target.textContent, /Loading/);
+            hostReply(win, request.id, result);
+            assert.match(target.textContent, expected);
+            assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|private-account-sentinel/);
+            assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+            assert.match(target.textContent, /Retry/);
+          }
+        }
       }
     });
   }
