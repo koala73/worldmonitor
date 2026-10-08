@@ -10,10 +10,11 @@ describe('country timeline refresh', () => {
   it.each(['resize', 'theme'] as const)('renders empty lanes after a hidden timeline becomes visible on %s', async (trigger) => {
     await initTestI18n();
     let notifyResize: ResizeObserverCallback = () => {};
+    const disconnect = vi.fn();
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
       observe() {}
-      disconnect() {}
+      disconnect() { disconnect(); }
     });
     const mount = document.createElement('div');
     mount.hidden = true;
@@ -41,6 +42,12 @@ describe('country timeline refresh', () => {
       expect(mount.querySelectorAll('circle')).toHaveLength(0);
       expect(mount.querySelectorAll('svg')).toHaveLength(1);
       expect(provenance.textContent).toBe('Controlled source state: unknown');
+      expect(mount.contains(provenance)).toBe(true);
+      timeline.destroy();
+      expect(disconnect).toHaveBeenCalledOnce();
+      notifyResize([], {} as ResizeObserver);
+      window.dispatchEvent(new Event('theme-changed'));
+      expect(mount.querySelector('svg')).toBeNull();
       expect(mount.contains(provenance)).toBe(true);
     } finally {
       timeline.destroy();
