@@ -389,12 +389,12 @@ function retainsFit(eligibility, { minFamilies, minOutcomeFamilies }) {
 }
 
 /**
- * Why the current ledger calls for a refit of `map`, or null. Rules, in
+ * Every reason the current ledger gives to refit `map`, in rule order. Rules, in
  * order: a fitted domain one of whose inputs was corrected; a fitted domain
  * below half the minimums; an identity domain that became eligible; a fitted
  * domain whose families since the fit match its fitted families; and a fitted
  * domain none of whose inputs is left in the window.
- * @returns {{ trigger: { reason: RefitReason, domain: string } | null, carry: Record<string, CalibrationDomain> }}
+ * @returns {{ triggers: { reason: RefitReason, domain: string }[], carry: Record<string, CalibrationDomain> }}
  */
 function refitTrigger(map, ledger, nowMs, options) {
   const minimums = eligibilityMinimums(options);
@@ -420,7 +420,8 @@ function refitTrigger(map, ledger, nowMs, options) {
     ['fit_input_withdrawn', (domain) => fitted(domain) && withdrawn(domain)],
     ['fit_invalidated', (domain) => fitted(domain) && !retainsFit(eligibility(domain), minimums)],
     ['domain_became_eligible', (domain) => !fitted(domain) && eligibility(domain)?.eligible],
-    ['family_growth', (domain) => fitted(domain)
+    // An ineligible fitted domain would only be carried unchanged.
+    ['family_growth', (domain) => fitted(domain) && eligibility(domain)?.eligible
       && map.domains[domain].families + familiesSinceFit(domain) >= CALIBRATION_REFIT_FAMILY_GROWTH * map.domains[domain].families],
     ['fit_aged_out', (domain) => fitted(domain) && !inputsInWindow(domain)],
   ];
@@ -431,16 +432,22 @@ function refitTrigger(map, ledger, nowMs, options) {
     .filter((domain) => fitted(domain) && !eligibility(domain)?.eligible && retainsFit(eligibility(domain), minimums)
       && !withdrawn(domain) && inputsInWindow(domain))
     .map((domain) => [domain, { ...map.domains[domain], carriedFrom: map.domains[domain].carriedFrom ?? map.version }]));
-  for (const [reason, applies] of rules) {
-    const domain = domains.find(applies);
-    if (domain) return { trigger: { reason, domain }, carry };
-  }
-  return { trigger: null, carry };
+  const triggers = rules.flatMap(([reason, applies]) => domains.filter(applies).map((domain) => ({ reason, domain })));
+  return { triggers, carry };
 }
 
-function holdsRefit(trigger, map, ledger, nowMs) {
+// Triggers that ask for a better fit, not a correction. Before the gate has
+// the forward sample to judge the stored map, such a refit would empty that
+// sample again, and a domain whose families emit one or two windows each
+// would never reach a verdict.
+const WAITS_FOR_GATE_SAMPLE = new Set(['family_growth', 'domain_became_eligible']);
+
+function holdsRefit(trigger, gate) {
   if (trigger.reason === 'fit_input_withdrawn') return false;
-  return evaluateCalibrationShadow(ledger, map, nowMs).activationGate.eligible;
+  if (gate.eligible) return true;
+  return WAITS_FOR_GATE_SAMPLE.has(trigger.reason)
+    && gate.reasons.length > 0
+    && gate.reasons.every((reason) => reason.startsWith('insufficient_forward_'));
 }
 
 /**
@@ -450,7 +457,9 @@ function holdsRefit(trigger, map, ledger, nowMs) {
  * While the activation gate passes, a trigger other than a withdrawn input is
  * held: a refit would discard the forward evidence and revert a validated
  * publication. The gate reads only the recent window, so the hold ends when
- * recent evidence stops validating the map.
+ * recent evidence stops validating the map. Growth and new eligibility are
+ * also held while the gate lacks the forward sample to judge the map. The
+ * first trigger the gate does not hold refits.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
@@ -459,9 +468,11 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
     const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
     return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, refitReason: reason }), action: 'fitted', reason };
   }
-  const { trigger, carry } = refitTrigger(parsed, ledger, nowMs, options);
-  if (!trigger) return { map: parsed, action: 'kept' };
-  if (holdsRefit(trigger, parsed, ledger, nowMs)) return { map: parsed, action: 'kept', held: trigger };
+  const { triggers, carry } = refitTrigger(parsed, ledger, nowMs, options);
+  if (!triggers.length) return { map: parsed, action: 'kept' };
+  const gate = evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate;
+  const trigger = triggers.find((candidate) => !holdsRefit(candidate, gate));
+  if (!trigger) return { map: parsed, action: 'kept', held: triggers[0] };
   const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason, carry });
   return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
 }

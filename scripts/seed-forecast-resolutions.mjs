@@ -208,6 +208,12 @@ export function buildScorecard(ledger, nowMs, calibrationMap = null, publication
  * rather than refitting: a refit after a transient Redis error would move
  * fittedAt and silently restart the forward cohort.
  */
+// The run's clock, so the scorecard's gate verdict is the one the map
+// resolution held or refitted on.
+export function buildScorecardForRun(ledger, runState) {
+  return buildScorecard(ledger, runState.nowMs, runState.map, runState.publication);
+}
+
 export async function resolveCalibrationMap(ledger, nowMs, readJson = readRedisJson) {
   let existing;
   try {
@@ -2907,6 +2913,7 @@ async function buildLedgerForRun(runState) {
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
   const calibration = await resolveCalibrationMap(result.ledger, nowMs);
+  runState.nowMs = nowMs;
   runState.map = calibration.map;
   runState.publication = await readRedisJson(CALIBRATION_PUBLICATION_KEY)
     .then((value) => unwrapEnvelope(value).data ?? null)
@@ -2915,7 +2922,7 @@ async function buildLedgerForRun(runState) {
       return null;
     });
   const trigger = calibration.held
-    ? `${calibration.held.reason}: ${calibration.held.domain}, held while the activation gate is eligible`
+    ? `${calibration.held.reason}: ${calibration.held.domain}, held by the activation gate`
     : calibration.reason && `${calibration.reason}${calibration.domain ? `: ${calibration.domain}` : ''}`;
   console.log(`  Calibration map: ${calibration.action}${trigger ? ` (${trigger})` : ''}${calibration.map ? ` ${calibration.map.version} data v${calibration.map.dataVersion}` : ''}`);
   return result.ledger;
@@ -3061,7 +3068,7 @@ export async function appendR2Receipts(receipts, options = {}) {
 if (DIRECT_RUN && process.argv.includes('--dry-run')) {
   await dryRun();
 } else if (DIRECT_RUN) {
-  const runState = { map: null };
+  const runState = { nowMs: Date.now(), map: null };
   await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(runState), {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
@@ -3075,7 +3082,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => buildScorecard(ledger, Date.now(), runState.map, runState.publication),
+      transform: (ledger) => buildScorecardForRun(ledger, runState),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,
