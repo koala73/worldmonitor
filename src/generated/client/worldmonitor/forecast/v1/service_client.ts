@@ -231,6 +231,7 @@ export interface ScorecardSkill {
   excludedScored: number;
   excludedOrigins: string[];
   yesCount: number;
+  bssCi95: number[];
 }
 
 export interface ScorecardPublishedDomain {

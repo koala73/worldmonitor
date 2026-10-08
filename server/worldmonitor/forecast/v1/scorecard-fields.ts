@@ -66,15 +66,15 @@ export const RECEIPT_FIELDS = [
 export const FAMILY_OUTCOME_FIELDS = ['forecastId', 'outcome', 'voidReason'] as const;
 
 // Skill against the cohort base rate (#8990). The public OpenAPI document sits
-// at its 950,000-byte cap, which had room for the domain bss only; the MCP
-// tool also serves the *_EXTENDED_FIELDS the seeder writes beside them. Both
-// contract lists mirror SKILL_FIELDS and PUBLISHED_DOMAIN_FIELDS in
-// scripts/build-accuracy-page.mjs (a test pins the parity).
+// at its 950,000-byte cap, which had room for the headline bssCi95 and the
+// domain bss only; the MCP tool also serves the *_EXTENDED_FIELDS the seeder
+// writes beside them. Both contract lists mirror SKILL_FIELDS and
+// PUBLISHED_DOMAIN_FIELDS in scripts/build-accuracy-page.mjs (a test pins the parity).
 export const SKILL_FIELDS = [
-  'count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount',
+  'count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount', 'bssCi95',
 ] as const satisfies readonly (keyof ScorecardSkill)[];
 export const SKILL_EXTENDED_FIELDS = [
-  'families', 'nEff', 'yesFamilies', 'noFamilies', 'referenceBrier', 'bss', 'bssCi95', 'measurable',
+  'families', 'nEff', 'yesFamilies', 'noFamilies', 'referenceBrier', 'bss', 'measurable',
 ] as const;
 export const PUBLISHED_DOMAIN_FIELDS = [
   'domain', 'count', 'brier', 'yesCount', 'bss',
