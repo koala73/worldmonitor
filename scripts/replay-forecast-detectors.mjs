@@ -5,6 +5,7 @@
 //   node scripts/replay-forecast-detectors.mjs --run-id=<run id> [--generated-at=<ms>]
 //   node scripts/replay-forecast-detectors.mjs --snapshot=<local file>
 //   options: --code=recorded|current|<sha>  --candidate
+//            --sha256=<hex>  --trust-unverified
 //
 // Two lanes, chosen by the snapshot's shape:
 // - detector: a seed-forecasts deep-snapshot.json. Reruns the legacy
@@ -15,18 +16,28 @@
 //   probabilities come from an LLM and are recorded outputs, not replayed.
 //
 // The first pass runs the code the run recorded (`deployRevision`), checked
-// out into a scratch git worktree. `--candidate` adds a second pass on this
-// checkout, labeled separately: its differences are code changes, not
-// snapshot failures. Each pass runs in a child process with no credentials,
-// no network and the clock frozen at the snapshot's generatedAt.
+// out into a scratch git worktree. Only a commit on origin/main is checked
+// out: a snapshot names the code to run, and a commit reachable only from a
+// fork's pull request must never run here. `--candidate` adds a second pass
+// on this checkout, labeled separately: its differences are code changes,
+// not snapshot failures.
+//
+// The snapshot must match a recorded digest: the ledger row's, the run's
+// trace manifest's, or `--sha256`. Without one, `--trust-unverified` is
+// required. Each pass runs in a child process with an allowlisted
+// environment (PATH, TZ and a scratch HOME), its working directory outside
+// the repository, `fetch` disabled and the clock frozen at the snapshot's
+// generatedAt. The child can still open files and sockets by other means;
+// the isolation keeps credentials out of reach of trusted code, it is not a
+// sandbox for untrusted code.
 //
 // Snapshots hold licensed third-party data (ACLED events, news). They are
 // read with the private R2 trace credentials, kept in a 0600 temp file that
 // is deleted afterwards, and never printed. The report lists forecast ids
 // and numbers only.
 
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -63,6 +74,8 @@ export function parseReplayArgs(argv = []) {
     snapshot: values.get('snapshot') || '',
     code: values.get('code') || 'recorded',
     candidate: values.get('candidate') === 'true',
+    sha256: values.get('sha256') || '',
+    trustUnverified: values.get('trust-unverified') === 'true',
   };
 }
 
@@ -218,7 +231,7 @@ export function passSucceeded(pass) {
     && (!entry || entry.match);
 }
 
-// ── Child pass: no credentials, no network, frozen clock ─────────────────
+// ── Child pass: allowlisted env, fetch disabled, frozen clock ────────────
 
 function freezeClock(nowMs) {
   const RealDate = Date;
@@ -234,53 +247,71 @@ function freezeClock(nowMs) {
   globalThis.Date = FrozenDate;
 }
 
-const CREDENTIAL_ENV = /UPSTASH|CLOUDFLARE|^R2_|TOKEN|SECRET|API_KEY|ACCESS_KEY/i;
+export const CHILD_ENV_ALLOWLIST = Object.freeze(['PATH', 'TZ', 'HOME']);
+// Set by macOS in every process; it holds a text-encoding id, not a secret.
+const PLATFORM_ENV = Object.freeze(['__CF_USER_TEXT_ENCODING']);
 
-// The pass must not be able to reach production: a credential in the
-// environment, before or after the code under replay loads, aborts it.
-function assertNoCredentials(stage) {
-  const found = Object.keys(process.env).filter((name) => CREDENTIAL_ENV.test(name));
-  if (found.length) throw new Error(`credentials in the replay environment ${stage}: ${found.join(', ')}`);
+// The pass gets only the allowlisted variables. Any other variable, present
+// at start or set while the code under replay loads (an env-file loader),
+// aborts it, so no credential can reach the replay.
+export function assertAllowlistedEnv(stage, env = process.env) {
+  const extra = Object.keys(env).filter((name) => !CHILD_ENV_ALLOWLIST.includes(name) && !PLATFORM_ENV.includes(name));
+  if (extra.length) throw new Error(`unexpected variables in the replay environment ${stage}: ${extra.join(', ')}`);
 }
 
-function blockNetwork() {
-  globalThis.fetch = async () => { throw new Error('network disabled during replay'); };
+function disableFetch() {
+  globalThis.fetch = async () => { throw new Error('fetch disabled during replay'); };
 }
 
 async function runChildPass({ codeRoot, snapshot: snapshotPath, out }) {
   const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8'));
   const lane = snapshotLane(snapshot);
-  assertNoCredentials('at start');
+  assertAllowlistedEnv('at start');
   freezeClock(Number(snapshot.generatedAt));
-  blockNetwork();
+  disableFetch();
   const scripts = pathToFileURL(join(resolve(codeRoot), 'scripts/')).href;
   let replayed;
   if (lane === 'bets') {
-    replayed = replayBetsStage(await import(`${scripts}seed-forecast-bets.mjs`), snapshot);
+    const betsModule = await import(`${scripts}seed-forecast-bets.mjs`);
+    assertAllowlistedEnv('after loading the code');
+    replayed = replayBetsStage(betsModule, snapshot);
   } else if (lane === 'detector') {
     const [seedModule, emaModule] = await Promise.all([
       import(`${scripts}seed-forecasts.mjs`),
       import(`${scripts}_ema-threat-engine.mjs`),
     ]);
+    assertAllowlistedEnv('after loading the code');
     replayed = replayDetectorStage(seedModule, emaModule, snapshot);
   } else {
     throw new Error('unrecognized snapshot shape');
   }
-  assertNoCredentials('after loading the code');
   writeFileSync(out, JSON.stringify(replayed));
 }
 
-/** Runs one pass in a child process whose environment holds no credentials. */
-export function runReplayPass({ codeRoot, snapshotPath, scratchDir }) {
+/**
+ * Runs one pass in a child process with the allowlisted environment, a
+ * scratch HOME, and a working directory outside the repository, so neither
+ * a relative .env.local nor a home-directory credential file is in reach.
+ */
+// Asynchronous, so an interrupt is handled while a pass runs. `onChild`
+// receives the process so the interrupt handler can stop it.
+export async function runReplayPass({ codeRoot, snapshotPath, scratchDir, onChild = () => {} }) {
   const out = join(scratchDir, `replay-${Math.random().toString(36).slice(2)}.json`);
-  const result = spawnSync(process.execPath, [SCRIPT_PATH, '--child', `--code-root=${codeRoot}`, `--snapshot=${snapshotPath}`, `--out=${out}`], {
-    cwd: codeRoot,
-    env: { PATH: process.env.PATH || '', TZ: 'UTC' },
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+  const home = join(scratchDir, 'home');
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const child = spawn(process.execPath, [SCRIPT_PATH, '--child', `--code-root=${codeRoot}`, `--snapshot=${snapshotPath}`, `--out=${out}`], {
+    cwd: scratchDir,
+    env: { PATH: process.env.PATH || '', TZ: 'UTC', HOME: home },
+    stdio: 'ignore',
+  });
+  onChild(child);
+  const result = await new Promise((resolveExit, rejectExit) => {
+    child.on('error', rejectExit);
+    child.on('exit', (status, signal) => resolveExit({ status, signal }));
   });
   if (result.status !== 0 || !existsSync(out)) {
-    throw new Error(`replay pass failed at ${codeRoot}: ${(result.stderr || '').split('\n').filter(Boolean).slice(-5).join(' | ')}`);
+    // The child's output is withheld: a log line may quote snapshot text.
+    throw new Error(`replay pass failed (exit ${result.status ?? 'none'}${result.signal ? `, signal ${result.signal}` : ''}); its output is withheld because it may quote snapshot data`);
   }
   const replayed = JSON.parse(readFileSync(out, 'utf8'));
   rmSync(out, { force: true });
@@ -293,23 +324,45 @@ function git(args, options = {}) {
   return execFileSync('git', ['-C', REPO_ROOT, '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options }).trim();
 }
 
-/** The recorded revision in a scratch worktree that shares this checkout's node_modules. */
-function checkoutRevision(revision, scratchDir) {
+/**
+ * Refuses a revision that is not on origin/main. Only main is fetched, never
+ * the revision itself: GitHub serves commits reachable only from a fork's
+ * pull request ref, and those must not run here.
+ */
+export function assertRevisionOnMain(revision, runGit = git) {
   if (!/^[0-9a-f]{7,40}$/i.test(revision)) throw new Error(`not a commit sha: ${revision}`);
-  try {
-    git(['cat-file', '-e', `${revision}^{commit}`]);
-  } catch {
-    git(['fetch', '--quiet', 'origin', revision]);
-  }
+  const onMain = () => {
+    try {
+      runGit(['merge-base', '--is-ancestor', revision, 'refs/remotes/origin/main']);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (onMain()) return;
+  runGit(['fetch', '--quiet', 'origin', 'main']);
+  if (!onMain()) throw new Error(`revision ${revision} is not on origin/main; refusing to run it`);
+}
+
+/**
+ * The recorded revision in a scratch worktree that shares this checkout's
+ * node_modules. `track` receives the cleanup before anything can fail after
+ * the worktree exists.
+ */
+function checkoutRevision(revision, scratchDir, track) {
+  assertRevisionOnMain(revision);
   const dir = join(scratchDir, `code-${revision.slice(0, 12)}`);
   git(['worktree', 'add', '--detach', '--quiet', dir, revision]);
+  track(() => {
+    try {
+      git(['worktree', 'remove', '--force', dir]);
+    } catch {
+      rmSync(dir, { recursive: true, force: true });
+      try { git(['worktree', 'prune']); } catch { /* best effort */ }
+    }
+  });
   symlinkSync(join(REPO_ROOT, 'node_modules'), join(dir, 'node_modules'));
-  return {
-    dir,
-    cleanup: () => {
-      try { git(['worktree', 'remove', '--force', dir]); } catch { rmSync(dir, { recursive: true, force: true }); }
-    },
-  };
+  return dir;
 }
 
 // ── Production reads (read-only, private credentials) ───────────────────
@@ -369,6 +422,15 @@ async function fetchSnapshot({ runId, generatedAt, lane, storageConfig }) {
   return getR2JsonObject(storageConfig, buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix));
 }
 
+// The digest a run recorded in its trace manifest (#9058); null before #9058.
+async function fetchManifestDigest({ runId, generatedAt, storageConfig }) {
+  const { getR2JsonObject } = await import('./_r2-storage.mjs');
+  const { buildDeepForecastSnapshotKey } = await import('./seed-forecasts.mjs');
+  const manifestKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix).replace(/deep-snapshot\.json$/, 'manifest.json');
+  const manifest = await getR2JsonObject(storageConfig, manifestKey).catch(() => null);
+  return typeof manifest?.snapshotSha256 === 'string' ? manifest.snapshotSha256 : null;
+}
+
 async function locateSnapshot({ entry, runId, generatedAt }) {
   const { resolveR2StorageConfig } = await import('./_r2-storage.mjs');
   const storageConfig = resolveR2StorageConfig();
@@ -378,7 +440,8 @@ async function locateSnapshot({ entry, runId, generatedAt }) {
   const id = entry?.runId || runId;
   if (id) {
     if (lane === 'detector' && !Number.isFinite(at)) throw new Error('--generated-at is required with a detector --run-id');
-    return { snapshot: await fetchSnapshot({ runId: id, generatedAt: at, lane, storageConfig }), runId: id, located: 'run_id' };
+    const manifestSha256 = lane === 'detector' ? await fetchManifestDigest({ runId: id, generatedAt: at, storageConfig }) : null;
+    return { snapshot: await fetchSnapshot({ runId: id, generatedAt: at, lane, storageConfig }), runId: id, located: 'run_id', manifestSha256 };
   }
   if (lane === 'bets') throw new Error('bet_engine entries from before #9058 have no archived inputs');
   for (const candidate of legacyRunCandidates(await listRunIdsForDay(storageConfig, at), at)) {
@@ -395,19 +458,20 @@ export async function replayForecastRun(options, { log = console.log } = {}) {
   let snapshot;
   let runId = options.runId;
   let located = 'local_file';
+  let manifestSha256 = null;
   if (options.snapshot) {
     snapshot = JSON.parse(readFileSync(options.snapshot, 'utf8'));
     runId = snapshot.runId || runId;
   } else {
     if (options.entryKey) entry = await readLedgerEntry(options.entryKey);
-    ({ snapshot, runId, located } = await locateSnapshot({ entry, runId, generatedAt: options.generatedAt }));
+    ({ snapshot, runId, located, manifestSha256 = null } = await locateSnapshot({ entry, runId, generatedAt: options.generatedAt }));
   }
   if (!snapshot) return { status: 'snapshot_missing', runId, located, entry: entry?.key ?? null };
   const lane = snapshotLane(snapshot);
   if (!lane) return { status: 'snapshot_unrecognized', runId, located };
 
   const computedSha256 = snapshotDigest(snapshot);
-  const recordedSha256 = entry?.snapshotSha256 ?? null;
+  const recordedSha256 = options.sha256 || entry?.snapshotSha256 || manifestSha256 || null;
   const report = {
     status: 'replayed',
     lane,
@@ -421,10 +485,32 @@ export async function replayForecastRun(options, { log = console.log } = {}) {
     report.status = 'snapshot_digest_mismatch';
     return report;
   }
+  if (!recordedSha256 && !options.trustUnverified) {
+    report.status = 'snapshot_unverified';
+    report.hint = 'no recorded digest: pass --sha256=<hex>, or --trust-unverified for a run from before #9058';
+    return report;
+  }
 
   const scratchDir = mkdtempSync(join(tmpdir(), 'wm-replay-'));
   chmodSync(scratchDir, 0o700);
   const cleanups = [];
+  let cleaned = false;
+  // Idempotent, so an interrupt during a pass and the finally block below
+  // both leave no worktree registration and no snapshot file behind.
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    for (const step of cleanups.reverse()) step();
+    rmSync(scratchDir, { recursive: true, force: true });
+  };
+  let activeChild = null;
+  const onSignal = (signal) => {
+    activeChild?.kill('SIGKILL');
+    cleanup();
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   try {
     const snapshotPath = join(scratchDir, 'snapshot.json');
     writeFileSync(snapshotPath, JSON.stringify(snapshot), { mode: 0o600 });
@@ -438,21 +524,19 @@ export async function replayForecastRun(options, { log = console.log } = {}) {
 
     for (const plan of plans) {
       let codeRoot = REPO_ROOT;
-      if (plan.revision !== 'current') {
-        const checkout = checkoutRevision(plan.revision, scratchDir);
-        cleanups.push(checkout.cleanup);
-        codeRoot = checkout.dir;
-      }
+      if (plan.revision !== 'current') codeRoot = checkoutRevision(plan.revision, scratchDir, (step) => cleanups.push(step));
       log(`  [replay] ${plan.label} pass at ${plan.revision === 'current' ? 'this checkout' : plan.revision.slice(0, 12)}`);
-      const replayed = runReplayPass({ codeRoot, snapshotPath, scratchDir });
+      const replayed = await runReplayPass({ codeRoot, snapshotPath, scratchDir, onChild: (child) => { activeChild = child; } });
+      activeChild = null;
       const pass = { label: plan.label, revision: plan.revision, comparison: compareReplay(snapshot, replayed, lane), entry: compareEntry(entry, replayed, lane) };
       pass.exact = passSucceeded(pass);
       report.passes.push(pass);
     }
     return report;
   } finally {
-    for (const cleanup of cleanups.reverse()) cleanup();
-    rmSync(scratchDir, { recursive: true, force: true });
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    cleanup();
   }
 }
 
@@ -467,7 +551,7 @@ if (isDirectRun) {
       loadEnvFile(import.meta.url);
     }
     if (!options.snapshot && !options.entryKey && !options.runId) {
-      console.error('usage: replay-forecast-detectors.mjs --entry-key=<key> | --run-id=<id> [--generated-at=<ms>] | --snapshot=<file> [--code=recorded|current|<sha>] [--candidate]');
+      console.error('usage: replay-forecast-detectors.mjs --entry-key=<key> | --run-id=<id> [--generated-at=<ms>] | --snapshot=<file> [--code=recorded|current|<sha>] [--candidate] [--sha256=<hex> | --trust-unverified]');
       process.exit(2);
     }
     const report = await replayForecastRun(options, { log: (line) => console.error(line) });

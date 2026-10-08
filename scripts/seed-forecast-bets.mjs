@@ -25,7 +25,7 @@ import { ensembleProbability, ENSEMBLE_PROMPT_DIGEST } from './_forecast-ensembl
 import { baseRateProbability } from './_bet-baserate.mjs';
 import { parseMetricKey } from './_forecast-resolution-eval.mjs';
 import { BETS_HISTORY_KEY, buildBetsInputSnapshotKey, buildBetsRunId } from './_forecast-bets-keys.mjs';
-import { putR2JsonBody, resolveR2StorageConfig, serializeR2JsonBody } from './_r2-storage.mjs';
+import { putR2JsonBody, resolveR2StorageConfig, serializeR2JsonBody, withSettleTimeout } from './_r2-storage.mjs';
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
@@ -272,18 +272,25 @@ export function buildBetsInputSnapshot({
   };
 }
 
+// The whole write, retries included, gets this long. The R2 helper retries 3
+// times at a 30 s timeout, which could hold the history append for about
+// 92 s; past the budget the run goes on unlinked.
+export const BETS_INPUT_SNAPSHOT_BUDGET_MS = 20_000;
+
 // Writes the input snapshot to the private trace bucket. Returns null when
-// R2 is not configured; a write error propagates to the caller.
+// R2 is not configured; a write error or an overrun budget propagates to
+// the caller.
 export async function writeBetsInputSnapshot(payload, {
   storageConfig = resolveR2StorageConfig(),
   putBody = putR2JsonBody,
+  budgetMs = BETS_INPUT_SNAPSHOT_BUDGET_MS,
 } = {}) {
   if (!storageConfig || !payload?.runId) return null;
   const key = buildBetsInputSnapshotKey(payload.runId, payload.generatedAt, storageConfig.basePrefix);
-  const written = await putBody(storageConfig, key, serializeR2JsonBody(payload), {
+  const written = await withSettleTimeout(putBody(storageConfig, key, serializeR2JsonBody(payload), {
     runid: String(payload.runId),
     kind: 'bets_input_snapshot',
-  });
+  }), budgetMs, 'bets input snapshot write');
   return { key, snapshotSha256: written.sha256 };
 }
 

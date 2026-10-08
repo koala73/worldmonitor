@@ -3052,12 +3052,28 @@ async function dryRun() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
+// Receipts are the permanent audit trail. The trace prefix holds per-run
+// snapshots under a retention rule (#9058), and with
+// CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX unset the receipt prefix falls
+// back to the trace default. A receipt prefix inside the trace prefix is
+// refused, so no receipt is written where the retention rule deletes it.
+// Rows stay unarchived, and unarchived rows are never pruned.
+export function receiptPrefixInsideTracePrefix(receiptConfig, traceConfig) {
+  if (!receiptConfig || !traceConfig || receiptConfig.bucket !== traceConfig.bucket) return false;
+  return receiptConfig.basePrefix === traceConfig.basePrefix || receiptConfig.basePrefix.startsWith(`${traceConfig.basePrefix}/`);
+}
+
 export async function appendR2Receipts(receipts, options = {}) {
   if (!receipts.length) return [];
   const putObject = options.putObject || putR2JsonObject;
-  const config = resolveR2StorageConfig(options.env || process.env, { prefixEnv: 'CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX' });
+  const env = options.env || process.env;
+  const config = resolveR2StorageConfig(env, { prefixEnv: 'CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX' });
   if (!config) {
     console.warn(`  [forecast-resolutions] R2 not configured; skipped ${receipts.length} receipt append(s)`);
+    return [];
+  }
+  if (receiptPrefixInsideTracePrefix(config, resolveR2StorageConfig(env))) {
+    console.warn(`  [forecast-resolutions] receipt prefix is inside the trace prefix, which has a retention rule; set CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX outside it. Skipped ${receipts.length} receipt append(s)`);
     return [];
   }
   const archived = [];

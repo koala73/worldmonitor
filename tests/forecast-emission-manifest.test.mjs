@@ -5,8 +5,8 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -24,8 +24,11 @@ import * as emaEngine from '../scripts/_ema-threat-engine.mjs';
 import { __setS3ClientForTests, serializeR2JsonBody } from '../scripts/_r2-storage.mjs';
 import { archiveCalibrationPublication } from '../scripts/_forecast-calibration.mjs';
 import { buildBetsInputSnapshot, buildBetsSnapshot, writeBetsInputSnapshot } from '../scripts/seed-forecast-bets.mjs';
+import { receiptPrefixInsideTracePrefix } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildBetsInputSnapshotKey, buildBetsRunId } from '../scripts/_forecast-bets-keys.mjs';
 import {
+  assertAllowlistedEnv,
+  assertRevisionOnMain,
   compareEntry,
   compareReplay,
   LEGACY_RUN_MATCH_WINDOW_MS,
@@ -249,6 +252,16 @@ describe('bet-engine input snapshot (#9058)', () => {
     assert.equal(written.snapshotSha256, sha256(captured.body));
     assert.equal(await writeBetsInputSnapshot(payload, { storageConfig: null }), null);
   });
+
+  it('bounds the whole write, so a slow R2 cannot hold the history append', { timeout: 5000 }, async () => {
+    const payload = buildBetsInputSnapshot({ runId: buildBetsRunId(input.generatedAt), generatedAt: input.generatedAt, feedsByKey: {}, priorSeries: {} });
+    const started = Date.now();
+    await assert.rejects(
+      writeBetsInputSnapshot(payload, { storageConfig: { basePrefix: 'p' }, putBody: () => new Promise(() => {}), budgetMs: 50 }),
+      /timed out after 50ms/,
+    );
+    assert.ok(Date.now() - started < 2000);
+  });
 });
 
 describe('replay comparison (#9058)', () => {
@@ -266,6 +279,42 @@ describe('replay comparison (#9058)', () => {
     const minutes = LEGACY_RUN_MATCH_WINDOW_MS / 60_000;
     assert.ok(readFileSync(new URL('../docs/panels/forecast.mdx', import.meta.url), 'utf8').includes(`minted up to ${minutes} minutes before`));
     assert.ok(readFileSync(new URL('../docs/zh/panels/forecast.mdx', import.meta.url), 'utf8').includes(`不超过 ${minutes} 分钟`));
+  });
+
+  it('runs only revisions on origin/main, and never fetches the revision itself', () => {
+    const calls = [];
+    const fakeGit = (onMain) => (args) => {
+      calls.push(args.join(' '));
+      if (args[0] === 'merge-base' && !onMain()) throw new Error('not an ancestor');
+      return '';
+    };
+    let fetched = false;
+    assert.doesNotThrow(() => assertRevisionOnMain('abc1234', fakeGit(() => true)));
+    assert.deepEqual(calls, ['merge-base --is-ancestor abc1234 refs/remotes/origin/main']);
+    calls.length = 0;
+    assert.throws(() => assertRevisionOnMain('def5678', (args) => {
+      if (args[0] === 'fetch') fetched = true;
+      return fakeGit(() => false)(args);
+    }), /not on origin\/main/);
+    assert.ok(fetched);
+    assert.ok(calls.includes('fetch --quiet origin main'));
+    assert.ok(!calls.some((call) => call.startsWith('fetch') && call.includes('def5678')), 'a fork-only commit is never fetched by sha');
+    assert.throws(() => assertRevisionOnMain('main; rm -rf /', fakeGit(() => true)), /not a commit sha/);
+  });
+
+  it('accepts only the allowlisted child environment', () => {
+    assert.doesNotThrow(() => assertAllowlistedEnv('t', { PATH: '/bin', TZ: 'UTC', HOME: '/tmp/h' }));
+    for (const name of ['DATABASE_URL', 'CONVEX_DEPLOY_KEY', 'SMTP_PASSWORD', 'UPSTASH_REDIS_REST_TOKEN', 'NODE_OPTIONS']) {
+      assert.throws(() => assertAllowlistedEnv('t', { PATH: '/bin', [name]: 'x' }), new RegExp(name));
+    }
+  });
+
+  it('treats a receipt prefix at or under the trace prefix as inside it', () => {
+    const at = (bucket, basePrefix) => ({ bucket, basePrefix });
+    assert.equal(receiptPrefixInsideTracePrefix(at('b', 't'), at('b', 't')), true);
+    assert.equal(receiptPrefixInsideTracePrefix(at('b', 't/r'), at('b', 't')), true);
+    assert.equal(receiptPrefixInsideTracePrefix(at('b', 'tr'), at('b', 't')), false);
+    assert.equal(receiptPrefixInsideTracePrefix(at('other', 't'), at('b', 't')), false);
   });
 
   it('locates a legacy run by the latest run id minted shortly before the entry', () => {
@@ -303,7 +352,7 @@ describe('replay comparison (#9058)', () => {
     assert.ok(compareReplay(snapshot, replayDetectorStage(seedForecasts, emaEngine, unarchived)).differing > 0);
   });
 
-  it('runs each lane in a child process with no credentials', () => {
+  it('runs each lane in a child process with no credentials', async () => {
     const scratchDir = mkdtempSync(join(tmpdir(), 'wm-replay-test-'));
     try {
       const snapshotPath = join(scratchDir, 'snapshot.json');
@@ -314,7 +363,7 @@ describe('replay comparison (#9058)', () => {
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-not-a-secret';
       let replayed;
       try {
-        replayed = runReplayPass({ codeRoot: REPO_ROOT, snapshotPath, scratchDir });
+        replayed = await runReplayPass({ codeRoot: REPO_ROOT, snapshotPath, scratchDir });
       } finally {
         if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
         else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
@@ -326,8 +375,54 @@ describe('replay comparison (#9058)', () => {
       const emitted = buildBetsSnapshot(bets.feedsByKey, bets.generatedAt, bets.priorSeries);
       const betsSnapshot = buildBetsInputSnapshot({ ...bets, runId: buildBetsRunId(bets.generatedAt), predictions: emitted.predictions });
       writeFileSync(snapshotPath, JSON.stringify(betsSnapshot));
-      const betsComparison = compareReplay(betsSnapshot, runReplayPass({ codeRoot: REPO_ROOT, snapshotPath, scratchDir }));
+      const betsComparison = compareReplay(betsSnapshot, await runReplayPass({ codeRoot: REPO_ROOT, snapshotPath, scratchDir }));
       assert.deepEqual([betsComparison.exact, betsComparison.differing, betsComparison.missing, betsComparison.extra], [emitted.predictions.length, 0, 0, 0]);
+    } finally {
+      rmSync(scratchDir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs the code under replay outside the repository, and aborts if it loads variables', async () => {
+    const scratchDir = mkdtempSync(join(tmpdir(), 'wm-replay-stub-'));
+    try {
+      // A stand-in code root: its detector reports the pass's cwd and HOME.
+      const codeRoot = join(scratchDir, 'code');
+      mkdirSync(join(codeRoot, 'scripts'), { recursive: true });
+      writeFileSync(join(codeRoot, 'scripts/_ema-threat-engine.mjs'), 'export const computeEmaWindows = () => new Map();\nexport const computeRisk24h = () => new Map();\n');
+      const detector = (setsEnv) => `${setsEnv ? "process.env.LEAKED_SECRET = 'x';\n" : ''}export const detectAllScenarios = () => [{ id: process.cwd(), probability: 0.5, projections: null, generationOrigin: process.env.HOME }];\nexport const scoreDetectedPredictions = () => {};\n`;
+      writeFileSync(join(codeRoot, 'scripts/seed-forecasts.mjs'), detector(false));
+      const snapshotPath = join(scratchDir, 'snapshot.json');
+      writeFileSync(snapshotPath, JSON.stringify({ generatedAt: 1, inputs: {}, fullRunPredictions: [] }));
+      const passDir = join(scratchDir, 'pass');
+      mkdirSync(passDir);
+      const [row] = await runReplayPass({ codeRoot, snapshotPath, scratchDir: passDir });
+      assert.ok(!row.id.startsWith(realpathSync(REPO_ROOT)) && !row.id.startsWith(realpathSync(codeRoot)), `cwd ${row.id} is outside the repository and the code root`);
+      assert.ok(row.generationOrigin.startsWith(passDir), 'HOME is a scratch directory');
+
+      writeFileSync(join(codeRoot, 'scripts/seed-forecasts.mjs'), detector(true));
+      await assert.rejects(runReplayPass({ codeRoot: codeRoot, snapshotPath, scratchDir: passDir }), /replay pass failed/);
+    } finally {
+      rmSync(scratchDir, { recursive: true, force: true });
+    }
+  });
+
+  it('an interrupted replay leaves no snapshot file or scratch worktree behind', async () => {
+    const scratchDir = mkdtempSync(join(tmpdir(), 'wm-replay-signal-'));
+    const tmp = join(scratchDir, 'tmp');
+    mkdirSync(tmp);
+    try {
+      const file = join(scratchDir, 'snapshot.json');
+      writeFileSync(file, JSON.stringify(emitDetectorSnapshot()));
+      const child = spawn(process.execPath, ['scripts/replay-forecast-detectors.mjs', `--snapshot=${file}`, '--code=current', '--trust-unverified'], {
+        cwd: REPO_ROOT,
+        env: { ...process.env, TMPDIR: tmp },
+      });
+      child.stderr.on('data', (chunk) => {
+        if (String(chunk).includes('[replay] current pass')) child.kill('SIGTERM');
+      });
+      const [code, signal] = await new Promise((resolveExit) => child.on('exit', (...args) => resolveExit(args)));
+      assert.ok(code === 143 || signal === 'SIGTERM', `stopped by the signal (code ${code}, signal ${signal})`);
+      assert.deepEqual(readdirSync(tmp), [], 'the scratch directory with the snapshot copy is gone');
     } finally {
       rmSync(scratchDir, { recursive: true, force: true });
     }
@@ -335,12 +430,17 @@ describe('replay comparison (#9058)', () => {
 
   it('the CLI replays a local snapshot and exits non-zero on a difference', () => {
     const scratchDir = mkdtempSync(join(tmpdir(), 'wm-replay-cli-'));
-    const cli = (file) => spawnSync(process.execPath, ['scripts/replay-forecast-detectors.mjs', `--snapshot=${file}`, '--code=current'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const cli = (file, ...flags) => spawnSync(process.execPath, ['scripts/replay-forecast-detectors.mjs', `--snapshot=${file}`, '--code=current', ...flags], { cwd: REPO_ROOT, encoding: 'utf8' });
     try {
       const snapshot = emitDetectorSnapshot();
       const exactPath = join(scratchDir, 'exact.json');
       writeFileSync(exactPath, JSON.stringify(snapshot));
-      const exact = cli(exactPath);
+      const unverified = cli(exactPath);
+      assert.equal(unverified.status, 1);
+      assert.equal(JSON.parse(unverified.stdout).status, 'snapshot_unverified', 'a snapshot with no recorded digest needs --sha256 or --trust-unverified');
+      const mismatch = cli(exactPath, `--sha256=${'0'.repeat(64)}`);
+      assert.equal(JSON.parse(mismatch.stdout).status, 'snapshot_digest_mismatch');
+      const exact = cli(exactPath, `--sha256=${snapshotDigest(snapshot)}`);
       assert.equal(exact.status, 0, exact.stderr);
       const report = JSON.parse(exact.stdout);
       assert.equal(report.lane, 'detector');
@@ -351,7 +451,7 @@ describe('replay comparison (#9058)', () => {
       perturbed.inputs.predictionMarkets = null;
       const perturbedPath = join(scratchDir, 'perturbed.json');
       writeFileSync(perturbedPath, JSON.stringify(perturbed));
-      const failed = cli(perturbedPath);
+      const failed = cli(perturbedPath, '--trust-unverified');
       assert.equal(failed.status, 1);
       assert.ok(JSON.parse(failed.stdout).passes[0].comparison.missing > 0);
     } finally {

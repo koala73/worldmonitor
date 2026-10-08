@@ -1725,6 +1725,39 @@ describe('appendSample and seed contract', () => {
       console.warn = originalWarn;
     }
   });
+
+  it('refuses a receipt prefix inside the trace prefix, which has a retention rule (#9058)', async () => {
+    const base = {
+      CLOUDFLARE_R2_ACCOUNT_ID: 'acct',
+      CLOUDFLARE_R2_ACCESS_KEY_ID: 'id',
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret',
+      CLOUDFLARE_R2_BUCKET: 'bucket',
+    };
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      for (const env of [
+        base, // receipt prefix unset: falls back to the trace default
+        { ...base, CLOUDFLARE_R2_TRACE_PREFIX: 'traces', CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'traces/receipts' },
+      ]) {
+        const puts = [];
+        const archived = await appendR2Receipts([{ key: 'a@1', resolvedAt: T0, entry: { outcome: 'YES' } }], { env, putObject: async (_config, key) => { puts.push(key); } });
+        assert.deepEqual([archived, puts], [[], []]);
+      }
+      assert.equal(warnings.filter((line) => line.includes('inside the trace prefix')).length, 2);
+
+      const outside = [];
+      const archived = await appendR2Receipts([{ key: 'a@1', resolvedAt: T0, entry: { outcome: 'YES' } }], {
+        env: { ...base, CLOUDFLARE_R2_TRACE_PREFIX: 'data/traces', CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'data' },
+        putObject: async (_config, key) => { outside.push(key); },
+      });
+      assert.equal(archived.length, 1, 'a parent of the trace prefix is not inside it');
+      assert.match(outside[0], /^data\/forecast-resolutions\//);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
 });
 
 describe('pruneArchivedTerminalEntries', () => {
