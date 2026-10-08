@@ -2445,10 +2445,10 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v28:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v28` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
-| `resilience:history:v22:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
-| `resilience:intervals:v11:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
+| `resilience:score:v29:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v29` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
+| `resilience:history:v23:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
+| `resilience:intervals:v12:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
 | `seed-meta:resilience:static` | JSON | 400 days | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
 | `resilience:static:index:v1` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | warmup path to enumerate countries |
@@ -2641,7 +2641,7 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The reference-edition recompute confirms the bands hold with margin after domain-weighted pillar aggregation: NO = 74.85 (≥ 55 by 19.85 points), YE = 29.20 (≤ 40 by 10.80 points).
 5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` remains a labelled pre-P1-1 historical capture. `docs/snapshots/resilience-ranking-2026-08-29.json` is the current full-universe capture and applies domain design weights inside pillar aggregation.
 
-Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v28:*`, `resilience:ranking:v28`, `resilience:history:v22:*`, and `resilience:intervals:v11:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v29:*`, `resilience:ranking:v29`, `resilience:history:v23:*`, and `resilience:intervals:v12:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
 
 <a id="corpus-scorecard-v2-0-self-assessment"></a>
 ### Scorecard (v2.0 self-assessment)
@@ -2708,6 +2708,14 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
 See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
+
+<a id="corpus-v2-5-october-2026-missing-sovereign-wealth-inputs-are-not-no-fund-9044"></a>
+### v2.5 (October 2026) — missing sovereign-wealth inputs are not "no fund" (#9044)
+
+**Status: active.** `sovereignFiscalBuffer` used to treat every country absent from the `resilience:recovery:sovereign-wealth:v1` `countries` map as having no sovereign wealth fund (`not-applicable`: score 0, zero weight). A country the fund manifest expects can also be absent because an input is missing, such as missing World Bank imports or no fund AUM matched. When the seed's `summary.countryStatuses` lists the country with a positive safe-integer `expected` fund count, the dimension now scores it as imputed `unmonitored` (score 50, certainty coverage 0.3) instead. Countries outside the manifest, and status rows whose `expected` count is fractional, overflowing, or unsafe, keep the `not-applicable` path.
+
+- **Cache generations rotated** — score/ranking `v28`→`v29` (`resilience:score:v29:`, `resilience:ranking:v29`), history `v22`→`v23`, and intervals `v11`→`v12`. The rotation keeps scores, history, rankings, and stability bands built under the old absence rule separate from the new ones.
+- **Golden baseline (frozen 2026-08-13 whole-index fixture, 17 countries).** Only Norway moves. Its one expected fund matched no AUM, so `sovereignFiscalBuffer` goes from `not-applicable` (score 0, coverage 0) to imputed `unmonitored` (score 50, coverage 0.3). Its overall score moves from 75.67 to 75.30, which swaps it with Switzerland (75.52) at ranks 1 and 2. This is a fixture regression check, not a full-universe acceptance measurement.
 
 <a id="corpus-editorial-notes"></a>
 ### Editorial notes
