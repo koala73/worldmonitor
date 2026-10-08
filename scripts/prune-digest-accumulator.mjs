@@ -25,7 +25,18 @@ export const DELETE_RECORD_BATCH = 100;
 export const MAX_SCAN_PAGES = 10_000;
 export const MAX_DELETE_COMMANDS_PER_KEY = 2_000;
 
-const DELETE_COMMANDS_PER_PAGE = 2; // one bounded range read, then one bounded ZREM
+const DELETE_COMMANDS_PER_PAGE = 1; // one EVAL of PRUNE_PAGE_SCRIPT
+/**
+ * Selects and removes one bounded page in a single atomic script, so a member
+ * is only ever removed while its CURRENT score is below the cutoff. A separate
+ * range read then ZREM by member could delete a story that a publication
+ * re-ZADDed (fresh score) between the two calls.
+ */
+export const PRUNE_PAGE_SCRIPT = [
+  "local members = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[2]))",
+  'if #members == 0 then return 0 end',
+  "return redis.call('ZREM', KEYS[1], unpack(members))",
+].join('\n');
 const ACCUMULATOR_PATTERN = 'digest:accumulator:v1:*';
 const ACCUMULATOR_KEY_RE = /^digest:accumulator:v1:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/;
 const USER_AGENT = 'worldmonitor-prune-digest-accumulator/1.0';
@@ -168,6 +179,24 @@ export async function inspectAccumulatorKey(redis, key, cutoffExclusive) {
   return { cardinality, oldestScore, newestScore, wouldRemove };
 }
 
+/**
+ * The cutoff is derived from Redis's own clock: the digest publication that
+ * writes the scores runs on Vercel, and a fast operator laptop clock would
+ * otherwise move the cutoff forward and delete members inside retention.
+ */
+export async function readRedisClockMs(redis) {
+  const result = await redis(['TIME']);
+  if (!Array.isArray(result) || result.length !== 2) {
+    throw new Error(`Redis TIME returned an unexpected shape: ${JSON.stringify(result)}`);
+  }
+  const seconds = Number(result[0]);
+  const micros = Number(result[1]);
+  if (!Number.isSafeInteger(seconds) || !Number.isSafeInteger(micros) || seconds <= 0 || micros < 0) {
+    throw new Error(`Redis TIME returned an invalid clock: ${JSON.stringify(result)}`);
+  }
+  return seconds * 1000 + Math.floor(micros / 1000);
+}
+
 export function requireCutoverFlag(env) {
   if (env.FORECAST_EVIDENCE_CUTOVER_ENABLED !== '1') {
     throw new Error('Refusing --apply: FORECAST_EVIDENCE_CUTOVER_ENABLED must equal 1');
@@ -187,13 +216,13 @@ export async function pruneAccumulatorKey(
   if (!Number.isSafeInteger(deleteRecordBatch) || deleteRecordBatch <= 0) {
     throw new Error('Delete record batch must be a positive integer');
   }
-  if (!Number.isSafeInteger(maxDeleteCommands) || maxDeleteCommands < 3) {
-    throw new Error('Delete command budget must be an integer of at least 3');
+  if (!Number.isSafeInteger(maxDeleteCommands) || maxDeleteCommands < 2) {
+    throw new Error('Delete command budget must be an integer of at least 2');
   }
 
   // Reserve one command for the final ZCOUNT verification. Each mutation page
-  // uses one bounded range read and one bounded ZREM. Large sweeps make safe,
-  // resumable progress across repeated exact-key apply runs.
+  // is one atomic EVAL. Large sweeps make safe, resumable progress across
+  // repeated exact-key apply runs.
   const pageBudget = Math.floor((maxDeleteCommands - 1) / DELETE_COMMANDS_PER_PAGE);
   const recordBudget = pageBudget * deleteRecordBatch;
   const targetRemovals = Math.min(expectedRemovals, recordBudget);
@@ -204,35 +233,33 @@ export async function pruneAccumulatorKey(
   let convergedEarly = false;
   while (pages < targetPages) {
     const pageLimit = Math.min(deleteRecordBatch, targetRemovals - removed);
-    const members = await redis([
-      'ZRANGEBYSCORE', key, '-inf', cutoffExclusive,
-      'LIMIT', '0', String(pageLimit),
-    ]);
-    if (!Array.isArray(members) || members.some((member) => typeof member !== 'string')) {
-      throw new Error(`Redis ZRANGEBYSCORE returned an unexpected page for ${key}`);
+    const pageRemoved = nonNegativeInteger(
+      await redis(['EVAL', PRUNE_PAGE_SCRIPT, '1', key, cutoffExclusive, String(pageLimit)]),
+      'EVAL prune page',
+    );
+    if (pageRemoved > pageLimit) {
+      throw new Error(`Redis prune page removed ${pageRemoved} members from ${key}, above the ${pageLimit} limit`);
     }
-    if (members.length === 0) {
-      // The live digest publication prunes the same key on every build, so an
-      // empty page usually means it got there first — a converged sweep, not a
-      // corrupted one. Re-measure before deciding: only a page that is empty
-      // while eligible members remain is a real inconsistency.
+    if (pageRemoved < pageLimit) {
+      // The live digest publication prunes the same key on every build, so a
+      // short or empty page usually means it got there first — a converged
+      // sweep, not a corrupted one. Re-measure before deciding: only a short
+      // page while eligible members remain is a real inconsistency.
       const remaining = nonNegativeInteger(
         await redis(['ZCOUNT', key, '-inf', cutoffExclusive]),
         'ZCOUNT',
       );
       if (remaining > 0) {
-        throw new Error(`${key} changed during cleanup: an expected delete page was empty with ${remaining} still eligible`);
+        throw new Error(
+          `${key} changed during cleanup: a delete page removed ${pageRemoved}/${pageLimit} with ${remaining} still eligible`,
+        );
       }
+      removed += pageRemoved;
+      if (pageRemoved > 0) pages += 1;
       convergedEarly = true;
       break;
     }
 
-    const pageRemoved = nonNegativeInteger(await redis(['ZREM', key, ...members]), 'ZREM');
-    if (pageRemoved !== members.length) {
-      throw new Error(
-        `Redis ZREM removed ${pageRemoved}/${members.length} selected members from ${key}; stopped after a partial result`,
-      );
-    }
     removed += pageRemoved;
     pages += 1;
   }
@@ -293,11 +320,14 @@ export async function runCleanup({
     if (parsed.apply) throw err;
     cutoverBlockedReason = err?.message || String(err);
   }
-  const cutoff = nowMs - RETENTION_MS;
+  const redisTimeMs = await readRedisClockMs(redis);
+  const clockSkewMs = nowMs - redisTimeMs;
+  const cutoff = redisTimeMs - RETENTION_MS;
   const cutoffExclusive = `(${cutoff}`;
   const mode = parsed.apply ? 'APPLY' : 'DRY-RUN';
   log(
     `[prune-digest-accumulator] mode=${mode} observedAt=${new Date(nowMs).toISOString()} `
+    + `redisTime=${new Date(redisTimeMs).toISOString()} clockSkewMs=${clockSkewMs} `
     + `cutoff=${new Date(cutoff).toISOString()} `
     + `retentionHours=${Math.round(RETENTION_MS / 3_600_000)} cutoverReady=${cutoverReady}`,
   );
@@ -309,7 +339,7 @@ export async function runCleanup({
   if (keys.length === 0) {
     log('[prune-digest-accumulator] no accumulator keys found; nothing to do.');
     return {
-      mode, json: parsed.json, observedAtMs: nowMs, cutoff,
+      mode, json: parsed.json, observedAtMs: nowMs, redisTimeMs, clockSkewMs, cutoff,
       retentionMs: RETENTION_MS, cutoverReady, cutoverBlockedReason,
       keys: [], results: [],
     };
@@ -348,6 +378,8 @@ export async function runCleanup({
     mode,
     json: parsed.json,
     observedAtMs: nowMs,
+    redisTimeMs,
+    clockSkewMs,
     cutoff,
     retentionMs: RETENTION_MS,
     cutoverReady,

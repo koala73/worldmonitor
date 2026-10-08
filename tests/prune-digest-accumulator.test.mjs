@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   DELETE_RECORD_BATCH,
+  PRUNE_PAGE_SCRIPT,
   RETENTION_MS,
   runCleanup,
 } from '../scripts/prune-digest-accumulator.mjs';
@@ -29,6 +30,8 @@ function createFakeRedis({
   rowsByKey = {},
   scanPages = [['0', []]],
   failZremCall = null,
+  redisNowMs = NOW,
+  timeResult = null,
 } = {}) {
   const state = new Map(
     Object.entries(rowsByKey).map(([key, rows]) => [key, rows.map((row) => ({ ...row }))]),
@@ -50,6 +53,24 @@ function createFakeRedis({
     const rows = state.get(key) ?? [];
 
     if (verb === 'SCAN') return response(scanPages[scanIndex++] ?? ['0', []]);
+    if (verb === 'TIME') {
+      return response(timeResult ?? [String(Math.floor(redisNowMs / 1000)), String((redisNowMs % 1000) * 1000)]);
+    }
+    if (verb === 'EVAL') {
+      // Emulates PRUNE_PAGE_SCRIPT atomically: select by CURRENT score, remove.
+      assert.equal(key, PRUNE_PAGE_SCRIPT);
+      const [, evalKey, cutoffArg, limitArg] = args;
+      zremCalls += 1;
+      if (failZremCall === zremCalls) return response(null, { ok: false, status: 503 });
+      const evalRows = state.get(evalKey) ?? [];
+      const targets = new Set(evalRows
+        .filter((row) => scoreInRange(row.score, '-inf', cutoffArg))
+        .sort((a, b) => a.score - b.score)
+        .slice(0, Number(limitArg))
+        .map((row) => row.member));
+      state.set(evalKey, evalRows.filter((row) => !targets.has(row.member)));
+      return response(targets.size);
+    }
     if (verb === 'ZCARD') return response(rows.length);
     if (verb === 'ZRANGE') {
       if (rows.length === 0) return response([]);
@@ -59,24 +80,6 @@ function createFakeRedis({
     }
     if (verb === 'ZCOUNT') {
       return response(rows.filter((row) => scoreInRange(row.score, args[0], args[1])).length);
-    }
-    if (verb === 'ZRANGEBYSCORE') {
-      const count = Number(args[4]);
-      const members = rows
-        .filter((row) => scoreInRange(row.score, args[0], args[1]))
-        .sort((a, b) => a.score - b.score)
-        .slice(0, count)
-        .map((row) => row.member);
-      return response(members);
-    }
-    if (verb === 'ZREM') {
-      zremCalls += 1;
-      if (failZremCall === zremCalls) return response(null, { ok: false, status: 503 });
-      const targets = new Set(args);
-      const kept = rows.filter((row) => !targets.has(row.member));
-      const removed = rows.length - kept.length;
-      state.set(key, kept);
-      return response(removed);
     }
     throw new Error(`Unexpected fake Redis command: ${verb}`);
   }
@@ -208,8 +211,10 @@ describe('digest accumulator cleanup', () => {
 
     assert.equal(result.results[0].removed, 1);
     assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['boundary', 'newer']);
-    const bounded = fake.calls.filter(({ command }) => ['ZCOUNT', 'ZRANGEBYSCORE'].includes(command[0]));
-    assert.ok(bounded.every(({ command }) => command[3] === `(${CUTOFF}`));
+    const counts = fake.calls.filter(({ command }) => command[0] === 'ZCOUNT');
+    assert.ok(counts.every(({ command }) => command[3] === `(${CUTOFF}`));
+    const pages = fake.calls.filter(({ command }) => command[0] === 'EVAL');
+    assert.ok(pages.length > 0 && pages.every(({ command }) => command[4] === `(${CUTOFF}`));
   });
 
   it('deletes a large eligible set in bounded record pages', async () => {
@@ -223,9 +228,9 @@ describe('digest accumulator cleanup', () => {
 
     assert.equal(result.results[0].removed, oldRows.length);
     assert.equal(result.results[0].pages, 3);
-    const removals = fake.calls.filter(({ command }) => command[0] === 'ZREM');
-    assert.deepEqual(removals.map(({ command }) => command.length - 2), [100, 100, 5]);
-    assert.ok(removals.every(({ command }) => command.length - 2 <= DELETE_RECORD_BATCH));
+    const removals = fake.calls.filter(({ command }) => command[0] === 'EVAL');
+    assert.deepEqual(removals.map(({ command }) => command[5]), ['100', '100', '5']);
+    assert.ok(removals.every(({ command }) => Number(command[5]) <= DELETE_RECORD_BATCH));
   });
 
   it('makes bounded progress and resumes an incomplete exact-key apply run', async () => {
@@ -239,7 +244,7 @@ describe('digest accumulator cleanup', () => {
         ],
       },
     });
-    const budget = { deleteRecordBatch: 2, maxDeleteCommands: 3 };
+    const budget = { deleteRecordBatch: 2, maxDeleteCommands: 2 };
 
     const first = await quietRun(fake, ['--apply', '--key', KEY], budget);
     assert.equal(first.results[0].removed, 2);
@@ -263,7 +268,7 @@ describe('digest accumulator cleanup', () => {
 
     await assert.rejects(
       () => quietRun(fake, ['--apply', '--key', KEY]),
-      /Redis ZREM failed: HTTP 503/,
+      /Redis EVAL failed: HTTP 503/,
     );
     assert.equal(fake.state.get(KEY).length, 5, 'the first committed page is preserved for a safe retry');
   });
@@ -348,7 +353,66 @@ describe('digest accumulator cleanup', () => {
     await quietRun(fake);
 
     const verbs = new Set(fake.calls.map(({ command }) => command[0]));
-    assert.deepEqual([...verbs].sort(), ['SCAN', 'ZCARD', 'ZCOUNT', 'ZRANGE']);
+    assert.deepEqual([...verbs].sort(), ['SCAN', 'TIME', 'ZCARD', 'ZCOUNT', 'ZRANGE']);
+  });
+
+  it('never deletes a member re-added with a fresh score after the pre-scan', async () => {
+    // A publication can re-ZADD a story between the pre-scan and its delete
+    // page. Selection and removal run in one script, so the fresh score saves it.
+    const fake = createFakeRedis({
+      rowsByKey: { [KEY]: [row('refreshed', CUTOFF - 2), row('stale', CUTOFF - 1)] },
+    });
+    const originalFetch = fake.fetchImpl;
+    let refreshed = false;
+    const racingFetch = async (url, options) => {
+      const command = JSON.parse(options.body);
+      if (!refreshed && command[0] === 'EVAL') {
+        refreshed = true;
+        fake.state.set(KEY, fake.state.get(KEY).map((r) => (r.member === 'refreshed' ? { ...r, score: NOW } : r)));
+      }
+      return originalFetch(url, options);
+    };
+
+    const result = await quietRun({ ...fake, fetchImpl: racingFetch }, ['--apply', '--key', KEY]);
+
+    assert.equal(result.results[0].removed, 1);
+    assert.equal(result.results[0].convergedEarly, true);
+    assert.equal(result.results[0].complete, true);
+    assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['refreshed']);
+    assert.equal(fake.calls.some(({ command }) => command[0] === 'ZREM'), false, 'no unguarded ZREM by member');
+  });
+
+  it('derives the cutoff from Redis TIME, not the operator clock', async () => {
+    // An operator clock 3 days fast would otherwise delete 3 days of members
+    // that are still inside retention.
+    const redisNowMs = NOW - 3 * 24 * 60 * 60 * 1000;
+    const redisCutoff = redisNowMs - RETENTION_MS;
+    const fake = createFakeRedis({
+      redisNowMs,
+      rowsByKey: { [KEY]: [row('expired', redisCutoff - 1), row('inside-retention', redisCutoff + 60_000)] },
+    });
+
+    const result = await quietRun(fake, ['--apply', '--key', KEY]);
+
+    assert.equal(result.observedAtMs, NOW);
+    assert.equal(result.redisTimeMs, redisNowMs);
+    assert.equal(result.clockSkewMs, NOW - redisNowMs);
+    assert.equal(result.cutoff, redisCutoff);
+    assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['inside-retention']);
+  });
+
+  it('prints the operator clock and Redis TIME in the dry-run log', async () => {
+    const fake = createFakeRedis({ scanPages: [['0', [KEY]]], redisNowMs: NOW - 1234 });
+    const lines = [];
+
+    await quietRun(fake, [], { log: (line) => lines.push(line) });
+
+    assert.match(lines[0], new RegExp(`observedAt=${new Date(NOW).toISOString()} redisTime=${new Date(NOW - 1234).toISOString()} clockSkewMs=1234 `));
+  });
+
+  it('refuses to run on a malformed Redis TIME reply', async () => {
+    const fake = createFakeRedis({ scanPages: [['0', [KEY]]], timeResult: ['nope'] });
+    await assert.rejects(() => quietRun(fake), /Redis TIME returned/);
   });
 
   it('converges instead of failing when publication pruned the tail first', async () => {
@@ -361,9 +425,9 @@ describe('digest accumulator cleanup', () => {
     let stolen = false;
     const racingFetch = async (url, options) => {
       const command = JSON.parse(options.body);
-      // Between the ZCOUNT that sized the work and the first range read, the
+      // Between the ZCOUNT that sized the work and the first delete page, the
       // publication prune removes every eligible member.
-      if (!stolen && command[0] === 'ZRANGEBYSCORE') {
+      if (!stolen && command[0] === 'EVAL') {
         stolen = true;
         fake.state.set(KEY, []);
       }
@@ -385,17 +449,17 @@ describe('digest accumulator cleanup', () => {
     const originalFetch = fake.fetchImpl;
     const lyingFetch = async (url, options) => {
       const command = JSON.parse(options.body);
-      // A range read that returns nothing while ZCOUNT still reports work is a
+      // A delete page that removes nothing while ZCOUNT still reports work is a
       // genuine inconsistency and must not be swallowed by the convergence path.
-      if (command[0] === 'ZRANGEBYSCORE') {
-        return { ok: true, status: 200, async json() { return { result: [] }; } };
+      if (command[0] === 'EVAL') {
+        return { ok: true, status: 200, async json() { return { result: 0 }; } };
       }
       return originalFetch(url, options);
     };
 
     await assert.rejects(
       () => quietRun({ ...fake, fetchImpl: lyingFetch }, ['--apply', '--key', KEY]),
-      /an expected delete page was empty with 2 still eligible/,
+      /a delete page removed 0\/2 with 2 still eligible/,
     );
   });
 });

@@ -197,16 +197,22 @@ export function parseForecastEvidenceCoverage(raw) {
 
 /**
  * `maxLagMs` is the staleness budget described on
- * FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. It defaults to 0 — a caller that
- * authorizes destruction (the accumulator prune gate, the sweep tool) must
- * demand a marker that already reaches the instant it is reasoning about, and
+ * FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. It defaults to 0: the backfill tool
+ * verifies the marker it just wrote against the instant it reasons about, and
  * only the read path opts into a budget.
+ *
+ * No accumulator prune consults this marker any more. Since #7082 (owner
+ * decision 2026-10-08) the digest prune and the sweep tool are gated by
+ * FORECAST_EVIDENCE_CUTOVER_ENABLED alone, because judging stopped reading the
+ * accumulator in #8995. Do not re-add a marker gate to either: production
+ * carries only the v2 continuity marker, which the default rejects.
  *
  * @param {unknown} raw
  * @param {number} startMs
  * @param {number} endMs
  * @param {number} [maxLagMs]
- * @param {boolean} [allowContinuity] Reader-only attestation; never a prune authorization.
+ * @param {boolean} [allowContinuity] Accept the v2 continuity attestation; the
+ *   judging read path sets it, backfill certification does not.
  */
 export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0, allowContinuity = false) {
   const metadata = parseForecastEvidenceCoverage(raw);

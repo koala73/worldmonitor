@@ -855,6 +855,10 @@ describe('news digest methodology parity', () => {
       `members last seen more than ${ACCUMULATOR_RETENTION_MS / 86_400_000} days ago`,
       'digest accumulator member retention (ACCUMULATOR_RETENTION_MS)',
     );
+    assertDocIncludes(
+      'In production, `full:en` is pruned only once `FORECAST_EVIDENCE_CUTOVER_ENABLED` is enabled',
+      'full:en prune gate (#7082)',
+    );
   });
 
   it('documents reserved feed fading phase and digest read-path fading behavior', () => {

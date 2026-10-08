@@ -221,7 +221,7 @@ LLM 降级会直接通过。当升级被限制时，系统会记录关键词级�
 | `story:track:v1:{titleHash}` | Hash | 当前报道元数据和分类器戳记。 | 7 天 |
 | `story:sources:v1:{titleHash}` | Set | 提及该报道的信息流名称。 | 7 天 |
 | `story:peak:v1:{titleHash}` | ZSet | 单个 `peak` 成员，保存所见的最高分数。 | 7 天 |
-| `digest:accumulator:v1:{variant}:{lang}` | ZSet | 按最后所见时间排列的报道哈希，用于摘要窗口。 | 键为 48 小时；每次发布会移除最后所见时间超过 8 天的成员 |
+| `digest:accumulator:v1:{variant}:{lang}` | ZSet | 按最后所见时间排列的报道哈希，用于摘要窗口。 | 键为 48 小时；每次发布会移除最后所见时间超过 8 天的成员。在生产环境中，只有启用 `FORECAST_EVIDENCE_CUTOVER_ENABLED` 后才会清理 `full:en` |
 
 今天写入的 story-track 哈希字段为：
 

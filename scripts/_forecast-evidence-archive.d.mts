@@ -68,9 +68,10 @@ export type ForecastEvidenceCoverage = ForecastEvidenceCoverageWindow & ({
 });
 export function parseForecastEvidenceCoverage(raw: unknown): ForecastEvidenceCoverage | null;
 /**
- * `maxLagMs` defaults to 0: only the read path opts into a staleness budget;
- * gates that authorize destruction demand a legacy marker reaching the instant given.
- * Only readers may opt into the continuity attestation with allowContinuity.
+ * `maxLagMs` defaults to 0: only the read path opts into a staleness budget.
+ * The v2 continuity attestation counts only with allowContinuity (the judging
+ * read path). No accumulator prune consults the marker since #7082; the prune
+ * is gated by FORECAST_EVIDENCE_CUTOVER_ENABLED alone.
  */
 export function forecastEvidenceCoversWindow(
   raw: unknown,
