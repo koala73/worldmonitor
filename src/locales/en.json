@@ -329,7 +329,7 @@
       "militaryAir": "Military Air",
       "navalVessels": "Naval Vessels",
       "outages": "Outages",
-      "aisDisruptions": "ship tracking Disruptions",
+      "aisDisruptions": "Ship tracking disruptions",
       "satelliteFires": "Satellite Fires",
       "temporalAnomalies": "Temporal Anomalies",
       "temporalUnavailable": "Temporal observations unavailable",
@@ -532,7 +532,7 @@
       "anomalies": "Anomalies"
     },
     "techReadiness": "Tech Readiness Index",
-    "gccInvestments": "Gulf investments",
+    "gccInvestments": "Gulf Cooperation Council investments",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams",
     "windyWebcams": "Windy Live Webcam",
@@ -624,7 +624,7 @@
         "minimal": "Minimal layers (conflicts + hotspots)"
       },
       "layer": {
-        "ais": "Toggle ship tracking vessel tracking",
+        "ais": "Toggle ship tracking",
         "flights": "Toggle military flights",
         "conflicts": "Toggle conflict zones",
         "hotspots": "Toggle intel hotspots",
@@ -1065,7 +1065,7 @@
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
-      "aisDisruptions": "ship tracking disruption(s)",
+      "aisDisruptions": "Ship tracking disruptions",
       "wowChange": "Week-over-week change",
       "riskLevel": "Risk level",
       "disruption": "Disruption",
@@ -1431,7 +1431,7 @@
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
         "gpsJamming": "Navigation interference",
-        "ciiChoropleth": "Country Instability Index Instability",
+        "ciiChoropleth": "Country instability",
         "dayNight": "Day/Night",
         "positiveEvents": "Positive Events",
         "kindness": "Acts of Kindness",
@@ -2516,7 +2516,7 @@
     "fsi": {
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Financial Stress Indicator",
-      "usFsiValue": "US Financial Stress Index VALUE",
+      "usFsiValue": "US Financial Stress Indicator value",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
       "cissStale": "European Central Bank has not published a newer value — this reading may be out of date.",
       "notAvailable": "N/A",
@@ -2551,7 +2551,7 @@
         "tltPrice": "TLT Price"
       },
       "errors": {
-        "unavailable": "Financial Stress Index data unavailable",
+        "unavailable": "Financial Stress Indicator data unavailable",
         "failedToLoad": "Failed to load"
       }
     },
@@ -2576,7 +2576,7 @@
       "proLocked": "Upgrade to PRO for commodity vulnerability scoring"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
       "title": "Hormuz Trade Tracker",
       "noData": "No data",
       "notAvailable": "N/A",

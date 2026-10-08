@@ -851,6 +851,7 @@ test('English panel picker names financial and regional topics in plain language
   await expect(panels).toBeVisible();
   await expect(panels).toContainText('Bitcoin fund flows');
   await expect(panels).toContainText('Venture capital insights');
+  await expect(panels).toContainText('Gulf Cooperation Council investments');
   await expect(panels).not.toContainText(/BTC ETF Tracker|Funding & VC/);
   await page.getByPlaceholder('Filter panels...').fill('Bitcoin');
   await expect(panels.getByText('Bitcoin fund flows', { exact: true })).toBeVisible();
@@ -858,3 +859,35 @@ test('English panel picker names financial and regional topics in plain language
   await page.screenshot({ path });
   await testInfo.attach('English panel names', { path, contentType: 'image/png' });
 });
+
+for (const mobile of [false, true]) {
+  test(`market breadth labels preserve percentage meaning on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/market/v1/get-market-breadth-history', route => route.fulfill({ json: {
+      currentPctAbove20d: 0, currentPctAbove50d: 52, currentPctAbove200d: 68,
+      history: [{ date: '2026-10-07', pctAbove20d: 0, pctAbove50d: 52, pctAbove200d: 68 }],
+      updatedAt: '2026-10-08T00:00:00Z',
+    } }));
+    await page.goto('/dashboard');
+    await page.evaluate(async () => {
+      const { MarketBreadthPanel } = await import('/src/components/MarketBreadthPanel.ts');
+      const panel = new MarketBreadthPanel();
+      await panel.fetchData();
+      const preview = document.createElement('div');
+      preview.id = 'breadth-copy-preview';
+      preview.style.cssText = 'position:fixed;z-index:99999;inset:20px auto auto 20px;width:min(420px,calc(100vw - 40px));background:var(--bg);';
+      preview.appendChild(panel.getElement());
+      document.body.appendChild(preview);
+    });
+    const panel = page.locator('#breadth-copy-preview');
+    await expect(panel).toContainText('Stocks above 20-day moving average (%)');
+    await expect(panel).toContainText('Stocks above 50-day moving average (%)');
+    await expect(panel).toContainText('Stocks above 200-day moving average (%)');
+    await expect(panel).toContainText('0.0%');
+    await expect(panel).not.toContainText('% Above Stocks');
+    const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
+    await panel.screenshot({ path });
+    await testInfo.attach('Controlled market breadth component preview', { path, contentType: 'image/png' });
+  });
+}

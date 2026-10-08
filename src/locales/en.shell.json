@@ -167,7 +167,7 @@
       "anomalies": "Anomalies"
     },
     "techReadiness": "Tech Readiness Index",
-    "gccInvestments": "Gulf investments",
+    "gccInvestments": "Gulf Cooperation Council investments",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams",
     "windyWebcams": "Windy Live Webcam",
@@ -650,7 +650,7 @@
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
       "title": "Hormuz Trade Tracker"
     },
     "insights": {
