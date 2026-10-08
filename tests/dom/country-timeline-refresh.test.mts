@@ -4,9 +4,11 @@ import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
 import { CountryTimeline } from '@/components/CountryTimeline';
+import { initTestI18n } from './helpers/i18n.mts';
 
 describe('country timeline refresh', () => {
-  it.each(['resize', 'theme'] as const)('renders empty lanes after a hidden timeline becomes visible on %s', (trigger) => {
+  it.each(['resize', 'theme'] as const)('renders empty lanes after a hidden timeline becomes visible on %s', async (trigger) => {
+    await initTestI18n();
     let notifyResize: ResizeObserverCallback = () => {};
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
@@ -32,10 +34,11 @@ describe('country timeline refresh', () => {
       mount.hidden = false;
       if (trigger === 'resize') notifyResize([], {} as ResizeObserver);
       else window.dispatchEvent(new Event('theme-changed'));
-      expect([...mount.querySelectorAll('.lane-label')].map(label => label.textContent))
+      const labels = [...mount.querySelectorAll('svg text')].map(label => label.textContent);
+      expect(labels.filter(label => ['Protest', 'Conflict', 'Natural', 'Military'].includes(label ?? '')))
         .toEqual(['Protest', 'Conflict', 'Natural', 'Military']);
-      expect(mount.querySelectorAll('.empty-label')).toHaveLength(4);
-      expect(mount.querySelectorAll('.event-circle')).toHaveLength(0);
+      expect(labels.filter(label => label === 'No events in 7 days')).toHaveLength(4);
+      expect(mount.querySelectorAll('circle')).toHaveLength(0);
       expect(mount.querySelectorAll('svg')).toHaveLength(1);
       expect(provenance.textContent).toBe('Controlled source state: unknown');
       expect(mount.contains(provenance)).toBe(true);
