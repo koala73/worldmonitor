@@ -122,7 +122,9 @@ describe('golden fit on the frozen published-origin ledger', () => {
 
   it('pools adjacent violators on real mixed outcomes when the family minimums are lowered', () => {
     const map = fitCalibrationMap(FIXTURE.data, FIT_AT, { minFamilies: 5, minOutcomeFamilies: 2 });
-    assert.deepEqual(map.domains.conflict, {
+    const { inputs, ...conflict } = map.domains.conflict;
+    assert.equal(Object.keys(inputs).length, 11, 'a fitted domain keeps its input rows');
+    assert.deepEqual(conflict, {
       n: 11,
       positives: 8,
       families: 9,
@@ -730,8 +732,38 @@ describe('data-version refit', () => {
     const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
     assert.equal(existing.domains.cyber.mode, 'isotonic');
     const run = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes.slice(0, 1)), ...yes.slice(1), ...no]), later);
-    assert.deepEqual({ action: run.action, reason: run.reason, dataVersion: run.map.dataVersion }, { action: 'fitted', reason: 'fit_invalidated', dataVersion: 2 });
+    assert.deepEqual({ action: run.action, reason: run.reason, dataVersion: run.map.dataVersion }, { action: 'fitted', reason: 'fit_input_withdrawn', dataVersion: 2 });
     assert.deepEqual({ mode: run.map.domains.cyber.mode, reason: run.map.domains.cyber.ineligibleReason }, { mode: 'identity', reason: 'insufficient_families' });
+  });
+
+  it('refits to identity when a fitted domain ages out of the window with no correction', () => {
+    const existing = fitCalibrationMap(ledgerOf(twoSided(30, 10, { probability: 0.35 })), fitAt);
+    const run = resolveCalibrationMapForRun(existing, ledgerOf(twoSided(30, 10, { probability: 0.35 })), fitAt + 200 * DAY_MS);
+    assert.deepEqual({ action: run.action, reason: run.reason, mode: run.map.domains.cyber?.mode ?? 'absent' }, { action: 'fitted', reason: 'fit_invalidated', mode: 'absent' });
+  });
+
+  it('refits when rows a fit used are withdrawn, even when replacement families keep the domain eligible', () => {
+    const yes = twoSided(10, 10, { probability: 0.35 });
+    const no = twoSided(20, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    const replacements = forward(10, { outcome: 'YES', probability: 0.9 });
+    const run = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes), ...no, ...replacements]), later);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'fit_input_withdrawn' });
+    assert.equal(run.map.domains.cyber.mode, 'isotonic', 'the refit reads the replacement families');
+
+    const regraded = yes.map((row, index) => (index === 0 ? { ...row, outcome: 'NO', evidence: { regradedAt: later, supersededOutcome: 'YES' } } : row));
+    const flipped = resolveCalibrationMapForRun(existing, ledgerOf([...regraded, ...no, ...replacements]), later);
+    assert.equal(flipped.reason, 'fit_input_withdrawn', 'a re-graded outcome is a withdrawn input');
+  });
+
+  it('does not treat inputs pruned from the ledger or aged past the window as withdrawn', () => {
+    const yes = twoSided(10, 10, { probability: 0.35 });
+    const no = twoSided(25, 0, { probability: 0.35 });
+    const existing = fitCalibrationMap(ledgerOf([...yes, ...no]), fitAt);
+    assert.equal(resolveCalibrationMapForRun(existing, ledgerOf([...yes, ...no.slice(1)]), later).action, 'kept', 'a pruned row is absent, not withdrawn');
+    const replacements = twoSided(35, 10, { generatedAt: fitAt + 100 * DAY_MS, probability: 0.35 });
+    const aged = resolveCalibrationMapForRun(existing, ledgerOf([...yes, ...no, ...replacements]), fitAt + 200 * DAY_MS);
+    assert.equal(aged.held ?? aged.action, 'kept', 'rows that left the rolling window are not corrections');
   });
 
   it('holds growth and new eligibility while the gate passes, but never holds an invalidated fit', () => {
@@ -748,7 +780,7 @@ describe('data-version refit', () => {
       { action: 'kept', held: { reason: 'domain_became_eligible', domain: 'conflict' }, version: existing.version });
 
     const invalidated = resolveCalibrationMapForRun(existing, ledgerOf([...voidRows(yes), ...no, ...passing]), later);
-    assert.deepEqual({ action: invalidated.action, reason: invalidated.reason }, { action: 'fitted', reason: 'fit_invalidated' });
+    assert.deepEqual({ action: invalidated.action, reason: invalidated.reason }, { action: 'fitted', reason: 'fit_input_withdrawn' });
   });
 
   it('refits an old code version as data version 1, and rejects a current-version map without one', () => {
@@ -811,7 +843,7 @@ describe('publication across a data refit (#8973 gate)', () => {
     const voided = yes.map((row) => ({ ...row, outcome: 'VOID', evidence: { reason: 'late_read', supersededOutcome: 'YES', voidedAt: firstAt + DAY_MS } }));
     const corrected = ledgerOf([...voided, ...no, ...passing]);
     const off = cycle(on.map, corrected, firstAt + DAY_MS, on.record);
-    assert.deepEqual({ dataVersion: off.map.dataVersion, refitReason: off.map.refitReason }, { dataVersion: 2, refitReason: 'fit_invalidated' });
+    assert.deepEqual({ dataVersion: off.map.dataVersion, refitReason: off.map.refitReason }, { dataVersion: 2, refitReason: 'fit_input_withdrawn' });
     assert.deepEqual({ mode: off.decision.mode, reason: off.decision.reason, flipped: off.flipped }, { mode: 'raw', reason: 'gate_ineligible', flipped: true });
     assert.deepEqual({ from: off.record.lastFlip.from, to: off.record.lastFlip.to, at: off.record.lastFlip.at }, { from: 'calibrated', to: 'raw', at: firstAt + DAY_MS + 3_600_000 });
     // The seeder can read the new map before the resolver's scorecard lands; the old verdict does not carry over.

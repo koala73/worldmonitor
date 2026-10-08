@@ -39,8 +39,9 @@ import {
  *   positives: number,
  *   mode: CalibrationMode,
  *   knots: CalibrationKnot[],
+ *   inputs?: Record<string, 'YES' | 'NO'>,
  * }} CalibrationDomain
- * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth'} RefitReason
+ * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_input_withdrawn' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth'} RefitReason
  * @typedef {{
  *   schemaVersion: number,
  *   version: string,
@@ -147,14 +148,18 @@ export function selectFitCohort(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   return ledgerEntries(ledger).filter((entry) => {
-    if (!isScoredEntry(entry) || isWithheldEntry(entry) || isDuplicateWindow(entry)) return false;
-    if (!isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
+    if (!isFitInput(entry)) return false;
     const resolvedAt = Number(entry.resolvedAt);
     const emittedAt = emissionTime(entry);
     return Number.isFinite(resolvedAt) && resolvedAt >= minResolvedAt && resolvedAt <= nowMs
-      && Number.isFinite(emittedAt) && emittedAt <= nowMs
-      && Number.isFinite(sourceProbability(entry));
+      && Number.isFinite(emittedAt) && emittedAt <= nowMs;
   });
+}
+
+function isFitInput(entry) {
+  if (!isScoredEntry(entry) || isWithheldEntry(entry) || isDuplicateWindow(entry)) return false;
+  if (!isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
+  return Number.isFinite(sourceProbability(entry));
 }
 
 /**
@@ -259,8 +264,10 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
     const points = entries.map((entry) => ({ x: sourceProbability(entry), y: entry.outcome === 'YES' ? 1 : 0 }));
     const eligibility = domainEligibility(entries, minimums);
     const base = { n: points.length, positives: points.reduce((sum, point) => sum + point.y, 0), ...eligibility };
+    // A fitted domain keeps its input rows, so a later correction to any of
+    // them is visible (refitTrigger).
     domains[domain] = eligibility.eligible
-      ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds) }
+      ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds), inputs: Object.fromEntries(entries.map((entry) => [entry.key, entry.outcome])) }
       : { ...base, mode: 'identity', knots: [] };
   }
 
@@ -335,21 +342,38 @@ export function parseCalibrationMap(value) {
   for (const fit of Object.values(value.domains)) {
     if (fit?.mode !== 'identity' && fit?.mode !== 'isotonic') return null;
     if (fit.mode === 'isotonic' && (!fit.knots?.length || !knotsAreMonotone(fit.knots))) return null;
+    if (fit.mode === 'isotonic' && value.codeVersion === CALIBRATION_CODE_VERSION && (!fit.inputs || typeof fit.inputs !== 'object')) return null;
   }
   return value;
 }
 
 /**
- * Why the current cohort calls for a refit of `map`, or null. Rules, in order:
- * a fitted domain the cohort no longer supports (its rows were voided or
- * aged out), an identity domain that became eligible, and a fitted domain
- * whose families grew by CALIBRATION_REFIT_FAMILY_GROWTH.
+ * A fitted domain's input that the ledger still holds but the fit would now
+ * refuse, or that resolved the other way: a void, duplicate, rescore or
+ * re-grade written after the fit. An input pruned from the ledger is absent,
+ * not withdrawn, and the rolling window is not consulted, so ageing out is
+ * not a correction.
+ */
+function hasWithdrawnInput(fit, entriesByKey) {
+  return Object.entries(fit.inputs ?? {}).some(([key, outcome]) => {
+    const entry = entriesByKey.get(key);
+    return entry !== undefined && (!isFitInput(entry) || entry.outcome !== outcome);
+  });
+}
+
+/**
+ * Why the current ledger calls for a refit of `map`, or null. Rules, in order:
+ * a fitted domain one of whose inputs was corrected, a fitted domain the
+ * cohort no longer supports (its rows were voided or aged out), an identity
+ * domain that became eligible, and a fitted domain whose families grew by
+ * CALIBRATION_REFIT_FAMILY_GROWTH.
  * @returns {{ reason: RefitReason, domain: string } | null}
  */
-function refitTrigger(map, eligibility) {
+function refitTrigger(map, eligibility, entriesByKey) {
   const domains = [...new Set([...Object.keys(map.domains), ...Object.keys(eligibility)])].sort();
   const fitted = (domain) => map.domains[domain]?.mode === 'isotonic';
   const rules = [
+    ['fit_input_withdrawn', (domain) => fitted(domain) && hasWithdrawnInput(map.domains[domain], entriesByKey)],
     ['fit_invalidated', (domain) => fitted(domain) && !eligibility[domain]?.eligible],
     ['domain_became_eligible', (domain) => !fitted(domain) && eligibility[domain]?.eligible],
     ['family_growth', (domain) => fitted(domain)
@@ -361,6 +385,8 @@ function refitTrigger(map, eligibility) {
   }
   return null;
 }
+
+const INVALIDATING_REFITS = new Set(['fit_input_withdrawn', 'fit_invalidated']);
 
 /**
  * Keep the persisted map unless it is unusable, from another code version, or
@@ -377,9 +403,10 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
     const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
     return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, refitReason: reason }), action: 'fitted', reason };
   }
-  const trigger = refitTrigger(parsed, evaluateFitEligibility(ledger, nowMs, options));
+  const entriesByKey = new Map(ledgerEntries(ledger).map((entry) => [entry.key, entry]));
+  const trigger = refitTrigger(parsed, evaluateFitEligibility(ledger, nowMs, options), entriesByKey);
   if (!trigger) return { map: parsed, action: 'kept' };
-  if (trigger.reason !== 'fit_invalidated' && evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate.eligible) {
+  if (!INVALIDATING_REFITS.has(trigger.reason) && evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate.eligible) {
     return { map: parsed, action: 'kept', held: trigger };
   }
   const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason });
