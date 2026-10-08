@@ -688,7 +688,8 @@ export function recordCalibrationPublication(previous, decision, nowMs) {
  * (one fingerprint per ledger row) are dropped: applying a map reads only
  * each domain's mode and knots.
  */
-export function archiveCalibrationPublication({ map, decision } = {}, decidedAt) {
+export function archiveCalibrationPublication(publication, decidedAt) {
+  const { map, decision } = publication ?? {};
   if (!decision) return null;
   const domains = map?.domains && typeof map.domains === 'object'
     ? Object.fromEntries(Object.entries(map.domains).map(([domain, { inputs: _inputs, ...fit }]) => [domain, fit]))

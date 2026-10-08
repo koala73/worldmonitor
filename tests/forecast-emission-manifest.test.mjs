@@ -123,8 +123,8 @@ describe('deep snapshot payload (#9058)', () => {
 
   it('wires the archive into fetchForecasts', () => {
     const source = readFileSync(new URL('../scripts/seed-forecasts.mjs', import.meta.url), 'utf8');
-    assert.match(source, /\n    calibrationPublicationArchive: archiveCalibrationPublication\(calibrationPublication, runGeneratedAt\),\n/);
-    assert.match(source, /\n  const predictions = detectAllScenarios\(inputs, emaRiskScores\);\n/, 'the seeder and the replay share one detector list');
+    assert.ok(source.includes('\n    calibrationPublicationArchive: archiveCalibrationPublication(calibrationPublication, runGeneratedAt),\n'));
+    assert.ok(source.includes('\n  const predictions = detectAllScenarios(inputs, emaRiskScores);\n'), 'the seeder and the replay share one detector list');
   });
 });
 
