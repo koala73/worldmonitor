@@ -3,16 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   DELETE_RECORD_BATCH,
-  MAX_MARKER_STALENESS_MS,
   RETENTION_MS,
   runCleanup,
 } from '../scripts/prune-digest-accumulator.mjs';
-import {
-  FORECAST_EVIDENCE_COVERAGE_KEY,
-  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
-  FORECAST_EVIDENCE_SOURCE_KEY,
-  FORECAST_EVIDENCE_TTL_S,
-} from '../scripts/_forecast-evidence-archive.mjs';
 
 const CONFIG = {
   UPSTASH_REDIS_REST_URL: 'https://redis.example',
@@ -23,22 +16,6 @@ const KEY = 'digest:accumulator:v1:full:en';
 const OTHER_KEY = 'digest:accumulator:v1:finance:en';
 const NOW = 1_800_000_000_000;
 const CUTOFF = NOW - RETENTION_MS;
-
-function validCoverage(coverageEndMs = NOW) {
-  const coverageStartMs = coverageEndMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS;
-  return JSON.stringify({
-    v: 1,
-    coverageStartMs,
-    coverageEndMs,
-    cutoverVerifiedAtMs: coverageEndMs,
-    sourceDigestAtMs: coverageEndMs,
-    maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
-    retentionSeconds: FORECAST_EVIDENCE_TTL_S,
-    sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
-    legacyOldestHash: 'a'.repeat(64),
-    legacyOldestScoreMs: coverageStartMs,
-  });
-}
 
 function scoreInRange(score, min, max) {
   const lower = min === '-inf' ? -Infinity : Number(String(min).replace(/^\(/, ''));
@@ -52,7 +29,6 @@ function createFakeRedis({
   rowsByKey = {},
   scanPages = [['0', []]],
   failZremCall = null,
-  coverageMarker = validCoverage(),
 } = {}) {
   const state = new Map(
     Object.entries(rowsByKey).map(([key, rows]) => [key, rows.map((row) => ({ ...row }))]),
@@ -74,7 +50,6 @@ function createFakeRedis({
     const rows = state.get(key) ?? [];
 
     if (verb === 'SCAN') return response(scanPages[scanIndex++] ?? ['0', []]);
-    if (verb === 'GET' && key === FORECAST_EVIDENCE_COVERAGE_KEY) return response(coverageMarker);
     if (verb === 'ZCARD') return response(rows.length);
     if (verb === 'ZRANGE') {
       if (rows.length === 0) return response([]);
@@ -188,56 +163,23 @@ describe('digest accumulator cleanup', () => {
     assert.equal(fake.calls.length, 0);
   });
 
-  it('rejects a malformed or inadequate coverage marker before mutation', async () => {
-    for (const coverageMarker of [
-      'not-json',
-      JSON.stringify({
-        ...JSON.parse(validCoverage()),
-        coverageStartMs: NOW - FORECAST_EVIDENCE_MAX_LOOKBACK_MS + 1,
-      }),
-    ]) {
-      const fake = createFakeRedis({
-        coverageMarker,
-        rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
-      });
-
-      await assert.rejects(
-        () => quietRun(fake, ['--apply', '--key', KEY]),
-        /coverage marker is missing or malformed|required 14-day window/,
-      );
-      assert.equal(fake.calls.filter(({ command }) => command[0] === 'ZREM').length, 0);
-    }
-  });
-
-  it('uses the verified marker end, not observation time, for the exclusive retention cutoff', async () => {
-    const proofEnd = NOW - 24 * 60 * 60 * 1000;
-    const proofCutoff = proofEnd - RETENTION_MS;
+  it('applies full/en on the flag alone and never reads a coverage marker (#7082)', async () => {
+    // Judging reads only the evidence archive since #8995. Production carries
+    // only the v2 continuity marker, so a marker gate would block the sweep
+    // forever while protecting no reader.
     const fake = createFakeRedis({
-      coverageMarker: validCoverage(proofEnd),
-      rowsByKey: {
-        [KEY]: [
-          row('older', proofCutoff - 1),
-          row('boundary', proofCutoff),
-          row('after-proof-cutoff', CUTOFF - 1),
-        ],
-      },
+      rowsByKey: { [KEY]: [row('old', CUTOFF - 1), row('boundary', CUTOFF)] },
     });
 
     const result = await quietRun(fake, ['--apply', '--key', KEY]);
 
-    assert.equal(result.observedAtMs, NOW);
-    assert.equal(result.referenceClockMs, proofEnd);
-    assert.equal(result.cutoff, proofCutoff);
+    assert.equal(result.cutoverReady, true);
     assert.equal(result.results[0].removed, 1);
-    assert.deepEqual(
-      fake.state.get(KEY).map(({ member }) => member),
-      ['boundary', 'after-proof-cutoff'],
-    );
-    const bounded = fake.calls.filter(({ command }) => ['ZCOUNT', 'ZRANGEBYSCORE'].includes(command[0]));
-    assert.ok(bounded.every(({ command }) => command[3] === `(${proofCutoff}`));
+    assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['boundary']);
+    assert.equal(fake.calls.some(({ command }) => command[0] === 'GET'), false);
   });
 
-  it('applies an exact non-full/en accumulator key after the global cutover proof', async () => {
+  it('applies an exact non-full/en accumulator key with the flag set', async () => {
     const fake = createFakeRedis({
       rowsByKey: {
         [OTHER_KEY]: [row('old', CUTOFF - 1), row('boundary', CUTOFF)],
@@ -381,47 +323,32 @@ describe('digest accumulator cleanup', () => {
   it('reports the blocking reason in dry-run instead of throwing', async () => {
     const fake = createFakeRedis({
       scanPages: [['0', [KEY]]],
-      coverageMarker: 'not-json',
       rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
     });
 
-    const result = await quietRun(fake);
+    const result = await quietRun(fake, [], {
+      env: {
+        UPSTASH_REDIS_REST_URL: CONFIG.UPSTASH_REDIS_REST_URL,
+        UPSTASH_REDIS_REST_TOKEN: CONFIG.UPSTASH_REDIS_REST_TOKEN,
+      },
+    });
 
     assert.equal(result.cutoverReady, false);
-    assert.match(result.cutoverBlockedReason, /coverage marker is missing or malformed/);
+    assert.match(result.cutoverBlockedReason, /FORECAST_EVIDENCE_CUTOVER_ENABLED must equal 1/);
+    assert.equal(result.results[0].before.wouldRemove, 1);
     assert.equal(fake.calls.some(({ command }) => command[0] === 'ZREM'), false);
   });
 
-  it('refuses --apply when the marker is stale even though it proves 14 days', async () => {
-    // The marker's own coverageEndMs used to define the window it had to
-    // cover — a self-comparison the parser already guarantees, so the check
-    // could never fail. Anchoring to the operator's clock makes a marker from
-    // a writer that stopped days ago refuse the sweep.
-    const staleEnd = NOW - MAX_MARKER_STALENESS_MS - 1;
+  it('dry-run issues only read commands', async () => {
     const fake = createFakeRedis({
-      coverageMarker: validCoverage(staleEnd),
-      rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
+      scanPages: [['0', [KEY, OTHER_KEY]]],
+      rowsByKey: { [KEY]: [row('old', CUTOFF - 1)], [OTHER_KEY]: [row('new', NOW)] },
     });
 
-    await assert.rejects(
-      () => quietRun(fake, ['--apply', '--key', KEY]),
-      /marker is \d+h stale/,
-    );
-    assert.equal(fake.calls.filter(({ command }) => command[0] === 'ZREM').length, 0);
-  });
+    await quietRun(fake);
 
-  it('accepts a marker inside the staleness allowance', async () => {
-    const freshEnd = NOW - MAX_MARKER_STALENESS_MS + 60_000;
-    const fake = createFakeRedis({
-      coverageMarker: validCoverage(freshEnd),
-      rowsByKey: { [KEY]: [row('old', freshEnd - RETENTION_MS - 1), row('keep', NOW)] },
-    });
-
-    const result = await quietRun(fake, ['--apply', '--key', KEY]);
-
-    assert.equal(result.cutoverReady, true);
-    assert.equal(result.results[0].removed, 1);
-    assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['keep']);
+    const verbs = new Set(fake.calls.map(({ command }) => command[0]));
+    assert.deepEqual([...verbs].sort(), ['SCAN', 'ZCARD', 'ZCOUNT', 'ZRANGE']);
   });
 
   it('converges instead of failing when publication pruned the tail first', async () => {

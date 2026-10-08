@@ -15,6 +15,7 @@ import {
   OPENROUTER_FREE_PRIMARY_MODEL,
 } from '../scripts/_llm-model-timeouts.mjs';
 import { extractDelimitedBlock } from '../scripts/lib/js-source-structure.mjs';
+import { ACCUMULATOR_RETENTION_MS } from '../scripts/_forecast-evidence-archive.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -850,6 +851,10 @@ describe('news digest methodology parity', () => {
     assertDocIncludes('`story:track:v1:{titleHash}`', 'story track key');
     assertDocIncludes('7 days', 'story tracking TTL');
     assertDocIncludes('48 hours', 'digest accumulator TTL');
+    assertDocIncludes(
+      `members last seen more than ${ACCUMULATOR_RETENTION_MS / 86_400_000} days ago`,
+      'digest accumulator member retention (ACCUMULATOR_RETENTION_MS)',
+    );
   });
 
   it('documents reserved feed fading phase and digest read-path fading behavior', () => {

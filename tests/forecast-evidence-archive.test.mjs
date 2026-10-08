@@ -3,6 +3,7 @@ import { before, describe, it } from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { MARKET_ALERT_ACTIVITY_RETENTION_MS } from '../scripts/_market-alert-ledger.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -257,6 +258,13 @@ describe('accumulator prune bounds (#7082)', () => {
     );
     // ...and still bound the key: a member older than STORY_TTL + guard is gone.
     assert.ok(cutoff > now - 9 * 24 * 60 * 60 * 1000);
+  });
+
+  it('retains the widest full/en read of the market-alert ledger', () => {
+    // readStories() reads back to emission - 24h for rows up to 6 days past a
+    // 6-hour deadline, and treats the oldest member as its coverage proof.
+    // full/en is pruned to this retention once the cutover flag is set (#7082).
+    assert.ok(mod.ACCUMULATOR_RETENTION_MS > MARKET_ALERT_ACTIVITY_RETENTION_MS);
   });
 
   it('honours an explicit retention override', () => {

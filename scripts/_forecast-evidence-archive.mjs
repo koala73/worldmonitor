@@ -45,10 +45,21 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
  *                                                    24h default, ~12h twice-
  *                                                    daily, ~6.5-7d WEEKLY,
  *                                                    older after missed ticks
+ *                                                    (but see story rows below)
+ *   seed-market-alert-ledger readStories()           full:en, emission - 24h
+ *                                                    for due rows <= 6d past
+ *                                                    deadline: <= 7d6h; its
+ *                                                    oldest-member coverage
+ *                                                    proof needs <= 6d6h
+ *   seed-forecast-bets.mjs:295 ensemble news         full:en, 3d (via
+ *                                                    readDigestAccumulatorArchive)
  *   scripts/lib/watchlist-story-scan.mjs             24h
  *   api/mcp/registry/nlp-tools.ts keyword spikes     48h
- *   seed-forecast-resolutions (judged)               14d -> migrating to the
- *                                                    dedicated archive below
+ *   seed-forecast-resolutions (judged)               none since #8995: judging
+ *                                                    reads only the archive
+ *   backfill-forecast-evidence-archive.mjs           14d, operator repair tool
+ *                                                    only; members past the 7d
+ *                                                    story row are unrecoverable
  *
  * A 48-hour member prune silently truncates every weekly digest to two days of
  * stories, so retention is sized to the widest surviving reader instead. Seven
@@ -56,7 +67,9 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
  * every hash it reads here, so an accumulator member that outlives its story
  * row is unusable anyway — plus a one-day guard band, mirroring how the
  * evidence archive's own retention is sized. This still bounds a key that
- * previously grew without limit; it bounds it at the real contract.
+ * previously grew without limit; it bounds it at the real contract. Every
+ * reader above fits inside it, so `full:en` is pruned to the same 8 days once
+ * FORECAST_EVIDENCE_CUTOVER_ENABLED is set (#7082).
  */
 export const ACCUMULATOR_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
 

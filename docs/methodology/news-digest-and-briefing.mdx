@@ -263,7 +263,7 @@ briefs can read the same story pool.
 | `story:track:v1:{titleHash}` | Hash | Current story metadata and classifier stamps. | 7 days |
 | `story:sources:v1:{titleHash}` | Set | Feed names that mentioned the story. | 7 days |
 | `story:peak:v1:{titleHash}` | ZSet | Single `peak` member holding the highest score seen. | 7 days |
-| `digest:accumulator:v1:{variant}:{lang}` | ZSet | Story hashes by last-seen time for digest windows. | 48 hours |
+| `digest:accumulator:v1:{variant}:{lang}` | ZSet | Story hashes by last-seen time for digest windows. | 48 hours for the key; each publication removes members last seen more than 8 days ago |
 
 The story-track hash fields written today are:
 

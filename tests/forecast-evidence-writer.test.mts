@@ -24,62 +24,32 @@ describe('forecast evidence writer cutover gate (#7082)', () => {
     assert.equal(__testing__.redisPipelineConfirmed([{ error: 'timeout' }], 1), false);
   });
 
-  it('does not prune when coverage read or an earlier write was unconfirmed', () => {
+  it('prunes full/en on the operator flag once tracking and TTL writes are confirmed', () => {
     const complete = {
       evidenceEligible: true,
       cutoverEnabled: true,
-      coverage,
-      nowMs,
       trackingWritesConfirmed: true,
-      evidenceWritesConfirmed: true,
-      coverageAdvanced: true,
       accumulatorTtlConfirmed: true,
     };
     assert.equal(__testing__.shouldPruneAccumulator(complete), true);
     assert.equal(__testing__.shouldPruneAccumulator({ ...complete, cutoverEnabled: false }), false);
-    assert.equal(__testing__.shouldPruneAccumulator({ ...complete, coverage: null }), false);
-    assert.equal(__testing__.shouldPruneAccumulator({ ...complete, evidenceWritesConfirmed: false }), false);
     assert.equal(__testing__.shouldPruneAccumulator({ ...complete, trackingWritesConfirmed: false }), false);
     assert.equal(__testing__.shouldPruneAccumulator({ ...complete, accumulatorTtlConfirmed: false }), false);
-  });
-
-  it('requires the cutover marker to cover the full 14-day declared window', () => {
-    assert.equal(__testing__.shouldPruneAccumulator({
-      evidenceEligible: true,
-      cutoverEnabled: true,
-      coverage: { ...coverage, coverageStartMs: coverage.coverageStartMs + 1 },
-      nowMs,
-      trackingWritesConfirmed: true,
-      evidenceWritesConfirmed: true,
-      coverageAdvanced: true,
-      accumulatorTtlConfirmed: true,
-    }), false);
-  });
-
-  it('never prunes on an archive continuity attestation (#8877)', () => {
-    assert.equal(__testing__.shouldPruneAccumulator({
-      evidenceEligible: true, cutoverEnabled: true, nowMs,
-      trackingWritesConfirmed: true, evidenceWritesConfirmed: true,
-      coverageAdvanced: true, accumulatorTtlConfirmed: true,
-      coverage: {
-        ...coverage, v: 2, sourceKey: 'forecast:evidence:v1',
-        continuityBucketMs: 6 * 60 * 60 * 1000,
-        archiveOldestHash: 'f'.repeat(64), archiveOldestScoreMs: coverage.coverageStartMs,
-      },
-    }), false);
   });
 
   it('preserves confirmed pruning for scopes outside full/en', () => {
     assert.equal(__testing__.shouldPruneAccumulator({
       evidenceEligible: false,
       cutoverEnabled: false,
-      coverage: null,
-      nowMs,
       trackingWritesConfirmed: true,
-      evidenceWritesConfirmed: false,
-      coverageAdvanced: false,
       accumulatorTtlConfirmed: true,
     }), true);
+    assert.equal(__testing__.shouldPruneAccumulator({
+      evidenceEligible: false,
+      cutoverEnabled: false,
+      trackingWritesConfirmed: false,
+      accumulatorTtlConfirmed: true,
+    }), false);
   });
 });
 
@@ -307,12 +277,35 @@ describe('forecast evidence publication wiring (#7082)', () => {
     assert.equal(prunes[0][2], '-inf');
   });
 
-  it('does not prune the judged accumulator when the archive write failed', async () => {
+  it('prunes the judged accumulator on the flag with no coverage marker (#7082)', async () => {
+    // Judging stopped reading the accumulator in #8995, so the backfill-certified
+    // marker no longer gates this prune. Production has no v1 marker at all.
+    const redis = await runWriter({ cutover: true });
+    const prunes = redis.commandsOf((verb, key) => verb === 'ZREMRANGEBYSCORE' && key.includes('digest:accumulator'));
+    assert.equal(prunes.length, 1);
+  });
+
+  it('prunes the judged accumulator on the flag with the v2 continuity marker production carries (#7082)', async () => {
+    const redis = await runWriter({
+      cutover: true,
+      coverage: {
+        ...coverage, v: 2, sourceKey: 'forecast:evidence:v1',
+        continuityBucketMs: 6 * 60 * 60 * 1000,
+        archiveOldestHash: 'f'.repeat(64), archiveOldestScoreMs: coverage.coverageStartMs,
+      },
+    });
+    const prunes = redis.commandsOf((verb, key) => verb === 'ZREMRANGEBYSCORE' && key.includes('digest:accumulator'));
+    assert.equal(prunes.length, 1);
+  });
+
+  it('prunes the judged accumulator even when the archive write failed (#7082)', async () => {
+    // The prune drops accumulator members older than 8 days; it never touches
+    // the archive, and no judging path reads the accumulator any more, so an
+    // archive outage is not a reason to let full/en grow without bound.
     const redis = await runWriter({ coverage, cutover: true, failEvidence: true });
-    assert.deepEqual(
-      redis.commandsOf((verb, key) => verb === 'ZREMRANGEBYSCORE' && key.includes('digest:accumulator')),
-      [],
-      'an unconfirmed archive write must never authorise destroying the legacy copy',
+    assert.equal(
+      redis.commandsOf((verb, key) => verb === 'ZREMRANGEBYSCORE' && key.includes('digest:accumulator')).length,
+      1,
     );
   });
 
