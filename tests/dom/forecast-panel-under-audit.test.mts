@@ -35,7 +35,7 @@ function scorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetFo
     byDomain: [],
     byGenerationOrigin: [],
     calibration: [],
-    skill: { count: 243, brier: 0.110775, logScore: 0.36, excludedScored: 0, excludedOrigins: [], yesCount: 20 },
+    skill: { count: 243, brier: 0.110775, logScore: 0.36, excludedScored: 0, excludedOrigins: [], yesCount: 20, bssCi95: [-0.9, -0.12] },
     publishedByDomain: [{ domain: 'cyber', count: 205, brier: 0.074, yesCount: 9 }],
     familyOutcomes: [
       { forecastId: 'fc-0', outcome: 'NO', voidReason: '' },

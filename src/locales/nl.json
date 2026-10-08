@@ -1989,22 +1989,24 @@
         "label": "Staat van dienst",
         "labelHint": "Hoe de gepubliceerde voorspellingen scoorden nadat ze waren beslist, over de laatste {{days}} dagen. Beweeg over een getal om te zien wat het betekent.",
         "unavailable": "Momenteel niet beschikbaar",
-        "insufficient": "Nog niet genoeg beoordeelde voorspellingen",
+        "insufficient": "Te weinig onafhankelijke voorspellingen tot nu toe",
         "brier": "Brier-score {{score}} (n={{n}})",
         "brierHint": "Brier-score over {{n}} beoordeelde voorspellingen: het gemiddelde kwadraat van het verschil tussen de voorspelde kans en wat er gebeurde. 0 is perfect, 0,25 is een muntworp, lager is beter.",
-        "baseRate": "Basispercentage {{score}} (n={{n}})",
-        "baseRateHint": "Wat iemand die altijd het waargenomen ja-percentage antwoordt zou hebben gescoord op dezelfde {{n}} voorspellingen ({{pct}}% eindigde op ja). Beter scoren betekent dat de voorspellingen informatie toevoegen.",
+        "baseRate": "Werkelijke uitkomst {{score}} (n={{n}})",
+        "baseRateHint": "Wat altijd voorspellen hoe vaak deze {{n}} voorspellingen werkelijk waar waren ({{pct}}% opgelost als ja) zou hebben gescoord. Die uitkomst is alleen achteraf bekend.",
         "void": "Ongeldig {{pct}}% ({{count}} van {{resolved}})",
         "voidHint": "Besliste voorspellingen die niet beoordeeld konden worden, van de {{resolved}} besliste in de periode.",
         "stale": "Verouderd",
         "staleHint": "Laatst beoordeeld op {{date}}. De beoordelaar heeft sindsdien niet gedraaid, dus deze cijfers zijn ouder dan ze zouden moeten zijn.",
-        "fullRecord": "Volledige staat van dienst"
+        "fullRecord": "Volledige staat van dienst",
+        "skill": "Vaardigheid {{score}} versus werkelijke uitkomst",
+        "skillHint": "Vaardigheid over dezelfde {{n}} beoordeelde voorspellingen, vergeleken met altijd voorspellen hoe vaak deze werkelijk waar waren in de periode: 0 betekent dezelfde fout als die uitkomst, 1 is perfect, en onder 0 betekent een grotere fout. Het volledige verslag toont of het verschil duidelijk is."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs basisratio {{base}}",
-        "measuredHint": "Hoe gepubliceerde {{domain}}-prognoses hebben gescoord over {{n}} geclassificeerde prognoses in de afgelopen {{days}} dagen. Het basispercentage is wat je zou scoren door altijd het waargenomen ja-percentage van het domein te antwoorden. Lager is beter. Dit is het record van het domein, niet van deze prognose.",
+        "measured": "{{domain}} n={{n}} · vaardigheid {{skill}} versus werkelijke uitkomst",
+        "measuredHint": "Hoe gepubliceerde {{domain}}-voorspellingen scoorden over {{n}} beoordeelde voorspellingen in de afgelopen {{days}} dagen, vergeleken met altijd voorspellen hoe vaak de voorspellingen van het domein werkelijk waar waren: 0 betekent dezelfde fout als die uitkomst, 1 is perfect, en onder 0 betekent een grotere fout. Brier {{score}} versus {{base}} voor die uitkomst, waarbij lager beter is. Een domeinscores heeft nog geen onzekerheidsinterval. Dit is het verslag van het domein, niet van deze voorspelling.",
         "unmeasured": "Nog niet gemeten",
-        "unmeasuredHint": "{{domain}} voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. Een domein heeft minimaal {{min}} nodig voordat de nauwkeurigheid wordt weergegeven."
+        "unmeasuredHint": "{{domain}}-voorspellingen hebben {{n}} beoordeelde resultaten in de afgelopen {{days}} dagen. De nauwkeurigheid van een domein wordt weergegeven als de resultaten afkomstig zijn van minstens {{min}} voorspellingsfamilies, met minstens {{outcomes}} die waar waren en net zoveel die niet waar waren."
       },
       "resolution": {
         "last": "Laatste: {{outcome}}",

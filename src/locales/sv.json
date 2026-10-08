@@ -1989,22 +1989,24 @@
         "label": "Facit hittills",
         "labelHint": "Hur de publicerade prognoserna bedömdes när de avgjorts, under de senaste {{days}} dagarna. Håll muspekaren över ett tal för att se vad det betyder.",
         "unavailable": "Inte tillgängligt just nu",
-        "insufficient": "Inte tillräckligt många bedömda prognoser ännu",
+        "insufficient": "För få oberoende prognoser ännu",
         "brier": "Brier-poäng {{score}} (n={{n}})",
         "brierHint": "Brier-poäng för {{n}} bedömda prognoser: medelvärdet av kvadraten på skillnaden mellan prognosens sannolikhet och vad som hände. 0 är perfekt, 0,25 motsvarar ett myntkast, lägre är bättre.",
-        "baseRate": "Basfrekvens {{score}} (n={{n}})",
-        "baseRateHint": "Vad någon som alltid svarar den observerade ja-andelen hade fått på samma {{n}} prognoser ({{pct}} % avgjordes med ja). Att slå den betyder att prognoserna tillför information.",
+        "baseRate": "Faktisk frekvens {{score}} (n={{n}})",
+        "baseRateHint": "Vad det skulle ha gjort om man alltid prognostiserade hur ofta dessa {{n}} prognoser faktiskt blev sanna ({{pct}}% lösta ja). Den frekvensen är endast känd i efterhand.",
         "void": "Ogiltiga {{pct}} % ({{count}} av {{resolved}})",
         "voidHint": "Avgjorda prognoser som inte kunde bedömas, av {{resolved}} avgjorda under perioden.",
         "stale": "Inaktuellt",
         "staleHint": "Senast bedömt {{date}}. Bedömningen har inte körts sedan dess, så dessa siffror är äldre än de borde vara.",
-        "fullRecord": "Fullständigt facit"
+        "fullRecord": "Fullständigt facit",
+        "skill": "Skicklighet {{score}} jämfört med faktisk frekvens",
+        "skillHint": "Skicklighet över samma {{n}} klassificerade prognoser, jämfört med att alltid prognostisera hur ofta de faktiskt blev sanna under perioden: 0 betyder samma fel som den frekvensen, 1 är perfekt, och under 0 betyder ett större fel. Det fullständiga resultatet visar om skillnaden är tydlig."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs basfrekvens {{base}}",
-        "measuredHint": "Hur publicerade {{domain}}-prognoser har presterat över {{n}} bedömda prognoser de senaste {{days}} dagarna. Basfrekvensen är vad man skulle ha fått genom att alltid svara ja enligt domänens observerade frekvens. Lägre är bättre. Detta är domänens historik, inte denna prognos.",
+        "measured": "{{domain}} n={{n}} · skicklighet {{skill}} jämfört med faktisk frekvens",
+        "measuredHint": "Hur publicerade {{domain}}-prognoser presterade över {{n}} klassificerade prognoser under de senaste {{days}} dagarna, jämfört med att alltid prognostisera hur ofta domänens prognoser faktiskt blev sanna: 0 betyder samma fel som den frekvensen, 1 är perfekt, och under 0 betyder ett större fel. Brier {{score}} jämfört med {{base}} för den frekvensen, där lägre är bättre. En domäns poäng har ingen osäkerhetsgräns ännu. Detta är domänens resultat, inte denna prognos.",
         "unmeasured": "Ännu inte mätt",
-        "unmeasuredHint": "{{domain}}-prognoser har {{n}} bedömda resultat de senaste {{days}} dagarna. En domän behöver {{min}} innan dess noggrannhet visas."
+        "unmeasuredHint": "{{domain}}-prognoser har {{n}} klassificerade resultat under de senaste {{days}} dagarna. En domäns noggrannhet visas när dess resultat kommer från minst {{min}} prognosfamiljer, med minst {{outcomes}} som blev sanna och lika många som inte blev sanna."
       },
       "resolution": {
         "last": "Senast: {{outcome}}",

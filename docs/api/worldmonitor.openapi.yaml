@@ -43630,9 +43630,7 @@ components:
                          Distinguishes an outage from a healthy empty forecast set.
                 stale:
                     type: boolean
-                    description: |-
-                        True when forecasts are served from a stale fallback. Currently false for
-                         this endpoint because get-forecasts does not have a stale fallback cache.
+                    description: 'Always false: get-forecasts has no stale fallback.'
                 error:
                     type: string
                     description: |-
@@ -44152,6 +44150,11 @@ components:
                 yesCount:
                     type: integer
                     format: int32
+                bssCi95:
+                    type: array
+                    items:
+                        type: number
+                        format: double
             description: |-
                 Headline Brier/log score over scored entries that are neither synthetic
                  backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
@@ -44170,6 +44173,9 @@ components:
                 yesCount:
                     type: integer
                     format: int32
+                bss:
+                    type: number
+                    format: double
         worldmonitor_forecast_v1_ScorecardUncertainty:
             type: object
             properties:
@@ -44196,7 +44202,7 @@ components:
                         description: '[low, high] at 95%.'
                 insufficientSample:
                     type: boolean
-                    description: True when count is under 30.
+                    description: True below the family minimums.
             description: Bootstrap interval on a mean Brier score.
         worldmonitor_forecast_v1_ScorecardFunnel:
             type: object

@@ -2117,22 +2117,24 @@
         "label": "Dosadašnji rezultati",
         "labelHint": "Kako su objavljene prognoze ocijenjene nakon razrješenja u posljednjih {{days}} dana. Zadržite pokazivač iznad broja da vidite što znači.",
         "unavailable": "Trenutačno nedostupno",
-        "insufficient": "Još nema dovoljno ocijenjenih prognoza",
+        "insufficient": "Zasad premalo nezavisnih prognoza",
         "brier": "Brierov rezultat {{score}} (n={{n}})",
         "brierHint": "Brierov rezultat za {{n}} ocijenjenih prognoza: prosječni kvadrat razlike između prognozirane vjerojatnosti i onoga što se dogodilo. 0 je savršeno, 0,25 odgovara bacanju novčića, niže je bolje.",
-        "baseRate": "Osnovna stopa {{score}} (n={{n}})",
-        "baseRateHint": "Što bi postigao netko tko uvijek odgovara uočenim udjelom „da” na istih {{n}} prognoza ({{pct}} % razriješeno s „da”). Nadmašiti je znači da prognoze donose informaciju.",
+        "baseRate": "Stvarna stopa {{score}} (n={{n}})",
+        "baseRateHint": "Što bi uvijek predviđanje kako često se ove {{n}} prognoze zapravo ostvarile ({{pct}}% razriješeno kao da) postiglo. Ta stopa poznata je tek kasnije.",
         "void": "Poništeno {{pct}} % ({{count}} od {{resolved}})",
         "voidHint": "Prognoze koje su razriješene, ali se nisu mogle ocijeniti, od {{resolved}} razriješenih u razdoblju.",
         "stale": "Zastarjelo",
         "staleHint": "Zadnje ocjenjivanje {{date}}. Ocjenjivač otada nije pokrenut, pa su ovi brojevi stariji nego što bi trebali biti.",
-        "fullRecord": "Potpuni rezultati"
+        "fullRecord": "Potpuni rezultati",
+        "skill": "Vještina {{score}} naspram stvarne stope",
+        "skillHint": "Vještina prema istim {{n}} ocijenjenih prognoza, nasuprot uvijek predviđanju kako često se zapravo ostvarile u razdoblju: 0 znači istu grešku kao ta stopa, 1 je savršeno, a ispod 0 znači veću grešku. Potpuni zapis pokazuje je li razlika jasna."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} nasuprot baznoj stopi {{base}}",
-        "measuredHint": "Kako su objavljene {{domain}} prognoze postigle rezultat na {{n}} ocijenjenih prognoza u posljednjih {{days}} dana. Bazna stopa je ono što bi dobila uvijek odgovor prema promatranoj stopi \"da\" u domeni. Niže je bolje. Ovo je zapis domene, ne ove prognoze.",
+        "measured": "{{domain}} n={{n}} · vještina {{skill}} naspram stvarne stope",
+        "measuredHint": "Kako su objavljene {{domain}} prognoze postigle rezultat tijekom {{n}} ocijenjenih prognoza u posljednjih {{days}} dana, nasuprot uvijek predviđanju kako često se prognoze domene zapravo ostvarile: 0 znači istu grešku kao ta stopa, 1 je savršeno, a ispod 0 znači veću grešku. Brier {{score}} naspram {{base}} za tu stopu, gdje je niže bolje. Domena još nema interval nesigurnosti. Ovo je zapis domene, ne ove prognoze.",
         "unmeasured": "Još nije izmjereno",
-        "unmeasuredHint": "Prognose {{domain}} imaju {{n}} ocijenjenih rezultata u zadnjih {{days}} dana. Domena treba {{min}} prije nego što se prikaže njena točnost."
+        "unmeasuredHint": "Prognoze {{domain}} imaju {{n}} ocijenjenih rezultata u posljednjih {{days}} dana. Točnost domene prikazuje se kada njeni rezultati potječu iz najmanje {{min}} obitelji prognoza, s najmanje {{outcomes}} koji su se ostvarili i jednako mnogo koji nisu."
       },
       "resolution": {
         "last": "Zadnje: {{outcome}}",

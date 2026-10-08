@@ -2,6 +2,8 @@ import type {
   GetForecastScorecardResponse,
   MarketAlertRow,
   MarketAlertScorecard,
+  ScorecardPublishedDomain,
+  ScorecardSkill,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 
 // The producer-owned fields of the public scorecard. Seeder observability and
@@ -63,7 +65,35 @@ export const RECEIPT_FIELDS = [
 // Mirrors PUBLIC_FAMILY_OUTCOME_FIELDS in scripts/_forecast-scorecard.mjs (a test pins the parity).
 export const FAMILY_OUTCOME_FIELDS = ['forecastId', 'outcome', 'voidReason'] as const;
 
-const ROW_FIELDS: Record<string, readonly string[]> = { receipts: RECEIPT_FIELDS, familyOutcomes: FAMILY_OUTCOME_FIELDS };
+// Skill against the cohort base rate (#8990). The public OpenAPI document sits
+// at its 950,000-byte cap, which had room for the headline bssCi95 and the
+// domain bss only; the MCP tool also serves the *_EXTENDED_FIELDS the seeder
+// writes beside them. Both contract lists mirror SKILL_FIELDS and
+// PUBLISHED_DOMAIN_FIELDS in scripts/build-accuracy-page.mjs (a test pins the parity).
+export const SKILL_FIELDS = [
+  'count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount', 'bssCi95',
+] as const satisfies readonly (keyof ScorecardSkill)[];
+export const SKILL_EXTENDED_FIELDS = [
+  'families', 'nEff', 'yesFamilies', 'noFamilies', 'referenceBrier', 'bss', 'measurable',
+] as const;
+export const PUBLISHED_DOMAIN_FIELDS = [
+  'domain', 'count', 'brier', 'yesCount', 'bss',
+] as const satisfies readonly (keyof ScorecardPublishedDomain)[];
+export const PUBLISHED_DOMAIN_EXTENDED_FIELDS = [
+  'families', 'nEff', 'yesFamilies', 'noFamilies', 'referenceBrier', 'bssCi95', 'measurable',
+] as const;
+
+type MemberLists = readonly [contract: readonly string[], extended?: readonly string[]];
+const ROW_FIELDS: Record<string, MemberLists> = {
+  receipts: [RECEIPT_FIELDS],
+  familyOutcomes: [FAMILY_OUTCOME_FIELDS],
+  publishedByDomain: [PUBLISHED_DOMAIN_FIELDS, PUBLISHED_DOMAIN_EXTENDED_FIELDS],
+};
+const OBJECT_FIELDS: Record<string, MemberLists> = { skill: [SKILL_FIELDS, SKILL_EXTENDED_FIELDS] };
+
+function memberList([contract, extended = []]: MemberLists, withExtended: boolean): readonly string[] {
+  return withExtended ? [...contract, ...extended] : contract;
+}
 
 function selectRows(value: unknown, fields: readonly string[]): unknown {
   if (!Array.isArray(value)) return undefined;
@@ -82,6 +112,16 @@ function pickNonNull(value: Record<string, unknown>, fields: readonly string[]):
   return out;
 }
 
+// skill passed through whole before #8990, null members included; selecting
+// its members keeps that, so only undeclared keys change.
+function pickPresent(value: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (value[field] !== undefined) out[field] = value[field];
+  }
+  return out;
+}
+
 function selectBlock(block: BlockName, value: unknown): unknown {
   if (!isRecord(value)) return undefined;
   const { fields, children } = SCORECARD_BLOCK_FIELDS[block];
@@ -94,14 +134,18 @@ function selectBlock(block: BlockName, value: unknown): unknown {
   return out;
 }
 
-export function selectScorecardFields(data: Record<string, unknown>): Partial<ScorecardData> {
+/** `extended` adds the members the seeder writes beyond the contract; only the MCP tool asks for them. */
+export function selectScorecardFields(data: Record<string, unknown>, { extended = false } = {}): Partial<ScorecardData> {
   const selected: Record<string, unknown> = {};
   for (const field of SCORECARD_DATA_FIELDS) {
     if (data[field] == null) continue;
     const rowFields = ROW_FIELDS[field];
+    const objectFields = OBJECT_FIELDS[field];
     const value = rowFields
-      ? selectRows(data[field], rowFields)
-      : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
+      ? selectRows(data[field], memberList(rowFields, extended))
+      : objectFields
+        ? (isRecord(data[field]) ? pickPresent(data[field] as Record<string, unknown>, memberList(objectFields, extended)) : undefined)
+        : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
     if (value !== undefined) selected[field] = value;
   }
   return selected as Partial<ScorecardData>;

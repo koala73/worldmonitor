@@ -2362,22 +2362,24 @@
         "label": "Thành tích",
         "labelHint": "Các dự báo đã công bố được chấm điểm thế nào sau khi có kết quả, trong {{days}} ngày qua. Di chuột lên một con số để xem ý nghĩa.",
         "unavailable": "Hiện không khả dụng",
-        "insufficient": "Chưa có đủ dự báo được chấm điểm",
+        "insufficient": "Chưa có đủ dự báo độc lập",
         "brier": "Điểm Brier {{score}} (n={{n}})",
         "brierHint": "Điểm Brier trên {{n}} dự báo đã chấm: trung bình bình phương chênh lệch giữa xác suất dự báo và kết quả thực tế. 0 là hoàn hảo, 0,25 tương đương tung đồng xu, càng thấp càng tốt.",
-        "baseRate": "Tỷ lệ cơ sở {{score}} (n={{n}})",
-        "baseRateHint": "Điểm mà người luôn trả lời theo tỷ lệ \"có\" quan sát được sẽ đạt trên cùng {{n}} dự báo này ({{pct}}% có kết quả \"có\"). Vượt được nó nghĩa là các dự báo mang thêm thông tin.",
+        "baseRate": "Tỷ lệ thực tế {{score}} (n={{n}})",
+        "baseRateHint": "Những gì luôn dự báo tần suất {{n}} dự báo này thực sự trở thành sự thật ({{pct}}% được giải quyết là đúng) sẽ đạt được. Tỷ lệ đó chỉ được biết sau này.",
         "void": "Vô hiệu {{pct}}% ({{count}} trên {{resolved}})",
         "voidHint": "Dự báo đã có kết quả nhưng không thể chấm điểm, trong số {{resolved}} dự báo có kết quả trong kỳ.",
         "stale": "Đã lỗi thời",
         "staleHint": "Chấm điểm lần cuối {{date}}. Bộ chấm điểm chưa chạy lại từ đó, nên các con số này cũ hơn mức cần thiết.",
-        "fullRecord": "Thành tích đầy đủ"
+        "fullRecord": "Thành tích đầy đủ",
+        "skill": "Kỹ năng {{score}} so với tỷ lệ thực tế",
+        "skillHint": "Kỹ năng trên {{n}} dự báo được chấm điểm tương tự, so với việc luôn dự báo tần suất thực tế của chúng trong khoảng thời gian: 0 có nghĩa là sai số tương tự như tỷ lệ đó, 1 là hoàn hảo, và dưới 0 có nghĩa là sai số lớn hơn. Hồ sơ đầy đủ cho thấy liệu sự khác biệt có rõ ràng không."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} so với tỷ lệ cơ sở {{base}}",
-        "measuredHint": "Các dự báo {{domain}} đã công bố đạt điểm như thế nào trên {{n}} dự báo được xếp hạng trong {{days}} ngày qua. Tỷ lệ cơ sở là điểm sẽ đạt được nếu luôn trả lời tỷ lệ \"có\" được quan sát của miền. Điểm càng thấp càng tốt. Đây là kỷ lục của miền, không phải của dự báo này.",
+        "measured": "{{domain}} n={{n}} · kỹ năng {{skill}} so với tỷ lệ thực tế",
+        "measuredHint": "Các dự báo được công bố của {{domain}} đạt được bao nhiêu điểm trên {{n}} dự báo được chấm điểm trong {{days}} ngày qua, so với việc luôn dự báo tần suất thực tế của các dự báo từ miền đó: 0 có nghĩa là sai số tương tự như tỷ lệ đó, 1 là hoàn hảo, và dưới 0 có nghĩa là sai số lớn hơn. Brier {{score}} so với {{base}} cho tỷ lệ đó, thấp hơn tốt hơn. Một điểm miền chưa có khoảng không chắc chắn. Đây là hồ sơ của miền, không phải của dự báo này.",
         "unmeasured": "Chưa được đo lường",
-        "unmeasuredHint": "Các dự báo {{domain}} có {{n}} kết quả được xếp loại trong {{days}} ngày qua. Một lĩnh vực cần {{min}} trước khi độ chính xác của nó được hiển thị."
+        "unmeasuredHint": "Các dự báo của {{domain}} có {{n}} kết quả được chấm điểm trong {{days}} ngày qua. Độ chính xác của một miền được hiển thị khi kết quả đến từ ít nhất {{min}} họ dự báo, với ít nhất {{outcomes}} kết quả đã xảy ra và cũng ngần ấy kết quả không xảy ra."
       },
       "resolution": {
         "last": "Lần trước: {{outcome}}",

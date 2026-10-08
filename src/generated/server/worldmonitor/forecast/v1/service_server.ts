@@ -231,6 +231,7 @@ export interface ScorecardSkill {
   excludedScored: number;
   excludedOrigins: string[];
   yesCount: number;
+  bssCi95: number[];
 }
 
 export interface ScorecardPublishedDomain {
@@ -238,6 +239,7 @@ export interface ScorecardPublishedDomain {
   count: number;
   brier: number;
   yesCount: number;
+  bss?: number;
 }
 
 export interface ScorecardUncertainty {

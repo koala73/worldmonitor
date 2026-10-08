@@ -126,7 +126,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   if (skill) scorecard.skill = skill;
   scorecard.publishedByDomain = summarizePublishedByDomain(scored);
   scorecard.uncertainty = {
-    method: `entry-level percentile bootstrap, ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
+    method: `family-level percentile bootstrap (each resample draws whole forecast families), ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
     overallBrier: brierInterval(scored, 'overall'),
     skillBrier: brierInterval(scored.filter((entry) => !excludeOrigins.has(generationOriginOf(entry))), 'skill'),
   };
@@ -298,11 +298,15 @@ function summarizePublishedByDomain(scored) {
   }
   return [...byDomain.keys()].sort().map((domain) => {
     const entries = byDomain.get(domain);
+    const { bss, bssCi95, ...sample } = summarizeBaseRateSkill(entries, `domain:${domain}`);
     return {
       domain,
       count: entries.length,
       brier: round(mean(entries.map((entry) => brier(entry)))),
       yesCount: entries.filter((entry) => entry.outcome === 'YES').length,
+      ...sample,
+      // A domain's skill is published only where it is measurable (#8990).
+      ...(sample.measurable && { bss, bssCi95 }),
     };
   });
 }
@@ -318,6 +322,7 @@ function summarizeSkill(scored, excludeSet) {
   const excludedOrigins = [...new Set(excludedEntries.map(generationOriginOf))].sort();
   const summary = summarizeScored(real);
   return pruneUndefined({
+    ...(real.length ? summarizeBaseRateSkill(real, 'skill') : {}),
     count: real.length,
     // yesCount / count is the cohort's base rate, the null /accuracy/ compares
     // the headline Brier against (#8873). The pooled calibration buckets carry
@@ -503,13 +508,101 @@ function proportion(successes, count) {
 
 function brierInterval(entries, scope) {
   if (!entries.length) return null;
-  const scores = entries.map((entry) => brier(entry));
-  const { mean: ci95 } = pairedBootstrap(scores, { mean }, { scope, seed: SCORECARD_BOOTSTRAP_SEED });
+  const families = familyTotals(entries);
   return {
-    count: scores.length,
-    mean: round(mean(scores)),
-    ci95,
-    insufficientSample: scores.length < INTERVAL_MIN_SAMPLE,
+    count: entries.length,
+    mean: round(mean(entries.map((entry) => brier(entry)))),
+    ci95: familyBootstrap(families, (sum) => sum.brier / sum.rows, scope),
+    // The one flag the public contract has room for (#8990): /accuracy/ and
+    // the card strip read it as the headline's measurable gate.
+    insufficientSample: !meetsFamilyMinimums(families),
+  };
+}
+
+function meetsFamilyMinimums(families) {
+  return families.length >= SKILL_MIN_FAMILIES
+    && families.filter((family) => family.yes > 0).length >= SKILL_MIN_OUTCOME_FAMILIES
+    && families.filter((family) => family.yes < family.rows).length >= SKILL_MIN_OUTCOME_FAMILIES;
+}
+
+// A family is one forecast id (#8990): its windows ask the same question of
+// the same detector, so they are resampled together and counted once.
+function familyKey(entry) {
+  return typeof entry?.id === 'string' && entry.id ? entry.id : '';
+}
+
+function familyTotals(entries) {
+  const byFamily = new Map();
+  for (const entry of entries) {
+    const key = familyKey(entry);
+    const total = byFamily.get(key) ?? { rows: 0, yes: 0, brier: 0 };
+    total.rows += 1;
+    total.yes += outcomeNumber(entry);
+    total.brier += brier(entry);
+    byFamily.set(key, total);
+  }
+  return [...byFamily.values()];
+}
+
+// Percentile bootstrap over whole families: each resample draws families with
+// replacement and pools their rows. A statistic that is undefined on a draw
+// (a resample whose outcomes all went one way has no base rate to beat) is
+// skipped; past 5% skipped the interval itself is not published.
+function familyBootstrap(families, statistic, scope) {
+  const random = mulberry32(seedFor(scope, SCORECARD_BOOTSTRAP_SEED));
+  const draws = [];
+  for (let r = 0; r < CALIBRATION_BOOTSTRAP_RESAMPLES; r += 1) {
+    const sum = { rows: 0, yes: 0, brier: 0 };
+    for (let i = 0; i < families.length; i += 1) {
+      const family = families[Math.floor(random() * families.length)];
+      sum.rows += family.rows;
+      sum.yes += family.yes;
+      sum.brier += family.brier;
+    }
+    const value = statistic(sum);
+    if (Number.isFinite(value)) draws.push(value);
+  }
+  if (draws.length < 0.95 * CALIBRATION_BOOTSTRAP_RESAMPLES) return null;
+  draws.sort((a, b) => a - b);
+  return [round(percentile(draws, 0.025)), round(percentile(draws, 0.975))];
+}
+
+// Brier skill score against the cohort's own base rate, BSS = 1 - B / p(1-p),
+// with p the YES share of the same rows. 0 is no better than always
+// forecasting that rate, 1 is perfect, below 0 is worse. Undefined (null)
+// when every outcome went one way, because then the rate is never wrong.
+function skillScore({ rows, yes, brier: brierSum }) {
+  const rate = yes / rows;
+  const reference = rate * (1 - rate);
+  return reference > 0 ? 1 - brierSum / rows / reference : NaN;
+}
+
+/**
+ * The skill block of one cohort (#8990): rows, families and Kish's effective
+ * n side by side, the reference Brier of always forecasting the cohort's base
+ * rate, the skill score against it with a family-bootstrap interval, and
+ * whether the cohort meets the family minimums for a verdict.
+ */
+function summarizeBaseRateSkill(entries, scope) {
+  const families = familyTotals(entries);
+  const total = families.reduce((sum, family) => ({
+    rows: sum.rows + family.rows, yes: sum.yes + family.yes, brier: sum.brier + family.brier,
+  }), { rows: 0, yes: 0, brier: 0 });
+  const rate = total.yes / total.rows;
+  const yesFamilies = families.filter((family) => family.yes > 0).length;
+  const noFamilies = families.filter((family) => family.yes < family.rows).length;
+  const bss = skillScore(total);
+  return {
+    families: families.length,
+    // Kish: (sum of family sizes)^2 / sum of squared sizes.
+    nEff: round(total.rows ** 2 / families.reduce((sum, family) => sum + family.rows ** 2, 0)),
+    yesFamilies,
+    noFamilies,
+    referenceBrier: round(rate * (1 - rate)),
+    bss: Number.isFinite(bss) ? round(bss) : null,
+    // Omitted, not null, when it cannot be computed: the contract field is a repeated double.
+    bssCi95: (Number.isFinite(bss) ? familyBootstrap(families, skillScore, `bss:${scope}`) : null) ?? undefined,
+    measurable: meetsFamilyMinimums(families),
   };
 }
 
@@ -632,14 +725,14 @@ function summarizeProjectionHorizons(entries, nowMs) {
       no: scored.filter((entry) => entry.outcome === 'NO').length,
       unobserved: resolved.filter((entry) => entry?.outcome === 'UNOBSERVED').length,
       void: resolved.filter((entry) => entry?.outcome === 'VOID').length,
-      brier: scored.length >= INTERVAL_MIN_SAMPLE ? brierInterval(scored, `projection:${horizon}`) : null,
-      insufficientSample: scored.length < INTERVAL_MIN_SAMPLE,
+      brier: meetsFamilyMinimums(familyTotals(scored)) ? brierInterval(scored, `projection:${horizon}`) : null,
+      insufficientSample: !meetsFamilyMinimums(familyTotals(scored)),
     };
   });
   return {
     semantics: 'point_in_time',
-    minSample: INTERVAL_MIN_SAMPLE,
-    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only at or above ${INTERVAL_MIN_SAMPLE} scored windows and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID.`,
+    minSample: SKILL_MIN_FAMILIES,
+    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only once its scored windows come from at least ${SKILL_MIN_FAMILIES} forecast families with ${SKILL_MIN_OUTCOME_FAMILIES} YES and ${SKILL_MIN_OUTCOME_FAMILIES} NO families, and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID.`,
     byHorizon,
   };
 }
@@ -665,9 +758,20 @@ export const ACTIVATION_NON_INFERIORITY_MARGIN = 0.005;
 // Scorecard intervals (#7072) use their own seed so a change to the #7070
 // shadow gate's draws cannot move a published interval, and vice versa.
 export const SCORECARD_BOOTSTRAP_SEED = 7072;
-// Below this many entries an interval is still published, flagged as resting
-// on too small a sample to read as a stable estimate.
-export const INTERVAL_MIN_SAMPLE = 30;
+// A cohort is measurable from this many forecast families (#8990). A family is
+// one forecast id, and its windows share a question, a detector and an
+// outcome process, so its rows are not independent: on 2026-10-07 the 243
+// headline rows came from 42 families. Every interval here resamples whole
+// families, and a cluster bootstrap over fewer than about 30 clusters
+// understates its own width, so 30 families is the floor for a published
+// verdict. Below it an interval is still published, flagged as a small sample.
+export const SKILL_MIN_FAMILIES = 30;
+// ...and from this many families with a YES outcome and this many with a NO.
+// The reference Brier p(1-p) rests on the minority outcome: with one or two
+// YES families, one flip moves it by a third or more and the skill score with
+// it. Five of each is the np >= 5 and n(1-p) >= 5 rule behind the normal
+// approximation to a binomial rate, counted in families for the same reason.
+export const SKILL_MIN_OUTCOME_FAMILIES = 5;
 const RELIABILITY_BINS = 10;
 const WILSON_Z95 = 1.959963984540054;
 

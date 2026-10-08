@@ -2382,22 +2382,24 @@
         "label": "Bilan",
         "labelHint": "Comment les prévisions publiées ont été notées une fois résolues, sur les {{days}} derniers jours. Survolez un chiffre pour en connaître le sens.",
         "unavailable": "Indisponible pour le moment",
-        "insufficient": "Pas encore assez de prévisions notées",
+        "insufficient": "Trop peu de prévisions indépendantes pour le moment",
         "brier": "Score de Brier {{score}} (n={{n}})",
         "brierHint": "Score de Brier sur {{n}} prévisions notées : la moyenne du carré de l'écart entre la probabilité prévue et ce qui s'est produit. 0 est parfait, 0,25 équivaut à un pile ou face ; plus c'est bas, mieux c'est.",
-        "baseRate": "Taux de base {{score}} (n={{n}})",
-        "baseRateHint": "Ce qu'aurait obtenu quelqu'un répondant toujours le taux de « oui » observé sur les mêmes {{n}} prévisions ({{pct}} % résolues par « oui »). Faire mieux signifie que les prévisions apportent de l'information.",
+        "baseRate": "Taux réel {{score}} (n={{n}})",
+        "baseRateHint": "Ce qu'aurait obtenu le fait de toujours prévoir la fréquence réelle de réussite de ces {{n}} prévisions ({{pct}}% résolues oui). Ce taux n'est connu qu'après coup.",
         "void": "Annulées {{pct}} % ({{count}} sur {{resolved}})",
         "voidHint": "Prévisions résolues mais impossibles à noter, sur {{resolved}} résolues dans la période.",
         "stale": "Obsolète",
         "staleHint": "Dernière notation le {{date}}. Le noteur n'a pas tourné depuis, ces chiffres sont donc plus anciens qu'ils ne devraient l'être.",
-        "fullRecord": "Bilan complet"
+        "fullRecord": "Bilan complet",
+        "skill": "Compétence {{score}} vs taux réel",
+        "skillHint": "Compétence sur les mêmes {{n}} prévisions notées, par rapport à toujours prévoir la fréquence réelle de réussite sur la période : 0 signifie la même erreur que ce taux, 1 est parfait, et en dessous de 0 signifie une erreur plus grande. L'historique complet indique si la différence est manifeste."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs taux de base {{base}}",
-        "measuredHint": "Score obtenu par les prévisions publiées {{domain}} sur {{n}} prévisions évaluées au cours des {{days}} derniers jours. Le taux de base est le score qu'on obtiendrait en répondant toujours par le taux de oui observé du domaine. Plus bas est mieux. C'est l'historique du domaine, pas de cette prévision.",
+        "measured": "{{domain}} n={{n}} · compétence {{skill}} vs taux réel",
+        "measuredHint": "Comment les prévisions publiées de {{domain}} ont performé sur {{n}} prévisions notées au cours des {{days}} derniers jours, par rapport à toujours prévoir la fréquence réelle de réussite des prévisions du domaine : 0 signifie la même erreur que ce taux, 1 est parfait, et en dessous de 0 signifie une erreur plus grande. Brier {{score}} par rapport à {{base}} pour ce taux, où plus bas est mieux. Un score de domaine n'a pas encore d'intervalle d'incertitude. Il s'agit de l'historique du domaine, non de cette prévision.",
         "unmeasured": "Pas encore mesuré",
-        "unmeasuredHint": "Les prévisions {{domain}} ont {{n}} résultats évalués au cours des {{days}} derniers jours. Un domaine doit en avoir {{min}} avant que sa précision soit affichée."
+        "unmeasuredHint": "Les prévisions de {{domain}} ont {{n}} résultats notés au cours des {{days}} derniers jours. La précision d'un domaine s'affiche une fois que ses résultats proviennent d'au moins {{min}} familles de prévisions, avec au moins {{outcomes}} qui se sont réalisées et autant qui ne se sont pas réalisées."
       },
       "resolution": {
         "last": "Dernier : {{outcome}}",

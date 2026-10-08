@@ -2372,22 +2372,24 @@
         "label": "Bilanz",
         "labelHint": "Wie die veröffentlichten Prognosen nach ihrer Auflösung in den letzten {{days}} Tagen abgeschnitten haben. Zeiger auf eine Zahl halten, um ihre Bedeutung zu sehen.",
         "unavailable": "Derzeit nicht verfügbar",
-        "insufficient": "Noch nicht genug bewertete Prognosen",
+        "insufficient": "Noch zu wenige unabhängige Prognosen",
         "brier": "Brier-Score {{score}} (n={{n}})",
         "brierHint": "Brier-Score über {{n}} bewertete Prognosen: die mittlere quadratische Abweichung zwischen der prognostizierten Wahrscheinlichkeit und dem tatsächlichen Ausgang. 0 ist perfekt, 0,25 entspricht einem Münzwurf, niedriger ist besser.",
-        "baseRate": "Basisrate {{score}} (n={{n}})",
-        "baseRateHint": "Was ein Prognostiker erreicht hätte, der immer die beobachtete Ja-Quote nennt, auf denselben {{n}} Prognosen ({{pct}} % endeten mit Ja). Wer besser ist, liefert echte Information.",
+        "baseRate": "Tatsächliche Quote {{score}} (n={{n}})",
+        "baseRateHint": "Was die Vorhersage, wie oft diese {{n}} Prognosen tatsächlich wahr waren ({{pct}}% aufgelöst mit ja), erzielt hätte. Diese Quote ist nur danach bekannt.",
         "void": "Ungültig {{pct}} % ({{count}} von {{resolved}})",
         "voidHint": "Aufgelöste Prognosen, die nicht bewertet werden konnten, von {{resolved}} aufgelösten im Zeitraum.",
         "stale": "Veraltet",
         "staleHint": "Zuletzt bewertet am {{date}}. Die Bewertung ist seitdem nicht gelaufen, daher sind diese Zahlen älter, als sie sein sollten.",
-        "fullRecord": "Vollständige Bilanz"
+        "fullRecord": "Vollständige Bilanz",
+        "skill": "Vorhersagegüte {{score}} vs. tatsächliche Quote",
+        "skillHint": "Vorhersagegüte über dieselben {{n}} bewerteten Prognosen, verglichen mit der ständigen Vorhersage, wie oft sie im Zeitraum tatsächlich eintraten: 0 bedeutet denselben Fehler wie diese Quote, 1 ist perfekt, und unter 0 bedeutet einen größeren Fehler. Die vollständige Bilanz zeigt, ob der Unterschied deutlich ist."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs Basisrate {{base}}",
-        "measuredHint": "Wie veröffentlichte {{domain}}-Prognosen bei {{n}} bewerteten Prognosen in den letzten {{days}} Tagen abgeschnitten haben. Die Basisrate ist das Ergebnis, das man durch konstante Antworten mit der beobachteten Ja-Quote des Bereichs erhalten würde. Niedriger ist besser. Dies ist die Bilanz des Bereichs, nicht dieser Prognose.",
+        "measured": "{{domain}} n={{n}} · Güte {{skill}} vs. tatsächliche Quote",
+        "measuredHint": "Wie veröffentlichte {{domain}}-Prognosen über {{n}} bewertete Prognosen in den letzten {{days}} Tagen abschnitten, verglichen mit der ständigen Vorhersage, wie oft die Prognosen des Bereichs tatsächlich eintraten: 0 bedeutet denselben Fehler wie diese Quote, 1 ist perfekt, und unter 0 bedeutet einen größeren Fehler. Brier {{score}} gegenüber {{base}} für diese Quote, wobei niedriger besser ist. Ein Bereichswert hat noch kein Unsicherheitsintervall. Dies ist die Bilanz des Bereichs, nicht dieser Prognose.",
         "unmeasured": "Noch nicht gemessen",
-        "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Ein Bereich benötigt {{min}}, bevor seine Genauigkeit angezeigt wird."
+        "unmeasuredHint": "{{domain}}-Prognosen haben {{n}} bewertete Ergebnisse in den letzten {{days}} Tagen. Die Genauigkeit eines Bereichs wird angezeigt, sobald seine Ergebnisse aus mindestens {{min}} Prognosefamilien stammen, von denen mindestens {{outcomes}} eingetreten sind und ebenso viele nicht."
       },
       "resolution": {
         "last": "Zuletzt: {{outcome}}",

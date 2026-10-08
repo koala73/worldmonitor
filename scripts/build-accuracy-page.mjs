@@ -7,17 +7,18 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import {
-  INTERVAL_MIN_SAMPLE,
   PUBLIC_RECEIPT_FIELDS,
   RECEIPT_SOURCE_LABELS,
   RECEIPT_VOID_REASON_LABELS,
+  SKILL_MIN_FAMILIES,
+  SKILL_MIN_OUTCOME_FAMILIES,
   wilsonInterval,
 } from './_forecast-scorecard.mjs';
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE } from './_market-alert-ledger.mjs';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const ACCURACY_CONTENT_VERSION = '2026-10-07';
+export const ACCURACY_CONTENT_VERSION = '2026-10-08';
 
 export const ACCURACY_PAGE_PATH = '/accuracy/';
 
@@ -89,8 +90,8 @@ const CALIBRATION_FIELDS = Object.freeze([
   'bucket', 'minProbability', 'maxProbability', 'count', 'predictedMean', 'realizedRate', 'brier',
 ]);
 const MARKET_SKILL_FIELDS = Object.freeze(['count', 'forecastBrier', 'marketBrier', 'brierDelta']);
-const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount']);
-const PUBLISHED_DOMAIN_FIELDS = Object.freeze(['domain', 'count', 'brier', 'yesCount']);
+const SKILL_FIELDS = Object.freeze(['count', 'brier', 'logScore', 'excludedScored', 'excludedOrigins', 'yesCount', 'bssCi95']);
+const PUBLISHED_DOMAIN_FIELDS = Object.freeze(['domain', 'count', 'brier', 'yesCount', 'bss']);
 const UNCERTAINTY_FIELDS = Object.freeze(['method', 'overallBrier', 'skillBrier']);
 const INTERVAL_FIELDS = Object.freeze(['count', 'mean', 'ci95', 'insufficientSample']);
 const FUNNEL_FIELDS = Object.freeze([
@@ -122,7 +123,7 @@ export const SCORECARD_NESTED_CHILD_FIELDS = Object.freeze({
 export const SCORECARD_NESTED_ROW_CHILD_FIELDS = Object.freeze({
   marketAlerts: { byType: MARKET_ALERT_ROW_FIELDS },
 });
-const NESTED_ROW_FIELDS = Object.freeze({
+export const SCORECARD_NESTED_ROW_FIELDS = Object.freeze({
   byDomain: DOMAIN_FIELDS,
   byGenerationOrigin: ORIGIN_FIELDS,
   calibration: CALIBRATION_FIELDS,
@@ -150,7 +151,7 @@ const INSUFFICIENT_SAMPLE = 'Insufficient sample';
 const POOLED_POPULATION = 'all-scored-entries';
 const BRIER_DELTA_CONVENTION = 'The published delta is the market Brier minus the forecast Brier, and lower is better, so a negative delta means the market scored better.';
 
-const META_DESCRIPTION = 'World Monitor grades its own forecasts. Published Brier and log scores, calibration buckets, per-domain accuracy, void rates, and every sample size behind them.';
+const META_DESCRIPTION = 'World Monitor grades its own forecasts against always forecasting how often events actually happened: skill scores, Brier and log scores, and sample sizes.';
 const AUDIT_META_DESCRIPTION = 'World Monitor\'s forecast accuracy record is under audit. Its scores are withdrawn while scoring errors are corrected; the method and the receipts stay public.';
 
 export function auditIssueUrl(audit) {
@@ -214,10 +215,10 @@ export function selectDeclaredScorecardFields(payload) {
       out[field] = nested;
       continue;
     }
-    if (Object.hasOwn(NESTED_ROW_FIELDS, field)) {
+    if (Object.hasOwn(SCORECARD_NESTED_ROW_FIELDS, field)) {
       if (!Array.isArray(payload[field])) continue;
       out[field] = payload[field]
-        .map((row) => pickFields(row, NESTED_ROW_FIELDS[field]))
+        .map((row) => pickFields(row, SCORECARD_NESTED_ROW_FIELDS[field]))
         .filter(Boolean);
       continue;
     }
@@ -310,17 +311,21 @@ export function classifyAccuracyState(section) {
     : 'current';
   // summarizeSkill returns null when nothing is scored at all, and a count of 0
   // when everything scored came from an excluded origin. Both mean the headline
-  // is unmeasurable, and neither is a capture failure.
+  // is unmeasurable, and neither is a capture failure. A scored cohort is
+  // measurable only on the producer's family minimums (#8990); a capture that
+  // predates them cannot show it met them, so it reads as a small sample.
   const skillCount = isPlainObject(scorecard.skill) ? positiveMs(scorecard.skill.count) : null;
-  const coverage = skillCount === null ? 'insufficient' : 'measurable';
+  const coverage = skillCount === null
+    ? 'insufficient'
+    : familyGate(scorecard) === 'met' ? 'measurable' : 'small-sample';
 
   const headline = availability !== 'ok'
     ? availability
     : freshness === 'stale'
       ? 'stale'
-      : coverage === 'insufficient'
-        ? 'insufficient'
-        : 'current';
+      : coverage === 'measurable'
+        ? 'current'
+        : 'insufficient';
 
   return {
     availability,
@@ -352,6 +357,81 @@ function rateOf(rate, denominator, noun) {
 function formatPercent(value) {
   return `${(Number(value) * 100).toFixed(1)}%`;
 }
+
+function formatSkill(value) {
+  const text = Number(value).toFixed(2);
+  return Number(text) > 0 ? `+${text}` : text === '-0.00' ? '0.00' : text;
+}
+
+// The producer's Brier interval resamples whole forecast families, and its
+// insufficientSample flag carries the family minimums (#8990). A capture whose
+// interval predates that method cannot show it met them.
+const FAMILY_INTERVAL_METHOD = /^family-level /;
+
+/**
+ * Whether the headline cohort meets the family minimums: 'met', 'short', or
+ * 'unknown' for a capture without a family-bootstrap interval over the cohort.
+ */
+export function familyGate(scorecard) {
+  const skill = isPlainObject(scorecard?.skill) ? scorecard.skill : null;
+  const method = scorecard?.uncertainty?.method;
+  if (!skill || typeof method !== 'string' || !FAMILY_INTERVAL_METHOD.test(method)) return 'unknown';
+  const interval = scoreInterval(scorecard.uncertainty.skillBrier, skill.count, skill.brier);
+  if (!interval) return 'unknown';
+  return interval.small ? 'short' : 'met';
+}
+
+/**
+ * Skill against the cohort's actual rate (#8990): how often these same
+ * forecasts came true in the window. BSS = 1 - Brier / p(1-p), from the counts
+ * the capture carries, the producer's formula. A better or worse verdict needs
+ * the producer's family-bootstrap skill interval (skill.bssCi95), which lets p
+ * vary across resamples, to sit wholly above or below 0. Mapping the Brier
+ * interval with p held fixed instead overstated certainty: a 30-family cohort
+ * read +0.17 to +0.47 that way, against -0.24 to +0.48 from the producer.
+ */
+export function baseRateSkill(scorecard) {
+  const skill = isPlainObject(scorecard?.skill) ? scorecard.skill : null;
+  if (!skill) return null;
+  const { count, yesCount, brier } = skill;
+  if (!isFiniteNumber(count) || count <= 0 || !isFiniteNumber(brier)) return null;
+  if (!Number.isInteger(yesCount) || yesCount < 0 || yesCount > count) return null;
+  const rate = yesCount / count;
+  const referenceBrier = rate * (1 - rate);
+  const bss = referenceBrier > 0 ? 1 - brier / referenceBrier : null;
+  const gate = familyGate(scorecard);
+  const familyGated = gate !== 'unknown';
+  const measurable = bss !== null && gate === 'met';
+  const [low, high] = Array.isArray(skill.bssCi95) && skill.bssCi95.length === 2 ? skill.bssCi95 : [];
+  const ci95 = bss !== null && isFiniteNumber(low) && isFiniteNumber(high) && low <= high ? [low, high] : null;
+  const verdict = !measurable
+    ? 'small-sample'
+    : ci95 && ci95[0] > 0 ? 'better' : ci95 && ci95[1] < 0 ? 'worse' : 'unclear';
+  return { count, yesCount, rate, referenceBrier, brier, bss, ci95, familyGated, measurable, verdict };
+}
+
+// The reference in plain words: always forecasting how often these forecasts
+// actually came true in the window, a rate known only in hindsight.
+const REFERENCE = 'always forecasting how often these events actually happened';
+
+const SKILL_LEADS = Object.freeze({
+  better: `Better than ${REFERENCE}.`,
+  worse: `Worse than ${REFERENCE}.`,
+  unclear: `Cannot tell yet whether World Monitor beats ${REFERENCE}.`,
+});
+
+function skillIntervalPhrase(reading) {
+  return reading.ci95 ? `, 95% interval ${formatSkill(reading.ci95[0])} to ${formatSkill(reading.ci95[1])}` : '';
+}
+
+const SKILL_RULE = `at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} that came true and ${SKILL_MIN_OUTCOME_FAMILIES} that did not`;
+
+function familyPhrase({ familyGated, measurable }) {
+  if (!familyGated) return 'forecast families this capture does not count';
+  return measurable ? `at least ${SKILL_MIN_FAMILIES} forecast families` : 'too few forecast families';
+}
+
+const SKILL_SCALE = '0 means the same error as that rate, 1 means perfect, and below 0 means a larger error';
 
 // Every binomial proportion the page shows is a count over a count it already
 // publishes, so its Wilson interval needs nothing the capture does not carry.
@@ -499,11 +579,22 @@ function headlineResultSentence(scorecard, interval) {
   const windowPhrase = windowDays
     ? `Over the current ${formatCount(windowDays)}-day window`
     : 'Over the current rolling window';
-  const intervalPhrase = interval ? ` (${scoreIntervalText(interval)})` : '';
-  return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)}${intervalPhrase} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
+  const brierPhrase = `${formatScore(skill.brier)}${interval ? ` (${scoreIntervalText(interval)})` : ''}`;
+  const reading = baseRateSkill(scorecard);
+  if (!reading || reading.bss === null) {
+    return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${brierPhrase} across ${formatCount(skill.count)} scored forecasts. This capture cannot compare that with ${REFERENCE}.`;
+  }
+  const against = `against ${formatScore(reading.referenceBrier)} for always forecasting the actual rate of ${formatPercent(reading.rate)}`;
+  if (!reading.measurable) {
+    return `${windowPhrase}, World Monitor's headline cohort has ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}: a small sample, too few to judge whether it beats ${REFERENCE}. On it the Brier score is ${brierPhrase}, ${against}.`;
+  }
+  const outcome = reading.verdict === 'unclear'
+    ? `it is not yet clear whether World Monitor's headline forecasts beat ${REFERENCE}`
+    : `World Monitor's headline forecasts were ${reading.verdict} than ${REFERENCE}`;
+  return `${windowPhrase}, ${outcome}: a skill score of ${formatSkill(reading.bss)}${skillIntervalPhrase(reading)}, where ${SKILL_SCALE}, over ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}. Their Brier score was ${brierPhrase}, ${against}.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores yet. Brier scores carry a 95% bootstrap interval when the scorecard includes one, and each score is published with the number of forecasts behind it. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUDIT) {
   const state = classifyAccuracyState(section);
@@ -537,11 +628,23 @@ export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUD
   return `## Forecast accuracy\n\n${paragraphs.join('\n\n')}\n`;
 }
 
+function skillTile(scorecard) {
+  const reading = baseRateSkill(scorecard);
+  if (!reading || reading.bss === null) {
+    return ['Skill vs actual rate, headline cohort', 'Not measurable', 'This capture cannot compare the cohort with its actual rate'];
+  }
+  const sample = `${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}`;
+  return reading.measurable
+    ? ['Skill vs actual rate, headline cohort', formatSkill(reading.bss), `${sample}${reading.ci95 ? skillIntervalPhrase(reading) : ', 95% interval not measurable'}`]
+    : ['Skill vs actual rate, headline cohort', 'Too few to judge', `Small sample: reads ${formatSkill(reading.bss)} on ${sample}`];
+}
+
 function headlineTiles(scorecard, intervals, escapeHtml) {
   const skill = isPlainObject(scorecard.skill) ? scorecard.skill : {};
   const skillCount = isFiniteNumber(skill.count) ? skill.count : 0;
   const { overall, totals } = scorecard;
   const tiles = [
+    skillTile(scorecard),
     [
       'Brier score, headline cohort',
       isFiniteNumber(skill.brier) ? formatScore(skill.brier) : 'Not measurable',
@@ -582,6 +685,7 @@ const RECORD_FACT_LABELS = Object.freeze({
   current: 'Current',
   stale: 'Stale',
   measurable: 'Measurable',
+  'small-sample': 'Small sample',
   insufficient: 'Not measurable',
 });
 
@@ -633,10 +737,13 @@ function coverageSentence(state) {
       : ' Nothing in this window has been scored yet.';
     return `The headline cohort has no scored forecast in this window, so it carries no Brier score.${excluded} The breakdowns below are still real measurements.`;
   }
-  if (skill.count < INTERVAL_MIN_SAMPLE) {
-    return `The headline cohort has ${formatCount(skill.count)} scored forecasts. That is fewer than the ${formatCount(INTERVAL_MIN_SAMPLE)} the domain table needs before it publishes a score, so read the headline score as a small sample.`;
+  const gate = familyGate(state.scorecard);
+  const reading = { familyGated: gate !== 'unknown', measurable: gate === 'met' };
+  const sample = `The headline cohort has ${formatCount(skill.count)} scored forecasts from ${familyPhrase(reading)}.`;
+  if (state.coverage === 'small-sample') {
+    return `${sample} Judging skill needs ${SKILL_RULE}, because the forecasts in one family are not independent. Read every headline score below as a small sample.`;
   }
-  return `The headline cohort has ${formatCount(skill.count)} scored forecasts, enough to publish a score.`;
+  return `${sample} That meets the minimum for judging skill: ${SKILL_RULE}.`;
 }
 
 function totalsTable(totals, intervals, escapeHtml) {
@@ -813,6 +920,17 @@ function domainLabel(domain) {
     ?? String(domain).split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
+// The producer writes a domain's bss only once the domain meets the family
+// minimums (#8990), so its presence is the measurable gate.
+function domainSkill(row) {
+  const n = Number(row?.count);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  if (!isFiniteNumber(row?.bss) || !isFiniteNumber(row.brier)) return null;
+  if (!Number.isInteger(row.yesCount) || row.yesCount < 0 || row.yesCount > n) return null;
+  const rate = row.yesCount / n;
+  return { bss: row.bss, brier: row.brier, referenceBrier: rate * (1 - rate) };
+}
+
 function domainSection(scorecard, escapeHtml) {
   const rows = scorecard.publishedByDomain;
   if (!isFiniteNumber(scorecard.schemaVersion) || scorecard.schemaVersion < PUBLISHED_BY_DOMAIN_SCHEMA || !Array.isArray(rows)) {
@@ -821,21 +939,16 @@ function domainSection(scorecard, escapeHtml) {
   if (rows.length === 0) {
     return '      <p>No published forecast has been graded in any domain yet.</p>';
   }
-  const cells = (row) => {
-    const n = Number(row.count);
-    const measured = n >= INTERVAL_MIN_SAMPLE && isFiniteNumber(row.brier)
-      && Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
-    if (!measured) return [NOT_YET_MEASURED, NOT_YET_MEASURED];
-    const p = row.yesCount / n;
-    return [formatScore(row.brier), formatScore(p * (1 - p))];
-  };
   return `      <div class="table-scroll"><table data-by-domain>
-        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its Brier once it has ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} graded forecasts and reads Not yet measured below that. The base rate is what always answering the domain's observed yes rate would have scored, p(1-p); a Brier below it means the forecasts added information.</caption>
-        <thead><tr><th scope="col">Domain</th><th scope="col">Graded forecasts</th><th scope="col">Brier</th><th scope="col">Base rate</th></tr></thead>
+        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its scores once its graded forecasts come from ${escapeHtml(SKILL_RULE)}, and reads Not yet measured below that. The actual-rate Brier is what always forecasting how often the domain's forecasts actually came true would have scored, p(1-p). The skill score compares the two: ${escapeHtml(SKILL_SCALE)}. Per-domain skill scores carry no interval yet, so the table does not say which domains beat that rate.</caption>
+        <thead><tr><th scope="col">Domain</th><th scope="col">Graded forecasts</th><th scope="col">Skill vs actual rate</th><th scope="col">Brier</th><th scope="col">Actual-rate Brier</th></tr></thead>
         <tbody>
 ${rows.map((row) => {
-    const [brier, base] = cells(row);
-    return `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(domainLabel(row.domain))}</th><td>${escapeHtml(formatCount(row.count))}</td><td>${escapeHtml(brier)}</td><td>${escapeHtml(base)}</td></tr>`;
+    const reading = domainSkill(row);
+    const cells = reading
+      ? [formatSkill(reading.bss), formatScore(reading.brier), formatScore(reading.referenceBrier)]
+      : [NOT_YET_MEASURED, NOT_YET_MEASURED, NOT_YET_MEASURED];
+    return `          <tr data-domain="${escapeHtml(row.domain)}"><th scope="row">${escapeHtml(domainLabel(row.domain))}</th><td>${escapeHtml(formatCount(row.count))}</td>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`;
   }).join('\n')}
         </tbody>
       </table></div>`;
@@ -874,7 +987,9 @@ const NOT_YET_MEASURABLE = 'Not yet measurable';
 const CONTROL_GATED_ALERT_TYPES = new Set(['prediction_leads_news']);
 
 const isRate = (value) => isFiniteNumber(value) && value >= 0 && value <= 1;
-const isMeasurableCount = (value) => Number.isInteger(value) && value >= INTERVAL_MIN_SAMPLE;
+// Alerts are not forecast families, so they keep their own row count floor.
+const MARKET_ALERT_MIN_SAMPLE = 30;
+const isMeasurableCount = (value) => Number.isInteger(value) && value >= MARKET_ALERT_MIN_SAMPLE;
 
 function formatLeadTime(ms) {
   const minutes = Math.round(ms / 60_000);
@@ -887,7 +1002,7 @@ function marketAlertCells(row) {
   const compared = isMeasurableCount(row.baseN) && isRate(row.pairedHitRate) && isRate(row.baseHitRate);
   const published = compared || !CONTROL_GATED_ALERT_TYPES.has(row.type);
   const hit = published && isMeasurableCount(row.scored) && isRate(row.hitRate);
-  const leadMeasured = hit && Math.round(row.hitRate * row.scored) >= INTERVAL_MIN_SAMPLE;
+  const leadMeasured = hit && Math.round(row.hitRate * row.scored) >= MARKET_ALERT_MIN_SAMPLE;
   return [
     hit ? rateOf(row.hitRate, row.scored, 'alerts') : NOT_YET_MEASURABLE,
     published && compared ? rateOf(row.pairedHitRate, row.baseN, 'alerts') : NOT_YET_MEASURABLE,
@@ -920,7 +1035,7 @@ ${rules}`;
   return `${heading}
 ${intro}
       <div class="table-scroll"><table data-market-alerts>
-        <caption>Market-alert hit rates by alert type. Each figure is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts are behind it and reads Not yet measurable below that, the same rule as the domain table. The two comparison columns count only the alerts whose earlier window could also be checked, so both rates describe the same alerts. The typical wait is shown once ${escapeHtml(formatCount(INTERVAL_MIN_SAMPLE))} alerts were followed by news. Prediction-market alerts are shown only once their earlier windows have been checked, because the topic words in a prediction question turn up in the news often anyway.</caption>
+        <caption>Market-alert hit rates by alert type. Each figure is shown once ${escapeHtml(formatCount(MARKET_ALERT_MIN_SAMPLE))} alerts are behind it and reads Not yet measurable below that. The two comparison columns count only the alerts whose earlier window could also be checked, so both rates describe the same alerts. The typical wait is shown once ${escapeHtml(formatCount(MARKET_ALERT_MIN_SAMPLE))} alerts were followed by news. Prediction-market alerts are shown only once their earlier windows have been checked, because the topic words in a prediction question turn up in the news often anyway.</caption>
         <thead><tr><th scope="col">Alert type</th><th scope="col">Alerts scored</th><th scope="col">News followed</th><th scope="col">News followed, compared alerts</th><th scope="col">News a day earlier, same markets</th><th scope="col">Typical wait for the news (median)</th></tr></thead>
         <tbody>
 ${marketAlerts.byType.map((row) => `          <tr data-alert-type="${escapeHtml(row.type)}"><th scope="row">${escapeHtml(MARKET_ALERT_TYPE_LABELS[row.type] ?? row.type)}</th><td>${escapeHtml(formatCount(row.scored))}</td>${marketAlertCells(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('\n')}
@@ -936,11 +1051,10 @@ function cohortSection(skill, unknownSentence, escapeHtml) {
       <p>The headline Brier and log score cover ${escapeHtml(formatCount(count))} scored forecasts: every scored entry except those from the origins the scorecard excludes, currently ${escapeHtml(excludedCohortPhrase(skill))}. That exclusion costs ${escapeHtml(formatCount(excludedScored))} scored entries. ${escapeHtml(unknownSentence)} This cohort is defined by what it leaves out and not by any property of the entries it keeps. The all-scored figure beside it is the same window with every origin put back, which is why the two numbers differ.</p>`;
 }
 
-// The verdict block (#8873) reads a cohort as three counts and one score:
-// { count, yesCount, brier }. The base rate is yesCount / count, and the null
-// it is judged against is the forecaster who answers that rate to everything,
+// The verdict block (#8873) leads with skill against the headline cohort's
+// actual rate (#8990): the forecaster who answers that rate to everything,
 // whose Brier is rate × (1 − rate). Outcomes in this ledger are rare, so that
-// null is far stricter than the 0.25 coin flip the headline is anchored to.
+// null is far stricter than the 0.25 coin flip.
 const PROBABILITY_BANDS = Object.freeze([
   { lead: 'When World Monitor put the chance', phrase: 'under 20%', subject: 'the forecast', from: 0, below: 0.2 },
   { lead: 'When it put the chance', phrase: 'between 20% and 50%', subject: 'it', from: 0.2, below: 0.5 },
@@ -982,17 +1096,6 @@ function pooledCohort(scorecard) {
   };
 }
 
-function baseRateSentences({ count, yesCount, brier }) {
-  const baseRate = yesCount / count;
-  const constantBrier = baseRate * (1 - baseRate);
-  // Compare the printed figures first so the sentence can never call a tie a
-  // win: when both round to the same three decimals, the reader sees a tie.
-  const verdict = formatScore(brier) === formatScore(constantBrier)
-    ? 'matched'
-    : brier < constantBrier ? 'beat' : 'did not beat';
-  return `Always answering that rate would have an error of ${formatScore(constantBrier)}. World Monitor's error was ${formatScore(brier)}, so it ${verdict} always answering the base rate${verdict === 'matched' ? ', to three decimals' : ''}.`;
-}
-
 function ledgerVerdictSentences(totals, windowDays) {
   const windowPhrase = isFiniteNumber(windowDays) ? `Over the current ${formatCount(windowDays)}-day window` : 'Over the current rolling window';
   return `${windowPhrase}, ${formatCount(totals.resolved)} forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} are in the queue for a judge, counted whether or not their deadline has passed.`;
@@ -1018,42 +1121,74 @@ function marketVerdictSentence(vsMarketSkill) {
   return `In the ${formatCount(vsMarketSkill.count)} cases where a liquid prediction market covered the same question, ${closer}.`;
 }
 
+// One rate over every graded forecast mixes domains whose outcomes come true
+// at very different rates, so it is reported as a count, never as a verdict.
 function pooledVerdictSentences(scorecard) {
   const cohort = pooledCohort(scorecard);
   if (!cohort) {
-    return 'The base rate across all graded forecasts cannot be derived from this capture, because its probability buckets do not account for every graded forecast.';
+    return 'How often all graded forecasts came true cannot be derived from this capture, because its probability buckets do not account for every graded forecast.';
   }
-  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}. ${baseRateSentences(cohort)}`;
+  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}. That count pools kinds of forecast that come true at very different rates, so it is not compared with a single rate. Skill is judged within the headline cohort and within each domain.`;
 }
 
-function headlineVerdictSentences(skill) {
+// The page's lead (#8990): did the headline forecasts beat always forecasting
+// how often these events actually happened? Better or worse only when the
+// family-bootstrap interval excludes 0; a small sample reads as one.
+function skillVerdict(scorecard) {
+  const { skill } = scorecard;
   const count = isPlainObject(skill) && isFiniteNumber(skill.count) ? skill.count : 0;
   if (count <= 0 || !isFiniteNumber(skill.brier)) {
-    return 'The headline cohort has no graded forecast in this window, so there is nothing to compare it against.';
+    return { verdict: 'none', lead: 'No skill to report yet.', text: 'The headline cohort has no graded forecast in this window, so there is nothing to compare with how often events actually happened.' };
   }
-  if (!isFiniteNumber(skill.yesCount)) {
-    return `The narrower headline cohort of ${formatCount(count)} forecasts cannot be compared the same way yet: the published scorecard does not yet record how many of its forecasts came true.`;
+  const reading = baseRateSkill(scorecard);
+  if (!reading) {
+    return { verdict: 'none', lead: 'No skill to report yet.', text: `This capture does not record how many of the ${formatCount(count)} headline forecasts came true, so it cannot compare them with ${REFERENCE}.` };
   }
-  return `Within the narrower headline cohort of ${formatCount(count)} forecasts, ${formatCount(skill.yesCount)} came true: ${rateOf(skill.yesCount / count, count, 'forecasts')}. ${baseRateSentences({ count, yesCount: skill.yesCount, brier: skill.brier })}`;
+  const tally = `Of ${formatCount(reading.count)} graded forecasts, ${formatCount(reading.yesCount)} came true: ${rateOf(reading.rate, reading.count, 'forecasts')}.`;
+  if (reading.bss === null) {
+    return { verdict: 'none', lead: 'No skill to report yet.', text: `${tally} Every one went the same way, so always forecasting how often they happened was never wrong and there is nothing to beat.` };
+  }
+  const errors = `Always forecasting that ${formatPercent(reading.rate)} would have had an error of ${formatScore(reading.referenceBrier)}. World Monitor's error was ${formatScore(reading.brier)}.`;
+  const sample = `They come from ${familyPhrase(reading)}.`;
+  if (!reading.measurable) {
+    return {
+      verdict: 'small-sample',
+      lead: 'Too few independent forecasts to judge yet.',
+      text: `${tally} ${sample} Judging skill needs ${SKILL_RULE}. On this small sample the skill score reads ${formatSkill(reading.bss)}, which is not a result.`,
+    };
+  }
+  const certainty = reading.verdict === 'unclear'
+    ? reading.ci95 ? ' The interval includes 0, so the difference may be chance.' : ' This capture carries no interval for it, so the difference may be chance.'
+    : ` The whole interval is ${reading.verdict === 'better' ? 'above' : 'below'} 0.`;
+  return {
+    verdict: reading.verdict,
+    lead: SKILL_LEADS[reading.verdict],
+    text: `${tally} ${errors} On a scale where ${SKILL_SCALE}, that is a skill score of ${formatSkill(reading.bss)}${skillIntervalPhrase(reading)}.${certainty} ${sample}`,
+  };
 }
 
 function verdictSection(scorecard, escapeHtml) {
+  const skill = skillVerdict(scorecard);
   const paragraphs = [
     escapeHtml(ledgerVerdictSentences(scorecard.totals, scorecard.rollingWindowDays)),
     bandOutcomes(scorecard.calibration).map((outcome) => bandSentence(outcome, escapeHtml)).join(' '),
     escapeHtml(marketVerdictSentence(scorecard.vsMarketSkill)),
     escapeHtml(pooledVerdictSentences(scorecard)),
-    escapeHtml(headlineVerdictSentences(scorecard.skill)),
   ];
   return `      <section data-accuracy-verdict aria-label="Plain-language verdict">
         <h2>In plain terms</h2>
+        <p data-accuracy-skill="${escapeHtml(skill.verdict)}"><strong>${escapeHtml(skill.lead)}</strong> ${escapeHtml(skill.text)}</p>
 ${paragraphs.map((paragraph) => `        <p>${paragraph}</p>`).join('\n')}
       </section>
       <dl data-accuracy-definitions>
         <dt>Brier score</dt>
-        <dd>${escapeHtml('The error figure used above: the average squared gap between the chance World Monitor gave and what happened. 0 is perfect, 0.25 is a coin flip, and lower is better.')}</dd>
-        <dt>Base rate</dt>
-        <dd>${escapeHtml('How often the outcomes in a set of forecasts came true, whatever the question. Always answering the base rate is the forecast that knows the history and nothing about any single question; its error is the rate times one minus the rate. Beating it is the first test of skill.')}</dd>
+        <dd>${escapeHtml('The error figure used above: the average squared gap between the chance World Monitor gave and what happened. 0 is perfect and lower is better. Answering even odds to everything scores 0.25, a coin flip.')}</dd>
+        <dt>Actual rate</dt>
+        <dd>${escapeHtml('How often a set of forecasts came true in the period scored, whatever the question. It is known only afterwards, so always forecasting it is a hindsight benchmark: it uses the right overall rate and nothing about any single question. Its Brier score is the rate times one minus the rate. Beating it is the first test of skill.')}</dd>
+        <dt>Skill score</dt>
+        <dd>${escapeHtml(`One minus World Monitor's Brier score divided by the actual-rate Brier score, over the same forecasts: ${SKILL_SCALE}. Its 95% interval resamples whole forecast families.`)}</dd>
+        <dt>Forecast family</dt>
+        <dd>${escapeHtml('One forecast question that World Monitor issues again over time, such as the same threshold for the same country. Its forecasts share a question and an outcome, so a family counts once when deciding whether a sample is large enough. A family is one forecast id, which only approximates independence: the same question is sometimes issued under more than one id.')}</dd>
       </dl>`;
 }
 
@@ -1064,7 +1199,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
   return `      <h2>What this page does not publish</h2>
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
-        <li>No confidence intervals on the log scores. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling the individual forecasts. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
+        <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
         <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #7075</a>.</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
@@ -1190,7 +1325,7 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset, audit }) {
     name: 'World Monitor forecast resolution scorecard',
     description: audit
       ? `${accuracyAuditNotice(audit, 'in this dataset')} Findings: ${auditIssueUrl(audit)}. The download keeps the raw scorecard fields as captured, flagged underAudit; they are not reliable while the audit is open.`
-      : 'Aggregate accuracy of World Monitor forecasts over a rolling window: Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, a head-to-head against liquid prediction markets, and receipts for the most recently resolved forecasts. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
+      : 'Aggregate accuracy of World Monitor forecasts over a rolling window: skill against always forecasting how often the forecast events actually happened, Brier and log scores for the headline cohort and for every scored entry, calibration buckets with their sample sizes, per-domain and per-origin breakdowns, void rates, a head-to-head against liquid prediction markets, and receipts for the most recently resolved forecasts. Frozen from the credentialed forecast scorecard API into a committed snapshot, so the published figures and the machine-readable distribution always agree.',
     identifier: DATASET_IDENTIFIER,
     keywords: [
       'forecast accuracy',
@@ -1206,13 +1341,14 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset, audit }) {
     spatialCoverage: 'Worldwide',
     includedInDataCatalog: dataset.catalog,
     variableMeasured: [
+      'Brier skill score against the actual rate',
       'Brier score',
       'Logarithmic score',
       'Calibration bucket realized rate',
       'Void rate',
       'Scored forecast count',
     ],
-    measurementTechnique: 'Brier and logarithmic scoring of resolved binary forecast windows',
+    measurementTechnique: 'Brier and logarithmic scoring of resolved binary forecast windows, with skill measured against always forecasting the rate at which the same forecasts came true',
     ...(state.capturedAt ? { temporalCoverage: state.capturedAt } : {}),
     distribution: [dataset.download],
   };
@@ -1250,6 +1386,37 @@ export function renderAccuracyPage({ baseUrl, tpl, state, lastmod, dataset, data
     ]),
     body: accuracyBody({ state, baseUrl, tpl, dataset, snapshotPath, audit }),
   });
+}
+
+// Skill against the actual rate (#8990), derived from the captured counts
+// with the producer's formula, beside the minimums its verdict needs.
+function skillDownload(scorecard) {
+  if (!scorecard) return null;
+  const reading = baseRateSkill(scorecard);
+  return {
+    definition: 'skillScore = 1 - brier / actualRateBrier over the same forecasts, where actualRateBrier = p(1-p) and p is the share that came true in the window. 0 is the same error as always forecasting p, 1 is perfect, below 0 is a larger error. verdict is better or worse only when the family-bootstrap ci95 lies wholly above or below 0.',
+    minimums: { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES },
+    perDomainInterval: 'not carried: the public API has no room for it under its size cap. Domain intervals, family counts and effective n are in the MCP get_forecast_scorecard result.',
+    headline: reading
+      ? {
+        scored: reading.count,
+        yesCount: reading.yesCount,
+        actualRate: reading.rate,
+        actualRateBrier: reading.referenceBrier,
+        brier: reading.brier,
+        skillScore: reading.bss,
+        ci95: reading.ci95,
+        measurable: reading.measurable,
+        verdict: reading.verdict,
+      }
+      : null,
+    byDomain: (Array.isArray(scorecard.publishedByDomain) ? scorecard.publishedByDomain : []).flatMap((row) => {
+      const reading = domainSkill(row);
+      return reading
+        ? [{ domain: row.domain, scored: row.count, brier: reading.brier, actualRateBrier: reading.referenceBrier, skillScore: reading.bss }]
+        : [];
+    }),
+  };
 }
 
 export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_ACCURACY_AUDIT }) {
@@ -1295,9 +1462,15 @@ export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_
           method: state.scorecard?.uncertainty?.method ?? null,
         },
         logScore: { published: false, trackedIn: CONFIDENCE_INTERVAL_ISSUE },
+        skillScore: {
+          published: Boolean(state.coverage !== 'insufficient' && baseRateSkill(state.scorecard)?.ci95),
+          method: state.scorecard?.uncertainty?.method ?? null,
+          perDomain: false,
+        },
       },
     },
     intervals: proportionIntervals(state.scorecard),
+    skillVsActualRate: skillDownload(state.scorecard),
     // Point-in-time horizons are graded internally (#8939); neither the
     // projection values (#8967) nor those grades are published here.
     horizonProjections: { valuesPublished: false, gradesPublished: false, trackedIn: HORIZON_SCORING_ISSUE },

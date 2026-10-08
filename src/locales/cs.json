@@ -2392,22 +2392,24 @@
         "label": "Dosavadní výsledky",
         "labelHint": "Jak si publikované předpovědi vedly po svém rozhodnutí za posledních {{days}} dní. Najeďte na číslo, abyste zjistili, co znamená.",
         "unavailable": "Momentálně nedostupné",
-        "insufficient": "Zatím není dost ohodnocených předpovědí",
+        "insufficient": "Zatím příliš málo nezávislých prognóz",
         "brier": "Brierovo skóre {{score}} (n={{n}})",
         "brierHint": "Brierovo skóre pro {{n}} ohodnocených předpovědí: průměrný čtverec rozdílu mezi předpovězenou pravděpodobností a tím, co se stalo. 0 je dokonalost, 0,25 odpovídá hodu mincí, nižší je lepší.",
-        "baseRate": "Základní míra {{score}} (n={{n}})",
-        "baseRateHint": "Co by získal ten, kdo by vždy odpovídal pozorovaným podílem „ano“, na stejných {{n}} předpovědích ({{pct}} % skončilo „ano“). Překonat ji znamená, že předpovědi přinášejí informaci.",
+        "baseRate": "Skutečná četnost {{score}} (n={{n}})",
+        "baseRateHint": "Jaký výsledek by dosáhla strategie vždy předpovídat podle skutečné četnosti těchto {{n}} předpověď ({{pct}}% vyřešeno ano). Tato četnost je známa až po realizaci.",
         "void": "Zrušeno {{pct}} % ({{count}} z {{resolved}})",
         "voidHint": "Předpovědi, které byly rozhodnuty, ale nešlo je ohodnotit, z {{resolved}} rozhodnutých v daném období.",
         "stale": "Neaktuální",
         "staleHint": "Naposledy hodnoceno {{date}}. Hodnocení od té doby neproběhlo, takže tato čísla jsou starší, než by měla být.",
-        "fullRecord": "Úplné výsledky"
+        "fullRecord": "Úplné výsledky",
+        "skill": "Dovednost {{score}} vs skutečná četnost",
+        "skillHint": "Dovednost ve srovnání se {{n}} hodnocenými předpověďmi, oproti předpovědi vždy podle skutečné četnosti výsledků v daném období: 0 znamená stejnou chybu jako tato četnost, 1 je dokonalé, pod 0 znamená větší chybu. Úplný záznam ukazuje, zda je rozdíl jasný."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs základní míra {{base}}",
-        "measuredHint": "Jak dosáhly publikované {{domain}} předpovědi ve {{n}} ohodnocených předpovědích za poslední {{days}} dní. Základní míra je to, co by získala vždy odpověď na základě pozorované frekvence „ano\" v dané doméně. Nižší je lepší. Toto je záznam domény, ne této předpovědi.",
+        "measured": "{{domain}} n={{n}} · dovednost {{skill}} vs skutečná četnost",
+        "measuredHint": "Jak zveřejněné předpovědi z domény {{domain}} dosahovaly výsledky ve {{n}} hodnocených předpověďích za posledních {{days}} dní, oproti předpovědi vždy podle skutečné četnosti předpověď z dané domény: 0 znamená stejnou chybu jako tato četnost, 1 je dokonalé, pod 0 znamená větší chybu. Brier {{score}} oproti {{base}} pro tuto četnost, kde je nižší lepší. Skóre domény zatím nemá interval nejistoty. Toto je záznam domény, ne předpověď.",
         "unmeasured": "Zatím neměřeno",
-        "unmeasuredHint": "Předpovědi {{domain}} mají {{n}} vyhodnocených výsledků za poslední {{days}} dní. Doména potřebuje {{min}}, než se zobrazí její přesnost."
+        "unmeasuredHint": "Předpovědi z oblasti {{domain}} mají {{n}} hodnocených výsledků za posledních {{days}} dní. Přesnost oblasti se zobrazí, jakmile její výsledky pocházejí alespoň z {{min}} rodin předpovědí, z nichž se alespoň {{outcomes}} naplnilo a stejný počet nenaplnil."
       },
       "resolution": {
         "last": "Poslední: {{outcome}}",

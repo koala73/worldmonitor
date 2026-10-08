@@ -189,7 +189,8 @@ describe('bounded forecast list and original case transport', () => {
 });
 
 describe('published forecast reliability transport', () => {
-  const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, ...changes });
+  // bss is present only on a domain that met the producer's family minimums (#8990).
+  const row = (domain = 'energy', changes = {}) => ({ domain, count: 45, brier: 0.213, yesCount: 18, bss: 0.112, ...changes });
   // Pins the lifted state (#8990); the suite below pins what the tool serves while the audit switch is set.
   const project = (scorecard, predictions = full) => {
     const data = { predictions: structuredClone(predictions), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
@@ -208,11 +209,12 @@ describe('published forecast reliability transport', () => {
   it('projects only loaded published domains with the website sample and base-rate rules', () => {
     const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [row(), row('conflict'), row('bet_engine')], byDomain: [row('energy', { brier: 0.001 })], receipts: ['private'], skill: 0.99 };
     const reliability = project(scorecard);
-    assert.deepEqual(reliability?.byDomain, [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }], 'loaded energy must carry its published reliability, never pooled/headline values');
+    assert.deepEqual(reliability?.byDomain, [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4, bss: 0.112 }], 'loaded energy must carry its published reliability, never pooled/headline values');
     assert.equal(reliability.status, 'ready'); assert.equal(reliability.windowDays, 90);
     const many = { ...full, predictions: Array.from({ length: 50 }, (unusedValue, domainIndex) => ({ ...full.predictions[0], domain: 'domain-' + domainIndex })) };
     assert.equal(project({ ...scorecard, publishedByDomain: many.predictions.map(prediction => row(prediction.domain)) }, many).byDomain.length, 30, 'public reliability is bounded to the loaded thirty domains');
-    for (const changes of [{ count: 29 }, { yesCount: 15.5 }, { yesCount: -1 }, { yesCount: 46 }, { brier: null }]) assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', changes)] }).byDomain[0].kind, 'unmeasured');
+    for (const changes of [{ bss: undefined }, { bss: null }, { yesCount: 15.5 }, { yesCount: -1 }, { yesCount: 46 }, { brier: null }]) assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', changes)] }).byDomain[0].kind, 'unmeasured');
+    assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', { count: 29 })] }).byDomain[0].kind, 'measured', 'the producer gates on families, not on the row count');
     assert.equal(project({ ...scorecard, publishedByDomain: [row('energy', { count: 45.5 })] }).byDomain[0].kind, 'measured');
     assert.equal(project({ ...scorecard, publishedByDomain: [row(), row('energy', { brier: 0.3 })] }).byDomain[0].brier, 0.3);
     assert.deepEqual(project({ ...scorecard, publishedByDomain: [] }).byDomain, [{ domain: 'energy', kind: 'unmeasured', n: 0 }]);
