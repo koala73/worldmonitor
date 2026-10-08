@@ -2175,11 +2175,14 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
    * a pinned dispatcher. First-party calls (the rate limiter's Redis, usage
    * telemetry) share globalThis.fetch and are not upstream dispatches.
    */
+  const UPSTREAM_HOSTS = new Set(['mcp.example.com', 'old.example.com', 'new.example.com']);
+
   function recordDispatches(upstream) {
     const dispatches = [];
     globalThis.fetch = async (url, init) => {
-      if (new URL(String(url)).hostname.endsWith('example.com')) {
-        dispatches.push({ url: String(url), method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Agent });
+      const { hostname } = new URL(String(url));
+      if (UPSTREAM_HOSTS.has(hostname)) {
+        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Agent });
       }
       return upstream(url, init);
     };
@@ -2204,8 +2207,8 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
 
     assert.ok(dispatches.length >= 4, `expected the full exchange, saw ${dispatches.length}`);
     assert.deepEqual(dispatches.filter((d) => !d.pinned), [], 'every upstream dispatch must carry a pinned dispatcher');
-    assert.ok(dispatches.some((d) => d.url.startsWith('https://new.example.com/')), 'the redirect hop was followed');
-    assert.ok(resolved.includes('new.example.com'), 'the redirect target is vetted before its own dispatch');
+    assert.ok(dispatches.some((d) => d.hostname === 'new.example.com'), 'the redirect hop was followed');
+    assert.ok(resolved.some((hostname) => hostname === 'new.example.com'), 'the redirect target is vetted before its own dispatch');
   });
 
   it('pins the legacy SSE stream, its RPC POSTs and the initialized notification', async () => {
