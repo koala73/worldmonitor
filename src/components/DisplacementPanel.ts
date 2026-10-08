@@ -84,7 +84,6 @@ export class DisplacementPanel extends Panel {
   }
 
   protected override updateFreshnessBadge(): void {
-    // The health mapping covers annual UNHCR, not the independent DTM/portal tabs.
     super.updateFreshnessBadge(this.activeTab === 'internal' || this.activeTab === 'crossBorder' ? null : undefined);
   }
 
