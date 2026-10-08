@@ -247,7 +247,7 @@ const RENDER = `
       if (!error || typeof error !== "object" || Array.isArray(error)) return "";
       var allowed = [
         [-32602, "Invalid panel request."],
-        [-32602, "Panel request expired. Open or refresh the panel."],
+        [-32602, "Panel request expired. Open or refresh the panel.", "This panel request was not accepted. Open a new forecasts panel."],
         [-32602, "Open a forecast panel before reading original evidence."],
         [-32602, "Panel request only covers bounded forecast lists, original cases and latest theater summaries."],
         [-32029, "This panel reached its read budget. Refresh to start another request."],
@@ -258,7 +258,7 @@ const RENDER = `
         [-32003, "Required data inputs are unavailable"]
       ];
       var match = allowed.find(function (entry) { return error.code === entry[0] && error.message === entry[1]; });
-      return match ? match[1] + " (Error " + match[0] + ")" : "";
+      return match ? (match[2] || match[1]) + " (Error " + match[0] + ")" : "";
     }
     function publicToolError(payload) {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";

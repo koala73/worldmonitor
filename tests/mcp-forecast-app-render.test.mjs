@@ -57,7 +57,7 @@ function theaterReply(win, request, source = theaterResponse) { hostReply(win, r
 describe('forecast public request errors', () => {
   const publicErrors = [
     [-32602, 'Invalid panel request.'],
-    [-32602, 'Panel request expired. Open or refresh the panel.'],
+    [-32602, 'Panel request expired. Open or refresh the panel.', 'This panel request was not accepted. Open a new forecasts panel.'],
     [-32602, 'Open a forecast panel before reading original evidence.'],
     [-32602, 'Panel request only covers bounded forecast lists, original cases and latest theater summaries.'],
     [-32029, 'This panel reached its read budget. Refresh to start another request.'],
@@ -78,13 +78,14 @@ describe('forecast public request errors', () => {
       return { ...state, target: kind === 'case' ? state.doc.querySelector('#list details') : state.doc.getElementById('theaters'), request: state.messages.find(m => m.method === 'tools/call') };
     }
     it('preserves allowlisted public ' + kind + ' errors without exposing response data or making another call', async () => {
-      for (const [code, message] of publicErrors) {
+      for (const [code, message, notice = message] of publicErrors) {
         const { win, doc, target, request, messages } = await start();
         const error = { code, message, data: { token: 'private-token-sentinel', account: 'private-account-sentinel', message: '<img src=x onerror=alert(1)>' } };
         const reply = id => win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', id, error } }));
         reply('unrelated-request'); assert.match(target.textContent, /Loading/);
         reply(request.id);
-        assert.ok(target.textContent.includes(message), target.textContent);
+        assert.ok(target.textContent.includes(notice), target.textContent);
+        assert.doesNotMatch(target.textContent, /Panel request expired/);
         assert.ok(target.textContent.includes(String(code)), target.textContent);
         assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|private-account-sentinel|onerror/);
         assert.equal(doc.querySelector('img'), null);
