@@ -10,7 +10,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, isChokepointDisrupted, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
-import { assessFunnelDiversity, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
+import { assessFunnelDiversity, buildFunnelHealthMeta, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { alignPriorToPublication, applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -2061,6 +2061,7 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
   return predictions;
 }
 
+// Not published while cyber is in WITHHELD_PUBLISH_FAMILIES (#8990).
 function detectCyberScenarios(inputs) {
   const predictions = [];
   const threats = Array.isArray(inputs.cyberThreats) ? inputs.cyberThreats : inputs.cyberThreats?.threats || [];
@@ -2517,6 +2518,7 @@ function capMarketCalibrationProbability(domain, probability) {
   return +Math.max(0, Math.min(cap, probability)).toFixed(3);
 }
 
+// Not published while prediction_market is in WITHHELD_PUBLISH_FAMILIES (#8990).
 function detectFromPredictionMarkets(inputs) {
   const predictions = [];
   // All three pools (#5733). This detector scores any market whose title tags a
@@ -5033,16 +5035,9 @@ async function seedForecastFunnelHealth(predictions) {
   }
   const { url, token } = getRedisCredentials();
   await redisSet(url, token, FUNNEL_HEALTH_KEY, assessment, FUNNEL_HEALTH_TTL_SECONDS);
-  // Companion seed-meta so /api/health surfaces a collapse via its existing
-  // freshness+status machinery: status:'error' → SEED_ERROR (warn), recordCount
-  // = distinct domain count. A healthy run writes status:'ok' and stays fresh.
-  const meta = {
-    fetchedAt: Date.now(),
-    recordCount: assessment.domainCount,
-    sourceVersion: 'funnel-guardrail:v1',
-    status: assessment.collapsed ? 'error' : 'ok',
-    reasons: assessment.reasons,
-  };
+  // Companion seed-meta: /api/health reads its freshness. A collapse is
+  // recorded in it as information and never sets an error status.
+  const meta = buildFunnelHealthMeta(assessment, Date.now());
   await redisCommand(url, token, [
     'SET', `seed-meta:${FUNNEL_HEALTH_KEY}`, JSON.stringify(meta), 'EX', FUNNEL_HEALTH_TTL_SECONDS,
   ]).catch((err) => console.warn(`  [FunnelHealth] seed-meta write failed: ${err.message}`));
@@ -14290,8 +14285,31 @@ function isWeakForecastFallback(pred) {
     && counterEvidenceTypes.has('confidence');
 }
 
+// Forecast families withheld from publication until they have a checkable
+// question (#8990, the rule #5234 set for state-derived buckets). Cyber rows
+// all VOID while CYBER_JUDGING_HELD (seed-forecast-resolutions.mjs) holds the
+// judges; prediction-market detector rows read the bootstrap feed's crowd
+// price, which the resolver always VOIDs as market_price_not_outcome. Withheld
+// forecasts still feed the run's world state; they never reach the published
+// payload, so the resolution ledger opens no new rows for them. To restore a
+// family, remove it here once it resolves (cyber: lift the hold; prediction
+// market: resolve by slug on prediction:markets-resolution:v1).
+const WITHHELD_PUBLISH_FAMILIES = Object.freeze(['cyber', 'prediction_market']);
+
+function getPublishWithholdFamily(pred) {
+  if (pred?.domain === 'cyber') return 'cyber';
+  if ((pred?.signals || []).some((signal) => signal?.type === 'prediction_market')) return 'prediction_market';
+  return null;
+}
+
+function getWithheldPublishFamily(pred) {
+  const family = getPublishWithholdFamily(pred);
+  return family && WITHHELD_PUBLISH_FAMILIES.includes(family) ? family : null;
+}
+
 function isPublishEligibleForecast(pred, minProbability = PUBLISH_MIN_PROBABILITY) {
-  return (pred?.probability || 0) > minProbability && !isWeakForecastFallback(pred);
+  return (pred?.probability || 0) > minProbability && !isWeakForecastFallback(pred)
+    && !getWithheldPublishFamily(pred);
 }
 
 function summarizeResolutionHardCoverage(predictions = []) {
@@ -14856,6 +14874,11 @@ function markDeferredFamilySelection(predictions, selectedPool) {
     if ((pred?.probability || 0) <= PUBLISH_MIN_PROBABILITY) continue;
     if (selectedIds.has(pred.id)) continue;
     if (pred.publishDiagnostics?.reason) continue;
+    const withheldFamily = getWithheldPublishFamily(pred);
+    if (withheldFamily) {
+      pred.publishDiagnostics = { reason: 'withheld_family', family: withheldFamily };
+      continue;
+    }
     if (isWeakForecastFallback(pred)) {
       pred.publishDiagnostics = { reason: 'weak_fallback' };
       continue;
@@ -19770,6 +19793,7 @@ export {
   filterPublishedForecasts,
   applySituationFamilyCaps,
   summarizePublishFiltering,
+  WITHHELD_PUBLISH_FAMILIES,
   selectForecastsForEnrichment,
   parseForecastProviderOrder,
   getForecastLlmCallOptions,

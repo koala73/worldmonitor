@@ -1137,13 +1137,13 @@ test('classifyKey: a blocked source with no data escalates like every other faul
   assert.equal(blockedWithData.status, 'SEED_ERROR');
 });
 
-test('classifyKey: a collapsed forecast funnel keeps SEED_ERROR when its payload is absent', () => {
+test('classifyKey: a producer error on the forecast funnel keeps SEED_ERROR when its payload is absent', () => {
   // forecastFunnel is in EMPTY_DATA_OK_KEYS, so its absence branch resolves to
   // OK/STALE_SEED — softer than the fault. api/health.js's own comment on the
-  // set entry states the dependency: "A COLLAPSED funnel still surfaces via
-  // seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this
-  // branch." A bare `&& hasData` guard would demote the collapse to a generic
-  // STALE_SEED and drop the reason.
+  // set entry states the dependency: "A producer status:'error' still surfaces
+  // as SEED_ERROR, which classifyKey checks before this branch." A bare
+  // `&& hasData` guard would demote the error to a generic STALE_SEED and drop
+  // the reason. (A narrow funnel itself no longer writes status:'error'.)
   const entry = classifyKey(
     'forecastFunnel',
     STANDALONE_KEYS.forecastFunnel,

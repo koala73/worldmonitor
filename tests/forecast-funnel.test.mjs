@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { assessFunnelDiversity } from '../scripts/_forecast-funnel.mjs';
+import { assessFunnelDiversity, buildFunnelHealthMeta } from '../scripts/_forecast-funnel.mjs';
 
 function pred(domain, generationOrigin = 'legacy_detector') {
   return { domain, generationOrigin };
@@ -84,5 +84,30 @@ describe('assessFunnelDiversity', () => {
     });
     assert.equal(custom.syntheticShare, 0);
     assert.equal(custom.collapsed, false);
+  });
+});
+
+describe('buildFunnelHealthMeta', () => {
+  const NOW = 1_700_000_000_000;
+
+  // Health degrades only when the generator does not run. A narrow funnel is an
+  // output-quality reading, and withholding the cyber and prediction-market
+  // families (#8990) leaves 3 published domains in most runs.
+  it('reports a run that published a collapsed funnel as ok, with the collapse as information', () => {
+    const assessment = assessFunnelDiversity([pred('conflict'), pred('market'), pred('supply_chain')]);
+    assert.equal(assessment.collapsed, true);
+    const meta = buildFunnelHealthMeta(assessment, NOW);
+    assert.equal(meta.status, 'ok');
+    assert.equal(meta.collapsed, true);
+    assert.deepEqual(meta.reasons, ['only 3 distinct domain(s) (min 4)']);
+    assert.equal(meta.recordCount, 3);
+    assert.equal(meta.fetchedAt, NOW);
+  });
+
+  it('reports a diverse funnel as ok and not collapsed', () => {
+    const meta = buildFunnelHealthMeta(assessFunnelDiversity(['conflict', 'market', 'political', 'supply_chain'].map((d) => pred(d))), NOW);
+    assert.equal(meta.status, 'ok');
+    assert.equal(meta.collapsed, false);
+    assert.deepEqual(meta.reasons, []);
   });
 });

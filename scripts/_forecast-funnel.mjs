@@ -3,8 +3,8 @@
 // The verification pipeline can only measure real skill if the PUBLISHED funnel
 // is diverse and not dominated by synthetic count-padding. This assesses a
 // published prediction set and flags a "collapsed" funnel — too few distinct
-// domains, or too high a synthetic share — so the generator can WARN and a
-// health check can surface it. Pure + injected: no wall-clock, no I/O.
+// domains, or too high a synthetic share — so the generator can WARN and the
+// health payload can report it. Pure + injected: no wall-clock, no I/O.
 
 import { SYNTHETIC_GENERATION_ORIGINS, SHADOW_GENERATION_ORIGINS } from './_forecast-scorecard.mjs';
 
@@ -55,6 +55,22 @@ export function assessFunnelDiversity(predictions, options = {}) {
     maxSyntheticShare,
     collapsed,
     reasons,
+  };
+}
+
+// The companion seed-meta for /api/health. A run that reached this point ran,
+// so status stays 'ok'; a narrow or synthetic-heavy funnel is an output-quality
+// reading, carried in collapsed/reasons and the generator's WARN log. Health
+// degrades only when the generator stops writing, which seed-meta freshness
+// catches.
+export function buildFunnelHealthMeta(assessment, nowMs) {
+  return {
+    fetchedAt: nowMs,
+    recordCount: assessment.domainCount,
+    sourceVersion: 'funnel-guardrail:v1',
+    status: 'ok',
+    collapsed: assessment.collapsed,
+    reasons: assessment.reasons,
   };
 }
 

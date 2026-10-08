@@ -258,8 +258,12 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
 
 // The judges' archive held 0 to 2 on-subject items for cyber rows and the
 // pair never ruled NO, so a judged cyber score could only be an unsupported
-// YES (#5233). Phase 2 of #8990 flips this once the evidence is fixed; the
-// dedicated reason lets it find the rows held out meanwhile.
+// YES (#5233). #8995 fixed the judged evidence and kept this hold: the archive
+// still rarely names a cyber subject and its country together. The generator
+// no longer publishes cyber forecasts (WITHHELD_PUBLISH_FAMILIES in
+// seed-forecasts.mjs, #8990), so only rows opened before that seal here. Lift
+// the hold only with a cyber question the archive can answer, and restore
+// publication in the same change; the dedicated reason finds the held rows.
 export const CYBER_JUDGING_HELD = true;
 export const JUDGED_EVIDENCE_UNRELIABLE_REASON = 'judged_evidence_unreliable';
 
