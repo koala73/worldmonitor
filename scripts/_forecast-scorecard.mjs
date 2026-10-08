@@ -1069,7 +1069,8 @@ const internalDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row
 
 // The pre-blend stage (#7070): the forecaster's value before the market blend,
 // scored only on rows that record it. `raw` is the post-blend stage, so
-// internal − raw is what the blend cost (positive: the blend lowered Brier).
+// internal − raw is what the market blend and its domain cap cost (positive:
+// they lowered Brier).
 // Rows without the value are counted in `missing`, never imputed. The block
 // draws its own bootstrap stream and the activation gate never reads it, so a
 // caller that needs only the verdict passes `preBlendStage: false` to skip it.
@@ -1118,14 +1119,7 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
         rawBrier: summary.raw.brier,
         calibratedBrier: summary.calibrated.brier,
         brierDelta: summary.brierDelta,
-        ...(summary.internal && { internal: {
-          count: summary.internal.count,
-          families: summary.internal.families,
-          missing: summary.internal.missing,
-          brier: summary.internal.brier,
-          rawBrier: summary.internal.rawBrier,
-          brierDelta: summary.internal.brierDelta,
-        } }),
+        ...(summary.internal && { internal: summary.internal }),
       };
     }),
   };

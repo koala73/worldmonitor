@@ -1090,7 +1090,9 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
   // so "not yet shown non-inferior" must not release a held growth refit.
   // Each trial fits on 40 one-row families from a forecaster biased high by
   // 0.2, then adds one forward family a day.
-  const noisyTrial = (truth, trialSeed) => {
+  // The pre-blend stage never feeds the gate, so the trials skip it; trial 0
+  // keeps the default configuration the resolver publishes.
+  const noisyTrial = (truth, trialSeed, shadowOptions = { preBlendStage: false }) => {
     const random = mulberry32(trialSeed);
     const fitAt = T0 + 30 * DAY_MS;
     let base;
@@ -1109,7 +1111,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
       forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
       const now = fitAt + 10 * DAY_MS + i * DAY_MS;
       const ledger = ledgerOf([...base, ...forward]);
-      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, { preBlendStage: false });
+      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, shadowOptions);
       const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
         .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
       if (inferior) inferiorAt.push(forward.length);
@@ -1120,7 +1122,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
   };
 
   it('R4: a map that helps reaches its gate verdict despite a noisy partial sample (seeded)', () => {
-    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t));
+    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t, t === 0 ? {} : undefined));
     const premature = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60);
     assert.ok(premature.length <= 2, `${premature.length} of 20 refit before 60 forward outcomes`);
     for (const trial of premature) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'only demonstrated inferiority releases the hold');
@@ -1396,6 +1398,9 @@ describe('pre-blend stage in the shadow (#7070)', () => {
     const inferred = { probability: 0.3, rescore: { reason: 'last_seen_probability', superseded: { calibration: lineage(0.1, 0.3) } } };
     assert.ok(Number.isNaN(preBlendProbability(inferred)), 'a rescore that removed the anchor lost the opening lineage');
     assert.equal(preBlendProbability({ ...inferred, rescore: { ...inferred.rescore, restoredFromHistory: true } }), 0.3, 'restored openings are exact');
+    // The old overwrite could replace an anchored opening with an unanchored
+    // sighting; the inferred rescore then supersedes nothing about the anchor.
+    assert.ok(Number.isNaN(preBlendProbability({ probability: 0.3, rescore: { reason: 'last_seen_probability', superseded: {} } })), 'an inferred rescore never proves the opening was unanchored');
   });
 
   it('scores internal, raw and calibrated separately, with a family-cluster interval on internal minus raw', () => {
@@ -1418,6 +1423,9 @@ describe('pre-blend stage in the shadow (#7070)', () => {
     assert.ok(Array.isArray(summary.internal.eceCi95));
     const cyber = summary.byDomain.find((row) => row.domain === 'cyber');
     assert.deepEqual({ count: cyber.internal.count, missing: cyber.internal.missing, brier: cyber.internal.brier, delta: cyber.internal.brierDelta.mean }, { count: 30, missing: 0, brier: 0.01, delta: -0.08 });
+    assert.equal(cyber.internal.ece, 0.1);
+    assert.ok(Array.isArray(cyber.internal.eceCi95) && Array.isArray(cyber.internal.brierDelta.ci95));
+    assert.deepEqual(cyber.internal.reliability.map((row) => [row.bucket, row.count]), [['10-20', 30]]);
   });
 
   it('counts rows without a pre-blend value as missing and scores the rest, never imputing', () => {

@@ -137,9 +137,10 @@ export function sourceProbability(entry) {
 
 // The forecaster's own value before the #7071 market blend, frozen with the
 // window's opening calibration. A window that opened without an anchor was
-// never blended, so its pre-blend value is the post-blend one. NaN when an
-// anchor applied but its lineage is unknown: an anchor recorded without
-// `internalProbability`, or one a rescore without the first emission removed.
+// never blended, so its pre-blend value is the post-blend one. NaN when the
+// opening anchor or its lineage is unknown: an anchor recorded without
+// `internalProbability`, or any rescore not restored from the first emission,
+// since the old overwrite could have dropped an opening anchor without a trace.
 export function preBlendProbability(entry) {
   const calibration = entry?.calibration;
   const anchored = Number.isFinite(Number(calibration?.marketPrice)) || Number.isFinite(calibration?.marketBlendedProbability);
@@ -148,7 +149,7 @@ export function preBlendProbability(entry) {
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
   }
   const rescore = entry?.rescore;
-  if (rescore && !rescore.restoredFromHistory && rescore.superseded?.calibration) return NaN;
+  if (rescore && !rescore.restoredFromHistory) return NaN;
   return sourceProbability(entry);
 }
 
