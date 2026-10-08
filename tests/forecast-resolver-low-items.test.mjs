@@ -66,9 +66,12 @@ describe('chokepoint forecasts resolve on the gate that emitted them (#8990)', (
 
   it('the shared floor is the feed\'s own red boundary', async () => {
     const { CHOKEPOINT_DISRUPTED_MIN_SCORE } = await import('../scripts/_forecast-resolution.mjs');
+    const [suez] = emittedChokepointForecast(CHOKEPOINT_DISRUPTED_MIN_SCORE, generatedAt, 'Suez Canal');
     assert.equal(scoreToStatus(CHOKEPOINT_DISRUPTED_MIN_SCORE), 'red');
     assert.notEqual(scoreToStatus(CHOKEPOINT_DISRUPTED_MIN_SCORE - 1), 'red');
-    assert.equal(emitted.resolution.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE);
+    assert.equal(suez.resolution.operator, '>=');
+    assert.equal(suez.resolution.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE);
+    assert.equal(suez.resolution.rule, 'disrupted');
   });
 
   it('a current emission read back from history opens windows already on the rule, with nothing superseded', () => {
