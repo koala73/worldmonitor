@@ -134,6 +134,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     },
     judgedLane: summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options),
     goForward,
+    specOrigins: summarizeSpecOrigins(entries, options),
     byDomain: summarizeGroups(scored, resolved, 'domain', 'domain'),
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
@@ -533,6 +534,80 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     attemptClasses: byClass,
     attemptStages: byStage,
   };
+}
+
+// Retired by #5334 before #7067 was filed: the gate cannot change its VOIDs,
+// so it stays out of the go-forward comparison.
+export const INFRASTRUCTURE_BASELINE_FEED = 'infra:outages:v1';
+const FEED_NAMESPACE_FAMILY = { intelligence: 'gps', prediction: 'prediction_market', infra: 'infrastructure' };
+
+// A row's hard family, from the feed its spec read, or for a downgraded row
+// the feed it would have read; so a downgraded row and a hard row of the same
+// family share a key. Native judged rows are keyed by domain.
+export function specFamilyOf(entry) {
+  const spec = entry?.spec || {};
+  const feed = spec.originalSourceFeed || spec.sourceFeed;
+  if (typeof feed === 'string' && feed.length > 0) {
+    const namespace = feed.split(':')[0];
+    return FEED_NAMESPACE_FAMILY[namespace] || namespace;
+  }
+  return spec.kind === 'judged' ? `judged:${entry?.domain || 'unknown'}` : 'unknown';
+}
+
+/**
+ * Follow-through for the extraction gate (#7067): outcomes per spec origin and
+ * family. Rows emitted before the gate enforces carry no specOrigin and file
+ * as `legacy`. Every row is held to the judged-lane bar (resolved by deadline
+ * plus the reporting grace plus the SLA), so a downgraded row and the hard
+ * path of its family are compared on one clock; a downgrade succeeds only if
+ * it raises scored-within-SLA yield. Internal: not on the public endpoint.
+ */
+function summarizeSpecOrigins(entries, options = {}) {
+  const slaMs = Number.isFinite(options.judgedSlaMs) ? Math.max(0, options.judgedSlaMs) : DEFAULT_JUDGED_SLA_MS;
+  const byOrigin = {};
+  const latencies = new Map();
+  let excludedInfrastructureBaseline = 0;
+  for (const entry of entries) {
+    if (entry?.spec?.sourceFeed === INFRASTRUCTURE_BASELINE_FEED) {
+      excludedInfrastructureBaseline += 1;
+      continue;
+    }
+    const origin = typeof entry?.specOrigin === 'string' ? entry.specOrigin : 'legacy';
+    const family = specFamilyOf(entry);
+    const row = ((byOrigin[origin] ??= {})[family] ??= {
+      entries: 0, resolved: 0, scored: 0, void: 0, pending: 0, pendingJudge: 0, scoredWithinSla: 0,
+    });
+    row.entries += 1;
+    if (entry?.status === 'pending') row.pending += 1;
+    if (entry?.status === 'pending-judge') row.pendingJudge += 1;
+    if (entry?.status !== 'resolved') continue;
+    row.resolved += 1;
+    if (entry?.outcome === 'VOID') row.void += 1;
+    const deadline = entryDeadline(entry);
+    const resolvedAt = Number(entry?.resolvedAt);
+    const timed = Number.isFinite(deadline) && Number.isFinite(resolvedAt);
+    if (isScoredEntry(entry)) {
+      row.scored += 1;
+      if (timed && resolvedAt - (deadline + JUDGED_EVIDENCE_GRACE_MS) <= slaMs) row.scoredWithinSla += 1;
+    }
+    if (timed) {
+      if (!latencies.has(row)) latencies.set(row, []);
+      latencies.get(row).push(Math.max(0, resolvedAt - deadline));
+    }
+  }
+  for (const families of Object.values(byOrigin)) {
+    for (const row of Object.values(families)) {
+      row.scoredWithinSlaRate = row.resolved ? round(row.scoredWithinSla / row.resolved) : null;
+      const values = (latencies.get(row) || []).sort((a, b) => a - b);
+      row.medianLatencyHours = values.length ? round(medianOfSorted(values) / (60 * 60 * 1000)) : null;
+    }
+  }
+  return { slaMs, excludedInfrastructureBaseline, byOrigin };
+}
+
+function medianOfSorted(values) {
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
 }
 
 function isJudgedEntry(entry) {

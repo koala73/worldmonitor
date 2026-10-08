@@ -43,7 +43,7 @@ import {
   samplePendingEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildPublishedForecastPayload, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
+import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
@@ -3282,6 +3282,105 @@ describe('extraction gate shadow shares the resolver feed view (#7067)', () => {
     const cohort = logs.filter((line) => line.includes('would_downgrade'));
     assert.equal(cohort.length, 1);
     assert.ok(!cohort[0].includes('\n'), 'the logged line carries no raw newline');
+  });
+});
+
+describe('extraction gate enforcement end to end (#7067)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const PM_FEED = 'prediction:markets-bootstrap:v1';
+  const SCORECARD_KEY_LITERAL = 'forecast:scorecard:v1';
+  const FEEDS = {
+    [GPS_FEED]: { date: '2026-07-07', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
+    [PM_FEED]: { geopolitical: [] },
+  };
+  const forecast = (overrides) => ({
+    probability: 0.6,
+    confidence: 0.5,
+    timeHorizon: '7d',
+    generationOrigin: 'legacy_detector',
+    generatedAt: T0,
+    ...overrides,
+  });
+
+  function emitted() {
+    return attachResolutionSpecs([
+      forecast({ id: 'fc-gps-gulf', domain: 'supply_chain', region: 'Persian Gulf', title: 'GPS jamming: Persian Gulf', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Persian Gulf', weight: 0.5 }] }),
+      forecast({ id: 'fc-gps-guinea', domain: 'supply_chain', region: 'Gulf of Guinea', title: 'GPS jamming: Gulf of Guinea', signals: [{ type: 'gps_jamming', value: '12 jamming hexes in Gulf of Guinea', weight: 0.5 }] }),
+      forecast({ id: 'fc-pm', domain: 'conflict', region: 'Sudan', title: 'Will the Sudan ceasefire hold?', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] }),
+      forecast({ id: 'fc-mil', domain: 'military', region: 'Baltic', title: 'Naval posture shift: Baltic', signals: [] }),
+    ], {}, T0);
+  }
+
+  async function run(forecasts, store, options) {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    __setRedisStoreForTests(store);
+    try {
+      return { result: await runExtractionGate(forecasts, T0, options), logs };
+    } finally {
+      __setRedisStoreForTests(null);
+      console.log = originalLog;
+    }
+  }
+
+  it('with the switch off, emission, history and the ledger match the shadow-only run', async () => {
+    const reads = [];
+    const store = new Proxy(FEEDS, { get(target, key) { reads.push(key); return target[key]; } });
+    const forecasts = emitted();
+    const before = JSON.stringify(forecasts);
+    const { result } = await run(forecasts, store);
+    assert.equal(JSON.stringify(forecasts), before);
+    assert.equal(result.decision.mode, 'shadow');
+    assert.ok(!reads.includes(SCORECARD_KEY_LITERAL), 'the scorecard is not read while the gate is off');
+    const snapshot = buildHistorySnapshot({ generatedAt: T0, predictions: forecasts });
+    assert.equal(JSON.stringify(snapshot), JSON.stringify(buildHistorySnapshot({ generatedAt: T0, predictions: emitted() })));
+    const ledger = ingestHistory({}, [snapshot], T0);
+    assert.ok(Object.values(ledger).every((entry) => !('specOrigin' in entry)));
+  });
+
+  it('the shadow counter line names the deploy, so a spec change splits the counters', async () => {
+    const previous = process.env.RAILWAY_GIT_COMMIT_SHA;
+    process.env.RAILWAY_GIT_COMMIT_SHA = '0123456789abcdef';
+    try {
+      const { logs } = await run(emitted(), FEEDS);
+      assert.match(logs.find((line) => line.includes('[ExtractionGate] shadow')), / deploy=0123456789ab /);
+    } finally {
+      if (previous === undefined) delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      else process.env.RAILWAY_GIT_COMMIT_SHA = previous;
+    }
+  });
+
+  it('enforcing on a healthy lane carries specOrigin through history into the ledger', async () => {
+    const forecasts = emitted();
+    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { judgedLane: { pendingJudge: 3, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
+    const { result, logs } = await run(forecasts, store, { enforced: true });
+    assert.deepEqual(result.decision, { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' });
+    assert.match(logs.find((line) => line.includes('[ExtractionGate] enforce')), /downgraded=\{"gps":1,"prediction_market":1\} withheld=\{"supply_chain":1,"military":1\}/);
+
+    const snapshot = buildHistorySnapshot({ generatedAt: T0, predictions: forecasts });
+    const history = Object.fromEntries(snapshot.predictions.map((entry) => [entry.id, entry.resolution]));
+    assert.equal(history['fc-pm'].kind, 'judged');
+    assert.equal(history['fc-pm'].specOrigin, 'hard_downgraded_unextractable');
+    assert.equal(history['fc-pm'].originalFamily, 'prediction_market');
+    assert.equal(history['fc-pm'].downgradeReason, 'metric_not_found');
+    assert.deepEqual([history['fc-gps-guinea'].kind, history['fc-gps-guinea'].reason], ['unscored', 'generic_judged_question']);
+
+    const ledger = ingestHistory({}, [snapshot], T0);
+    const byId = Object.fromEntries(Object.values(ledger).filter((entry) => !entry.parentKey).map((entry) => [entry.id, entry]));
+    assert.deepEqual(Object.keys(byId).sort(), ['fc-gps-gulf', 'fc-pm'], 'withheld forecasts open no window');
+    assert.equal(byId['fc-pm'].status, 'pending-judge');
+    assert.equal(byId['fc-pm'].specOrigin, 'hard_downgraded_unextractable');
+    assert.equal(byId['fc-gps-gulf'].specOrigin, 'hard');
+    assert.ok(!Object.values(ledger).some((entry) => entry.parentKey?.startsWith('fc-gps-guinea')), 'no horizon window for an unextractable metric');
+  });
+
+  it('a backlogged lane keeps unextractable specs hard', async () => {
+    const forecasts = emitted();
+    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { judgedLane: { pendingJudge: 88, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
+    const { result } = await run(forecasts, store, { enforced: true });
+    assert.equal(result.decision.reason, 'judged_lane_backlogged');
+    assert.equal(forecasts.find((f) => f.id === 'fc-pm').resolution.kind, 'hard');
   });
 });
 

@@ -10,7 +10,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { subjectMatcherForRegion } from './_forecast-subject.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
-import { attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, evaluateExtractionShadow, isChokepointDisrupted, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
+import { applyExtractionGate, attachResolutionSpecs, CHOKEPOINT_MARKET_REGIONS, decideExtractionGateMode, evaluateExtractionShadow, EXTRACTION_GATE_ENFORCED, isChokepointDisrupted, extractionShadowFeedKeys, HORIZON_MS, scoredHorizonKeys, summarizeExtractionShadow } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity, buildFunnelHealthMeta, NON_REAL_FUNNEL_ORIGINS } from './_forecast-funnel.mjs';
 import { alignPriorToPublication, applyPublishedCalibration, CALIBRATION_FORCE_RAW_ENV, decideCalibrationPublication, parseCalibrationMap, recordCalibrationPublication } from './_forecast-calibration.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
@@ -5611,10 +5611,19 @@ function buildResolutionOutputBlock(resolution) {
   };
 }
 
+// Fields the extraction gate stamps (#7067). Absent while the gate is off.
+const GATE_RESOLUTION_FIELDS = ['specOrigin', 'reason', 'originalFamily', 'originalMetricKey', 'originalSourceFeed', 'downgradeReason'];
+
 function buildHistoryResolutionBlock(resolution) {
-  const block = buildResolutionOutputBlock(resolution);
-  if (!block || typeof resolution.rule !== 'string' || !Number.isFinite(resolution.ruleVersion)) return block;
-  return { ...block, rule: resolution.rule, ruleVersion: resolution.ruleVersion };
+  let block = buildResolutionOutputBlock(resolution);
+  if (!block) return block;
+  if (typeof resolution.rule === 'string' && Number.isFinite(resolution.ruleVersion)) {
+    block = { ...block, rule: resolution.rule, ruleVersion: resolution.ruleVersion };
+  }
+  for (const field of GATE_RESOLUTION_FIELDS) {
+    if (typeof resolution[field] === 'string' && resolution[field].length > 0) block = { ...block, [field]: resolution[field] };
+  }
+  return block;
 }
 
 function buildHorizonResolutionsOutputBlock(horizonResolutions) {
@@ -16796,7 +16805,7 @@ async function fetchForecasts() {
   const initiallyPublishedSituationFamilies = publishArtifacts.filteredSituationFamilies;
   const publishedPredictions = publishArtifacts.publishedPredictions;
   // Only published forecasts reach the resolution ledger, so only they are measured.
-  await runExtractionGateShadow(publishedPredictions);
+  await runExtractionGate(publishedPredictions, runGeneratedAt);
   const publishTelemetry = summarizePublishFiltering(predictions, finalSelectionPool, publishedPredictions);
   const publishedSituationClusters = publishArtifacts.publishedSituationClusters;
   const publishedSituationFamilies = publishArtifacts.publishedSituationFamilies;
@@ -16854,7 +16863,8 @@ async function runExtractionGateShadow(predictions) {
     const verdicts = evaluateExtractionShadow(predictions, rawByKey);
     const summary = summarizeExtractionShadow(verdicts);
     const count = (outcome) => summary.byOutcome[outcome] || 0;
-    console.log(`  [ExtractionGate] shadow hard=${summary.total} pass=${count('pass')} fail=${count('fail')} feed_unavailable=${count('feed_unavailable')} skipped=${count('skipped')} byFamily=${JSON.stringify(summary.byFamily)} byDomain=${JSON.stringify(summary.byDomain)}`);
+    // deploy= splits the counters at a spec change (GPS: #9003, #9047).
+    console.log(`  [ExtractionGate] shadow hard=${summary.total} pass=${count('pass')} fail=${count('fail')} feed_unavailable=${count('feed_unavailable')} skipped=${count('skipped')} deploy=${getDeployRevision().slice(0, 12) || 'unknown'} byFamily=${JSON.stringify(summary.byFamily)} byDomain=${JSON.stringify(summary.byDomain)}`);
     for (const v of verdicts) {
       if (v.outcome === 'fail') console.log(`  [ExtractionGate] would_downgrade id=${JSON.stringify(v.id)} family=${v.family} domain=${v.domain} metricKey=${JSON.stringify(v.metricKey)} reason=${v.reason}`);
     }
@@ -16863,6 +16873,26 @@ async function runExtractionGateShadow(predictions) {
     console.warn(`  [ExtractionGate] shadow skipped: ${err?.message || err}`);
     return null;
   }
+}
+
+// The shadow gate, then enforcement when EXTRACTION_GATE_ENFORCED is on. With
+// the switch off nothing past the shadow runs, so emission is unchanged and
+// the scorecard is not read.
+async function runExtractionGate(predictions, generatedAt, { enforced = EXTRACTION_GATE_ENFORCED } = {}) {
+  const shadow = await runExtractionGateShadow(predictions);
+  if (!enforced) return { shadow, decision: decideExtractionGateMode(null, { enforced }), counts: null };
+  let judgedLane = null;
+  try {
+    const { url, token } = getRedisCredentials();
+    judgedLane = (await redisGetOrThrow(url, token, CALIBRATION_GATE_SCORECARD_KEY))?.judgedLane ?? null;
+  } catch (err) {
+    console.warn(`  [ExtractionGate] scorecard read failed: ${err?.message || err}`);
+  }
+  const decision = decideExtractionGateMode(judgedLane, { enforced });
+  // A failed shadow has no verdicts, so nothing is downgraded this run.
+  const counts = applyExtractionGate(predictions, shadow?.verdicts || [], generatedAt, decision);
+  console.log(`  [ExtractionGate] enforce downgrade=${decision.downgrade} reason=${decision.reason} pendingJudge=${judgedLane?.pendingJudge ?? 'unknown'} downgraded=${JSON.stringify(counts.downgraded)} withheld=${JSON.stringify(counts.withheld)}`);
+  return { shadow, decision, counts };
 }
 
 async function readForecastRefreshRequest() {
@@ -19968,6 +19998,7 @@ export {
   callForecastLLM,
   __setForecastLlmRunDeadlineForTests,
   __setRedisStoreForTests,
+  runExtractionGate,
   runExtractionGateShadow,
   buildMarketImplicationsFingerprint,
   buildAndSeedMarketImplications,

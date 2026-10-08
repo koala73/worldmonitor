@@ -1507,6 +1507,9 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     for (const forecast of snapshot.predictions || []) {
       const spec = forecast.resolution;
       if (!spec || typeof spec !== 'object') continue;
+      // The extraction gate's `unscored` spec (#7067) withholds the forecast
+      // from both lanes, so it opens no window.
+      if (spec.kind !== 'hard' && spec.kind !== 'judged') continue;
       const id = forecast.id;
       const deadline = Number(spec.deadline);
       const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
@@ -2255,6 +2258,9 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     timeHorizon: forecast.timeHorizon || '',
     generationOrigin: forecast.generationOrigin || forecast.origin || 'unknown',
     stateBucketId: typeof forecast.stateBucketId === 'string' ? forecast.stateBucketId : undefined,
+    // Set only on rows emitted while the extraction gate enforces (#7067);
+    // the scorecard files rows without it as legacy.
+    specOrigin: typeof spec.specOrigin === 'string' ? spec.specOrigin : undefined,
     spec: cloneJson(spec),
     probability: Number(forecast.probability),
     firstSeenProbability: Number(forecast.probability),

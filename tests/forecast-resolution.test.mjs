@@ -22,6 +22,10 @@ import {
   evaluateExtractionShadow,
   extractionShadowFeedKeys,
   summarizeExtractionShadow,
+  applyExtractionGate,
+  decideExtractionGateMode,
+  EXTRACTION_GATE_ENFORCED,
+  EXTRACTION_GATE_MAX_PENDING_JUDGE,
   HORIZON_SAMPLE_TOLERANCE_MS,
   PROJECTION_HORIZONS,
   buildHorizonResolutionSpecs,
@@ -1306,5 +1310,139 @@ describe('projection horizon contracts (#7075)', () => {
       buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT),
       buildHorizonResolutionSpecs(pointInTime(), {}, GENERATED_AT),
     );
+  });
+});
+
+describe('extraction gate enforcement (#7067)', () => {
+  const GPS_FEED = 'intelligence:gpsjam:v2';
+  const PM_FEED = 'prediction:markets-bootstrap:v1';
+  const RAW_FEEDS = {
+    [GPS_FEED]: { date: '2023-11-14', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
+    [PM_FEED]: { geopolitical: [] },
+  };
+  const HEALTHY_LANE = { pendingJudge: 4, instrumentedResolved: 12, scoredWithinSlaRate: 0.5 };
+  const ENFORCE = decideExtractionGateMode(HEALTHY_LANE, { enforced: true });
+
+  const gps = (region) => pred({
+    id: `fc-gps-${region}`,
+    domain: 'supply_chain',
+    region,
+    title: `GPS jamming: ${region}`,
+    timeHorizon: '7d',
+    signals: [{ type: 'gps_jamming', value: `12 jamming hexes in ${region}`, weight: 0.5 }],
+  });
+  // A conflict-domain market question: hard prediction_market family, absent
+  // from the feed, with a domain-specific judged question to fall back on.
+  const market = () => pred({
+    id: 'fc-pm-conflict',
+    domain: 'conflict',
+    region: 'Sudan',
+    title: 'Will the Sudan ceasefire hold?',
+    signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }],
+  });
+  const military = () => pred({ id: 'fc-mil', domain: 'military', region: 'Baltic', title: 'Naval posture shift: Baltic' });
+  const conflict = () => pred({ id: 'fc-conflict', domain: 'conflict', region: 'Mali' });
+
+  function emitted() {
+    return attachResolutionSpecs([gps('Persian Gulf'), gps('Gulf of Guinea'), market(), military(), conflict()], COMMODITY_INPUTS, GENERATED_AT);
+  }
+
+  function gate(decision) {
+    const forecasts = emitted();
+    const counts = applyExtractionGate(forecasts, evaluateExtractionShadow(forecasts, RAW_FEEDS), GENERATED_AT, decision);
+    return { byId: Object.fromEntries(forecasts.map((f) => [f.id, f])), counts, forecasts };
+  }
+
+  it('ships off: the activation switch is false and its decision is shadow', () => {
+    assert.equal(EXTRACTION_GATE_ENFORCED, false);
+    assert.equal(EXTRACTION_GATE_MAX_PENDING_JUDGE, 20);
+    assert.deepEqual(decideExtractionGateMode(HEALTHY_LANE), { mode: 'shadow', downgrade: false, reason: 'disabled' });
+  });
+
+  it('flag off leaves every spec and horizon contract byte-for-byte unchanged', () => {
+    const before = JSON.stringify(emitted());
+    const { forecasts, counts } = gate(decideExtractionGateMode(HEALTHY_LANE));
+    assert.equal(JSON.stringify(forecasts), before);
+    assert.deepEqual(counts, { downgraded: {}, withheld: {} });
+  });
+
+  it('downgrades only while the judged lane holds the bar', () => {
+    assert.equal(ENFORCE.downgrade, true);
+    for (const [lane, reason] of [
+      [null, 'judged_lane_unreadable'],
+      [{ ...HEALTHY_LANE, pendingJudge: EXTRACTION_GATE_MAX_PENDING_JUDGE }, 'judged_lane_backlogged'],
+      [{ ...HEALTHY_LANE, instrumentedResolved: 0 }, 'judged_lane_unmeasured'],
+    ]) {
+      const decision = decideExtractionGateMode(lane, { enforced: true });
+      assert.deepEqual(decision, { mode: 'enforce', downgrade: false, reason });
+      const { byId, counts } = gate(decision);
+      assert.equal(byId['fc-pm-conflict'].resolution.kind, 'hard', reason);
+      assert.equal(byId['fc-pm-conflict'].resolution.specOrigin, 'hard', reason);
+      assert.equal(byId['fc-gps-Gulf of Guinea'].resolution.kind, 'hard', reason);
+      assert.deepEqual(counts.downgraded, {}, reason);
+    }
+  });
+
+  it('an extractable hard spec stays hard, stamped with its origin', () => {
+    const before = emitted().find((f) => f.id === 'fc-gps-Persian Gulf');
+    const { byId } = gate(ENFORCE);
+    const after = byId['fc-gps-Persian Gulf'];
+    assert.deepEqual(after.resolution, { ...before.resolution, specOrigin: 'hard' });
+    assert.deepEqual(after.horizonResolutions, before.horizonResolutions);
+  });
+
+  it('an unextractable hard spec downgrades to a judged spec that keeps the original family, metric and reason', () => {
+    const { byId, counts } = gate(ENFORCE);
+    const spec = byId['fc-pm-conflict'].resolution;
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.specOrigin, 'hard_downgraded_unextractable');
+    assert.equal(spec.originalFamily, 'prediction_market');
+    assert.equal(spec.originalMetricKey, `${PM_FEED}|yesPrice(market==Will the Sudan ceasefire hold?)`);
+    assert.equal(spec.originalSourceFeed, PM_FEED);
+    assert.equal(spec.downgradeReason, 'metric_not_found');
+    assert.match(spec.question, /materially escalated level of armed conflict/);
+    assert.equal(spec.deadline, deriveDeadline(GENERATED_AT, '30d'));
+    assert.deepEqual(counts.downgraded, { prediction_market: 1, gps: 1 });
+  });
+
+  it('a downgrade whose judged question would be generic is withheld as unscored, with its horizons', () => {
+    const { byId, counts } = gate(ENFORCE);
+    const forecast = byId['fc-gps-Gulf of Guinea'];
+    assert.equal(forecast.resolution.kind, 'unscored');
+    assert.equal(forecast.resolution.reason, 'generic_judged_question');
+    assert.equal(forecast.resolution.specOrigin, 'hard_downgraded_unextractable');
+    assert.equal(forecast.resolution.originalFamily, 'gps');
+    assert.equal(forecast.resolution.question, undefined);
+    assert.ok(Number.isFinite(forecast.resolution.deadline));
+    for (const horizon of Object.values(forecast.horizonResolutions)) {
+      assert.equal(horizon.kind, 'unscored');
+    }
+    assert.equal(forecast.horizonResolutions.h24.reason, 'parent_unextractable');
+    assert.equal(counts.withheld.supply_chain, 1);
+  });
+
+  it('a native judged forecast with only the generic question is withheld; a specific one stays judged', () => {
+    const { byId, counts } = gate(ENFORCE);
+    assert.deepEqual(
+      [byId['fc-mil'].resolution.kind, byId['fc-mil'].resolution.reason, byId['fc-mil'].resolution.specOrigin],
+      ['unscored', 'generic_judged_question', 'judged'],
+    );
+    assert.equal(byId['fc-conflict'].resolution.kind, 'judged');
+    assert.equal(byId['fc-conflict'].resolution.specOrigin, 'judged');
+    assert.equal(counts.withheld.military, 1);
+  });
+
+  it('the forecast docs state the switch, its default and the pending-judge bar in both languages', () => {
+    const en = readFileSync(resolve(here, '../docs/panels/forecast.mdx'), 'utf8');
+    const zh = readFileSync(resolve(here, '../docs/zh/panels/forecast.mdx'), 'utf8');
+    assert.match(en, /Enforcement is off\. The switch is the constant `EXTRACTION_GATE_ENFORCED`/);
+    assert.ok(en.includes(`fewer than ${EXTRACTION_GATE_MAX_PENDING_JUDGE} pending entries (\`EXTRACTION_GATE_MAX_PENDING_JUDGE\`)`));
+    assert.match(zh, /强制执行处于关闭状态。开关是 `scripts\/_forecast-resolution\.mjs` 中的常量 `EXTRACTION_GATE_ENFORCED`/);
+    assert.ok(zh.includes(`少于 ${EXTRACTION_GATE_MAX_PENDING_JUDGE} 条（\`EXTRACTION_GATE_MAX_PENDING_JUDGE\`）`));
+  });
+
+  it('withholds generic questions even while downgrades wait on the lane', () => {
+    const { byId } = gate(decideExtractionGateMode(null, { enforced: true }));
+    assert.equal(byId['fc-mil'].resolution.kind, 'unscored');
   });
 });

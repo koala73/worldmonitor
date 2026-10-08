@@ -158,6 +158,18 @@ Every published forecast carries a **resolution spec** — a machine-checkable c
 
 The resolution spec does not change which forecasts are published or their order — it only *adds* machine-checkable ground truth to each forecast, the substrate for a future public track record that scores forecasts against what actually happened.
 
+### Emission-time extraction gate
+
+Each hourly run dry-runs the resolver's extractor on every published hard spec, against the same resolver-shaped feed the resolver will read (issue #7067). The run logs `[ExtractionGate] shadow` counters per outcome, family and domain, and a `would_downgrade` line for each spec whose metric cannot be extracted. The counter line names the deploy revision, so counts from before and after a spec change (the GPS-jamming changes in #9003 and #9047) can be read apart. In shadow the gate changes no spec.
+
+Enforcement is off. The switch is the constant `EXTRACTION_GATE_ENFORCED` in `scripts/_forecast-resolution.mjs`. A reviewed change flips it only after the shadow cohort from 7 daily runs is posted on #7067 and the judged lane has stayed below 20 pending entries without growing for 7 runs. When it is on:
+
+- Every published spec records `specOrigin`: `hard`, `judged` or `hard_downgraded_unextractable`. Ledger rows copy it. Rows without it are legacy.
+- A hard spec whose metric cannot be extracted becomes a judged spec with `specOrigin: hard_downgraded_unextractable`. It keeps `originalFamily`, `originalMetricKey`, `originalSourceFeed` and `downgradeReason`, and its hard horizon contracts become unscored (`parent_unextractable`). The downgrade runs only while the stored scorecard's judged lane holds fewer than 20 pending entries (`EXTRACTION_GATE_MAX_PENDING_JUDGE`) and reports instrumented resolutions. Otherwise the spec stays hard and the run logs the reason.
+- A judged spec whose only question would be the generic `Will "<title>" resolve YES` template (market, military, supply-chain and some cyber forecasts) becomes `unscored` with reason `generic_judged_question`. The resolver opens no window for an unscored spec, so it never reaches the judged lane. The rule also applies to a downgraded spec, so a downgraded GPS-jamming or chokepoint forecast is withheld until its domain has a specific question.
+
+The stored scorecard carries an internal `specOrigins` block, which the public endpoint does not serve. For each origin and family it reports entries, resolved, scored, VOID, pending, scored within SLA and median resolution latency. Every row is held to the judged-lane clock (deadline plus 18 hours plus 2 days), so a downgraded family is compared with its own hard path. Rows on the retired infrastructure outage feed (`infra:outages:v1`, issue #5334) are counted apart and excluded.
+
 ## Refresh cadence
 
 The seeder runs approximately **hourly**. The key is allowed up to **90 minutes** in `api/health.js` (`maxStaleMin: 90`) before the health surface escalates.

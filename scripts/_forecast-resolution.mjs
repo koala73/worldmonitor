@@ -702,6 +702,17 @@ function buildQuestion(pred) {
   const region = pred.region || 'unspecified region';
   const domain = pred.domain || 'unspecified domain';
   const horizon = pred.timeHorizon || 'unspecified horizon';
+  return specificJudgedQuestion(pred) ?? `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
+}
+
+// The domain's own judged question, or null when the forecast would get only
+// the generic "resolve YES" template, which the extraction gate withholds
+// from the judged lane (#7067, carried over from #5234).
+function specificJudgedQuestion(pred) {
+  const title = pred.title || '(untitled forecast)';
+  const region = pred.region || 'unspecified region';
+  const domain = pred.domain || 'unspecified domain';
+  const horizon = pred.timeHorizon || 'unspecified horizon';
   // Conflict (#5136) and unrest/political (#5091) forecasts are now judged. A
   // sharper, escalation-framed question resolves more reliably against the news
   // archive than the generic "resolve YES" phrasing.
@@ -717,7 +728,7 @@ function buildQuestion(pred) {
       return `Within the ${horizon} horizon after this forecast, did public threat-intelligence sources report at least ${metrics.threshold} new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to ${region}?`;
     }
   }
-  return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
+  return null;
 }
 
 function buildJudgedSpec(pred, generatedAt) {
@@ -979,4 +990,94 @@ export function summarizeExtractionShadow(verdicts) {
     bump(summary.byDomain[domain] ??= {}, outcome);
   }
   return summary;
+}
+
+// ── Emission-time extraction gate, enforcement (#7067) ──────────────────
+//
+// The activation switch. While false, the gate stays in shadow and emission
+// is unchanged. Flip it only after the shadow cohort from 7 daily runs is
+// posted on #7067 and the judged lane has held below the pending-judge bar
+// without growing for 7 runs. The runtime check below covers only the
+// current reading of that bar.
+export const EXTRACTION_GATE_ENFORCED = false;
+
+// Downgrades wait while the judged lane holds this many pending entries or
+// more, so a hard VOID is never traded for a judged backlog (#7067 section 3).
+export const EXTRACTION_GATE_MAX_PENDING_JUDGE = 20;
+
+export const SPEC_ORIGIN_HARD = 'hard';
+export const SPEC_ORIGIN_JUDGED = 'judged';
+export const SPEC_ORIGIN_HARD_DOWNGRADED = 'hard_downgraded_unextractable';
+export const GENERIC_JUDGED_QUESTION_REASON = 'generic_judged_question';
+export const PARENT_UNEXTRACTABLE_HORIZON_REASON = 'parent_unextractable';
+
+// Pure. `judgedLane` is the scorecard's judgedLane block, or null when the
+// scorecard could not be read. Enforcement without a healthy lane still
+// stamps specOrigin and withholds generic questions; only downgrades wait.
+export function decideExtractionGateMode(judgedLane, { enforced = EXTRACTION_GATE_ENFORCED } = {}) {
+  if (!enforced) return { mode: 'shadow', downgrade: false, reason: 'disabled' };
+  const pendingJudge = Number(judgedLane?.pendingJudge);
+  if (!judgedLane || !Number.isFinite(pendingJudge)) {
+    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_unreadable' };
+  }
+  if (pendingJudge >= EXTRACTION_GATE_MAX_PENDING_JUDGE) {
+    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_backlogged' };
+  }
+  // The issue requires first-attempt and within-SLA figures to be measurable;
+  // with no instrumented resolution they read 0 and prove nothing.
+  if (!(Number(judgedLane.instrumentedResolved) > 0) || !Number.isFinite(Number(judgedLane.scoredWithinSlaRate))) {
+    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_unmeasured' };
+  }
+  return { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
+}
+
+// Applies an enforcing decision to published forecasts in place. Every spec
+// gets a specOrigin, so ledger rows emitted under the gate separate from
+// legacy rows. A failed extraction becomes a judged spec that keeps the
+// original family, metric and reason, and its hard horizon contracts (same
+// metric) become unscored. A judged spec whose only question is the generic
+// template becomes unscored with a stated reason and never reaches the
+// judged lane. Pure apart from the in-place writes; returns per-family counts.
+export function applyExtractionGate(predictions, verdicts, generatedAt, decision) {
+  const counts = { downgraded: {}, withheld: {} };
+  if (decision?.mode !== 'enforce') return counts;
+  const bump = (bucket, key) => { bucket[key] = (bucket[key] || 0) + 1; };
+  const failures = new Map(verdicts.filter((v) => v.outcome === 'fail').map((v) => [v.id, v]));
+  for (const pred of predictions) {
+    const spec = pred.resolution;
+    if (spec?.kind !== 'hard' && spec?.kind !== 'judged') continue;
+    const failure = spec.kind === 'hard' ? failures.get(pred.id) : null;
+    let next;
+    if (failure && decision.downgrade) {
+      next = {
+        ...buildJudgedSpec(pred, generatedAt),
+        specOrigin: SPEC_ORIGIN_HARD_DOWNGRADED,
+        originalFamily: failure.family,
+        originalMetricKey: spec.metricKey,
+        originalSourceFeed: spec.sourceFeed,
+        downgradeReason: failure.reason,
+      };
+      bump(counts.downgraded, failure.family);
+      pred.horizonResolutions = unscoreHardHorizons(pred.horizonResolutions);
+    } else {
+      next = { ...spec, specOrigin: spec.kind === 'hard' ? SPEC_ORIGIN_HARD : SPEC_ORIGIN_JUDGED };
+    }
+    if (next.kind === 'judged' && specificJudgedQuestion(pred) == null) {
+      const { question: _generic, ...kept } = next;
+      next = { ...kept, kind: 'unscored', reason: GENERIC_JUDGED_QUESTION_REASON };
+      bump(counts.withheld, pred.domain || 'unknown');
+    }
+    pred.resolution = next;
+  }
+  return counts;
+}
+
+function unscoreHardHorizons(horizonResolutions) {
+  if (!horizonResolutions || typeof horizonResolutions !== 'object') return horizonResolutions;
+  return Object.fromEntries(Object.entries(horizonResolutions).map(([horizon, spec]) => [
+    horizon,
+    spec?.kind === 'hard'
+      ? { horizon: spec.horizon, timeHorizon: spec.timeHorizon, kind: 'unscored', reason: PARENT_UNEXTRACTABLE_HORIZON_REASON }
+      : spec,
+  ]));
 }
