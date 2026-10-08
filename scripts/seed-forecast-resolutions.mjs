@@ -2914,7 +2914,10 @@ async function buildLedgerForRun(runState) {
       console.warn(`  [forecast-resolutions] calibration publication read failed: ${err?.message || err}`);
       return null;
     });
-  console.log(`  Calibration map: ${calibration.action}${calibration.reason ? ` (${calibration.reason})` : ''}${calibration.map ? ` ${calibration.map.version}` : ''}`);
+  const trigger = calibration.held
+    ? `${calibration.held.reason}: ${calibration.held.domain}, held while the activation gate is eligible`
+    : calibration.reason && `${calibration.reason}${calibration.domain ? `: ${calibration.domain}` : ''}`;
+  console.log(`  Calibration map: ${calibration.action}${trigger ? ` (${trigger})` : ''}${calibration.map ? ` ${calibration.map.version} data v${calibration.map.dataVersion}` : ''}`);
   return result.ledger;
 }
 

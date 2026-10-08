@@ -15,32 +15,44 @@ import {
   evaluateActivationGate,
   generationOriginOf,
   hasPreLineageAnchor,
+  isDuplicateWindow,
   isHorizonEntry,
   isPublishedOriginEntry,
   isScoredEntry,
+  isWithheldEntry,
   summarizeCalibrationShadow,
 } from './_forecast-scorecard.mjs';
 
 /**
  * @typedef {{ x: number, y: number }} CalibrationKnot
  * @typedef {'identity' | 'isotonic'} CalibrationMode
+ * @typedef {'insufficient_families' | 'insufficient_yes_families' | 'insufficient_no_families'} IneligibleReason
  * @typedef {{
+ *   families: number,
+ *   yesFamilies: number,
+ *   noFamilies: number,
+ *   eligible: boolean,
+ *   ineligibleReason?: IneligibleReason,
+ * }} DomainEligibility
+ * @typedef {DomainEligibility & {
  *   n: number,
  *   positives: number,
  *   mode: CalibrationMode,
- *   identityReason?: 'insufficient_total_sample' | 'insufficient_domain_sample',
  *   knots: CalibrationKnot[],
  * }} CalibrationDomain
+ * @typedef {'absent' | 'invalid' | 'code_version_changed' | 'fit_invalidated' | 'domain_became_eligible' | 'family_growth'} RefitReason
  * @typedef {{
  *   schemaVersion: number,
  *   version: string,
  *   codeVersion: string,
+ *   dataVersion: number,
+ *   refitReason: RefitReason,
  *   fittedAt: number,
  *   fitWindow: { from: number | null, to: number },
  *   cohortFilter: { excludedOrigins: string[], outcomes: string[], rollingWindowDays: number, emissionField: string },
  *   sourceStage: string,
- *   minTotalSample: number,
- *   minDomainSample: number,
+ *   minFamilies: number,
+ *   minOutcomeFamilies: number,
  *   probabilityBounds: { floor: number, ceiling: number },
  *   totalSample: number,
  *   domains: Record<string, CalibrationDomain>,
@@ -48,15 +60,31 @@ import {
  */
 
 export const CALIBRATION_MAP_SCHEMA_VERSION = 1;
-// Bumping this is the only refit path: a persisted map with another code
-// version is replaced on the next resolver run, which also restarts the
-// forward cohort at the new fittedAt.
-// v2 refits without the cyber and outage rows voided under #5233; v1 fit cyber
-// to 0.01 from outcomes the resolver could not read.
-export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v2';
+// A change to the fitting rule bumps this; a persisted map with another code
+// version is refitted on the next resolver run. Data refits bump the map's
+// dataVersion instead (resolveCalibrationMapForRun).
+// v2 refit without the rows voided under #5233. v3 counts families, not rows:
+// v2 kept every domain identity on 25 rows, and v1 fit cyber to a constant
+// 0.01 from 148 all-NO rows that came from 17 families.
+export const CALIBRATION_CODE_VERSION = 'forecast-calibration-pav-v3';
 export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
-export const CALIBRATION_MIN_TOTAL_SAMPLE = 60;
-export const CALIBRATION_MIN_DOMAIN_SAMPLE = 30;
+// Fit eligibility counts families (forecast ids), because windows of one id
+// share a generator, a region and much of an outcome history. A domain fits
+// only with at least CALIBRATION_MIN_OUTCOME_FAMILIES families that resolved
+// YES and as many that resolved NO; one-sided data has no curve to fit. With
+// published-origin probabilities resampled from the live ledger, PAV lost to
+// identity on expected out-of-sample Brier below 10 minority-class families
+// in every miscalibration simulated (calibrated, over- and underconfident,
+// biased), and first beat it at 10 for a biased forecaster. The family floor
+// keeps the per-domain sample the row floor used to require (30) and makes
+// it independent.
+export const CALIBRATION_MIN_FAMILIES = 30;
+export const CALIBRATION_MIN_OUTCOME_FAMILIES = 10;
+// A fitted domain refits when its families reach this multiple of the count
+// it was fitted on. Each refit restarts the forward cohort the activation
+// gate needs, and the PAV standard error falls with the square root of the
+// sample, so a refit waits until the error can fall by about 30%.
+export const CALIBRATION_REFIT_FAMILY_GROWTH = 2;
 // A domain with no YES outcomes fits to 0. Publishing 0% is a claim of
 // impossibility the sample cannot support, so knots are bounded.
 export const CALIBRATION_PROBABILITY_FLOOR = 0.01;
@@ -108,6 +136,9 @@ function round6(value) {
 
 /**
  * Scored published-origin entries resolved inside the rolling window ending at nowMs.
+ * The scorecard's own predicates decide membership, so the fit never sees a
+ * row the scorecard excludes: VOIDs (late reads and old-selection verdicts
+ * among them), duplicates, withheld buckets and pre-lineage anchors.
  * A row rescored to its first-seen probability (#8990) lost the raw value
  * that came with that probability, so it has no fit input.
  */
@@ -115,7 +146,8 @@ export function selectFitCohort(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
   return ledgerEntries(ledger).filter((entry) => {
-    if (!isScoredEntry(entry) || !isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
+    if (!isScoredEntry(entry) || isWithheldEntry(entry) || isDuplicateWindow(entry)) return false;
+    if (!isPublishedOriginEntry(entry) || hasPreLineageAnchor(entry) || entry.rescore) return false;
     const resolvedAt = Number(entry.resolvedAt);
     const emittedAt = emissionTime(entry);
     return Number.isFinite(resolvedAt) && resolvedAt >= minResolvedAt && resolvedAt <= nowMs
@@ -159,35 +191,76 @@ export function isotonicKnots(points, bounds = {}) {
   return knots.filter((knot, i) => !(i > 0 && i < knots.length - 1 && knots[i - 1].y === knot.y && knots[i + 1].y === knot.y));
 }
 
-/** @returns {CalibrationMap} */
-export function fitCalibrationMap(ledger, nowMs, options = {}) {
-  if (!Number.isFinite(nowMs)) throw new TypeError('fitCalibrationMap requires an injected nowMs');
-  const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
-  const minTotalSample = options.minTotalSample ?? CALIBRATION_MIN_TOTAL_SAMPLE;
-  const minDomainSample = options.minDomainSample ?? CALIBRATION_MIN_DOMAIN_SAMPLE;
-  const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
-  const bounds = { floor: CALIBRATION_PROBABILITY_FLOOR, ceiling: CALIBRATION_PROBABILITY_CEILING };
-  const cohort = selectFitCohort(ledger, nowMs, { rollingWindowDays });
-  const totalSufficient = cohort.length >= minTotalSample;
+function eligibilityMinimums(options) {
+  return {
+    minFamilies: options.minFamilies ?? CALIBRATION_MIN_FAMILIES,
+    minOutcomeFamilies: options.minOutcomeFamilies ?? CALIBRATION_MIN_OUTCOME_FAMILIES,
+  };
+}
 
+function cohortByDomain(cohort) {
   const byDomain = new Map();
   for (const entry of cohort) {
     const domain = domainOf(entry);
     if (!byDomain.has(domain)) byDomain.set(domain, []);
-    byDomain.get(domain).push({ x: sourceProbability(entry), y: entry.outcome === 'YES' ? 1 : 0 });
+    byDomain.get(domain).push(entry);
   }
+  return byDomain;
+}
+
+/**
+ * A family is one forecast id. A family whose windows resolved both ways
+ * counts on both sides.
+ * @returns {DomainEligibility}
+ */
+function domainEligibility(entries, { minFamilies, minOutcomeFamilies }) {
+  const families = new Map();
+  for (const entry of entries) {
+    const outcomes = families.get(entry.id) ?? new Set();
+    outcomes.add(entry.outcome);
+    families.set(entry.id, outcomes);
+  }
+  const counts = {
+    families: families.size,
+    yesFamilies: [...families.values()].filter((outcomes) => outcomes.has('YES')).length,
+    noFamilies: [...families.values()].filter((outcomes) => outcomes.has('NO')).length,
+  };
+  const ineligibleReason = counts.families < minFamilies ? 'insufficient_families'
+    : counts.yesFamilies < minOutcomeFamilies ? 'insufficient_yes_families'
+      : counts.noFamilies < minOutcomeFamilies ? 'insufficient_no_families'
+        : null;
+  return ineligibleReason ? { ...counts, eligible: false, ineligibleReason } : { ...counts, eligible: true };
+}
+
+/**
+ * Per-domain fit eligibility of the cohort the next fit at nowMs would read.
+ * @returns {Record<string, DomainEligibility>}
+ */
+export function evaluateFitEligibility(ledger, nowMs, options = {}) {
+  const minimums = eligibilityMinimums(options);
+  const byDomain = cohortByDomain(selectFitCohort(ledger, nowMs, options));
+  return Object.fromEntries([...byDomain.keys()].sort().map((domain) => [domain, domainEligibility(byDomain.get(domain), minimums)]));
+}
+
+/** @returns {CalibrationMap} */
+export function fitCalibrationMap(ledger, nowMs, options = {}) {
+  if (!Number.isFinite(nowMs)) throw new TypeError('fitCalibrationMap requires an injected nowMs');
+  const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
+  const minimums = eligibilityMinimums(options);
+  const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
+  const bounds = { floor: CALIBRATION_PROBABILITY_FLOOR, ceiling: CALIBRATION_PROBABILITY_CEILING };
+  const cohort = selectFitCohort(ledger, nowMs, { rollingWindowDays });
+  const byDomain = cohortByDomain(cohort);
 
   const domains = {};
   for (const domain of [...byDomain.keys()].sort()) {
-    const points = byDomain.get(domain);
-    const base = { n: points.length, positives: points.reduce((sum, point) => sum + point.y, 0) };
-    if (!totalSufficient) {
-      domains[domain] = { ...base, mode: 'identity', identityReason: 'insufficient_total_sample', knots: [] };
-    } else if (points.length < minDomainSample) {
-      domains[domain] = { ...base, mode: 'identity', identityReason: 'insufficient_domain_sample', knots: [] };
-    } else {
-      domains[domain] = { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds) };
-    }
+    const entries = byDomain.get(domain);
+    const points = entries.map((entry) => ({ x: sourceProbability(entry), y: entry.outcome === 'YES' ? 1 : 0 }));
+    const eligibility = domainEligibility(entries, minimums);
+    const base = { n: points.length, positives: points.reduce((sum, point) => sum + point.y, 0), ...eligibility };
+    domains[domain] = eligibility.eligible
+      ? { ...base, mode: 'isotonic', knots: isotonicKnots(points, bounds) }
+      : { ...base, mode: 'identity', knots: [] };
   }
 
   const emissions = cohort.map(emissionTime);
@@ -195,6 +268,8 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
     schemaVersion: CALIBRATION_MAP_SCHEMA_VERSION,
     version: `${codeVersion}@${nowMs}`,
     codeVersion,
+    dataVersion: options.dataVersion ?? 1,
+    refitReason: options.refitReason ?? 'absent',
     fittedAt: nowMs,
     // Emission-time span the fit could have seen. Its end is fittedAt: an
     // entry emitted before the fit but unresolved then is still not forward.
@@ -206,8 +281,7 @@ export function fitCalibrationMap(ledger, nowMs, options = {}) {
       emissionField: 'generatedAt',
     },
     sourceStage: CALIBRATION_SOURCE_STAGE,
-    minTotalSample,
-    minDomainSample,
+    ...minimums,
     probabilityBounds: bounds,
     totalSample: cohort.length,
     domains,
@@ -254,6 +328,7 @@ export function parseCalibrationMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (value.schemaVersion !== CALIBRATION_MAP_SCHEMA_VERSION) return null;
   if (typeof value.version !== 'string' || typeof value.codeVersion !== 'string') return null;
+  if (value.codeVersion === CALIBRATION_CODE_VERSION && !Number.isInteger(value.dataVersion)) return null;
   if (!Number.isFinite(value.fittedAt) || !Number.isFinite(value.fitWindow?.to)) return null;
   if (!value.domains || typeof value.domains !== 'object') return null;
   for (const fit of Object.values(value.domains)) {
@@ -264,17 +339,50 @@ export function parseCalibrationMap(value) {
 }
 
 /**
- * Keep the persisted map unless it is unusable or from another code version.
- * Refitting on every run would move fittedAt forward daily and the forward
- * cohort would never accumulate, so the map stays frozen between deliberate
- * version bumps.
+ * Why the current cohort calls for a refit of `map`, or null. Rules, in order:
+ * a fitted domain the cohort no longer supports (its rows were voided or
+ * aged out), an identity domain that became eligible, and a fitted domain
+ * whose families grew by CALIBRATION_REFIT_FAMILY_GROWTH.
+ * @returns {{ reason: RefitReason, domain: string } | null}
+ */
+function refitTrigger(map, eligibility) {
+  const domains = [...new Set([...Object.keys(map.domains), ...Object.keys(eligibility)])].sort();
+  const fitted = (domain) => map.domains[domain]?.mode === 'isotonic';
+  const rules = [
+    ['fit_invalidated', (domain) => fitted(domain) && !eligibility[domain]?.eligible],
+    ['domain_became_eligible', (domain) => !fitted(domain) && eligibility[domain]?.eligible],
+    ['family_growth', (domain) => fitted(domain)
+      && eligibility[domain].families >= CALIBRATION_REFIT_FAMILY_GROWTH * map.domains[domain].families],
+  ];
+  for (const [reason, applies] of rules) {
+    const domain = domains.find(applies);
+    if (domain) return { reason, domain };
+  }
+  return null;
+}
+
+/**
+ * Keep the persisted map unless it is unusable, from another code version, or
+ * the cohort gives a refit trigger. Refitting on every run would move
+ * fittedAt forward daily and the forward cohort would never accumulate.
+ * A map the activation gate currently passes is held against growth and new
+ * eligibility: a refit would discard its forward evidence and revert a
+ * validated publication. A fit the data no longer supports refits anyway.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
   const parsed = parseCalibrationMap(existing);
-  if (parsed && parsed.codeVersion === codeVersion) return { map: parsed, action: 'kept' };
-  const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
-  return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion }), action: 'fitted', reason };
+  if (!parsed || parsed.codeVersion !== codeVersion) {
+    const reason = !existing ? 'absent' : parsed ? 'code_version_changed' : 'invalid';
+    return { map: fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, refitReason: reason }), action: 'fitted', reason };
+  }
+  const trigger = refitTrigger(parsed, evaluateFitEligibility(ledger, nowMs, options));
+  if (!trigger) return { map: parsed, action: 'kept' };
+  if (trigger.reason !== 'fit_invalidated' && evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate.eligible) {
+    return { map: parsed, action: 'kept', held: trigger };
+  }
+  const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason });
+  return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
 }
 
 export function assertCohortOutsideFitWindow(map, entries) {
