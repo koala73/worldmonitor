@@ -147,6 +147,13 @@
       }
     },
     {
+      "name": "get_cross_border_arrivals",
+      "description": "UNHCR Operational Data Portal cross-border displacement situations, arrivals and returns. Public cached aggregates with source dates and partial unavailable situation IDs. Situations overlap: never sum them into a global total. Stock totals and monthly arrivals are different measures. Not annual UNHCR statistics or IOM DTM. No request-time provider fetch.",
+      "_meta": {
+        "worldmonitor/access": "free-account"
+      }
+    },
+    {
       "name": "get_displacement_data",
       "description": "Refugee and IDP counts by country (UNHCR annual data).",
       "_meta": {
