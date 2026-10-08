@@ -121,29 +121,39 @@ describe('Cross-border tab', () => {
   });
 
   it('keeps annual freshness scoped to annual tabs through tab and health updates', async () => {
-    dataFreshness.recordSeedHealth([{ sourceId: 'unhcr', status: 'OK', records: 212, seedAgeMin: 3, maxStaleMin: 3600, checkedAtMs: Date.now() }]);
-    dataFreshness.setEnabled('unhcr', false);
-    mount();
-    panel.setData({ year: 2026, globalTotals: { refugees: 28500000, asylumSeekers: 9000000, idps: 64200000, stateless: 0, total: 106200000 }, countries: [], topFlows: [] });
-    panel.setInternalData(toInternalDisplacementData(RESPONSE));
-    panel.setCrossBorderData(CROSS_BORDER);
-    await flush();
-    const badge = panel.getElement().querySelector<HTMLElement>('.panel-freshness-badge')!;
-    expect(badge.textContent).toBe('Disabled');
-    expect(badge.style.display).toBe('inline-flex');
-    for (const tab of ['crossBorder', 'internal']) {
-      panel.getElement().querySelector<HTMLElement>(`[data-tab="${tab}"]`)!.click();
+    const source = dataFreshness.getSource('unhcr')!;
+    const before = structuredClone(source);
+    try {
+      dataFreshness.recordSeedHealth([{ sourceId: 'unhcr', status: 'OK', records: 212, seedAgeMin: 3, maxStaleMin: 3600, checkedAtMs: Date.now() }]);
+      dataFreshness.setEnabled('unhcr', false);
+      mount();
+      panel.setData({ year: 2026, globalTotals: { refugees: 28500000, asylumSeekers: 9000000, idps: 64200000, stateless: 0, total: 106200000 }, countries: [], topFlows: [] });
+      panel.setInternalData(toInternalDisplacementData(RESPONSE));
+      panel.setCrossBorderData(CROSS_BORDER);
       await flush();
-      expect(rows()).toHaveLength(2);
-      expect(badge.style.display).toBe('none');
-      dataFreshness.setEnabled('unhcr', true);
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(badge.style.display).toBe('none');
+      const badge = panel.getElement().querySelector<HTMLElement>('.panel-freshness-badge')!;
+      expect(badge.textContent).toBe('Disabled');
+      expect(badge.style.display).toBe('inline-flex');
+      for (const tab of ['crossBorder', 'internal']) {
+        panel.getElement().querySelector<HTMLElement>(`[data-tab="${tab}"]`)!.click();
+        await flush();
+        expect(rows()).toHaveLength(2);
+        expect(badge.style.display).toBe('none');
+        dataFreshness.setEnabled('unhcr', true);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(badge.style.display).toBe('none');
+      }
+      panel.getElement().querySelector<HTMLElement>('[data-tab="hosts"]')!.click();
+      await flush();
+      expect(badge.style.display).toBe('inline-flex');
+      expect(badge.textContent).toMatch(/^Fresh/);
+    } finally {
+      for (const key of Object.keys(source)) {
+        if (!Object.hasOwn(before, key)) Reflect.deleteProperty(source, key);
+      }
+      Object.assign(source, before);
     }
-    panel.getElement().querySelector<HTMLElement>('[data-tab="hosts"]')!.click();
-    await flush();
-    expect(badge.style.display).toBe('inline-flex');
-    expect(badge.textContent).toMatch(/^Fresh/);
+    expect(source).toEqual(before);
   });
 
   it('lists situations with their latest change next to the DTM tab, without UNHCR data', async () => {
