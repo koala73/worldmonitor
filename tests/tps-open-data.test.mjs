@@ -646,6 +646,51 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
     );
   });
 
+  // Production on 2026-10-08: the layer's newest REPORT_DATE was 2026-06-30
+  // and its data was last edited 2026-07-16. A window counted back from the
+  // run date started 2026-07-10, matched no rows, and published an empty MCI
+  // key. TPS publishes quarterly, so the window ends where the data does.
+  it('counts the MCI lookback back from the layer data edit date, not the run date', async () => {
+    const wheres = [];
+    const fetchImpl = async (url, init = {}) => {
+      const params = requestParams(url, init);
+      if (params.get('returnIdsOnly') === 'true') wheres.push(params.get('where'));
+      return stableFetch([feature(mciAttrs())])(url, init);
+    };
+    const result = await fetchTpsMci({
+      metadata: {
+        maxRecordCount: 2000,
+        fields: TPS_MCI_REQUIRED_FIELDS,
+        editingInfo: { dataLastEditDate: Date.UTC(2026, 6, 16) },
+        serviceItemId: TPS_MCI_SERVICE_ITEM_ID,
+      },
+      now: Date.UTC(2026, 9, 8),
+      fetchImpl,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-06-01T00:00:00'"]);
+  });
+
+  it('never counts the MCI lookback from a data edit date after the run date', async () => {
+    const wheres = [];
+    const fetchImpl = async (url, init = {}) => {
+      const params = requestParams(url, init);
+      if (params.get('returnIdsOnly') === 'true') wheres.push(params.get('where'));
+      return stableFetch([feature(mciAttrs())])(url, init);
+    };
+    await fetchTpsMci({
+      metadata: {
+        maxRecordCount: 2000,
+        fields: TPS_MCI_REQUIRED_FIELDS,
+        editingInfo: { dataLastEditDate: Date.UTC(2026, 11, 1) },
+        serviceItemId: TPS_MCI_SERVICE_ITEM_ID,
+      },
+      now: Date.UTC(2026, 9, 8),
+      fetchImpl,
+    });
+    assert.deepEqual(wheres, ["REPORT_DATE >= timestamp '2026-08-24T00:00:00'"]);
+  });
+
   it('pins each fetched source to its current official identity', async () => {
     const mci = await fetchTpsMci({
       metadata: { maxRecordCount: 2000, fields: TPS_MCI_REQUIRED_FIELDS, editingInfo: { dataLastEditDate: 1 }, serviceItemId: 'wrong' },
