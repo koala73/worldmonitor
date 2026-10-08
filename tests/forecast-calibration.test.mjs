@@ -845,6 +845,19 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     }
   });
 
+  it('does not count a fitted family re-emitting a window as growth', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const reemitted = base.map((row, i) => ({ ...entry({ outcome: row.outcome, probability: 0.35, generatedAt: fitAt + DAY_MS + i }), id: row.id }));
+    const run = resolveCalibrationMapForRun(map, ledgerOf([...base, ...reemitted]), fitAt + 20 * DAY_MS);
+    assert.equal(run.action, 'kept', 'thirty new windows of the thirty fitted families add no family');
+    const fresh = repeat(30, (i) => entry({ outcome: i < 12 ? 'YES' : 'NO', probability: 0.35, generatedAt: fitAt + DAY_MS + i }));
+    const pruned = resolveCalibrationMapForRun(map, ledgerOf([...base.slice(1), reemitted[0], ...fresh.slice(1)]), fitAt + 20 * DAY_MS);
+    assert.equal(pruned.action, 'kept', '29 new families: a pruned input still names its family through its key');
+    assert.equal(resolveCalibrationMapForRun(map, ledgerOf([...base, ...fresh]), fitAt + 20 * DAY_MS).reason, 'family_growth');
+  });
+
   it('refits a map whose inputs all aged out when new families plateau below its own count', () => {
     const fitAt = T0 + 30 * DAY_MS;
     const base = twoSided(60, 20, { probability: 0.35 });

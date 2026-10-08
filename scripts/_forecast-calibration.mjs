@@ -88,8 +88,8 @@ export const CALIBRATION_MIN_OUTCOME_FAMILIES = 12;
 // function of the ledger, unlike a count of consecutive ineligible runs,
 // which would have to be stored and could drift from the data.
 export const CALIBRATION_RETAIN_FRACTION = 0.5;
-// A fitted domain refits when the families resolved since its fit bring its
-// evidence to this multiple of the families it was fitted on. Each refit
+// A fitted domain refits when the families first resolved since its fit
+// bring its evidence to this multiple of the families it was fitted on. Each refit
 // empties the forward cohort, and the PAV standard error falls with the
 // square root of the sample, so a refit waits until the error can fall by
 // about 30%. New evidence is counted since fittedAt, not as the rolling-window
@@ -401,7 +401,17 @@ function refitTrigger(map, ledger, nowMs, options) {
   const eligibility = (domain) => (cohort.has(domain) ? domainEligibility(cohort.get(domain), minimums) : null);
   const fitted = (domain) => map.domains[domain]?.mode === 'isotonic';
   const rows = (domain) => cohort.get(domain) ?? [];
-  const familiesSinceFit = (domain) => new Set(rows(domain).filter((entry) => Number(entry.resolvedAt) > map.fittedAt).map((entry) => entry.id)).size;
+  // A ledger key is `<id>@<deadline>`, optionally with a `~<hash>` suffix, so a
+  // pruned input still names its family.
+  const fittedFamilies = (domain) => new Set(Object.keys(map.domains[domain].inputs)
+    .map((key) => entriesByKey.get(key)?.id ?? key.slice(0, key.lastIndexOf('@'))));
+  // A new window of a fitted family is not a new family.
+  const familiesSinceFit = (domain) => {
+    const known = fittedFamilies(domain);
+    return new Set(rows(domain)
+      .filter((entry) => Number(entry.resolvedAt) > map.fittedAt && !known.has(entry.id))
+      .map((entry) => entry.id)).size;
+  };
   const inputsInWindow = (domain) => rows(domain).some((entry) => Object.hasOwn(map.domains[domain].inputs, entry.key));
   const rules = [
     ['fit_input_withdrawn', (domain) => fitted(domain) && hasWithdrawnInput(map.domains[domain], entriesByKey)],
