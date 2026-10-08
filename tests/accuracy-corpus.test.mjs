@@ -33,6 +33,17 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LIFTED = null;
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8');
 
+// Issue #7072: the scorecard now carries a bootstrap interval on each mean
+// Brier and the matured-to-scored funnel. Bounds on a mean score cannot be
+// recomputed from published counts, so the page prints the producer's and only
+// when the interval covers the same population as the score beside it.
+// Since #8990 the intervals resample whole forecast families, and
+// insufficientSample carries the family minimums: the headline's measurable gate.
+const UNCERTAINTY = Object.freeze({
+  method: 'family-level percentile bootstrap (each resample draws whole forecast families), 2000 resamples, seed 7072',
+  overallBrier: { count: 490, mean: 0.192435, ci95: [0.178214, 0.207013], insufficientSample: false },
+  skillBrier: { count: 180, mean: 0.117824, ci95: [0.098461, 0.139207], insufficientSample: false },
+});
 // The live values captured from GET /api/forecast/v1/get-forecast-scorecard on
 // the day this page shipped. Kept verbatim so the honesty rules are exercised
 // against a real funnel — 96 entries awaiting a judge and a `political` domain
@@ -84,9 +95,14 @@ const LIVE_SCORECARD = Object.freeze({
     { bucket: '90-100', minProbability: 0.9, maxProbability: 1, count: 1, predictedMean: 0.93, realizedRate: 1, brier: 0.0049 },
   ],
   vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
+  // Added with #8990: the family gate rides on the headline interval.
+  uncertainty: UNCERTAINTY,
+  // The live capture predates skill.yesCount (#8873).
   skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+  // conflict met the family minimums, so the producer wrote its bss; the
+  // others did not.
   publishedByDomain: [
-    { domain: 'conflict', count: 120, brier: 0.11, yesCount: 30 },
+    { domain: 'conflict', count: 120, brier: 0.11, yesCount: 30, bss: 0.413333 },
     { domain: 'market', count: 60, brier: 0.13, yesCount: 22 },
     { domain: 'political', count: 12, brier: 0.2, yesCount: 4 },
   ],
@@ -114,15 +130,16 @@ const sectionWith = (scorecardOverrides = {}, sectionOverrides = {}) => ({
   ...sectionOverrides,
 });
 
-// Issue #7072: the scorecard now carries a bootstrap interval on each mean
-// Brier and the matured-to-scored funnel. Bounds on a mean score cannot be
-// recomputed from published counts, so the page prints the producer's and only
-// when the interval covers the same population as the score beside it.
-const UNCERTAINTY = Object.freeze({
-  method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072',
-  overallBrier: { count: 490, mean: 0.192435, ci95: [0.178214, 0.207013], insufficientSample: false },
-  skillBrier: { count: 180, mean: 0.117824, ci95: [0.098461, 0.139207], insufficientSample: false },
+// A headline cohort with its family-bootstrap Brier interval over the same
+// forecasts; `small` is the producer's family-minimums flag (#8990).
+const skillSection = (skill, { ci95 = [skill.brier - 0.02, skill.brier + 0.02], small = false } = {}) => sectionWith({
+  skill: { ...LIVE_SCORECARD.skill, ...skill },
+  uncertainty: {
+    ...UNCERTAINTY,
+    skillBrier: { count: skill.count ?? LIVE_SCORECARD.skill.count, mean: skill.brier ?? LIVE_SCORECARD.skill.brier, ci95, insufficientSample: small },
+  },
 });
+
 const FUNNEL = Object.freeze({
   matured: 820,
   immature: 130,
@@ -617,16 +634,19 @@ describe('accuracy page honesty rules', () => {
     assert.ok(gap < 700, `the scale direction must sit beside the number (gap ${gap})`);
   });
 
-  it('states the headline Brier in a sentence, not only in a metric tile', () => {
-    const { html } = renderState(LIVE_SECTION);
+  it('states the headline result in a sentence, not only in a metric tile, and never against a coin flip (#8990)', () => {
+    // p = 40/180, p(1-p) = 0.1728; the Brier interval 0.098 to 0.180 maps to skill -0.04 to +0.43.
+    const { html } = renderState(skillSection({ yesCount: 40, brier: 0.117824 }, { ci95: [0.098461, 0.18] }));
     const result = html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/);
     assert.ok(result, 'the headline result must be a sentence an extractor can lift, not a tile');
     const sentence = stripTags(result[1]);
     assert.match(sentence, /180-day window/);
-    assert.match(sentence, /Brier of 0\.118/);
-    assert.match(sentence, /180 scored forecasts/);
-    assert.match(sentence, /0\.25/);
-    assert.match(sentence, /0\.5 to everything/);
+    assert.match(sentence, /were not clearly better or worse than always forecasting the historical rate/);
+    assert.match(sentence, /Brier score was 0\.118/);
+    assert.match(sentence, /a skill score of \+0\.32, 95% interval -0\.04 to \+0\.43, over 180 scored forecasts from at least 30 forecast families/);
+    // p = 40/180, p(1-p) = 0.1728.
+    assert.match(sentence, /against 0\.173 for always forecasting the historical rate of 22\.2%/);
+    assert.doesNotMatch(sentence, /0\.25|0\.5 to everything|coin/);
     assert.doesNotMatch(result[0], /class="metric"/);
     const insufficient = renderState(sectionWith({
       skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
@@ -705,7 +725,7 @@ describe('accuracy page honesty rules', () => {
     const { html } = renderState(LIVE_SECTION);
     const row = html.match(/<tr data-domain="political">[\s\S]*?<\/tr>/)[0];
     assert.equal((row.match(/<td[^>]*>\s*<\/td>/g) || []).length, 0, 'an empty cell reads as a measured zero');
-    assert.equal((row.match(/Not yet measured/g) || []).length, 2, 'both score columns must be marked');
+    assert.equal((row.match(/Not yet measured/g) || []).length, 3, 'every score column must be marked');
     assert.doesNotMatch(row, /0\.200/, 'a below-floor Brier is never printed');
     const scoredRow = html.match(/<tr data-domain="conflict">[\s\S]*?<\/tr>/)[0];
     assert.doesNotMatch(scoredRow, /Not yet measured/);
@@ -913,24 +933,24 @@ describe('accuracy page published-origin domain table (#8952)', () => {
   const tableOf = (html) => html.match(/<table data-by-domain>[\s\S]*?<\/table>/)?.[0] ?? null;
   const rowText = (html, domain) => stripTags(html.match(new RegExp(`<tr data-domain="${domain}">[\\s\\S]*?</tr>`))[0]);
 
-  it('renders publishedByDomain under an anchor, with Brier and base rate p(1-p)', () => {
+  it('renders publishedByDomain under an anchor, with skill, Brier and the historical-rate Brier p(1-p)', () => {
     const { html } = renderState(LIVE_SECTION);
     assert.match(html, /<h2 id="by-domain">Accuracy by domain<\/h2>/);
     const table = tableOf(html);
     assert.ok(table, 'the published domain table renders');
     assert.deepEqual([...table.matchAll(/<tr data-domain="([^"]+)"/g)].map(([, d]) => d), ['conflict', 'market', 'political']);
-    // conflict: p = 30/120, p(1-p) = 0.1875.
-    assert.match(rowText(html, 'conflict'), /Conflict\s*120\s*0\.110\s*0\.188/);
-    // market: p = 22/60, p(1-p) = 0.2322.
-    assert.match(rowText(html, 'market'), /Market\s*60\s*0\.130\s*0\.232/);
+    // conflict: p = 30/120, p(1-p) = 0.1875; the producer wrote bss once it met the minimums.
+    assert.match(rowText(html, 'conflict'), /Conflict\s*120\s*\+0\.41\s*0\.110\s*0\.188/);
+    // market carries no bss: below the family minimums, so no score is printed.
+    assert.match(rowText(html, 'market'), /Market\s*60\s*Not yet measured\s*Not yet measured\s*Not yet measured/);
   });
 
   it('labels rows with the same human domain names the card badge uses', () => {
     const { html } = renderState(sectionWith({
       publishedByDomain: [
-        { domain: 'supply_chain', count: 40, brier: 0.2, yesCount: 10 },
-        { domain: 'infrastructure', count: 40, brier: 0.2, yesCount: 10 },
-        { domain: 'geopolitical', count: 40, brier: 0.2, yesCount: 10 },
+        { domain: 'supply_chain', count: 40, brier: 0.2, yesCount: 10, bss: -0.07 },
+        { domain: 'infrastructure', count: 40, brier: 0.2, yesCount: 10, bss: -0.07 },
+        { domain: 'geopolitical', count: 40, brier: 0.2, yesCount: 10, bss: -0.07 },
       ],
     }));
     const headers = [...tableOf(html).matchAll(/<th scope="row">([^<]+)<\/th>/g)].map(([, label]) => label);
@@ -942,7 +962,7 @@ describe('accuracy page published-origin domain table (#8952)', () => {
   });
 
   it('treats a non-integer yesCount as not yet measured, matching the badge', () => {
-    const { html } = renderState(sectionWith({ publishedByDomain: [{ domain: 'conflict', count: 40, brier: 0.2, yesCount: 10.5 }] }));
+    const { html } = renderState(sectionWith({ publishedByDomain: [{ domain: 'conflict', count: 40, brier: 0.2, yesCount: 10.5, bss: -0.07 }] }));
     assert.match(rowText(html, 'conflict'), /Not yet measured/);
   });
 
@@ -954,15 +974,15 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     assert.equal((html.match(/<table data-by-domain/g) || []).length, 1);
   });
 
-  it('applies the badge sample floor: n=29 is not yet measured, n=30 is measured', () => {
+  it('applies the producer family gate: a row is measured only when it carries bss, whatever its count (#8990)', () => {
     const { html } = renderState(sectionWith({
       publishedByDomain: [
-        { domain: 'conflict', count: 29, brier: 0.2, yesCount: 10 },
-        { domain: 'market', count: 30, brier: 0.21, yesCount: 10 },
+        { domain: 'conflict', count: 300, brier: 0.2, yesCount: 100 },
+        { domain: 'market', count: 30, brier: 0.21, yesCount: 10, bss: 0.055 },
       ],
     }));
-    assert.match(rowText(html, 'conflict'), /29\s*Not yet measured\s*Not yet measured/);
-    assert.match(rowText(html, 'market'), /30\s*0\.210\s*0\.222/);
+    assert.match(rowText(html, 'conflict'), /300\s*Not yet measured\s*Not yet measured\s*Not yet measured/, '300 rows from too few families stay unmeasured');
+    assert.match(rowText(html, 'market'), /30\s*\+0\.06\s*0\.210\s*0\.222/);
   });
 
   it('names its population and its sample rule in the caption', () => {
@@ -970,7 +990,7 @@ describe('accuracy page published-origin domain table (#8952)', () => {
     assert.match(caption, /published/i);
     assert.match(caption, /bet_engine/);
     assert.doesNotMatch(caption, /unpromoted/, 'the table excludes bet_engine even when promotion is on');
-    assert.match(caption, /30/);
+    assert.match(caption, /at least 30 forecast families, with at least 5 that came true and 5 that did not/);
   });
 
   it('says so instead of a table when the scorecard predates the published breakdown', () => {
@@ -1293,7 +1313,7 @@ describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
   it('shows a not-measurable interval when it is null, absent, or over a different population', () => {
     const cases = [
       sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: null, overallBrier: null } }),
-      LIVE_SECTION,
+      sectionWith({ uncertainty: undefined }),
       sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, count: 179 }, overallBrier: { ...UNCERTAINTY.overallBrier, ci95: [0.2] } } }),
     ];
     for (const section of cases) {
@@ -1388,7 +1408,7 @@ describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
     const download = downloadFor(WITH_INTERVALS);
     assert.equal(download.confidenceIntervals.meanScores.brier.published, true);
     assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
-    assert.equal(downloadFor(LIVE_SECTION).confidenceIntervals.meanScores.brier.published, false);
+    assert.equal(downloadFor(sectionWith({ uncertainty: undefined })).confidenceIntervals.meanScores.brier.published, false);
     const bothNull = sectionWith({ uncertainty: { ...UNCERTAINTY, overallBrier: null, skillBrier: null } });
     assert.equal(downloadFor(bothNull).confidenceIntervals.meanScores.brier.published, false, 'a method with no interval publishes nothing');
     const unrendered = sectionWith({
@@ -1442,9 +1462,11 @@ describe('accuracy verdict block', () => {
     assert.ok(verdict < definitions && definitions < status, 'verdict, then definitions on first use, then the record');
     const defined = stripTags(html.match(/<dl data-accuracy-definitions>[\s\S]*?<\/dl>/)[0]);
     assert.match(defined, /Brier score/);
-    assert.match(defined, /0\.25/);
-    assert.match(defined, /Base rate/);
+    assert.match(defined, /0\.25, a coin flip/, 'the coin flip stays, as context only');
+    assert.match(defined, /Historical rate/);
     assert.match(defined, /rate times one minus the rate/, 'p(1-p) must be stated in words');
+    assert.match(defined, /Skill score/);
+    assert.match(defined, /Forecast family/);
   });
 
   it('states the ledger counts the totals table publishes, and that void reasons are not yet published', () => {
@@ -1490,23 +1512,15 @@ describe('accuracy verdict block', () => {
     assert.match(verdictText(renderState(absent).html), /No graded forecast overlapped a liquid prediction market/);
   });
 
-  it('derives the all-scored base rate from the calibration buckets and compares the error of always answering it', () => {
+  it('reports the all-scored count from the calibration buckets but never judges skill on the pooled rate (#8990)', () => {
     const { overall } = LIVE_SCORECARD;
     assert.equal(pooledYes, 140, 'the fixture buckets recover 140 realised outcomes');
-    const baseRate = pooledYes / overall.count;
-    const constantError = (baseRate * (1 - baseRate)).toFixed(3);
-    assert.equal(constantError, '0.204');
     const text = verdictText(renderState(LIVE_SECTION).html);
     assert.match(text, new RegExp(`Across all ${overall.count} graded forecasts, ${pooledYes} came true: 28\\.6% of ${overall.count}`));
-    assert.match(text, new RegExp(`Always answering that rate would have an error of ${constantError}`));
-    assert.match(text, /World Monitor's error was 0\.192, so it beat always answering the base rate/);
-
-    const worse = verdictText(renderState(sectionWith({ overall: { ...overall, brier: 0.25 } })).html);
-    assert.match(worse, /World Monitor's error was 0\.250, so it did not beat always answering the base rate/);
-    assert.doesNotMatch(worse, /so it beat/);
-
-    const even = verdictText(renderState(sectionWith({ overall: { ...overall, brier: 0.204082 } })).html);
-    assert.match(even, /World Monitor's error was 0\.204, so it matched always answering the base rate/);
+    assert.match(text, /pools kinds of forecast that come true at very different rates, so it is not compared with a single historical rate/);
+    for (const brier of [0.1, 0.192435, 0.3]) {
+      assert.doesNotMatch(verdictText(renderState(sectionWith({ overall: { ...overall, brier } })).html), /beat|0\.204/, 'a pooled comparison is a pooling artifact');
+    }
   });
 
   it('withholds the derived base rate when the buckets do not cover every graded forecast', () => {
@@ -1516,26 +1530,68 @@ describe('accuracy verdict block', () => {
     assert.doesNotMatch(text, /came true: /, 'a base rate over the wrong population must not be published');
   });
 
-  it('compares the headline cohort only once the scorecard carries its yes count', () => {
+  // The headline skill paragraph leads the block (#8990). 30 of 180 came true,
+  // so the historical-rate error is p(1-p) = 0.139 and the score 1 - B / 0.139.
+  const skillOf = (changes, interval) => skillSection({ yesCount: 30, ...changes }, interval);
+  const skillParagraph = (section) => {
+    const html = renderState(section).html;
+    const paragraph = html.match(/<p data-accuracy-skill="([^"]+)">([\s\S]*?)<\/p>/);
+    assert.ok(html.indexOf('data-accuracy-skill') < html.indexOf('came due and were resolved'), 'skill leads the block');
+    return { verdict: paragraph[1], text: stripTags(paragraph[2]).trim() };
+  };
+
+  it('leads with better than always forecasting the historical rate only when the whole interval is above 0', () => {
+    // The Brier interval 0.0833 to 0.1319 maps to skill +0.05 to +0.40 against 0.1389.
+    const better = skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.083333, 0.131944] }));
+    assert.equal(better.verdict, 'better');
+    assert.match(better.text, /^Better than always forecasting the historical rate\./);
+    assert.match(better.text, /Of 180 graded forecasts, 30 came true: 16\.7% of 180 forecasts/);
+    assert.match(better.text, /Always forecasting that historical rate would have had an error of 0\.139\. World Monitor(?:'|&#39;)s error was 0\.100\./);
+    assert.match(better.text, /that scores \+0\.28, 95% interval \+0\.05 to \+0\.40/);
+    assert.match(better.text, /They come from at least 30 forecast families\./);
+
+    const worse = skillParagraph(skillOf({ brier: 0.2 }, { ci95: [0.16, 0.25] }));
+    assert.equal(worse.verdict, 'worse');
+    assert.match(worse.text, /^Worse than always forecasting the historical rate\./);
+
+    const unclear = skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.08, 0.15] }));
+    assert.equal(unclear.verdict, 'unclear');
+    assert.match(unclear.text, /^Not clearly better or worse than always forecasting the historical rate\./);
+    assert.equal(skillParagraph(skillOf({ brier: 0.1 }, { ci95: [0.3, 0.5] })).verdict, 'unclear', 'an interval that misses its own estimate carries no verdict');
+  });
+
+  it('reads a cohort below the family minimums as a small sample, with its number, never as a result', () => {
+    const small = skillParagraph(skillOf({ brier: 0.2 }, { ci95: [0.125, 0.264], small: true }));
+    assert.equal(small.verdict, 'small-sample');
+    assert.match(small.text, /^Too few independent forecasts to judge yet\./);
+    assert.match(small.text, /They come from too few forecast families\./);
+    assert.match(small.text, /Judging skill needs at least 30 forecast families, with at least 5 that came true and 5 that did not/);
+    assert.match(small.text, /reads -0\.44, 95% interval -0\.90 to \+0\.10, which is not a result/);
+    assert.doesNotMatch(small.text, /Better|Worse|Not clearly/);
+    const rowLevel = sectionWith({
+      skill: { ...LIVE_SCORECARD.skill, yesCount: 30 },
+      uncertainty: { ...UNCERTAINTY, method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072' },
+    });
+    assert.equal(skillParagraph(rowLevel).verdict, 'small-sample', 'a row-level interval predates the family minimums and cannot show they were met');
+    assert.match(skillParagraph(rowLevel).text, /forecast families this capture does not count/);
+  });
+
+  it('reports no skill when the yes count is missing, every outcome went one way, or nothing is graded', () => {
     const { skill } = LIVE_SCORECARD;
     assert.equal(Object.hasOwn(skill, 'yesCount'), false, 'the shipped fixture predates the field');
-    const waiting = verdictText(renderState(LIVE_SECTION).html);
-    assert.match(waiting, new RegExp(`headline cohort of ${skill.count} forecasts cannot be compared the same way yet`));
-    assert.match(waiting, /does not yet record how many of its forecasts came true/);
-    assert.doesNotMatch(waiting, /0\.118/);
+    const waiting = skillParagraph(LIVE_SECTION);
+    assert.equal(waiting.verdict, 'none');
+    assert.match(waiting.text, /does not record how many of the 180 headline forecasts came true/);
+    assert.doesNotMatch(waiting.text, /0\.118/);
 
-    const carried = sectionWith({ skill: { ...skill, yesCount: 30 } });
-    const text = verdictText(renderState(carried).html);
-    assert.match(text, new RegExp(`Within the narrower headline cohort of ${skill.count} forecasts, 30 came true: 16\\.7% of ${skill.count}`));
-    assert.match(text, /Always answering that rate would have an error of 0\.139/);
-    assert.match(text, /World Monitor's error was 0\.118, so it beat always answering the base rate/);
+    const oneWay = skillParagraph(skillOf({ yesCount: 0 }));
+    assert.equal(oneWay.verdict, 'none');
+    assert.match(oneWay.text, /Every one went the same way/);
 
-    const worse = verdictText(renderState(sectionWith({ skill: { ...skill, yesCount: 30, brier: 0.15 } })).html);
-    assert.match(worse, /World Monitor's error was 0\.150, so it did not beat always answering the base rate/);
-
-    const collapsed = verdictText(renderState(sectionWith({ skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] } })).html);
-    assert.match(collapsed, /headline cohort has no graded forecast in this window/);
-    assert.doesNotMatch(collapsed, /undefined|NaN/);
+    const collapsed = skillParagraph(sectionWith({ skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] } }));
+    assert.equal(collapsed.verdict, 'none');
+    assert.match(collapsed.text, /headline cohort has no graded forecast in this window/);
+    assert.doesNotMatch(collapsed.text, /undefined|NaN/);
   });
 
   it('publishes skill.yesCount through the whitelist once the API carries it', () => {
@@ -1721,13 +1777,20 @@ describe('accuracy page after the #5233 correction', () => {
     assert.match(stripTags(html), /215 forecasts scored against a data feed we could not read correctly are voided/);
   });
 
-  it('calls a headline cohort under the domain-table minimum a small sample', () => {
-    const small = stripTags(renderState(sectionWith({ skill: { ...LIVE_SCORECARD.skill, count: 28, yesCount: 20, brier: 0.311271 } })).html);
-    assert.match(small, /The headline cohort has 28 scored forecasts\. That is fewer than the 30 the domain table needs before it publishes a score, so read the headline score as a small sample\./);
-    assert.doesNotMatch(small, /enough to publish a score/);
+  it('calls the post-correction headline a small sample by its families, not its rows (#8990)', () => {
+    // The 2026-10-07 audit: 28 rows from 20 families after #8986, BSS -0.53.
+    const section = skillSection({ count: 28, yesCount: 20, brier: 0.311271 }, { ci95: [0.22, 0.41], small: true });
+    const state = classifyAccuracyState(section);
+    assert.equal(state.coverage, 'small-sample');
+    assert.equal(state.headline, 'insufficient');
+    const small = stripTags(renderState(section).html);
+    assert.match(small, /Coverage: Small sample The headline cohort has 28 scored forecasts from too few forecast families\. Judging skill needs at least 30 forecast families/);
+    assert.match(small, /Read every headline score below as a small sample\./);
+    assert.match(small, /Skill vs historical rate, headline cohort Too few to judge Small sample: reads -0\.53 on 28 scored forecasts from too few forecast families/);
+    assert.doesNotMatch(small, /meets the minimum/);
     const large = stripTags(renderState(LIVE_SECTION).html);
-    assert.match(large, /The headline cohort has 180 scored forecasts, enough to publish a score\./);
-    assert.doesNotMatch(large, /small sample/);
+    assert.match(large, /The headline cohort has 180 scored forecasts from at least 30 forecast families\. That meets the minimum for judging skill/);
+    assert.doesNotMatch(large, /small sample/i);
   });
 });
 
@@ -1950,6 +2013,60 @@ describe('accuracy record under audit (#8990)', () => {
     assert.match(html, /data-accuracy-verdict/);
     assert.match(html, /<table data-by-domain>/);
     assert.match(html, /<th scope="col">Chance given<\/th>/);
-    assert.match(shell.description, /Published Brier and log scores/);
+    assert.match(shell.description, /against always forecasting the historical rate: skill scores/);
+    assert.match(html, /data-accuracy-skill=/);
+  });
+});
+
+describe('accuracy page skill against the historical rate, both audit states (#8990)', () => {
+  const AUDIT = Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason for the audit notice, long enough to read as one.' });
+  // 30 of 180 came true, so the historical-rate Brier is 0.139 and the BSS 1 - 0.1 / 0.138889 = +0.28.
+  const MEASURED = skillSection({ yesCount: 30, brier: 0.1 }, { ci95: [0.083333, 0.131944] });
+
+  it('leads the lifted page and llms-full with the skill verdict and its sample', () => {
+    const { html, state } = renderState(MEASURED);
+    assert.equal(state.coverage, 'measurable');
+    assert.match(html, /<p data-accuracy-skill="better"><strong>Better than always forecasting the historical rate\.<\/strong>/);
+    const tile = stripTags(html.match(/<section class="grid"[\s\S]*?<\/section>/)[0]);
+    assert.match(tile, /Skill vs historical rate, headline cohort \+0\.28 180 scored forecasts from at least 30 forecast families, 95% interval \+0\.05 to \+0\.40/);
+    const llms = renderAccuracyLlmsSection(MEASURED, null);
+    assert.match(llms, /headline forecasts were better than always forecasting the historical rate: a skill score of \+0\.28, 95% interval \+0\.05 to \+0\.40, over 180 scored forecasts from at least 30 forecast families/);
+    assert.doesNotMatch(llms, /0\.5 to everything/);
+  });
+
+  it('withholds every skill figure while under audit', () => {
+    const { shell } = renderState(MEASURED, { audit: AUDIT });
+    assert.doesNotMatch(shell.body, /data-accuracy-skill|Skill vs historical rate|\+0\.28|historical rate/);
+    const llms = renderAccuracyLlmsSection(MEASURED, AUDIT);
+    assert.doesNotMatch(llms, /skill|historical rate|\+0\.28/i);
+  });
+
+  it('puts the skill block in the download, with only measured domains, in both states', () => {
+    const lifted = downloadFor(MEASURED);
+    assert.deepEqual(lifted.skillVsHistoricalRate.minimums, { families: 30, yesFamilies: 5, noFamilies: 5 });
+    const reference = (30 / 180) * (150 / 180);
+    assert.deepEqual(lifted.skillVsHistoricalRate.headline, {
+      scored: 180, yesCount: 30, historicalRate: 30 / 180, historicalRateBrier: reference,
+      brier: 0.1, skillScore: 1 - 0.1 / reference, ci95: [1 - 0.131944 / reference, 1 - 0.083333 / reference], measurable: true, verdict: 'better',
+    });
+    assert.match(lifted.skillVsHistoricalRate.intervalBasis, /historical rate held fixed/);
+    assert.deepEqual(lifted.skillVsHistoricalRate.byDomain, [
+      { domain: 'conflict', scored: 120, brier: 0.11, historicalRateBrier: 0.1875, skillScore: 0.413333 },
+    ], 'a domain without a producer bss is not published');
+    assert.equal(lifted.confidenceIntervals.meanScores.skillScore.published, true);
+    assert.equal(lifted.confidenceIntervals.meanScores.skillScore.perDomain, false);
+
+    const audited = JSON.parse(accuracyDatasetDownload({ state: classifyAccuracyState(MEASURED), snapshotPath: SNAPSHOT_PATH, audit: AUDIT }));
+    assert.equal(audited.underAudit.issue, 8990, 'the raw block is flagged, as the rest of the download is');
+    assert.deepEqual(audited.skillVsHistoricalRate, lifted.skillVsHistoricalRate);
+  });
+
+  it('gates the coverage fact on the producer family flag, never on the row count', () => {
+    assert.equal(classifyAccuracyState(skillSection({ count: 5000, brier: 0.2 }, { small: true })).coverage, 'small-sample');
+    assert.equal(classifyAccuracyState(skillSection({ count: 50, brier: 0.2 })).coverage, 'measurable');
+    const rowLevel = sectionWith({ uncertainty: { ...UNCERTAINTY, method: 'entry-level percentile bootstrap, 1000 resamples, seed 7072' } });
+    assert.equal(classifyAccuracyState(rowLevel).coverage, 'small-sample', 'a row-level flag predates the family rule');
+    assert.equal(classifyAccuracyState(sectionWith({ uncertainty: undefined })).coverage, 'small-sample');
+    assert.match(renderState(skillSection({ brier: 0.2 }, { small: true })).html, /data-accuracy-coverage="small-sample">Coverage: Small sample/);
   });
 });

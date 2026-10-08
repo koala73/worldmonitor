@@ -766,7 +766,8 @@ describe('freeze crawlable live pulse coverage gates', () => {
     }, 'the market-alert block survives capture whitelisted member by member (#8867)');
     const state = classifyAccuracyState(section);
     assert.equal(state.availability, 'ok');
-    assert.equal(state.coverage, 'measurable');
+    // The stub carries no family-bootstrap skill interval, so the family gate (#8990) cannot be shown met.
+    assert.equal(state.coverage, 'small-sample');
     assert.equal(snapshot.coverage.forecastScorecardCaptured, true);
     assert.equal(snapshot.coverage.forecastScorecardRetained, false);
     assert.deepEqual(snapshot.errors.forecastScorecard, []);
