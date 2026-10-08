@@ -238,6 +238,7 @@ export interface ScorecardPublishedDomain {
   count: number;
   brier: number;
   yesCount: number;
+  bss?: number;
 }
 
 export interface ScorecardUncertainty {

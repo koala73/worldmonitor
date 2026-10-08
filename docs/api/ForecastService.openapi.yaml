@@ -1452,6 +1452,9 @@ components:
                 yesCount:
                     type: integer
                     format: int32
+                bss:
+                    type: number
+                    format: double
         ScorecardUncertainty:
             type: object
             properties:
@@ -1478,7 +1481,7 @@ components:
                         description: '[low, high] at 95%.'
                 insufficientSample:
                     type: boolean
-                    description: True when count is under 30.
+                    description: True below the family minimums.
             description: Bootstrap interval on a mean Brier score.
         ScorecardFunnel:
             type: object

@@ -593,9 +593,10 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
       const row = rows.get(domain);
       const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
       const yes = row?.yesCount;
-      return sampleCount >= 30 && typeof row?.brier === 'number' && Number.isFinite(row.brier)
+      // The seeder writes a domain's bss only once the domain meets its family minimums (#8990).
+      return typeof row?.bss === 'number' && Number.isFinite(row.bss) && typeof row.brier === 'number' && Number.isFinite(row.brier)
         && typeof yes === 'number' && Number.isInteger(yes) && yes >= 0 && yes <= sampleCount
-        ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount }
+        ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount, bss: row.bss }
         : { domain, kind: 'unmeasured', n: sampleCount };
     }),
   };
@@ -616,7 +617,7 @@ export function projectForecastScorecard(data: Record<string, unknown>, audit: F
   const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
   return {
     underAudit: audit ? { since: audit.since, issue: audit.issue, reason: audit.reason } : null,
-    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>) : null,
+    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>, { extended: true }) : null,
     marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
   };
 }

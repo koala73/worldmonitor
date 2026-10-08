@@ -9,14 +9,20 @@ import {
   SCORECARD_LIVE_ONLY_FIELDS,
   SCORECARD_NESTED_CHILD_FIELDS,
   SCORECARD_NESTED_OBJECT_FIELDS,
+  SCORECARD_NESTED_ROW_FIELDS,
   selectDeclaredScorecardFields,
 } from '../scripts/build-accuracy-page.mjs';
 import {
   FAMILY_OUTCOME_FIELDS,
   MARKET_ALERT_FIELDS,
   MARKET_ALERT_ROW_FIELDS,
+  PUBLISHED_DOMAIN_EXTENDED_FIELDS,
+  PUBLISHED_DOMAIN_FIELDS,
   RECEIPT_FIELDS,
   SCORECARD_BLOCK_FIELDS,
+  SKILL_EXTENDED_FIELDS,
+  SKILL_FIELDS,
+  selectScorecardFields,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
@@ -273,6 +279,22 @@ describe('getForecastScorecard backend status', () => {
   it('filters receipt rows with the member list the producer publishes', () => {
     assert.deepEqual([...RECEIPT_FIELDS], [...PUBLIC_RECEIPT_FIELDS]);
     assert.deepEqual([...FAMILY_OUTCOME_FIELDS], [...PUBLIC_FAMILY_OUTCOME_FIELDS]);
+  });
+
+  it('serves the contract skill members on REST and the seeder extras only to MCP (#8990)', () => {
+    const numbered = (fields: readonly string[]) => Object.fromEntries(fields.map((field, index) => [field, index + 1]));
+    const data = {
+      skill: numbered([...SKILL_FIELDS, ...SKILL_EXTENDED_FIELDS, 'internal']),
+      publishedByDomain: [numbered([...PUBLISHED_DOMAIN_FIELDS, ...PUBLISHED_DOMAIN_EXTENDED_FIELDS, 'internal'])],
+    };
+    const rest = selectScorecardFields(data);
+    assert.deepEqual(Object.keys(rest.skill ?? {}).sort(), [...SKILL_FIELDS].sort());
+    assert.deepEqual(Object.keys(rest.publishedByDomain?.[0] ?? {}).sort(), [...PUBLISHED_DOMAIN_FIELDS].sort());
+    const mcp = selectScorecardFields(data, { extended: true });
+    assert.deepEqual(Object.keys(mcp.skill ?? {}).sort(), [...SKILL_FIELDS, ...SKILL_EXTENDED_FIELDS].sort());
+    assert.deepEqual(Object.keys(mcp.publishedByDomain?.[0] ?? {}).sort(), [...PUBLISHED_DOMAIN_FIELDS, ...PUBLISHED_DOMAIN_EXTENDED_FIELDS].sort());
+    assert.deepEqual([...SKILL_FIELDS], [...SCORECARD_NESTED_OBJECT_FIELDS.skill], 'the /accuracy/ capture keeps the same skill members');
+    assert.deepEqual([...PUBLISHED_DOMAIN_FIELDS], [...SCORECARD_NESTED_ROW_FIELDS.publishedByDomain], 'and the same domain members');
   });
 
   it('filters the interval and funnel blocks with the same member lists the /accuracy/ page uses', () => {

@@ -77,6 +77,7 @@ message ScorecardPublishedDomain {
   int32 count = 2;
   double brier = 3;
   int32 yes_count = 4;
+  optional double bss = 5;
 }
 
 // Bootstrap interval on a mean Brier score.
@@ -85,7 +86,7 @@ message ScorecardInterval {
   double mean = 2;
   // [low, high] at 95%.
   repeated double ci95 = 3;
-  // True when count is under 30.
+  // True below the family minimums.
   bool insufficient_sample = 4;
 }
 
