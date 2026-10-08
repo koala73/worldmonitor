@@ -1061,6 +1061,38 @@ function summarizeShadowRows(rows, scope, options) {
     calibrated: side('calibrated', intervals.calibratedEce),
     // calibrated − raw: negative means the map lowered Brier on this cohort.
     brierDelta: { mean: round(brierDeltaStatistic(rows)), ci95: intervals.brierDelta },
+    ...(options.preBlendStage !== false && { internal: summarizeInternalStage(rows, scope, options) }),
+  };
+}
+
+const internalDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row, 'internal') - rowBrier(row, 'raw')));
+
+// The pre-blend stage (#7070): the forecaster's value before the market blend,
+// scored only on rows that record it. `raw` is the post-blend stage, so
+// internal − raw is what the blend cost (positive: the blend lowered Brier).
+// Rows without the value are counted in `missing`, never imputed. The block
+// draws its own bootstrap stream and the activation gate never reads it, so a
+// caller that needs only the verdict passes `preBlendStage: false` to skip it.
+function summarizeInternalStage(rows, scope, options) {
+  const scored = rows.filter((row) => Number.isFinite(row.internal));
+  const missing = rows.length - scored.length;
+  if (!scored.length) {
+    return { count: 0, families: 0, missing, brier: null, rawBrier: null, ece: null, eceCi95: null, reliability: [], brierDelta: null };
+  }
+  const intervals = pairedBootstrap(scored, {
+    brierDelta: internalDeltaStatistic,
+    ece: (sample) => expectedCalibrationError(sample, 'internal'),
+  }, { ...options, scope: `${scope}:internal` });
+  return {
+    count: scored.length,
+    families: familyCount(scored),
+    missing,
+    brier: round(mean(scored.map((row) => rowBrier(row, 'internal')))),
+    rawBrier: round(mean(scored.map((row) => rowBrier(row, 'raw')))),
+    ece: round(expectedCalibrationError(scored, 'internal')),
+    eceCi95: intervals.ece,
+    reliability: reliabilityBuckets(scored, 'internal'),
+    brierDelta: { mean: round(internalDeltaStatistic(scored)), ci95: intervals.brierDelta },
   };
 }
 
@@ -1086,6 +1118,14 @@ export function summarizeCalibrationShadow(rows, modeByDomain = {}, options = {}
         rawBrier: summary.raw.brier,
         calibratedBrier: summary.calibrated.brier,
         brierDelta: summary.brierDelta,
+        ...(summary.internal && { internal: {
+          count: summary.internal.count,
+          families: summary.internal.families,
+          missing: summary.internal.missing,
+          brier: summary.internal.brier,
+          rawBrier: summary.internal.rawBrier,
+          brierDelta: summary.internal.brierDelta,
+        } }),
       };
     }),
   };

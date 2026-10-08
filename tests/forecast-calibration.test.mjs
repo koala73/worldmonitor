@@ -18,6 +18,7 @@ import {
   isotonicKnots,
   knotsAreMonotone,
   parseCalibrationMap,
+  preBlendProbability,
   recordCalibrationPublication,
   resolveCalibrationMapForRun,
   selectFitCohort,
@@ -1108,7 +1109,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
       forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
       const now = fitAt + 10 * DAY_MS + i * DAY_MS;
       const ledger = ledgerOf([...base, ...forward]);
-      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now);
+      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, { preBlendStage: false });
       const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
         .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
       if (inferior) inferiorAt.push(forward.length);
@@ -1361,5 +1362,103 @@ describe('no live clock', () => {
     assert.throws(() => fitCalibrationMap({}, undefined), TypeError);
     const source = readFileSync(new URL('../scripts/_forecast-calibration.mjs', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /Date\.now\(|new Date\(|performance\.now\(/);
+  });
+});
+
+describe('pre-blend stage in the shadow (#7070)', () => {
+  const fitAt = T0 + 30 * DAY_MS;
+  const map = fitCalibrationMap(ledgerOf([
+    ...twoSided(110, 12, { domain: 'cyber', probability: 0.35 }),
+    ...repeat(10, () => entry({ domain: 'conflict', probability: 0.5, outcome: 'YES' })),
+  ]), fitAt);
+  const evalAt = fitAt + 60 * DAY_MS;
+  const shadowOf = (entries) => evaluateCalibrationShadow(ledgerOf(entries), map, evalAt);
+  const lineage = (internalProbability, blended) => ({
+    marketPrice: 0.5, drift: +(internalProbability - 0.5).toFixed(3), source: 'polymarket', internalProbability, marketBlendedProbability: blended,
+  });
+  // Forward rows published at p, each with its own family.
+  const forward = (count, { internal, ...options } = {}) => repeat(count, (i) => {
+    const row = entry({ generatedAt: fitAt + DAY_MS + i, ...options });
+    return internal === undefined ? row : { ...row, calibration: lineage(internal, row.probability) };
+  });
+
+  it('reads the pre-blend value from the opening lineage, and the post-blend value when no anchor applied', () => {
+    assert.equal(preBlendProbability({ probability: 0.3, calibration: lineage(0.1, 0.3) }), 0.1);
+    assert.equal(preBlendProbability({ probability: 0.42 }), 0.42, 'never blended');
+    assert.equal(preBlendProbability({ probability: 0.42, calibration: null }), 0.42);
+    assert.equal(preBlendProbability({ probability: 0.2, uncalibratedProbability: 0.42 }), 0.42, 'a calibrated publication keeps its unblended raw value');
+    assert.equal(preBlendProbability({ probability: 0.2, uncalibratedProbability: 0.3, calibration: lineage(0.1, 0.3) }), 0.1);
+  });
+
+  it('reads NaN when an anchor applied without a recorded pre-blend value', () => {
+    assert.ok(Number.isNaN(preBlendProbability({ probability: 0.3, calibration: { marketPrice: 0.5, marketBlendedProbability: 0.3 } })));
+    assert.ok(Number.isNaN(preBlendProbability({ probability: 0.3, calibration: { marketPrice: 0.12, drift: 0.3, source: 'polymarket' } })), 'pre-#7071 anchor');
+    const inferred = { probability: 0.3, rescore: { reason: 'last_seen_probability', superseded: { calibration: lineage(0.1, 0.3) } } };
+    assert.ok(Number.isNaN(preBlendProbability(inferred)), 'a rescore that removed the anchor lost the opening lineage');
+    assert.equal(preBlendProbability({ ...inferred, rescore: { ...inferred.rescore, restoredFromHistory: true } }), 0.3, 'restored openings are exact');
+  });
+
+  it('scores internal, raw and calibrated separately, with a family-cluster interval on internal minus raw', () => {
+    const shadow = shadowOf([...forward(30, { domain: 'cyber', probability: 0.3, internal: 0.1 }), ...forward(10, { domain: 'conflict', probability: 0.5, outcome: 'YES' })]);
+    const { forward: summary } = shadow;
+    assert.equal(summary.count, 40);
+    assert.equal(summary.internal.count, 40);
+    assert.equal(summary.internal.families, 40);
+    assert.equal(summary.internal.missing, 0);
+    // cyber: internal 0.1 vs raw 0.3 on NO; conflict: never blended, 0.5 on YES.
+    const internalBrier = (30 * 0.01 + 10 * 0.25) / 40;
+    const rawBrier = (30 * 0.09 + 10 * 0.25) / 40;
+    assert.equal(summary.internal.brier, Math.round(internalBrier * 1e6) / 1e6);
+    assert.equal(summary.internal.rawBrier, summary.raw.brier);
+    assert.equal(summary.internal.rawBrier, Math.round(rawBrier * 1e6) / 1e6);
+    assert.equal(summary.internal.brierDelta.mean, Math.round((internalBrier - rawBrier) * 1e6) / 1e6);
+    const [lo, hi] = summary.internal.brierDelta.ci95;
+    assert.ok(lo <= summary.internal.brierDelta.mean && summary.internal.brierDelta.mean <= hi && lo < hi, `${lo}..${hi}`);
+    assert.deepEqual(summary.internal.reliability.map((row) => [row.bucket, row.count]), [['10-20', 30], ['50-60', 10]]);
+    assert.ok(Array.isArray(summary.internal.eceCi95));
+    const cyber = summary.byDomain.find((row) => row.domain === 'cyber');
+    assert.deepEqual({ count: cyber.internal.count, missing: cyber.internal.missing, brier: cyber.internal.brier, delta: cyber.internal.brierDelta.mean }, { count: 30, missing: 0, brier: 0.01, delta: -0.08 });
+  });
+
+  it('counts rows without a pre-blend value as missing and scores the rest, never imputing', () => {
+    const known = forward(20, { domain: 'cyber', probability: 0.3, internal: 0.1 });
+    const unknown = forward(7, { domain: 'cyber', probability: 0.6 }).map((row) => ({ ...row, calibration: { marketPrice: 0.5, marketBlendedProbability: 0.6 } }));
+    const { forward: summary } = shadowOf([...known, ...unknown]);
+    assert.equal(summary.count, 27, 'the raw and calibrated stages keep every row');
+    assert.deepEqual({ count: summary.internal.count, missing: summary.internal.missing }, { count: 20, missing: 7 });
+    assert.equal(summary.internal.brier, 0.01, 'only the 20 rows that record the value are scored');
+    assert.equal(summary.internal.rawBrier, 0.09, 'raw is compared on the same 20 rows');
+    const { forward: none } = shadowOf(unknown);
+    assert.deepEqual(none.internal, { count: 0, families: 0, missing: 7, brier: null, rawBrier: null, ece: null, eceCi95: null, reliability: [], brierDelta: null });
+  });
+
+  it('leaves the activation gate and its verdict unchanged, whatever the pre-blend values', () => {
+    const stripInternal = (forwardSummary) => {
+      const { internal: _overall, byDomain, ...rest } = forwardSummary;
+      return { ...rest, byDomain: byDomain.map(({ internal: _domain, ...row }) => row) };
+    };
+    for (const [label, outcome, eligible] of [['eligible', 'NO', true], ['ineligible', 'YES', false]]) {
+      const conflict = forward(25, { domain: 'conflict', probability: 0.5, outcome: 'YES' });
+      const variants = [
+        ['no anchor', forward(40, { domain: 'cyber', probability: 0.3, outcome })],
+        ['pre-blend better', forward(40, { domain: 'cyber', probability: 0.3, outcome, internal: outcome === 'NO' ? 0.02 : 0.98 })],
+        ['pre-blend worse', forward(40, { domain: 'cyber', probability: 0.3, outcome, internal: outcome === 'NO' ? 0.98 : 0.02 })],
+        ['pre-blend missing', forward(40, { domain: 'cyber', probability: 0.3, outcome }).map((row) => ({ ...row, calibration: { marketPrice: 0.5, marketBlendedProbability: 0.3 } }))],
+      ].map(([name, cyber]) => [name, shadowOf([...cyber, ...conflict])]);
+      const [, baseline] = variants[0];
+      assert.equal(baseline.activationGate.eligible, eligible, label);
+      for (const [name, shadow] of variants) {
+        assert.deepEqual(shadow.activationGate, baseline.activationGate, `${label}: ${name}`);
+        assert.deepEqual(stripInternal(shadow.forward), stripInternal(baseline.forward), `${label}: ${name}`);
+        const decide = (s) => decideCalibrationPublication(map, s, { nowMs: evalAt, gateGeneratedAt: evalAt });
+        assert.deepEqual(decide(shadow), decide(baseline), `${label}: ${name}`);
+      }
+      const [, missingVariant] = variants[3];
+      const verdictOnly = evaluateCalibrationShadow(ledgerOf([...forward(40, { domain: 'cyber', probability: 0.3, outcome }).map((row) => ({ ...row, calibration: { marketPrice: 0.5, marketBlendedProbability: 0.3 } })), ...conflict]), map, evalAt, { preBlendStage: false });
+      assert.equal('internal' in verdictOnly.forward, false, 'the refit hold skips the stage');
+      assert.deepEqual(verdictOnly.activationGate, missingVariant.activationGate, `${label}: skipping the stage`);
+      const internalBriers = new Set(variants.map(([, shadow]) => shadow.forward.internal.brier));
+      assert.equal(internalBriers.size, variants.length, 'the variants do differ on the pre-blend stage');
+    }
   });
 });

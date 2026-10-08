@@ -139,6 +139,15 @@ describe('processResolutionCycle', () => {
       });
     }
 
+    it('freezes the pre-blend internalProbability recorded at the first emission (#7070)', () => {
+      const lineage = { ...anchored, internalProbability: 0.8, marketBlendedProbability: 0.6 };
+      const opening = forecast({ probability: 0.6, calibration: lineage });
+      const second = forecast({ probability: 0.62, generatedAt: T0 + 6 * 60 * 60 * 1000, deadline: T0 + DAY_MS, calibration: { ...lineage, internalProbability: 0.9, marketBlendedProbability: 0.62 } });
+      const { ledger } = processResolutionCycle({}, [snapshot(T0, [opening]), snapshot(T0 + 6 * 60 * 60 * 1000, [second])], FEEDS, T0 + 12 * 60 * 60 * 1000);
+      assert.equal(ledger[KEY].calibration.internalProbability, 0.8);
+      assert.equal(ledger[KEY].calibration.marketBlendedProbability, 0.6);
+    });
+
     it('leaves a resolved entry calibration untouched', () => {
       const resolvedFeeds = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] } };
       const { ledger: resolved } = processResolutionCycle(...opened([snapshot(T0, [first])]), resolvedFeeds, T0 + 2 * DAY_MS);
