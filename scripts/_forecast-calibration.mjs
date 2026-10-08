@@ -72,12 +72,13 @@ export const CALIBRATION_SOURCE_STAGE = 'marketBlendedProbability';
 // share a generator, a region and much of an outcome history. A domain fits
 // only with at least CALIBRATION_MIN_OUTCOME_FAMILIES families that resolved
 // YES and as many that resolved NO; one-sided data has no curve to fit. With
-// published-origin probabilities resampled from the live ledger, PAV lost to
-// identity on expected out-of-sample Brier below 10 minority-class families
-// in every miscalibration simulated (calibrated, over- and underconfident,
-// biased), and first beat it at 10 for a biased forecaster. The family floor
-// keeps the per-domain sample the row floor used to require (30) and makes
-// it independent.
+// published-origin probabilities resampled from the live ledger, a fit on
+// fewer than 10 minority-class families lost to identity on expected
+// out-of-sample Brier by more than the activation gate's 0.005 margin in every
+// miscalibration simulated (calibrated, over- and underconfident, biased), so
+// it could only spend a refit. At 10 the biased case is within the margin,
+// and PAV first beats identity at 12. The family floor keeps the per-domain
+// sample the row floor used to require (30) and makes it independent.
 export const CALIBRATION_MIN_FAMILIES = 30;
 export const CALIBRATION_MIN_OUTCOME_FAMILIES = 10;
 // A fitted domain refits when its families reach this multiple of the count
