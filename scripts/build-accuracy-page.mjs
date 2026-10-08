@@ -51,7 +51,9 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
 // Proto fields the frozen page and its download deliberately leave out.
 // familyOutcomes keys the live forecast-card chips by forecast id; a weekly
 // snapshot has no live cards, and the distribution publishes no forecast ids.
-export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes']);
+// underAudit mirrors FORECAST_ACCURACY_AUDIT, which the page and download read
+// at build time, so a captured copy would only go stale.
+export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes', 'underAudit']);
 
 // A fixed vocabulary, because the page is public: an exception message or an
 // upstream response body would publish internals and could carry attacker-

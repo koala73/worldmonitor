@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../../shared/forecast-accuracy-audit.js';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { selectMarketAlertScorecard, selectScorecardFields } from './scorecard-fields';
 
@@ -16,6 +17,13 @@ const MAX_STALE_MS = 2160 * 60 * 1000;
 interface ScorecardSeedEnvelope {
   _seed?: { fetchedAt?: unknown };
   data?: unknown;
+}
+
+// The same switch /accuracy/, scorecard.json, the panel and MCP read (#8990).
+export function scorecardUnderAudit(
+  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
+): Pick<GetForecastScorecardResponse, 'underAudit'> {
+  return audit ? { underAudit: { since: audit.since, reason: audit.reason, issue: audit.issue } } : {};
 }
 
 function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
@@ -44,6 +52,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     stale: false,
     error: '',
     ...overrides,
+    ...scorecardUnderAudit(),
   };
 }
 

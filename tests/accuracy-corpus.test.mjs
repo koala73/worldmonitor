@@ -1175,7 +1175,7 @@ describe('accuracy page forecast receipts (#5092)', () => {
       familyOutcomes: [{ forecastId: 'fc-1', outcome: 'VOID', voidReason: 'other' }],
     });
     assert.equal(Object.hasOwn(selected, 'familyOutcomes'), false);
-    assert.deepEqual([...SCORECARD_LIVE_ONLY_FIELDS], ['familyOutcomes']);
+    assert.deepEqual([...SCORECARD_LIVE_ONLY_FIELDS], ['familyOutcomes', 'underAudit']);
   });
 
   it('renders the receipts newest first with what was forecast, when, the chance, the outcome and the source', () => {

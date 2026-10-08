@@ -43778,8 +43778,7 @@ components:
                     format: double
             description: |-
                 Deprecated (#8967): newly seeded payloads omit it; a payload cached
-                 before the change may carry it until the next seed-forecasts run. The
-                 seeder keeps these unscored horizon curves internal for horizon scoring.
+                 before the change may carry it until the next seed-forecasts run.
         worldmonitor_forecast_v1_ForecastCase:
             type: object
             properties:
@@ -43936,12 +43935,15 @@ components:
                     type: string
                 question:
                     type: string
+            required:
+                - kind
+                - deadline
             description: |-
                 Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
                  comparing metric_key from source_feed to threshold with operator ">=", "<="
-                 or "crosses") or "judged" (an LLM judge answers question). kind and deadline
-                 are always set; other fields apply per kind. baseline_value applies only to
-                 "crosses" specs. A judged spec's threshold is absent, never 0.
+                 or "crosses") or "judged" (an LLM judge answers question). Other fields apply
+                 per kind. baseline_value applies only to "crosses" specs. A judged spec's
+                 threshold is absent, never 0.
         worldmonitor_forecast_v1_GetForecastScorecardRequest:
             type: object
         worldmonitor_forecast_v1_GetForecastScorecardResponse:
@@ -44003,6 +44005,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardFamilyOutcome'
+                underAudit:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ScorecardUnderAudit'
         worldmonitor_forecast_v1_ScorecardTotals:
             type: object
             properties:
@@ -44327,6 +44331,16 @@ components:
                     type: string
                 voidReason:
                     type: string
+        worldmonitor_forecast_v1_ScorecardUnderAudit:
+            type: object
+            properties:
+                since:
+                    type: string
+                reason:
+                    type: string
+                issue:
+                    type: integer
+                    format: int32
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:
