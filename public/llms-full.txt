@@ -820,6 +820,9 @@ tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
 
 The live transit counter uses AIS entry and exit reports for the same vessel.
 The vessel must remain inside the monitored area for at least five minutes.
+A crossing is recorded at the first report outside the area that arrives
+within six hours of the vessel's last report inside it. Reports often arrive in
+bursts, so a vessel can be silent for most of that time.
 Counts cover the preceding 24 hours. They are observed crossings, not a census
 of all traffic. Missing entry or exit reports prevent a measurement.
 PortWatch history and week-over-week movement are separate inputs and do not
