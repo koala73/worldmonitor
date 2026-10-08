@@ -3353,6 +3353,49 @@ describe('projection horizon windows (#7075)', () => {
     assert.deepEqual(scorecard.projections.byHorizon.map((row) => [row.horizon, row.registered]), [['h24', 1], ['d7', 1], ['d30', 1]]);
   });
 
+  it('a horizon window takes only the parent fields that describe it, never the parent probability lineage (#7075 review 2)', () => {
+    const parentOnly = {
+      uncalibratedProbability: 0.55,
+      calibration: { marketPrice: 55, marketTitle: 'Hormuz closure', source: 'polymarket' },
+      baselineProbability: 0.3,
+      probabilitySource: 'ensemble',
+      passes: [0.6, 0.64],
+      marketSlug: 'hormuz-closure',
+      marketSource: 'polymarket',
+    };
+    const fc = projected({ ...parentOnly, stateBucketId: 'bucket-1', projectionCurvesVersion: 1 });
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [fc])], HORMUZ(40), T0);
+    for (const key of [`${PARENT}@h24`, `${PARENT}@d7`, `${PARENT}@d30`]) {
+      const row = ledger[key];
+      for (const field of Object.keys(parentOnly)) assert.equal(field in row, false, `${key} carries ${field}`);
+      assert.equal(row.domain, 'supply_chain');
+      assert.equal(row.region, 'Strait of Hormuz');
+      assert.equal(row.title, 'Hormuz disruption risk rises');
+      assert.equal(row.generationOrigin, 'detector');
+      assert.equal(row.stateBucketId, 'bucket-1');
+      assert.equal(row.projectionCurvesVersion, 1);
+    }
+    assert.deepEqual(ledger[PARENT].calibration, parentOnly.calibration, 'the parent keeps its own lineage');
+    assert.equal(ledger[PARENT].marketSlug, 'hormuz-closure');
+    assert.equal('projectionCurvesVersion' in ledger[PARENT], false);
+  });
+
+  it('a horizon window from history without a curve version carries none (#7075)', () => {
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
+    assert.equal('projectionCurvesVersion' in ledger[`${PARENT}@d7`], false);
+  });
+
+  it('strips parent lineage already copied onto stored horizon windows, and leaves the parent alone (#7075 review 2)', () => {
+    const first = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
+    const stale = structuredClone(first.ledger);
+    const stored = { calibration: { marketPrice: 55 }, baselineProbability: 0.3, probabilitySource: 'ensemble', passes: [0.6], marketSlug: 'slug', marketSource: 'polymarket', uncalibratedProbability: 0.55 };
+    Object.assign(stale[`${PARENT}@d7`], stored);
+    Object.assign(stale[PARENT], { marketSlug: 'slug' });
+    const { ledger } = processResolutionCycle(stale, [snapshot(T0, [projected()])], HORMUZ(40), T0);
+    for (const field of Object.keys(stored)) assert.equal(field in ledger[`${PARENT}@d7`], false, field);
+    assert.equal(ledger[PARENT].marketSlug, 'slug');
+  });
+
   it('the same forecast at two deadlines and three horizons creates six distinct keys', () => {
     const first = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const later = T0 + 15 * DAY_MS;

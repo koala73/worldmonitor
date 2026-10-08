@@ -84,6 +84,7 @@ import {
   PREDICATE_EVALUATORS,
   DEFAULT_CASCADE_RULES,
   PROJECTION_CURVES,
+  PROJECTION_CURVES_VERSION,
   __setForecastLlmCallOverrideForTests,
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
@@ -2865,6 +2866,30 @@ describe('computeProjections', () => {
     assert.equal(p.projections.d30, p.probability);
     assert.equal(p.projections.h24, 0.408);
     assert.equal(p.projections.d7, 0.449);
+  });
+
+  it('stamps the curve version on every projected forecast and keeps it in history (#7075)', () => {
+    const p = makePrediction('conflict', 'Sudan', 'test', 0.35, 0.5, '30d', []);
+    computeProjections([p]);
+    assert.equal(p.projectionCurvesVersion, PROJECTION_CURVES_VERSION);
+    assert.equal(buildHistoryForecastEntry(p).projectionCurvesVersion, PROJECTION_CURVES_VERSION);
+    const unprojected = makePrediction('conflict', 'Sudan', 'test', 0.35, 0.5, '30d', []);
+    assert.equal('projectionCurvesVersion' in buildHistoryForecastEntry(unprojected), false);
+  });
+
+  it('pins the curves to their version: change a multiplier, bump PROJECTION_CURVES_VERSION (#7075)', () => {
+    // Horizon windows are reported per curve version. Edit this fixture and
+    // the version together, or new windows pool with the old curves' results.
+    assert.equal(PROJECTION_CURVES_VERSION, 1);
+    assert.deepEqual(PROJECTION_CURVES, {
+      conflict:       { h24: 0.91, d7: 1.0, d30: 0.78 },
+      market:         { h24: 1.0, d7: 0.58, d30: 0.42 },
+      supply_chain:   { h24: 0.91, d7: 1.0, d30: 0.64 },
+      political:      { h24: 0.83, d7: 0.87, d30: 1.0 },
+      military:       { h24: 1.0, d7: 0.91, d30: 0.65 },
+      cyber:          { h24: 1.0, d7: 0.78, d30: 0.4 },
+      infrastructure: { h24: 1.0, d7: 0.5, d30: 0.25 },
+    });
   });
 });
 

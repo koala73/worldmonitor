@@ -24,6 +24,7 @@ import {
   wilsonInterval,
 } from '../scripts/_forecast-scorecard.mjs';
 import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
+import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
 import { MARKET_SETTLEMENT_FEED as BET_SETTLEMENT_FEED } from '../scripts/_bet-templates-markets.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
@@ -601,10 +602,102 @@ describe('projection horizon lane (#7075)', () => {
     assert.equal(scorecard.projections.semantics, 'point_in_time');
     assert.equal(scorecard.projections.minSample, SKILL_MIN_FAMILIES);
     assert.deepEqual(scorecard.projections.byHorizon, [
-      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
-      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, yes: 1, no: 1, unobserved: 1, void: 1, brier: null, insufficientSample: true },
-      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, yes: 0, no: 0, unobserved: 0, void: 0, brier: null, insufficientSample: true },
+      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, families: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
+      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, families: 1, yes: 1, no: 1, unobserved: 1, void: 1, realizedRate: { count: 2, successes: 1, rate: 0.5, ci95: wilsonInterval(1, 2) }, brier: null, insufficientSample: true },
+      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, families: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
     ]);
+  });
+
+  it('reports the realized rate with a Wilson interval over scored windows only, beside the family count', () => {
+    const ledger = {
+      y1: horizonRow('d30', { id: 'fc-a', key: 'fc-a@1@d30', outcome: 'YES' }),
+      y2: horizonRow('d30', { id: 'fc-a', key: 'fc-a@2@d30', outcome: 'YES' }),
+      y3: horizonRow('d30', { id: 'fc-b', key: 'fc-b@1@d30', outcome: 'YES' }),
+      n1: horizonRow('d30', { id: 'fc-c', key: 'fc-c@1@d30', outcome: 'NO' }),
+      u1: horizonRow('d30', { id: 'fc-d', key: 'fc-d@1@d30', outcome: 'UNOBSERVED' }),
+      v1: horizonRow('d30', { id: 'fc-e', key: 'fc-e@1@d30', outcome: 'VOID' }),
+    };
+    const d30 = computeScorecard(ledger, NOW).projections.byHorizon.find((row) => row.horizon === 'd30');
+    assert.equal(d30.scored, 4);
+    assert.equal(d30.families, 3, 'two windows of fc-a are one family');
+    assert.deepEqual(d30.realizedRate, { count: 4, successes: 3, rate: 0.75, ci95: wilsonInterval(3, 4) });
+    assert.ok(d30.realizedRate.ci95[0] < 0.75 && d30.realizedRate.ci95[1] > 0.75);
+  });
+
+  it('slices every horizon by domain, never pooling one domain into another', () => {
+    const ledger = {
+      s1: horizonRow('d7', { id: 'fc-s', key: 'fc-s@1@d7', domain: 'supply_chain', outcome: 'YES' }),
+      s2: horizonRow('h24', { id: 'fc-s', key: 'fc-s@1@h24', domain: 'supply_chain', outcome: 'NO' }),
+      c1: horizonRow('d7', { id: 'fc-c', key: 'fc-c@1@d7', domain: 'conflict', outcome: 'NO' }),
+      c2: horizonRow('d7', { id: 'fc-c2', key: 'fc-c2@1@d7', domain: 'conflict', outcome: 'UNOBSERVED' }),
+    };
+    const { byDomain, byHorizon } = computeScorecard(ledger, NOW).projections;
+    assert.deepEqual(byDomain.map((slice) => slice.domain), ['conflict', 'supply_chain']);
+    const cell = (domain, horizon) => byDomain.find((slice) => slice.domain === domain).byHorizon.find((row) => row.horizon === horizon);
+    assert.deepEqual(byDomain[0].byHorizon.map((row) => row.horizon), Object.keys(PROJECTION_HORIZONS));
+    assert.deepEqual([cell('conflict', 'd7').registered, cell('conflict', 'd7').scored, cell('conflict', 'd7').yes, cell('conflict', 'd7').unobserved], [2, 1, 0, 1]);
+    assert.deepEqual([cell('supply_chain', 'd7').scored, cell('supply_chain', 'd7').yes], [1, 1]);
+    assert.deepEqual([cell('supply_chain', 'h24').scored, cell('supply_chain', 'h24').no], [1, 1]);
+    assert.equal(cell('conflict', 'h24').registered, 0);
+    assert.equal(byHorizon.find((row) => row.horizon === 'd7').registered, 3, 'the pooled row still counts every domain');
+  });
+
+  it('reports each projection-curve version apart, with unstamped windows in their own slice', () => {
+    const ledger = {
+      a: horizonRow('d7', { id: 'fc-a', key: 'fc-a@1@d7', projectionCurvesVersion: 1, outcome: 'YES' }),
+      b: horizonRow('d7', { id: 'fc-b', key: 'fc-b@1@d7', projectionCurvesVersion: 2, outcome: 'NO' }),
+      c: horizonRow('d7', { id: 'fc-c', key: 'fc-c@1@d7', projectionCurvesVersion: 2, outcome: 'NO' }),
+      d: horizonRow('d7', { id: 'fc-d', key: 'fc-d@1@d7', outcome: 'YES' }),
+    };
+    const { byCurvesVersion } = computeScorecard(ledger, NOW).projections;
+    assert.deepEqual(byCurvesVersion.map((slice) => slice.curvesVersion), [null, 1, 2]);
+    const d7 = (version) => byCurvesVersion.find((slice) => slice.curvesVersion === version).byHorizon.find((row) => row.horizon === 'd7');
+    assert.deepEqual([d7(null).scored, d7(null).yes], [1, 1]);
+    assert.deepEqual([d7(1).scored, d7(1).yes], [1, 1]);
+    assert.deepEqual([d7(2).scored, d7(2).no], [2, 2]);
+  });
+
+  it('no forecast reader takes parent lineage from a horizon row (#7075 review 2)', () => {
+    const parent = (overrides) => resolved({
+      generationOrigin: 'legacy_detector',
+      calibration: { marketPrice: 0.4, internalProbability: 0.5, marketBlendedProbability: 0.45, marketTitle: 'Hormuz closure', source: 'polymarket' },
+      baselineProbability: 0.3,
+      probabilitySource: 'ensemble',
+      marketSlug: 'hormuz-closure',
+      ...overrides,
+    });
+    const forecasts = {
+      a: parent({ id: 'fc-a', key: 'fc-a@1', probability: 0.8, outcome: 'YES' }),
+      b: parent({ id: 'fc-b', key: 'fc-b@1', probability: 0.3, outcome: 'NO' }),
+      // An open window of the horizon row's forecast, so its family is listed.
+      open: parent({ id: 'fc-h', key: 'fc-h@2', status: 'pending', outcome: undefined, resolvedAt: undefined, lastSeenAt: NOW - DAY_MS }),
+    };
+    const withHorizon = {
+      ...forecasts,
+      h: horizonRow('d7', {
+        generationOrigin: 'legacy_detector',
+        calibration: { marketPrice: 0.99, internalProbability: 0.5, marketBlendedProbability: 0.9, marketTitle: 'Hormuz closure', source: 'polymarket' },
+        baselineProbability: 0.99,
+        probabilitySource: 'ensemble',
+        marketSlug: 'hormuz-closure',
+        probability: 0.1,
+        outcome: 'YES',
+        title: 'Hormuz disruption risk rises',
+        generatedAt: NOW - 9 * DAY_MS,
+      }),
+    };
+    assert.equal(buildPublicReceipts({ h: { ...withHorizon.h, spec: { ...withHorizon.h.spec, horizon: undefined } } }, NOW).length, 1, 'the fixture is receipt-shaped');
+    const strip = ({ generatedAt: _g, projections: _p, ...rest }) => rest;
+    assert.deepEqual(strip(computeScorecard(withHorizon, NOW)), strip(computeScorecard(forecasts, NOW)));
+    assert.deepEqual(buildPublicReceipts(withHorizon, NOW), buildPublicReceipts(forecasts, NOW));
+    assert.deepEqual(buildFamilyOutcomes(withHorizon, NOW), buildFamilyOutcomes(forecasts, NOW));
+    assert.deepEqual(selectFitCohort(withHorizon, NOW), selectFitCohort(forecasts, NOW));
+  });
+
+  it('reports no slices on an empty ledger', () => {
+    const { byDomain, byCurvesVersion } = computeScorecard({}, NOW).projections;
+    assert.deepEqual(byDomain, []);
+    assert.deepEqual(byCurvesVersion, []);
   });
 
   it('reports the section with zero rows on an empty ledger, in the builder order', () => {

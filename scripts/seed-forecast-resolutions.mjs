@@ -1610,6 +1610,7 @@ function isPrunableTerminalEntry(entry, minResolvedAt) {
 export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now()) {
   const ledger = cloneJson(normalizeLedger(existingLedger));
   migratePendingCountFeedKeys(ledger);
+  stripStaleHorizonParentFields(ledger);
   // Envelope voids first (#5233), so the window correction never rescores a
   // row that the same run then voids.
   voidEnvelopeBugResolutions(ledger, nowMs);
@@ -1919,9 +1920,29 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
       continue;
     }
     if (deadline < nowMs) continue;
-    const { uncalibratedProbability: _parentLineage, ...parent } = forecast;
-    const view = { ...parent, probability, timeHorizon: spec.timeHorizon };
-    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey };
+    const view = { ...pickHorizonParentFields(forecast), probability, timeHorizon: spec.timeHorizon };
+    const curvesVersion = Number.isInteger(forecast.projectionCurvesVersion) ? { projectionCurvesVersion: forecast.projectionCurvesVersion } : {};
+    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey, ...curvesVersion };
+  }
+}
+
+// The parent fields a horizon window keeps (#7075 review 2). The rest of the
+// parent (calibration, base rate, ensemble passes, market slug, uncalibrated
+// probability) describes the parent's probability, not the projection the
+// window grades, so a window that carried them would misdescribe itself.
+const HORIZON_PARENT_FIELDS = ['domain', 'region', 'title', 'generationOrigin', 'origin', 'stateBucketId'];
+// What createEntry copies from a parent beyond HORIZON_PARENT_FIELDS. Windows
+// registered before the whitelist carry these and lose them on the next run.
+const HORIZON_STALE_PARENT_FIELDS = ['uncalibratedProbability', 'calibration', 'baselineProbability', 'probabilitySource', 'passes', 'marketSlug', 'marketSource'];
+
+function pickHorizonParentFields(forecast) {
+  return Object.fromEntries(HORIZON_PARENT_FIELDS.filter((field) => field in forecast).map((field) => [field, forecast[field]]));
+}
+
+function stripStaleHorizonParentFields(ledger) {
+  for (const entry of Object.values(ledger)) {
+    if (!isHorizonEntry(entry)) continue;
+    for (const field of HORIZON_STALE_PARENT_FIELDS) delete entry[field];
   }
 }
 

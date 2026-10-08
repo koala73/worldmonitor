@@ -2657,6 +2657,10 @@ function resolveCascades(predictions, rules) {
 }
 
 // ── Phase 3: Probability projections ───────────────────────
+// Bump on any change to how computeProjections maps a probability to its
+// horizons (curves, anchoring, floor, cap). Every projected forecast carries
+// it, and the horizon scorecard reports each version apart (#7075).
+const PROJECTION_CURVES_VERSION = 1;
 const PROJECTION_CURVES = {
   conflict:       { h24: 0.91, d7: 1.0, d30: 0.78 },
   market:         { h24: 1.0, d7: 0.58, d30: 0.42 },
@@ -2690,6 +2694,7 @@ function computeProjections(predictions) {
       d7:  Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d7)) * 1000) / 1000,
       d30: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d30)) * 1000) / 1000,
     };
+    pred.projectionCurvesVersion = PROJECTION_CURVES_VERSION;
   }
 }
 
@@ -4981,6 +4986,7 @@ function buildHistoryForecastEntry(pred) {
       d7: finiteOrNull(pred.projections.d7),
       d30: finiteOrNull(pred.projections.d30),
     } : null,
+    ...(Number.isInteger(pred.projectionCurvesVersion) && { projectionCurvesVersion: pred.projectionCurvesVersion }),
     // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
     // payload emits, so Bet 2's resolver can score forecasts still in-window.
     // History also keeps the rule version, or the resolver would migrate a
@@ -19829,6 +19835,7 @@ export {
   PREDICATE_EVALUATORS,
   DEFAULT_CASCADE_RULES,
   PROJECTION_CURVES,
+  PROJECTION_CURVES_VERSION,
   normalizeChokepoints,
   normalizeGpsJamming,
   deriveStateDrivenForecasts,

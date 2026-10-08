@@ -713,12 +713,53 @@ const PROJECTION_HORIZON_ORDER = ['h24', 'd7', 'd30'];
 // Per-horizon projection lane (#7075). Reported beside the forecast scorecard,
 // never pooled into it: a Brier appears for a horizon only once that horizon
 // alone reaches the interval sample floor, so an early read cannot be mistaken
-// for measured skill.
+// for measured skill. The same rows are sliced by domain and by the
+// projection-curve version stamped at emission, so a curve change is read
+// apart from the windows the old curves produced.
 function summarizeProjectionHorizons(entries, nowMs) {
-  const byHorizon = PROJECTION_HORIZON_ORDER.map((horizon) => {
+  return {
+    semantics: 'point_in_time',
+    minSample: SKILL_MIN_FAMILIES,
+    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only once its scored windows come from at least ${SKILL_MIN_FAMILIES} forecast families with ${SKILL_MIN_OUTCOME_FAMILIES} YES and ${SKILL_MIN_OUTCOME_FAMILIES} NO families, and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID. The realized rate is the YES share of scored windows with a 95% Wilson interval; that interval treats each window as independent, so read it beside the family count. Slices by domain and by projection-curve version (null: registered before the version stamp) repeat the same per-horizon rows.`,
+    byHorizon: summarizeHorizonRows(entries, nowMs, 'projection'),
+    byDomain: sliceHorizonRows(entries, (entry) => entry?.domain || 'unknown').map(([domain, group]) => ({
+      domain,
+      byHorizon: summarizeHorizonRows(group, nowMs, `projection:domain:${domain}`),
+    })),
+    byCurvesVersion: sliceHorizonRows(entries, projectionCurvesVersionOf).map(([curvesVersion, group]) => ({
+      curvesVersion,
+      byHorizon: summarizeHorizonRows(group, nowMs, `projection:curves:${curvesVersion}`),
+    })),
+  };
+}
+
+function projectionCurvesVersionOf(entry) {
+  return Number.isInteger(entry?.projectionCurvesVersion) ? entry.projectionCurvesVersion : null;
+}
+
+// Sorted with null first, then ascending.
+function sliceHorizonRows(entries, keyOf) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const key = keyOf(entry);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  }
+  return [...groups.entries()].sort(([a], [b]) => {
+    if (a === b) return 0;
+    if (a === null) return -1;
+    if (b === null) return 1;
+    return a < b ? -1 : 1;
+  });
+}
+
+function summarizeHorizonRows(entries, nowMs, scope) {
+  return PROJECTION_HORIZON_ORDER.map((horizon) => {
     const group = entries.filter((entry) => entry?.spec?.horizon === horizon);
     const resolved = group.filter((entry) => entry?.status === 'resolved');
     const scored = resolved.filter(isScoredEntry);
+    const families = familyTotals(scored);
+    const yes = scored.filter((entry) => entry.outcome === 'YES').length;
     const maturedPending = group.filter((entry) => {
       if (entry?.status === 'resolved') return false;
       const deadline = entryDeadline(entry);
@@ -730,20 +771,16 @@ function summarizeProjectionHorizons(entries, nowMs) {
       matured: resolved.length + maturedPending.length,
       resolved: resolved.length,
       scored: scored.length,
-      yes: scored.filter((entry) => entry.outcome === 'YES').length,
+      families: families.length,
+      yes,
       no: scored.filter((entry) => entry.outcome === 'NO').length,
       unobserved: resolved.filter((entry) => entry?.outcome === 'UNOBSERVED').length,
       void: resolved.filter((entry) => entry?.outcome === 'VOID').length,
-      brier: meetsFamilyMinimums(familyTotals(scored)) ? brierInterval(scored, `projection:${horizon}`) : null,
-      insufficientSample: !meetsFamilyMinimums(familyTotals(scored)),
+      realizedRate: proportion(yes, scored.length),
+      brier: meetsFamilyMinimums(families) ? brierInterval(scored, `${scope}:${horizon}`) : null,
+      insufficientSample: !meetsFamilyMinimums(families),
     };
   });
-  return {
-    semantics: 'point_in_time',
-    minSample: SKILL_MIN_FAMILIES,
-    methodology: `Brier over resolved YES/NO point-in-time projection windows, reported per horizon only once its scored windows come from at least ${SKILL_MIN_FAMILIES} forecast families with ${SKILL_MIN_OUTCOME_FAMILIES} YES and ${SKILL_MIN_OUTCOME_FAMILIES} NO families, and never pooled into the forecast headline; UNOBSERVED (no sample inside the stored tolerance) is counted apart from NO and VOID.`,
-    byHorizon,
-  };
 }
 
 // ---------------------------------------------------------------------------
