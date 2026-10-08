@@ -1997,22 +1997,24 @@
         "label": "Histórico de acertos",
         "labelHint": "Como as previsões publicadas pontuaram depois de resolvidas, nos últimos {{days}} dias. Passe o cursor sobre um número para ver o que significa.",
         "unavailable": "Indisponível no momento",
-        "insufficient": "Ainda não há previsões avaliadas suficientes",
+        "insufficient": "Ainda há poucas previsões independentes",
         "brier": "Pontuação Brier {{score}} (n={{n}})",
         "brierHint": "Pontuação Brier em {{n}} previsões avaliadas: a média do quadrado da diferença entre a probabilidade prevista e o que aconteceu. 0 é perfeito, 0,25 equivale a cara ou coroa; quanto menor, melhor.",
-        "baseRate": "Taxa base {{score}} (n={{n}})",
-        "baseRateHint": "O que alguém que sempre respondesse a taxa de \"sim\" observada teria pontuado nas mesmas {{n}} previsões ({{pct}}% resolvidas como \"sim\"). Superá-la significa que as previsões acrescentam informação.",
+        "baseRate": "Taxa histórica {{score}} (n={{n}})",
+        "baseRateHint": "O que seria o resultado de sempre prever a taxa histórica nas mesmas {{n}} previsões ({{pct}}% resolvidas como sim). Superá-la significa que as previsões agregam informação.",
         "void": "Anuladas {{pct}}% ({{count}} de {{resolved}})",
         "voidHint": "Previsões resolvidas que não puderam ser avaliadas, de {{resolved}} resolvidas no período.",
         "stale": "Desatualizado",
         "staleHint": "Última avaliação em {{date}}. O avaliador não rodou desde então, então estes números estão mais antigos do que deveriam.",
-        "fullRecord": "Histórico completo"
+        "fullRecord": "Histórico completo",
+        "skill": "Habilidade {{score}} vs taxa histórica",
+        "skillHint": "Habilidade nas mesmas {{n}} previsões avaliadas, comparada com sempre prever a frequência com que se concretizaram: acima de 0 é melhor, 0 não é melhor, abaixo de 0 é pior, e 1 é perfeito."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs taxa base {{base}}",
-        "measuredHint": "Como as previsões publicadas de {{domain}} pontuaram em {{n}} previsões avaliadas nos últimos {{days}} dias. A taxa base é o que sempre responder a taxa de \"sim\" observada do domínio teria pontuado. Quanto menor, melhor. Este é o histórico do domínio, não desta previsão.",
+        "measured": "{{domain}} n={{n}} · habilidade {{skill}} vs taxa histórica",
+        "measuredHint": "Como as previsões publicadas de {{domain}} pontuaram nas {{n}} previsões avaliadas nos últimos {{days}} dias, comparado com sempre prever a frequência com que as previsões do domínio se concretizaram: acima de 0 é melhor, abaixo de 0 é pior. Brier {{score}} comparado com {{base}} da taxa histórica, onde menor é melhor. Este é o histórico do domínio, não desta previsão.",
         "unmeasured": "Ainda não medido",
-        "unmeasuredHint": "As previsões de {{domain}} têm {{n}} resultados avaliados nos últimos {{days}} dias. Um domínio precisa de {{min}} antes que sua precisão seja exibida."
+        "unmeasuredHint": "As previsões de {{domain}} têm {{n}} resultados avaliados nos últimos {{days}} dias. A precisão de um domínio é mostrada quando seus resultados vêm de pelo menos {{min}} perguntas de previsão separadas, com pelo menos {{outcomes}} que se concretizaram e {{outcomes}} que não se concretizaram."
       },
       "resolution": {
         "last": "Último: {{outcome}}",

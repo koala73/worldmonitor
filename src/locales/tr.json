@@ -2372,22 +2372,24 @@
         "label": "Geçmiş performans",
         "labelHint": "Yayımlanan tahminlerin son {{days}} günde sonuçlandıktan sonra nasıl puanlandığı. Anlamını görmek için bir sayının üzerine gelin.",
         "unavailable": "Şu anda kullanılamıyor",
-        "insufficient": "Henüz yeterli sayıda puanlanmış tahmin yok",
+        "insufficient": "Henüz çok az bağımsız tahmin",
         "brier": "Brier puanı {{score}} (n={{n}})",
         "brierHint": "{{n}} puanlanmış tahmin üzerinden Brier puanı: tahmin edilen olasılık ile gerçekleşen sonuç arasındaki farkın karesinin ortalaması. 0 mükemmel, 0,25 yazı tura atmaya denk; düşük olan daha iyidir.",
-        "baseRate": "Temel oran {{score}} (n={{n}})",
-        "baseRateHint": "Aynı {{n}} tahminde her zaman gözlenen \"evet\" oranını söyleyen birinin alacağı puan (%{{pct}} \"evet\" ile sonuçlandı). Bunu geçmek, tahminlerin bilgi kattığı anlamına gelir.",
+        "baseRate": "Geçmiş oran {{score}} (n={{n}})",
+        "baseRateHint": "Her zaman geçmiş oranını tahmin etmenin aynı {{n}} tahminlerde ne skora sahip olacağı ({{pct}}% evet olarak çözümlendi). Bunu geçmek tahminlerin bilgi katması anlamına gelir.",
         "void": "Geçersiz %{{pct}} ({{resolved}} içinden {{count}})",
         "voidHint": "Sonuçlanan ancak puanlanamayan tahminler; dönemde sonuçlanan {{resolved}} tahmin içinden.",
         "stale": "Güncel değil",
         "staleHint": "Son puanlama: {{date}}. Puanlayıcı o zamandan beri çalışmadı, bu yüzden bu sayılar olması gerekenden eski.",
-        "fullRecord": "Tüm kayıt"
+        "fullRecord": "Tüm kayıt",
+        "skill": "Yetenek {{score}} vs geçmiş oran",
+        "skillHint": "Aynı {{n}} puanlanan tahminin üzerindeki yetenek, her zaman ne sıklıkta doğru çıktığını tahmin etmeye karşı: 0 üstü iyidir, 0 iyileştirme değildir, 0 altı kötüdür ve 1 mükemmeldir."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs temel oran {{base}}",
-        "measuredHint": "{{n}} puanlanan tahmin üzerinden son {{days}} günde yayınlanan {{domain}} tahminlerinin nasıl performans gösterdiği. Taban oranı, her zaman alanın gözlemlenen evet oranını yanıtlamanın elde edeceği puandır. Düşük değer daha iyidir. Bu, alanın sicilidir, bu tahminin değil.",
+        "measured": "{{domain}} n={{n}} · yetenek {{skill}} vs geçmiş oran",
+        "measuredHint": "Yayınlanan {{domain}} tahminlerinin {{n}} puanlanan tahminlerde son {{days}} gün içinde nasıl puanlandığı, her zaman etki alanının tahminlerinin ne sıklıkta doğru çıktığını tahmin etmeye karşı: 0 üstü iyidir, 0 altı kötüdür. Geçmiş oran için {{base}}'e karşı Brier {{score}}, düşük daha iyi. Bu etki alanının kaydıdır, bu tahmine değil.",
         "unmeasured": "Henüz ölçülmedi",
-        "unmeasuredHint": "{{domain}} tahminleri son {{days}} gün içinde {{n}} puanlanan sonuca sahiptir. Bir alanın doğruluğunun gösterilmesi için {{min}} gereklidir."
+        "unmeasuredHint": "{{domain}} tahminlerinin son {{days}} gün içinde {{n}} puanlanan sonucu vardır. Bir etki alanının doğruluğu, sonuçları en az {{min}} ayrı tahmin sorusundan geldiğinde, en az {{outcomes}} doğru olan ve {{outcomes}} olmayan ile gösterilir."
       },
       "resolution": {
         "last": "Son: {{outcome}}",

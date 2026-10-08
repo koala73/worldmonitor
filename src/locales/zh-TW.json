@@ -2362,22 +2362,24 @@
         "label": "歷史戰績",
         "labelHint": "過去{{days}}天內，已公開的預測在結果確定後的得分情況。將滑鼠懸停在數字上可檢視其含義。",
         "unavailable": "暫時不可用",
-        "insufficient": "已評分的預測還不夠多",
+        "insufficient": "獨立預測數量過少",
         "brier": "Brier 分數 {{score}}（n={{n}}）",
         "brierHint": "基於 {{n}} 條已評分預測的 Brier 分數：預測機率與實際結果之差的平方的平均值。0 為完美，0.25 相當於拋硬幣，越低越好。",
-        "baseRate": "基準率 {{score}}（n={{n}}）",
-        "baseRateHint": "若始終按觀測到的“是”比例作答，在同樣 {{n}} 條預測上會得到的分數（{{pct}}% 的結果為“是”）。優於該值說明預測提供了有效資訊。",
+        "baseRate": "歷史頻率 {{score}} (n={{n}})",
+        "baseRateHint": "在同樣 {{n}} 個預測上始終按歷史頻率預測會得到的分數（{{pct}}% 結果為是）。超過它說明預測提供了資訊。",
         "void": "作廢 {{pct}}%（{{resolved}} 條中 {{count}} 條）",
         "voidHint": "已有結果但無法評分的預測，佔本期間內已有結果的 {{resolved}} 條。",
         "stale": "資料過期",
         "staleHint": "最近一次評分於 {{date}}。此後評分程式未再執行，因此這些數字比應有的更舊。",
-        "fullRecord": "完整記錄"
+        "fullRecord": "完整記錄",
+        "skill": "技巧評分 {{score}} 對比歷史頻率",
+        "skillHint": "同樣 {{n}} 個已評分預測的技巧評分，對比始終按其歷史頻率預測：高於 0 更好，0 沒有更好，低於 0 更差，1 為完美。"
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs 基準率 {{base}}",
-        "measuredHint": "過去 {{days}} 天內 {{n}} 個已評分預測中，已釋出的 {{domain}} 預測的 Brier 評分。基準率是如果始終按該領域觀察到的是機率回答所得的評分。分數越低越好。這是該領域的歷史記錄，不是此預測的記錄。",
+        "measured": "{{domain}} n={{n}} · 技巧評分 {{skill}} 對比歷史頻率",
+        "measuredHint": "{{domain}} 已釋出的預測在過去 {{days}} 天內 {{n}} 個已評分預測中的表現，對比總是按該領域歷史頻率預測的結果：高於 0 為更好，低於 0 為更差。Brier {{score}} vs 歷史率 {{base}}，數值越低越好。這是該領域的記錄，不是本預測的記錄。",
         "unmeasured": "暫未測量",
-        "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分的結果。領域需要至少 {{min}} 個結果才能顯示準確度。"
+        "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 個已評分結果。當領域的結果來自至少 {{min}} 個不同預測問題，且至少有 {{outcomes}} 個結果為是、{{outcomes}} 個結果為否時，該領域的準確度才會顯示。"
       },
       "resolution": {
         "last": "上次：{{outcome}}",

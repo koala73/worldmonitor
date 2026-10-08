@@ -2392,22 +2392,24 @@
         "label": "Dotychczasowe wyniki",
         "labelHint": "Jak opublikowane prognozy wypadły po rozstrzygnięciu w ciągu ostatnich {{days}} dni. Najedź na liczbę, aby zobaczyć, co oznacza.",
         "unavailable": "Obecnie niedostępne",
-        "insufficient": "Za mało ocenionych prognoz",
+        "insufficient": "Zbyt mało niezależnych prognoz na razie",
         "brier": "Wynik Briera {{score}} (n={{n}})",
         "brierHint": "Wynik Briera dla {{n}} ocenionych prognoz: średni kwadrat różnicy między prognozowanym prawdopodobieństwem a tym, co się wydarzyło. 0 to ideał, 0,25 to rzut monetą, niżej znaczy lepiej.",
-        "baseRate": "Stopa bazowa {{score}} (n={{n}})",
-        "baseRateHint": "Co osiągnąłby ktoś, kto zawsze odpowiadałby zaobserwowanym odsetkiem „tak”, na tych samych {{n}} prognozach ({{pct}}% rozstrzygnięto na „tak”). Pokonanie tej wartości oznacza, że prognozy wnoszą informację.",
+        "baseRate": "Średnia historyczna {{score}} (n={{n}})",
+        "baseRateHint": "Wynik zawsze prognozowania średniej historycznej dla tych samych {{n}} prognoz ({{pct}}% rozstrzygnięto jako tak). Jej przebicie oznacza, że prognozy wnoszą nową informację.",
         "void": "Unieważnione {{pct}}% ({{count}} z {{resolved}})",
         "voidHint": "Prognozy rozstrzygnięte, których nie dało się ocenić, spośród {{resolved}} rozstrzygniętych w okresie.",
         "stale": "Nieaktualne",
         "staleHint": "Ostatnia ocena {{date}}. Od tego czasu ocenianie nie zostało uruchomione, więc te liczby są starsze, niż powinny.",
-        "fullRecord": "Pełne wyniki"
+        "fullRecord": "Pełne wyniki",
+        "skill": "Umiejętność {{score}} vs średnia historyczna",
+        "skillHint": "Umiejętność dla {{n}} ocenionych prognoz w stosunku do zawsze prognozowania faktycznej częstości: powyżej 0 jest lepsze, 0 oznacza brak poprawy, poniżej 0 jest gorsze, a 1 to doskonałość."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs stopa bazowa {{base}}",
-        "measuredHint": "Jak opublikowane prognozy {{domain}} osiągnęły wynik na {{n}} ocenianych prognozach w ciągu ostatnich {{days}} dni. Stopa bazowa to wynik, jaki uzyskałoby zawsze odpowiadanie obserwowaną stopą „tak\" dla domeny. Niżej jest lepiej. To rekord domeny, a nie tej prognozy.",
+        "measured": "{{domain}} n={{n}} · umiejętność {{skill}} vs średnia historyczna",
+        "measuredHint": "Wynik opublikowanych prognoz {{domain}} dla {{n}} ocenionych prognoz w ciągu ostatnich {{days}} dni w stosunku do zawsze prognozowania faktycznej częstości prognoz domeny: powyżej 0 jest lepsze, poniżej 0 jest gorsze. Brier {{score}} vs {{base}} dla średniej historycznej, gdzie niższe wartości są lepsze. To zapis domeny, nie konkretna prognoza.",
         "unmeasured": "Jeszcze nie zmierzone",
-        "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Domena musi mieć {{min}} zanim wyświetli się jej dokładność."
+        "unmeasuredHint": "Prognozy {{domain}} mają {{n}} ocenionych wyników w ciągu ostatnich {{days}} dni. Dokładność domeny jest wyświetlana, gdy wyniki pochodzą z co najmniej {{min}} oddzielnych pytań prognostycznych, z co najmniej {{outcomes}} wynikami potwierdzającymi i {{outcomes}} wynikami przeczącymi."
       },
       "resolution": {
         "last": "Ostatnio: {{outcome}}",

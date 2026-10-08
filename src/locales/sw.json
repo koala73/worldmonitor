@@ -2109,22 +2109,24 @@
         "label": "Rekodi ya utendaji",
         "labelHint": "Jinsi utabiri uliochapishwa ulivyopata alama baada ya kuamuliwa, katika siku {{days}} zilizopita. Elea juu ya nambari kuona maana yake.",
         "unavailable": "Haipatikani kwa sasa",
-        "insufficient": "Bado hakuna utabiri wa kutosha uliopimwa",
+        "insufficient": "Bado kuna tabiri chache mno zinazojitegemea",
         "brier": "Alama ya Brier {{score}} (n={{n}})",
         "brierHint": "Alama ya Brier kwa utabiri {{n}} uliopimwa: wastani wa mraba wa tofauti kati ya uwezekano uliotabiriwa na kilichotokea. 0 ni kamili, 0.25 ni sawa na kurusha sarafu, chini ni bora.",
-        "baseRate": "Kiwango cha msingi {{score}} (n={{n}})",
-        "baseRateHint": "Alama ambayo mtu anayejibu kila mara kiwango cha \"ndiyo\" kilichoonekana angepata kwenye utabiri {{n}} uleule ({{pct}}% uliamuliwa \"ndiyo\"). Kuizidi kunamaanisha utabiri unaongeza taarifa.",
+        "baseRate": "Kiwango cha kihistoria {{score}} (n={{n}})",
+        "baseRateHint": "Nini kutabiri kila wakati kiwango cha kihistoria kingekuwa kimekodi kwenye {{n}} tabiri zile zile ({{pct}}% zilizotatanisha ndiyo). Kuizidi inamaanisha tabiri hizo zinaongeza habari.",
         "void": "Batili {{pct}}% ({{count}} kati ya {{resolved}})",
         "voidHint": "Utabiri ulioamuliwa lakini haukuweza kupimwa, kati ya {{resolved}} ulioamuliwa katika kipindi hiki.",
         "stale": "Umepitwa na wakati",
         "staleHint": "Ulipimwa mara ya mwisho {{date}}. Kipimo hakijaendeshwa tangu wakati huo, kwa hivyo nambari hizi ni za zamani kuliko inavyopaswa.",
-        "fullRecord": "Rekodi kamili"
+        "fullRecord": "Rekodi kamili",
+        "skill": "Ujuzi {{score}} dhidi ya kiwango cha kihistoria",
+        "skillHint": "Ujuzi juu ya {{n}} tabiri zile zile zilizokadiriwa, dhidi ya kutabiri kila wakati ni kwa kiwango gani kilikuwa kweli: zaidi ya 0 ni bora, 0 si bora, chini ya 0 ni mbaya, na 1 ni kamili."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs kiwango cha msingi {{base}}",
-        "measuredHint": "Jinsi ambavyo mwonekano uliotangazwa wa {{domain}} umefanya alama zaidi ya {{n}} mwonekano uliokadiria katika siku {{days}} zilizopita. Kiwango cha msingi ni kile kinachoshindwa kwa kujibu kila wakati kwa kiwango kilichogunduliwa cha ndiyo cha kikoa. Chini ni nzuri. Hii ni rekodi ya kikoa, sio ya mwonekano huu.",
+        "measured": "{{domain}} n={{n}} · ujuzi {{skill}} dhidi ya kiwango cha kihistoria",
+        "measuredHint": "Jinsi tabiri za {{domain}} zilizochapishwa zilivyokodi juu ya {{n}} tabiri zilizokadiriwa katika {{days}} siku zilizopita, dhidi ya kutabiri kila wakati ni kwa kiwango gani tabiri za kikoa hicho zilikuwa kweli: zaidi ya 0 ni bora, chini ya 0 ni mbaya. Brier {{score}} dhidi ya {{base}} kwa kiwango cha kihistoria, ambapo chini ni bora. Hii ni rekodi ya kikoa, si ya tabiri hii.",
         "unmeasured": "Haijapimwa bado",
-        "unmeasuredHint": "{{domain}} utabiri una {{n}} matokeo yaliyokadiria katika siku {{days}} zilizopita. Kikoa kinahitaji {{min}} kabla usahihi wake kuonekana."
+        "unmeasuredHint": "Tabiri za {{domain}} zina {{n}} matokeo yakodwa katika {{days}} siku zilizopita. Usahihi wa kikoa unaonyeshwa baada ya matokeo yake kutoka kwa angalau {{min}} maswali tofauti ya tabiri, na angalau {{outcomes}} ambayo ikamkuta na {{outcomes}} ambayo haikamkuta."
       },
       "resolution": {
         "last": "Mwisho: {{outcome}}",

@@ -16,7 +16,8 @@ interface GradedRecord {
  * The track-record strip's state (#7074). `loading` is the panel's initial
  * value, `unavailable` covers a degraded response and a failed request, and
  * the other two come from a healthy response: `insufficient` when the headline
- * cohort has nothing graded, `ready` when it carries a Brier with a sample.
+ * cohort is below the scorecard's family minimums (#8990), `ready` when it
+ * meets them.
  */
 export type ForecastRecord =
   | { kind: 'loading' }
@@ -47,7 +48,7 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
   };
   const skill = resp.skill;
   const count = skill && finite(skill.count) ? skill.count : 0;
-  if (!skill || count <= 0 || !finite(skill.brier)) return { kind: 'insufficient', ...graded };
+  if (!skill || count <= 0 || !finite(skill.brier) || !meetsFamilyMinimums(resp)) return { kind: 'insufficient', ...graded };
 
   const yesShare = finite(skill.yesCount) && skill.yesCount >= 0 && skill.yesCount <= count
     ? skill.yesCount / count
@@ -59,12 +60,25 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
   return { kind: 'ready', ...graded, brier: skill.brier, graded: count, yesShare, voids };
 }
 
-/** Mirrors INTERVAL_MIN_SAMPLE in scripts/_forecast-scorecard.mjs; a test pins the two together. */
-export const DOMAIN_RELIABILITY_MIN_SAMPLE = 30;
+/**
+ * The scorecard's skill interval resamples whole forecast families, and its
+ * insufficientSample flag carries the family minimums (#8990). An interval
+ * over another cohort, or one from before that method, cannot vouch for them.
+ */
+function meetsFamilyMinimums(resp: GetForecastScorecardResponse): boolean {
+  const interval = resp.uncertainty?.skillBrier;
+  return /^family-level /.test(resp.uncertainty?.method ?? '')
+    && interval?.count === resp.skill?.count
+    && interval?.insufficientSample === false;
+}
+
+/** Mirror SKILL_MIN_FAMILIES and SKILL_MIN_OUTCOME_FAMILIES in scripts/_forecast-scorecard.mjs; a test pins them together. */
+export const SKILL_MIN_FAMILIES = 30;
+export const SKILL_MIN_OUTCOME_FAMILIES = 5;
 const PUBLISHED_BY_DOMAIN_SCHEMA = 2;
 
 export type DomainReliability =
-  | { kind: 'measured'; brier: number; n: number; yesShare: number }
+  | { kind: 'measured'; brier: number; n: number; yesShare: number; bss: number }
   | { kind: 'unmeasured'; n: number };
 
 /** Published-origin per-domain rows for the card badges; null when the scorecard cannot vouch for them. */
@@ -78,6 +92,8 @@ export interface ReliabilityTable {
  * Reads only publishedByDomain. byDomain pools shadow and synthetic origins,
  * so a response without the published breakdown yields no badges at all. The
  * handler fills an absent field with [], so only a schema-2 seed vouches for it.
+ * The seeder writes a row's bss only once the domain meets the family
+ * minimums (#8990), so bss is the measured gate.
  */
 export function projectReliability(resp: GetForecastScorecardResponse): ReliabilityTable | null {
   if (resp.degraded || resp.error || !Array.isArray(resp.publishedByDomain)) return null;
@@ -86,8 +102,8 @@ export function projectReliability(resp: GetForecastScorecardResponse): Reliabil
   for (const row of resp.publishedByDomain) {
     const n = finite(row.count) && row.count > 0 ? row.count : 0;
     const validYes = Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
-    byDomain.set(row.domain, n >= DOMAIN_RELIABILITY_MIN_SAMPLE && finite(row.brier) && validYes
-      ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n }
+    byDomain.set(row.domain, finite(row.bss) && finite(row.brier) && validYes
+      ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n, bss: row.bss }
       : { kind: 'unmeasured', n });
   }
   const windowDays = finite(resp.rollingWindowDays) && resp.rollingWindowDays > 0 ? resp.rollingWindowDays : DEFAULT_WINDOW_DAYS;
@@ -123,12 +139,12 @@ export function renderReliabilityBadge(
   const days = table.windowDays;
   const [main, hint] = r.kind === 'measured'
     ? [
-        t('components.forecast.reliability.measured', { domain: domainLabel, score: r.brier.toFixed(3), base: baseRateBrier(r.yesShare).toFixed(3), n: r.n }),
-        t('components.forecast.reliability.measuredHint', { domain: domainLabel, n: r.n, days }),
+        t('components.forecast.reliability.measured', { domain: domainLabel, skill: formatSkill(r.bss), n: r.n }),
+        t('components.forecast.reliability.measuredHint', { domain: domainLabel, n: r.n, days, score: r.brier.toFixed(3), base: baseRateBrier(r.yesShare).toFixed(3) }),
       ]
     : [
         t('components.forecast.reliability.unmeasured'),
-        t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: DOMAIN_RELIABILITY_MIN_SAMPLE }),
+        t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: SKILL_MIN_FAMILIES, outcomes: SKILL_MIN_OUTCOME_FAMILIES }),
       ];
   // Stale and n lead: the badge is one line with an ellipsis, so a narrow card cuts the tail.
   const text = table.stale ? `${t('components.forecast.record.stale')} · ${main}` : main;
@@ -216,6 +232,12 @@ export function baseRateBrier(yesShare: number): number {
   return yesShare * (1 - yesShare);
 }
 
+/** A skill score with its sign, to two decimals, as /accuracy/ prints it. */
+export function formatSkill(value: number): string {
+  const text = value.toFixed(2);
+  return Number(text) > 0 ? `+${text}` : text === '-0.00' ? '0.00' : text;
+}
+
 function formatDate(ms: number): string {
   try {
     return new Date(ms).toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
@@ -282,7 +304,12 @@ export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccu
     case 'ready': {
       const hint = t('components.forecast.record.labelHint', { days: record.windowDays });
       const n = String(record.graded);
+      const reference = record.yesShare === null ? 0 : baseRateBrier(record.yesShare);
       const items = [
+        reference > 0 ? item(
+          t('components.forecast.record.skill', { score: formatSkill(1 - record.brier / reference) }),
+          t('components.forecast.record.skillHint', { n }),
+        ) : '',
         item(
           t('components.forecast.record.brier', { score: record.brier.toFixed(3), n }),
           t('components.forecast.record.brierHint', { n }),

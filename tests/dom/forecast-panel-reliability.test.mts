@@ -5,19 +5,20 @@
  * published-origin per-domain rows (`publishedByDomain`) of the same
  * get-forecast-scorecard response the track-record strip reads. The pooled
  * `byDomain` rows mix shadow and synthetic origins, so the badge must never
- * read them. The domain's Brier and base-rate Brier show once the sample
- * reaches the scorecard's minimum, "not yet measured" below it, and nothing
- * when the scorecard is unavailable. The badge links to /accuracy/.
+ * read them. The domain's skill against its historical rate shows once the
+ * seeder wrote the row's bss, which it does only for a domain that meets the
+ * family minimums (#8990); "not yet measured" otherwise, and nothing when the
+ * scorecard is unavailable. The badge links to /accuracy/.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
-import { DOMAIN_RELIABILITY_MIN_SAMPLE, reliabilityHref } from '@/components/forecast-record';
+import { SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, reliabilityHref } from '@/components/forecast-record';
 import { readdirSync, readFileSync } from 'node:fs';
-// @ts-expect-error -- untyped seeder module; this test reads one numeric constant from it.
-import { INTERVAL_MIN_SAMPLE } from '../../scripts/_forecast-scorecard.mjs';
+// @ts-expect-error -- untyped seeder module; this test reads two numeric constants from it.
+import * as producer from '../../scripts/_forecast-scorecard.mjs';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -28,8 +29,9 @@ const SCORECARD_PATH = '/api/forecast/v1/get-forecast-scorecard';
 
 type PublishedDomain = NonNullable<GetForecastScorecardResponse['publishedByDomain']>[number];
 
-function published(domain: string, count: number, brier: number, yesCount: number): PublishedDomain {
-  return { domain, count, brier, yesCount };
+/** bss is present only on a domain the seeder found measurable. */
+function published(domain: string, count: number, brier: number, yesCount: number, bss?: number): PublishedDomain {
+  return { domain, count, brier, yesCount, ...(bss === undefined ? {} : { bss }) };
 }
 
 /** A pooled market row with a large all-origin sample the badge must ignore. */
@@ -124,18 +126,25 @@ afterEach(() => {
 });
 
 describe('ForecastPanel reliability badge', () => {
-  it('uses the scorecard interval minimum as its sample floor', () => {
-    expect(DOMAIN_RELIABILITY_MIN_SAMPLE).toBe(INTERVAL_MIN_SAMPLE);
+  it('names the scorecard family minimums in its hint', () => {
+    expect(SKILL_MIN_FAMILIES).toBe(producer.SKILL_MIN_FAMILIES);
+    expect(SKILL_MIN_OUTCOME_FAMILIES).toBe(producer.SKILL_MIN_OUTCOME_FAMILIES);
   });
 
-  it('shows the published-origin domain Brier beside its base-rate Brier, with the sample size', async () => {
-    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15)], ['conflict']);
+  it('leads with the domain skill against its historical rate, with the Brier pair in the hint', async () => {
+    // p = 15/45, p(1-p) = 0.2222, so the seeder's bss is 1 - 0.2134 / 0.2222 = 0.04.
+    const [badge, worse] = await badgesFor(
+      [published('conflict', 45, 0.2134, 15, 0.0398), published('market', 45, 0.3, 15, -0.35)],
+      ['conflict', 'market'],
+    );
     expect(badge!.dataset.fcReliabilityState).toBe('measured');
-    // Base rate p = 15/45; always answering p scores p(1-p) = 0.2222.
-    expect(badge!.textContent).toBe('Conflict n=45 · Brier 0.213 vs base rate 0.222');
+    expect(badge!.textContent).toBe('Conflict n=45 · skill +0.04 vs historical rate');
+    expect(worse!.textContent).toBe('Market n=45 · skill -0.35 vs historical rate');
     expect(badge!.getAttribute('href')).toBe('/accuracy/#by-domain');
     const hint = badge!.getAttribute('aria-label') ?? '';
     expect(hint).toContain('45');
+    expect(hint).toContain('Brier 0.213 against 0.222 for the historical rate');
+    expect(hint).toContain('above 0 is better, below 0 is worse');
     expect(hint).not.toMatch(/coin flip/i);
   });
 
@@ -167,22 +176,23 @@ describe('ForecastPanel reliability badge', () => {
   });
 
   it('treats a non-integer yesCount as unmeasured, matching the /accuracy/ table', async () => {
-    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15.5)], ['conflict']);
+    const [badge] = await badgesFor([published('conflict', 45, 0.2134, 15.5, 0.04)], ['conflict']);
     expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
   });
 
   it('uses corrected hu, el and de wording', () => {
     const locale = (code: string) => JSON.parse(readFileSync(`src/locales/${code}.json`, 'utf8')).components.forecast.reliability;
     const hu = locale('hu');
-    expect(hu.measured).toContain('alapráta');
+    expect(hu.measured).toContain('történelmi arány');
     expect(JSON.stringify(hu)).not.toContain('alapsáv');
     const el = locale('el');
     expect(JSON.stringify(el).replace(/\{\{\w+\}\}/g, '')).not.toMatch(/base rate|domain/i);
     expect(locale('de').unmeasuredHint).not.toContain('Domain');
     expect(locale('de').unmeasuredHint).toContain('Bereich');
-    expect(locale('cs').measured).toContain('základní míra');
+    expect(locale('cs').measured).toContain('historická míra');
+    expect(JSON.stringify(locale('de'))).not.toContain('Domain');
     for (const file of readdirSync('src/locales').filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(f) && f !== 'en.json')) {
-      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate/i);
+      expect(locale(file.replace('.json', '')).measured, file).not.toMatch(/base rate|historical rate/i);
     }
   });
 
@@ -218,16 +228,18 @@ describe('ForecastPanel reliability badge', () => {
     expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
   });
 
-  it('treats n=29 as not yet measured and n=30 as measured', async () => {
-    const [below, at] = await badgesFor(
-      [published('conflict', 29, 0.2, 10), published('market', 30, 0.21, 10)],
+  it('gates on the seeder family verdict: many rows without bss stay unmeasured, a row with bss is measured (#8990)', async () => {
+    const [many, gated] = await badgesFor(
+      [published('conflict', 300, 0.2, 100), published('market', 30, 0.21, 10, 0.055)],
       ['conflict', 'market'],
     );
-    expect(below!.dataset.fcReliabilityState).toBe('unmeasured');
-    expect(below!.textContent).not.toContain('Brier');
-    expect(below!.getAttribute('aria-label')).toContain('29');
-    expect(at!.dataset.fcReliabilityState).toBe('measured');
-    expect(at!.textContent).toBe('Market n=30 · Brier 0.210 vs base rate 0.222');
+    expect(many!.dataset.fcReliabilityState).toBe('unmeasured');
+    expect(many!.textContent).not.toContain('skill');
+    const hint = many!.getAttribute('aria-label') ?? '';
+    expect(hint).toContain('300');
+    expect(hint).toContain('at least 30 separate forecast questions, with at least 5 that came true and 5 that did not');
+    expect(gated!.dataset.fcReliabilityState).toBe('measured');
+    expect(gated!.textContent).toBe('Market n=30 · skill +0.06 vs historical rate');
   });
 
   it('says not yet measured below the minimum and for a domain with no published row', async () => {
@@ -244,17 +256,17 @@ describe('ForecastPanel reliability badge', () => {
 
   it('marks badges from a stale scorecard as out of date', async () => {
     const [measured, unmeasured] = await badgesFor(
-      [published('conflict', 45, 0.2134, 15)],
+      [published('conflict', 45, 0.2134, 15, 0.0398)],
       ['conflict', 'cyber'],
       { stale: true },
     );
     // Stale and n lead, so an ellipsis on a narrow card never cuts them.
-    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · Brier 0.213 vs base rate 0.222');
+    expect(measured!.textContent).toBe('Out of date · Conflict n=45 · skill +0.04 vs historical rate');
     expect(unmeasured!.textContent).toBe('Out of date · Not yet measured');
   });
 
   it('names the domain and says it is the domain record in the accessible name', async () => {
-    const [measured, unmeasured] = await badgesFor([published('conflict', 45, 0.2134, 15)], ['conflict', 'cyber']);
+    const [measured, unmeasured] = await badgesFor([published('conflict', 45, 0.2134, 15, 0.0398)], ['conflict', 'cyber']);
     const measuredName = measured!.getAttribute('aria-label') ?? '';
     expect(measuredName).toContain('Conflict');
     expect(measuredName).toContain("This is the domain's record, not this forecast's");

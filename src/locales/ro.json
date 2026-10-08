@@ -2382,22 +2382,24 @@
         "label": "Istoricul rezultatelor",
         "labelHint": "Cum au fost punctate prognozele publicate după ce s-au rezolvat, în ultimele {{days}} de zile. Treceți cursorul peste un număr pentru a vedea ce înseamnă.",
         "unavailable": "Indisponibil momentan",
-        "insufficient": "Încă nu există suficiente prognoze evaluate",
+        "insufficient": "Prea puține prognoze independente deocamdată",
         "brier": "Scor Brier {{score}} (n={{n}})",
         "brierHint": "Scor Brier pentru {{n}} prognoze evaluate: media pătratului diferenței dintre probabilitatea prognozată și ce s-a întâmplat. 0 este perfect, 0,25 echivalează cu aruncarea unei monede, mai mic înseamnă mai bine.",
-        "baseRate": "Rata de bază {{score}} (n={{n}})",
-        "baseRateHint": "Ce ar fi obținut cineva care răspunde mereu cu rata de „da” observată, pe aceleași {{n}} prognoze ({{pct}}% rezolvate cu „da”). A o depăși înseamnă că prognozele aduc informație.",
+        "baseRate": "Rata istorică {{score}} (n={{n}})",
+        "baseRateHint": "Ce ar fi obținut prin a prognoza întotdeauna rata istorică pe aceleași {{n}} prognoze ({{pct}}% rezolvate cu da). Depășirea acesteia înseamnă că prognozele adaugă informații.",
         "void": "Anulate {{pct}}% ({{count}} din {{resolved}})",
         "voidHint": "Prognoze rezolvate care nu au putut fi evaluate, din {{resolved}} rezolvate în perioadă.",
         "stale": "Neactualizat",
         "staleHint": "Ultima evaluare la {{date}}. Evaluatorul nu a mai rulat de atunci, așa că aceste cifre sunt mai vechi decât ar trebui.",
-        "fullRecord": "Istoric complet"
+        "fullRecord": "Istoric complet",
+        "skill": "Abilitate {{score}} vs rata istorică",
+        "skillHint": "Abilitate peste aceleași {{n}} prognoze evaluate, comparativ cu a prognoza întotdeauna cât de des s-au adeverit: mai sus de 0 este mai bine, 0 înseamnă nu mai bine, sub 0 este mai rău, iar 1 este perfect."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs rata de bază {{base}}",
-        "measuredHint": "Cum s-au clasat prognozele publicate {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} de zile. Rata de bază este ce s-ar fi obținut prin răspunsul întotdeauna cu rata observată „da\" a domeniului. Mai mic este mai bun. Acesta este istoricul domeniului, nu al acestei prognoze.",
+        "measured": "{{domain}} n={{n}} · abilitate {{skill}} vs rata istorică",
+        "measuredHint": "Cum au obținut puncte prognozele publicate din {{domain}} pe {{n}} prognoze evaluate în ultimele {{days}} zile, comparativ cu a prognoza întotdeauna cât de des s-au adeverit prognozele domeniului: mai sus de 0 este mai bine, sub 0 este mai rău. Brier {{score}} comparativ cu {{base}} pentru rata istorică, unde mai mic este mai bine. Acesta este istoricul domeniului, nu al acestei prognoze.",
         "unmeasured": "Încă nemăsurat",
-        "unmeasuredHint": "Previziunile {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Un domeniu are nevoie de {{min}} înainte ca acuratețea sa să fie afișată."
+        "unmeasuredHint": "Prognozele din {{domain}} au {{n}} rezultate evaluate în ultimele {{days}} zile. Acuratețea unei domenii se arată odată ce rezultatele provin din cel puțin {{min}} întrebări de prognoză separate, cu cel puțin {{outcomes}} care s-au adeverit și {{outcomes}} care nu s-au adeverit."
       },
       "resolution": {
         "last": "Ultimul: {{outcome}}",

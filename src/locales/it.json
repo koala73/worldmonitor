@@ -2382,22 +2382,24 @@
         "label": "Storico dei risultati",
         "labelHint": "Come sono state valutate le previsioni pubblicate una volta risolte, negli ultimi {{days}} giorni. Passa il cursore su un numero per vedere cosa significa.",
         "unavailable": "Al momento non disponibile",
-        "insufficient": "Non ci sono ancora abbastanza previsioni valutate",
+        "insufficient": "Ancora troppo poche previsioni indipendenti",
         "brier": "Punteggio Brier {{score}} (n={{n}})",
         "brierHint": "Punteggio Brier su {{n}} previsioni valutate: la media del quadrato dello scarto tra la probabilità prevista e ciò che è accaduto. 0 è perfetto, 0,25 equivale al lancio di una moneta; più è basso, meglio è.",
-        "baseRate": "Tasso di base {{score}} (n={{n}})",
-        "baseRateHint": "Cosa avrebbe ottenuto chi avesse sempre risposto con il tasso di «sì» osservato sulle stesse {{n}} previsioni ({{pct}}% risolte con «sì»). Batterlo significa che le previsioni aggiungono informazione.",
+        "baseRate": "Tasso storico {{score}} (n={{n}})",
+        "baseRateHint": "Il punteggio che avrebbe ottenuto prevedere sempre il tasso storico sulle stesse {{n}} previsioni ({{pct}}% risolte sì). Superarlo significa che le previsioni aggiungono informazione.",
         "void": "Annullate {{pct}}% ({{count}} su {{resolved}})",
         "voidHint": "Previsioni risolte ma non valutabili, su {{resolved}} risolte nel periodo.",
         "stale": "Non aggiornato",
         "staleHint": "Ultima valutazione: {{date}}. Il valutatore non è più stato eseguito da allora, quindi questi numeri sono più vecchi del dovuto.",
-        "fullRecord": "Storico completo"
+        "fullRecord": "Storico completo",
+        "skill": "Abilità {{score}} vs tasso storico",
+        "skillHint": "Abilità sulle stesse {{n}} previsioni valutate, rispetto a prevedere sempre la frequenza con cui si sono avverate: sopra 0 è meglio, 0 non è meglio, sotto 0 è peggio, e 1 è perfetto."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs tasso base {{base}}",
-        "measuredHint": "Come i forecast pubblicati {{domain}} hanno ottenuto un punteggio su {{n}} forecast valutati negli ultimi {{days}} giorni. Il tasso di base è quello che si otterrebbe rispondendo sempre con il tasso di sì osservato del dominio. Più basso è meglio. Questo è il track record del dominio, non di questo forecast.",
+        "measured": "{{domain}} n={{n}} · abilità {{skill}} vs tasso storico",
+        "measuredHint": "Come si sono comportate le previsioni pubblicate di {{domain}} su {{n}} previsioni valutate negli ultimi {{days}} giorni, rispetto a prevedere sempre la frequenza con cui le previsioni del dominio si sono avverate: sopra 0 è meglio, sotto 0 è peggio. Brier {{score}} contro {{base}} per il tasso storico, dove più basso è meglio. Questo è il risultato del dominio, non di questa previsione.",
         "unmeasured": "Non ancora misurato",
-        "unmeasuredHint": "Le previsioni di {{domain}} hanno {{n}} risultati valutati negli ultimi {{days}} giorni. Un dominio ha bisogno di {{min}} prima che la sua accuratezza sia mostrata."
+        "unmeasuredHint": "Le previsioni di {{domain}} hanno {{n}} risultati valutati negli ultimi {{days}} giorni. L'accuratezza di un dominio viene mostrata quando i suoi risultati provengono da almeno {{min}} domande di previsione distinte, con almeno {{outcomes}} che si sono avverate e {{outcomes}} che non si sono avverate."
       },
       "resolution": {
         "last": "Ultimo: {{outcome}}",

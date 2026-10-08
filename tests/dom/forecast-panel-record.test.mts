@@ -41,6 +41,10 @@ function readyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     familyOutcomes: [],
     receipts: [],
     skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: ['synthetic_backfill'], yesCount: 13 },
+    uncertainty: {
+      method: 'family-level percentile bootstrap (each resample draws whole forecast families), 2000 resamples, seed 7072',
+      skillBrier: { count: 42, mean: 0.182, ci95: [0.15, 0.21], insufficientSample: false },
+    },
     degraded: false,
     stale: false,
     error: '',
@@ -158,16 +162,18 @@ describe('ForecastPanel track-record strip', () => {
     expect(recordHref(true)).toBe('https://www.worldmonitor.app/accuracy/');
   });
 
-  it('renders the headline Brier, base-rate comparison, and void rate, each with its sample size', async () => {
+  it('leads with skill against the historical rate, then the Brier, historical-rate Brier and void rate', async () => {
     stubScorecardFetch(async () => Response.json(readyScorecard()));
 
     panel.updateForecasts([forecast()]);
     const strip = await stripIn(panel, 'ready');
     const text = strip.textContent ?? '';
 
+    // p = 13/42; always answering p scores p(1-p) = 0.2137, so skill is 1 - 0.182 / 0.2137 = +0.15.
+    expect(text).toContain('Skill +0.15 vs historical rate');
+    expect(text.indexOf('Skill')).toBeLessThan(text.indexOf('Brier'));
     expect(text).toContain('Brier 0.182 (n=42)');
-    // p = 13/42; always answering p scores p(1-p) = 0.2137.
-    expect(text).toContain('Base rate 0.214 (n=42)');
+    expect(text).toContain('Historical rate 0.214 (n=42)');
     expect(text).toContain('Void 8.3% (5 of 60)');
     expect(text).not.toContain('Out of date');
 
@@ -176,7 +182,7 @@ describe('ForecastPanel track-record strip', () => {
     expect(link?.textContent).toContain('Full record');
 
     const hinted = Array.from(strip.querySelectorAll<HTMLElement>('.fc-record-item'));
-    expect(hinted.length).toBe(3);
+    expect(hinted.length).toBe(4);
     for (const item of hinted) expect(item.getAttribute('title')?.length ?? 0).toBeGreaterThan(20);
   });
 
@@ -188,7 +194,8 @@ describe('ForecastPanel track-record strip', () => {
     panel.updateForecasts([forecast()]);
     const strip = await stripIn(panel, 'ready');
     expect(strip.textContent).toContain('Brier 0.182 (n=42)');
-    expect(strip.textContent).not.toContain('Base rate');
+    expect(strip.textContent).not.toContain('Historical rate');
+    expect(strip.textContent).not.toContain('Skill');
   });
 
   it('marks a stale record as out of date while keeping the numbers visible', async () => {
@@ -210,11 +217,30 @@ describe('ForecastPanel track-record strip', () => {
     panel.updateForecasts([forecast()]);
     const strip = await stripIn(panel, 'insufficient');
     const text = strip.textContent ?? '';
-    expect(text).toContain('Not enough graded forecasts yet');
+    expect(text).toContain('Too few independent forecasts yet');
     expect(text).not.toContain('Brier');
     expect(text).not.toContain('n=0');
     expect(text).not.toContain('0.000');
     expect(strip.querySelector('a.fc-record-link')?.getAttribute('href')).toBe('/accuracy/');
+  });
+
+  it('reads a cohort below the family minimums as too few, never as a score (#8990)', async () => {
+    const rowLevel = readyScorecard();
+    rowLevel.uncertainty = { ...rowLevel.uncertainty!, method: 'entry-level percentile bootstrap, 2000 resamples, seed 7072' };
+    const short = readyScorecard();
+    short.uncertainty = { ...short.uncertainty!, skillBrier: { ...short.uncertainty!.skillBrier!, insufficientSample: true } };
+    const absent = readyScorecard({ uncertainty: undefined });
+    for (const seed of [short, rowLevel, absent]) {
+      stubScorecardFetch(async () => Response.json(seed));
+      panel.updateForecasts([forecast()]);
+      const strip = await stripIn(panel, 'insufficient');
+      expect(strip.textContent).toContain('Too few independent forecasts yet');
+      expect(strip.textContent).not.toMatch(/Brier|Skill|0\.182/);
+      vi.restoreAllMocks();
+      panel.destroy();
+      panel = new ForecastPanel();
+      document.body.appendChild((panel as unknown as { element: HTMLElement }).element);
+    }
   });
 
   it('shows the record as unavailable on a degraded response, never as zeros', async () => {

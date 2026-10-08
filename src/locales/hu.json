@@ -2106,22 +2106,24 @@
         "label": "Eddigi eredmények",
         "labelHint": "Hogyan szerepeltek a közzétett előrejelzések az eldőlésük után az elmúlt {{days}} napban. Vigye az egeret egy szám fölé, hogy lássa, mit jelent.",
         "unavailable": "Jelenleg nem elérhető",
-        "insufficient": "Még nincs elég értékelt előrejelzés",
+        "insufficient": "Még túl kevés független előrejelzés",
         "brier": "Brier-pontszám {{score}} (n={{n}})",
         "brierHint": "Brier-pontszám {{n}} értékelt előrejelzésre: az előrejelzett valószínűség és a tényleges kimenetel különbségének átlagos négyzete. A 0 tökéletes, a 0,25 egy érmefeldobásnak felel meg, az alacsonyabb a jobb.",
-        "baseRate": "Alapráta {{score}} (n={{n}})",
-        "baseRateHint": "Amit az érne el, aki mindig a megfigyelt „igen” arányt mondaná ugyanerre a(z) {{n}} előrejelzésre ({{pct}}% dőlt el „igen”-nel). Ha ennél jobbak vagyunk, az előrejelzések valódi információt adnak.",
+        "baseRate": "Történelmi arány {{score}} (n={{n}})",
+        "baseRateHint": "Mit érne el a történelmi arány mindig történő előrejelzése ugyanazon {{n}} előrejelzésen ({{pct}}% igen-re megoldódott). Ha legyőzi, az előrejelzések információt adnak.",
         "void": "Érvénytelen {{pct}}% ({{count}} / {{resolved}})",
         "voidHint": "Eldőlt, de nem értékelhető előrejelzések, az időszakban eldőlt {{resolved}} közül.",
         "stale": "Elavult",
         "staleHint": "Utolsó értékelés: {{date}}. Az értékelő azóta nem futott, így ezek a számok régebbiek a kelleténél.",
-        "fullRecord": "Teljes eredménylista"
+        "fullRecord": "Teljes eredménylista",
+        "skill": "Készség {{score}} vs történelmi arány",
+        "skillHint": "Készség az ugyanazon {{n}} értékelt előrejelzés felett, mindig a tényleges gyakoriságot előrejelezve: 0 feletti jobb, 0 ugyanolyan, 0 alatti rosszabb, és 1 tökéletes."
       },
       "reliability": {
-        "measured": "{{domain}} n={{n}} · Brier {{score}} vs alapráta {{base}}",
-        "measuredHint": "Hogy a közzétett {{domain}} előrejelzések {{n}} értékelt előrejelzésből teljesítettek az utolsó {{days}} napban. Az alapráta az, amit a tartomány megfigyelt igen aránya alapján mindig válaszolva kapnánk. Alacsonyabb jobb. Ez a tartomány nyilvántartása, nem ennek az előrejelzésnek a nyilvántartása.",
+        "measured": "{{domain}} n={{n}} · készség {{skill}} vs történelmi arány",
+        "measuredHint": "A {{domain}} közzétett előrejelzéseiből {{n}} értékelt előrejelzés felett elért pontok az utolsó {{days}} napban, mindig a tartomány előrejelzéseinek tényleges gyakoriságát előrejelezve: 0 feletti jobb, 0 alatti rosszabb. Brier {{score}} vs {{base}} a történelmi arányhoz képest, ahol az alacsonyabb jobb. Ez a tartomány nyilvántartása, nem ennek az előrejelzésnek.",
         "unmeasured": "Még nem mért",
-        "unmeasuredHint": "A(z) {{domain}} előrejelzéseknek {{n}} értékelt eredménye van az elmúlt {{days}} napban. Egy tartománynak {{min}} eredményre van szüksége ahhoz, hogy a pontossága megjelenjen."
+        "unmeasuredHint": "{{domain}} előrejelzéseiből {{n}} értékelt eredmény van az utolsó {{days}} napban. A tartomány pontossága akkor jelenik meg, ha az eredményei legalább {{min}} különálló előrejelzési kérdésből származnak, legalább {{outcomes}} amely igaz és {{outcomes}} amely hamis lett."
       },
       "resolution": {
         "last": "Utolsó: {{outcome}}",
