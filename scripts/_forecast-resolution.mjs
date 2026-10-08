@@ -604,16 +604,30 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
   }
 }
 
-// Threshold is a boolean-shaped condition (disruption present), represented as
-// riskScore >= 60 (the detector's own "disrupted" gate threshold,
-// seed-forecasts.mjs detectSupplyChainScenarios).
+// A chokepoint is disrupted at this disruptionScore. The detector
+// (detectSupplyChainScenarios) emits a forecast at it, and the forecast
+// resolves YES when the deadline reading still meets it. It is the feed's own
+// red boundary (scoreToStatus in server/worldmonitor/supply-chain/v1/_scoring.mjs),
+// which the detector used to reach through the red status while the spec read
+// 60 (#8990). Rows read under an older threshold carry no rule version and
+// are migrated before they resolve.
+export const CHOKEPOINT_DISRUPTED_MIN_SCORE = 50;
+export const CHOKEPOINT_RESOLUTION_RULE = 'disrupted';
+export const CHOKEPOINT_RESOLUTION_RULE_VERSION = 1;
+
+export function isChokepointDisrupted(riskScore) {
+  return Number(riskScore) >= CHOKEPOINT_DISRUPTED_MIN_SCORE;
+}
+
 function chokepointDisruptionMetrics(route) {
   return {
     metricKey: `supply_chain:chokepoints:v4|riskScore(route==${route})`,
     sourceFeed: 'supply_chain:chokepoints:v4',
     operator: '>=',
-    threshold: 60,
+    threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
     window: FAMILY_WINDOW.supply_chain,
+    rule: CHOKEPOINT_RESOLUTION_RULE,
+    ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
   };
 }
 

@@ -124,6 +124,30 @@ describe('callLlmReasoningStream error bodies', () => {
       }
     });
   }
+
+  // GHSA-cgm2-fpj5-427h: callers commit spend once a provider takes the request,
+  // even if it never yields answer content.
+  it('reports provider acceptance on an HTTP success, not on a rejection', async () => {
+    const statuses = [503, 200];
+    let accepted = 0;
+    const acceptedAtStatus: number[] = [];
+    globalThis.fetch = async (_input, init) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('');
+      const status = statuses.shift() ?? 503;
+      if (status !== 200) return new Response('unavailable', { status });
+      acceptedAtStatus.push(accepted);
+      return new Response('data: {"choices":[{"delta":{"reasoning":"thinking"}}]}\n\ndata: [DONE]\n\n');
+    };
+
+    const output = await new Response(callLlmReasoningStream({
+      messages: [{ role: 'user', content: 'synthetic prompt' }],
+      onProviderAccepted: () => { accepted += 1; },
+    })).text();
+
+    assert.deepEqual(acceptedAtStatus, [0], 'the 503 attempt must not report acceptance');
+    assert.equal(accepted, 1);
+    assert.doesNotMatch(output, /"delta"/);
+  });
 });
 
 describe('callLlm', () => {

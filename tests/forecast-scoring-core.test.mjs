@@ -18,7 +18,7 @@ import {
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
+import { CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION, CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -49,7 +49,9 @@ function chokepoint(generatedAt, probability, overrides = {}) {
       kind: 'hard',
       metricKey: `${CHOKEPOINT_FEED}|riskScore(route==Strait of Hormuz)`,
       operator: '>=',
-      threshold: 60,
+      threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
+      rule: CHOKEPOINT_RESOLUTION_RULE,
+      ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
       window: 'at-deadline',
       deadline,
       sourceFeed: CHOKEPOINT_FEED,

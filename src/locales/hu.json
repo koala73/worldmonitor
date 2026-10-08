@@ -2156,7 +2156,8 @@
           "other": "Nem lehetett eldönteni",
           "judged_old_selection": "Később megbízhatatlannak bizonyult bizonyítékgyűjtési módszerrel bírálták el",
           "late_read": "A feedet nem olvastuk le elég közel a határidőhöz",
-          "feed_unavailable": "Az adatfeed a határidő után nem volt elérhető"
+          "feed_unavailable": "Az adatfeed a határidő után nem volt elérhető",
+          "resolver_could_not_read_feed": "Kiértékelő rendszerünk nem tudta helyesen beolvasni ezt az adatforrást"
         }
       },
       "horizons": {

@@ -14153,8 +14153,6 @@ async function handleWidgetAgentRequest(req, res) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-
   // Allow up to 163840 bytes (160KB) for PRO requests (basic is smaller but we parse tier first)
   const rawContentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (rawContentLength > 163840) {
@@ -14197,8 +14195,9 @@ async function handleWidgetAgentRequest(req, res) {
   const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
   // Widget keys also belong to legacy callers. Only the separate server relay
   // credential can attest to an identity that passed the edge spend checks.
+  // Others bucket on their key: IP headers are caller-set (GHSA-rcgv).
   const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
-    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : clientIp;
+    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : `key:${status.admittedAs}`;
 
   // Rate limiting (separate buckets)
   const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);

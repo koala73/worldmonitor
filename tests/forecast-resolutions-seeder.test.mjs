@@ -44,7 +44,7 @@ import {
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildPublishedForecastPayload, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
+import { CHOKEPOINT_DISRUPTED_MIN_SCORE, CHOKEPOINT_RESOLUTION_RULE, CHOKEPOINT_RESOLUTION_RULE_VERSION, CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
@@ -79,7 +79,9 @@ function forecast(overrides = {}) {
     kind: 'hard',
     metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)',
     operator: '>=',
-    threshold: 60,
+    threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
+    rule: CHOKEPOINT_RESOLUTION_RULE,
+    ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
     window: 'at-deadline',
     deadline,
     sourceFeed: 'supply_chain:chokepoints:v4',
@@ -185,7 +187,7 @@ describe('processResolutionCycle', () => {
     assert.equal(open.firstSeenProbability, 0.6);
     assert.equal(open.probability, 0.6, 'the window is scored on the probability that came with its frozen threshold');
     assert.equal(open.lastSeenProbability, 0.72);
-    assert.equal(open.spec.threshold, 60, 'pre-deadline snapshots must not mutate the frozen spec');
+    assert.equal(open.spec.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE, 'pre-deadline snapshots must not mutate the frozen spec');
     assert.equal(open.deadline, T0 + DAY_MS);
     assert.equal(ledger[`fc-hormuz@${T0 + 2 * DAY_MS}`].probability, 0.4);
   });
@@ -3292,7 +3294,9 @@ describe('projection horizon windows (#7075)', () => {
       semantics: 'point_in_time',
       metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)',
       operator: '>=',
-      threshold: 60,
+      threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
+      rule: CHOKEPOINT_RESOLUTION_RULE,
+      ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
       window: 'at-deadline',
       sourceFeed: 'supply_chain:chokepoints:v4',
       deadline: generatedAt + HORIZON_MS[timeHorizon],
@@ -3547,10 +3551,12 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     [GPS_FEED]: { date: deadlineDate, hexes: Array.from({ length: 5 }, () => ({ lat: 35, lon: 30, level: 'high', region: 'turkey-caucasus' })) },
   });
 
-  it('keeps an unreadable-metric VOID as it was and resolves a pending row from the zone count', () => {
+  it('relabels an unreadable-metric VOID as the resolver\'s fault and resolves a pending row from the zone count', () => {
     const ledger = { [voided.key]: structuredClone(voided), [pending.key]: structuredClone(pending) };
     const { ledger: next } = processResolutionCycle(ledger, [], feeds, deadline + DAY_MS);
-    assert.deepEqual(next[voided.key], voided);
+    assert.equal(next[voided.key].outcome, 'VOID');
+    assert.equal(next[voided.key].evidence.reason, 'resolver_could_not_read_feed');
+    assert.deepEqual(next[voided.key].evidence.supersededEvidence, voided.evidence);
     assert.equal(next[pending.key].outcome, 'YES');
     assert.equal(next[pending.key].evidence.metricValue, 5);
   });

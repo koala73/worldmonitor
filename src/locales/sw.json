@@ -2159,7 +2159,8 @@
           "other": "Haikuweza kuamuliwa",
           "judged_old_selection": "Iliamuliwa kwa njia ya ushahidi ambayo baadaye ilionekana kuwa si ya kuaminika",
           "late_read": "Chanzo cha data hakikusomwa karibu vya kutosha na tarehe ya mwisho",
-          "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho"
+          "feed_unavailable": "Chanzo cha data hakikupatikana baada ya tarehe ya mwisho",
+          "resolver_could_not_read_feed": "Mfumo wetu wa kuamua matokeo haukuweza kusoma chanzo hiki cha data ipasavyo"
         }
       },
       "horizons": {

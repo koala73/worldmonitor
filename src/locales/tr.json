@@ -2422,7 +2422,8 @@
           "other": "Sonuçlandırılamadı",
           "judged_old_selection": "Daha sonra güvenilmez olduğu tespit edilen bir kanıt yöntemiyle değerlendirildi",
           "late_read": "Akış, son tarihe yeterince yakın bir zamanda okunmadı",
-          "feed_unavailable": "Son tarihten sonra veri akışı kullanılamadı"
+          "feed_unavailable": "Son tarihten sonra veri akışı kullanılamadı",
+          "resolver_could_not_read_feed": "Sonuçlandırma sistemimiz bu veri akışını doğru okuyamadı"
         }
       },
       "horizons": {

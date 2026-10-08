@@ -71,7 +71,8 @@ export function buildArticlePrompts(
       }).join('\n')
     : uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
-  const isTechVariant = opts.variant === 'tech';
+  // Case-folded to match buildSummaryCacheKey: one cache row, one prompt.
+  const isTechVariant = opts.variant.toLowerCase() === 'tech';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;
   const langInstruction = opts.lang && opts.lang !== 'en' ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.` : '';
 

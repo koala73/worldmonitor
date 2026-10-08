@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  CHOKEPOINT_DISRUPTED_MIN_SCORE,
   HORIZON_MS,
   CONFLICT_COUNT_SOURCE_FEED,
   UNREST_COUNT_SOURCE_FEED,
@@ -638,7 +639,7 @@ describe('state-derived hard specs (#5234)', () => {
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.metricKey, 'supply_chain:chokepoints:v4|riskScore(route==Kerch Strait)');
     assert.equal(spec.operator, '>=');
-    assert.equal(spec.threshold, 60);
+    assert.equal(spec.threshold, CHOKEPOINT_DISRUPTED_MIN_SCORE);
     assert.equal(spec.window, 'at-deadline');
   });
 
@@ -1224,6 +1225,8 @@ describe('projection horizon contracts (#7075)', () => {
         threshold: parent.threshold,
         window: 'at-deadline',
         sourceFeed: parent.sourceFeed,
+        rule: parent.rule,
+        ruleVersion: parent.ruleVersion,
         deadline: GENERATED_AT + HORIZON_MS[timeHorizon],
         sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
       });
