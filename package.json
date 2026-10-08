@@ -330,7 +330,7 @@
     "brace-expansion@1": "^1.1.21",
     "brace-expansion@2": "^2.1.7",
     "brace-expansion@5": "^5.0.12",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "postcss": "8.5.23",
     "fast-uri": "3.1.8",
     "markdown-it": "14.3.1",
