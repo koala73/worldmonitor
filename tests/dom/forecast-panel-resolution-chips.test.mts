@@ -37,7 +37,7 @@ function scorecard(familyOutcomes: FamilyOutcome[], overrides: Partial<GetForeca
     byDomain: [],
     byGenerationOrigin: [],
     calibration: [],
-    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13 },
+    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13, bssCi95: [0.02, 0.28] },
     publishedByDomain: [{ domain: 'conflict', count: 45, brier: 0.2134, yesCount: 15 }],
     receipts: [],
     familyOutcomes,

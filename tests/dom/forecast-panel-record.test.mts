@@ -40,7 +40,7 @@ function readyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     publishedByDomain: [],
     familyOutcomes: [],
     receipts: [],
-    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: ['synthetic_backfill'], yesCount: 13 },
+    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: ['synthetic_backfill'], yesCount: 13, bssCi95: [0.02, 0.28] },
     uncertainty: {
       method: 'family-level percentile bootstrap (each resample draws whole forecast families), 2000 resamples, seed 7072',
       skillBrier: { count: 42, mean: 0.182, ci95: [0.15, 0.21], insufficientSample: false },
@@ -210,7 +210,7 @@ describe('ForecastPanel track-record strip', () => {
 
   it('says there are not enough graded forecasts instead of showing a zero Brier', async () => {
     const seed = readyScorecard({
-      skill: { count: 0, excludedScored: 13, excludedOrigins: ['synthetic_backfill'], yesCount: 0 },
+      skill: { count: 0, excludedScored: 13, excludedOrigins: ['synthetic_backfill'], yesCount: 0, bssCi95: [] },
     });
     stubScorecardFetch(async () => Response.json(seed));
 

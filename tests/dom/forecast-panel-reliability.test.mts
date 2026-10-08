@@ -48,7 +48,7 @@ function scorecard(rows: PublishedDomain[], overrides: Partial<GetForecastScorec
     byDomain: [POOLED_MARKET],
     byGenerationOrigin: [],
     calibration: [],
-    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13 },
+    skill: { count: 42, brier: 0.182, logScore: -0.51, excludedScored: 13, excludedOrigins: [], yesCount: 13, bssCi95: [0.02, 0.28] },
     publishedByDomain: rows,
     familyOutcomes: [],
     receipts: [],
