@@ -41,10 +41,12 @@ import {
   selectJudgedArchiveItems,
   ingestHistory,
   samplePendingEntries,
+  buildScorecardForRun,
+  summarizeWithheldEmissions,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
@@ -3353,8 +3355,8 @@ describe('extraction gate enforcement end to end (#7067)', () => {
 
   it('enforcing on a healthy lane carries specOrigin through history into the ledger', async () => {
     const forecasts = emitted();
-    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { judgedLane: { pendingJudge: 3, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
-    const { result, logs } = await run(forecasts, store, { enforced: true });
+    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { generatedAt: T0, judgedLane: { pendingJudge: 3, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
+    const { result, logs } = await run(forecasts, store, { enforced: true, nowMs: T0 });
     assert.deepEqual(result.decision, { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' });
     assert.match(logs.find((line) => line.includes('[ExtractionGate] enforce')), /downgraded=\{"gps":1,"prediction_market":1\} withheld=\{"supply_chain":1,"military":1\}/);
 
@@ -3375,10 +3377,60 @@ describe('extraction gate enforcement end to end (#7067)', () => {
     assert.ok(!Object.values(ledger).some((entry) => entry.parentKey?.startsWith('fc-gps-guinea')), 'no horizon window for an unextractable metric');
   });
 
+  // One market that drops out of the feed for a run: pass, fail, pass.
+  function flipFlopSnapshots() {
+    const H = 60 * 60 * 1000;
+    const healthy = { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
+    return [0, 1, 2].map((run) => {
+      const at = T0 + run * H;
+      const forecasts = attachResolutionSpecs([forecast({ id: 'fc-pm', generatedAt: at, domain: 'conflict', region: 'Sudan', title: 'Will the Sudan ceasefire hold?', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] })], {}, at);
+      const verdicts = run === 1 ? evaluateExtractionShadow(forecasts, { [PM_FEED]: { geopolitical: [] } }) : [];
+      applyExtractionGate(forecasts, verdicts, at, healthy);
+      return buildHistorySnapshot({ generatedAt: at, predictions: forecasts });
+    });
+  }
+  const liveParents = (ledger) => Object.values(ledger).filter((entry) => !entry.parentKey && !entry.duplicateOf);
+
+  it('a forecast whose extraction flips pass, fail, pass keeps the one window it opened first', () => {
+    const snapshots = flipFlopSnapshots();
+    assert.equal(snapshots[1].predictions[0].resolution.specOrigin, 'hard_downgraded_unextractable');
+    const ledger = ingestHistory({}, snapshots, T0 + 3 * 60 * 60 * 1000);
+    const live = liveParents(ledger);
+    assert.deepEqual(live.map((entry) => [entry.spec.kind, entry.specOrigin]), [['hard', 'hard']]);
+    // The downgraded run counts as a sighting of the hard window.
+    assert.equal(live[0].lastSeenAt, T0 + 2 * 60 * 60 * 1000);
+    // And the reverse: a window opened by the downgrade absorbs the hard re-emissions.
+    const reversed = liveParents(ingestHistory({}, snapshots.slice(1), T0 + 3 * 60 * 60 * 1000));
+    assert.deepEqual(reversed.map((entry) => [entry.spec.kind, entry.specOrigin]), [['judged', 'hard_downgraded_unextractable']]);
+  });
+
+  it('a ledger already holding both twins converges to the first as a duplicate_window', () => {
+    const [hardRun, downgradedRun] = flipFlopSnapshots();
+    const nowMs = T0 + 3 * 60 * 60 * 1000;
+    const both = { ...ingestHistory({}, [hardRun], nowMs), ...ingestHistory({}, [downgradedRun], nowMs) };
+    assert.equal(liveParents(both).length, 2, 'fixture holds both windows');
+    const converged = ingestHistory(both, [], nowMs);
+    assert.deepEqual(liveParents(converged).map((entry) => entry.spec.kind), ['hard']);
+    const twin = Object.values(converged).find((entry) => entry.specOrigin === 'hard_downgraded_unextractable');
+    assert.deepEqual([twin.outcome, twin.evidence.reason, twin.duplicateOf], ['VOID', 'duplicate_window', liveParents(converged)[0].key]);
+  });
+
+  it('counts published-but-withheld forecasts into the stored scorecard by reason and family', async () => {
+    const forecasts = emitted();
+    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { generatedAt: T0, judgedLane: { pendingJudge: 3, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
+    await run(forecasts, store, { enforced: true, nowMs: T0 });
+    const snapshot = buildHistorySnapshot({ generatedAt: T0, predictions: forecasts });
+    const withheld = summarizeWithheldEmissions([snapshot, snapshot]);
+    assert.deepEqual(withheld, { forecasts: 2, since: T0, byReason: { generic_judged_question: { gps: 1, military: 1 } } });
+    const scorecard = buildScorecardForRun(ingestHistory({}, [snapshot], T0), { nowMs: T0, map: null, publication: null, withheldAtEmission: withheld });
+    assert.deepEqual(scorecard.withheldAtEmission, withheld);
+    assert.equal(summarizeWithheldEmissions([buildHistorySnapshot({ generatedAt: T0, predictions: emitted() })]).forecasts, 0);
+  });
+
   it('a backlogged lane keeps unextractable specs hard', async () => {
     const forecasts = emitted();
-    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { judgedLane: { pendingJudge: 88, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
-    const { result } = await run(forecasts, store, { enforced: true });
+    const store = { ...FEEDS, [SCORECARD_KEY_LITERAL]: { generatedAt: T0, judgedLane: { pendingJudge: 88, instrumentedResolved: 9, scoredWithinSlaRate: 0.6 } } };
+    const { result } = await run(forecasts, store, { enforced: true, nowMs: T0 });
     assert.equal(result.decision.reason, 'judged_lane_backlogged');
     assert.equal(forecasts.find((f) => f.id === 'fc-pm').resolution.kind, 'hard');
   });

@@ -26,6 +26,8 @@ import {
   decideExtractionGateMode,
   EXTRACTION_GATE_ENFORCED,
   EXTRACTION_GATE_MAX_PENDING_JUDGE,
+  EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE,
+  EXTRACTION_GATE_SCORECARD_MAX_AGE_MS,
   HORIZON_SAMPLE_TOLERANCE_MS,
   PROJECTION_HORIZONS,
   buildHorizonResolutionSpecs,
@@ -1320,8 +1322,10 @@ describe('extraction gate enforcement (#7067)', () => {
     [GPS_FEED]: { date: '2023-11-14', hexes: Array.from({ length: 14 }, () => ({ lat: 26, lon: 52, level: 'high', region: 'iran-iraq' })) },
     [PM_FEED]: { geopolitical: [] },
   };
-  const HEALTHY_LANE = { pendingJudge: 4, instrumentedResolved: 12, scoredWithinSlaRate: 0.5 };
-  const ENFORCE = decideExtractionGateMode(HEALTHY_LANE, { enforced: true });
+  const HEALTHY_LANE = { pendingJudge: 4, instrumentedResolved: 12, scoredWithinSlaRate: 0.6 };
+  const scorecard = (lane = {}, ageMs = 60 * 60 * 1000) => ({ generatedAt: GENERATED_AT - ageMs, judgedLane: { ...HEALTHY_LANE, ...lane } });
+  const decide = (card) => decideExtractionGateMode(card, { enforced: true, nowMs: GENERATED_AT });
+  const ENFORCE = decide(scorecard());
 
   const gps = (region) => pred({
     id: `fc-gps-${region}`,
@@ -1356,24 +1360,33 @@ describe('extraction gate enforcement (#7067)', () => {
   it('ships off: the activation switch is false and its decision is shadow', () => {
     assert.equal(EXTRACTION_GATE_ENFORCED, false);
     assert.equal(EXTRACTION_GATE_MAX_PENDING_JUDGE, 20);
-    assert.deepEqual(decideExtractionGateMode(HEALTHY_LANE), { mode: 'shadow', downgrade: false, reason: 'disabled' });
+    assert.deepEqual(decideExtractionGateMode(scorecard(), { nowMs: GENERATED_AT }), { mode: 'shadow', downgrade: false, reason: 'disabled' });
   });
 
   it('flag off leaves every spec and horizon contract byte-for-byte unchanged', () => {
     const before = JSON.stringify(emitted());
-    const { forecasts, counts } = gate(decideExtractionGateMode(HEALTHY_LANE));
+    const { forecasts, counts } = gate(decideExtractionGateMode(scorecard(), { nowMs: GENERATED_AT }));
     assert.equal(JSON.stringify(forecasts), before);
     assert.deepEqual(counts, { downgraded: {}, withheld: {} });
   });
 
   it('downgrades only while the judged lane holds the bar', () => {
     assert.equal(ENFORCE.downgrade, true);
-    for (const [lane, reason] of [
+    const { scoredWithinSlaRate: _rate, ...noRate } = HEALTHY_LANE;
+    for (const [card, reason] of [
       [null, 'judged_lane_unreadable'],
-      [{ ...HEALTHY_LANE, pendingJudge: EXTRACTION_GATE_MAX_PENDING_JUDGE }, 'judged_lane_backlogged'],
-      [{ ...HEALTHY_LANE, instrumentedResolved: 0 }, 'judged_lane_unmeasured'],
+      [{ generatedAt: GENERATED_AT }, 'judged_lane_unreadable'],
+      [scorecard({ pendingJudge: EXTRACTION_GATE_MAX_PENDING_JUDGE }), 'judged_lane_backlogged'],
+      [scorecard({ instrumentedResolved: 0 }), 'judged_lane_unmeasured'],
+      [{ generatedAt: GENERATED_AT, judgedLane: noRate }, 'judged_lane_unmeasured'],
+      [scorecard({ scoredWithinSlaRate: null }), 'judged_lane_unmeasured'],
+      // Production on 2026-10-08: 95 instrumented resolutions, none scored within SLA.
+      [scorecard({ scoredWithinSlaRate: 0 }), 'judged_lane_below_sla'],
+      [scorecard({ scoredWithinSlaRate: 0.49 }), 'judged_lane_below_sla'],
+      [scorecard({}, EXTRACTION_GATE_SCORECARD_MAX_AGE_MS + 1), 'judged_lane_stale'],
+      [{ judgedLane: HEALTHY_LANE }, 'judged_lane_stale'],
     ]) {
-      const decision = decideExtractionGateMode(lane, { enforced: true });
+      const decision = decide(card);
       assert.deepEqual(decision, { mode: 'enforce', downgrade: false, reason });
       const { byId, counts } = gate(decision);
       assert.equal(byId['fc-pm-conflict'].resolution.kind, 'hard', reason);
@@ -1383,11 +1396,19 @@ describe('extraction gate enforcement (#7067)', () => {
     }
   });
 
+  it('pins the lane bars: the SLA floor and the calibration gate\'s scorecard age', async () => {
+    const { CALIBRATION_GATE_MAX_AGE_MS } = await import('../scripts/_forecast-calibration.mjs');
+    assert.equal(EXTRACTION_GATE_SCORECARD_MAX_AGE_MS, CALIBRATION_GATE_MAX_AGE_MS);
+    assert.equal(EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE, 0.5);
+    assert.equal(decide(scorecard({ scoredWithinSlaRate: EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE })).downgrade, true);
+    assert.equal(decide(scorecard({}, EXTRACTION_GATE_SCORECARD_MAX_AGE_MS)).downgrade, true);
+  });
+
   it('an extractable hard spec stays hard, stamped with its origin', () => {
     const before = emitted().find((f) => f.id === 'fc-gps-Persian Gulf');
     const { byId } = gate(ENFORCE);
     const after = byId['fc-gps-Persian Gulf'];
-    assert.deepEqual(after.resolution, { ...before.resolution, specOrigin: 'hard' });
+    assert.deepEqual(after.resolution, { ...before.resolution, specOrigin: 'hard', specFamily: 'gps' });
     assert.deepEqual(after.horizonResolutions, before.horizonResolutions);
   });
 
@@ -1439,10 +1460,15 @@ describe('extraction gate enforcement (#7067)', () => {
     assert.ok(en.includes(`fewer than ${EXTRACTION_GATE_MAX_PENDING_JUDGE} pending entries (\`EXTRACTION_GATE_MAX_PENDING_JUDGE\`)`));
     assert.match(zh, /强制执行处于关闭状态。开关是 `scripts\/_forecast-resolution\.mjs` 中的常量 `EXTRACTION_GATE_ENFORCED`/);
     assert.ok(zh.includes(`少于 ${EXTRACTION_GATE_MAX_PENDING_JUDGE} 条（\`EXTRACTION_GATE_MAX_PENDING_JUDGE\`）`));
+    assert.ok(en.includes(`(\`EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE\`, ${EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE})`));
+    assert.ok(zh.includes(`（\`EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE\`，${EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE}）`));
+    const hours = EXTRACTION_GATE_SCORECARD_MAX_AGE_MS / (60 * 60 * 1000);
+    assert.ok(en.includes(`at most ${hours} hours old (\`EXTRACTION_GATE_SCORECARD_MAX_AGE_MS\``));
+    assert.ok(zh.includes(`不超过 ${hours} 小时（\`EXTRACTION_GATE_SCORECARD_MAX_AGE_MS\``));
   });
 
   it('withholds generic questions even while downgrades wait on the lane', () => {
-    const { byId } = gate(decideExtractionGateMode(null, { enforced: true }));
+    const { byId } = gate(decide(null));
     assert.equal(byId['fc-mil'].resolution.kind, 'unscored');
   });
 });

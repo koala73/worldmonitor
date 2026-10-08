@@ -1011,23 +1011,36 @@ export const SPEC_ORIGIN_HARD_DOWNGRADED = 'hard_downgraded_unextractable';
 export const GENERIC_JUDGED_QUESTION_REASON = 'generic_judged_question';
 export const PARENT_UNEXTRACTABLE_HORIZON_REASON = 'parent_unextractable';
 
-// Pure. `judgedLane` is the scorecard's judgedLane block, or null when the
-// scorecard could not be read. Enforcement without a healthy lane still
-// stamps specOrigin and withholds generic questions; only downgrades wait.
-export function decideExtractionGateMode(judgedLane, { enforced = EXTRACTION_GATE_ENFORCED } = {}) {
+// The judged lane must score most of what it resolves on time before it takes
+// downgrades. #7067 forbids moving failures into a broken lane and counts a
+// downgrade as a success only if it raises scored-within-SLA yield; below half,
+// a downgraded row is more likely to end VOID or late than scored on time,
+// which is the hard-path failure moved to another lane.
+export const EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE = 0.5;
+
+// The scorecard is written by the daily resolver. Same bar as the calibration
+// gate on the same key (CALIBRATION_GATE_MAX_AGE_MS): 2 missed runs and a
+// reading no longer describes the lane.
+export const EXTRACTION_GATE_SCORECARD_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+// Pure. `scorecard` is the stored forecast:scorecard:v1 value, or null when it
+// could not be read. Enforcement without a healthy lane still stamps
+// specOrigin and withholds generic questions; only downgrades wait.
+export function decideExtractionGateMode(scorecard, { enforced = EXTRACTION_GATE_ENFORCED, nowMs = NaN } = {}) {
   if (!enforced) return { mode: 'shadow', downgrade: false, reason: 'disabled' };
-  const pendingJudge = Number(judgedLane?.pendingJudge);
-  if (!judgedLane || !Number.isFinite(pendingJudge)) {
-    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_unreadable' };
-  }
-  if (pendingJudge >= EXTRACTION_GATE_MAX_PENDING_JUDGE) {
-    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_backlogged' };
-  }
+  const hold = (reason) => ({ mode: 'enforce', downgrade: false, reason });
+  const judgedLane = scorecard?.judgedLane;
+  const pendingJudge = judgedLane?.pendingJudge;
+  if (!judgedLane || typeof pendingJudge !== 'number' || !Number.isFinite(pendingJudge)) return hold('judged_lane_unreadable');
+  if (!(nowMs - Number(scorecard.generatedAt) <= EXTRACTION_GATE_SCORECARD_MAX_AGE_MS)) return hold('judged_lane_stale');
+  if (pendingJudge >= EXTRACTION_GATE_MAX_PENDING_JUDGE) return hold('judged_lane_backlogged');
   // The issue requires first-attempt and within-SLA figures to be measurable;
   // with no instrumented resolution they read 0 and prove nothing.
-  if (!(Number(judgedLane.instrumentedResolved) > 0) || !Number.isFinite(Number(judgedLane.scoredWithinSlaRate))) {
-    return { mode: 'enforce', downgrade: false, reason: 'judged_lane_unmeasured' };
+  const rate = judgedLane.scoredWithinSlaRate;
+  if (!(Number(judgedLane.instrumentedResolved) > 0) || typeof rate !== 'number' || !Number.isFinite(rate)) {
+    return hold('judged_lane_unmeasured');
   }
+  if (rate < EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE) return hold('judged_lane_below_sla');
   return { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
 }
 
@@ -1060,7 +1073,9 @@ export function applyExtractionGate(predictions, verdicts, generatedAt, decision
       bump(counts.downgraded, failure.family);
       pred.horizonResolutions = unscoreHardHorizons(pred.horizonResolutions);
     } else {
-      next = { ...spec, specOrigin: spec.kind === 'hard' ? SPEC_ORIGIN_HARD : SPEC_ORIGIN_JUDGED };
+      next = spec.kind === 'hard'
+        ? { ...spec, specOrigin: SPEC_ORIGIN_HARD, specFamily: hardFamilyFor(pred) || 'unknown' }
+        : { ...spec, specOrigin: SPEC_ORIGIN_JUDGED };
     }
     if (next.kind === 'judged' && specificJudgedQuestion(pred) == null) {
       const { question: _generic, ...kept } = next;

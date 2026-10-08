@@ -539,18 +539,43 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
 // Retired by #5334 before #7067 was filed: the gate cannot change its VOIDs,
 // so it stays out of the go-forward comparison.
 export const INFRASTRUCTURE_BASELINE_FEED = 'infra:outages:v1';
-const FEED_NAMESPACE_FAMILY = { intelligence: 'gps', prediction: 'prediction_market', infra: 'infrastructure' };
+// Legacy rows store no family, so it is read back from the exact feed the
+// spec read: the reverse of FAMILY_FEED in _forecast-resolution.mjs, with
+// every market-family feed (its MARKET_INPUT_KEYS) mapped to market. A feed
+// not listed keeps its own key rather than joining a family it is not.
+const LEGACY_FEED_FAMILY = new Map([
+  ['supply_chain:chokepoints:v4', 'supply_chain'],
+  ['intelligence:gpsjam:v2', 'gps'],
+  ['prediction:markets-bootstrap:v1', 'prediction_market'],
+  ['conflict:acled-resolution:v1:all:0:0', 'conflict'],
+  ['conflict:ucdp-events:v1', 'conflict'],
+  ['unrest:events-resolution:v1', 'unrest'],
+  ['cyber:threats-bootstrap:v2', 'cyber'],
+  ['infra:outages:v1', 'infrastructure'],
+  ...[
+    'market:stocks-bootstrap:v1',
+    'market:commodities-bootstrap:v1',
+    'market:sectors:v2',
+    'market:gulf-quotes:v1',
+    'market:etf-flows:v1',
+    'market:crypto:v1',
+    'market:stablecoins:v1',
+    'economic:bis:eer:v1',
+    'economic:bis:policy:v1',
+    'supply_chain:shipping:v2',
+    'correlation:cards-bootstrap:v1',
+  ].map((feed) => [feed, 'market']),
+]);
 
-// A row's hard family, from the feed its spec read, or for a downgraded row
-// the feed it would have read; so a downgraded row and a hard row of the same
-// family share a key. Native judged rows are keyed by domain.
+// A row's hard family. Rows emitted under the gate store it: originalFamily on
+// a downgrade, specFamily on a hard spec, both from the dispatch's family, so
+// a downgraded row and the hard path of its family share a key. Native
+// judged rows are keyed by domain.
 export function specFamilyOf(entry) {
   const spec = entry?.spec || {};
-  const feed = spec.originalSourceFeed || spec.sourceFeed;
-  if (typeof feed === 'string' && feed.length > 0) {
-    const namespace = feed.split(':')[0];
-    return FEED_NAMESPACE_FAMILY[namespace] || namespace;
-  }
+  if (typeof spec.originalFamily === 'string' && spec.originalFamily) return spec.originalFamily;
+  if (typeof spec.specFamily === 'string' && spec.specFamily) return spec.specFamily;
+  if (typeof spec.sourceFeed === 'string' && spec.sourceFeed) return LEGACY_FEED_FAMILY.get(spec.sourceFeed) || `feed:${spec.sourceFeed}`;
   return spec.kind === 'judged' ? `judged:${entry?.domain || 'unknown'}` : 'unknown';
 }
 
@@ -567,9 +592,15 @@ function summarizeSpecOrigins(entries, options = {}) {
   const byOrigin = {};
   const latencies = new Map();
   let excludedInfrastructureBaseline = 0;
+  let excludedBetEngine = 0;
   for (const entry of entries) {
     if (entry?.spec?.sourceFeed === INFRASTRUCTURE_BASELINE_FEED) {
       excludedInfrastructureBaseline += 1;
+      continue;
+    }
+    // Bets are a shadow lane the gate never touches and the headline excludes.
+    if (generationOriginOf(entry) === 'bet_engine') {
+      excludedBetEngine += 1;
       continue;
     }
     const origin = typeof entry?.specOrigin === 'string' ? entry.specOrigin : 'legacy';
@@ -602,7 +633,7 @@ function summarizeSpecOrigins(entries, options = {}) {
       row.medianLatencyHours = values.length ? round(medianOfSorted(values) / (60 * 60 * 1000)) : null;
     }
   }
-  return { slaMs, excludedInfrastructureBaseline, byOrigin };
+  return { slaMs, excludedInfrastructureBaseline, excludedBetEngine, byOrigin };
 }
 
 function medianOfSorted(values) {

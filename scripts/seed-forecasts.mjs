@@ -5612,7 +5612,7 @@ function buildResolutionOutputBlock(resolution) {
 }
 
 // Fields the extraction gate stamps (#7067). Absent while the gate is off.
-const GATE_RESOLUTION_FIELDS = ['specOrigin', 'reason', 'originalFamily', 'originalMetricKey', 'originalSourceFeed', 'downgradeReason'];
+const GATE_RESOLUTION_FIELDS = ['specOrigin', 'specFamily', 'reason', 'originalFamily', 'originalMetricKey', 'originalSourceFeed', 'downgradeReason'];
 
 function buildHistoryResolutionBlock(resolution) {
   let block = buildResolutionOutputBlock(resolution);
@@ -16878,20 +16878,21 @@ async function runExtractionGateShadow(predictions) {
 // The shadow gate, then enforcement when EXTRACTION_GATE_ENFORCED is on. With
 // the switch off nothing past the shadow runs, so emission is unchanged and
 // the scorecard is not read.
-async function runExtractionGate(predictions, generatedAt, { enforced = EXTRACTION_GATE_ENFORCED } = {}) {
+async function runExtractionGate(predictions, generatedAt, { enforced = EXTRACTION_GATE_ENFORCED, nowMs = Date.now() } = {}) {
   const shadow = await runExtractionGateShadow(predictions);
   if (!enforced) return { shadow, decision: decideExtractionGateMode(null, { enforced }), counts: null };
-  let judgedLane = null;
+  let scorecard = null;
   try {
     const { url, token } = getRedisCredentials();
-    judgedLane = (await redisGetOrThrow(url, token, CALIBRATION_GATE_SCORECARD_KEY))?.judgedLane ?? null;
+    scorecard = await redisGetOrThrow(url, token, CALIBRATION_GATE_SCORECARD_KEY);
   } catch (err) {
     console.warn(`  [ExtractionGate] scorecard read failed: ${err?.message || err}`);
   }
-  const decision = decideExtractionGateMode(judgedLane, { enforced });
+  const judgedLane = scorecard?.judgedLane ?? null;
+  const decision = decideExtractionGateMode(scorecard, { enforced, nowMs });
   // A failed shadow has no verdicts, so nothing is downgraded this run.
   const counts = applyExtractionGate(predictions, shadow?.verdicts || [], generatedAt, decision);
-  console.log(`  [ExtractionGate] enforce downgrade=${decision.downgrade} reason=${decision.reason} pendingJudge=${judgedLane?.pendingJudge ?? 'unknown'} downgraded=${JSON.stringify(counts.downgraded)} withheld=${JSON.stringify(counts.withheld)}`);
+  console.log(`  [ExtractionGate] enforce downgrade=${decision.downgrade} reason=${decision.reason} pendingJudge=${judgedLane?.pendingJudge ?? 'unknown'} scoredWithinSlaRate=${judgedLane?.scoredWithinSlaRate ?? 'unknown'} downgraded=${JSON.stringify(counts.downgraded)} withheld=${JSON.stringify(counts.withheld)}`);
   return { shadow, decision, counts };
 }
 

@@ -21,7 +21,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
-import { chokepointHardContract, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
+import { chokepointHardContract, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -181,9 +181,10 @@ export function declareCalibrationMapRecords(map) {
 
 // `publication` is the seeder's latest #7070 decision record: mode, reason,
 // gate numbers and the last flip.
-export function buildScorecard(ledger, nowMs, calibrationMap = null, publication = null) {
+export function buildScorecard(ledger, nowMs, calibrationMap = null, publication = null, withheldAtEmission = null) {
   return {
     ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() }),
+    ...(withheldAtEmission && { withheldAtEmission }),
     calibrationShadow: {
       ...evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
       ...(publication && { publication }),
@@ -201,7 +202,34 @@ export function buildScorecard(ledger, nowMs, calibrationMap = null, publication
 // The run's clock, so the scorecard's gate verdict is the one the map
 // resolution held or refitted on.
 export function buildScorecardForRun(ledger, runState) {
-  return buildScorecard(ledger, runState.nowMs, runState.map, runState.publication);
+  return buildScorecard(ledger, runState.nowMs, runState.map, runState.publication, runState.withheldAtEmission ?? null);
+}
+
+// Published forecasts the extraction gate withheld from scoring (#7067). They
+// open no ledger window, so without this count a withheld forecast would leave
+// the record and lower VOID by deletion. Counted once per id@deadline over the
+// forecast history the run read (its oldest snapshot is `since`), by reason and
+// by the hard family it lost, or its domain when it never had one.
+export function summarizeWithheldEmissions(historySnapshots) {
+  const seen = new Set();
+  const byReason = {};
+  let since = null;
+  for (const snapshot of historySnapshots || []) {
+    const at = Number(snapshot?.generatedAt);
+    if (Number.isFinite(at) && (since === null || at < since)) since = at;
+    for (const forecast of snapshot?.predictions || []) {
+      const spec = forecast?.resolution;
+      if (spec?.kind !== 'unscored' || !forecast.id) continue;
+      const key = `${forecast.id}@${spec.deadline}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const reason = spec.reason || 'unknown';
+      const family = spec.originalFamily || forecast.domain || 'unknown';
+      const bucket = byReason[reason] ??= {};
+      bucket[family] = (bucket[family] || 0) + 1;
+    }
+  }
+  return { forecasts: seen.size, since, byReason };
 }
 
 export async function resolveCalibrationMap(ledger, nowMs, readJson = readRedisJson) {
@@ -1522,7 +1550,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   for (const { forecast, spec, id, deadline, generatedAt, snapshotAt } of emissions) {
     const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
     const questionKey = windowQuestionKey(candidate);
-    const coveringKey = windows.covering(id, questionKey, generatedAt);
+    const coveringKey = windows.covering(id, { entry: candidate, questionKey }, generatedAt);
     if (coveringKey) {
       const window = ledger[coveringKey];
       if (window.status === 'pending' || window.status === 'pending-judge') {
@@ -1600,13 +1628,27 @@ function indexQuestionWindows(ledger) {
   for (const [key, entry] of Object.entries(ledger)) add(key, entry);
   return {
     add,
-    covering(id, questionKey, generatedAt) {
+    covering(id, candidate, generatedAt) {
       const match = (byId.get(id) || [])
-        .filter((window) => window.questionKey === questionKey && windowCovers(window.entry, generatedAt))
+        .filter((window) => isSameWindowQuestion(window, candidate) && windowCovers(window.entry, generatedAt))
         .sort(byEmission)[0];
       return match?.key ?? null;
     },
   };
+}
+
+// A hard spec and its extraction-gate downgrade (#7067) are one question. The
+// gate's verdict follows the hourly feed snapshot, so one forecast can pass,
+// fail and pass again; without this the downgrade opens a second live window
+// beside the hard one. Whichever kind registered first owns the window.
+function isSameWindowQuestion(a, b) {
+  if (a.questionKey === b.questionKey) return true;
+  const twin = (downgraded, hard) => downgraded.entry.specOrigin === SPEC_ORIGIN_HARD_DOWNGRADED
+    && hard.entry.spec?.kind === 'hard'
+    && (downgraded.entry.region || '') === (hard.entry.region || '')
+    && typeof hard.entry.spec.metricKey === 'string'
+    && downgraded.entry.spec?.originalMetricKey === hard.entry.spec.metricKey;
+  return twin(a, b) || twin(b, a);
 }
 
 // A market-settlement window is the market's own question, settled once. Its
@@ -1681,7 +1723,7 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
     windows.sort(byEmission);
     const kept = [];
     for (const window of windows) {
-      const keeper = kept.find(({ entry, questionKey }) => questionKey === window.questionKey && windowCovers(entry, Number(window.entry.generatedAt)));
+      const keeper = kept.find((other) => isSameWindowQuestion(other, window) && windowCovers(other.entry, Number(window.entry.generatedAt)));
       if (!keeper) {
         kept.push(window);
         continue;
@@ -2828,6 +2870,7 @@ async function buildLedgerForRun(runState) {
     }),
   ]);
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
+  runState.withheldAtEmission = summarizeWithheldEmissions(history);
   // Populate the market settlement feed for due bets BEFORE the feed read so
   // this run can resolve freshly adjudicated markets (#5525 KTD2). Best-effort:
   // a failure leaves the bets pending within the settlement grace.
