@@ -527,7 +527,8 @@ function meetsFamilyMinimums(families) {
 
 // A family is one forecast id (#8990): its windows ask the same question of
 // the same detector, so they are resampled together and counted once. The
-// scorecard, the calibration fit and the activation gate (#9034) all use this.
+// scorecard's intervals and minimums, the calibration fit and the activation
+// gate (#9034) all use this.
 export function familyKey(entry) {
   return typeof entry?.id === 'string' && entry.id ? entry.id : '';
 }

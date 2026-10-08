@@ -139,9 +139,10 @@ describe('golden fit on the frozen published-origin ledger', () => {
       noFamilies: 3,
       eligible: true,
       mode: 'isotonic',
-      // The 0.34-0.85 block holds 7 YES and 2 NO rows from 8 families; two
-      // YES families have 2 rows each, so it is 5.5 of 7.5 family weight
-      // (0.733), not 7 of 9 rows (0.778).
+      // The 0.34-0.85 block holds 7 YES and 2 NO rows from 8 families. Each
+      // row of the two-row families weighs 0.5: both YES rows of 492f1a9c,
+      // and the YES row of 750e2fea, whose other row resolved NO at 0.332.
+      // So YES is 5.5 of 7.5 family weight (0.733), not 7 of 9 rows (0.778).
       knots: [{ x: 0.332, y: 0.01 }, { x: 0.34, y: 0.733333 }, { x: 0.85, y: 0.733333 }, { x: 0.93, y: 0.99 }],
     });
     assert.equal(map.domains.market.mode, 'identity', '4 families stay below the lowered minimum');
@@ -514,6 +515,23 @@ describe('family-counted activation gate (#9034)', () => {
     assert.ok(width(pairedBootstrap(repeated, deltaStatistic).delta) >= baseWidth, 'family resampling does not');
   });
 
+  it('pools every row of each drawn family', () => {
+    // Unequal family sizes, and rows that differ within a family.
+    const sizes = [1, 2, 3, 5, 8, 1, 4];
+    const rows = sizes.flatMap((size, f) => repeat(size, (i) => ({ domain: 'd', family: `u-${f}`, y: i % 2, raw: 0.5, calibrated: 0.1 * (i + 1) })));
+    const sizeOf = new Map(sizes.map((size, f) => [`u-${f}`, size]));
+    const intervals = pairedBootstrap(rows, {
+      complete: (sample) => {
+        const seen = new Map();
+        for (const row of sample) seen.set(row.family, (seen.get(row.family) ?? 0) + 1);
+        return [...seen].every(([family, count]) => count % sizeOf.get(family) === 0) ? 1 : 0;
+      },
+      n: (sample) => sample.length,
+    });
+    assert.deepEqual(intervals.complete, [1, 1], 'a drawn family brings all its rows');
+    assert.ok(intervals.n[0] < rows.length && intervals.n[1] > rows.length, `sample size varies with the families drawn: ${intervals.n}`);
+  });
+
   it('refuses rows without a family key', () => {
     assert.throws(() => pairedBootstrap([{ y: 1, raw: 0.5, calibrated: 0.5 }], { n: (sample) => sample.length }), TypeError);
   });
@@ -543,6 +561,12 @@ describe('family-weighted isotonic fit (#9034)', () => {
     assert.deepEqual(isotonicKnots([{ x: 0.5, y: 0, weight: 1 / 3 }, { x: 0.5, y: 1, weight: 1 }]), [{ x: 0.5, y: 0.75 }]);
     // A pooled violator block takes the weighted mean.
     assert.deepEqual(isotonicKnots([{ x: 0.2, y: 1, weight: 3 }, { x: 0.4, y: 0, weight: 1 }]), [{ x: 0.2, y: 0.75 }, { x: 0.4, y: 0.75 }]);
+  });
+
+  it('refuses a weight that is not a positive finite number', () => {
+    for (const weight of [0, -1, null, NaN, Infinity, '1']) {
+      assert.throws(() => isotonicKnots([{ x: 0.5, y: 1, weight }]), RangeError, `weight ${weight}`);
+    }
   });
 
   it('gives each family one unit of weight, so a family with many windows counts once', () => {

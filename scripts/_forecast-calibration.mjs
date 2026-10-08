@@ -188,6 +188,7 @@ export function isotonicKnots(points, bounds = {}) {
   const ceiling = bounds.ceiling ?? CALIBRATION_PROBABILITY_CEILING;
   const byX = new Map();
   for (const { x, y, weight = 1 } of points) {
+    if (!(Number.isFinite(weight) && weight > 0)) throw new RangeError(`isotonicKnots weight must be a positive finite number, got ${weight}`);
     const cell = byX.get(x) ?? { x, sum: 0, weight: 0 };
     cell.sum += y * weight;
     cell.weight += weight;
