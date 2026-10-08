@@ -1702,7 +1702,7 @@
   "components.tradePolicy.noTariffData": "No tariff data available",
   "components.tradePolicy.overview": "Overview",
   "components.tradePolicy.overviewNoteNoEffective": "These figures are World Trade Organization most-favoured-nation baseline rates, not the current tariff burden from unilateral tariff actions.",
-  "components.tradePolicy.overviewNoteTail": "These cards show World Trade Organization baseline commitments, not the live effective tariff burden.",
+  "components.tradePolicy.overviewNoteTail": "These cards show general tariff baseline rates, not the live effective tariff burden.",
   "components.tradePolicy.revenue": "US Revenue",
   "components.tradePolicy.sourceComtrade": "UN Comtrade",
   "components.tradePolicy.sourceTreasury": "US Treasury",

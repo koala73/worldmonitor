@@ -1015,7 +1015,7 @@
       "wtoBaselineMeta": "世界貿易機関一般関税 | {{year}}",
       "overviewNoteNoEffective": "これらの数値は世界貿易機関の最恵国ベースラインレートであり、一方的な関税措置による現在の関税負担ではありません。",
       "usBaselineLabel": "米国一般関税ベースライン",
-      "overviewNoteTail": "これらのカードは世界貿易機関のベースラインコミットメントを表示しており、ライブの実効関税負担ではありません。",
+      "overviewNoteTail": "これらのカードは一般的な関税基本税率を表示しており、実際の有効関税負担ではありません。",
       "revenue": "US 収入",
       "noRevenueData": "税関収入データが利用できません",
       "treasuryUnavailable": "財務省データは一時的に利用できません",

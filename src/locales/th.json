@@ -193,7 +193,7 @@
       "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     },
     "foodStocks": "Food stocks",
-    "foodStocksHelp": "สต็อกสินค้าโภคนეยอาหาร USDA ด้านการผลิต อุปทาน และการจัดจำหน่าย ตามปีการตลาด พร้อมอัตราส่วนโลกเพื่ออ้างอิง FAOSTAT Food Balances ให้ข้อมูลการผลิตและอุปทานภายในประเทศเมื่อ Production Supply and Distribution ไม่มีบัญชีประเทศที่สมบูรณ์",
+    "foodStocksHelp": "สต็อกสินค้าโภคภัณฑ์อาหาร USDA ด้านการผลิต อุปทาน และการจัดจำหน่าย ตามปีการตลาด พร้อมอัตราส่วนโลกเพื่ออ้างอิง FAOSTAT Food Balances ให้ข้อมูลการผลิตและอุปทานภายในประเทศเมื่อ Production Supply and Distribution ไม่มีบัญชีประเทศที่สมบูรณ์",
     "loadingFoodStocks": "Loading food stocks…",
     "foodStocksUnavailable": "Food stocks unavailable.",
     "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
@@ -211,7 +211,7 @@
     },
     "demographicsCapability": {
       "title": "Demographics & Workforce",
-      "help": "โครงสร้างอายุ ท่อการศึกษา และความจุ劳動力อุตสาหกรรม จาก UN World Population Prospects UNESCO Institute for Statistics และ World Bank World Development Indicators และ ILOSTAT",
+      "help": "โครงสร้างอายุ ท่อการศึกษา และกำลังแรงงานภาคอุตสาหกรรม จาก UN World Population Prospects UNESCO Institute for Statistics และ World Bank World Development Indicators และ ILOSTAT",
       "loading": "Loading demographics and workforce data…",
       "unavailable": "Demographics and workforce data unavailable.",
       "proLocked": "Upgrade to PRO for demographics and workforce data",
@@ -1015,7 +1015,7 @@
       "wtoBaselineMeta": "พื้นฐานภาษีอากรทั่วไปขององค์การการค้าโลก | {{year}}",
       "overviewNoteNoEffective": "ตัวเลขเหล่านี้เป็นอัตราพื้นฐานที่ได้รับสิทธิพิเศษมากที่สุดขององค์การการค้าโลก ไม่ใช่ภาระภาษีอากรปัจจุบันจากมาตรการภาษีอากรด้านข้าง",
       "usBaselineLabel": "พื้นฐานภาษีอากรทั่วไปของสหรัฐฯ",
-      "overviewNoteTail": "การ์ดเหล่านี้แสดงข้อมูลปฏิบัติตามพันธะขององค์การการค้าโลก ไม่ใช่ภาระภาษีอากรที่มีผลบังคับใช้แบบสด",
+      "overviewNoteTail": "การ์ดเหล่านี้แสดงอัตราภาษีศุลกากรพื้นฐานทั่วไป ไม่ใช่ภาระภาษีศุลกากรที่มีผลบังคับใช้ในปัจจุบัน",
       "revenue": "รายได้สหรัฐฯ",
       "noRevenueData": "ไม่มีข้อมูลรายได้จากอากรศุลกากร",
       "treasuryUnavailable": "ข้อมูล Treasury ไม่พร้อมใช้งานชั่วคราว",

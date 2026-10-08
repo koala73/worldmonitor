@@ -823,7 +823,7 @@
       "units": {
         "fighters": "Vechters",
         "tankers": "Tankers",
-        "awacs": "Vliegdekschip vroegwaarschuwing",
+        "awacs": "Vroegtijdige waarschuwing vanuit de lucht",
         "recon": "Verken",
         "transport": "Vervoer",
         "bombers": "Bommenwerpers",
@@ -839,7 +839,7 @@
       },
       "clickToViewMap": "Klik om op de kaart te bekijken",
       "refresh": "Vernieuwen",
-      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per theater.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritiek:</strong> Hoge concentratie (100+ vliegtuigen)</li></ul><p><strong>Aanvalscapabel:</strong> Tankers + Vliegdekschip vroegwaarschuwing + Gevechtsvliegtuigen aanwezig in voldoende aantal voor aanhoudende operaties.</p>",
+      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per theater.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritiek:</strong> Hoge concentratie (100+ vliegtuigen)</li></ul><p><strong>Aanvalscapabel:</strong> Tankers + Vroegtijdige waarschuwing vanuit de lucht + Gevechtsvliegtuigen aanwezig in voldoende aantal voor aanhoudende operaties.</p>",
       "scanningTheaters": "Operatiegebieden scannen",
       "positions": "Vliegtuigposities",
       "navalVesselsLoading": "Marineschepen",
@@ -1037,7 +1037,7 @@
       "wtoBaselineMeta": "Wereldhandelorganisatie algemeen tarief | {{year}}",
       "overviewNoteNoEffective": "Deze cijfers zijn meestbegunstigde-nationtarieven van de Wereldhandelorganisatie, niet de huidige tarifflast uit unilaterale tarifacties.",
       "usBaselineLabel": "VS algemeen tariefniveau",
-      "overviewNoteTail": "Deze kaarten tonen verbintenissen van de Wereldhandelorganisatie, niet de live effectieve tarifflast.",
+      "overviewNoteTail": "Deze kaarten tonen algemene basistarieven voor invoerrechten, niet de huidige effectieve tarieflast.",
       "revenue": "VS-inkomsten",
       "noRevenueData": "Geen douane-inkomstengegevens beschikbaar",
       "treasuryUnavailable": "Schatkistgegevens tijdelijk niet beschikbaar",
@@ -1716,7 +1716,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Aandelen-indices, wisselkoersen en olieprijzen voor NAVO-landen (Saoedi-Arabië, VAE, Koeweit, Qatar, Bahrein, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Aandelen-indices, wisselkoersen en olieprijzen voor economieën van de Samenwerkingsraad van de Golf (Saoedi-Arabië, VAE, Koeweit, Qatar, Bahrein, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Wereldwijd vergelijking van boodschappenprijzen in 24 landen — volgt inflatietrends van consumptiegoederen buiten de standaard consumentenprijsindex."

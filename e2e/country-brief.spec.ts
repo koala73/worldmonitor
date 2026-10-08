@@ -884,10 +884,34 @@ for (const mobile of [false, true]) {
     await expect(panel).toContainText('Stocks above 20-day moving average (%)');
     await expect(panel).toContainText('Stocks above 50-day moving average (%)');
     await expect(panel).toContainText('Stocks above 200-day moving average (%)');
-    await expect(panel).toContainText('0.0%');
+    await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
     await expect(panel).not.toContainText('% Above Stocks');
     const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
     await panel.screenshot({ path });
     await testInfo.attach('Controlled market breadth component preview', { path, contentType: 'image/png' });
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`reviewed Swahili panel names render on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard?lang=sw');
+    if (mobile) {
+      await page.locator('[data-mobile-tab="more"]').click();
+      await page.locator('#mobileMenuSettings').click();
+    } else {
+      await page.locator('#unifiedSettingsBtn').click();
+    }
+    await page.locator('#us-tab-panels').click();
+    const panels = page.locator('#usPanelToggles');
+    await expect(panels).toContainText('mtaji wa kufadhili biashara changa');
+    const gulf = panels.getByText('Uwekezaji wa Baraza la Ushirikiano la Ghuba', { exact: true });
+    await gulf.scrollIntoViewIfNeeded();
+    await expect(gulf).toBeVisible();
+    await expect(panels).not.toContainText('mtaji wa uhamiaji');
+    const path = testInfo.outputPath(`swahili-panel-labels-${mobile ? 'mobile' : 'desktop'}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach('Reviewed Swahili investment labels', { path, contentType: 'image/png' });
   });
 }

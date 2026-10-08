@@ -1015,7 +1015,7 @@
       "wtoBaselineMeta": "世界贸易组织最惠国关税 | {{year}}",
       "overviewNoteNoEffective": "这些数据是世界贸易组织最惠国基准税率，不是单边关税行动造成的当前关税负担。",
       "usBaselineLabel": "美国最惠国关税基准",
-      "overviewNoteTail": "这些卡片显示世界贸易组织基准承诺，不是实时有效的关税负担。",
+      "overviewNoteTail": "这些卡片显示的是一般关税基准税率，而非实时生效的关税负担。",
       "revenue": "美国收入",
       "noRevenueData": "无关税收入数据",
       "treasuryUnavailable": "财政部数据暂时不可用",

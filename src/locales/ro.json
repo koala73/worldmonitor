@@ -1021,7 +1021,7 @@
       "wtoBaselineMeta": "Organizația Mondială a Comerțului tarif general de referință | {{year}}",
       "overviewNoteNoEffective": "Aceste cifre sunt ratele de referință ale Organizației Mondiale a Comerțului pentru clauza nației cele mai favorizate, nu sarcina tarifară actuală din acțiuni unilaterale de tarife.",
       "usBaselineLabel": "Tarif general de referință SUA",
-      "overviewNoteTail": "Aceste carduri arată angajamentele de referință ale Organizației Mondiale a Comerțului, nu sarcina tarifară efectivă în timp real.",
+      "overviewNoteTail": "Aceste carduri arată ratele tarifare generale de bază, nu povara tarifară efectivă în timp real.",
       "revenue": "Venituri SUA",
       "noRevenueData": "Nu sunt disponibile date privind veniturile din dări vamale",
       "treasuryUnavailable": "Datele Trezoreriei sunt temporar indisponibile",
@@ -1124,7 +1124,7 @@
       "units": {
         "fighters": "Avioane de luptă",
         "tankers": "Avioane cisternă",
-        "awacs": "Avertizare timptorie aeriană",
+        "awacs": "Avertizare timpurie aeriană",
         "recon": "Recon",
         "transport": "Transport",
         "bombers": "Bombardiere",
@@ -1411,7 +1411,7 @@
           "tradeRoutes": "Principalele linii maritime globale care conectează porturile prin puncte strategice de blocare",
           "dayNight": "Terminator solar în timp real care arată zonele de zi și de noapte",
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
-          "ciiChoropleth": "Hartă de temperatură a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
+          "ciiChoropleth": "Hartă termică a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },

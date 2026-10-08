@@ -1006,7 +1006,7 @@
       "wtoBaselineMeta": "Welthandelsorganisation allgemeiner Zollsatz | {{year}}",
       "overviewNoteNoEffective": "Diese Werte sind Basisquoten der Welthandelsorganisation für die meistbegünstigte Nation, nicht die aktuelle Zollbelastung durch einseitige Zollmaßnahmen.",
       "usBaselineLabel": "US allgemeiner Zoll-Basiswert",
-      "overviewNoteTail": "Diese Karten zeigen Verpflichtungen der Welthandelsorganisation, nicht die aktuelle effektive Zollbelastung.",
+      "overviewNoteTail": "Diese Karten zeigen allgemeine Zollsatzbasisraten, nicht die aktuell geltende Zollbelastung.",
       "revenue": "US-Einnahmen",
       "noRevenueData": "Keine Zolleinnahmendaten verfügbar",
       "treasuryUnavailable": "Treasury-Daten vorübergehend nicht verfügbar",

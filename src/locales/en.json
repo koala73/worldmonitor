@@ -1113,7 +1113,7 @@
       "wtoBaselineMeta": "World Trade Organization general tariff | {{year}}",
       "overviewNoteNoEffective": "These figures are World Trade Organization most-favoured-nation baseline rates, not the current tariff burden from unilateral tariff actions.",
       "usBaselineLabel": "US general tariff baseline",
-      "overviewNoteTail": "These cards show World Trade Organization baseline commitments, not the live effective tariff burden.",
+      "overviewNoteTail": "These cards show general tariff baseline rates, not the live effective tariff burden.",
       "exports": "Exports",
       "imports": "Imports",
       "yoyChange": "Year-over-year Change",

@@ -840,7 +840,7 @@
       },
       "clickToViewMap": "Clique para visualizar no mapa",
       "refresh": "Atualizar",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agrega aeronaves militares e navios da marinha por teatro.</p><ul><li><strong>Normal:</strong> Atividade de linha de base</li><li><strong>Elevado:</strong> Acima do limiar (50+ aeronaves)</li><li><strong>Crítico:</strong> Alta concentração (100+ aeronaves)</li></ul><p><strong>Capaz de Strike:</strong> Tanques + Alerta aerotransportado + Caças presentes em números suficientes para operações sustentadas.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Agrega aeronaves militares e navios da marinha por teatro.</p><ul><li><strong>Normal:</strong> Atividade de linha de base</li><li><strong>Elevado:</strong> Acima do limiar (50+ aeronaves)</li><li><strong>Crítico:</strong> Alta concentração (100+ aeronaves)</li></ul><p><strong>Capaz de Strike:</strong> Aviões-tanque + Alerta aerotransportado + Caças presentes em números suficientes para operações sustentadas.</p>",
       "scanningTheaters": "Rastreando teatros",
       "positions": "Posições de aeronaves",
       "navalVesselsLoading": "Embarcações navais",
@@ -1038,7 +1038,7 @@
       "wtoBaselineMeta": "Organização Mundial do Comércio tarifa geral | {{year}}",
       "overviewNoteNoEffective": "Estas cifras são as taxas de linha de base da nação mais favorecida da Organização Mundial do Comércio, não a carga tarifária atual de ações tarifárias unilaterais.",
       "usBaselineLabel": "Linha de base de tarifa geral dos EUA",
-      "overviewNoteTail": "Estes cards mostram compromissos de linha de base da Organização Mundial do Comércio, não a carga tarifária efetiva em tempo real.",
+      "overviewNoteTail": "Estes cards mostram as alíquotas de tarifa de base geral, não o encargo tarifário efetivo em tempo real.",
       "revenue": "Receita dos EUA",
       "noRevenueData": "Nenhum dado de receita aduaneira disponível",
       "treasuryUnavailable": "Dados do Tesouro temporariamente indisponíveis",
@@ -1397,11 +1397,11 @@
       "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias."
     },
     "etfFlows": {
-      "unavailable": "dados de fundo de investimento em índice temporariamente indisponíveis",
+      "unavailable": "dados de fundos negociados em bolsa temporariamente indisponíveis",
       "netFlow": "Fluxo líquido",
       "estFlow": "Fluxo est.",
       "totalVol": "Vol. total",
-      "etfs": "Fundos de investimento em índice",
+      "etfs": "Fundos negociados em bolsa",
       "netInflow": "ENTRADA LÍQUIDA",
       "netOutflow": "SAÍDA LÍQUIDA",
       "netNeutral": "LÍQUIDO NEUTRO",
@@ -1412,8 +1412,8 @@
         "volume": "Volume",
         "change": "Variação"
       },
-      "rateLimited": "dados de fundo de investimento em índice temporariamente indisponíveis (limite de taxa) — tentando novamente em breve",
-      "infoTooltip": "<strong>Fluxos de fundo Bitcoin</strong> Rastreia fluxos de fundo estimados diários para fundos de investimento em índice Bitcoin spot dos EUA:<ul><li>Direção e magnitude de entrada/saída</li><li>Volume e mudança de preço por fundo</li><li>Fluxo agregado líquido em todos os fundos rastreados</li></ul>"
+      "rateLimited": "dados de fundos negociados em bolsa temporariamente indisponíveis (limite de taxa) — tentando novamente em breve",
+      "infoTooltip": "<strong>Fluxos de fundo Bitcoin</strong> Rastreia fluxos de fundo estimados diários para fundos negociados em bolsa Bitcoin spot dos EUA:<ul><li>Direção e magnitude de entrada/saída</li><li>Volume e mudança de preço por fundo</li><li>Fluxo agregado líquido em todos os fundos rastreados</li></ul>"
     },
     "macroSignals": {
       "overall": "Geral",

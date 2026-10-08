@@ -972,7 +972,7 @@
       "wtoBaselineMeta": "Tarif général de l'Organisation mondiale du commerce | {{year}}",
       "overviewNoteNoEffective": "Ces chiffres sont les tarifs de référence du traitement de la nation la plus favorisée de l'Organisation mondiale du commerce, et non la charge tarifaire actuelle résultant d'actions tarifaires unilatérales.",
       "usBaselineLabel": "Tarif général de référence des États-Unis",
-      "overviewNoteTail": "Ces cartes affichent les engagements de référence de l'Organisation mondiale du commerce, et non la charge tarifaire effective en direct.",
+      "overviewNoteTail": "Ces cartes affichent les taux tarifaires de base généraux, et non la charge tarifaire effective en temps réel.",
       "revenue": "Recettes américaines",
       "noRevenueData": "Aucune donnée de recettes douanières disponible",
       "treasuryUnavailable": "Données du Trésor temporairement indisponibles",

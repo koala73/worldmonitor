@@ -1015,7 +1015,7 @@
       "wtoBaselineMeta": "世界貿易組織最惠國關稅 | {{year}}",
       "overviewNoteNoEffective": "這些資料是世界貿易組織最惠國基準稅率，不是單邊關稅行動造成的當前關稅負擔。",
       "usBaselineLabel": "美國最惠國關稅基準",
-      "overviewNoteTail": "這些卡片顯示世界貿易組織基準承諾，不是即時有效的關稅負擔。",
+      "overviewNoteTail": "這些卡片顯示的是一般關稅基準稅率，而非即時生效的關稅負擔。",
       "revenue": "美國收入",
       "noRevenueData": "無關稅收入資料",
       "treasuryUnavailable": "財政部資料暫時不可用",

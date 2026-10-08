@@ -1015,7 +1015,7 @@
       "wtoBaselineMeta": "세계무역기구 일반 관세 | {{year}}",
       "overviewNoteNoEffective": "이 수치는 세계무역기구 최혜국 기준선 관세율이며, 일방적 관세 조치로 인한 현재 관세 부담이 아닙니다.",
       "usBaselineLabel": "미국 일반 관세 기준선",
-      "overviewNoteTail": "이 카드는 세계무역기구 기준선 약정을 보여주며, 현재 실효 관세 부담이 아닙니다.",
+      "overviewNoteTail": "이 카드는 현재 실제 관세 부담이 아닌 기본 관세율을 표시합니다.",
       "revenue": "미국 수입",
       "noRevenueData": "관세 수입 데이터 미제공",
       "treasuryUnavailable": "재무부 데이터 일시 미제공",

@@ -1002,7 +1002,7 @@
       "lowTariff": "Nízké",
       "overview": "Přehled",
       "noOverviewData": "Žádná data přehledu cel nejsou dostupná",
-      "mfnAppliedRate": "Obecná preferenční sazba cel",
+      "mfnAppliedRate": "Obecná nepreferenční celní sazba",
       "baselineMfnTariff": "Obecná základní sazba cel",
       "effectiveTariffRateLabel": "Efektivní sazba cla",
       "gapLabel": "Rozdíl",
@@ -1010,9 +1010,9 @@
       "noEffectiveCoverageForCountry": "Žádné pokrytí efektivní sazby pro tuto zemi",
       "effectiveMinusBaseline": "Efektivní sazba minus obecná základní sazba cel",
       "wtoBaselineMeta": "Světová obchodní organizace obecná základní sazba cel | {{year}}",
-      "overviewNoteNoEffective": "Tyto údaje představují sazby nejzaraženějšího režimu Světové obchodní organizace, nikoli aktuální zatížení cel z jednostranných akcí v oblasti cel.",
+      "overviewNoteNoEffective": "Tyto údaje představují sazby režimu nejvyšších výhod Světové obchodní organizace, nikoli aktuální zatížení cel z jednostranných akcí v oblasti cel.",
       "usBaselineLabel": "Obecná základní sazba cel USA",
-      "overviewNoteTail": "Tyto karty ukazují závazky Světové obchodní organizace, nikoli živé efektivní zatížení cel.",
+      "overviewNoteTail": "Tyto karty ukazují obecné sazby základních tarifů, ne aktuální efektivní zatížení cly.",
       "revenue": "Příjem USA",
       "noRevenueData": "Žádná data o daních z cel nejsou dostupná",
       "treasuryUnavailable": "Data ministerstva financí nejsou dočasně dostupná",
@@ -1032,7 +1032,7 @@
       "colReporter": "Země",
       "colCommodity": "Komodita",
       "colTradeValue": "Obchodní hodnota",
-      "infoTooltip": "<strong>Obchodní politika</strong> Obecné preferenční sazby cel Světové obchodní organizace s efektivními sazbami USA, pokud jsou dostupné. Zahrnuje trendy cel, obchodní toky, technické a potravinářské překážky a měsíční příjmy z cel USA."
+      "infoTooltip": "<strong>Obchodní politika</strong> Obecné nepreferenční sazby cel Světové obchodní organizace s efektivními sazbami USA, pokud jsou dostupné. Zahrnuje trendy cel, obchodní toky, technické a potravinářské překážky a měsíční příjmy z cel USA."
     },
     "gdelt": {
       "empty": "K tomuto tématu nejsou žádné nedávné články"
@@ -1129,7 +1129,7 @@
         "auxiliary": "Pomocná plavidla",
         "navalVessels": "Námořní plavidla"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agreguje vojenská letadla a válečné lodě podle operačního területí.</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad prahovou hodnotu (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Schopné udělat úder:</strong> Tankery + Letecké včasné varování + Stíhače přítomni v dostatečném počtu pro trvalé operace.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Agreguje vojenská letadla a válečné lodě podle operačního oblasti.</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad prahovou hodnotu (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Schopné udělat úder:</strong> Tankery + Letecké včasné varování + Stíhače přítomni v dostatečném počtu pro trvalé operace.</p>",
       "scanningTheaters": "Skenování válčišť",
       "positions": "Pozice letadel",
       "navalVesselsLoading": "Námořní plavidla",
@@ -2224,7 +2224,7 @@
       }
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>Economic Calendar</strong> Naplánované makroekonomické uvolňování dat: index spotřebitelských cen, nezaměstnanost mimo zemědělství, hrubý domácí produkt, index nákupních manažerů a rozhodnutí centrální banky. Ukazuje prognózu versus skutečnost versus předchozí. Vysoce dopadové события jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
+      "infoTooltip": "<strong>Economic Calendar</strong> Naplánované makroekonomické uvolňování dat: index spotřebitelských cen, nezaměstnanost mimo zemědělství, hrubý domácí produkt, index nákupních manažerů a rozhodnutí centrální banky. Ukazuje prognózu versus skutečnost versus předchozí. Vysoce dopadové události jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
       "infoTooltip": "<strong>Financial Stress Indicator</strong> World Monitor poměr vysokovýnosových kreditů k dlouhodobým dluhopisům, upraven o volatilitu akcií a vysokovýnosový spread: (HYG / TLT) / (VIX × High-yield spread / 100). Toto není Kansas City Fed Financial Stress Index. Hodnota 1,5 nebo vyšší značí nízkou zátěž; pod 0,3 vysokou zátěž.",

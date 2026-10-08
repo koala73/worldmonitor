@@ -15,6 +15,8 @@ The English copy sweep covers panel names, headings, descriptions, map labels, s
 
 Currency codes, tickers, exchange identifiers, aircraft identifiers, product brands, settings keys, and quoted source titles keep their identity. Standard units stay compact where the label or help text explains them. A label should name the measurement; a description should explain a technical method. Do not replace arbitrary text across the document or rewrite external news headlines.
 
+Manual review must check translated meaning as well as structure. This pass corrects region names, aircraft types, fund categories, and mixed-language fragments. Vietnamese most-favoured-nation wording can legitimately use the local term for preferential tariffs; the [Vietnam Trade Portal](https://www.vietnamtradeportal.gov.vn/?r=tradeInfo%2Findex) names it explicitly. Use the full local term rather than assume the English distinction maps word for word.
+
 ## Verification
 
 The China renderer test covers the raw screenshot labels, separate counts, explicit zero, agency expansion, source attribution, escaping, and safe links. The country brief browser test opens China through its dashboard link on desktop and mobile, checks exact text and a source link, and checks for horizontal overflow with controlled source data. The existing worksheet tests cover the changed gas wording. The full DOM suite and locale freshness, markup, shell-budget, and search-description checks also run. Preserve the approved 150–160 character Chinese dashboard search description when refreshing translations. Delivery includes monitoring CI to completion and reviewing every PR comment. These checks do not verify production freshness or deployment.
