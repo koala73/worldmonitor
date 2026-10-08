@@ -2271,6 +2271,61 @@ function parseFredRatesRolloutUntil(results) {
   return Number.isSafeInteger(until) && until > 0 ? until : null;
 }
 
+// A PR that bumps a versioned data key (`family:vN:...`) deploys this reader on
+// merge, but a cron writer keeps its previous code until its next scheduled
+// tick (a Railway deploy does not run the job). #9044 moved resilienceIntervals
+// from v11 to v12 at 08:55 UTC on 2026-10-08, and health read EMPTY (crit) for
+// three hours beside a fresh seed-meta written by the v11 code. A fresh writer
+// whose `sourceVersion` names an older version of the read key's family is that
+// state, so the absent key gets the ROLLOUT_PENDING window the FRED rollout
+// uses. The window is the key's own staleness budget, claimed once per data key
+// version in production; a writer that still writes the old version after it
+// reads EMPTY again.
+const KEY_VERSION_ROLLOUT_DEADLINE_PREFIX = 'health:rollout-deadline:key-version:';
+
+function versionedKeyFamily(dataKey) {
+  const match = /^(.+?):v(\d+)(?=:|$)/.exec(dataKey);
+  return match ? { family: match[1], version: Number(match[2]) } : null;
+}
+
+function writerKeyVersionBehind(dataKey, sourceVersion) {
+  const target = versionedKeyFamily(dataKey);
+  if (!target || typeof sourceVersion !== 'string') return false;
+  const family = target.family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(?:^|:)${family}:v(\\d+)(?=:|$)`).exec(sourceVersion);
+  return match !== null && Number(match[1]) < target.version;
+}
+
+function keyVersionRolloutCandidates(registries, keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now) {
+  const candidates = [];
+  for (const registry of registries) {
+    for (const [name, dataKey] of Object.entries(registry)) {
+      const seedCfg = SEED_META[name];
+      if (!seedCfg || keyErrors.get(dataKey) || keyHasData(dataKey, keyStrens.get(dataKey) ?? 0)) continue;
+      const seedMeta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
+      if (!seedMeta.hasMeta || seedMeta.seedError || seedMeta.seedStale !== false) continue;
+      const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+      if (!writerKeyVersionBehind(dataKey, meta?.sourceVersion)) continue;
+      candidates.push({ name, dataKey, durationMs: seedCfg.maxStaleMin * 60_000 });
+    }
+  }
+  return candidates;
+}
+
+// Production only, SET NX without expiry: the same reasons as
+// fredRatesRolloutCommands. The deadline key names the data key version, so the
+// next bump opens its own window.
+function keyVersionRolloutCommands(candidates, now, vercelEnv = process.env.VERCEL_ENV) {
+  if (vercelEnv !== 'production') return [];
+  return candidates.flatMap(({ dataKey, durationMs }) => {
+    const deadlineKey = `${KEY_VERSION_ROLLOUT_DEADLINE_PREFIX}${dataKey}`;
+    return [
+      ['SET', deadlineKey, String(now + durationMs), 'NX'],
+      ['GET', deadlineKey],
+    ];
+  });
+}
+
 function staleContentGraceEvidence(contentAge, contentFreshness, now) {
   if (!contentAge && !contentFreshness) return null;
 
@@ -3317,7 +3372,13 @@ function classifyKey(name, redisKey, opts, ctx) {
     // marker rather than measuring it, so all eight of these keys kept the old
     // warn on that path while the sibling `sourceState` path (where staleness
     // IS measured) correctly reported EMPTY. One physical state, two verdicts.
-    else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && (seedStale !== true || fault)) absent = 'EMPTY';
+    // Inside a rollout window the absence is explained (fresh metadata from a
+    // writer still on the previous key version), so it reads ROLLOUT_PENDING.
+    // Assigned here, not by falling through: every key in this set is also in
+    // EMPTY_DATA_OK_KEYS, whose arm would read OK.
+    else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && (seedStale !== true || fault)) {
+      absent = isRolloutPending ? 'ROLLOUT_PENDING' : 'EMPTY';
+    }
     // Ahead of EMPTY_DATA_OK_KEYS only when no readable publication evidence
     // exists. Marker absence alone never overrides normal data/meta semantics.
     else if (isPreActivationOnDemand) absent = 'EMPTY_ON_DEMAND';
@@ -5267,6 +5328,23 @@ export async function handleHealth(req, ctx, options = {}) {
   if (fredRatesRolloutUntil !== null) {
     rolloutPendingUntilMs.set('fredRatesSeeder', fredRatesRolloutUntil);
   }
+  // Rare second round trip: only while a writer lags a key-version bump.
+  const keyVersionRollouts = keyVersionRolloutCandidates(
+    [BOOTSTRAP_KEYS, STANDALONE_KEYS], keyStrens, keyErrors, keyMetaValues, keyMetaErrors, evaluationNow,
+  );
+  const keyVersionCommands = keyVersionRolloutCommands(keyVersionRollouts, evaluationNow);
+  if (keyVersionCommands.length > 0) {
+    if (budget.exhausted()) return deadlineFallback();
+    const deadlineResults = await redisPipeline(
+      fenceHealthMutations(keyVersionCommands, refreshLockToken), budget.clamp(4_000), true,
+    ).catch(() => null);
+    if (budget.exhausted()) return deadlineFallback();
+    // A failed claim or read grants no window: the key keeps its strict verdict.
+    keyVersionRollouts.forEach(({ name }, index) => {
+      const until = parseFredRatesRolloutUntil(deadlineResults?.slice(index * 2, index * 2 + 2));
+      if (until !== null) rolloutPendingUntilMs.set(name, until);
+    });
+  }
 
   const containmentEvidenceByName = new Map();
   const classifyCtx = {
@@ -5579,6 +5657,9 @@ export const __testing__ = {
   RUNTIME_ROLLOUT_PENDING_POLICIES,
   FRED_RATES_ROLLOUT_DEADLINE_KEY,
   FRED_RATES_ROLLOUT_DURATION_MS,
+  KEY_VERSION_ROLLOUT_DEADLINE_PREFIX,
+  writerKeyVersionBehind,
+  keyVersionRolloutCommands,
   fredRatesRolloutCommands,
   parseFredRatesRolloutUntil,
   STALE_CONTENT_GRACE_MS,

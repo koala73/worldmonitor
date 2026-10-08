@@ -91,7 +91,7 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 | `STALE_CONTENT` | 宽限期后为警告 | 种子器新鲜，但上游内容停止推进或没有可用时间戳。三小时宽限期内仍计入 `summary.staleContent` 并显示在 `problems` 中。`staleContentGraceUntil` 给出截止时间。到达或超过该时间后，它照常计入 `summary.warn`。 |
 | `COVERAGE_PARTIAL` | 警告 | 总记录数或必需子组低于该键声明的覆盖率下限（例如 139/174 个 PortWatch 国家，或某个预测市场池为空） |
 | `COVERAGE_DEGRADED` | 警告 | 生产者自身的覆盖率诊断缺失，或其完成率低于该键的 `minSuccessRate`（例如某个消费价格市场仅完成 12 个零售商页面中的 4 个） |
-| `ROLLOUT_PENDING` | 警告 | 新部署的 schema，其生产者尚未到达首次计划运行。**有界**：健康检查运行时在 Redis 中持久化相对于部署时间的 `rolloutPendingUntil` 截止时间；一旦该时间过去，或生产者写入其持久激活标记，状态即变为 `EMPTY`（严重）。计入 `summary.rolloutPending` |
+| `ROLLOUT_PENDING` | 警告 | 新部署的 schema，其生产者尚未到达首次计划运行。**有界**：健康检查运行时在 Redis 中持久化相对于部署时间的 `rolloutPendingUntil` 截止时间；一旦该时间过去，或生产者写入其持久激活标记，状态即变为 `EMPTY`（严重）。带版本的数据键（`family:vN:…`）缺失、而新鲜的 `seed-meta` 在 `sourceVersion` 中指向同一族的旧版本时，也处于此状态：读取方已部署键版本升级，但定时写入方尚未运行。该窗口等于该键的 `maxStaleMin`，每个数据键版本只申领一次。计入 `summary.rolloutPending` |
 | `SEED_ERROR` | 警告 | `seed-meta` 报告上次种子运行的 `status: "error"` |
 | `REDIS_PARTIAL` | 警告 | 该键的 STRLEN/GET 上出现单个每命令 Redis 错误（非完全中断） |
 | `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
