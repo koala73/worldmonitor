@@ -21,10 +21,11 @@ import { COMMODITY_BET_TEMPLATES, COMMODITY_FEED } from './_bet-templates-commod
 import { MARKET_BET_TEMPLATES, MARKET_FEED, MARKET_SLOT_COUNT } from './_bet-templates-markets.mjs';
 import { MARKET_GEO_BET_TEMPLATES, MARKET_GEO_SLOT_COUNT } from './_bet-templates-markets-geo.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS } from './_bet-templates-macro.mjs';
-import { ensembleProbability } from './_forecast-ensemble.mjs';
+import { ensembleProbability, ENSEMBLE_PROMPT_DIGEST } from './_forecast-ensemble.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
 import { parseMetricKey } from './_forecast-resolution-eval.mjs';
-import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
+import { BETS_HISTORY_KEY, buildBetsInputSnapshotKey, buildBetsRunId } from './_forecast-bets-keys.mjs';
+import { putR2JsonBody, resolveR2StorageConfig, serializeR2JsonBody } from './_r2-storage.mjs';
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
@@ -244,6 +245,55 @@ function openQuestionToken(id, questionKey) {
   return `${id}\n${questionKey}`;
 }
 
+// Everything one run read, for offline replay (#9058): the fresh feeds,
+// the rolling series before this run's update, and the ensemble context.
+// Feeding `feedsByKey`, `generatedAt` and `priorSeries` to buildBetsSnapshot
+// reproduces every baselineProbability. Ensemble probabilities come from an
+// LLM and are recorded outputs, kept with their passes and the calls made.
+export function buildBetsInputSnapshot({
+  runId, generatedAt, feedsByKey, priorSeries, predictions = [], ensemble = null, deployRevision = '',
+}) {
+  return {
+    version: 1,
+    runId,
+    generatedAt,
+    generatedAtIso: new Date(generatedAt).toISOString(),
+    deployRevision,
+    feedsByKey: filterFreshFeeds(feedsByKey, generatedAt),
+    priorSeries: priorSeries || {},
+    ensemble: ensemble || { enabled: false },
+    predictions: predictions.map((bet) => ({
+      id: bet.id,
+      probability: bet.probability,
+      baselineProbability: bet.baselineProbability,
+      probabilitySource: bet.probabilitySource,
+      ...(Array.isArray(bet.passes) ? { passes: bet.passes } : {}),
+    })),
+  };
+}
+
+// Writes the input snapshot to the private trace bucket. Returns null when
+// R2 is not configured; a write error propagates to the caller.
+export async function writeBetsInputSnapshot(payload, {
+  storageConfig = resolveR2StorageConfig(),
+  putBody = putR2JsonBody,
+} = {}) {
+  if (!storageConfig || !payload?.runId) return null;
+  const key = buildBetsInputSnapshotKey(payload.runId, payload.generatedAt, storageConfig.basePrefix);
+  const written = await putBody(storageConfig, key, serializeR2JsonBody(payload), {
+    runid: String(payload.runId),
+    kind: 'bets_input_snapshot',
+  });
+  return { key, snapshotSha256: written.sha256 };
+}
+
+function getDeployRevision() {
+  return process.env.RAILWAY_GIT_COMMIT_SHA
+    || process.env.VERCEL_GIT_COMMIT_SHA
+    || process.env.GITHUB_SHA
+    || '';
+}
+
 async function redisPipeline(command) {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(url, {
@@ -274,9 +324,11 @@ async function main() {
 
   const priorSeries = (await readRedisJson(BETS_SERIES_KEY).catch(() => null)) || {};
   const nowMs = Date.now();
+  const runId = buildBetsRunId(nowMs);
   const snapshot = buildBetsSnapshot(feedsByKey, nowMs, priorSeries);
   const nextSeries = computeNextSeries(feedsByKey, priorSeries);
   const count = snapshot.predictions.length;
+  let ensembleRecord = { enabled: ENSEMBLE_ENABLED };
 
   // Stage B (#5525 U15): the LLM ensemble replaces the base-rate for top-K
   // bets. Dynamic imports keep Stage A (flag off) light — the seeder never
@@ -297,17 +349,58 @@ async function main() {
       } catch (err) {
         console.warn(`  [bets] news archive unavailable for ensemble evidence: ${err instanceof Error ? err.message : String(err)}`);
       }
+      const llmCalls = [];
+      ensembleRecord = {
+        enabled: true,
+        topK: ENSEMBLE_TOP_K,
+        budgetMs: ENSEMBLE_BUDGET_MS,
+        promptDigest: ENSEMBLE_PROMPT_DIGEST,
+        openQuestions: [...openQuestions],
+        news,
+        llmCalls,
+      };
+      const recordingCallLLM = async (system, user, llmOptions) => {
+        try {
+          const result = await callForecastLLM(system, user, llmOptions);
+          llmCalls.push({ stage: llmOptions?.stage || '', provider: result?.provider || null, model: result?.model || null, ok: Boolean(result?.text) });
+          return result;
+        } catch (err) {
+          llmCalls.push({ stage: llmOptions?.stage || '', provider: null, model: null, ok: false });
+          throw err;
+        }
+      };
       const stats = await attachEnsembleProbabilities(snapshot, {
-        callLLM: callForecastLLM,
+        callLLM: recordingCallLLM,
         openQuestions,
         questionKeyOf: resolutions.windowQuestionKey,
         news,
         topK: ENSEMBLE_TOP_K,
         deadlineMs: Date.now() + ENSEMBLE_BUDGET_MS,
       });
+      ensembleRecord.stats = stats;
       console.log(`  [bets] ensemble: attempted=${stats.attempted} ensembled=${stats.ensembled} partial=${stats.partial} skipped-open=${stats.skipped} (K=${ENSEMBLE_TOP_K})`);
     } catch (err) {
       console.warn(`  [bets] ensemble stage failed (bets keep base-rate): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // The input snapshot goes to R2 before the history append, so the history
+  // entry carries the digest of an object that exists (#9058). Best-effort:
+  // a failed write leaves the run unlinked, never unpublished.
+  if (count > 0) {
+    try {
+      const written = await writeBetsInputSnapshot(buildBetsInputSnapshot({
+        runId, generatedAt: nowMs, feedsByKey, priorSeries, predictions: snapshot.predictions, ensemble: ensembleRecord, deployRevision: getDeployRevision(),
+      }));
+      snapshot.runId = runId;
+      if (written) {
+        snapshot.snapshotSha256 = written.snapshotSha256;
+        console.log(`  [bets] input snapshot archived (sha256 ${written.snapshotSha256.slice(0, 12)})`);
+      } else {
+        console.log('  [bets] input snapshot skipped: R2 storage not configured');
+      }
+    } catch (err) {
+      console.warn(`  [bets] input snapshot write failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

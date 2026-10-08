@@ -683,6 +683,26 @@ export function recordCalibrationPublication(previous, decision, nowMs) {
 }
 
 /**
+ * The decision and map a run scored with, for its archived input snapshot
+ * (#9058), so a replay applies the same calibration. Per-domain fit inputs
+ * (one fingerprint per ledger row) are dropped: applying a map reads only
+ * each domain's mode and knots.
+ */
+export function archiveCalibrationPublication({ map, decision } = {}, decidedAt) {
+  if (!decision) return null;
+  const domains = map?.domains && typeof map.domains === 'object'
+    ? Object.fromEntries(Object.entries(map.domains).map(([domain, { inputs: _inputs, ...fit }]) => [domain, fit]))
+    : null;
+  return {
+    mode: decision.mode,
+    reason: decision.reason,
+    mapVersion: decision.mapVersion ?? null,
+    decidedAt,
+    map: map ? { ...map, domains } : null,
+  };
+}
+
+/**
  * Applies the map to post-blend probabilities in place, for the population it
  * was fitted on. A moved forecast keeps its post-blend value as
  * `uncalibratedProbability`, which the fit and the shadow read back.

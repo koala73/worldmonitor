@@ -3618,6 +3618,33 @@ describe('projection horizon windows (#7075)', () => {
     }
   });
 
+  it('links each window to the run that opened it, frozen at first registration (#9058)', () => {
+    const SHA_A = 'a'.repeat(64);
+    const SHA_B = 'b'.repeat(64);
+    const run = (generatedAt, runId, snapshotSha256, overrides = {}) => ({
+      ...snapshot(generatedAt, [projected({ generatedAt, ...overrides })]),
+      runId,
+      snapshotSha256,
+    });
+    const first = processResolutionCycle({}, [run(T0, '1700-a', SHA_A)], HORMUZ(40), T0);
+    for (const key of [PARENT, ...horizonKeys(first.ledger)]) {
+      assert.equal(first.ledger[key].runId, '1700-a', key);
+      assert.equal(first.ledger[key].snapshotSha256, SHA_A, key);
+    }
+
+    const later = T0 + 60 * 60 * 1000;
+    const second = processResolutionCycle(first.ledger, [run(T0, '1700-a', SHA_A), run(later, '1800-b', SHA_B, { probability: 0.7 })], HORMUZ(40), later);
+    assert.equal(second.ledger[PARENT].lastSeenProbability, 0.7, 'the later run is a sighting of the same window');
+    assert.equal(second.ledger[PARENT].runId, '1700-a', 'a sighting does not move the link');
+    assert.equal(second.ledger[PARENT].snapshotSha256, SHA_A);
+
+    const legacy = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
+    assert.ok(!('runId' in legacy.ledger[PARENT]) && !('snapshotSha256' in legacy.ledger[PARENT]), 'history from before #9058 links nothing');
+    const malformed = processResolutionCycle({}, [run(T0, '1700-a', 'not-a-digest')], HORMUZ(40), T0);
+    assert.equal(malformed.ledger[PARENT].runId, '1700-a');
+    assert.ok(!('snapshotSha256' in malformed.ledger[PARENT]), 'a malformed digest is not copied');
+  });
+
   it('the same forecast at two deadlines and three horizons creates six distinct keys', () => {
     const first = processResolutionCycle({}, [snapshot(T0, [projected()])], HORMUZ(40), T0);
     const later = T0 + 15 * DAY_MS;

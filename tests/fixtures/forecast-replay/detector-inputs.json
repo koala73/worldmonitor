@@ -1,0 +1,24 @@
+{
+  "_note": "Synthetic detector inputs for tests/forecast-emission-manifest.test.mjs (#9058). Not production data: every value is invented to fire a few detectors.",
+  "generatedAt": 1789473600000,
+  "inputs": {
+    "ciiScores": {
+      "ciiScores": [
+        { "region": "IR", "name": "Iran", "combinedScore": 82, "trend": "TREND_DIRECTION_RISING" },
+        { "region": "UA", "name": "Ukraine", "combinedScore": 78, "trend": "TREND_DIRECTION_STABLE" }
+      ]
+    },
+    "chokepoints": {
+      "chokepoints": [
+        { "name": "Strait of Hormuz", "region": "Strait of Hormuz", "riskLevel": "critical", "riskScore": 82 },
+        { "name": "Bab el-Mandeb", "region": "Red Sea", "riskLevel": "high", "riskScore": 74 }
+      ]
+    },
+    "predictionMarkets": {
+      "geopolitical": [
+        { "title": "Will Iran strike Israel before December?", "yesPrice": 72, "source": "Polymarket", "volume": 100000 },
+        { "title": "Will China announce new tariffs on the EU?", "yesPrice": 66, "source": "Kalshi", "volume": 50000 }
+      ]
+    }
+  }
+}

@@ -1546,6 +1546,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   const emissions = [];
   for (const snapshot of snapshots) {
     const snapshotAt = Number(snapshot.generatedAt || nowMs);
+    const run = emissionRunOf(snapshot);
     for (const forecast of snapshot.predictions || []) {
       const spec = forecast.resolution;
       if (!spec || typeof spec !== 'object') continue;
@@ -1556,13 +1557,13 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
       const deadline = Number(spec.deadline);
       const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
       if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
-      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt });
+      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt, run });
     }
   }
   emissions.sort((a, b) => a.generatedAt - b.generatedAt || a.snapshotAt - b.snapshotAt);
 
-  for (const { forecast, spec, id, deadline, generatedAt, snapshotAt } of emissions) {
-    const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline);
+  for (const { forecast, spec, id, deadline, generatedAt, snapshotAt, run } of emissions) {
+    const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline, run);
     const questionKey = windowQuestionKey(candidate);
     const coveringKey = windows.covering(id, { entry: candidate, questionKey }, generatedAt);
     if (coveringKey) {
@@ -1571,7 +1572,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
         recordSighting(window, forecast, snapshotAt);
         // A hard emission absorbed by its downgrade's judged window brings no
         // horizon windows: they would hang hard contracts off a judged parent.
-        if (window.spec?.kind === spec.kind) registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs);
+        if (window.spec?.kind === spec.kind) registerHorizonWindows(ledger, coveringKey, forecast, generatedAt, snapshotAt, nowMs, run);
       }
       continue;
     }
@@ -1582,7 +1583,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     if (!key) continue;
     ledger[key] = { ...candidate, key };
     windows.add(key, ledger[key], questionKey);
-    registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs);
+    registerHorizonWindows(ledger, key, forecast, generatedAt, snapshotAt, nowMs, run);
   }
 
   // A window opened this run for an emission the old code had absorbed into
@@ -1850,7 +1851,7 @@ function voidDuplicateWindow(entry, keeperKey, nowMs) {
 // origins are held out of the headline and would otherwise multiply their
 // rows for no measurable value. A forecast without emission-time contracts
 // (history written before #7075) registers nothing.
-function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt, nowMs) {
+function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt, nowMs, run) {
   for (const horizon of scoredHorizonKeys(forecast)) {
     const spec = forecast.horizonResolutions[horizon];
     const probability = Number(forecast.projections[horizon]);
@@ -1864,7 +1865,7 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
     if (deadline < nowMs) continue;
     const view = { ...pickHorizonParentFields(forecast), probability, timeHorizon: spec.timeHorizon };
     const curvesVersion = Number.isInteger(forecast.projectionCurvesVersion) ? { projectionCurvesVersion: forecast.projectionCurvesVersion } : {};
-    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline), key, parentKey, ...curvesVersion };
+    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline, run), key, parentKey, ...curvesVersion };
   }
 }
 
@@ -2310,7 +2311,19 @@ function hasSampleAtOrAfterDeadline(samples, deadline) {
     && samples.recent.some((sample) => Number(sample?.ts) >= deadline && Number.isFinite(Number(sample?.value)));
 }
 
-function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
+// The emitting run and the digest of its archived input snapshot (#9058),
+// from the history entry. Entries written before #9058 carry neither.
+function emissionRunOf(snapshot) {
+  const runId = typeof snapshot?.runId === 'string' && snapshot.runId ? snapshot.runId : undefined;
+  const snapshotSha256 = typeof snapshot?.snapshotSha256 === 'string' && /^[0-9a-f]{64}$/.test(snapshot.snapshotSha256)
+    ? snapshot.snapshotSha256
+    : undefined;
+  return runId || snapshotSha256 ? { runId, snapshotSha256 } : undefined;
+}
+
+// `run` links the window to the run that opened it. It is set here only, so
+// it stays frozen at first registration like the opening probability.
+function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline, run) {
   const status = spec.kind === 'judged' ? 'pending-judge' : 'pending';
   return pruneUndefined({
     id,
@@ -2343,6 +2356,8 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     marketSource: typeof forecast.marketSource === 'string' ? forecast.marketSource : undefined,
     generatedAt,
     deadline,
+    runId: run?.runId,
+    snapshotSha256: run?.snapshotSha256,
     firstSeenAt: snapshotAt,
     lastSeenAt: snapshotAt,
     status,
