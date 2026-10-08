@@ -20,6 +20,17 @@ export const JUDGED_EVIDENCE_GRACE_MS = 18 * 60 * 60 * 1000;
 // two days is two daily runs, a first attempt and one retry, at any deadline.
 export const DEFAULT_JUDGED_SLA_MS = 2 * DAY_MS;
 
+// The VOID-share KPI counts only windows opened from the start of the day the
+// owner re-based it (#4930, 2026-10-08). Every #8990 audit fix (#8995, #8999,
+// #9006) was in production by then, so these windows resolve only under the
+// fixed pipeline. Earlier windows hold the voids the audit relabelled
+// (resolver_envelope_bug, judged_old_selection, resolver_could_not_read_feed),
+// which describe the old pipeline's faults and would hold the share above
+// target until they leave the rolling window.
+export const GO_FORWARD_SINCE = '2026-10-08';
+export const GO_FORWARD_SINCE_MS = Date.parse(`${GO_FORWARD_SINCE}T00:00:00Z`);
+export const GO_FORWARD_VOID_SHARE_TARGET = 0.15;
+
 // Origins whose scored entries are held OUT of the headline skill Brier:
 // `state_derived` = synthetic count-padding backfill (not a real prediction);
 // `bet_engine`    = shadow bets scored for evidence but not yet promoted;
@@ -86,12 +97,14 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const pending = entries.filter((entry) => entry?.status === 'pending');
   const pendingJudge = entries.filter((entry) => entry?.status === 'pending-judge');
 
+  const goForward = summarizeGoForward(entries, minResolvedAt, rollingWindowDays);
+
   const scorecard = {
     // 2: carries publishedByDomain (#5092).
     schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
-    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}`,
+    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}${nowMs >= GO_FORWARD_SINCE_MS ? goForwardNote(goForward) : ''}`,
     totals: {
       entries: entries.length,
       resolved: resolved.length,
@@ -103,6 +116,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       publicationCoverage: entries.length ? round(scored.length / entries.length) : 0,
     },
     judgedLane: summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options),
+    goForward,
     byDomain: summarizeGroups(scored, resolved, 'domain', 'domain'),
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
@@ -243,6 +257,64 @@ function envelopeBugNote(voided) {
   return count === 1
     ? ' 1 forecast scored against a data feed we could not read correctly is voided and left out of every score (issue #5233).'
     : ` ${count} forecasts scored against a data feed we could not read correctly are voided and left out of every score (issue #5233).`;
+}
+
+// A window opens when it is first seen in a published snapshot; generatedAt
+// stands in for rows that lack the sighting time.
+function windowOpenedAt(entry) {
+  const firstSeenAt = Number(entry?.firstSeenAt);
+  if (Number.isFinite(firstSeenAt) && firstSeenAt > 0) return firstSeenAt;
+  const generatedAt = Number(entry?.generatedAt);
+  return Number.isFinite(generatedAt) && generatedAt > 0 ? generatedAt : NaN;
+}
+
+// The go-forward VOID-share KPI (#4930). It reads the same population as
+// `totals`, so a row withheld, duplicated or outside the rolling window counts
+// in neither. Once GO_FORWARD_SINCE is older than the window, the cohort is
+// cut at the window start and `windowTruncated` says so.
+function summarizeGoForward(entries, minResolvedAt, rollingWindowDays) {
+  const cohort = entries.filter((entry) => windowOpenedAt(entry) >= GO_FORWARD_SINCE_MS);
+  const resolved = cohort.filter((entry) => entry?.status === 'resolved');
+  const voided = resolved.filter((entry) => entry?.outcome === 'VOID');
+  const voidByReason = {};
+  for (const entry of voided) {
+    const reason = entry?.evidence?.reason || 'unknown';
+    voidByReason[reason] = (voidByReason[reason] || 0) + 1;
+  }
+  return {
+    since: GO_FORWARD_SINCE,
+    target: GO_FORWARD_VOID_SHARE_TARGET,
+    windowTruncated: minResolvedAt > GO_FORWARD_SINCE_MS,
+    rollingWindowDays,
+    entries: cohort.length,
+    resolved: resolved.length,
+    void: voided.length,
+    voidShare: resolved.length ? round(voided.length / resolved.length) : null,
+    voidShareCi95: wilsonInterval(voided.length, resolved.length),
+    voidByReason,
+  };
+}
+
+const LONG_DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const COUNT = new Intl.NumberFormat('en-US');
+const percent = (value) => `${(value * 100).toFixed(1)}%`;
+
+// Published in the methodology, which /accuracy/ prints under the ledger
+// totals. The public OpenAPI document has no room for a structured field, and
+// the note travels with the capture it describes, like envelopeBugNote.
+function goForwardNote(goForward) {
+  const sinceDate = LONG_DATE.format(new Date(GO_FORWARD_SINCE_MS));
+  const lead = goForward.windowTruncated ? `In the last ${goForward.rollingWindowDays} days` : `Since ${sinceDate}`;
+  const target = `under ${percent(goForward.target).replace('.0%', '%')}`;
+  const scope = ` This counts only forecasts first published on or after ${goForward.windowTruncated ? sinceDate : 'that date'}, which leaves out the voids relabelled in the issue #8990 audit.`;
+  if (!goForward.resolved) {
+    return ` ${lead}, no forecast has resolved${goForward.windowTruncated ? '' : ' yet'}, so there is no void share to compare with the target of ${target}.${scope}`;
+  }
+  const [low, high] = goForward.voidShareCi95;
+  const counted = goForward.resolved === 1
+    ? `${goForward.void} of 1 resolved forecast was void`
+    : `${COUNT.format(goForward.void)} of ${COUNT.format(goForward.resolved)} resolved forecasts were void`;
+  return ` ${lead}, ${counted} (${percent(goForward.voidShare)}, 95% interval ${percent(low)} to ${percent(high)}); the target is ${target}.${scope}`;
 }
 
 export function isHorizonEntry(entry) {

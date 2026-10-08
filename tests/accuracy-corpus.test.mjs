@@ -23,6 +23,7 @@ import {
   selectDeclaredScorecardFields,
   writeAccuracySection,
 } from '../scripts/build-accuracy-page.mjs';
+import { GO_FORWARD_SINCE_MS, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
@@ -1843,6 +1844,32 @@ describe('accuracy page publishing contract', () => {
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('go-forward VOID share on the page (#4930)', () => {
+  const AFTER = Date.parse('2026-10-20T06:00:00Z');
+  const opened = (id, outcome) => ({
+    id, status: 'resolved', outcome, probability: 0.4, domain: 'conflict', generationOrigin: 'detector',
+    firstSeenAt: GO_FORWARD_SINCE_MS + 1, resolvedAt: AFTER - 1, evidence: outcome === 'VOID' ? { reason: 'all_judges_void' } : {},
+  });
+  const NOTE = /Since 8 October 2026, 1 of 4 resolved forecasts were void \(25\.0%, 95% interval 4\.6% to 69\.9%\); the target is under 15%\./;
+  const { methodology } = computeScorecard([opened('a', 'VOID'), opened('b', 'YES'), opened('c', 'NO'), opened('d', 'NO')], AFTER);
+
+  it('prints the producer sentence directly under the ledger totals', () => {
+    const { html } = renderState(sectionWith({ methodology }));
+    const ledger = html.slice(html.indexOf('<h2>Resolution ledger</h2>'), html.indexOf('<h2>Calibration</h2>'));
+    const afterTotals = ledger.slice(ledger.indexOf('</table>'));
+    assert.match(stripTags(afterTotals), NOTE);
+  });
+
+  it('keeps the sentence in the methodology while the audit withdraws the scores', () => {
+    const audit = { since: '2026-10-07', issue: 8990, reason: 'Fixture reason for the audit notice, long enough to read as one.' };
+    assert.match(stripTags(renderState(sectionWith({ methodology }), { audit }).html), NOTE);
+  });
+
+  it('carries the sentence into the dataset download', () => {
+    assert.match(JSON.stringify(downloadFor(sectionWith({ methodology }))), NOTE);
   });
 });
 

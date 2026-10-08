@@ -14,6 +14,9 @@ import {
   RECEIPT_SOURCE_LABELS,
   RECEIPT_VOID_REASON_LABELS,
   FAMILY_OUTCOME_FAMILY_LIMIT,
+  GO_FORWARD_SINCE,
+  GO_FORWARD_SINCE_MS,
+  GO_FORWARD_VOID_SHARE_TARGET,
   FAMILY_OUTCOME_LIMIT,
   PUBLIC_FAMILY_OUTCOME_FIELDS,
   buildFamilyOutcomes,
@@ -1205,5 +1208,81 @@ describe('skill against the cohort base rate (#8990 item 10)', () => {
 
     assert.equal(rows.political.measurable, false, 'no YES outcome, no reference to beat');
     assert.equal('bss' in rows.political, false);
+  });
+});
+
+describe('go-forward VOID share KPI (#4930)', () => {
+  const AFTER = Date.parse('2026-10-20T06:00:00Z');
+  const OPENED_BEFORE = GO_FORWARD_SINCE_MS - 1;
+  const opened = (at, overrides) => resolved({ firstSeenAt: at, generatedAt: at, resolvedAt: AFTER - DAY_MS, ...overrides });
+
+  it('counts only windows first seen on or after the boundary', () => {
+    const scorecard = computeScorecard([
+      opened(OPENED_BEFORE, { id: 'old', outcome: 'VOID', evidence: { reason: 'judged_old_selection' } }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'edge', outcome: 'VOID', evidence: { reason: 'all_judges_void' } }),
+      opened(GO_FORWARD_SINCE_MS + DAY_MS, { id: 'yes', outcome: 'YES' }),
+      opened(GO_FORWARD_SINCE_MS + DAY_MS, { id: 'no', outcome: 'NO' }),
+      opened(GO_FORWARD_SINCE_MS + DAY_MS, { id: 'void-2', outcome: 'VOID', evidence: { reason: 'late_read' } }),
+      { id: 'open', status: 'pending', probability: 0.4, firstSeenAt: GO_FORWARD_SINCE_MS + DAY_MS },
+    ], AFTER);
+
+    assert.equal(GO_FORWARD_SINCE, '2026-10-08');
+    assert.equal(GO_FORWARD_SINCE_MS, Date.parse('2026-10-08T00:00:00Z'));
+    assert.equal(scorecard.totals.void, 3, 'the rolling totals still count the pre-boundary void');
+    assert.deepEqual(scorecard.goForward, {
+      since: '2026-10-08',
+      target: GO_FORWARD_VOID_SHARE_TARGET,
+      windowTruncated: false,
+      rollingWindowDays: DEFAULT_ROLLING_WINDOW_DAYS,
+      entries: 5,
+      resolved: 4,
+      void: 2,
+      voidShare: 0.5,
+      voidShareCi95: wilsonInterval(2, 4),
+      voidByReason: { all_judges_void: 1, late_read: 1 },
+    });
+    assert.match(scorecard.methodology, /Since 8 October 2026, 2 of 4 resolved forecasts were void \(50\.0%, 95% interval 15\.0% to 85\.0%\); the target is under 15%\./);
+    assert.match(scorecard.methodology, /first published on or after that date, which leaves out the voids relabelled in the issue #8990 audit\./);
+  });
+
+  it('places a window by generatedAt when it has no first sighting', () => {
+    const row = opened(GO_FORWARD_SINCE_MS + DAY_MS, { outcome: 'VOID' });
+    delete row.firstSeenAt;
+    const undated = opened(GO_FORWARD_SINCE_MS + DAY_MS, { id: 'undated', outcome: 'VOID' });
+    delete undated.firstSeenAt;
+    delete undated.generatedAt;
+    const { goForward } = computeScorecard([row, undated], AFTER);
+    assert.equal(goForward.resolved, 1);
+    assert.deepEqual(goForward.voidByReason, { unknown: 1 });
+  });
+
+  it('says none resolved yet instead of a 0% share', () => {
+    const scorecard = computeScorecard([
+      opened(OPENED_BEFORE, { outcome: 'VOID' }),
+      { id: 'open', status: 'pending-judge', probability: 0.4, firstSeenAt: GO_FORWARD_SINCE_MS + DAY_MS },
+    ], AFTER);
+    assert.equal(scorecard.goForward.resolved, 0);
+    assert.equal(scorecard.goForward.voidShare, null);
+    assert.equal(scorecard.goForward.voidShareCi95, null);
+    assert.match(scorecard.methodology, /Since 8 October 2026, no forecast has resolved yet, so there is no void share to compare with the target of under 15%\./);
+    assert.doesNotMatch(scorecard.methodology, /0\.0%/);
+  });
+
+  it('uses the singular for one resolved forecast', () => {
+    const { methodology } = computeScorecard([opened(GO_FORWARD_SINCE_MS, { outcome: 'NO' })], AFTER);
+    assert.match(methodology, /Since 8 October 2026, 0 of 1 resolved forecast was void \(0\.0%, 95% interval 0\.0% to 79\.3%\)/);
+  });
+
+  it('names the rolling window once the boundary is older than it', () => {
+    const later = GO_FORWARD_SINCE_MS + (DEFAULT_ROLLING_WINDOW_DAYS + 1) * DAY_MS;
+    const scorecard = computeScorecard([opened(later - DAY_MS, { outcome: 'VOID', resolvedAt: later })], later);
+    assert.equal(scorecard.goForward.windowTruncated, true);
+    assert.match(scorecard.methodology, new RegExp(`In the last ${DEFAULT_ROLLING_WINDOW_DAYS} days, 1 of 1 resolved forecast was void .* first published on or after 8 October 2026,`));
+  });
+
+  it('adds no note before the boundary', () => {
+    const scorecard = computeScorecard([], GO_FORWARD_SINCE_MS - 1);
+    assert.doesNotMatch(scorecard.methodology, /8 October 2026/);
+    assert.equal(scorecard.goForward.entries, 0);
   });
 });

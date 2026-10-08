@@ -166,6 +166,9 @@ describe('getForecastScorecard backend status', () => {
           // Operator observability written by the resolutions seeder. It is not
           // in the proto, so it must not ride out on this typed response.
           judgedLane: { pendingJudge: 3, attemptClasses: { archive_incomplete: 9 }, scoredWithinSlaRate: 0.5 },
+          // The go-forward VOID-share cohort (#4930) reaches the public only
+          // through the methodology sentence.
+          goForward: { since: '2026-10-08', resolved: 4, void: 1, voidShare: 0.25, voidByReason: { all_judges_void: 1 } },
         },
       }),
     }), { status: 200 })) as typeof fetch;
@@ -175,6 +178,8 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.totals?.entries, 1, 'declared fields still pass through');
     assert.equal(JSON.stringify(res).includes('judgedLane'), false);
     assert.equal(JSON.stringify(res).includes('archive_incomplete'), false);
+    assert.equal(JSON.stringify(res).includes('goForward'), false);
+    assert.equal(JSON.stringify(res).includes('all_judges_void'), false);
   });
 
   it('the public RPC serializes only declared top-level cache fields', async () => {
