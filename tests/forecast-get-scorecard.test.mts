@@ -321,6 +321,28 @@ describe('getForecastScorecard backend status', () => {
     assert.ok(!Object.hasOwn((selectDeclaredScorecardFields(data) as { skill?: object }).skill ?? {}, 'preLineageAnchorCount'));
   });
 
+  // The corpus block is internal until the public contract has room (#7072).
+  it('keeps the internal corpus block off REST, MCP and the /accuracy/ capture', () => {
+    const data = { totals: { entries: 1 }, corpus: { publishedCount: 4, resolvedWithinSlaCount: 1, voidByReason: { feed_unavailable: 1 } } };
+    assert.equal('corpus' in selectScorecardFields(data), false);
+    assert.equal('corpus' in selectScorecardFields(data, { extended: true }), false);
+    assert.equal('corpus' in (selectDeclaredScorecardFields(data) ?? {}), false);
+  });
+
+  it('keeps the internal uncertainty intervals off REST, MCP and the /accuracy/ capture (#7072)', () => {
+    const internal = ['overallLogScore', 'skillLogScore', 'byDomain', 'byGenerationOrigin', 'vsMarket'];
+    const uncertainty = { method: 'm', overallBrier: null, skillBrier: null, ...Object.fromEntries(internal.map((name) => [name, { count: 1 }])) };
+    const outputs = [
+      selectScorecardFields({ uncertainty }).uncertainty,
+      selectScorecardFields({ uncertainty }, { extended: true }).uncertainty,
+      (selectDeclaredScorecardFields({ uncertainty }) as { uncertainty?: object }).uncertainty,
+    ];
+    for (const output of outputs) {
+      assert.equal((output as { method?: string })?.method, 'm');
+      for (const name of internal) assert.ok(!Object.hasOwn(output ?? {}, name), name);
+    }
+  });
+
   it('filters the interval and funnel blocks with the same member lists the /accuracy/ page uses', () => {
     for (const [block, { fields, children }] of Object.entries(SCORECARD_BLOCK_FIELDS)) {
       assert.deepEqual([...fields], [...SCORECARD_NESTED_OBJECT_FIELDS[block]], `${block} members`);

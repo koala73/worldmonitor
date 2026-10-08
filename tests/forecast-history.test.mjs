@@ -45,6 +45,11 @@ describe('forecast history snapshot', () => {
     assert.equal(snapshot.predictions[0].title, rich.title);
     assert.deepEqual(snapshot.predictions[0].signals[0], { type: 'cii', value: 'Iran CII 87 (critical)', weight: 0.4 });
   });
+
+  it('carries the emitting commit once per snapshot, and nothing when none is known (#7072)', () => {
+    assert.equal(buildHistorySnapshot({ generatedAt: 1, predictions: [] }, { codeVersion: 'abc123' }).codeVersion, 'abc123');
+    assert.equal('codeVersion' in buildHistorySnapshot({ generatedAt: 1, predictions: [] }, { codeVersion: '' }), false);
+  });
 });
 
 describe('forecast history candidate extraction', () => {

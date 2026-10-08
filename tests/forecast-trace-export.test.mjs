@@ -110,6 +110,7 @@ import {
 } from '../scripts/evaluate-forecast-run.mjs';
 import {
   diffForecastRuns,
+  CANDIDATE_BRIER_DELTA,
 } from '../scripts/diff-forecast-runs.mjs';
 
 describe('forecast trace storage config', () => {
@@ -5126,6 +5127,21 @@ describe('forecast replay lifecycle helpers', () => {
     assert.equal(diff.publishedDomainDelta.supply_chain, 3);
     assert.ok(diff.addedTopForecastTitles.includes('Supply chain stress from Strait of Hormuz disruption state'));
     assert.ok(diff.removedTopForecastTitles.includes('FX stress from Germany cyber pressure state'));
+  });
+
+  // #7072: until a run archives the inputs it forecast from (#7073), no pair of
+  // runs shares a frozen emission snapshot, so even two identical runs get no
+  // candidate Brier.
+  it('refuses a candidate Brier delta without a shared frozen emission snapshot', () => {
+    const run = { summary: { runId: 'same', tracedForecastCount: 3, brier: 0.12 }, snapshot: { fullRunStateUnits: [] } };
+    const diff = diffForecastRuns(run, structuredClone(run));
+    assert.deepEqual(diff.candidateBrierDelta, {
+      status: 'unavailable',
+      reason: 'emission_snapshot_required',
+      detail: CANDIDATE_BRIER_DELTA.detail,
+    });
+    assert.equal(`${diff.candidateBrierDelta.status}: ${diff.candidateBrierDelta.reason}`, 'unavailable: emission_snapshot_required');
+    assert.doesNotMatch(JSON.stringify(diff), /brier"\s*:\s*-?\d/i, 'no Brier number appears anywhere in the diff');
   });
 });
 

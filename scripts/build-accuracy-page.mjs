@@ -461,7 +461,32 @@ export function proportionIntervals(scorecard) {
     byDomain: keyedEstimates(scorecard.byDomain, 'domain', voidOf, resolvedOf),
     byGenerationOrigin: keyedEstimates(scorecard.byGenerationOrigin, 'generationOrigin', voidOf, resolvedOf),
     calibration: keyedEstimates(scorecard.calibration, 'bucket', bucketYesCount, (bucket) => Number(bucket.count)),
+    // #7072: the scored share of the ledger and the 2 actual rates the
+    // verdict prints, each a count over a count the capture carries.
+    scoredShare: isPlainObject(scorecard.totals) ? proportionEstimate(scorecard.totals.scored, scorecard.totals.entries) : null,
+    headlineActualRate: isPlainObject(scorecard.skill) ? proportionEstimate(scorecard.skill.yesCount, scorecard.skill.count) : null,
+    pooledActualRate: pooledActualRate(scorecard),
   };
+}
+
+function pooledActualRate(scorecard) {
+  const cohort = pooledCohort(scorecard);
+  return cohort ? proportionEstimate(cohort.yesCount, cohort.count) : null;
+}
+
+// The verdict sentences are plain text escaped as a whole; the interval
+// bounds ride in a marker that rateIntervalMarkup turns into the same
+// data-rate-interval span the tables use, after escaping.
+function intervalPhrase(estimate) {
+  return estimate ? `, 95% interval [[rate-interval ${formatPercent(estimate.ci95[0])} to ${formatPercent(estimate.ci95[1])}]]` : '';
+}
+
+function plainRateIntervals(text) {
+  return text.replace(/\[\[rate-interval ([\d.]+% to [\d.]+%)\]\]/g, '$1');
+}
+
+function rateIntervalMarkup(html) {
+  return html.replace(/\[\[rate-interval ([\d.]+% to [\d.]+%)\]\]/g, '<span data-rate-interval>$1</span>');
 }
 
 // Bounds are marked so the page's population rule can tell them apart from a
@@ -583,7 +608,7 @@ function headlineResultSentence(scorecard, interval) {
   if (!reading || reading.bss === null) {
     return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${brierPhrase} across ${formatCount(skill.count)} scored forecasts. This capture cannot compare that with ${REFERENCE}.`;
   }
-  const against = `against ${formatScore(reading.referenceBrier)} for always forecasting the actual rate of ${formatPercent(reading.rate)}`;
+  const against = `against ${formatScore(reading.referenceBrier)} for always forecasting the actual rate, ${rateOf(reading.rate, reading.count, 'forecasts')}${intervalPhrase(proportionEstimate(reading.yesCount, reading.count))}`;
   if (!reading.measurable) {
     return `${windowPhrase}, World Monitor's headline cohort has ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}: a small sample, too few to judge whether it beats ${REFERENCE}. On it the Brier score is ${brierPhrase}, ${against}.`;
   }
@@ -593,7 +618,7 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, ${outcome}: a skill score of ${formatSkill(reading.bss)}${skillIntervalPhrase(reading)}, where ${SKILL_SCALE}, over ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}. Their Brier score was ${brierPhrase}, ${against}.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates and calibration-bucket rates carry a 95% Wilson interval; the scored share of the ledger and the base rates do not yet. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates carry a 95% Wilson interval. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUDIT) {
   const state = classifyAccuracyState(section);
@@ -603,7 +628,7 @@ export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUD
     paragraphs.push(accuracyAuditNotice(audit, 'on that page'), `The audit's findings and fixes are tracked at ${auditIssueUrl(audit)}.`);
     return `## Forecast accuracy\n\n${paragraphs.join('\n\n')}\n`;
   }
-  const result = state.scorecard ? headlineResultSentence(state.scorecard, shownBrierIntervals(state).skill) : '';
+  const result = state.scorecard ? plainRateIntervals(headlineResultSentence(state.scorecard, shownBrierIntervals(state).skill)) : '';
   if (result) {
     paragraphs.push(result);
     if (state.capturedAt) {
@@ -674,7 +699,7 @@ ${tiles.map(([label, value, note]) => `        <div class="metric"><span>${escap
 
 function headlineResultParagraph(scorecard, interval, escapeHtml) {
   const sentence = headlineResultSentence(scorecard, interval);
-  return sentence ? `      <p data-accuracy-result>${escapeHtml(sentence)}</p>\n` : '';
+  return sentence ? `      <p data-accuracy-result>${rateIntervalMarkup(escapeHtml(sentence))}</p>\n` : '';
 }
 
 const RECORD_FACT_LABELS = Object.freeze({
@@ -753,10 +778,12 @@ function totalsTable(totals, intervals, escapeHtml) {
     ['Voided', `${escapeHtml(`${rateOf(totals.voidRate, totals.resolved, 'resolved entries')} (${formatCount(totals.void)} entries), 95% interval`)} ${intervalHtml(intervals.void, escapeHtml)}`],
     ['Awaiting a judge', escapeHtml(formatCount(totals.pendingJudge))],
     ['Still open, not yet resolvable', escapeHtml(formatCount(totals.pending))],
-    // The API calls this field publicationCoverage. It is scored over ALL
-    // entries, which is not a publication property, so the page states the
-    // definition instead of repeating a label the number does not earn.
-    ['Scored share of the ledger', escapeHtml(rateOf(totals.publicationCoverage, totals.entries, 'entries'))],
+    // Derived from the counts, not read from the deprecated
+    // publicationCoverage (#7072): the share is over ALL entries, which is not
+    // a publication property, so the page states the definition instead. It is
+    // rounded to 6 places first, as the producer rounded that field, so the
+    // printed percentage does not move.
+    ['Scored share of the ledger', `${escapeHtml(`${rateOf(totals.entries ? Math.round((totals.scored / totals.entries) * 1e6) / 1e6 : 0, totals.entries, 'entries')}, 95% interval`)} ${intervalHtml(intervals.scoredShare, escapeHtml)}`],
   ];
   return `      <div class="table-scroll"><table data-ledger-totals>
         <caption>Resolution ledger totals for the rolling window. Forecasts withheld under issue #5234 are left out. These are state-derived sovereign risk, rates and inflation, and FX stress forecasts that no feed can check. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
@@ -1148,7 +1175,7 @@ function pooledVerdictSentences(scorecard) {
   if (!cohort) {
     return 'How often all graded forecasts came true cannot be derived from this capture, because its probability buckets do not account for every graded forecast.';
   }
-  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}. That count pools kinds of forecast that come true at very different rates, so it is not compared with a single rate. Skill is judged within the headline cohort and within each domain.`;
+  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}${intervalPhrase(proportionEstimate(cohort.yesCount, cohort.count))}. That count pools kinds of forecast that come true at very different rates, so it is not compared with a single rate. Skill is judged within the headline cohort and within each domain.`;
 }
 
 // The page's lead (#8990): did the headline forecasts beat always forecasting
@@ -1164,7 +1191,7 @@ function skillVerdict(scorecard) {
   if (!reading) {
     return { verdict: 'none', lead: 'No skill to report yet.', text: `This capture does not record how many of the ${formatCount(count)} headline forecasts came true, so it cannot compare them with ${REFERENCE}.` };
   }
-  const tally = `Of ${formatCount(reading.count)} graded forecasts, ${formatCount(reading.yesCount)} came true: ${rateOf(reading.rate, reading.count, 'forecasts')}.`;
+  const tally = `Of ${formatCount(reading.count)} graded forecasts, ${formatCount(reading.yesCount)} came true: ${rateOf(reading.rate, reading.count, 'forecasts')}${intervalPhrase(proportionEstimate(reading.yesCount, reading.count))}.`;
   if (reading.bss === null) {
     return { verdict: 'none', lead: 'No skill to report yet.', text: `${tally} Every one went the same way, so always forecasting how often they happened was never wrong and there is nothing to beat.` };
   }
@@ -1193,11 +1220,11 @@ function verdictSection(scorecard, escapeHtml) {
     escapeHtml(ledgerVerdictSentences(scorecard.totals, scorecard.rollingWindowDays)),
     bandOutcomes(scorecard.calibration).map((outcome) => bandSentence(outcome, escapeHtml)).join(' '),
     escapeHtml(marketVerdictSentence(scorecard.vsMarketSkill)),
-    escapeHtml(pooledVerdictSentences(scorecard)),
+    rateIntervalMarkup(escapeHtml(pooledVerdictSentences(scorecard))),
   ];
   return `      <section data-accuracy-verdict aria-label="Plain-language verdict">
         <h2>In plain terms</h2>
-        <p data-accuracy-skill="${escapeHtml(skill.verdict)}"><strong>${escapeHtml(skill.lead)}</strong> ${escapeHtml(skill.text)}</p>
+        <p data-accuracy-skill="${escapeHtml(skill.verdict)}"><strong>${escapeHtml(skill.lead)}</strong> ${rateIntervalMarkup(escapeHtml(skill.text))}</p>
 ${paragraphs.map((paragraph) => `        <p>${paragraph}</p>`).join('\n')}
       </section>
       <dl data-accuracy-definitions>
@@ -1219,7 +1246,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
   return `      <h2>What this page does not publish</h2>
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
-        <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates and calibration-bucket rates do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it; the scored share of the ledger and the base rates in the summary do not carry one yet. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
+        <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates in the summary do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
         <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #9057</a>.</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;

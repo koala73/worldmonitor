@@ -178,6 +178,7 @@ export interface ScorecardTotals {
   scored: number;
   void: number;
   voidRate: number;
+  /** @deprecated */
   publicationCoverage: number;
 }
 

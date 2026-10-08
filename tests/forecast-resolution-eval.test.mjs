@@ -7,6 +7,7 @@ import {
   countSettlementLagMs,
   parseMetricKey,
   resolveHardSpec,
+  hardResolutionBoundMs,
   extractMetricObservation,
   extractMetricValue,
   shapeResolutionFeed,
@@ -822,4 +823,42 @@ describe('gpsjam hexCount measures what the GPS detector measured (#8990)', () =
     const shared = await import('../scripts/_gps-maritime-regions.mjs');
     assert.equal(MARITIME_REGIONS, shared.MARITIME_REGIONS);
   });
+});
+
+// #7072: the scorecard stamps each hard window with hardResolutionBoundMs plus
+// one resolver cycle. Drive the resolver hour by hour with the feed down, so a
+// change to any grace here cannot drift from the stamped service level.
+describe('hardResolutionBoundMs matches when resolveHardSpec first seals a window with its feed down', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const deadline = Date.parse('2026-08-10T12:00:00Z');
+  const cases = [
+    ['UCDP count', 'conflict:ucdp-events:v1|count(country==Syria)', 'within-horizon'],
+    ['ACLED count', 'conflict:acled-resolution:v1:all:0:0|count(country==Syria)', 'within-horizon'],
+    ['live count', 'cyber:threats-bootstrap:v2|count(country==US)', 'within-horizon'],
+    ['live price', 'market:commodities-bootstrap:v1|price(symbol==CL)', 'at-deadline'],
+    ['chokepoint', 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)', 'at-deadline'],
+    ['EIA', 'energy:eia-petroleum:v1|value(series==WCRSTUS1)', 'at-deadline'],
+    ['monthly FRED', 'economic:fred:v1:CPIAUCSL:0|value(series==CPIAUCSL)', 'at-deadline'],
+    ['daily FRED', 'economic:fred:v1:DGS10:0|value(series==DGS10)', 'at-deadline'],
+    ['GPS jamming', 'intelligence:gpsjam:v2|hexCount(region==Baltic Sea)', 'at-deadline'],
+    ['market settlement', 'prediction:markets-resolution:v1|yesPrice(slug==x)', 'at-endDate'],
+    ['within-horizon read', 'market:commodities-bootstrap:v1|price(symbol==CL)', 'within-horizon'],
+    ['unsupported window', 'market:commodities-bootstrap:v1|price(symbol==CL)', 'rolling'],
+  ];
+  for (const [label, metricKey, window] of cases) {
+    it(label, () => {
+      const spec = { kind: 'hard', metricKey, window, operator: 'gt', threshold: 1, deadline, sourceFeed: metricKey.split('|')[0] };
+      const entry = { key: 'k', id: 'k', spec, deadline, generatedAt: deadline - 7 * DAY, firstSeenAt: deadline - 7 * DAY };
+      const bound = hardResolutionBoundMs(spec);
+      let sealedAfter = null;
+      for (let t = 0; t <= bound + 2 * DAY; t += HOUR) {
+        if (resolveHardSpec(entry, null, [], deadline + t).status === 'resolved') { sealedAfter = t; break; }
+      }
+      assert.notEqual(sealedAfter, null, 'the window seals inside its bound');
+      assert.ok(sealedAfter <= bound + HOUR, `sealed ${sealedAfter / HOUR}h after the deadline, bound ${bound / HOUR}h`);
+      // GPS jamming counts its bound from the start of the deadline's UTC day.
+      if (label !== 'GPS jamming') assert.ok(sealedAfter >= bound, `sealed ${sealedAfter / HOUR}h, before the ${bound / HOUR}h bound`);
+    });
+  }
 });

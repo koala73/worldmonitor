@@ -13,7 +13,7 @@
 
 import {
   loadEnvFile, getRedisCredentials, CHROME_UA, writeFreshnessMetadata,
-  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE, getDeployRevision,
 } from './_seed-utils.mjs';
 import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
@@ -166,6 +166,14 @@ export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
   return { generatedAt: nowMs, predictions: bets };
 }
 
+// The resolver stamps each bet window it opens with this commit (#7072), the
+// same revision the forecast seeder writes on its history snapshots.
+export function stampCodeVersion(snapshot, env = process.env) {
+  const codeVersion = getDeployRevision(env);
+  if (codeVersion) snapshot.codeVersion = codeVersion;
+  return snapshot;
+}
+
 // Phase-2 ensemble stage (#5525 U13). Ranks the snapshot's bets by
 // userValueScore, runs the 3-pass ensemble on up to top-K *new* attempts, and
 // replaces their probability (source 'ensemble') while keeping
@@ -294,13 +302,6 @@ export async function writeBetsInputSnapshot(payload, {
   return { key, snapshotSha256: written.sha256 };
 }
 
-function getDeployRevision() {
-  return process.env.RAILWAY_GIT_COMMIT_SHA
-    || process.env.VERCEL_GIT_COMMIT_SHA
-    || process.env.GITHUB_SHA
-    || '';
-}
-
 async function redisPipeline(command) {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(url, {
@@ -333,6 +334,7 @@ async function main() {
   const nowMs = Date.now();
   const runId = buildBetsRunId(nowMs);
   const snapshot = buildBetsSnapshot(feedsByKey, nowMs, priorSeries);
+  stampCodeVersion(snapshot);
   const nextSeries = computeNextSeries(feedsByKey, priorSeries);
   const count = snapshot.predictions.length;
   let ensembleRecord = { enabled: ENSEMBLE_ENABLED };

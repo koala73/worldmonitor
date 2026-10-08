@@ -3,6 +3,8 @@
 // Input is the Redis working ledger (object or array). Output is a compact,
 // JSON-serializable scorecard. No wall-clock reads: nowMs is injected.
 
+import { hardResolutionBoundMs } from './_forecast-resolution-eval.mjs';
+
 export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
@@ -34,6 +36,11 @@ export const GO_FORWARD_VOID_SHARE_TARGET = 0.15;
 // the target. It matches the 30-family skill gate and the 30-hit market-alert
 // floor; at 30, 5 voids (16.7%) still carry a Wilson interval of 7.3% to 33.6%.
 export const GO_FORWARD_MIN_RESOLVED = 30;
+
+// The resolver runs once a day (cron `0 6 * * *`), starting between 06:00 and
+// 06:05 UTC: a window due by one run is sealed by the next, and the hour
+// absorbs the start jitter, as LATE_READ_MAX_LAG_MS does (#7072).
+export const RESOLVER_CYCLE_MS = DAY_MS + 60 * 60 * 1000;
 
 // Origins whose scored entries are held OUT of the headline skill Brier:
 // `state_derived` = synthetic count-padding backfill (not a real prediction);
@@ -130,6 +137,9 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       scored: scored.length,
       void: voided.length,
       voidRate: resolved.length ? round(voided.length / resolved.length) : 0,
+      // Deprecated (#7072): scored over every ledger entry, which measures
+      // neither publication nor coverage. Still emitted so API and MCP readers
+      // do not break; corpus.registrationCoverage is the publication measure.
       publicationCoverage: entries.length ? round(scored.length / entries.length) : 0,
     },
     judgedLane: summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options),
@@ -139,6 +149,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
     funnel: summarizeFunnel(entries, nowMs),
+    corpus: summarizeCorpus(entries, nowMs, options),
     projections: summarizeProjectionHorizons(horizonEntries, nowMs),
   };
 
@@ -155,10 +166,18 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
   scorecard.publishedByDomain = summarizePublishedByDomain(scored);
+  const skillScored = scored.filter((entry) => !excludeOrigins.has(generationOriginOf(entry)));
   scorecard.uncertainty = {
     method: `family-level percentile bootstrap (each resample draws whole forecast families), ${CALIBRATION_BOOTSTRAP_RESAMPLES} resamples, seed ${SCORECARD_BOOTSTRAP_SEED}`,
     overallBrier: brierInterval(scored, 'overall'),
-    skillBrier: brierInterval(scored.filter((entry) => !excludeOrigins.has(generationOriginOf(entry))), 'skill'),
+    skillBrier: brierInterval(skillScored, 'skill'),
+    // Internal until the public contract has room (#7072): the API and
+    // /accuracy/ select only the members above.
+    overallLogScore: logScoreInterval(scored, 'overall'),
+    skillLogScore: logScoreInterval(skillScored, 'skill'),
+    byDomain: groupScoreIntervals(scored, 'domain'),
+    byGenerationOrigin: groupScoreIntervals(scored, 'generationOrigin'),
+    vsMarket: marketDeltaInterval(scored.filter(isPublishedOriginEntry)),
   };
   const marketSkill = summarizeMarketSkill(scored);
   if (marketSkill) scorecard.vsMarketSkill = marketSkill;
@@ -654,8 +673,8 @@ function attemptCount(entry) {
   return entry.judgeAttemptLog.length;
 }
 
-// `totals.publicationCoverage` divides scored by every ledger entry, immature
-// ones included. These denominators count only windows that are due: past
+// The deprecated `totals.publicationCoverage` divides scored by every ledger
+// entry, immature ones included. These denominators count only windows that are due: past
 // their deadline, or already resolved (an early resolution is decided, so it
 // cannot sit in a numerator above its own denominator). An unresolved entry
 // with no deadline is counted apart rather than guessed into either side.
@@ -704,6 +723,143 @@ function summarizeFunnel(entries, nowMs) {
   };
 }
 
+// The evaluation corpus (#7072). It sits beside the public blocks, not in
+// them: the API and /accuracy/ select their fields by name, so nothing here
+// reaches the public contract until the contract has room for it.
+//
+// Two scopes. The registration counts cover the forecast and bet history the
+// resolver read on its run; this pure function never reads it, so the seeder
+// passes them in, and they stay null when it did not. Everything else covers
+// the rolling window this scorecard scores (duplicate, withheld and horizon
+// windows excluded). The top-level SLA, VOID and latency counts are the
+// published-origin cohort; byGenerationOrigin repeats them per origin, so
+// shadow bets and synthetic rows never mix into the published figures.
+function summarizeCorpus(entries, nowMs, options = {}) {
+  const judgedSlaMs = Number.isFinite(options.judgedSlaMs) ? Math.max(0, options.judgedSlaMs) : DEFAULT_JUDGED_SLA_MS;
+  const byOrigin = new Map();
+  for (const entry of entries) {
+    const origin = generationOriginOf(entry);
+    if (!byOrigin.has(origin)) byOrigin.set(origin, []);
+    byOrigin.get(origin).push(entry);
+  }
+  const registration = options.registration ?? {};
+  return {
+    registrationScope: 'history_read',
+    publishedCount: registration.publishedCount ?? null,
+    ledgerRegisteredCount: registration.ledgerRegisteredCount ?? null,
+    registrationCoverage: registration.registrationCoverage ?? null,
+    ...(registration.publishedCount != null && {
+      registeredLedgerWindows: registration.registeredLedgerWindows,
+      unregisteredByReason: registration.unregisteredByReason,
+      historySnapshots: registration.historySnapshots,
+      historyFrom: registration.historyFrom,
+      historyTo: registration.historyTo,
+    }),
+    slaScope: 'rolling_window',
+    cohort: 'published_origin',
+    judgedSlaMs,
+    ...summarizeSlaCohort(entries.filter(isPublishedOriginEntry), nowMs, judgedSlaMs),
+    byGenerationOrigin: [...byOrigin.keys()].sort().map((origin) => ({
+      generationOrigin: origin,
+      ...summarizeSlaCohort(byOrigin.get(origin), nowMs, judgedSlaMs),
+    })),
+  };
+}
+
+function summarizeSlaCohort(entries, nowMs, judgedSlaMs) {
+  const lanes = { hard: emptyCorpusLane(), judged: emptyCorpusLane() };
+  const voidByReason = {};
+  for (const entry of entries) {
+    const lane = isJudgedEntry(entry) ? 'judged' : 'hard';
+    const row = lanes[lane];
+    const dueAt = slaDueAt(entry, lane, judgedSlaMs);
+    if (entry?.status !== 'resolved') {
+      if (Number.isFinite(dueAt) && nowMs > dueAt) row.pendingPastSlaCount += 1;
+      continue;
+    }
+    row.resolved += 1;
+    const resolvedAt = Number(entry.resolvedAt);
+    if (!Number.isFinite(dueAt) || !Number.isFinite(resolvedAt)) row.slaUnmeasurable += 1;
+    else if (resolvedAt <= dueAt) {
+      row.resolvedWithinSlaCount += 1;
+      // A lane that VOIDs everything on day one resolves everything on time;
+      // the scored and VOID parts say which happened.
+      if (isScoredEntry(entry)) row.scoredWithinSlaCount += 1;
+      else if (entry.outcome === 'VOID') row.voidWithinSlaCount += 1;
+    } else row.resolvedLateCount += 1;
+    const deadline = entryDeadline(entry);
+    if (Number.isFinite(deadline) && Number.isFinite(resolvedAt)) row.latencies.push(resolvedAt - deadline);
+    if (entry.outcome === 'VOID') {
+      const reason = entry?.evidence?.reason || 'unknown';
+      voidByReason[reason] = (voidByReason[reason] || 0) + 1;
+    }
+  }
+  const byLane = Object.fromEntries(Object.entries(lanes).map(([lane, { latencies, ...counts }]) => [lane, {
+    ...counts,
+    latency: latencySummary(latencies),
+  }]));
+  const sum = (field) => byLane.hard[field] + byLane.judged[field];
+  return {
+    resolvedCount: sum('resolved'),
+    resolvedWithinSlaCount: sum('resolvedWithinSlaCount'),
+    scoredWithinSlaCount: sum('scoredWithinSlaCount'),
+    voidWithinSlaCount: sum('voidWithinSlaCount'),
+    resolvedLateCount: sum('resolvedLateCount'),
+    slaUnmeasurable: sum('slaUnmeasurable'),
+    pendingPastSlaCount: sum('pendingPastSlaCount'),
+    voidByReason: sortedCounts(voidByReason),
+    byLane,
+  };
+}
+
+function emptyCorpusLane() {
+  return {
+    resolved: 0,
+    resolvedWithinSlaCount: 0,
+    scoredWithinSlaCount: 0,
+    voidWithinSlaCount: 0,
+    resolvedLateCount: 0,
+    slaUnmeasurable: 0,
+    pendingPastSlaCount: 0,
+    latencies: [],
+  };
+}
+
+// The hard-lane service level of one window: how long its feed is designed to
+// make the resolver wait (hardResolutionBoundMs), plus the resolver run that
+// applies the seal. 2 days 2 hours for a live point read, 15 days 1 hour for
+// EIA or a market settlement, 76 days 1 hour for monthly FRED.
+export function hardSlaMs(spec) {
+  return hardResolutionBoundMs(spec) + RESOLVER_CYCLE_MS;
+}
+
+// A window keeps the service level stamped on it when it opened, so a later
+// change to a bound does not move an old window in or out of it. A stamp from
+// the other lane (a count window later migrated to the judged lane) does not
+// apply; an unstamped window takes its lane's level from its spec. The judged
+// clock starts after the reporting grace, as it does for the judged lane's own
+// SLA count. Exported so cohort tools read the same per-window level.
+export function slaDueAt(entry, lane = isJudgedEntry(entry) ? 'judged' : 'hard', judgedSlaMs = DEFAULT_JUDGED_SLA_MS) {
+  const deadline = entryDeadline(entry);
+  if (!Number.isFinite(deadline)) return NaN;
+  const stamped = entry?.sla?.lane === lane ? Number(entry.sla.ms) : NaN;
+  if (lane === 'judged') return deadline + JUDGED_EVIDENCE_GRACE_MS + (Number.isFinite(stamped) ? stamped : judgedSlaMs);
+  return deadline + (Number.isFinite(stamped) ? stamped : hardSlaMs(entry?.spec));
+}
+
+// Resolved time minus deadline, at nearest-rank percentiles. An early
+// resolution (a market that settled before its deadline) is negative and kept.
+function latencySummary(latencies) {
+  if (!latencies.length) return { count: 0, medianMs: null, p90Ms: null };
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const rank = (q) => sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)];
+  return { count: sorted.length, medianMs: rank(0.5), p90Ms: rank(0.9) };
+}
+
+function sortedCounts(counts) {
+  return Object.fromEntries(Object.keys(counts).sort().map((key) => [key, counts[key]]));
+}
+
 function proportion(successes, count) {
   if (!count) return null;
   return { count, successes, rate: round(successes / count), ci95: wilsonInterval(successes, count) };
@@ -718,6 +874,73 @@ function brierInterval(entries, scope) {
     ci95: familyBootstrap(families, (sum) => sum.brier / sum.rows, scope),
     // The one flag the public contract has room for (#8990): /accuracy/ and
     // the card strip read it as the headline's measurable gate.
+    insufficientSample: !meetsFamilyMinimums(families),
+  };
+}
+
+function logScoreInterval(entries, scope) {
+  if (!entries.length) return null;
+  const families = familyTotals(entries);
+  return {
+    count: entries.length,
+    mean: round(mean(entries.map((entry) => logScore(entry)))),
+    ci95: familyBootstrap(families, (sum) => sum.log / sum.rows, `log:${scope}`),
+    insufficientSample: !meetsFamilyMinimums(families),
+  };
+}
+
+// Brier and log score per domain or per origin, each with a family-bootstrap
+// interval (#7072). Groups follow byDomain and byGenerationOrigin, which pool
+// every origin; a group with nothing scored has no row.
+function groupScoreIntervals(scored, key) {
+  const groups = new Map();
+  for (const entry of scored) {
+    const value = entry?.[key] || 'unknown';
+    if (!groups.has(value)) groups.set(value, []);
+    groups.get(value).push(entry);
+  }
+  return [...groups.keys()].sort().map((value) => {
+    const entries = groups.get(value);
+    const families = familyTotals(entries);
+    return {
+      [key]: value,
+      count: entries.length,
+      families: families.length,
+      brier: {
+        mean: round(mean(entries.map((entry) => brier(entry)))),
+        ci95: familyBootstrap(families, (sum) => sum.brier / sum.rows, `brier:${key}:${value}`),
+      },
+      logScore: {
+        mean: round(mean(entries.map((entry) => logScore(entry)))),
+        ci95: familyBootstrap(families, (sum) => sum.log / sum.rows, `log:${key}:${value}`),
+      },
+      insufficientSample: !meetsFamilyMinimums(families),
+    };
+  });
+}
+
+// WM minus market Brier on the published-origin cohort (#7072), with a paired
+// family-cluster interval: each resample keeps a window's forecast and market
+// losses together. Negative means the forecast beat the market. The public
+// vsMarketSkill pools every origin and states that on /accuracy/.
+function marketDeltaInterval(scored) {
+  const anchored = scored.filter((entry) => Number.isFinite(marketProbability(entry)));
+  if (!anchored.length) return null;
+  const rows = anchored.map((entry) => ({
+    family: familyKey(entry),
+    wm: brier(entry),
+    market: brier(entry, marketProbability(entry)),
+  }));
+  const delta = (sample) => mean(sample.map((row) => row.wm - row.market));
+  const { wmMinusMarket } = pairedBootstrap(rows, { wmMinusMarket: delta }, { scope: 'vsMarket', seed: SCORECARD_BOOTSTRAP_SEED });
+  const families = familyTotals(anchored);
+  return {
+    cohort: 'published_origin',
+    count: rows.length,
+    families: families.length,
+    forecastBrier: round(mean(rows.map((row) => row.wm))),
+    marketBrier: round(mean(rows.map((row) => row.market))),
+    wmMinusMarketBrier: { mean: round(delta(rows)), ci95: wmMinusMarket },
     insufficientSample: !meetsFamilyMinimums(families),
   };
 }
@@ -740,10 +963,11 @@ function familyTotals(entries) {
   const byFamily = new Map();
   for (const entry of entries) {
     const key = familyKey(entry);
-    const total = byFamily.get(key) ?? { rows: 0, yes: 0, brier: 0 };
+    const total = byFamily.get(key) ?? { rows: 0, yes: 0, brier: 0, log: 0 };
     total.rows += 1;
     total.yes += outcomeNumber(entry);
     total.brier += brier(entry);
+    total.log += logScore(entry);
     byFamily.set(key, total);
   }
   return [...byFamily.values()];
@@ -765,11 +989,12 @@ function familyBootstrap(families, statistic, scope) {
   const random = mulberry32(seedFor(scope, SCORECARD_BOOTSTRAP_SEED));
   const draws = [];
   for (let r = 0; r < CALIBRATION_BOOTSTRAP_RESAMPLES; r += 1) {
-    const sum = { rows: 0, yes: 0, brier: 0 };
+    const sum = { rows: 0, yes: 0, brier: 0, log: 0 };
     for (const family of drawFamilies(families, random)) {
       sum.rows += family.rows;
       sum.yes += family.yes;
       sum.brier += family.brier;
+      sum.log += family.log;
     }
     const value = statistic(sum);
     if (Number.isFinite(value)) draws.push(value);

@@ -1,7 +1,12 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  DEFAULT_JUDGED_SLA_MS,
+  RESOLVER_CYCLE_MS,
+  hardSlaMs,
+  slaDueAt,
   DEFAULT_ROLLING_WINDOW_DAYS,
   DEFAULT_SKILL_EXCLUDED_ORIGINS,
   MARKET_SETTLEMENT_FEED,
@@ -482,8 +487,210 @@ describe('scorecard uncertainty and maturity denominators (#7072)', () => {
     assert.equal(small.uncertainty.skillBrier, null, 'an empty headline cohort has no estimate');
 
     const empty = computeScorecard({ a: resolved({ outcome: 'VOID' }) }, NOW);
-    assert.deepEqual(empty.uncertainty, { method: empty.uncertainty.method, overallBrier: null, skillBrier: null });
+    assert.deepEqual(empty.uncertainty, {
+      method: empty.uncertainty.method,
+      overallBrier: null,
+      skillBrier: null,
+      overallLogScore: null,
+      skillLogScore: null,
+      byDomain: [],
+      byGenerationOrigin: [],
+      vsMarket: null,
+    });
     assert.ok(!JSON.stringify(empty).includes('NaN'));
+  });
+});
+
+describe('group, log-score and market intervals (#7072)', () => {
+  const ledger = Object.fromEntries(Array.from({ length: 80 }, (_, i) => [`e${i}`, resolved({
+    id: `fam-${i % 40}`,
+    domain: i % 2 ? 'market' : 'conflict',
+    generationOrigin: i < 60 ? 'detector' : 'state_derived',
+    probability: ((i * 7) % 10) / 10 + 0.05,
+    outcome: i % 3 === 0 ? 'YES' : 'NO',
+    // Every fourth window carries a lineage-backed market anchor.
+    ...(i % 4 === 0 && { calibration: { marketPrice: 0.5, marketBlendedProbability: 0.5 } }),
+  })]));
+  const scorecard = computeScorecard(ledger, NOW);
+  const { uncertainty } = scorecard;
+  const brackets = ({ mean, ci95 }) => ci95[0] <= mean && mean <= ci95[1];
+
+  it('bootstraps Brier and log score for every domain and origin, matching the point estimates', () => {
+    assert.deepEqual(uncertainty.byDomain.map((row) => row.domain), scorecard.byDomain.map((row) => row.domain));
+    assert.deepEqual(uncertainty.byGenerationOrigin.map((row) => row.generationOrigin), ['detector', 'state_derived']);
+    for (const [rows, published, key] of [[uncertainty.byDomain, scorecard.byDomain, 'domain'], [uncertainty.byGenerationOrigin, scorecard.byGenerationOrigin, 'generationOrigin']]) {
+      for (const row of rows) {
+        const point = published.find((group) => group[key] === row[key]);
+        assert.equal(row.count, point.scored);
+        assert.equal(row.brier.mean, point.brier);
+        assert.equal(row.logScore.mean, point.logScore);
+        assert.ok(brackets(row.brier) && brackets(row.logScore), `${row[key]} intervals bracket the estimate`);
+        assert.ok(row.brier.ci95[1] > row.brier.ci95[0]);
+      }
+    }
+  });
+
+  it('flags a group by its families: 20 families per domain miss the minimum of 30', () => {
+    assert.deepEqual(uncertainty.byDomain.map((row) => [row.domain, row.families, row.insufficientSample]), [['conflict', 20, true], ['market', 20, true]]);
+  });
+
+  it('bootstraps the overall and headline log score', () => {
+    assert.equal(uncertainty.overallLogScore.mean, scorecard.overall.logScore);
+    assert.equal(uncertainty.skillLogScore.mean, scorecard.skill.logScore);
+    assert.equal(uncertainty.skillLogScore.count, scorecard.skill.count);
+    assert.ok(brackets(uncertainty.overallLogScore));
+  });
+
+  it('pairs WM minus market Brier on the published-origin cohort, holding out state_derived', () => {
+    const { vsMarket } = uncertainty;
+    // Anchors at i = 0, 4, ..., 56 are detector rows; 60..76 are state_derived.
+    assert.equal(vsMarket.cohort, 'published_origin');
+    assert.equal(vsMarket.count, 15);
+    assert.equal(scorecard.vsMarketSkill.count, 20, 'the public block still pools every origin');
+    assert.equal(vsMarket.wmMinusMarketBrier.mean, round6(vsMarket.forecastBrier - vsMarket.marketBrier));
+    assert.ok(brackets(vsMarket.wmMinusMarketBrier));
+    assert.equal(vsMarket.insufficientSample, true);
+  });
+
+  it('resamples the market comparison by family, so repeating every window leaves the interval unchanged', () => {
+    const doubled = { ...ledger, ...Object.fromEntries(Object.entries(ledger).map(([key, entry]) => [`${key}-again`, entry])) };
+    const again = computeScorecard(doubled, NOW).uncertainty.vsMarket;
+    assert.equal(again.count, 2 * uncertainty.vsMarket.count);
+    assert.deepEqual(again.wmMinusMarketBrier, uncertainty.vsMarket.wmMinusMarketBrier);
+  });
+
+  it('reproduces every interval on a rerun and keeps the public members unchanged', () => {
+    assert.deepEqual(computeScorecard(ledger, NOW).uncertainty, uncertainty);
+    const { overallBrier, skillBrier } = uncertainty;
+    assert.deepEqual(Object.keys(overallBrier), ['count', 'mean', 'ci95', 'insufficientSample']);
+    assert.deepEqual(Object.keys(skillBrier), ['count', 'mean', 'ci95', 'insufficientSample']);
+  });
+});
+
+describe('evaluation corpus: SLA, VOID by reason and latency across both lanes (#7072)', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const at = (offsetDays) => NOW + offsetDays * DAY_MS;
+  const judged = { kind: 'judged' };
+  // A live point read: due 1 day 1 hour after the deadline, sealed by the next run.
+  const LIVE = { kind: 'hard', metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)', window: 'at-deadline', threshold: 50 };
+  // Monthly FRED publishes weeks after its month ends.
+  const FRED_MONTHLY = { kind: 'hard', metricKey: 'economic:fred:v1:CPIAUCSL:0|value(series==CPIAUCSL)', window: 'at-deadline', threshold: 3 };
+  const live = (overrides) => resolved({ spec: LIVE, ...overrides });
+  const ledger = {
+    hardOnTime: live({ id: 'h1', deadline: at(-5), resolvedAt: at(-4.5) }),
+    hardLate: live({ id: 'h2', outcome: 'NO', probability: 0.2, deadline: at(-10), resolvedAt: at(-7) }),
+    hardVoid: live({ id: 'h3', outcome: 'VOID', deadline: at(-6), resolvedAt: at(-5), evidence: { reason: 'feed_unavailable' } }),
+    // Within the 5-day level stamped when it opened, late under its feed's own.
+    hardStamped: live({ id: 'h4', deadline: at(-10), resolvedAt: at(-6), sla: { lane: 'hard', ms: 5 * DAY_MS } }),
+    // A stamp from the other lane does not apply.
+    hardForeignStamp: live({ id: 'h5', deadline: at(-20), resolvedAt: at(-17), sla: { lane: 'judged', ms: 5 * DAY_MS } }),
+    // 50 days after its deadline is on time for a monthly FRED read.
+    fredOnTime: resolved({ id: 'h6', spec: FRED_MONTHLY, deadline: at(-60), resolvedAt: at(-10) }),
+    fredWaiting: { id: 'h7', generationOrigin: 'detector', status: 'pending', spec: FRED_MONTHLY, deadline: at(-30) },
+    hardUndated: resolved({ id: 'h8' }),
+    hardPendingPast: { id: 'h9', generationOrigin: 'detector', status: 'pending', spec: LIVE, deadline: at(-3) },
+    hardPendingDue: { id: 'h10', generationOrigin: 'detector', status: 'pending', spec: LIVE, deadline: at(-1) },
+    hardImmature: { id: 'h11', generationOrigin: 'detector', status: 'pending', spec: LIVE, deadline: at(1) },
+    // 54h after the deadline: inside 18h + 2 days, outside 2 days alone.
+    judgedOnTime: resolved({ id: 'j1', spec: judged, deadline: at(-4), resolvedAt: at(-4) + 54 * HOUR_MS }),
+    judgedLateVoid: resolved({ id: 'j2', spec: judged, outcome: 'VOID', deadline: at(-6), resolvedAt: at(-6) + 18 * HOUR_MS + 3 * DAY_MS, evidence: { kind: 'judged', reason: 'all_judges_void' } }),
+    judgedPendingPast: { id: 'j3', generationOrigin: 'detector', status: 'pending-judge', spec: { ...judged, deadline: at(-4) } },
+    // Due 6h from now with the grace, 12h ago without it.
+    judgedPendingInGrace: { id: 'j4', generationOrigin: 'detector', status: 'pending-judge', spec: { ...judged, deadline: at(-2.5) } },
+    // A late shadow bet stays out of the published counts.
+    shadowLate: live({ id: 'b1', generationOrigin: 'bet_engine', outcome: 'VOID', deadline: at(-10), resolvedAt: at(-2), evidence: { reason: 'late_read' } }),
+  };
+
+  it('holds each hard window to its own feed\'s settlement bound plus one resolver cycle', () => {
+    const CYCLE = DAY_MS + HOUR_MS;
+    const spec = (metricKey, window = 'at-deadline') => ({ kind: 'hard', metricKey, window, threshold: 1 });
+    assert.equal(RESOLVER_CYCLE_MS, CYCLE, 'one daily run plus an hour of start jitter');
+    assert.equal(hardSlaMs(LIVE), 2 * CYCLE);
+    assert.equal(hardSlaMs(FRED_MONTHLY), 75 * DAY_MS + CYCLE);
+    assert.equal(hardSlaMs(spec('energy:eia-petroleum:v1|value(series==WCRSTUS1)')), 14 * DAY_MS + CYCLE);
+    assert.equal(hardSlaMs(spec('prediction:markets-resolution:v1|yesPrice(slug==x)', 'at-endDate')), 14 * DAY_MS + CYCLE);
+    assert.equal(hardSlaMs(spec('intelligence:gpsjam:v2|hexCount(region==x)')), 3 * DAY_MS + 7 * HOUR_MS + CYCLE);
+    assert.equal(hardSlaMs(spec('conflict:ucdp-events:v1|count(country==Syria)', 'within-horizon')), 24 * DAY_MS + CYCLE);
+    assert.equal(hardSlaMs(spec('conflict:ucdp-events:v1|count(country==Syria)')), 2 * CYCLE, 'an at-deadline count on a live feed takes the live-read VOID first');
+    assert.equal(hardSlaMs(undefined), CYCLE, 'an unreadable spec VOIDs on the first run');
+    assert.equal(hardSlaMs({ ...LIVE, window: 'within-horizon' }), CYCLE, 'a within-horizon read resolves on the first run');
+    assert.equal(hardSlaMs({ ...LIVE, window: 'rolling' }), CYCLE, 'an unsupported window VOIDs on the first run');
+    assert.equal(hardSlaMs({ ...LIVE, threshold: undefined }), CYCLE, 'a missing threshold VOIDs on the first run');
+  });
+
+  it('counts a window sealed by a run that started a few minutes late as on time', () => {
+    const within = { ...LIVE, window: 'within-horizon' };
+    const entry = resolved({ id: 'w1', spec: within, deadline: at(-3), resolvedAt: at(-3) + DAY_MS + 3 * 60 * 1000 });
+    assert.equal(computeScorecard({ entry }, NOW).corpus.byLane.hard.resolvedWithinSlaCount, 1);
+    assert.equal(slaDueAt(entry), at(-3) + RESOLVER_CYCLE_MS);
+  });
+
+  it('counts terminal states inside and outside the service level in each lane, published origins only', () => {
+    const { corpus } = computeScorecard(ledger, NOW);
+    assert.equal(corpus.cohort, 'published_origin');
+    assert.equal(corpus.judgedSlaMs, 2 * DAY_MS);
+    const { latency: hardLatency, ...hard } = corpus.byLane.hard;
+    const { latency: judgedLatency, ...judgedLane } = corpus.byLane.judged;
+    assert.deepEqual(hard, { resolved: 7, resolvedWithinSlaCount: 4, scoredWithinSlaCount: 3, voidWithinSlaCount: 1, resolvedLateCount: 2, slaUnmeasurable: 1, pendingPastSlaCount: 1 });
+    assert.deepEqual(judgedLane, { resolved: 2, resolvedWithinSlaCount: 1, scoredWithinSlaCount: 1, voidWithinSlaCount: 0, resolvedLateCount: 1, slaUnmeasurable: 0, pendingPastSlaCount: 1 });
+    assert.equal(corpus.resolvedCount, 9);
+    assert.equal(corpus.resolvedWithinSlaCount, 5);
+    assert.equal(corpus.scoredWithinSlaCount, 4);
+    assert.equal(corpus.voidWithinSlaCount, 1);
+    assert.equal(corpus.resolvedLateCount, 3);
+    assert.equal(corpus.slaUnmeasurable, 1);
+    assert.equal(corpus.pendingPastSlaCount, 2);
+    assert.deepEqual(hardLatency, { count: 6, medianMs: 3 * DAY_MS, p90Ms: 50 * DAY_MS }, '0.5d, 1d, 3d, 3d, 4d, 50d');
+    assert.deepEqual(judgedLatency, { count: 2, medianMs: 54 * HOUR_MS, p90Ms: 90 * HOUR_MS });
+  });
+
+  it('repeats the counts per origin, so a shadow bet never mixes into the published figures', () => {
+    const { corpus, totals } = computeScorecard(ledger, NOW);
+    assert.deepEqual(corpus.byGenerationOrigin.map((row) => row.generationOrigin), ['bet_engine', 'detector']);
+    const [bets, detector] = corpus.byGenerationOrigin;
+    assert.equal(bets.resolvedCount, 1);
+    assert.equal(bets.resolvedLateCount, 1);
+    assert.deepEqual(bets.voidByReason, { late_read: 1 });
+    const { generationOrigin: _origin, ...detectorCounts } = detector;
+    const { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane } = corpus;
+    assert.deepEqual(detectorCounts, { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane });
+    assert.equal(corpus.byGenerationOrigin.reduce((sum, row) => sum + row.resolvedCount, 0), totals.resolved, 'every resolved window is in one origin');
+  });
+
+  it('reports VOID by reason across both lanes, keys sorted', () => {
+    const { corpus, judgedLane } = computeScorecard(ledger, NOW);
+    assert.deepEqual(Object.entries(corpus.voidByReason), [['all_judges_void', 1], ['feed_unavailable', 1]]);
+    assert.deepEqual(judgedLane.voidByReason, { all_judges_void: 1 }, 'the judged lane alone misses the hard VOID');
+  });
+
+  it('leaves the registration counts null when no history was read, and carries them when the seeder passes them', () => {
+    const bare = computeScorecard(ledger, NOW).corpus;
+    assert.equal(bare.publishedCount, null);
+    assert.equal(bare.ledgerRegisteredCount, null);
+    assert.equal(bare.registrationCoverage, null);
+    assert.ok(!Object.hasOwn(bare, 'unregisteredByReason'));
+    const registration = {
+      publishedCount: 4, ledgerRegisteredCount: 3, registrationCoverage: 0.75, registeredLedgerWindows: 2,
+      unregisteredByReason: { no_resolution_spec: 1 }, historySnapshots: 2, historyFrom: at(-2), historyTo: at(-1),
+    };
+    const { corpus } = computeScorecard(ledger, NOW, { registration });
+    for (const [field, value] of Object.entries(registration)) assert.deepEqual(corpus[field], value, field);
+  });
+
+  it('stays deterministic and never NaN', () => {
+    assert.equal(JSON.stringify(computeScorecard(ledger, NOW).corpus), JSON.stringify(computeScorecard(ledger, NOW).corpus));
+    assert.ok(!JSON.stringify(computeScorecard({}, NOW).corpus).includes('NaN'));
+  });
+
+  it('documents the service levels and corpus fields in both languages', () => {
+    assert.equal(RESOLVER_CYCLE_MS, DAY_MS + 60 * 60 * 1000, 'the docs say one daily run plus an hour');
+    assert.equal(DEFAULT_JUDGED_SLA_MS, 2 * DAY_MS, 'the docs say 2 days');
+    for (const path of ['docs/panels/forecast.mdx', 'docs/zh/panels/forecast.mdx']) {
+      const text = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      for (const term of ['hardResolutionBoundMs', 'RESOLVER_CYCLE_MS', 'DEFAULT_JUDGED_SLA_MS', 'scoredWithinSlaCount', 'voidWithinSlaCount', 'byGenerationOrigin', 'registrationCoverage', 'resolvedWithinSlaCount', 'voidByReason', 'emissionHash', 'receiptHash', 'emission_snapshot_required', 'wmMinusMarketBrier', 'skillLogScore', 'slaScope', 'registrationScope', '| 76 ', '| 15 ']) {
+        assert.ok(text.includes(term), `${path} names ${term}`);
+      }
+    }
   });
 });
 

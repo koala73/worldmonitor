@@ -173,7 +173,7 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 ## 结算与成绩单
 
-已发布的预测携带机器可校验的结算规范。一个每日结算器将这些规范预注册到 `forecast:resolutions:v1`，在截止日期前采样硬源指标，然后带着证据将每条已发布预测结算为 YES、NO 或 VOID。派生的 `forecast:scorecard:v1` 报告 Brier 评分、对数评分、校准分桶、VOID 率、发布覆盖率和市场锚点技能。裁判规范被跟踪为待处理，留给快速跟进的裁判，并在结算之前从首个硬源成绩单中排除。
+已发布的预测携带机器可校验的结算规范。一个每日结算器将这些规范预注册到 `forecast:resolutions:v1`，在截止日期前采样硬源指标，然后带着证据将每条已发布预测结算为 YES、NO 或 VOID。派生的 `forecast:scorecard:v1` 报告 Brier 评分、对数评分、校准分桶、VOID 率、下文所述的评估语料统计和市场锚点技能。裁判规范被跟踪为待处理，留给快速跟进的裁判，并在结算之前从首个硬源成绩单中排除。
 
 VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_SHARE_TARGET`），只统计 2026-10-08 当天及之后首次发布的窗口（`GO_FORWARD_SINCE`，issue #4930）。窗口按其 `firstSeenAt` 归入，没有首次发布时间时按 `generatedAt` 归入。影子押注（`bet_engine`）在晋升之前不计入，因为用户看不到它们；状态派生的能源和货运预测会发布，因此计入。更早的窗口含有 issue #8990 审计中重新标注的 VOID，因此滚动 VOID 率不是该目标的衡量口径。成绩单在 `goForward` 下报告这一组窗口：条目数、已结算数、VOID 数、带 95% Wilson 区间的 VOID 占比，以及按原因划分的 VOID。公开端点不提供该数据块。方法说明会写出这一占比，`/accuracy/` 会在结算台账总计下方显示方法说明；在审计撤回评分期间，则显示在“方法说明”部分。这一组窗口尚无任何结算时，句子会如实说明，而不是显示 0%。已结算预测少于 `GO_FORWARD_MIN_RESOLVED`（30）条时（与技能评分的预测族门槛相同），句子会写出占比，但不与目标比较。裁判类预测比硬性预测晚几天结算，且历来更常被判为 VOID，因此早期读数偏低。当 2026-10-08 早于 180 天滚动窗口的起点后，在窗口起点之前结算的预测不再计入，句子也会改为注明该窗口。
 
@@ -205,6 +205,54 @@ VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_
 自 issue #9011 起，每条裁判结论都以 `evidence.selectionVersion` 记录其裁判时所用的证据选取方式（`JUDGED_EVIDENCE_SELECTION_VERSION`，目前为 3：1 为按问题模板词语选取，2 为 #8995，3 为 #8999 及 #9002）。每条裁判封存都带有该标记，包括 VOID；包装证据的更正会把它保留在 `supersededEvidence` 下。该步骤把低于 `JUDGED_MIN_TRUSTED_SELECTION_VERSION`（2）的每条裁判 YES 或 NO 封存为 VOID。在该标记出现之前封存的记录按上述截止时间判定：之前为版本 1，之后为版本 3，因为在 #8995 与 #8999 上线之间没有封存任何裁判 YES 或 NO。今后证据选取方式改变时提升版本号，再提高最低版本，就恰好覆盖按旧选取方式封存的记录。
 
 回执已存入 R2 之后才被更正的记录（`resolver_envelope_bug`、`duplicate_window`、`judged_old_selection`、`late_read`、`resolver_could_not_read_feed`、改评分或迟读重新判定）会重新写入回执。R2 写入逐条进行，每条约 450 毫秒，且在运行 150 秒的抓取阶段内完成，因此每次运行最多重写 `RECEIPT_REARCHIVE_PER_RUN`（50）条此类回执，最早的优先。积压会在之后的运行中逐步清空，在更正后的回执写入之前，清理不会删除该记录。
+
+### 评估语料
+
+每个窗口在打开时记录 3 个来源字段（issue #7072）：
+
+- `codeVersion` 是发布该窗口的种子器的部署提交。每次预测历史运行和押注历史运行都只携带一次该值。从此前写入的历史打开的窗口没有 `codeVersion`。
+- `sla` 是该窗口须遵守的服务时限，单位为截止后的毫秒数。裁判窗口为 `{ lane: 'judged', ms }`，取 `DEFAULT_JUDGED_SLA_MS`：从截止时间加 18 小时报道宽限期起算 2 天。硬性窗口为 `{ lane: 'hard', ms }`：数据缺失时，其数据源让结算器在封存或作废窗口之前最长等待的时间（`scripts/_forecast-resolution-eval.mjs` 中的 `hardResolutionBoundMs`，即下文“迟读与缺失的数据源”所述的界限），再加上执行封存的那次运行 `RESOLVER_CYCLE_MS`。`RESOLVER_CYCLE_MS` 为 1 天 1 小时：一次每日运行，再加一小时启动时间余量，与 `LATE_READ_MAX_LAG_MS` 相同。有一项测试在每个数据源缺失时逐小时驱动结算器，核对每类窗口都在其界限内封存。各时限如下：
+
+| 硬性窗口 | 截止后的服务时限 |
+|---|---|
+| 结算器立即作废的规范：无法读取的指标、缺少阈值、不支持的窗口，或读取公开市场数据源的价格 | 1 天 1 小时 |
+| 时间范围内读取（计数除外） | 1 天 1 小时 |
+| 实时时间点读取（咽喉要道、大宗商品报价），包括实时数据源上的截止时点计数 | 2 天 2 小时 |
+| GPS 干扰快照 | 4 天 8 小时 |
+| EIA 石油数据、每日 FRED、预测市场结算 | 15 天 1 小时 |
+| 每月 FRED | 76 天 1 小时 |
+| 无结算滞后的数据源上的计数 | 11 天 1 小时 |
+| ACLED 或动乱事件上的计数 | 13 天 1 小时 |
+| UCDP 事件上的计数 | 25 天 1 小时 |
+
+  计数或数值窗口在数据到达后立即封存；该时限是停止运行的数据源被作废的界限，因此在时限内结算的窗口即为按时。数据源正常运行但尚未覆盖到截止时间的计数窗口会无限期等待，在数据源追上之前一直处于超出服务时限状态。时间范围窗口的时限为其采样容差加 `RESOLVER_CYCLE_MS`，因为它按容差内最近的采样判定。
+- `emissionHash` 是首次发布的 JSON 数组 `[id, deadline, generatedAt, probability, resolution spec]` 的 SHA-256。持有历史快照的任何人都可以重新计算它，核对该窗口是否按所发布的内容评分。
+
+回执写入 R2 后，窗口还会记录 `receiptHash`，即所存回执字节的 SHA-256。该哈希可以公开；`receiptArchiveKey` 中的对象路径不能公开。
+
+成绩单的 `corpus` 块统计评估语料。该块仅供内部使用。API、MCP 和 `/accuracy/` 按字段名选取字段，不包含它，因为公开的 OpenAPI 文档已达到其大小上限。其字段覆盖 2 个不同范围，该块以 `registrationScope` 和 `slaScope` 标明。
+
+登记字段覆盖结算器本次运行读取的历史（`registrationScope: 'history_read'`）：最近 200 次预测运行（约 8 天）和最近 200 次押注运行（约 200 天）。
+
+- `publishedCount` 统计该历史中不同的 `<id>@<deadline>` 预测窗口。`ledgerRegisteredCount` 统计其中每次发布都被某个账本窗口覆盖的窗口，`registrationCoverage` 是其所占比例。只统计最近 180 天内的运行和发布。账本会把窗口保留到其结算后 180 天，而窗口在其覆盖的发布之后才结算，因此被统计的发布不会需要一个已被清理的窗口。`historySnapshots`、`historyFrom` 和 `historyTo` 描述被统计的运行。
+- 一个账本窗口会并入同一问题之后的截止时间。被并入的 `<id>@<deadline>` 计为已登记，但只按并入它的窗口的截止时间评分一次，从不按其自身的截止时间评分。`registeredLedgerWindows` 统计已登记窗口背后的账本窗口，因此小于 `ledgerRegisteredCount`。
+- `unregisteredByReason` 给出每个缺口的原因：`no_resolution_spec`、`withheld_at_emission`（提取闸门在发布时将该预测排除在评分之外，计入 `withheldAtEmission`）、`no_deadline`、`deadline_passed_before_registration`（截止时间早于该次发布之后的第一次结算器运行，结算器有意跳过）或 `unregistered`（结算器有机会打开该窗口却没有打开）。
+
+其他字段覆盖成绩单评分的滚动窗口（`slaScope: 'rolling_window'`），不含重复、暂停发布和时间范围窗口。顶层计数是已发布来源群组（`cohort: 'published_origin'`），即头条群体。`byGenerationOrigin` 按来源重复每项计数，使影子押注和合成记录与已发布数字分开。
+
+- `resolvedWithinSlaCount`、`resolvedLateCount` 和 `slaUnmeasurable` 按窗口上记录的服务时限，划分每个已结算窗口（包括 VOID）。在该记录出现之前打开的窗口按其规范取时限。`scoredWithinSlaCount` 和 `voidWithinSlaCount` 拆分按时结算的窗口，因为一个立即作废一切的通道会让一切都按时结算。`pendingPastSlaCount` 统计已超过服务时限的未结窗口。`byLane` 把每项计数拆分为硬性通道和裁判通道。
+- `voidByReason` 按原因统计两个通道的 VOID。`judgedLane.voidByReason` 只覆盖裁判通道。
+- `byLane.<lane>.latency` 给出结算时间减去截止时间的中位数和第 90 百分位数（最近秩），单位为毫秒。在截止前结算的市场得到负值。
+
+`uncertainty` 块还带有公开契约容纳不下的内部区间。每个区间都按整个预测族重采样：
+
+- `overallLogScore` 和 `skillLogScore` 给出对数评分及其区间。
+- `byDomain` 和 `byGenerationOrigin` 给出每组的 Brier 与对数评分及其区间、该组的族数和小样本标记。与公开的分组一样，它们合并所有来源。
+- `vsMarket` 在已发布来源的群组上比较预测与市场。`wmMinusMarketBrier` 是预测 Brier 减去市场 Brier，预测更好时为负值。其配对区间让每个窗口的 2 个损失保持在一起。公开的 `vsMarketSkill` 仍合并所有来源。
+
+`totals.publicationCoverage` 已弃用。它用已评分窗口数除以所有账本条目（包括未到期的条目），因此既不衡量发布，也不衡量覆盖。成绩单仍输出该字段，以免 API 和 MCP 读取方出错。`/accuracy/` 根据计数自行计算同一个账本已评分占比（按该字段原来的方式取整），并附上 95% Wilson 区间。其结论中的实际比率（头条预测和全部已评分预测成真的频率）也附有区间。每个区间只需要旁边列出的 2 个计数，因此都不占用公开契约的任何字节。
+
+运行差异工具（`scripts/diff-forecast-runs.mjs`）报告 2 次预测运行之间的结构差异。其 `candidateBrierDelta` 始终为 `unavailable`，原因为 `emission_snapshot_required`。只有当两次运行都基于同一份冻结的发布快照进行预测，并在相同的 `<id>@<deadline>` 窗口上评分时，候选版本的 Brier 才能与基线比较。目前没有任何运行归档其预测时所用的输入（issue #7073）。
 
 ### 迟读与缺失的数据源
 

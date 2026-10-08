@@ -121,6 +121,32 @@ export function countSettlementLagMs(feedKey) {
   return 0;
 }
 
+// The longest a hard window waits after its deadline, by design, before
+// resolveHardSpec seals or VOIDs it while its data is missing (#7072). The
+// branches follow resolveHardSpec's order, so the first one that would decide
+// the window names its bound. A window whose spec the resolver cannot evaluate
+// VOIDs on the first run (0). A live point read VOIDs past one resolver cycle.
+// A period feed (EIA, FRED, GPS jamming, market settlement) waits for its own
+// period. A count seals after its settlement lag and VOIDs a feed still down
+// VALUE_SETTLEMENT_MAX_LAG_MS later; a count whose feed is present but lags
+// the deadline pends with no bound, so it sits past its service level until it
+// resolves. A within-horizon read resolves on the first run. The scorecard's
+// hard-lane service level adds one resolver cycle, the run that applies the
+// seal; a test drives resolveHardSpec to hold these bounds to its behaviour.
+export function hardResolutionBoundMs(spec) {
+  const parsed = parseMetricKey(spec?.metricKey);
+  if (!parsed || !SUPPORTED_FUNCTIONS.has(parsed.fn)) return 0;
+  // resolveHardSpec VOIDs a spec without a threshold at once (missing_threshold).
+  if (!Number.isFinite(Number(spec?.threshold))) return 0;
+  const feedKey = parsed.feedKey || spec?.sourceFeed;
+  if (parsed.fn === 'yesPrice' && (spec?.sourceFeed === MARKET_BOOTSTRAP_FEED_KEY || parsed.feedKey === MARKET_BOOTSTRAP_FEED_KEY)) return 0;
+  const isPointWindow = spec?.window === 'at-deadline' || spec?.window === 'at-endDate';
+  if (isLivePointRead(spec)) return LATE_READ_MAX_LAG_MS;
+  if (parsed.fn === 'count') return countSettlementLagMs(feedKey) + VALUE_SETTLEMENT_MAX_LAG_MS;
+  if (isPointWindow) return valueSettlementMaxLagMs(feedKey);
+  return 0;
+}
+
 export function parseMetricKey(metricKey) {
   if (typeof metricKey !== 'string' || !metricKey) return null;
   const pipe = metricKey.indexOf('|');

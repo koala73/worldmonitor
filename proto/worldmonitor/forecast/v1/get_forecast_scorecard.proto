@@ -14,7 +14,7 @@ message ScorecardTotals {
   int32 scored = 5;
   int32 void = 6;
   double void_rate = 7;
-  double publication_coverage = 8;
+  double publication_coverage = 8 [deprecated = true];
 }
 
 message ScorecardSummary {

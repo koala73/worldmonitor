@@ -44030,6 +44030,7 @@ components:
                     type: number
                     format: double
                 publicationCoverage:
+                    deprecated: true
                     type: number
                     format: double
         worldmonitor_forecast_v1_ScorecardSummary:

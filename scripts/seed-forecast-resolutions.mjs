@@ -18,11 +18,11 @@ import { createHash } from 'node:crypto';
 
 import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
+import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
 import { chokepointHardContract, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
-import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
+import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -180,10 +180,11 @@ export function declareCalibrationMapRecords(map) {
 }
 
 // `publication` is the seeder's latest #7070 decision record: mode, reason,
-// gate numbers and the last flip.
-export function buildScorecard(ledger, nowMs, calibrationMap = null, publication = null, withheldAtEmission = null) {
+// gate numbers and the last flip. `registration` is summarizeRegistration's
+// count of published windows the ledger holds (#7072).
+export function buildScorecard(ledger, nowMs, calibrationMap = null, publication = null, withheldAtEmission = null, registration = null) {
   return {
-    ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() }),
+    ...computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled(), registration }),
     ...(withheldAtEmission && { withheldAtEmission }),
     calibrationShadow: {
       ...evaluateCalibrationShadow(ledger, calibrationMap, nowMs),
@@ -202,7 +203,7 @@ export function buildScorecard(ledger, nowMs, calibrationMap = null, publication
 // The run's clock, so the scorecard's gate verdict is the one the map
 // resolution held or refitted on.
 export function buildScorecardForRun(ledger, runState) {
-  return buildScorecard(ledger, runState.nowMs, runState.map, runState.publication, runState.withheldAtEmission ?? null);
+  return buildScorecard(ledger, runState.nowMs, runState.map, runState.publication, runState.withheldAtEmission ?? null, runState.registration ?? null);
 }
 
 // Published forecasts the extraction gate withheld from scoring (#7067). They
@@ -1547,16 +1548,17 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   for (const snapshot of snapshots) {
     const snapshotAt = Number(snapshot.generatedAt || nowMs);
     const run = emissionRunOf(snapshot);
-    for (const forecast of snapshot.predictions || []) {
-      const spec = forecast.resolution;
+    for (const emitted of snapshot.predictions || []) {
+      const spec = emitted.resolution;
       if (!spec || typeof spec !== 'object') continue;
       // The extraction gate's `unscored` spec (#7067) withholds the forecast
       // from both lanes, so it opens no window.
       if (spec.kind !== 'hard' && spec.kind !== 'judged') continue;
-      const id = forecast.id;
+      const id = emitted.id;
       const deadline = Number(spec.deadline);
-      const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
+      const generatedAt = Number(emitted.generatedAt || emitted.createdAt || snapshotAt);
       if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
+      const forecast = withSnapshotCodeVersion(emitted, snapshot);
       emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt, run });
     }
   }
@@ -1671,6 +1673,91 @@ function isSameWindowQuestion(a, b) {
     && typeof hard.entry.spec.metricKey === 'string'
     && downgraded.entry.spec?.originalMetricKey === hard.entry.spec.metricKey;
   return twin(a, b) || twin(b, a);
+}
+
+// Registration coverage (#7072): of the forecast windows the history read
+// published, keyed `id@deadline`, how many the ledger holds. A window is
+// registered when a ledger window of its question covers every emission of it,
+// the test ingestHistory itself applies; ledger windows absorb later deadlines
+// of one question, so registeredLedgerWindows counts the questions behind the
+// published windows. A window absorbed that way counts as registered, but it
+// is scored once, at the absorbing window's deadline, never at its own. Each
+// gap is named by its first unregistered emission.
+export const REGISTRATION_GAP_REASONS = Object.freeze([
+  'no_resolution_spec', 'withheld_at_emission', 'no_deadline', 'deadline_passed_before_registration', 'unregistered',
+]);
+
+export function summarizeRegistration(ledger, historySnapshots, nowMs) {
+  const windows = indexQuestionWindows(normalizeLedger(ledger));
+  // The ledger keeps a window until 180 days after it resolved, and a window
+  // resolves after the emissions it covers. Counting only emissions from the
+  // retention window therefore never asks for a window a run has pruned; the
+  // 200-run bet history reaches further back than that.
+  const retainedFrom = nowMs - LEDGER_RETENTION_WINDOW_DAYS * DAY_MS;
+  const snapshots = [...(historySnapshots || [])]
+    .filter((snapshot) => snapshot && Number(snapshot.generatedAt || nowMs) >= retainedFrom)
+    .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
+  const published = new Map();
+  for (const snapshot of snapshots) {
+    const snapshotAt = Number(snapshot.generatedAt || nowMs);
+    for (const forecast of snapshot.predictions || []) {
+      // An emission without an id has no window to name; the ingest skips it too.
+      if (!forecast?.id) continue;
+      const generatedAt = Number(forecast.generatedAt || forecast.createdAt || snapshotAt);
+      if (Number.isFinite(generatedAt) && generatedAt < retainedFrom) continue;
+      const spec = forecast.resolution && typeof forecast.resolution === 'object' ? forecast.resolution : null;
+      const deadline = Number(spec?.deadline);
+      const key = `${forecast.id}@${Number.isFinite(deadline) ? deadline : 'none'}`;
+      if (!published.has(key)) published.set(key, { scoreable: 0, uncovered: null, unscoreable: null, ledgerKeys: new Set() });
+      const window = published.get(key);
+      const unscoreable = !spec ? 'no_resolution_spec'
+        // The extraction gate withheld it from scoring (#7067); the
+        // scorecard's withheldAtEmission counts these, and no window opens.
+        : spec.kind !== 'hard' && spec.kind !== 'judged' ? 'withheld_at_emission'
+          : !Number.isFinite(deadline) || !Number.isFinite(generatedAt) ? 'no_deadline'
+            : null;
+      if (unscoreable) {
+        window.unscoreable ??= unscoreable;
+        continue;
+      }
+      window.scoreable += 1;
+      const candidate = createEntry(forecast.id, forecast, spec, generatedAt, snapshotAt, deadline);
+      const covering = windows.covering(forecast.id, { entry: candidate, questionKey: windowQuestionKey(candidate) }, generatedAt);
+      if (covering) window.ledgerKeys.add(covering);
+      // The first resolver run after the snapshot lands within one cycle of
+      // it; a deadline before that run is the one gap the ingest makes on
+      // purpose. Any other uncovered emission is a lost window.
+      else window.uncovered ??= deadline < nowMs && deadline <= snapshotAt + LATE_READ_MAX_LAG_MS ? 'deadline_passed_before_registration' : 'unregistered';
+    }
+  }
+  // A window is registered when it has a scoreable emission and the ledger
+  // covers every one; an emission the gate withheld beside them (its verdict
+  // can flip hour to hour) does not unregister a window the ledger scores.
+  for (const window of published.values()) {
+    window.gap = window.scoreable ? window.uncovered : window.unscoreable;
+  }
+  const unregisteredByReason = {};
+  const ledgerKeys = new Set();
+  let registered = 0;
+  for (const window of published.values()) {
+    if (window.gap) {
+      unregisteredByReason[window.gap] = (unregisteredByReason[window.gap] || 0) + 1;
+      continue;
+    }
+    registered += 1;
+    for (const key of window.ledgerKeys) ledgerKeys.add(key);
+  }
+  const at = snapshots.map((snapshot) => Number(snapshot.generatedAt)).filter(Number.isFinite);
+  return {
+    publishedCount: published.size,
+    ledgerRegisteredCount: registered,
+    registrationCoverage: published.size ? Math.round((registered / published.size) * 1_000_000) / 1_000_000 : null,
+    registeredLedgerWindows: ledgerKeys.size,
+    unregisteredByReason: Object.fromEntries(REGISTRATION_GAP_REASONS.filter((reason) => unregisteredByReason[reason]).map((reason) => [reason, unregisteredByReason[reason]])),
+    historySnapshots: snapshots.length,
+    historyFrom: at.length ? Math.min(...at) : null,
+    historyTo: at.length ? Math.max(...at) : null,
+  };
 }
 
 // A market-settlement window is the market's own question, settled once. Its
@@ -1865,7 +1952,12 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
     if (deadline < nowMs) continue;
     const view = { ...pickHorizonParentFields(forecast), probability, timeHorizon: spec.timeHorizon };
     const curvesVersion = Number.isInteger(forecast.projectionCurvesVersion) ? { projectionCurvesVersion: forecast.projectionCurvesVersion } : {};
-    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline, run), key, parentKey, ...curvesVersion };
+    // resolveHorizonSpec grades on the nearest sample within the stored
+    // tolerance of the horizon deadline, so the window is due one run after
+    // that tolerance, not after its feed's settlement bound (#7072).
+    const toleranceMs = Number(spec.sampleToleranceMs);
+    const sla = Number.isFinite(toleranceMs) ? { sla: { lane: 'hard', ms: toleranceMs + RESOLVER_CYCLE_MS } } : {};
+    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline, run), key, parentKey, ...curvesVersion, ...sla };
   }
 }
 
@@ -1873,7 +1965,7 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
 // parent (calibration, base rate, ensemble passes, market slug, uncalibrated
 // probability) describes the parent's probability, not the projection the
 // window grades, so a window that carried them would misdescribe itself.
-const HORIZON_PARENT_FIELDS = ['domain', 'region', 'title', 'generationOrigin', 'origin', 'stateBucketId'];
+const HORIZON_PARENT_FIELDS = ['domain', 'region', 'title', 'generationOrigin', 'origin', 'stateBucketId', 'codeVersion'];
 // What createEntry copies from a parent beyond HORIZON_PARENT_FIELDS. Windows
 // registered before the whitelist carry these; each run strips them from the
 // live ledger. Receipts already archived to R2 keep them.
@@ -2281,6 +2373,7 @@ export function markReceiptsArchived(ledger, archivedReceipts, archivedAt) {
     if (!entry || entry.status !== 'resolved') continue;
     entry.receiptArchivedAt = archivedAt;
     if (archived.objectKey) entry.receiptArchiveKey = archived.objectKey;
+    if (archived.receiptHash) entry.receiptHash = archived.receiptHash;
   }
   return ledger;
 }
@@ -2362,7 +2455,29 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline, run)
     lastSeenAt: snapshotAt,
     status,
     samples: { count: 0, recent: [] },
+    // Provenance stamped when the window opens (#7072): the emitting
+    // seeder's deploy commit (absent for history written before it carried
+    // one), the service level the window is held to, and a fingerprint of the
+    // emission it is scored on.
+    codeVersion: typeof forecast.codeVersion === 'string' && forecast.codeVersion ? forecast.codeVersion : undefined,
+    sla: spec.kind === 'judged' ? { lane: 'judged', ms: DEFAULT_JUDGED_SLA_MS } : { lane: 'hard', ms: hardSlaMs(spec) },
+    emissionHash: emissionHash(id, forecast, spec, generatedAt, deadline),
   });
+}
+
+// SHA-256 of the opening emission's scored fields, in the order the history
+// stored them. Anyone holding the history snapshot can recompute it, and a
+// later edit of the window's question or probability no longer matches it.
+export function emissionHash(id, forecast, spec, generatedAt, deadline) {
+  const fields = [id, deadline, generatedAt, Number(forecast.probability), spec];
+  return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+}
+
+// History snapshots carry the emitting deploy's commit once (#7072); each
+// emission of the snapshot takes it.
+function withSnapshotCodeVersion(forecast, snapshot) {
+  const codeVersion = snapshot?.codeVersion;
+  return typeof codeVersion === 'string' && codeVersion ? { ...forecast, codeVersion } : forecast;
 }
 
 // A window is scored on the probability published when it opened, with the
@@ -2905,7 +3020,8 @@ async function buildLedgerForRun(runState) {
       return [];
     }),
   ]);
-  const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
+  const historySnapshots = [...history, ...betsHistory];
+  const preLedger = ingestHistory(existingLedger || {}, historySnapshots, nowMs);
   runState.withheldAtEmission = summarizeWithheldEmissions(history);
   // Populate the market settlement feed for due bets BEFORE the feed read so
   // this run can resolve freshly adjudicated markets (#5525 KTD2). Best-effort:
@@ -2926,6 +3042,8 @@ async function buildLedgerForRun(runState) {
   console.log(`  Terminal receipts queued for R2: ${receiptsForArchive.length}`);
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   reportJudgedLaneObservability(result.ledger, nowMs, judgedOptions);
+  runState.registration = summarizeRegistration(preLedger, historySnapshots, nowMs);
+  console.log(`  Published windows registered: ${runState.registration.ledgerRegisteredCount} of ${runState.registration.publishedCount} ${JSON.stringify(runState.registration.unregisteredByReason)}`);
   const calibration = await resolveCalibrationMap(result.ledger, nowMs);
   runState.nowMs = nowMs;
   runState.map = calibration.map;
@@ -3043,6 +3161,7 @@ async function dryRun() {
     resolved: entries.filter((entry) => entry.status === 'resolved').length,
     newReceipts: result.receipts.length,
     scorecardTotals: result.scorecard.totals,
+    corpus: buildScorecard(result.ledger, nowMs, calibration.map, null, null, summarizeRegistration(preLedger, [...history, ...betsHistory], nowMs)).corpus,
     judgedLane: result.scorecard.judgedLane,
     judgedAttemptClasses: summarizeJudgedAttemptClasses(result.ledger),
     archiveHorizonAlerts: collectJudgedArchiveHorizonAlerts(result.ledger, nowMs, judgedOptions),
@@ -3086,7 +3205,9 @@ export async function appendR2Receipts(receipts, options = {}) {
         kind: 'forecast-resolution',
         outcome: receipt.entry?.outcome || 'unknown',
       });
-      archived.push({ key: receipt.key, objectKey: key });
+      // The hash of the stored bytes is publishable where the object path is
+      // not: it lets a reader check a receipt without learning where it lives.
+      archived.push({ key: receipt.key, objectKey: key, receiptHash: sha256Hex(serializeR2JsonBody(receipt)) });
       console.log(`  [forecast-resolutions] R2 receipt: ${key}`);
     } catch (err) {
       console.warn(`  [forecast-resolutions] R2 receipt failed for ${receipt.key}: ${err?.message || err}`);

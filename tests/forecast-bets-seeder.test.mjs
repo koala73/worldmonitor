@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
-  buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenQuestions,
+  buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenQuestions, stampCodeVersion,
   ENSEMBLE_TOP_K_DEFAULT,
 } from '../scripts/seed-forecast-bets.mjs';
 import { ingestHistory, resolveDueEntries, windowQuestionKey } from '../scripts/seed-forecast-resolutions.mjs';
@@ -453,5 +453,13 @@ describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 
     const entryAfter = Object.values(after).find((e) => e.key === entryBefore.key);
     assert.equal(entryAfter.deadline, entryBefore.deadline);
     assert.equal(entryAfter.spec.deadline, entryBefore.spec.deadline);
+  });
+});
+
+describe('bet history code version (#7072)', () => {
+  it('stamps the deploy revision in the forecast seeder order, and nothing without one', () => {
+    assert.equal(stampCodeVersion({ predictions: [] }, { VERCEL_GIT_COMMIT_SHA: 'vercel', GITHUB_SHA: 'gh' }).codeVersion, 'vercel');
+    assert.equal(stampCodeVersion({ predictions: [] }, { RAILWAY_GIT_COMMIT_SHA: 'railway', VERCEL_GIT_COMMIT_SHA: 'vercel' }).codeVersion, 'railway');
+    assert.equal('codeVersion' in stampCodeVersion({ predictions: [] }, {}), false);
   });
 });

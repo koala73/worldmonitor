@@ -43,7 +43,13 @@ import {
   samplePendingEntries,
   buildScorecardForRun,
   summarizeWithheldEmissions,
+  emissionHash,
+  summarizeRegistration,
+  buildScorecard,
 } from '../scripts/seed-forecast-resolutions.mjs';
+import { DEFAULT_JUDGED_SLA_MS, hardSlaMs } from '../scripts/_forecast-scorecard.mjs';
+import { serializeR2JsonBody as serializeR2Json } from '../scripts/_r2-storage.mjs';
+import { createHash } from 'node:crypto';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
@@ -1757,6 +1763,172 @@ describe('appendSample and seed contract', () => {
     } finally {
       console.warn = originalWarn;
     }
+  });
+});
+
+describe('ledger provenance and registration coverage (#7072)', () => {
+  const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+  it('stamps each window with the emitting commit, its service level and an emission hash when it opens', () => {
+    const emitted = forecast();
+    const ledger = ingestHistory({}, [{ ...snapshot(T0, [emitted]), codeVersion: 'abc123' }], T0);
+    const entry = ledger[`fc-hormuz@${T0 + DAY_MS}`];
+    assert.equal(entry.codeVersion, 'abc123');
+    assert.deepEqual(entry.sla, { lane: 'hard', ms: hardSlaMs(emitted.resolution) });
+    assert.equal(entry.sla.ms, 2 * (DAY_MS + 60 * 60 * 1000), 'a live chokepoint read: one cycle plus jitter, plus the sealing run');
+    assert.equal(entry.emissionHash, sha256(JSON.stringify(['fc-hormuz', T0 + DAY_MS, T0, 0.62, emitted.resolution])));
+    assert.equal(entry.emissionHash, emissionHash('fc-hormuz', emitted, emitted.resolution, T0, T0 + DAY_MS));
+  });
+
+  it('keeps the opening stamps when a later emission of the same window carries another commit', () => {
+    const first = ingestHistory({}, [{ ...snapshot(T0, [forecast()]), codeVersion: 'abc123' }], T0);
+    const later = forecast({ generatedAt: T0 + 3_600_000, deadline: T0 + DAY_MS, probability: 0.9 });
+    const ledger = ingestHistory(first, [{ ...snapshot(T0 + 3_600_000, [later]), codeVersion: 'def456' }], T0 + 3_600_000);
+    const entry = ledger[`fc-hormuz@${T0 + DAY_MS}`];
+    assert.equal(entry.codeVersion, 'abc123');
+    assert.equal(entry.emissionHash, first[`fc-hormuz@${T0 + DAY_MS}`].emissionHash);
+  });
+
+  it('stamps the judged service level on a judged window and leaves codeVersion out for history written before it', () => {
+    const judged = forecast({ id: 'fc-judged', resolution: { kind: 'judged', question: 'Will X happen?', deadline: T0 + DAY_MS } });
+    const entry = ingestHistory({}, [snapshot(T0, [judged])], T0)[`fc-judged@${T0 + DAY_MS}`];
+    assert.deepEqual(entry.sla, { lane: 'judged', ms: DEFAULT_JUDGED_SLA_MS });
+    assert.equal('codeVersion' in entry, false);
+  });
+
+  it('counts published id@deadline windows against the ledger and names every gap', () => {
+    const NOW = T0 + 2 * 3_600_000;
+    const history = [
+      snapshot(T0, [
+        forecast(),
+        forecast({ id: 'fc-nospec', resolution: null }),
+        forecast({ id: 'fc-nodeadline', resolution: { kind: 'hard', deadline: 'soon' } }),
+        // Already past its deadline when the resolver first read it.
+        forecast({ id: 'fc-late', generatedAt: T0 - 2 * DAY_MS, deadline: T0 - DAY_MS }),
+        { title: 'no id' },
+      ]),
+      // A later emission of the same question with a later deadline joins the
+      // open window: two published windows, one ledger question. The gap of a
+      // window is named by its first unregistered emission.
+      snapshot(T0 + 3_600_000, [
+        forecast({ generatedAt: T0 + 3_600_000, deadline: T0 + DAY_MS + 3_600_000 }),
+        forecast({ id: 'fc-nospec', resolution: { kind: 'hard', deadline: 'soon' } }),
+      ]),
+    ];
+    const ledger = ingestHistory({}, history, NOW);
+    const registration = summarizeRegistration(ledger, history, NOW);
+    assert.deepEqual(registration, {
+      publishedCount: 5,
+      ledgerRegisteredCount: 2,
+      registrationCoverage: 0.4,
+      registeredLedgerWindows: 1,
+      unregisteredByReason: { no_resolution_spec: 1, no_deadline: 1, deadline_passed_before_registration: 1 },
+      historySnapshots: 2,
+      historyFrom: T0,
+      historyTo: T0 + 3_600_000,
+    });
+  });
+
+  it('registers a window only when the ledger covers every emission of it', () => {
+    const first = forecast();
+    // Same id and deadline, another question: the ledger below never opened it.
+    const moved = forecast({ generatedAt: T0 + 3_600_000, deadline: T0 + DAY_MS, region: 'Bab el-Mandeb' });
+    const ledger = ingestHistory({}, [snapshot(T0, [first])], T0);
+    const registration = summarizeRegistration(ledger, [snapshot(T0, [first]), snapshot(T0 + 3_600_000, [moved])], T0 + 3_600_000);
+    assert.equal(registration.publishedCount, 1);
+    assert.equal(registration.ledgerRegisteredCount, 0);
+    assert.deepEqual(registration.unregisteredByReason, { unregistered: 1 });
+  });
+
+  it('stamps a monthly FRED window with its own 76-day service level', () => {
+    const fred = forecast({ id: 'fc-fred', resolution: { kind: 'hard', metricKey: 'economic:fred:v1:CPIAUCSL:0|value(series==CPIAUCSL)', operator: 'gt', threshold: 3, window: 'at-deadline', deadline: T0 + DAY_MS, sourceFeed: 'economic:fred:v1:CPIAUCSL:0' } });
+    const entry = ingestHistory({}, [snapshot(T0, [fred])], T0)[`fc-fred@${T0 + DAY_MS}`];
+    assert.deepEqual(entry.sla, { lane: 'hard', ms: 76 * DAY_MS + 60 * 60 * 1000 });
+  });
+
+  it('names a forecast the extraction gate withheld from scoring as withheld, not lost (#7067)', () => {
+    const withheld = forecast({ id: 'fc-withheld', resolution: { kind: 'unscored', reason: 'generic_question', deadline: T0 + DAY_MS } });
+    const ledger = ingestHistory({}, [snapshot(T0, [withheld])], T0);
+    assert.deepEqual(summarizeRegistration(ledger, [snapshot(T0, [withheld])], T0).unregisteredByReason, { withheld_at_emission: 1 });
+  });
+
+  it('does not read a window a previous run pruned as a gap (#7072 review)', () => {
+    // Run N, 186 days after a bet window resolved, prunes it; run N+1 reads
+    // the pruned ledger with the same old snapshot still in the bet history.
+    const RESOLVED_AT = T0 + 5 * DAY_MS;
+    const old = forecast({ deadline: T0 + 4 * DAY_MS });
+    const opened = ingestHistory({}, [snapshot(T0, [old])], T0);
+    const key = `fc-hormuz@${T0 + 4 * DAY_MS}`;
+    opened[key] = { ...opened[key], status: 'resolved', outcome: 'NO', resolvedAt: RESOLVED_AT, receiptArchivedAt: RESOLVED_AT };
+    const runN = T0 + 186 * DAY_MS;
+    const pruned = pruneArchivedTerminalEntries(opened, runN);
+    assert.equal(pruned[key], undefined, 'run N pruned the window');
+    const fresh = forecast({ id: 'fc-fresh', generatedAt: runN, deadline: runN + 3 * DAY_MS });
+    // A recent run can still carry the old emission, stamped with its old generatedAt.
+    const history = [snapshot(T0, [old]), snapshot(runN, [fresh, old])];
+    const nextLedger = ingestHistory(pruned, history, runN + DAY_MS);
+    const registration = summarizeRegistration(nextLedger, history, runN + DAY_MS);
+    assert.deepEqual(registration.unregisteredByReason, {}, 'the pruned window is outside the counted history');
+    assert.equal(registration.publishedCount, 1);
+    assert.equal(registration.historySnapshots, 1);
+    assert.equal(registration.historyFrom, runN);
+  });
+
+  it('counts a window the ledger scores as registered even when the gate withheld one of its emissions (#7067)', () => {
+    const hard = forecast();
+    const withheld = forecast({ generatedAt: T0 + 3_600_000, resolution: { kind: 'unscored', reason: 'generic_question', deadline: T0 + DAY_MS } });
+    for (const order of [[hard, withheld], [withheld, hard]]) {
+      const history = order.map((emission) => snapshot(emission.generatedAt, [emission]));
+      const ledger = ingestHistory({}, history, T0 + 3_600_000);
+      const registration = summarizeRegistration(ledger, history, T0 + 3_600_000);
+      assert.equal(registration.ledgerRegisteredCount, 1);
+      assert.deepEqual(registration.unregisteredByReason, {});
+    }
+  });
+
+  it('names a lost window unregistered even after its deadline passes, when the resolver had a run to open it', () => {
+    // Published 5 days before its deadline; the ledger never opened it.
+    const lost = forecast({ deadline: T0 + 5 * DAY_MS });
+    const registration = summarizeRegistration({}, [snapshot(T0, [lost])], T0 + 10 * DAY_MS);
+    assert.deepEqual(registration.unregisteredByReason, { unregistered: 1 });
+  });
+
+  it('reports a window the ledger lost as unregistered, and nothing as null coverage', () => {
+    const history = [snapshot(T0, [forecast()])];
+    assert.deepEqual(summarizeRegistration({}, history, T0).unregisteredByReason, { unregistered: 1 });
+    const empty = summarizeRegistration({}, [], T0);
+    assert.equal(empty.publishedCount, 0);
+    assert.equal(empty.registrationCoverage, null);
+    assert.equal(empty.historyFrom, null);
+  });
+
+  it('carries the registration counts into the scorecard corpus block', () => {
+    const history = [snapshot(T0, [forecast()])];
+    const ledger = ingestHistory({}, history, T0);
+    const { corpus } = buildScorecard(ledger, T0, null, null, null, summarizeRegistration(ledger, history, T0));
+    assert.equal(corpus.publishedCount, 1);
+    assert.equal(corpus.ledgerRegisteredCount, 1);
+    assert.equal(corpus.registrationCoverage, 1);
+  });
+
+  it('records the SHA-256 of the receipt bytes it archived beside the object key', async () => {
+    const receipt = { key: 'a@1', resolvedAt: T0, entry: { outcome: 'YES' } };
+    const stored = new Map();
+    const archived = await appendR2Receipts([receipt], {
+      env: {
+        CLOUDFLARE_R2_ACCOUNT_ID: 'acct',
+        CLOUDFLARE_R2_ACCESS_KEY_ID: 'id',
+        CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret',
+        CLOUDFLARE_R2_BUCKET: 'bucket',
+        CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'receipts',
+      },
+      putObject: async (_config, key, payload) => { stored.set(key, serializeR2Json(payload)); },
+    });
+    const [{ objectKey, receiptHash }] = archived;
+    assert.equal(receiptHash, sha256(stored.get(objectKey)), 'the hash is of the bytes stored');
+    const ledger = { 'a@1': { key: 'a@1', status: 'resolved', outcome: 'YES', resolvedAt: T0 } };
+    markReceiptsArchived(ledger, archived, T0 + 1);
+    assert.equal(ledger['a@1'].receiptHash, receiptHash);
   });
 });
 
@@ -3676,6 +3848,16 @@ describe('projection horizon windows (#7075)', () => {
     const malformed = processResolutionCycle({}, [run(T0, '1700-a', 'not-a-digest')], HORMUZ(40), T0);
     assert.equal(malformed.ledger[PARENT].runId, '1700-a');
     assert.ok(!('snapshotSha256' in malformed.ledger[PARENT]), 'a malformed digest is not copied');
+  });
+
+  it('holds a horizon window to its sample tolerance plus one resolver cycle, and keeps the commit (#7072)', () => {
+    const { ledger } = processResolutionCycle({}, [{ ...snapshot(T0, [projected()]), codeVersion: 'abc123' }], HORMUZ(40), T0);
+    const windows = horizonKeys(ledger).map((key) => ledger[key]);
+    assert.ok(windows.length > 0);
+    for (const window of windows) {
+      assert.deepEqual(window.sla, { lane: 'hard', ms: window.spec.sampleToleranceMs + DAY_MS + 60 * 60 * 1000 });
+      assert.equal(window.codeVersion, 'abc123');
+    }
   });
 
   it('the same forecast at two deadlines and three horizons creates six distinct keys', () => {

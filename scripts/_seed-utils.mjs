@@ -326,6 +326,11 @@ export function resolveConvexSiteUrl(env) {
   return raw ? raw.replace(/\/+$/, '') : '';
 }
 
+// The commit a seeder was deployed from: Railway, then Vercel, then Actions.
+export function getDeployRevision(env = process.env) {
+  return env.RAILWAY_GIT_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA || '';
+}
+
 export function loadEnvFile(metaUrl, { only } = {}) {
   // Loading credentials is part of *running* a seeder, never part of importing
   // one. CI already runs the whole suite with no .env.local present, so staying

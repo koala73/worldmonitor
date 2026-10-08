@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus, getDeployRevision } from './_seed-utils.mjs';
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
@@ -784,13 +784,6 @@ function getRedisCredentials() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
   return { url, token };
-}
-
-function getDeployRevision() {
-  return process.env.RAILWAY_GIT_COMMIT_SHA
-    || process.env.VERCEL_GIT_COMMIT_SHA
-    || process.env.GITHUB_SHA
-    || '';
 }
 
 async function redisCommand(url, token, command) {
@@ -5012,12 +5005,15 @@ function buildHistorySnapshot(data, options = {}) {
   const maxForecasts = options.maxForecasts || HISTORY_MAX_FORECASTS;
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
   // The run's id and the digest of its archived input snapshot (#9058). The
-  // resolver copies both onto each ledger window this run opens.
+  // resolver copies both onto each ledger window this run opens, with the
+  // deploy commit (#7072).
   const emission = options.emission || {};
+  const codeVersion = options.codeVersion ?? getDeployRevision();
   return {
     generatedAt: data?.generatedAt || Date.now(),
     ...(emission.runId ? { runId: String(emission.runId) } : {}),
     ...(emission.snapshotSha256 ? { snapshotSha256: emission.snapshotSha256 } : {}),
+    ...(codeVersion && { codeVersion }),
     predictions: predictions.slice(0, maxForecasts).map(buildHistoryForecastEntry),
   };
 }

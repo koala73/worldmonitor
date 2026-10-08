@@ -27,6 +27,7 @@ import { GO_FORWARD_SINCE_MS, computeScorecard } from '../scripts/_forecast-scor
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Every suite below except the #8990 one pins the record as it reads once the
@@ -646,7 +647,8 @@ describe('accuracy page honesty rules', () => {
     assert.match(sentence, /Brier score was 0\.118/);
     assert.match(sentence, /over 180 scored forecasts from at least 30 forecast families/);
     // p = 40/180, p(1-p) = 0.1728.
-    assert.match(sentence, /against 0\.173 for always forecasting the actual rate of 22\.2%/);
+    assert.match(sentence, /against 0\.173 for always forecasting the actual rate, 22\.2% of 180 forecasts, 95% interval 16\.8% to 28\.8%/);
+    assert.match(result[1], /<span data-rate-interval>16\.8% to 28\.8%<\/span>/, 'the bounds are marked as an interval');
     assert.doesNotMatch(sentence, /historical/);
     assert.doesNotMatch(sentence, /0\.25|0\.5 to everything|coin/);
     assert.doesNotMatch(result[0], /class="metric"/);
@@ -1202,7 +1204,33 @@ describe('accuracy page proportion intervals', () => {
   it('promises intervals only for the rates that carry one', () => {
     const text = stripTags(renderState(LIVE_SECTION).html);
     assert.doesNotMatch(text, /Every rate (does )?carr/);
-    assert.match(text, /scored share of the ledger and the base rates/);
+    assert.doesNotMatch(text, /do not( carry one)? yet\b[^.]*base rates|base rates do not/);
+    assert.match(text, /the scored share of the ledger and the actual rates/);
+  });
+
+  // #7072: the 2 rates the page used to leave bare now carry a Wilson interval
+  // from the counts printed beside them.
+  it('puts a Wilson interval beside the scored share and each actual rate', () => {
+    // Test data: the live capture plus a headline yes count.
+    const section = sectionWith({ skill: { ...LIVE_SCORECARD.skill, yesCount: 54 } });
+    const html = renderState(section).html;
+    const { totals } = section.scorecard;
+    const intervals = proportionIntervals(section.scorecard);
+    assert.deepEqual(intervals.scoredShare.ci95, wilsonInterval(totals.scored, totals.entries));
+    const pct = (value) => `${(value * 100).toFixed(1)}%`;
+    const totalsText = stripTags(html.match(/<table data-ledger-totals>[\s\S]*?<\/table>/)[0]);
+    assert.ok(totalsText.includes(`95% interval ${pct(intervals.scoredShare.ci95[0])} to ${pct(intervals.scoredShare.ci95[1])}`), totalsText);
+    const text = stripTags(html);
+    for (const estimate of [intervals.headlineActualRate, intervals.pooledActualRate]) {
+      assert.ok(estimate, 'the live capture carries both counts');
+      assert.ok(text.includes(`came true: ${pct(estimate.successes / estimate.count)} of`), 'rate printed');
+      assert.ok(text.includes(`95% interval ${pct(estimate.ci95[0])} to ${pct(estimate.ci95[1])}`), `interval ${estimate.ci95}`);
+    }
+    assert.doesNotMatch(html, /\[\[rate-interval/, 'no marker leaks into the page');
+    const llms = renderAccuracyLlmsSection(section, null);
+    assert.doesNotMatch(llms, /\[\[rate-interval|data-rate-interval/, 'llms-full prints the bounds as text');
+    const headline = intervals.headlineActualRate;
+    assert.ok(llms.includes(`actual rate, ${pct(headline.successes / headline.count)} of 180 forecasts, 95% interval ${pct(headline.ci95[0])} to ${pct(headline.ci95[1])}`), llms);
   });
 
   it('says the ledger totals leave out forecasts withheld under #5234', () => {

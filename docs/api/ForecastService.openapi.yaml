@@ -1312,6 +1312,7 @@ components:
                     type: number
                     format: double
                 publicationCoverage:
+                    deprecated: true
                     type: number
                     format: double
         ScorecardSummary:

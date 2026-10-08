@@ -179,7 +179,7 @@ The seeder runs approximately **hourly**. The key is allowed up to **90 minutes*
 
 ## Resolution & track record
 
-Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, publication coverage, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
+Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, the evaluation corpus described below, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
 
 The VOID-share target is under 15% of resolved published forecasts (`GO_FORWARD_VOID_SHARE_TARGET`), measured only over windows first published on or after 2026-10-08 (`GO_FORWARD_SINCE`, issue #4930). A window is placed by its `firstSeenAt`, or by `generatedAt` when it has no sighting. Shadow bets (`bet_engine`) are left out until promoted, because users never see them; state-derived energy and freight forecasts are published and count. Earlier windows hold the voids relabelled in the issue #8990 audit, so the rolling VOID rate is not the target measure. The scorecard reports this cohort under `goForward`: entries, resolved, voids, the void share with its 95% Wilson interval, and voids by reason. The public endpoint does not serve that block. The methodology states the share, and `/accuracy/` prints the methodology under the ledger totals, or in its Methodology section while an audit withdraws the scores. While nothing in the cohort has resolved, the sentence says so instead of printing 0%. Below `GO_FORWARD_MIN_RESOLVED` (30) resolved forecasts, the same minimum as the skill score's family gate, the sentence states the share but does not compare it with the target. Judged forecasts resolve days after hard ones and have voided more often, so early readings run low. Once 2026-10-08 is older than the 180-day window, forecasts resolved before the window start drop out of the count, and the sentence names the window.
 
@@ -215,6 +215,54 @@ Before issue #8995, the judged lane picked archive items by matching the words o
 Since issue #9011 every judged verdict records the evidence selection it was judged under as `evidence.selectionVersion` (`JUDGED_EVIDENCE_SELECTION_VERSION`, now 3: 1 is the stock-word selection, 2 is #8995 and 3 is #8999 with #9002). Every judged seal carries it, VOIDs included, and a correction that wraps the evidence keeps it under `supersededEvidence`. The step voids every judged YES or NO below `JUDGED_MIN_TRUSTED_SELECTION_VERSION` (2). A row sealed before the stamp existed is dated by the cutoff above: version 1 before it, version 3 after it, because no judged YES or NO was sealed between the #8995 and #8999 deploys. A future change to evidence selection bumps the version, and raising the minimum then reaches exactly the rows sealed under the older selections.
 
 A row corrected after its receipt reached R2 (`resolver_envelope_bug`, `duplicate_window`, `judged_old_selection`, `late_read`, `resolver_could_not_read_feed`, a rescore or a late-read re-grade) has its receipt written again. R2 writes run one at a time, at about 450 ms each, inside the run's 150-second fetch phase, so each run rewrites at most `RECEIPT_REARCHIVE_PER_RUN` (50) of these receipts, oldest first. The backlog drains over later runs, and pruning keeps a row until its corrected receipt is written.
+
+### Evaluation corpus
+
+Each window records 3 provenance fields when it opens (issue #7072):
+
+- `codeVersion` is the deploy commit of the seeder that emitted the window. Each forecast-history and bet-history run carries it once. A window opened from history written before that has no `codeVersion`.
+- `sla` is the service level the window is held to, in milliseconds after its deadline. A judged window gets `{ lane: 'judged', ms }` with `DEFAULT_JUDGED_SLA_MS`: 2 days, counted from the deadline plus the 18-hour reporting grace. A hard window gets `{ lane: 'hard', ms }`: the longest its feed makes the resolver wait before it seals or voids the window while its data is missing (`hardResolutionBoundMs` in `scripts/_forecast-resolution-eval.mjs`, the bounds described under Late reads below), plus `RESOLVER_CYCLE_MS` for the run that applies the seal. `RESOLVER_CYCLE_MS` is 1 day 1 hour: one daily run, plus an hour for its start time, as `LATE_READ_MAX_LAG_MS` allows. A test drives the resolver hour by hour with each feed down and checks it seals each kind of window within its bound. The levels are:
+
+| Hard window | Service level after the deadline |
+|---|---|
+| Spec the resolver voids at once: unreadable metric, missing threshold, unsupported window, or a price read off the open-market feed | 1 day 1 hour |
+| Within-horizon read (not a count) | 1 day 1 hour |
+| Live point read (chokepoints, commodity quotes), including an at-deadline count on a live feed | 2 days 2 hours |
+| GPS jamming snapshot | 4 days 8 hours |
+| EIA petroleum, daily FRED, prediction-market settlement | 15 days 1 hour |
+| Monthly FRED | 76 days 1 hour |
+| Count on a feed with no settlement lag | 11 days 1 hour |
+| Count on ACLED or unrest events | 13 days 1 hour |
+| Count on UCDP events | 25 days 1 hour |
+
+  A count or value window seals as soon as its data arrives, and the level is the bound past which a feed that is down is voided, so a window resolved inside it is on time. A count whose feed is up but has not reached the deadline yet pends with no bound; it stays past its service level until the feed catches up. A horizon window is held to its sample tolerance plus `RESOLVER_CYCLE_MS`, because it grades on the nearest sample within that tolerance.
+- `emissionHash` is the SHA-256 of the JSON array `[id, deadline, generatedAt, probability, resolution spec]` of the opening emission. Anyone holding the history snapshot can recompute it and check that the window was scored on what was published.
+
+When the receipt reaches R2, the window also records `receiptHash`, the SHA-256 of the stored receipt bytes. The hash can be published; the object path in `receiptArchiveKey` cannot.
+
+The scorecard's `corpus` block counts the corpus. The block is internal. The API, MCP and `/accuracy/` select their fields by name and leave it out, because the public OpenAPI document is at its size cap. Its fields cover 2 different scopes, which the block names in `registrationScope` and `slaScope`.
+
+The registration fields cover the history the resolver read on its run (`registrationScope: 'history_read'`): the last 200 forecast runs, about 8 days, and the last 200 bet runs, about 200 days.
+
+- `publishedCount` counts the distinct `<id>@<deadline>` forecast windows in that history. `ledgerRegisteredCount` counts those that a ledger window covers at every emission, and `registrationCoverage` is their share. Only runs and emissions from the last 180 days count. The ledger keeps a window until 180 days after it resolves, and a window resolves after the emissions it covers, so a counted emission never needs a window that a run has already pruned. `historySnapshots`, `historyFrom` and `historyTo` describe the runs counted.
+- A ledger window absorbs later deadlines of the same question. An absorbed `<id>@<deadline>` counts as registered, but it is scored once, at the absorbing window's deadline, never at its own. `registeredLedgerWindows` counts the ledger windows behind the registered windows, so it is smaller than `ledgerRegisteredCount`.
+- `unregisteredByReason` names each gap: `no_resolution_spec`, `withheld_at_emission` (the extraction gate withheld the forecast from scoring, counted in `withheldAtEmission`), `no_deadline`, `deadline_passed_before_registration` (the deadline fell before the first resolver run after the emission, which the resolver skips on purpose) or `unregistered` (the resolver had a run to open the window and did not).
+
+The other fields cover the rolling window the scorecard scores (`slaScope: 'rolling_window'`), without duplicate, withheld and horizon windows. The top-level counts are the published-origin cohort (`cohort: 'published_origin'`), the headline population. `byGenerationOrigin` repeats every count for each origin, so shadow bets and synthetic rows stay apart from the published figures.
+
+- `resolvedWithinSlaCount`, `resolvedLateCount` and `slaUnmeasurable` split every resolved window, VOIDs included, by the service level stamped on it. A window opened before the stamp takes its level from its spec. `scoredWithinSlaCount` and `voidWithinSlaCount` split the on-time windows, because a lane that voids everything at once would resolve everything on time. `pendingPastSlaCount` counts open windows already past their service level. `byLane` splits each count into the hard and judged lanes.
+- `voidByReason` counts VOIDs by reason across both lanes. `judgedLane.voidByReason` covers only the judged lane.
+- `byLane.<lane>.latency` gives the median and the 90th percentile (nearest rank) of resolution time minus deadline, in milliseconds. A market that settles before its deadline gives a negative value.
+
+The `uncertainty` block also carries internal intervals that the public contract has no room for. Each one resamples whole forecast families:
+
+- `overallLogScore` and `skillLogScore` give the log score with its interval.
+- `byDomain` and `byGenerationOrigin` give each group's Brier and log score with their intervals, the group's family count and its small-sample flag. Like the public groups, they pool every origin.
+- `vsMarket` compares forecasts with markets on the published-origin cohort. `wmMinusMarketBrier` is the forecast Brier minus the market Brier, negative when the forecast did better. Its paired interval keeps each window's 2 losses together. The public `vsMarketSkill` still pools every origin.
+
+`totals.publicationCoverage` is deprecated. It divides scored windows by every ledger entry, immature ones included, so it measures neither publication nor coverage. The scorecard still emits it, so API and MCP readers do not break. `/accuracy/` computes the same scored share of the ledger from the counts, rounded as the field was, and prints it with a 95% Wilson interval. The actual rates in its verdict, how often the headline and all graded forecasts came true, carry one too. Each interval needs only the 2 counts printed beside it, so none costs the public contract a byte.
+
+The run-diff tool (`scripts/diff-forecast-runs.mjs`) reports structural differences between 2 forecast runs. Its `candidateBrierDelta` is always `unavailable` with reason `emission_snapshot_required`. A candidate's Brier can be compared with a baseline's only when both runs forecast from one frozen emission snapshot and are scored on the same `<id>@<deadline>` windows. No run archives the inputs it forecast from yet (issue #7073).
 
 ### Late reads and missing feeds
 
