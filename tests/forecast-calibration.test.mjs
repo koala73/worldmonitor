@@ -868,11 +868,12 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     const map = fitCalibrationMap(ledgerOf(base), fitAt);
     const reemitted = base.map((row, i) => ({ ...entry({ outcome: row.outcome, probability: 0.35, generatedAt: fitAt + DAY_MS + i }), id: row.id }));
     const run = resolveCalibrationMapForRun(map, ledgerOf([...base, ...reemitted]), fitAt + 20 * DAY_MS);
-    assert.equal(run.action, 'kept', 'thirty new windows of the thirty fitted families add no family');
+    assert.deepEqual({ action: run.action, held: run.held }, { action: 'kept', held: undefined }, 'thirty new windows of the thirty fitted families add no family');
     const fresh = repeat(30, (i) => entry({ outcome: i < 12 ? 'YES' : 'NO', probability: 0.35, generatedAt: fitAt + DAY_MS + i }));
     const pruned = resolveCalibrationMapForRun(map, ledgerOf([...base.slice(1), reemitted[0], ...fresh.slice(1)]), fitAt + 20 * DAY_MS);
-    assert.equal(pruned.action, 'kept', '29 new families: a pruned input still names its family through its key');
-    assert.equal(resolveCalibrationMapForRun(map, ledgerOf([...base, ...fresh]), fitAt + 20 * DAY_MS).reason, 'family_growth');
+    assert.deepEqual({ action: pruned.action, held: pruned.held }, { action: 'kept', held: undefined }, '29 new families: a pruned input still names its family through its key');
+    const grown = resolveCalibrationMapForRun(map, ledgerOf([...base, ...fresh]), fitAt + 20 * DAY_MS);
+    assert.deepEqual({ action: grown.action, held: grown.held?.reason }, { action: 'kept', held: 'family_growth' }, '30 new families trigger growth, held until the gate has its sample');
   });
 
   it('refits a map whose inputs all aged out when new families plateau below its own count', () => {
@@ -944,6 +945,79 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     assert.ok(gate.reasons.every((reason) => reason.startsWith('insufficient_forward_')), gate.reasons.join(','));
     const run = resolveCalibrationMapForRun(map, ledger, now);
     assert.deepEqual({ action: run.action, reason: run.reason, domain: run.domain }, { action: 'fitted', reason: 'fit_aged_out', domain: 'cyber' });
+  });
+
+  // Review round 4: on a partial forward sample the bootstrap interval is wide,
+  // so "not yet shown non-inferior" must not release a held growth refit.
+  // Each trial fits on 40 one-row families from a forecaster biased high by
+  // 0.2, then adds one forward family a day.
+  const noisyTrial = (truth, trialSeed) => {
+    const random = mulberry32(trialSeed);
+    const fitAt = T0 + 30 * DAY_MS;
+    let base;
+    let map;
+    do {
+      base = repeat(40, () => {
+        const p = 0.1 + 0.8 * random();
+        return entry({ probability: p, outcome: random() < Math.max(0.01, p - 0.2) ? 'YES' : 'NO' });
+      });
+      map = fitCalibrationMap(ledgerOf(base), fitAt);
+    } while (map.domains.cyber.mode !== 'isotonic');
+    const forward = [];
+    const inferiorAt = [];
+    for (let i = 0; i < 70; i += 1) {
+      const p = 0.1 + 0.8 * random();
+      forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
+      const now = fitAt + 10 * DAY_MS + i * DAY_MS;
+      const ledger = ledgerOf([...base, ...forward]);
+      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now);
+      const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
+        .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
+      if (inferior) inferiorAt.push(forward.length);
+      const run = resolveCalibrationMapForRun(map, ledger, now);
+      if (run.action === 'fitted') return { refitAt: forward.length, reason: run.reason, inferiorAt, fitted: map.domains.cyber.families };
+    }
+    return { refitAt: null, inferiorAt, fitted: map.domains.cyber.families };
+  };
+
+  it('R4: a map that helps reaches its gate verdict despite a noisy partial sample (seeded)', () => {
+    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t));
+    const premature = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60);
+    assert.ok(premature.length <= 2, `${premature.length} of 20 refit before 60 forward outcomes`);
+    for (const trial of premature) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'only demonstrated inferiority releases the hold');
+  });
+
+  it('R4: an inverted map is released as soon as its inferiority is demonstrated, and not before (seeded)', () => {
+    const trials = repeat(20, (t) => noisyTrial((p) => 1 - p, 9130 + t));
+    // Growth exists once the new families match the fitted ones. The interval
+    // moves as rows arrive, so the release is the first such row on which
+    // inferiority holds.
+    for (const trial of trials) {
+      const release = trial.inferiorAt.find((row) => row >= trial.fitted) ?? null;
+      if (release !== null && release < 60) assert.equal(trial.refitAt, release, 'demonstrated inferiority releases the held growth refit at once');
+      if (trial.refitAt !== null && trial.refitAt < 60) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'a refit before the sample minimum needs demonstrated inferiority');
+    }
+    const released = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60).length;
+    assert.ok(released >= 10, `${released} of 20 released before 60 forward outcomes`);
+  });
+
+  it('R4: once the gate has its sample and fails, growth refits though inferiority is not demonstrated', () => {
+    const fitAt = T0 + 30 * DAY_MS;
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    // Against the map's 0.4, these four rows move Brier by +0.11, +0.07, -0.13 and -0.09.
+    const pattern = [[0.5, 'YES'], [0.3, 'NO'], [0.3, 'YES'], [0.5, 'NO']];
+    const forward = repeat(60, (i) => ({
+      ...entry({ probability: pattern[i % 4][0], outcome: pattern[i % 4][1], generatedAt: fitAt + DAY_MS + i }),
+      id: `mixed-${i % 30}`,
+    }));
+    const now = fitAt + 40 * DAY_MS;
+    const ledger = ledgerOf([...base, ...forward]);
+    const shadow = evaluateCalibrationShadow(ledger, map, now);
+    assert.deepEqual(shadow.activationGate.reasons, ['overall_not_non_inferior', 'domain_not_non_inferior:cyber']);
+    assert.ok(shadow.forward.brierDelta.ci95[0] <= shadow.activationGate.thresholds.nonInferiorityMargin, 'raw is not shown better');
+    const run = resolveCalibrationMapForRun(map, ledger, now);
+    assert.deepEqual({ action: run.action, reason: run.reason }, { action: 'fitted', reason: 'family_growth' });
   });
 
   it('C1: does not refit for growth of a retained domain that a refit would only carry unchanged', () => {

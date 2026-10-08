@@ -441,13 +441,27 @@ function refitTrigger(map, ledger, nowMs, options) {
 // sample again, and a domain whose families emit one or two windows each
 // would never reach a verdict.
 const WAITS_FOR_GATE_SAMPLE = new Set(['family_growth', 'domain_became_eligible']);
+// Below the sample minimums the bootstrap interval is wide, so "not yet shown
+// non-inferior" is the usual state of a map that helps, not evidence against it.
+const UNDECIDED_GATE_REASONS = ['insufficient_forward_', 'overall_not_non_inferior', 'domain_not_non_inferior:'];
 
-function holdsRefit(trigger, gate) {
+// Raw is better beyond the gate's margin even at the low end of the interval.
+function inferiorityShown(shadow) {
+  const { activationGate: gate, forward } = shadow;
+  const margin = gate.thresholds.nonInferiorityMargin;
+  const activated = new Set(gate.domains.map((row) => row.domain));
+  const deltas = [forward.brierDelta, ...forward.byDomain.filter((row) => activated.has(row.domain)).map((row) => row.brierDelta)];
+  return deltas.some((delta) => Array.isArray(delta?.ci95) && delta.ci95[0] > margin);
+}
+
+function holdsRefit(trigger, shadow) {
+  const gate = shadow.activationGate;
   if (trigger.reason === 'fit_input_withdrawn') return false;
   if (gate.eligible) return true;
-  return WAITS_FOR_GATE_SAMPLE.has(trigger.reason)
-    && gate.reasons.length > 0
-    && gate.reasons.every((reason) => reason.startsWith('insufficient_forward_'));
+  if (!WAITS_FOR_GATE_SAMPLE.has(trigger.reason)) return false;
+  const awaitingSample = gate.reasons.some((reason) => reason.startsWith('insufficient_forward_'));
+  const undecided = gate.reasons.every((reason) => UNDECIDED_GATE_REASONS.some((prefix) => reason.startsWith(prefix)));
+  return awaitingSample && undecided && !inferiorityShown(shadow);
 }
 
 /**
@@ -458,8 +472,9 @@ function holdsRefit(trigger, gate) {
  * held: a refit would discard the forward evidence and revert a validated
  * publication. The gate reads only the recent window, so the hold ends when
  * recent evidence stops validating the map. Growth and new eligibility are
- * also held while the gate lacks the forward sample to judge the map. The
- * first trigger the gate does not hold refits.
+ * also held while the gate lacks the forward sample to judge the map, unless
+ * that partial sample already shows raw better beyond the margin. The first
+ * trigger the gate does not hold refits.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
@@ -470,8 +485,8 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
   }
   const { triggers, carry } = refitTrigger(parsed, ledger, nowMs, options);
   if (!triggers.length) return { map: parsed, action: 'kept' };
-  const gate = evaluateCalibrationShadow(ledger, parsed, nowMs).activationGate;
-  const trigger = triggers.find((candidate) => !holdsRefit(candidate, gate));
+  const shadow = evaluateCalibrationShadow(ledger, parsed, nowMs);
+  const trigger = triggers.find((candidate) => !holdsRefit(candidate, shadow));
   if (!trigger) return { map: parsed, action: 'kept', held: triggers[0] };
   const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason, carry });
   return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
