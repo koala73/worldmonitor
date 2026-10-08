@@ -2182,6 +2182,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         type: ['object', 'null'],
         properties: {
           source: { type: 'string' },
+          situationCount: { type: 'integer', description: 'Full situation count in summary mode, before the three-situation sample.' },
           unavailable: { type: 'array', items: { type: 'string' }, description: 'Situation IDs that failed during publication. Partial failure, not zero displacement.' },
           situations: {
             type: 'array',
@@ -2208,7 +2209,7 @@ export const CACHE_TOOLS: ToolDef[] = [
                 },
                 trend: { type: 'object', properties: {
                   measure: { type: 'string', enum: ['stock', 'monthly'] },
-                  points: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, number: { type: 'number' } } } },
+                  points: { type: 'array', items: { type: 'array', minItems: 2, maxItems: 2, prefixItems: [{ type: 'string' }, { type: 'number' }], items: false } },
                   latestDelta: { type: ['number', 'null'] }, latestDays: { type: ['number', 'null'] }, accelerating: { type: 'boolean' },
                 } },
               },
@@ -2227,6 +2228,17 @@ export const CACHE_TOOLS: ToolDef[] = [
     _freshnessChecks: [{ key: 'seed-meta:displacement:cross-border', maxStaleMin: 2880, minRecordCount: 12, honorContentAge: true }],
     _apiPaths: [],
     _attribution: 'data.crossBorderArrivals.{attribution: attribution, sources: situations[].{sourceUrl: sourceUrl, asOf: asOf}}',
+    _summarize: (data) => {
+      const value = data.crossBorderArrivals;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return data;
+      const snapshot = value as Record<string, unknown>;
+      if (!Array.isArray(snapshot.situations)) return data;
+      return { ...data, crossBorderArrivals: {
+        ...snapshot,
+        situationCount: snapshot.situations.length,
+        situations: snapshot.situations.slice(0, 3),
+      } };
+    },
     _project: (data) => {
       const snapshot = data.crossBorderArrivals;
       if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;

@@ -2649,7 +2649,7 @@ Public UNHCR Operational Data Portal cross-border situations, arrivals, returns 
 - **Interpretation:** situations overlap; do not add their totals. Stock and monthly-arrival measures are distinct. The website selects the last complete monthly period separately from cumulative totals. This tool returns the source snapshot without deriving a global total.
 - **Attribution:** [ODP dataset terms](https://data.unhcr.org/en/disclaimer/) specify [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) except where otherwise indicated. Keep credit, original situation URLs, license and transformation notice with the values. The existing attribution rider retains that notice and the original situation URLs after projection. No UNHCR endorsement is implied.
 
-Call `get_cross_border_arrivals({})` for the full public snapshot. An optional `jmespath: "data.crossBorderArrivals.situations[].{name:name,asOf:asOf}"` selects situation names and report dates while keeping the attribution rider.
+Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: true` keeps the first three complete situations and adds `situationCount` for the full list. It preserves attribution and failed situation IDs. The ordinary summary envelope appears under `structuredContent.projection`. An optional `jmespath: "data.crossBorderArrivals.situations[].{name:name,asOf:asOf}"` selects situation names and report dates while keeping the attribution rider. Trend points retain their original `[date, number]` pair shape.
 
 ### `get_displacement_data`
 
