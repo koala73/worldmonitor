@@ -852,6 +852,8 @@ test('English panel picker names financial and regional topics in plain language
   await expect(panels).toContainText('Bitcoin fund flows');
   await expect(panels).toContainText('Venture capital insights');
   await expect(panels).not.toContainText(/BTC ETF Tracker|Funding & VC/);
+  await page.getByPlaceholder('Filter panels...').fill('Bitcoin');
+  await expect(panels.getByText('Bitcoin fund flows', { exact: true })).toBeVisible();
   const path = testInfo.outputPath('english-panel-labels.png');
   await page.screenshot({ path });
   await testInfo.attach('English panel names', { path, contentType: 'image/png' });
