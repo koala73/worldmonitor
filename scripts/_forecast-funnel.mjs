@@ -8,7 +8,13 @@
 
 import { SYNTHETIC_GENERATION_ORIGINS, SHADOW_GENERATION_ORIGINS } from './_forecast-scorecard.mjs';
 
-export const DEFAULT_MIN_DISTINCT_DOMAINS = 4;
+// Cyber and prediction-market forecasts are withheld from publication (#8990).
+// Every published political forecast came from prediction markets, so the
+// published set lost 2 domains: in the 200 runs read on 2026-10-08, 61% would
+// publish 3 domains and none fewer. 3 keeps the warning for a real collapse
+// without firing on that expected state. Return it to 4 when both families are
+// published again (WITHHELD_PUBLISH_FAMILIES in seed-forecasts.mjs).
+export const DEFAULT_MIN_DISTINCT_DOMAINS = 3;
 export const DEFAULT_MAX_SYNTHETIC_SHARE = 0.5;
 // Origins that are NOT real user-facing coverage: synthetic count-padding
 // (state_derived) AND unpromoted shadow bets (bet_engine). Kept in lock-step

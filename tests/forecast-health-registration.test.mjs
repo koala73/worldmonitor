@@ -132,21 +132,9 @@ describe('funnel-diversity guardrail health classification', () => {
     });
   }
 
-  it('surfaces a producer error (seed-meta status:error) as SEED_ERROR → warn', () => {
-    const entry = classify({
-      keyStrens: new Map([[DATA_KEY, 120]]),
-      keyMetaValues: new Map([[META_KEY, JSON.stringify({
-        fetchedAt: NOW - 60_000, recordCount: 2, status: 'error', reasons: ['only 2 distinct domain(s) (min 4)'],
-      })]]),
-    });
-    assert.equal(entry.status, 'SEED_ERROR');
-    assert.equal(__testing__.STATUS_COUNTS[entry.status], 'warn');
-  });
-
-  it('reports a run that published a narrow funnel as OK (#8990)', () => {
-    // Withholding cyber and prediction-market forecasts leaves 3 published
-    // domains in most runs. The generator ran, so health stays OK.
-    const assessment = assessFunnelDiversity(['conflict', 'market', 'supply_chain'].map((domain) => ({ domain })));
+  it('reports a run that published a collapsed funnel as OK (#8990)', () => {
+    // The generator ran, so health stays OK; the collapse is output quality.
+    const assessment = assessFunnelDiversity(['market', 'supply_chain'].map((domain) => ({ domain })));
     assert.equal(assessment.collapsed, true);
     const entry = classify({
       keyStrens: new Map([[DATA_KEY, 120]]),

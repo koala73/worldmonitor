@@ -14293,7 +14293,8 @@ function isWeakForecastFallback(pred) {
 // forecasts still feed the run's world state; they never reach the published
 // payload, so the resolution ledger opens no new rows for them. To restore a
 // family, remove it here once it resolves (cyber: lift the hold; prediction
-// market: resolve by slug on prediction:markets-resolution:v1).
+// market: resolve by slug on prediction:markets-resolution:v1). With both back,
+// restore DEFAULT_MIN_DISTINCT_DOMAINS (_forecast-funnel.mjs) to 4.
 const WITHHELD_PUBLISH_FAMILIES = Object.freeze(['cyber', 'prediction_market']);
 
 function getPublishWithholdFamily(pred) {
@@ -15069,7 +15070,9 @@ function selectForecastsForEnrichment(predictions, options = {}) {
   const minReadiness = options.minReadiness ?? ENRICHMENT_MIN_READINESS;
   const maxTotal = maxCombined + maxScenario;
 
+  // Narratives for withheld forecasts are never published (#8990).
   const ranked = predictions
+    .filter(pred => !getWithheldPublishFamily(pred))
     .map((pred, index) => ({
       pred,
       index,

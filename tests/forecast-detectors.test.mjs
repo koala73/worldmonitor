@@ -1676,7 +1676,7 @@ describe('forecast evaluation and ranking', () => {
     conflictC.trend = 'stable';
     buildForecastCase(conflictC);
 
-    const cyberA = makePrediction('cyber', 'China', 'Cyber A', 0.69, 0.58, '7d', [
+    const cyberA = makePrediction('infrastructure', 'China', 'Cyber A', 0.69, 0.58, '7d', [
       { type: 'cyber', value: 'Hostile malware hosting remains elevated', weight: 0.4 },
       { type: 'news_corroboration', value: 'Security firms warn of sustained activity', weight: 0.2 },
     ]);
@@ -1684,7 +1684,7 @@ describe('forecast evaluation and ranking', () => {
     cyberA.trend = 'rising';
     buildForecastCase(cyberA);
 
-    const cyberB = makePrediction('cyber', 'Russia', 'Cyber B', 0.67, 0.56, '7d', [
+    const cyberB = makePrediction('infrastructure', 'Russia', 'Cyber B', 0.67, 0.56, '7d', [
       { type: 'cyber', value: 'C2 server concentration remains high', weight: 0.35 },
       { type: 'news_corroboration', value: 'Government agencies issue new advisories', weight: 0.2 },
     ]);
@@ -1702,7 +1702,7 @@ describe('forecast evaluation and ranking', () => {
 
     const market = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.73, 0.58, '30d', [
       { type: 'chokepoint', value: 'Hormuz transit risk rises', weight: 0.5 },
-      { type: 'prediction_market', value: 'Oil breakout chatter increases', weight: 0.2 },
+      { type: 'market_transmission', value: 'Oil breakout chatter increases', weight: 0.2 },
     ]);
     market.newsContext = ['Analysts warn of renewed stress in the Strait of Hormuz'];
     market.calibration = { marketTitle: 'Will oil close above $90?', marketPrice: 0.65, drift: 0.05, source: 'polymarket' };
@@ -1724,7 +1724,7 @@ describe('forecast evaluation and ranking', () => {
     assert.ok(enriched.some(pred => pred.domain === 'supply_chain'));
     assert.ok(enriched.some(pred => pred.domain === 'market'));
     assert.ok(enriched.filter(pred => pred.domain === 'conflict').length <= 2);
-    assert.ok(enriched.filter(pred => pred.domain === 'cyber').length <= 2);
+    assert.ok(enriched.filter(pred => pred.domain === 'infrastructure').length <= 2);
   });
 });
 
@@ -3268,8 +3268,8 @@ describe('forecast quality gating', () => {
 
   it('reserves scenario enrichment slots for scarce market and military forecasts', () => {
     const predictions = [
-      makePrediction('cyber', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
-      makePrediction('cyber', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
+      makePrediction('infrastructure', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
+      makePrediction('infrastructure', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
       makePrediction('conflict', 'C', 'Conflict C', 0.66, 0.6, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
       makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
       makePrediction('military', 'Korean Peninsula', 'Elevated military air activity', 0.34, 0.5, '7d', [{ type: 'mil_surge', value: 'fighter surge', weight: 0.4 }]),
@@ -3281,6 +3281,19 @@ describe('forecast quality gating', () => {
     assert.ok(selected.scenarioOnly.some(item => item.domain === 'market'));
     assert.ok(selected.scenarioOnly.some(item => item.domain === 'military'));
     assert.deepEqual(selected.telemetry.reservedScenarioDomains.sort(), ['market', 'military']);
+  });
+
+  it('spends no enrichment slot on a forecast withheld from publication (#8990)', () => {
+    const predictions = [
+      makePrediction('cyber', 'A', 'Cyber A', 0.9, 0.8, '7d', [{ type: 'cyber', value: '80 threats', weight: 0.5 }]),
+      makePrediction('political', 'B', 'Will B hold an election?', 0.88, 0.8, '30d', [{ type: 'prediction_market', value: 'Polymarket: 88%', weight: 0.8 }]),
+      makePrediction('conflict', 'C', 'Conflict C', 0.5, 0.5, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
+      makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
+    ];
+    buildForecastCases(predictions);
+    const selected = selectForecastsForEnrichment(predictions, { maxCombined: 2, maxScenario: 2, maxPerDomain: 2, minReadiness: 0 });
+    const enriched = [...selected.combined, ...selected.scenarioOnly].map(pred => pred.title).sort();
+    assert.deepEqual(enriched, ['Conflict C', 'Oil price impact']);
   });
 
   it('filters only the weakest fallback forecasts from publish output', () => {
@@ -3820,7 +3833,7 @@ describe('forecast quality gating', () => {
     assert.deepEqual([...WITHHELD_PUBLISH_FAMILIES].sort(), ['cyber', 'prediction_market']);
     for (const path of ['docs/panels/forecast.mdx', 'docs/zh/panels/forecast.mdx']) {
       const doc = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-      for (const term of ['WITHHELD_PUBLISH_FAMILIES', '`withheld_family`', '`judged_evidence_unreliable`', '`market_price_not_outcome`']) {
+      for (const term of ['WITHHELD_PUBLISH_FAMILIES', 'DEFAULT_MIN_DISTINCT_DOMAINS', '`Political`', '`withheld_family`', '`judged_evidence_unreliable`', '`market_price_not_outcome`']) {
         assert.ok(doc.includes(term), `${path} documents ${term}`);
       }
     }

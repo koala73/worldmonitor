@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { assessFunnelDiversity, buildFunnelHealthMeta } from '../scripts/_forecast-funnel.mjs';
+import { assessFunnelDiversity, buildFunnelHealthMeta, DEFAULT_MIN_DISTINCT_DOMAINS } from '../scripts/_forecast-funnel.mjs';
 
 function pred(domain, generationOrigin = 'legacy_detector') {
   return { domain, generationOrigin };
@@ -33,6 +33,18 @@ describe('assessFunnelDiversity', () => {
     assert.equal(result.syntheticCount, 0);
     assert.equal(result.syntheticShare, 0);
     assert.deepEqual(result.reasons, []);
+  });
+
+  it('accepts the 3 real domains left while cyber and prediction-market forecasts are withheld (#8990)', () => {
+    // On 2026-10-08, 61% of the last 200 runs published exactly these 3 domains
+    // once the withheld families were removed, and none published fewer.
+    const result = assessFunnelDiversity([pred('conflict'), pred('market'), pred('supply_chain')]);
+    assert.equal(DEFAULT_MIN_DISTINCT_DOMAINS, 3);
+    assert.equal(result.collapsed, false);
+    assert.deepEqual(result.reasons, []);
+    const narrower = assessFunnelDiversity([pred('market'), pred('supply_chain')]);
+    assert.equal(narrower.collapsed, true);
+    assert.deepEqual(narrower.reasons, ['only 2 distinct domain(s) (min 3)']);
   });
 
   it('flags a broad funnel that is still majority-synthetic', () => {
@@ -91,16 +103,15 @@ describe('buildFunnelHealthMeta', () => {
   const NOW = 1_700_000_000_000;
 
   // Health degrades only when the generator does not run. A narrow funnel is an
-  // output-quality reading, and withholding the cyber and prediction-market
-  // families (#8990) leaves 3 published domains in most runs.
+  // output-quality reading.
   it('reports a run that published a collapsed funnel as ok, with the collapse as information', () => {
-    const assessment = assessFunnelDiversity([pred('conflict'), pred('market'), pred('supply_chain')]);
+    const assessment = assessFunnelDiversity([pred('market'), pred('supply_chain')]);
     assert.equal(assessment.collapsed, true);
     const meta = buildFunnelHealthMeta(assessment, NOW);
     assert.equal(meta.status, 'ok');
     assert.equal(meta.collapsed, true);
-    assert.deepEqual(meta.reasons, ['only 3 distinct domain(s) (min 4)']);
-    assert.equal(meta.recordCount, 3);
+    assert.deepEqual(meta.reasons, ['only 2 distinct domain(s) (min 3)']);
+    assert.equal(meta.recordCount, 2);
     assert.equal(meta.fetchedAt, NOW);
   });
 
