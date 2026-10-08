@@ -67,10 +67,10 @@ test('acceptance artifacts recompute their gates and preserve cache-generation e
     proposed,
     sanctionsCountryCodes: new Set(['RU']),
     cacheNamespaces: {
-      score: 'resilience:score:v28:',
-      ranking: 'resilience:ranking:v28',
-      history: 'resilience:history:v22:',
-      intervals: 'resilience:intervals:v11:',
+      score: 'resilience:score:v29:',
+      ranking: 'resilience:ranking:v29',
+      history: 'resilience:history:v23:',
+      intervals: 'resilience:intervals:v12:',
     },
   });
 
