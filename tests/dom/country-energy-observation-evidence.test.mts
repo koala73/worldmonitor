@@ -110,19 +110,19 @@ it('preserves all observed oil zeros including crude imports', () => {
   panel.updateEnergyProfile(energyProfile({ jodiOilAvailable: true, jodiOilDataMonth: '2026-06', jodiOilObservedMeasurements: oilPaths }));
   expect(oilCells(body)).toEqual([
     ['Gasoline', '0 kbd', '0 kbd'], ['Diesel', '0 kbd', '0 kbd'],
-    ['Jet fuel', '0 kbd', '0 kbd'], ['LPG', '0 kbd', '0 kbd'], ['Crude', '—', '0 kbd'],
+    ['Jet fuel', '0 kbd', '0 kbd'], ['Liquefied petroleum gas', '0 kbd', '0 kbd'], ['Crude', '—', '0 kbd'],
   ]);
   expect(body.textContent).toContain('2026-06');
 });
 it.each([{ label: 'absent', paths: undefined }, { label: 'empty', paths: [] }])('keeps unknown oil zeros as dashes with $label metadata', ({ paths: jodiOilObservedMeasurements }) => {
   const { panel, body } = fixture();
   panel.updateEnergyProfile(energyProfile({ jodiOilAvailable: true, jodiOilObservedMeasurements }));
-  expect(oilCells(body)).toEqual([['Gasoline', '—', '—'], ['Diesel', '—', '—'], ['Jet fuel', '—', '—'], ['LPG', '—', '—']]);
+  expect(oilCells(body)).toEqual([['Gasoline', '—', '—'], ['Diesel', '—', '—'], ['Jet fuel', '—', '—'], ['Liquefied petroleum gas', '—', '—']]);
 });
 it('marks only the supplied observed zero and preserves positive precision', () => {
   const { panel, body } = fixture();
   panel.updateEnergyProfile(energyProfile({ jodiOilAvailable: true, gasolineDemandKbd: 694.6263, jetImportsKbd: 32.7773, crudeImportsKbd: 579.0363, jodiOilObservedMeasurements: ['lpg.demandKbd'] }));
-  expect(oilCells(body)).toEqual([['Gasoline', '694.6263 kbd', '—'], ['Diesel', '—', '—'], ['Jet fuel', '—', '32.7773 kbd'], ['LPG', '0 kbd', '—'], ['Crude', '—', '579.0363 kbd']]);
+  expect(oilCells(body)).toEqual([['Gasoline', '694.6263 kbd', '—'], ['Diesel', '—', '—'], ['Jet fuel', '—', '32.7773 kbd'], ['Liquefied petroleum gas', '0 kbd', '—'], ['Crude', '—', '579.0363 kbd']]);
 });
 it('does not render unavailable metrics even when periods and observation paths remain supplied', () => {
   const { panel, body } = fixture();
