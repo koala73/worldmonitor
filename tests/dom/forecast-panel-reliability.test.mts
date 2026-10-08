@@ -181,6 +181,19 @@ describe('ForecastPanel reliability badge', () => {
     expect(badge!.dataset.fcReliabilityState).toBe('unmeasured');
   });
 
+  it.each([0, -1, NaN, Infinity])('keeps a domain with count %s unmeasured even when BSS is finite', async (count) => {
+    const [empty, measured] = await badgesFor(
+      [published('conflict', count, 0, 0, 0), published('market', 45, 0.3, 15, -0.35)],
+      ['conflict', 'market'],
+    );
+    expect(empty!.dataset.fcReliabilityState).toBe('unmeasured');
+    expect(empty!.textContent).toBe('Not yet measured');
+    expect(empty!.getAttribute('aria-label')).toContain('0 graded results');
+    expect(`${empty!.textContent} ${empty!.getAttribute('aria-label')}`).not.toMatch(/NaN|Infinity|skill/i);
+    expect(measured!.dataset.fcReliabilityState).toBe('measured');
+    expect(measured!.textContent).toBe('Market n=45 · skill -0.35 vs actual rate');
+  });
+
   it('uses corrected hu, el and de wording', () => {
     const locale = (code: string) => JSON.parse(readFileSync(`src/locales/${code}.json`, 'utf8')).components.forecast.reliability;
     const hu = locale('hu');
