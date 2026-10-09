@@ -1,0 +1,154 @@
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { CountryBriefController } from '@/components/CountryBriefController';
+import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
+import type { CountryBriefSource } from '@/services/country-brief-source';
+import type { PredictionMarket } from '@/services/prediction';
+import * as prediction from '@/services/prediction';
+import * as imfCountryData from '@/services/imf-country-data';
+import { initTestI18n } from './helpers/i18n.mts';
+
+beforeAll(async () => { await initTestI18n(); });
+
+
+const originalClock = Date.parse('2026-10-09T07:41:45.410Z');
+const rpcRows = [
+  { id: 'KXCHINA-27-T4', title: 'China controlled contract A', yesPrice: 0.6849, volume: 500, url: 'https://kalshi.com/markets/kxchina', closesAt: 0, category: 'country:CN', source: 'MARKET_SOURCE_KALSHI' },
+  { id: 'KXCHINA-28-T4', title: 'China controlled contract B', yesPrice: 0.31, volume: 90, url: 'https://kalshi.com/markets/kxchina', closesAt: 0, category: 'country:CN', source: 'MARKET_SOURCE_KALSHI' },
+];
+function fixture() {
+  const body = document.createElement('div');
+  const card = document.createElement('section');
+  card.append(body);
+  const panel = Object.create(CountryDeepDivePanel.prototype) as CountryDeepDivePanel;
+  Reflect.set(panel, 'marketsBody', body);
+  Reflect.set(panel, 'currentCode', 'CN');
+  Reflect.set(panel, 'abortController', new AbortController());
+  Reflect.set(panel, 'sections', [{ id: 'markets', title: 'Prediction markets', body, card }]);
+  const never = () => new Promise(() => {});
+  const list = vi.fn().mockResolvedValue({ markets: rpcRows, fetchedAt: originalClock, dataAvailable: true });
+  const intelligence = { getCountryFacts: never, getCountryEnergyProfile: never, getCountryPortActivity: never };
+  const source = { mode: 'host', canRequestPremium: () => false, fetch: never, market: { getCountryStockIndex: never }, intelligence, prediction: { listPredictionMarkets: list } } as unknown as CountryBriefSource;
+  const controller = new CountryBriefController(source, panel);
+  return { body, panel, controller, list };
+}
+async function load(fixtureState: ReturnType<typeof fixture>) {
+  fixtureState.controller.hydrate('CN', 'China');
+  await Promise.resolve();
+  await Promise.resolve();
+}
+function footer(fixtureState: ReturnType<typeof fixture>) { return fixtureState.body.querySelector('.cdp-section-source')?.textContent; }
+
+describe('original public country market metadata', () => {
+  it('renders original list clock and text-safe separate contract identity without changing prices or links', async () => {
+    const fixtureState = fixture();
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
+    expect(footer(fixtureState)).toContain('This time applies to the list. Quote times are not supplied.');
+    expect([...fixtureState.body.querySelectorAll('.cdp-market-contract')].map(node => node.textContent)).toEqual(['Contract: KXCHINA-27-T4', 'Contract: KXCHINA-28-T4']);
+    expect([...fixtureState.body.querySelectorAll('.cdp-market-prob')].map(node => node.textContent)).toEqual(['Probability: 68%', 'Probability: 31%']);
+    expect([...fixtureState.body.querySelectorAll('a')].map(node => node.getAttribute('href'))).toEqual([rpcRows[0].url, rpcRows[1].url]);
+    const captured = vi.spyOn(fixtureState.panel, 'updateMarkets');
+    await load(fixtureState);
+    expect(captured.mock.calls[0]?.[0][0].yesPrice).toBe(0.6849 * 100);
+    expect(captured.mock.calls[0]?.[1]).toEqual({ fetchedAt: originalClock });
+  });
+
+  it.each([undefined, 0, -1, NaN, Infinity, 8.64e15 + 1, '1791531705410'])('keeps missing or invalid clock %s unknown and clears the previous clock', async clock => {
+    const fixtureState = fixture();
+    await load(fixtureState);
+    fixtureState.list.mockResolvedValue({ markets: rpcRows, fetchedAt: clock, dataAvailable: true });
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
+    expect(fixtureState.body.textContent).not.toContain('2026-10-09T07:41:45.410Z');
+  });
+
+  it('displays a supplied future snapshot literally without freshness or quote-time claims', async () => {
+    const fixtureState = fixture();
+    const future = Date.parse('2099-10-09T07:41:45.410Z');
+    fixtureState.list.mockResolvedValue({ markets: rpcRows, fetchedAt: future, dataAvailable: true });
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2099-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
+    expect(footer(fixtureState)).not.toMatch(/fresh|retrieved|quote observed/i);
+  });
+
+  it('uses DOM text for hostile identifiers and marks missing identifiers unknown', async () => {
+    const fixtureState = fixture();
+    const identity = '<svg/onload=alert(1)>"&';
+    fixtureState.list.mockResolvedValue({ markets: [{ ...rpcRows[0], id: identity }, { ...rpcRows[1], id: '' }], fetchedAt: originalClock, dataAvailable: true });
+    await load(fixtureState);
+    expect(fixtureState.body.querySelector('.cdp-market-contract')?.textContent).toBe(`Contract: ${identity}`);
+    expect(fixtureState.body.querySelector('svg')).toBeNull();
+    expect(fixtureState.body.textContent).toContain('Contract: Unknown');
+  });
+
+  it('retains old metadata on failure and replaces it on subsequent success', async () => {
+    const fixtureState = fixture();
+    await load(fixtureState);
+    fixtureState.list.mockResolvedValue({ markets: [], fetchedAt: originalClock + 1, dataAvailable: false });
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
+    expect(fixtureState.body.querySelectorAll('.cdp-market-item')).toHaveLength(2);
+    expect(fixtureState.body.textContent).toContain('Previously loaded observations remain visible.');
+    await load(fixtureState);
+    expect(fixtureState.body.querySelectorAll('.cdp-refresh-failure')).toHaveLength(1);
+    fixtureState.list.mockResolvedValue({ markets: rpcRows, dataAvailable: true });
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
+    expect(fixtureState.body.querySelector('.cdp-refresh-failure')).toBeNull();
+    expect(fixtureState.body.querySelectorAll('.cdp-section-source')).toHaveLength(1);
+  });
+
+  it('keeps valid empty data empty with its snapshot and unavailable data unavailable', async () => {
+    const fixtureState = fixture();
+    fixtureState.list.mockResolvedValue({ markets: [], fetchedAt: originalClock, dataAvailable: true });
+    await load(fixtureState);
+    expect(fixtureState.body.querySelectorAll('.cdp-market-item')).toHaveLength(0);
+    expect(fixtureState.body.textContent).toContain('No active markets for this country.');
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
+    fixtureState.list.mockResolvedValue({ markets: [], fetchedAt: originalClock, dataAvailable: false });
+    await load(fixtureState);
+    expect(fixtureState.body.textContent).toContain('This section could not be loaded.');
+  });
+
+  it('preserves filtering, original order and the five-row limit', async () => {
+    const fixtureState = fixture();
+    fixtureState.list.mockResolvedValue({ markets: [{ ...rpcRows[0], id: 'expired', closesAt: 1 }, ...Array.from({ length: 7 }, (_, index) => ({ ...rpcRows[0], id: `original-${index}` }))], fetchedAt: originalClock, dataAvailable: true });
+    await load(fixtureState);
+    expect([...fixtureState.body.querySelectorAll('.cdp-market-contract')].map(node => node.textContent)).toEqual(Array.from({ length: 5 }, (_, index) => `Contract: original-${index}`));
+  });
+
+  it.each(['abort', 'country'] as const)('ignores late metadata after %s changes ownership', async change => {
+    const fixtureState = fixture();
+    await load(fixtureState);
+    let resolveLate!: (value: unknown) => void;
+    fixtureState.list.mockImplementation(() => new Promise(resolve => { resolveLate = resolve; }));
+    fixtureState.controller.hydrate('CN', 'China');
+    if (change === 'abort') fixtureState.controller.dispose();
+    else Reflect.set(fixtureState.panel, 'currentCode', 'US');
+    resolveLate({ markets: [], fetchedAt: originalClock + 1, dataAvailable: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
+    expect(fixtureState.body.querySelectorAll('.cdp-market-item')).toHaveLength(2);
+  });
+
+  it('keeps website arrays without a country clock', async () => {
+    const fixtureState = fixture();
+    const legacyRows: PredictionMarket[] = [{ id: 'website-original', title: 'Website fixture', yesPrice: 31, url: rpcRows[0].url, source: 'kalshi' }];
+    vi.spyOn(prediction, 'fetchCountryMarkets').mockResolvedValue(legacyRows);
+    vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
+    const source = Reflect.get(fixtureState.controller, 'source');
+    source.mode = 'website';
+    await load(fixtureState);
+    expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
+    expect(fixtureState.body.textContent).toContain('Contract: website-original');
+    expect(fixtureState.list).not.toHaveBeenCalled();
+  });
+
+  it('leaves array-only renderer callers with unknown snapshot metadata', () => {
+    const fixtureState = fixture();
+    fixtureState.panel.updateMarkets([{ title: 'Legacy row', yesPrice: 31, source: 'kalshi', url: rpcRows[0].url }] as PredictionMarket[]);
+    expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
+    expect(fixtureState.body.textContent).toContain('Contract: Unknown');
+  });
+});

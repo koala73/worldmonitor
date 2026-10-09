@@ -119,6 +119,20 @@ after(() => {
   delete globalThis.__wmCountryMarketsTestState;
 });
 
+describe('original country contract metadata', () => {
+  it('retains distinct original RPC identifiers sharing one display link and exact probability', async () => {
+    const service = await loadPredictionService();
+    const first = { ...protoMarket('China controlled contract', 500), id: 'KXCHINA-27-T4', yesPrice: 0.6849, source: 'MARKET_SOURCE_KALSHI', url: 'https://kalshi.com/markets/kxchina' };
+    const second = { ...first, id: 'KXCHINA-28-T4' };
+    const mapped = [first, second].map(service.protoToMarket);
+    assert.deepEqual(mapped.map((row: { id?: string }) => row.id), [first.id, second.id]);
+    assert.equal(mapped[0].yesPrice, first.yesPrice * 100);
+    assert.equal(mapped[0].url, first.url);
+    const { id: ignoredId, ...withoutId } = first;
+    assert.equal(service.protoToMarket(withoutId).id, undefined);
+  });
+});
+
 describe('fetchCountryMarkets uses the producer country index', () => {
   it('preserves distinct Kalshi contracts sharing a series landing in bootstrap fallback', async () => {
     const first = { ...bootstrapMarket('Will China host the meeting in 2027?', 30000), source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
