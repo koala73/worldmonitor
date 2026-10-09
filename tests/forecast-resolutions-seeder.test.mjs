@@ -26,6 +26,7 @@ import {
   collectJudgedArchiveHorizonAlerts,
   collectUnarchivedReceipts,
   declareRecords,
+  declareScorecardRecords,
   markReceiptsArchived,
   processResolutionCycle,
   processResolutionCycleWithJudges,
@@ -1647,6 +1648,15 @@ describe('appendSample and seed contract', () => {
     assert.equal(DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS, 14);
     assert.equal(DEFAULT_JUDGED_MAX_PENDING_AGE_MS, 14 * DAY_MS);
     assert.equal(declareRecords({ a: {}, b: {} }), 2);
+  });
+
+  it('counts every rolling-window ledger entry for scorecard health, shadow bets included (#8990)', () => {
+    const nowMs = Date.parse('2026-10-09T06:00:00Z');
+    const bet = (id, status) => ({ id, status, generationOrigin: 'bet_engine', probabilitySource: 'ensemble', probability: 0.4, ...(status === 'resolved' && { outcome: 'NO', resolvedAt: nowMs - DAY_MS }) });
+    const scorecard = computeScorecard({ a: bet('a', 'resolved'), b: bet('b', 'pending') }, nowMs);
+    assert.equal(scorecard.totals.entries, 0, 'no published forecast');
+    assert.equal(declareScorecardRecords(scorecard), 2, 'a ledger of shadow bets is still a live ledger');
+    assert.equal(declareScorecardRecords({ totals: { entries: 5 } }), 5, 'a scorecard from before the field still counts');
   });
 
   it('keeps dry-run on the judged path without live LLM calls', () => {

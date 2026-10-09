@@ -173,6 +173,7 @@ message GetForecastScorecardResponse {
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int32 rolling_window_days = 3;
   string methodology = 4;
+  // Published forecasts only.
   ScorecardTotals totals = 5;
   ScorecardSummary overall = 6;
   repeated ScorecardDomainGroup by_domain = 7;

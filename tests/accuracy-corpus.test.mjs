@@ -773,7 +773,7 @@ describe('accuracy page honesty rules', () => {
   it('does not claim every market price was for the forecast\'s own question', () => {
     const market = (html) => { const text = stripTags(html).replaceAll('&#39;', "'"); return text.slice(text.indexOf('Against prediction markets')); };
     const section = market(renderState(LIVE_SECTION).html);
-    assert.match(section, /every scored entry that carried a liquid prediction market's price/);
+    assert.match(section, /every scored forecast of every origin, unpublished shadow bets included, that carried a liquid prediction market's price/);
     assert.match(section, /For a market bet the price is for the bet's own question\. For any other forecast it is the price of a market on the same subject and kind of event that settles after the forecast was issued and no later than one more horizon, at least a week, past its deadline\. That market can ask a narrower or broader question than the forecast\./);
     assert.match(section, /On 78 such resolved entries/);
     assert.doesNotMatch(stripTags(renderState(LIVE_SECTION).html), /own question a liquid|covered the same question|overlapped/);
@@ -885,7 +885,9 @@ describe('accuracy page honesty rules', () => {
       scorecard: {
         ...WITH_INTERVALS.scorecard,
         betEngine: { count: 299 },
-        judgedLane: 'shadow',
+        // "shadow bets" is public vocabulary (#8990), so the planted value is a
+        // token no page copy uses.
+        judgedLane: 'lane-leak-marker',
         marketAlerts: {
           ...MARKET_ALERTS,
           archive: { coveredFromMs: 1 },
@@ -895,8 +897,8 @@ describe('accuracy page honesty rules', () => {
     };
     const { html } = renderState(leaky);
     const download = downloadFor(leaky);
-    assert.doesNotMatch(html, /betEngine|judgedLane|shadow|coveredFromMs/);
-    assert.doesNotMatch(JSON.stringify(download), /betEngine|judgedLane|shadow|coveredFromMs/);
+    assert.doesNotMatch(html, /betEngine|judgedLane|lane-leak-marker|coveredFromMs/);
+    assert.doesNotMatch(JSON.stringify(download), /betEngine|judgedLane|lane-leak-marker|coveredFromMs/);
     assert.deepEqual(
       Object.keys(download.scorecard).sort(),
       [...SCORECARD_DECLARED_FIELDS].sort(),
@@ -1353,7 +1355,7 @@ describe('accuracy page forecast receipts (#5092)', () => {
     // The API defaults the field to [], so an old seed and a window where only
     // excluded origins resolved look the same.
     const text = stripTags(renderState(sectionWith({ receipts: [] })).html);
-    assert.match(text, /This capture carries no receipts: it predates them, or no published forecast resolved in the window\./);
+    assert.match(text, /This capture carries no receipts: it predates them, or no attributable published forecast \(synthetic and unattributed origins left out\) resolved in the window\./);
     assert.doesNotMatch(text, /does not carry per-forecast receipts/);
   });
 
@@ -1397,7 +1399,7 @@ describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
     const sentence = stripTags(html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/)[1]);
     assert.match(sentence, /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\) across 180 scored forecasts/);
     assert.match(tileOf(html, 'Brier score, headline cohort'), /180 scored forecasts, 95% interval 0\.098 to 0\.139/);
-    assert.match(tileOf(html, 'Brier score, every scored entry'), /490 scored forecasts, 95% interval 0\.178 to 0\.207/);
+    assert.match(tileOf(html, 'Brier score, every scored entry'), /490 scored forecasts of every origin, unpublished shadow bets included, 95% interval 0\.178 to 0\.207/);
     assert.match(renderAccuracyLlmsSection(WITH_INTERVALS, LIFTED), /Brier of 0\.118 \(95% interval 0\.098 to 0\.139\)/);
   });
 
@@ -1433,7 +1435,7 @@ describe('accuracy page Brier intervals and maturity funnel (#7072)', () => {
       overall: { ...LIVE_SCORECARD.overall, count: 1 },
       uncertainty: { ...UNCERTAINTY, overallBrier: { count: 1, mean: 0.04, ci95: [0.04, 0.04], insufficientSample: true } },
     });
-    assert.match(tileOf(renderState(single).html, 'Brier score, every scored entry'), /1 scored forecasts, 95% interval not measurable/);
+    assert.match(tileOf(renderState(single).html, 'Brier score, every scored entry'), /1 scored forecasts of every origin, unpublished shadow bets included, 95% interval not measurable/);
   });
 
   it('flags an interval resting on fewer forecasts than the producer trusts', () => {
@@ -1597,7 +1599,7 @@ describe('accuracy verdict block', () => {
   });
 
   it('states the market comparison in words that follow the delta sign', () => {
-    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 graded cases that carried a liquid prediction market's price, the market's odds were closer to what happened than World Monitor's\. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question\./);
+    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 graded cases of every origin, unpublished shadow bets included, that carried a liquid prediction market's price, the market's odds were closer to what happened than World Monitor's\. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question\./);
     const flipped = sectionWith({ vsMarketSkill: { count: 78, forecastBrier: 0.073136, marketBrier: 0.154623, brierDelta: 0.081487 } });
     assert.match(verdictText(renderState(flipped).html), /World Monitor's odds were closer to what happened than the market's/);
     const tied = sectionWith({ vsMarketSkill: { count: 4, forecastBrier: 0.1, marketBrier: 0.1, brierDelta: 0 } });
@@ -1610,7 +1612,7 @@ describe('accuracy verdict block', () => {
     const { overall } = LIVE_SCORECARD;
     assert.equal(pooledYes, 140, 'the fixture buckets recover 140 realised outcomes');
     const text = verdictText(renderState(LIVE_SECTION).html);
-    assert.match(text, new RegExp(`Across all ${overall.count} graded forecasts, ${pooledYes} came true: 28\\.6% of ${overall.count}`));
+    assert.match(text, new RegExp(`Across all ${overall.count} graded forecasts of every origin, unpublished shadow bets included, ${pooledYes} came true: 28\\.6% of ${overall.count}`));
     assert.match(text, /pools kinds of forecast that come true at very different rates, so it is not compared with a single rate/);
     for (const brier of [0.1, 0.192435, 0.3]) {
       assert.doesNotMatch(verdictText(renderState(sectionWith({ overall: { ...overall, brier } })).html), /beat|0\.204/, 'a pooled comparison is a pooling artifact');
@@ -2212,5 +2214,61 @@ describe('accuracy page skill against the actual rate, both audit states (#8990)
     assert.equal(classifyAccuracyState(rowLevel).coverage, 'small-sample', 'a row-level flag predates the family rule');
     assert.equal(classifyAccuracyState(sectionWith({ uncertainty: undefined })).coverage, 'small-sample');
     assert.match(renderState(skillSection({ brier: 0.2 }, { small: true })).html, /data-accuracy-coverage="small-sample">Coverage: Small sample/);
+  });
+});
+
+// Schema 3 scorecards count published forecasts only in the totals and the
+// funnel (#8990). The page is built from a frozen capture, so it names the
+// population that capture carries, not the one the current producer writes.
+describe('ledger population follows the capture (#8990)', () => {
+  const PUBLISHED = sectionWith({ schemaVersion: 3, funnel: FUNNEL });
+  const POOLED = sectionWith({ schemaVersion: 2, funnel: FUNNEL });
+  const captionOf = (html, marker) => stripTags(html.match(new RegExp(`<table ${marker}>[\\s\\S]*?</caption>`))[0]);
+  const verdictOf = (html) => stripTags(html.match(/<section data-accuracy-verdict[\s\S]*?<\/section>/)[0]).replace(/&#39;/g, "'");
+  const tileLabels = (html) => [...html.matchAll(/<div class="metric"><span>([^<]+)<\/span>/g)].map((match) => match[1]);
+
+  it('names published forecasts in the totals, funnel, tile and verdict from schema 3', () => {
+    const { html } = renderState(PUBLISHED);
+    assert.match(captionOf(html, 'data-ledger-totals'), /These totals count published forecasts only\. Shadow bets, scored for evidence but never shown, are left out; they appear under Accuracy by generation origin\./);
+    assert.match(captionOf(html, 'data-maturity-funnel'), /^ ?Of the published forecasts in the ledger that are past their deadline or already resolved/);
+    assert.ok(tileLabels(html).includes('Scored published forecasts'));
+    assert.match(verdictOf(html), /772 published forecasts came due and were resolved\. 490 could be graded/);
+  });
+
+  it('says an older capture pools every origin, shadow bets included', () => {
+    const { html } = renderState(POOLED);
+    assert.match(captionOf(html, 'data-ledger-totals'), /These totals count every origin, unpublished shadow bets included\./);
+    assert.doesNotMatch(captionOf(html, 'data-maturity-funnel'), /published/);
+    assert.ok(tileLabels(html).includes('Scored entries'));
+    assert.match(verdictOf(html), /, 772 forecasts came due and were resolved\./);
+  });
+
+  it('names the pooled population beside the all-graded count and the probability bands', () => {
+    for (const section of [PUBLISHED, POOLED]) {
+      const text = verdictOf(renderState(section).html);
+      assert.match(text, /Across all 490 graded forecasts of every origin, unpublished shadow bets included, /);
+      assert.match(text, /Over all 490 graded forecasts of every origin, unpublished shadow bets included: When World Monitor put the chance/);
+    }
+  });
+
+  it('labels every pooled number outside the verdict with its population', () => {
+    const POOLED_LABEL = 'of every origin, unpublished shadow bets included';
+    const html = renderState(sectionWith({ schemaVersion: 3, funnel: FUNNEL, uncertainty: UNCERTAINTY })).html;
+    const tile = stripTags(html.match(/<div class="metric"><span>Brier score, every scored entry<\/span>[\s\S]*?<\/div>/)[0]);
+    assert.ok(tile.includes(`490 scored forecasts ${POOLED_LABEL}`), tile);
+    assert.ok(captionOf(html, 'data-calibration').includes(`all 490 scored forecasts ${POOLED_LABEL}`));
+    const market = stripTags(html.match(/<h2>Against prediction markets<\/h2>[\s\S]*?<\/p>/)[0]);
+    assert.ok(market.includes(`every scored forecast ${POOLED_LABEL}, that carried`), market);
+  });
+
+  it('names the narrower attributable population where receipts and domains use it', () => {
+    const html = renderState(sectionWith({ schemaVersion: 3, funnel: FUNNEL, receipts: [] })).html;
+    assert.match(stripTags(html), /no attributable published forecast \(synthetic and unattributed origins left out\) resolved in the window/);
+    assert.match(captionOf(html, 'data-by-domain'), /^ ?Accuracy by forecast domain for attributable published forecasts only/);
+  });
+
+  it('records the ledger population in the download', () => {
+    assert.equal(downloadFor(PUBLISHED).ledgerPopulation, 'published-forecasts');
+    assert.equal(downloadFor(POOLED).ledgerPopulation, 'all-entries');
   });
 });
