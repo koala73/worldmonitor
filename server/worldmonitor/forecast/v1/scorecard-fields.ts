@@ -134,6 +134,31 @@ function selectBlock(block: BlockName, value: unknown): unknown {
   return out;
 }
 
+// Point-in-time horizon grades (#9057). The public OpenAPI document has no
+// room for them, so only the MCP tool serves them; /accuracy/ reads them
+// through that tool. Mirrors HORIZON_GRADE_FIELDS and HORIZON_GRADE_ROW_FIELDS
+// in scripts/build-accuracy-page.mjs (a test pins the parity).
+export const HORIZON_GRADE_FIELDS = ['semantics', 'note', 'minimums', 'unversionedScored', 'rows'] as const;
+export const HORIZON_GRADE_ROW_FIELDS = [
+  'curvesVersion', 'horizon', 'scored', 'yes', 'no', 'families', 'yesFamilies', 'noFamilies', 'measurable', 'brier', 'realizedRate',
+] as const;
+// A row below the family minimums is counts only, whatever the stored row carries.
+const HORIZON_GRADE_SCORE_FIELDS = new Set<string>(['brier', 'realizedRate']);
+
+export function selectHorizonGrades(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  const selected = pickNonNull(value, HORIZON_GRADE_FIELDS);
+  selected.rows = Array.isArray(value.rows)
+    ? value.rows.filter(isRecord).map((row) => {
+      const fields = row.measurable === true
+        ? HORIZON_GRADE_ROW_FIELDS
+        : HORIZON_GRADE_ROW_FIELDS.filter((field) => !HORIZON_GRADE_SCORE_FIELDS.has(field));
+      return pickNonNull(row, fields);
+    })
+    : [];
+  return selected;
+}
+
 /** `extended` adds the members the seeder writes beyond the contract; only the MCP tool asks for them. */
 export function selectScorecardFields(data: Record<string, unknown>, { extended = false } = {}): Partial<ScorecardData> {
   const selected: Record<string, unknown> = {};
@@ -147,6 +172,10 @@ export function selectScorecardFields(data: Record<string, unknown>, { extended 
         ? (isRecord(data[field]) ? pickPresent(data[field] as Record<string, unknown>, memberList(objectFields, extended)) : undefined)
         : field in SCORECARD_BLOCK_FIELDS ? selectBlock(field as BlockName, data[field]) : data[field];
     if (value !== undefined) selected[field] = value;
+  }
+  if (extended) {
+    const horizonGrades = selectHorizonGrades(data.horizonGrades);
+    if (horizonGrades) selected.horizonGrades = horizonGrades;
   }
   return selected as Partial<ScorecardData>;
 }

@@ -44,7 +44,7 @@ import {
   parseBriefSections,
 } from './crawlable-developments.mjs';
 import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
-import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
+import { selectDeclaredScorecardFields, selectHorizonGrades } from './build-accuracy-page.mjs';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
@@ -868,6 +868,39 @@ async function captureForecastScorecard({
   }
 }
 
+// The horizon grades (#9057) are not in the REST contract: the public OpenAPI
+// document has no room for them. The MCP get_forecast_scorecard tool serves
+// them from the same stored scorecard, and it needs the service key, so a
+// keyless run records why it has none. The page shows them only when their
+// generatedAt equals the REST capture's, which proves both reads saw one run.
+async function captureHorizonGrades({ base, serviceKey, capturedAt, errors }) {
+  const failed = (failureCode, message) => {
+    errors.push({ id: 'horizonGrades', code: failureCode, message });
+    return { attemptedAt: capturedAt, generatedAt: null, grades: null, failureCode };
+  };
+  if (!serviceKey) return failed('no-service-key', 'the MCP scorecard tool needs WORLDMONITOR_API_KEY');
+  try {
+    const payload = await fetchJson(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': serviceKey },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_forecast_scorecard', arguments: {} } }),
+      apiBase: base,
+    });
+    const content = payload?.result?.isError ? null : payload?.result?.structuredContent;
+    // A cache tool answers { cached_at, stale, data }; an attribution rider
+    // wraps that once more under data.
+    const projected = content?.data?.scorecard !== undefined ? content.data : content?.data?.data;
+    const scorecard = projected?.scorecard;
+    const grades = selectHorizonGrades(scorecard?.horizonGrades);
+    if (!grades) return failed('malformed-response', 'the MCP scorecard result carried no horizonGrades object');
+    const generatedAt = Number(scorecard.generatedAt);
+    if (!Number.isFinite(generatedAt) || generatedAt <= 0) return failed('undated-response', 'the MCP scorecard result carried no usable generatedAt');
+    return { attemptedAt: capturedAt, generatedAt, grades, failureCode: '' };
+  } catch (error) {
+    return failed(scorecardFailureCode(error), error instanceof Error ? error.message : String(error));
+  }
+}
+
 export async function freezeCrawlableLivePulse({
   apiBase = API_BASE,
   rootDir = REPO_ROOT,
@@ -1280,6 +1313,14 @@ export async function freezeCrawlableLivePulse({
     errors: scorecardErrors,
   });
   await sleep(requestGapMs);
+  const horizonGradeErrors = [];
+  forecastScorecard.horizonGrades = await captureHorizonGrades({
+    base,
+    serviceKey: keyed ? serviceKey : '',
+    capturedAt,
+    errors: horizonGradeErrors,
+  });
+  await sleep(requestGapMs);
 
   const geoLeaders = Object.entries(countries)
     .filter(([, row]) => Number.isFinite(row.geoConvergence) && row.geoConvergence > 0)
@@ -1387,6 +1428,7 @@ export async function freezeCrawlableLivePulse({
       forecastScorecardRetained: forecastScorecard.failureCode !== '' && forecastScorecard.scorecard !== null,
       forecastScorecardFailureCode: forecastScorecard.failureCode,
       forecastScorecardScored: forecastScorecard.scorecard?.totals?.scored ?? null,
+      forecastHorizonGradesFailureCode: forecastScorecard.horizonGrades.failureCode,
     },
     errors: {
       countries: countryErrors,
@@ -1396,6 +1438,7 @@ export async function freezeCrawlableLivePulse({
       quotes: quoteErrors,
       developments: developmentsErrors,
       forecastScorecard: scorecardErrors,
+      forecastHorizonGrades: horizonGradeErrors,
     },
   };
 

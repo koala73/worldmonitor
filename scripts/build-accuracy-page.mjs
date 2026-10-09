@@ -12,12 +12,13 @@ import {
   RECEIPT_VOID_REASON_LABELS,
   SKILL_MIN_FAMILIES,
   SKILL_MIN_OUTCOME_FAMILIES,
+  meetsFamilyOutcomeMinimums,
   wilsonInterval,
 } from './_forecast-scorecard.mjs';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const ACCURACY_CONTENT_VERSION = '2026-10-08';
+export const ACCURACY_CONTENT_VERSION = '2026-10-09';
 
 export const ACCURACY_PAGE_PATH = '/accuracy/';
 
@@ -130,9 +131,62 @@ export const SCORECARD_NESTED_ROW_FIELDS = Object.freeze({
   receipts: PUBLIC_RECEIPT_FIELDS,
 });
 
+// Point-in-time horizon grades (#9057). The public OpenAPI document has no
+// room for them, so the REST response does not carry them; the freeze reads
+// them from the MCP get_forecast_scorecard tool, which serves the same stored
+// scorecard. Mirrors HORIZON_GRADE_FIELDS and HORIZON_GRADE_ROW_FIELDS in
+// server/worldmonitor/forecast/v1/scorecard-fields.ts (a test pins the parity).
+export const HORIZON_GRADE_FIELDS = Object.freeze(['semantics', 'note', 'minimums', 'unversionedScored', 'rows']);
+export const HORIZON_GRADE_ROW_FIELDS = Object.freeze([
+  'curvesVersion', 'horizon', 'scored', 'yes', 'no', 'families', 'yesFamilies', 'noFamilies', 'measurable', 'brier', 'realizedRate',
+]);
+const HORIZON_GRADE_SCORE_FIELDS = new Set(['brier', 'realizedRate']);
+const HORIZON_LABELS = Object.freeze({ h24: '24 hours', d7: '7 days', d30: '30 days' });
+
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+
+// The row's measurable flag is re-derived here from its counts with the
+// producer's own predicate, so a row that claims a grade below the family
+// minimums, or whose counts disagree, publishes counts only.
+function selectHorizonGradeRow(row) {
+  if (!isPlainObject(row) || !Object.hasOwn(HORIZON_LABELS, row.horizon) || !Number.isInteger(row.curvesVersion)) return null;
+  const counts = ['scored', 'yes', 'no', 'families', 'yesFamilies', 'noFamilies'];
+  if (!counts.every((field) => isCount(row[field]))) return null;
+  if (row.yes + row.no !== row.scored || row.families > row.scored) return null;
+  const [low, high] = Array.isArray(row.brier?.ci95) && row.brier.ci95.length === 2 ? row.brier.ci95 : [];
+  const mean = row.brier?.mean;
+  const brierValid = isFiniteNumber(mean) && isFiniteNumber(low) && isFiniteNumber(high) && low >= 0 && low <= mean && mean <= high && high <= 1;
+  const measurable = row.measurable === true && brierValid && meetsFamilyOutcomeMinimums(row);
+  const out = pickFields(row, HORIZON_GRADE_ROW_FIELDS.filter((field) => !HORIZON_GRADE_SCORE_FIELDS.has(field)));
+  out.measurable = measurable;
+  if (measurable) {
+    out.brier = { mean, ci95: [low, high] };
+    out.realizedRate = { count: row.scored, successes: row.yes, rate: Number((row.yes / row.scored).toFixed(6)), ci95: wilsonInterval(row.yes, row.scored) };
+  }
+  return out;
+}
+
+/** Whitelist the MCP horizonGrades block (#9057) for the snapshot, the page and the download. */
+export function selectHorizonGrades(value) {
+  if (!isPlainObject(value)) return null;
+  const out = pickFields(value, HORIZON_GRADE_FIELDS.filter((field) => field !== 'rows'));
+  out.rows = Array.isArray(value.rows) ? value.rows.map(selectHorizonGradeRow).filter(Boolean) : [];
+  return out;
+}
+
+// The grades count only beside the scorecard they were stored with: the MCP
+// read and the REST read are separate requests, and a seeder run between them
+// would pair one run's grades with another run's record.
+function horizonGradesState(section, generatedAt) {
+  const captured = isPlainObject(section?.horizonGrades) ? section.horizonGrades : null;
+  const grades = selectHorizonGrades(captured?.grades);
+  if (!grades) return { status: 'not-captured', grades: null };
+  if (generatedAt === null || positiveMs(captured.generatedAt) !== generatedAt) return { status: 'other-run', grades: null };
+  return { status: 'captured', grades };
+}
+
 const ISSUE_URL = 'https://github.com/koala73/worldmonitor/issues';
 const CONFIDENCE_INTERVAL_ISSUE = `${ISSUE_URL}/7072`;
-const HORIZON_SCORING_ISSUE = `${ISSUE_URL}/9057`;
 const DATASET_IDENTIFIER = 'forecast-resolution-scorecard';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -270,6 +324,7 @@ function noRecord(availability, failureCode, attemptedAt) {
     generatedAt: null,
     ageHours: null,
     scorecard: null,
+    horizonGrades: { status: 'not-captured', grades: null },
   };
 }
 
@@ -350,6 +405,7 @@ export function classifyAccuracyState(section) {
     generatedAt,
     ageHours,
     scorecard,
+    horizonGrades: horizonGradesState(section, generatedAt),
   };
 }
 
@@ -631,7 +687,7 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, ${outcome}: a skill score of ${formatSkill(reading.bss)}${skillIntervalPhrase(reading)}, where ${SKILL_SCALE}, over ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}. Their Brier score was ${brierPhrase}, ${against}.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates carry a 95% Wilson interval. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and this page does not score them. World Monitor still grades some of those horizons internally, and removing the projections changed none of the scores here. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates carry a 95% Wilson interval. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and removing them changed none of the scores here. The page grades the projections it made at each horizon, beside the curve version that produced them, and shows a grade only once that horizon has enough forecast families; a projection comes from a fixed, hand-set curve and is not a probability. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
 
 export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUDIT) {
   const state = classifyAccuracyState(section);
@@ -1265,6 +1321,54 @@ ${paragraphs.map((paragraph) => `        <p>${paragraph}</p>`).join('\n')}
       </dl>`;
 }
 
+const HORIZON_GRADE_RULE = `at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} where the projected event happened and ${SKILL_MIN_OUTCOME_FAMILIES} where it did not`;
+
+function horizonSampleText(row) {
+  const families = `${formatCount(row.families)} forecast ${row.families === 1 ? 'family' : 'families'}`;
+  return `${formatCount(row.scored)} graded ${row.scored === 1 ? 'window' : 'windows'} from ${families}: ${formatCount(row.yesFamilies)} with the event, ${formatCount(row.noFamilies)} without`;
+}
+
+function horizonGradeRow(row, escapeHtml) {
+  const head = `          <tr data-horizon-grade="${escapeHtml(row.horizon)}" data-curves-version="${escapeHtml(String(row.curvesVersion))}" data-measurable="${row.measurable}"><th scope="row">${escapeHtml(HORIZON_LABELS[row.horizon])}</th><td>${escapeHtml(`Version ${row.curvesVersion}`)}</td>`;
+  const sample = `<td>${escapeHtml(horizonSampleText(row))}</td></tr>`;
+  if (!row.measurable) {
+    return `${head}<td>${escapeHtml(NOT_YET_MEASURABLE)}</td><td>${escapeHtml(NOT_YET_MEASURABLE)}</td>${sample}`;
+  }
+  const brier = `${formatScore(row.brier.mean)}, 95% interval ${formatScore(row.brier.ci95[0])} to ${formatScore(row.brier.ci95[1])}`;
+  const rate = `${escapeHtml(rateOf(row.realizedRate.rate, row.scored, 'graded windows'))}, 95% interval ${intervalHtml(proportionEstimate(row.yes, row.scored), escapeHtml)}`;
+  return `${head}<td>${escapeHtml(brier)}</td><td>${rate}</td>${sample}`;
+}
+
+// Point-in-time grades of the retired projections (#9057). Each row is one
+// curve version and one horizon, and a grade shows only where that row meets
+// the headline's family minimums; below them it prints its counts.
+function horizonSection(horizonGrades, escapeHtml) {
+  const heading = '      <h2 id="horizon-grades">Grades for the 24-hour, 7-day and 30-day projections</h2>';
+  const intro = `      <p data-horizon-grades-intro>World Monitor stopped publishing these projections on 2026-10-07 and still grades the ones it made. <strong>A projection is not a probability.</strong> It comes from a fixed, hand-set curve for each domain, and each set of curves has a version number, shown beside every grade. A grade scores the projection as if it were a probability at the moment its horizon names, so a poor grade can come from the curves rather than the forecast. These grades are never pooled into the scores above.</p>`;
+  if (horizonGrades.status !== 'captured') {
+    const reason = horizonGrades.status === 'other-run'
+      ? 'This edition read the projection grades from a different scoring run than the record above, so none are shown.'
+      : 'This edition did not capture the projection grades, so none are shown.';
+    return `${heading}\n${intro}\n      <p data-horizon-grades-status="${escapeHtml(horizonGrades.status)}">${escapeHtml(reason)} The next weekly refresh reads them again.</p>`;
+  }
+  const { rows, unversionedScored } = horizonGrades.grades;
+  const unversioned = isCount(unversionedScored) && unversionedScored > 0
+    ? `\n      <p data-horizon-unversioned>${escapeHtml(`${formatCount(unversionedScored)} graded ${unversionedScored === 1 ? 'window was' : 'windows were'} registered before projections carried a curve version, so ${unversionedScored === 1 ? 'it is' : 'they are'} counted here and never graded.`)}</p>`
+    : '';
+  if (rows.length === 0) {
+    return `${heading}\n${intro}\n      <p data-horizon-grades-status="empty">${escapeHtml('No projection with a curve version has a scoring window yet.')}</p>${unversioned}`;
+  }
+  return `${heading}
+${intro}
+      <div class="table-scroll"><table data-horizon-grades>
+        <caption>${escapeHtml(`Point-in-time grades by curve version and horizon. A grade is shown once its graded windows come from ${HORIZON_GRADE_RULE}, and reads ${NOT_YET_MEASURABLE} below that. The Brier interval resamples whole forecast families. The share where the event happened has a Wilson interval that treats each window as independent, so read it beside the family count.`)}</caption>
+        <thead><tr><th scope="col">Horizon</th><th scope="col">Curve version</th><th scope="col">Brier</th><th scope="col">Event happened</th><th scope="col">Sample</th></tr></thead>
+        <tbody>
+${rows.map((row) => horizonGradeRow(row, escapeHtml)).join('\n')}
+        </tbody>
+      </table></div>${unversioned}`;
+}
+
 function limitsSection(omittedBuckets, escapeHtml) {
   const bucketSentence = omittedBuckets.length > 0
     ? `Calibration buckets that scored nothing are omitted from the table rather than drawn as a zero: ${omittedBuckets.join(', ')} are empty in this window.`
@@ -1273,7 +1377,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
         <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates in the summary do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
-        <li>No 24-hour, 7-day or 30-day projections, and no accuracy for them. World Monitor no longer publishes those projections, as of 2026-10-07. It still grades some of those horizons internally, and removing the projections changed none of the scores on this page. Those horizon grades are not published yet. Tracking: <a href="${escapeHtml(HORIZON_SCORING_ISSUE)}">issue #9057</a>.</li>
+        <li>No 24-hour, 7-day or 30-day projection values. World Monitor no longer publishes those projections, as of 2026-10-07, and removing them changed none of the scores on this page. Their grades are in the <a href="#horizon-grades">projection grades</a> section, each one only once its sample is large enough.</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
 }
@@ -1379,6 +1483,7 @@ ${domainSection(scorecard, escapeHtml)}
 ${originTable(scorecard.byGenerationOrigin, scorecard.skill, unknownOriginStatus(scorecard), intervals, escapeHtml)}
 ${marketSection(scorecard.vsMarketSkill, escapeHtml)}
 ${marketAlertsSection(scorecard.marketAlerts, escapeHtml)}
+${horizonSection(state.horizonGrades, escapeHtml)}
 ${limitsSection(omittedBuckets, escapeHtml)}
 ${relatedSection(baseUrl, tpl)}
 ${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
@@ -1513,6 +1618,20 @@ function withPublishedMarketAlertMedians(scorecard) {
   };
 }
 
+function horizonProjectionsDownload(horizonGrades) {
+  const grades = horizonGrades.grades;
+  return {
+    valuesPublished: false,
+    gradesStatus: horizonGrades.status,
+    gradesPublished: Boolean(grades?.rows.some((row) => row.measurable)),
+    definition: 'A projection is not a probability: it comes from a fixed, hand-set curve per domain, identified by curvesVersion. Each row grades one curve version at one horizon, scoring the projection value as a probability at that point in time. brier and realizedRate appear only when measurable is true, which needs the minimums below; other rows carry counts only.',
+    minimums: { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES },
+    source: 'MCP get_forecast_scorecard (horizonGrades), read from the same stored scorecard as the record above. The REST scorecard does not carry it.',
+    unversionedScored: isCount(grades?.unversionedScored) ? grades.unversionedScored : null,
+    rows: grades ? grades.rows : null,
+  };
+}
+
 export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_ACCURACY_AUDIT }) {
   const skill = isPlainObject(state.scorecard?.skill) ? state.scorecard.skill : null;
   const payload = {
@@ -1567,9 +1686,9 @@ export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_
     },
     intervals: proportionIntervals(state.scorecard),
     skillVsActualRate: skillDownload(state.scorecard),
-    // Point-in-time horizons are graded internally (#8939); neither the
-    // projection values (#8967) nor those grades are published here.
-    horizonProjections: { valuesPublished: false, gradesPublished: false, trackedIn: HORIZON_SCORING_ISSUE },
+    // The projection values are retired (#8967); their point-in-time grades
+    // are published per curve version and horizon once measurable (#9057).
+    horizonProjections: horizonProjectionsDownload(state.horizonGrades),
     scorecard: withPublishedMarketAlertMedians(state.scorecard),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;

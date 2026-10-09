@@ -32,6 +32,14 @@ const DECLARED = {
   },
   receipts: [{ question: 'Will Brent reach 104.89 USD/bbl?', forecastAt: 1, probability: 0.35, outcome: 'NO', resolvedAt: 2, sourceFeed: 'commodity-prices', observedValue: 100.75 }],
   familyOutcomes: [{ forecastId: 'fc-conflict-1', outcome: 'YES' }, { forecastId: 'fc-conflict-1', outcome: 'VOID', voidReason: 'judge_disagreement' }],
+  // MCP-only (#9057): the public OpenAPI document has no room for it.
+  horizonGrades: {
+    semantics: 'point_in_time',
+    note: 'A projection is not a probability.',
+    minimums: { families: 30, yesFamilies: 5, noFamilies: 5 },
+    unversionedScored: 0,
+    rows: [{ curvesVersion: 1, horizon: 'd7', scored: 1, yes: 1, no: 0, families: 1, yesFamilies: 1, noFamilies: 0, measurable: false }],
+  },
 };
 
 const MARKET_ALERTS_STORED = {
@@ -165,6 +173,15 @@ describe('get_forecast_scorecard MCP projection (#8892)', () => {
     const serialized = JSON.stringify(result);
     assert.equal(serialized.includes('archive'), false);
     assert.equal(serialized.includes('coveredFromMs'), false);
+  });
+
+  it('serves a horizon row below the family minimums as counts only (#9057)', async () => {
+    const stored = { ...DECLARED, horizonGrades: { ...DECLARED.horizonGrades, rows: [{ ...DECLARED.horizonGrades.rows[0], brier: { mean: 0.1, ci95: [0, 0.2] }, realizedRate: { count: 1 }, registered: 9 }] } };
+    const result = await runTool({
+      'forecast:scorecard:v1': { _seed: { fetchedAt: Date.now() }, data: stored },
+      'seed-meta:forecast:scorecard': { fetchedAt: Date.now() },
+    });
+    assert.deepEqual(result.data.scorecard.horizonGrades, DECLARED.horizonGrades);
   });
 
   it('withholds a median lead time built on fewer than 30 hits (#8985)', () => {

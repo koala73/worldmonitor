@@ -166,6 +166,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     corpus: summarizeCorpus(entries, nowMs, options),
     projections: summarizeProjectionHorizons(horizonEntries, nowMs),
   };
+  scorecard.horizonGrades = summarizeHorizonGrades(scorecard.projections);
 
   const overall = summarizeScored(scored);
   if (overall) scorecard.overall = overall;
@@ -986,10 +987,23 @@ function marketDeltaInterval(scored) {
   };
 }
 
+function familyOutcomeCounts(families) {
+  return {
+    families: families.length,
+    yesFamilies: families.filter((family) => family.yes > 0).length,
+    noFamilies: families.filter((family) => family.yes < family.rows).length,
+  };
+}
+
+/** The measurable rule (#8990, #9032), on counts: every published verdict and horizon grade (#9057) reads it. */
+export function meetsFamilyOutcomeMinimums({ families, yesFamilies, noFamilies }) {
+  return families >= SKILL_MIN_FAMILIES
+    && yesFamilies >= SKILL_MIN_OUTCOME_FAMILIES
+    && noFamilies >= SKILL_MIN_OUTCOME_FAMILIES;
+}
+
 function meetsFamilyMinimums(families) {
-  return families.length >= SKILL_MIN_FAMILIES
-    && families.filter((family) => family.yes > 0).length >= SKILL_MIN_OUTCOME_FAMILIES
-    && families.filter((family) => family.yes < family.rows).length >= SKILL_MIN_OUTCOME_FAMILIES;
+  return meetsFamilyOutcomeMinimums(familyOutcomeCounts(families));
 }
 
 // A family is one forecast id (#8990): its windows ask the same question of
@@ -1202,6 +1216,42 @@ function summarizeProjectionHorizons(entries, nowMs) {
   };
 }
 
+export const HORIZON_GRADE_NOTE = 'A projection is not a probability: it comes from a fixed, hand-set curve per domain, identified by curvesVersion. Each grade scores the projection value as if it were a probability, at the point in time the horizon names. A grade is published only for a curve version and horizon whose scored windows come from enough forecast families; below that the row carries counts only.';
+
+// The public horizon grades (#9057): one row per stamped curve version and
+// horizon, cut from the byCurvesVersion slices so a grade never pools two
+// curve sets. Brier and realized rate appear only when the row meets the
+// headline's family minimums; below them the row carries its counts and
+// measurable: false. Windows with no version stamp cannot name the curves
+// they came from, so they are counted and never graded.
+function summarizeHorizonGrades(projections) {
+  const stamped = projections.byCurvesVersion.filter((slice) => slice.curvesVersion !== null);
+  const unversioned = projections.byCurvesVersion.find((slice) => slice.curvesVersion === null);
+  return {
+    semantics: projections.semantics,
+    note: HORIZON_GRADE_NOTE,
+    minimums: { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES },
+    unversionedScored: unversioned ? unversioned.byHorizon.reduce((sum, row) => sum + row.scored, 0) : 0,
+    rows: stamped.flatMap(({ curvesVersion, byHorizon }) => byHorizon.map((row) => {
+      const counts = { families: row.families, yesFamilies: row.yesFamilies, noFamilies: row.noFamilies };
+      const measurable = meetsFamilyOutcomeMinimums(counts) && row.brier !== null;
+      return {
+        curvesVersion,
+        horizon: row.horizon,
+        scored: row.scored,
+        yes: row.yes,
+        no: row.no,
+        ...counts,
+        measurable,
+        ...(measurable && {
+          brier: { mean: row.brier.mean, ci95: row.brier.ci95 },
+          realizedRate: row.realizedRate,
+        }),
+      };
+    })),
+  };
+}
+
 function projectionCurvesVersionOf(entry) {
   return Number.isInteger(entry?.projectionCurvesVersion) ? entry.projectionCurvesVersion : null;
 }
@@ -1228,6 +1278,7 @@ function summarizeHorizonRows(entries, nowMs, scope) {
     const resolved = group.filter((entry) => entry?.status === 'resolved');
     const scored = resolved.filter(isScoredEntry);
     const families = familyTotals(scored);
+    const { yesFamilies, noFamilies } = familyOutcomeCounts(families);
     const yes = scored.filter((entry) => entry.outcome === 'YES').length;
     const maturedPending = group.filter((entry) => {
       if (entry?.status === 'resolved') return false;
@@ -1241,6 +1292,8 @@ function summarizeHorizonRows(entries, nowMs, scope) {
       resolved: resolved.length,
       scored: scored.length,
       families: families.length,
+      yesFamilies,
+      noFamilies,
       yes,
       no: scored.filter((entry) => entry.outcome === 'NO').length,
       unobserved: resolved.filter((entry) => entry?.outcome === 'UNOBSERVED').length,

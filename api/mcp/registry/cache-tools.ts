@@ -602,7 +602,7 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
   };
 }
 
-const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, and familyOutcomes, the recent outcomes of each live forecast id. From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
+const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
 
 /** While the audit switch is set (#8990) the first sentence, the one tools/list keeps, is the notice. */
 export function forecastScorecardDescription(audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
@@ -3515,6 +3515,10 @@ export const CACHE_TOOLS: ToolDef[] = [
           funnel: { type: ['object', 'null'] },
           receipts: { type: 'array', items: { type: 'object' } },
           familyOutcomes: { type: 'array', items: { type: 'object' } },
+          horizonGrades: {
+            type: ['object', 'null'],
+            description: 'Point-in-time grades of the 24h/7d/30d projections, one row per curvesVersion and horizon. Projections are not probabilities: they come from fixed hand-set curves. A row carries brier and realizedRate only when measurable (minimums: forecast families with YES and NO outcomes); otherwise counts only.',
+          },
         },
       },
       marketAlerts: {

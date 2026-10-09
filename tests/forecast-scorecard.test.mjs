@@ -839,9 +839,9 @@ describe('projection horizon lane (#7075)', () => {
     assert.equal(scorecard.projections.semantics, 'point_in_time');
     assert.equal(scorecard.projections.minSample, SKILL_MIN_FAMILIES);
     assert.deepEqual(scorecard.projections.byHorizon, [
-      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, families: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
-      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, families: 1, yes: 1, no: 1, unobserved: 1, void: 1, realizedRate: { count: 2, successes: 1, rate: 0.5, ci95: wilsonInterval(1, 2) }, brier: null, insufficientSample: true },
-      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, families: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
+      { horizon: 'h24', registered: 1, matured: 0, resolved: 0, scored: 0, families: 0, yesFamilies: 0, noFamilies: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
+      { horizon: 'd7', registered: 4, matured: 4, resolved: 4, scored: 2, families: 1, yesFamilies: 1, noFamilies: 1, yes: 1, no: 1, unobserved: 1, void: 1, realizedRate: { count: 2, successes: 1, rate: 0.5, ci95: wilsonInterval(1, 2) }, brier: null, insufficientSample: true },
+      { horizon: 'd30', registered: 1, matured: 1, resolved: 0, scored: 0, families: 0, yesFamilies: 0, noFamilies: 0, yes: 0, no: 0, unobserved: 0, void: 0, realizedRate: null, brier: null, insufficientSample: true },
     ]);
   });
 
@@ -924,7 +924,7 @@ describe('projection horizon lane (#7075)', () => {
       }),
     };
     assert.equal(buildPublicReceipts({ h: { ...withHorizon.h, spec: { ...withHorizon.h.spec, horizon: undefined } } }, NOW).length, 1, 'the fixture is receipt-shaped');
-    const strip = ({ generatedAt: _g, projections: _p, ...rest }) => rest;
+    const strip = ({ generatedAt: _g, projections: _p, horizonGrades: _hg, ...rest }) => rest;
     assert.deepEqual(strip(computeScorecard(withHorizon, NOW)), strip(computeScorecard(forecasts, NOW)));
     assert.deepEqual(buildPublicReceipts(withHorizon, NOW), buildPublicReceipts(forecasts, NOW));
     assert.deepEqual(buildFamilyOutcomes(withHorizon, NOW), buildFamilyOutcomes(forecasts, NOW));
@@ -971,6 +971,91 @@ describe('projection horizon lane (#7075)', () => {
     assert.equal(d7.scored, 2 * SKILL_MIN_FAMILIES);
     assert.equal(d7.brier, null);
     assert.equal(d7.insufficientSample, true);
+  });
+
+  describe('public horizon grades (#9057)', () => {
+    // One d7 window per family on curve version 1: the first `yes` families
+    // came true, the rest did not.
+    const gradeLedger = (families, yes, overrides = {}) => Object.fromEntries(Array.from({ length: families }, (_, i) => [
+      `g${i}`,
+      horizonRow('d7', { id: `fc-g${i}`, key: `fc-g${i}@1@d7`, projectionCurvesVersion: 1, probability: 0.3, outcome: i < yes ? 'YES' : 'NO', ...overrides }),
+    ]));
+    const gradeRow = (ledger, horizon = 'd7', version = 1) => computeScorecard(ledger, NOW).horizonGrades.rows
+      .find((row) => row.horizon === horizon && row.curvesVersion === version);
+
+    it('grades a horizon exactly at the headline family minimums, with the curve version beside it', () => {
+      const row = gradeRow(gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES));
+      assert.equal(row.measurable, true);
+      assert.equal(row.curvesVersion, 1);
+      assert.deepEqual(
+        [row.scored, row.families, row.yesFamilies, row.noFamilies, row.yes, row.no],
+        [SKILL_MIN_FAMILIES, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, SKILL_MIN_FAMILIES - SKILL_MIN_OUTCOME_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, SKILL_MIN_FAMILIES - SKILL_MIN_OUTCOME_FAMILIES],
+      );
+      const pooled = computeScorecard(gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES), NOW).projections.byCurvesVersion[0].byHorizon[1];
+      assert.deepEqual(row.brier, { mean: pooled.brier.mean, ci95: pooled.brier.ci95 });
+      assert.ok(row.brier.ci95[0] <= row.brier.mean && row.brier.mean <= row.brier.ci95[1]);
+      assert.deepEqual(row.realizedRate, { count: SKILL_MIN_FAMILIES, successes: SKILL_MIN_OUTCOME_FAMILIES, rate: pooled.realizedRate.rate, ci95: wilsonInterval(SKILL_MIN_OUTCOME_FAMILIES, SKILL_MIN_FAMILIES) });
+    });
+
+    it('withholds the grade one family short of each minimum and keeps the counts', () => {
+      const cases = {
+        'too few families': gradeLedger(SKILL_MIN_FAMILIES - 1, SKILL_MIN_OUTCOME_FAMILIES),
+        'too few YES families': gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES - 1),
+        'too few NO families': gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_FAMILIES - SKILL_MIN_OUTCOME_FAMILIES + 1),
+      };
+      for (const [label, ledger] of Object.entries(cases)) {
+        const row = gradeRow(ledger);
+        assert.equal(row.measurable, false, label);
+        assert.equal('brier' in row, false, `${label}: no Brier below the minimum`);
+        assert.equal('realizedRate' in row, false, `${label}: no rate below the minimum`);
+        assert.ok(row.scored > 0 && row.families > 0, `${label}: counts stay`);
+      }
+    });
+
+    it('counts repeated windows of one forecast once, so they cannot unlock a grade', () => {
+      const ledger = Object.fromEntries(Array.from({ length: 3 * SKILL_MIN_FAMILIES }, (_, i) => [
+        `r${i}`,
+        horizonRow('d7', { id: `fc-r${i % 10}`, key: `fc-r${i % 10}@${i}@d7`, projectionCurvesVersion: 1, outcome: i % 2 ? 'YES' : 'NO' }),
+      ]));
+      const row = gradeRow(ledger);
+      assert.equal(row.scored, 3 * SKILL_MIN_FAMILIES);
+      assert.equal(row.families, 10);
+      assert.equal(row.measurable, false);
+    });
+
+    it('grades each curve version apart and never grades unstamped windows', () => {
+      const ledger = {
+        ...gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES),
+        ...Object.fromEntries(Object.entries(gradeLedger(SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, { projectionCurvesVersion: undefined }))
+          .map(([key, row], i) => [`u${key}`, { ...row, id: `fc-u${i}`, key: `fc-u${i}@1@d7` }])),
+        v2: horizonRow('d7', { id: 'fc-v2', key: 'fc-v2@1@d7', projectionCurvesVersion: 2, outcome: 'YES' }),
+      };
+      const { horizonGrades } = computeScorecard(ledger, NOW);
+      assert.deepEqual([...new Set(horizonGrades.rows.map((row) => row.curvesVersion))], [1, 2]);
+      assert.equal(horizonGrades.unversionedScored, SKILL_MIN_FAMILIES);
+      assert.equal(gradeRow(ledger, 'd7', 1).families, SKILL_MIN_FAMILIES, 'unstamped families never join version 1');
+      assert.equal(gradeRow(ledger, 'd7', 1).measurable, true);
+      assert.equal(gradeRow(ledger, 'd7', 2).measurable, false);
+      assert.deepEqual(horizonGrades.rows.filter((row) => row.curvesVersion === 2).map((row) => row.horizon), Object.keys(PROJECTION_HORIZONS));
+    });
+
+    it('labels projections as not probabilities and states the minimums', () => {
+      const { horizonGrades } = computeScorecard({}, NOW);
+      assert.equal(horizonGrades.semantics, 'point_in_time');
+      assert.match(horizonGrades.note, /not a probability/);
+      assert.match(horizonGrades.note, /hand-set curve/);
+      assert.deepEqual(horizonGrades.minimums, { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES });
+      assert.deepEqual(horizonGrades.rows, []);
+      assert.equal(horizonGrades.unversionedScored, 0);
+    });
+
+    it('documents the same minimums in both forecast panel docs', () => {
+      const en = readFileSync(new URL('../docs/panels/forecast.mdx', import.meta.url), 'utf8');
+      const zh = readFileSync(new URL('../docs/zh/panels/forecast.mdx', import.meta.url), 'utf8');
+      assert.ok(en.includes(`at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} YES families and ${SKILL_MIN_OUTCOME_FAMILIES} NO families`));
+      assert.ok(zh.includes(`至少 ${SKILL_MIN_FAMILIES} 个预测族，其中至少 ${SKILL_MIN_OUTCOME_FAMILIES} 个为 YES、至少 ${SKILL_MIN_OUTCOME_FAMILIES} 个为 NO`));
+      for (const doc of [en, zh]) assert.ok(doc.includes('`horizonGrades`') && doc.includes('`meetsFamilyOutcomeMinimums`'));
+    });
   });
 });
 

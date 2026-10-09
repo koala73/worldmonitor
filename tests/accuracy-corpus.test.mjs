@@ -21,9 +21,10 @@ import {
   renderAccuracyPage,
   renderAccuracyLlmsSection,
   selectDeclaredScorecardFields,
+  selectHorizonGrades,
   writeAccuracySection,
 } from '../scripts/build-accuracy-page.mjs';
-import { GO_FORWARD_SINCE_MS, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { GO_FORWARD_SINCE_MS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
@@ -928,15 +929,15 @@ describe('accuracy page honesty rules', () => {
     assert.equal(download.confidenceIntervals.meanScores.logScore.published, false);
     // Some horizons are graded internally since #8939, so a bare `scored: false`
     // was untrue. The flags say what this file and page publish, nothing more.
-    assert.deepEqual(download.horizonProjections, {
-      valuesPublished: false,
-      gradesPublished: false,
-      trackedIn: 'https://github.com/koala73/worldmonitor/issues/9057',
-    });
-    // #7075 closed with internal grading; publishing those grades is #9057.
+    // This section carries no MCP horizon read, so it publishes no grades
+    // and says so (#9057).
+    assert.equal(download.horizonProjections.valuesPublished, false);
+    assert.equal(download.horizonProjections.gradesPublished, false);
+    assert.equal(download.horizonProjections.gradesStatus, 'not-captured');
+    assert.equal(download.horizonProjections.rows, null);
     const html = renderState(LIVE_SECTION).html;
-    assert.match(html, /Those horizon grades are not published yet\. Tracking: <a href="https:\/\/github\.com\/koala73\/worldmonitor\/issues\/9057">issue #9057<\/a>\./);
-    assert.doesNotMatch(html, /issues\/7075/);
+    assert.match(html, /This edition did not capture the projection grades, so none are shown\./);
+    assert.doesNotMatch(html, /issues\/7075|issues\/9057|not published yet/);
     assert.equal(download.headlineCohort.excludedScored, 310);
     assert.deepEqual(download.headlineCohort.excludedOrigins, ['bet_engine', 'state_derived']);
     assert.deepEqual(download.pooledPopulations, {
@@ -2270,5 +2271,130 @@ describe('ledger population follows the capture (#8990)', () => {
   it('records the ledger population in the download', () => {
     assert.equal(downloadFor(PUBLISHED).ledgerPopulation, 'published-forecasts');
     assert.equal(downloadFor(POOLED).ledgerPopulation, 'all-entries');
+  });
+});
+
+describe('accuracy page horizon grades (#9057)', () => {
+  // Test data, not a live reading: one measurable row and two below the minimums.
+  const MEASURABLE_D7 = Object.freeze({
+    curvesVersion: 1, horizon: 'd7', scored: 40, yes: 8, no: 32, families: SKILL_MIN_FAMILIES, yesFamilies: 6, noFamilies: 24,
+    measurable: true, brier: { mean: 0.142, ci95: [0.11, 0.18] }, realizedRate: { count: 40, successes: 8, rate: 0.2, ci95: [0.105, 0.348] },
+  });
+  const SHORT_H24 = Object.freeze({ curvesVersion: 1, horizon: 'h24', scored: 12, yes: 3, no: 9, families: 9, yesFamilies: 3, noFamilies: 7, measurable: false });
+  const EMPTY_D30 = Object.freeze({ curvesVersion: 1, horizon: 'd30', scored: 0, yes: 0, no: 0, families: 0, yesFamilies: 0, noFamilies: 0, measurable: false });
+  const GRADES = Object.freeze({
+    semantics: 'point_in_time',
+    note: 'A projection is not a probability.',
+    minimums: { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES },
+    unversionedScored: 2,
+    rows: [SHORT_H24, MEASURABLE_D7, EMPTY_D30],
+  });
+  const withGrades = (grades = GRADES, generatedAt = LIVE_SCORECARD.generatedAt) => ({
+    ...LIVE_SECTION,
+    horizonGrades: { attemptedAt: '2026-09-10', generatedAt, grades, failureCode: '' },
+  });
+  const rowHtml = (html, horizon) => html.match(new RegExp(`<tr data-horizon-grade="${horizon}"[\\s\\S]*?</tr>`))?.[0] ?? '';
+
+  it('publishes a measurable grade beside its curve version, and says projections are not probabilities', () => {
+    const { html } = renderState(withGrades());
+    assert.match(html, /<h2 id="horizon-grades">/);
+    assert.match(html, /<strong>A projection is not a probability\.<\/strong> It comes from a fixed, hand-set curve/);
+    const d7 = rowHtml(html, 'd7');
+    assert.match(d7, /data-curves-version="1" data-measurable="true"/);
+    assert.match(d7, /<td>Version 1<\/td>/);
+    assert.match(d7, /<td>0\.142, 95% interval 0\.110 to 0\.180<\/td>/);
+    assert.match(d7, /20\.0% of 40 graded windows, 95% interval <span data-rate-interval>/);
+    assert.match(d7, /40 graded windows from 30 forecast families: 6 with the event, 24 without/);
+    assert.match(html, /2 graded windows were registered before projections carried a curve version/);
+  });
+
+  it('says plainly that a horizon below the minimums is not yet measurable, with its counts', () => {
+    const { html } = renderState(withGrades());
+    for (const horizon of ['h24', 'd30']) {
+      const row = rowHtml(html, horizon);
+      assert.match(row, /data-measurable="false"/);
+      assert.equal((row.match(/<td>Not yet measurable<\/td>/g) ?? []).length, 2, horizon);
+      assert.doesNotMatch(row, /95% interval/);
+    }
+    assert.match(rowHtml(html, 'h24'), /12 graded windows from 9 forecast families: 3 with the event, 7 without/);
+    assert.match(html, /once its graded windows come from at least 30 forecast families, with at least 5 where the projected event happened and 5 where it did not/);
+  });
+
+  it('re-checks the minimums itself, so a row that claims a grade below them publishes counts only', () => {
+    const cases = {
+      'one family short': { families: SKILL_MIN_FAMILIES - 1 },
+      'one YES family short': { yesFamilies: SKILL_MIN_OUTCOME_FAMILIES - 1 },
+      'one NO family short': { noFamilies: SKILL_MIN_OUTCOME_FAMILIES - 1 },
+      'interval outside the Brier': { brier: { mean: 0.142, ci95: [0.15, 0.18] } },
+    };
+    for (const [label, override] of Object.entries(cases)) {
+      const grades = { ...GRADES, rows: [{ ...MEASURABLE_D7, ...override }] };
+      const { html } = renderState(withGrades(grades));
+      assert.match(rowHtml(html, 'd7'), /data-measurable="false"/, label);
+      const [row] = downloadFor(withGrades(grades)).horizonProjections.rows;
+      assert.equal(row.measurable, false, label);
+      assert.equal('brier' in row || 'realizedRate' in row, false, label);
+    }
+    const exact = selectHorizonGrades({ ...GRADES, rows: [MEASURABLE_D7] }).rows[0];
+    assert.equal(exact.measurable, true, 'exactly at the minimums is measurable');
+  });
+
+  it('recomputes the published rate and its Wilson interval from the counts', () => {
+    const [row] = selectHorizonGrades({ ...GRADES, rows: [{ ...MEASURABLE_D7, realizedRate: { count: 40, successes: 39, rate: 0.975, ci95: [0.9, 1] } }] }).rows;
+    assert.deepEqual(row.realizedRate, { count: 40, successes: 8, rate: 0.2, ci95: wilsonInterval(8, 40) });
+  });
+
+  it('shows no grade read from a different scoring run than the record', () => {
+    const { html } = renderState(withGrades(GRADES, LIVE_SCORECARD.generatedAt - 1));
+    assert.match(html, /data-horizon-grades-status="other-run"/);
+    assert.doesNotMatch(html, /data-horizon-grade=/);
+    const download = downloadFor(withGrades(GRADES, LIVE_SCORECARD.generatedAt - 1)).horizonProjections;
+    assert.equal(download.gradesStatus, 'other-run');
+    assert.equal(download.rows, null);
+  });
+
+  it('withholds the grades from the page while the audit is on, like every other score', () => {
+    const audit = { since: '2026-10-07', issue: 8990, reason: 'An audit found errors in how forecasts were scored, so scores are withdrawn.' };
+    const { shell } = renderState(withGrades(), { audit });
+    assert.doesNotMatch(shell.body, /horizon-grades|horizon-grade=|Version 1/);
+    const download = JSON.parse(accuracyDatasetDownload({ state: classifyAccuracyState(withGrades()), snapshotPath: SNAPSHOT_PATH, audit }));
+    assert.equal(download.underAudit.issue, 8990, 'the download keeps the raw rows flagged under audit');
+    assert.equal(download.horizonProjections.rows.length, 3);
+  });
+
+  it('publishes the grades in the download with their definition and minimums', () => {
+    const download = downloadFor(withGrades()).horizonProjections;
+    assert.equal(download.valuesPublished, false);
+    assert.equal(download.gradesStatus, 'captured');
+    assert.equal(download.gradesPublished, true);
+    assert.match(download.definition, /not a probability/);
+    assert.deepEqual(download.minimums, { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES });
+    assert.equal(download.unversionedScored, 2);
+    assert.deepEqual(download.rows.map((row) => [row.horizon, row.curvesVersion, row.measurable]), [['h24', 1, false], ['d7', 1, true], ['d30', 1, false]]);
+    assert.deepEqual(download.rows[1].brier, MEASURABLE_D7.brier);
+    assert.equal(downloadFor(withGrades({ ...GRADES, rows: [SHORT_H24] })).horizonProjections.gradesPublished, false);
+  });
+
+  it('drops rows it cannot read and states an empty table plainly', () => {
+    const grades = selectHorizonGrades({ ...GRADES, rows: [{ ...SHORT_H24, horizon: 'd90' }, { ...SHORT_H24, curvesVersion: null }, { ...SHORT_H24, yes: 4 }, 'x'] });
+    assert.deepEqual(grades.rows, []);
+    const { html } = renderState(withGrades({ ...GRADES, rows: [] }));
+    assert.match(html, /data-horizon-grades-status="empty"/);
+  });
+
+  it('grades a producer scorecard end to end through the page', () => {
+    const NOW = LIVE_SCORECARD.generatedAt;
+    const ledger = Object.fromEntries(Array.from({ length: SKILL_MIN_FAMILIES }, (_, i) => {
+      const deadline = NOW - 2 * 86_400_000;
+      return [`g${i}`, {
+        id: `fc-g${i}`, key: `fc-g${i}@1@d30`, status: 'resolved', outcome: i < SKILL_MIN_OUTCOME_FAMILIES ? 'YES' : 'NO', probability: 0.3,
+        domain: 'supply_chain', generationOrigin: 'legacy_detector', projectionCurvesVersion: 1, generatedAt: deadline - 86_400_000, resolvedAt: NOW - 86_400_000, deadline,
+        spec: { kind: 'hard', horizon: 'd30', semantics: 'point_in_time', window: 'at-deadline', deadline },
+      }];
+    }));
+    const { horizonGrades } = computeScorecard(ledger, NOW);
+    const { html } = renderState(withGrades(horizonGrades));
+    assert.match(rowHtml(html, 'd30'), /data-measurable="true"/);
+    assert.match(rowHtml(html, 'h24'), /data-measurable="false"/);
   });
 });
