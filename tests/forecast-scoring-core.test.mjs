@@ -894,6 +894,18 @@ describe('base-rate placeholder bets (#8990)', () => {
     assert.doesNotMatch(card.methodology, /shadow bet window/);
   });
 
+  it('restores a duplicate chain under a placeholder and converges with the #9067 re-pointing', () => {
+    const chained = { ...laterEnsemble, duplicateOf: firstEnsemble.key, evidence: dupEvidence(firstEnsemble.key, 'NO', 86, laterEnsemble.resolvedAt) };
+    const start = { [placeholder.key]: placeholder, [firstEnsemble.key]: firstEnsemble, [chained.key]: chained };
+    const ledger = ingestHistory(start, [], NOW);
+    assert.equal(ledger[placeholder.key].evidence.reason, BASE_RATE_PLACEHOLDER_VOID_REASON);
+    assert.equal(ledger[firstEnsemble.key].outcome, 'NO');
+    assert.equal('duplicateOf' in ledger[firstEnsemble.key], false);
+    assert.equal(ledger[chained.key].duplicateOf, firstEnsemble.key);
+    assert.equal(ledger[chained.key].evidence.duplicateOf, firstEnsemble.key);
+    assert.deepEqual(ingestHistory(ledger, [], NOW + DAY_MS), ledger);
+  });
+
   it('lets an ensemble emission inside a voided placeholder window open the question', () => {
     const ensembled = { ...brent(NOW, 87, 85, 0.65), probabilitySource: 'ensemble', baselineProbability: 0.4 };
     const ledger = ingestHistory(legacy, [snap(NOW, [ensembled])], NOW);
