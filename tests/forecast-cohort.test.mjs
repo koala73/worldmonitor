@@ -162,6 +162,16 @@ describe('freezeCohort (#7066)', () => {
     assert.equal(horizon.unregisteredReason, 'deadline_passed_before_registration');
   });
 
+  it('opens no entry for a bet on the base-rate placeholder, and counts it', () => {
+    const placeholder = hardForecast('bet-placeholder', T0 + 2 * HOUR_MS, { generationOrigin: 'bet_engine', probabilitySource: 'base_rate' });
+    const ensemble = hardForecast('bet-ensemble', T0 + 2 * HOUR_MS, { generationOrigin: 'bet_engine', probabilitySource: 'ensemble' });
+    const manifest = freezeFixture({ betsSnapshots: [...betsHistory, snapshot(T0 + 2 * HOUR_MS, [placeholder, ensemble])] });
+    const ids = manifest.entries.map((entry) => entry.id);
+    assert.ok(!ids.includes('bet-placeholder'));
+    assert.ok(ids.includes('bet-ensemble'));
+    assert.equal(manifest.counts.emissions.skipped.base_rate_placeholder, 1);
+  });
+
   it('records the code version of the run that opened each window', () => {
     const manifest = freezeFixture();
     const byId = Object.fromEntries(manifest.entries.map((entry) => [entry.id, entry]));
