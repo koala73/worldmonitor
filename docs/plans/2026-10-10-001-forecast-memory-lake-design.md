@@ -76,7 +76,7 @@ The owner's point stands: WorldMonitor is months old, its inputs are not. Of the
 Three tiers follow:
 
 - **Backfill now, licence-clean:** GDELT, UCDP, PortWatch, gpsjam (confirm), EIA, FRED/ALFRED, USGS, FIRMS, GDACS, ERA5, UNHCR, OFAC and EU sanctions, central-bank yield curves and CPI series we already pull in full.
-- **Collect forward only:** AIS, Telegram, X, OREF, NOTAMs, theater posture, advisories, corridor risk, Polymarket intraday, URLhaus, AbuseIPDB. The tap in section 5 starts their history on day 1.
+- **Collect forward only:** AIS, Telegram, X, OREF, NOTAMs, theater posture, advisories, corridor risk, Polymarket intraday, URLhaus, AbuseIPDB, the scraped SCFI, CCFI and BDI shipping indices, the Hormuz tracker series, IMF WEO forecast vintages, sanctions designation sets and resilience scores across version bumps. The tap in section 5 starts their history on day 1.
 - **Licence-restricted:** Cloudflare Radar, Yahoo, abuse.ch, EM-DAT, OpenSky, ADS-B Exchange, ACLED via HAPI. Store privately for modelling only, never as a published target, and record the licence on every row. We hold no ACLED access; the conflict backbone is UCDP plus GDELT plus our own news archive.
 
 ## 4. Storage
@@ -135,7 +135,7 @@ Three sources, run in parallel.
 
 Parse the 4,837 deep snapshots into the lake: 31 feeds, hourly, 2026-03-15 to now, plus every run's forecasts, world state and publish telemetry. This is a one-off DuckDB or Node job over R2. It gives 7 months of WorldMonitor-as-seen inputs and derived state with code revisions, before any upstream call is made. Copy the snapshots themselves to the lake bucket so the 400-day rule cannot take them.
 
-Also export: Convex `intelHistory` (37,216 rows), regional snapshots and regime history (90 days), resilience history across all 22 versions, PizzINT readings, the market-alert ledger, breadth and SGE series, and the resolution receipts and ledger.
+Also export: Convex `intelHistory` (37,216 rows), regional snapshots and regime history (90 days), resilience history across all 22 versions, PizzINT readings, the market-alert ledger, breadth and SGE series, and the resolution receipts and ledger. The receipts have one stray copy under a doubled `forecast-resolutions/forecast-resolutions/` prefix from 2026-07-09; the export deduplicates it and the duplicate is removed afterwards.
 
 ### 6.2 Upstream archives (weeks 2 to 5)
 
