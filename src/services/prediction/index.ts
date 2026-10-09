@@ -354,7 +354,7 @@ function matchesCountryTerms(
   return associatedCountryCodes(title, matchers, shadows).has(countryCode);
 }
 
-export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
+export async function fetchCountryMarkets(country: string, countryCode: string, onMetadata?: (metadata: { fetchedAt?: number }) => void): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
@@ -364,9 +364,13 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
       cursor: '',
     }).catch(() => null);
     if (response?.markets?.length) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
       return response.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)).slice(0, 5);
     }
-    if (response?.dataAvailable) return [];
+    if (response?.dataAvailable) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
+      return [];
+    }
   }
 
   // Fallback: search bootstrap data across all buckets. `tech` must be included

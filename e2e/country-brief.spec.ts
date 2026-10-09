@@ -95,11 +95,13 @@ test('country brief renders exact RPC records and preserves the country after re
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-known-mobile');
 });
 
 test('country brief uses bootstrap fallback when the country index is unavailable', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   const card = marketsCard(page);
@@ -108,19 +110,25 @@ test('country brief uses bootstrap fallback when the country index is unavailabl
   await expect(card.locator('.prediction-source')).toHaveText(['Polymarket']);
   await expect(card.locator('.cdp-market-link')).toHaveAttribute('href', HYDRATED_MARKET.url);
   await expect(card.locator('.cdp-market-item')).toBeVisible();
+  await expect(card.locator('.cdp-section-source')).toHaveText('Snapshot time unavailable. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'bootstrap-fallback');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-fallback-mobile');
 });
 
 test('country brief honors an authoritative empty index over bootstrap fallback', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expect(marketsCard(page).locator('.cdp-empty')).toHaveText('No active markets for this country.');
   await expect(marketsCard(page).locator('.cdp-market-item, .cdp-loading-inline')).toHaveCount(0);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'authoritative-empty');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-empty-mobile');
 });
 
 test('country brief recovers from a failed RPC when the user reloads', async ({ page, countryBrief }, testInfo) => {

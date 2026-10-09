@@ -169,6 +169,29 @@ describe('original country contract metadata', () => {
     assert.deepEqual(await fetchWithMetadata(service), { markets: [] });
   });
 
+  it('forwards supplied clocks literally for filtered empty data and keeps non-successful row clocks unknown', async () => {
+    const service = await loadPredictionService();
+    const row = { ...protoMarket('China contract', 500), closesAt: 1 };
+    for (const rpcFetchedAt of [-1, NaN, Infinity, Date.parse('2099-10-09T07:41:45.410Z')]) {
+      globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': [row] }, rpcDataAvailable: true, rpcFetchedAt };
+      assert.deepEqual(await fetchWithMetadata(service), { markets: [], fetchedAt: rpcFetchedAt });
+    }
+    for (const rpcDataAvailable of [false, undefined]) {
+      globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': [protoMarket('China contract', 500)] }, rpcDataAvailable, rpcFetchedAt: 1791531705410 };
+      const result = await fetchWithMetadata(service);
+      assert.equal(result.markets.length, 1);
+      assert.equal(Object.hasOwn(result, 'fetchedAt'), false);
+    }
+  });
+
+  it('keeps invalid-country bootstrap fallback unknown without issuing an RPC', async () => {
+    const fallback = bootstrapMarket('Will China host the meeting?', 500);
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcFetchedAt: 1791531705410, hydrated: { geopolitical: [fallback], tech: [], fetchedAt: 1791531705420 } };
+    const service = await loadPredictionService();
+    assert.deepEqual(await fetchWithMetadata(service, 'China', ''), { markets: [fallback] });
+    assert.deepEqual(globalThis.__wmCountryMarketsTestState.rpcCalls, []);
+  });
+
   it('retains distinct original RPC identifiers sharing one display link and exact probability', async () => {
     const service = await loadPredictionService();
     const first = { ...protoMarket('China controlled contract', 500), id: 'KXCHINA-27-T4', yesPrice: 0.6849, source: 'MARKET_SOURCE_KALSHI', url: 'https://kalshi.com/markets/kxchina' };

@@ -88,7 +88,11 @@ export class CountryBriefController {
     void this.read('energy', signal => this.source.intelligence.getCountryEnergyProfile({ countryCode: code }, { signal }), energy => this.panel.updateEnergyProfile?.(energy));
     void this.read('maritime', signal => this.source.intelligence.getCountryPortActivity({ countryCode: code }, { signal }), maritime => this.panel.updateMaritimeActivity?.(maritime));
     void this.read('markets', async signal => {
-      if (this.source.mode === 'website') return { markets: await fetchCountryMarkets(countryName, code) };
+      if (this.source.mode === 'website') {
+        let fetchedAt: number | undefined;
+        const markets = await fetchCountryMarkets(countryName, code, metadata => { fetchedAt = metadata.fetchedAt; });
+        return { markets, fetchedAt };
+      }
       const response = await this.source.prediction.listPredictionMarkets({ category: `country:${code}`, query: '', pageSize: 5, cursor: '' }, { signal });
       if (!response.dataAvailable) throw new Error('Country markets unavailable');
       return { markets: response.markets.map(protoToMarket).filter(m => !m.endDate || Date.parse(m.endDate) > Date.now()).slice(0, 5), fetchedAt: response.fetchedAt };

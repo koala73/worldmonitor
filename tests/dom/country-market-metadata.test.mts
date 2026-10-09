@@ -5,6 +5,8 @@ import type { CountryBriefSource } from '@/services/country-brief-source';
 import type { PredictionMarket } from '@/services/prediction';
 import * as prediction from '@/services/prediction';
 import * as imfCountryData from '@/services/imf-country-data';
+import * as bootstrap from '@/services/bootstrap';
+import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
 import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(async () => { await initTestI18n(); });
@@ -153,6 +155,74 @@ describe('original public country market metadata', () => {
     expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
     expect(fixtureState.body.textContent).toContain('Contract: website-original');
     expect(fixtureState.list).not.toHaveBeenCalled();
+  });
+
+  it('passes an original website list clock and replaces it with unknown fallback metadata', async () => {
+    const fixtureState = fixture();
+    const reply = { markets: rpcRows.map(row => ({ ...row, source: 'MARKET_SOURCE_KALSHI' as const })), fetchedAt: originalClock, dataAvailable: true };
+    const listMarkets = vi.spyOn(PredictionServiceClient.prototype, 'listPredictionMarkets').mockResolvedValue(reply);
+    vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
+    Reflect.get(fixtureState.controller, 'source').mode = 'website';
+    await load(fixtureState);
+    await vi.waitFor(() => expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.'));
+    expect(listMarkets).toHaveBeenCalledWith({ category: 'country:CN', query: '', pageSize: 5, cursor: '' });
+    listMarkets.mockResolvedValue({ ...reply, fetchedAt: 0 });
+    await load(fixtureState);
+    await vi.waitFor(() => expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.'));
+    expect(fixtureState.body.textContent).toContain('Contract: KXCHINA-27-T4');
+    expect(fixtureState.list).not.toHaveBeenCalled();
+  });
+
+  it.each(['empty', 'expired'] as const)('renders the original website clock for a successful %s list', async selection => {
+    const fixtureState = fixture();
+    const markets = selection === 'empty' ? [] : rpcRows.map(row => ({ ...row, source: 'MARKET_SOURCE_KALSHI' as const, closesAt: 1 }));
+    vi.spyOn(PredictionServiceClient.prototype, 'listPredictionMarkets').mockResolvedValue({ markets, fetchedAt: originalClock, dataAvailable: true });
+    vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
+    Reflect.get(fixtureState.controller, 'source').mode = 'website';
+    await load(fixtureState);
+    await vi.waitFor(() => expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.'));
+    expect(fixtureState.body.querySelectorAll('.cdp-market-item')).toHaveLength(0);
+    expect(fixtureState.body.textContent).toContain('No active markets for this country.');
+  });
+
+  it.each(['unavailable', 'rejected'] as const)('clears the prior website clock for %s RPC bootstrap fallback', async failure => {
+    const fixtureState = fixture();
+    const reply = { markets: rpcRows.map(row => ({ ...row, source: 'MARKET_SOURCE_KALSHI' as const })), fetchedAt: originalClock, dataAvailable: true };
+    const listMarkets = vi.spyOn(PredictionServiceClient.prototype, 'listPredictionMarkets').mockResolvedValue(reply);
+    vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
+    const fallback: PredictionMarket = { id: 'bootstrap-original', title: 'Will China host the meeting?', yesPrice: 31, source: 'kalshi' };
+    vi.spyOn(bootstrap, 'getHydratedData').mockReturnValue({ geopolitical: [fallback], tech: [], finance: [], fetchedAt: originalClock + 1 });
+    Reflect.get(fixtureState.controller, 'source').mode = 'website';
+    await load(fixtureState);
+    await vi.waitFor(() => expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.'));
+    if (failure === 'rejected') listMarkets.mockRejectedValue(new Error('Controlled RPC failure'));
+    else listMarkets.mockResolvedValue({ markets: [], fetchedAt: originalClock + 1, dataAvailable: false });
+    await load(fixtureState);
+    await vi.waitFor(() => expect(fixtureState.body.textContent).toContain('Contract: bootstrap-original'));
+    expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
+  });
+
+  it('ignores a late website metadata callback after disposal', async () => {
+    const fixtureState = fixture();
+    const reply = { markets: rpcRows.map(row => ({ ...row, source: 'MARKET_SOURCE_KALSHI' as const })), fetchedAt: originalClock, dataAvailable: true };
+    const listMarkets = vi.spyOn(PredictionServiceClient.prototype, 'listPredictionMarkets').mockResolvedValue(reply);
+    vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
+    Reflect.get(fixtureState.controller, 'source').mode = 'website';
+    await load(fixtureState);
+    await vi.waitFor(() => expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.'));
+    const applyMarkets = vi.spyOn(fixtureState.panel, 'updateMarkets');
+    const serviceRead = vi.spyOn(prediction, 'fetchCountryMarkets');
+    let resolveLate: ((value: typeof reply) => void) | undefined;
+    listMarkets.mockImplementation(() => new Promise(resolve => { resolveLate = resolve; }));
+    fixtureState.controller.hydrate('CN', 'China');
+    await vi.waitFor(() => expect(resolveLate).toBeTypeOf('function'));
+    fixtureState.controller.dispose();
+    if (!resolveLate) throw new Error('Expected a pending website RPC');
+    resolveLate({ ...reply, markets: [], fetchedAt: originalClock + 1 });
+    await expect(serviceRead.mock.results[0]?.value).resolves.toEqual([]);
+    await Promise.resolve();
+    expect(applyMarkets).not.toHaveBeenCalled();
+    expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   });
 
   it('leaves array-only renderer callers with unknown snapshot metadata', () => {
