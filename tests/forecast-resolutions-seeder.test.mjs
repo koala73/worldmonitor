@@ -52,7 +52,7 @@ import { serializeR2JsonBody as serializeR2Json } from '../scripts/_r2-storage.m
 import { createHash } from 'node:crypto';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
@@ -4121,5 +4121,200 @@ describe('GPS rows after the hexCount shaper (#8990)', () => {
     const second = processResolutionCycle(first.ledger, [], zone(deadlineDate, 2), deadline + 2 * DAY_MS);
     assert.equal(second.ledger[pending.key].outcome, 'NO');
     assert.equal(second.ledger[pending.key].evidence.metricValue, 2);
+  });
+});
+
+describe('judged questions rendered from live state (#9067)', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  // One cyber forecast emitted hourly; its threat tally, and so the count its
+  // judged question renders, moves on every run.
+  function cyberEmission(hour, tally) {
+    const generatedAt = T0 + hour * HOUR_MS;
+    const [emitted] = attachResolutionSpecs([{
+      id: 'fc-cyber-us',
+      domain: 'cyber',
+      region: 'United States',
+      title: 'Cyber threat concentration: United States',
+      probability: 0.4,
+      confidence: 0.6,
+      timeHorizon: '7d',
+      generationOrigin: 'legacy_detector',
+      generatedAt,
+      signals: [{ type: 'cyber', value: `${tally} threats (malware)`, weight: 0.5 }],
+    }], {}, generatedAt);
+    return snapshot(generatedAt, [emitted]);
+  }
+  const TALLIES = [104, 165, 98, 130, 71, 140];
+  const history = TALLIES.map((tally, hour) => cyberEmission(hour, tally));
+  const judgedRows = (ledger) => Object.values(ledger).filter((entry) => entry.spec?.kind === 'judged');
+
+  it('fixture: each run renders a different question', () => {
+    assert.equal(new Set(history.map((snap) => snap.predictions[0].resolution.question)).size, TALLIES.length);
+  });
+
+  it('opens exactly one judged window and judges the first emission\'s question', () => {
+    const ledger = ingestHistory({}, history, T0);
+    const rows = judgedRows(ledger);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'pending-judge');
+    assert.equal(rows[0].spec.question, history[0].predictions[0].resolution.question);
+    assert.equal(rows[0].lastSeenAt, T0 + (TALLIES.length - 1) * HOUR_MS);
+  });
+
+  it('stays one window across hourly runs', () => {
+    let ledger = {};
+    for (let hour = 0; hour < history.length; hour += 1) ledger = ingestHistory(ledger, history.slice(0, hour + 1), T0 + hour * HOUR_MS);
+    assert.equal(judgedRows(ledger).length, 1);
+  });
+
+  it('a different region is still a different question', () => {
+    const other = cyberEmission(1, 104);
+    other.predictions[0] = { ...other.predictions[0], region: 'China', resolution: { ...other.predictions[0].resolution, question: other.predictions[0].resolution.question.replace('United States', 'China') } };
+    const ledger = ingestHistory({}, [history[0], other], T0);
+    assert.equal(judgedRows(ledger).length, 2);
+  });
+
+  it('a migrated hard cyber count and a later count question of the same forecast are one window', () => {
+    const hard = cyberEmission(0, 104);
+    hard.predictions[0] = {
+      ...hard.predictions[0],
+      resolution: {
+        kind: 'hard',
+        metricKey: `${CYBER_COUNT_SOURCE_FEED}|count(country==United States)`,
+        sourceFeed: CYBER_COUNT_SOURCE_FEED,
+        operator: '>=',
+        threshold: 39,
+        window: 'within-horizon',
+        deadline: T0 + 7 * DAY_MS,
+      },
+    };
+    const ledger = ingestHistory({}, [hard, ...history.slice(1)], T0);
+    const rows = Object.values(ledger);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'pending-judge');
+    assert.match(rows[0].spec.question, /materially elevated malicious cyber activity/);
+  });
+
+  // One theater forecast; its title follows the live surge type and the
+  // dominant operator country, while its id is the theater.
+  function militaryEmission(hour, title, { id = 'fc-military-iran', region = 'Middle East' } = {}) {
+    const generatedAt = T0 + hour * HOUR_MS;
+    const [emitted] = attachResolutionSpecs([{
+      id, domain: 'military', region, title, probability: 0.3, confidence: 0.5, timeHorizon: '7d',
+      generationOrigin: 'legacy_detector', generatedAt, signals: [],
+    }], {}, generatedAt);
+    return snapshot(generatedAt, [emitted]);
+  }
+  const MILITARY_TITLES = [
+    'Military posture escalation: Middle East',
+    'Elevated military air activity near Iran Theater',
+    'USA-linked airlift surge near Iran Theater',
+    'Qatar-linked airlift surge near Iran Theater',
+    'USA-linked fighter surge near Iran Theater',
+    'Unknown-linked fighter surge near Iran Theater',
+    'airlift surge near Iran Theater',
+  ];
+
+  it('a military theater forecast whose title changes with the surge opens one judged window', () => {
+    const runs = MILITARY_TITLES.map((title, hour) => militaryEmission(hour, title));
+    assert.equal(new Set(runs.map((snap) => snap.predictions[0].resolution.question)).size, MILITARY_TITLES.length, 'fixture: each run renders a different question');
+    const rows = judgedRows(ingestHistory({}, runs, T0));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].spec.question, runs[0].predictions[0].resolution.question);
+  });
+
+  it('a different theater stays a different forecast, and other judged domains still key on the question', () => {
+    const korea = militaryEmission(1, 'Military posture escalation: Korean Peninsula', { id: 'fc-military-korea', region: 'Korean Peninsula' });
+    assert.equal(judgedRows(ingestHistory({}, [militaryEmission(0, MILITARY_TITLES[0]), korea], T0)).length, 2);
+    const conflict = (hour, title) => {
+      const generatedAt = T0 + hour * HOUR_MS;
+      const [emitted] = attachResolutionSpecs([{ id: 'fc-conflict-x', domain: 'conflict', region: 'Sudan', title, probability: 0.5, confidence: 0.5, timeHorizon: '7d', generationOrigin: 'state_derived', generatedAt, signals: [] }], {}, generatedAt);
+      return snapshot(generatedAt, [emitted]);
+    };
+    assert.equal(judgedRows(ingestHistory({}, [conflict(0, 'Escalation in Darfur'), conflict(1, 'Escalation in Khartoum')], T0)).length, 2);
+  });
+
+  it('merges military windows the old key multiplied, keeping the earliest', () => {
+    const multiplied = {};
+    for (const [hour, title] of MILITARY_TITLES.entries()) {
+      const [row] = Object.values(ingestHistory({}, [militaryEmission(hour, title)], T0 + hour * HOUR_MS));
+      multiplied[`${row.id}@${row.deadline}`] = row;
+    }
+    const ledger = ingestHistory(multiplied, [], T0 + 8 * HOUR_MS);
+    const [keeperKey, ...duplicateKeys] = Object.keys(multiplied).sort((a, b) => multiplied[a].generatedAt - multiplied[b].generatedAt);
+    assert.equal(ledger[keeperKey].status, 'pending-judge');
+    for (const key of duplicateKeys) assert.deepEqual([ledger[key].evidence.reason, ledger[key].duplicateOf], ['duplicate_window', keeperKey], key);
+  });
+
+  it('different horizons of one cyber or military forecast stay separate windows', () => {
+    const horizon = (snap, timeHorizon) => ({ ...snap, predictions: [{ ...snap.predictions[0], timeHorizon }] });
+    assert.equal(judgedRows(ingestHistory({}, [history[0], horizon(history[1], '30d')], T0)).length, 2);
+    const military = [militaryEmission(0, MILITARY_TITLES[0]), horizon(militaryEmission(1, MILITARY_TITLES[1]), '30d')];
+    assert.equal(judgedRows(ingestHistory({}, military, T0)).length, 2);
+  });
+
+  it('re-points a duplicate whose window became a duplicate, and re-archives its receipt', () => {
+    // Old key: A and B are different questions; C, emitted after A's
+    // deadline, was sealed as a duplicate of B and its receipt archived.
+    const runA = militaryEmission(0, MILITARY_TITLES[0]);
+    const runB = militaryEmission(24, MILITARY_TITLES[2]);
+    const runC = militaryEmission(7 * 24 + 1, MILITARY_TITLES[2]);
+    const row = (snap) => Object.values(ingestHistory({}, [snap], snap.generatedAt))[0];
+    const [a, b, c] = [row(runA), row(runB), row(runC)];
+    const [keyA, keyB, keyC] = [a, b, c].map((entry) => `${entry.id}@${entry.deadline}`);
+    const sealedAt = runC.generatedAt + HOUR_MS;
+    const stored = {
+      [keyA]: a,
+      [keyB]: b,
+      [keyC]: { ...c, status: 'resolved', outcome: 'VOID', resolvedAt: sealedAt, sealedAt, duplicateOf: keyB, receiptArchivedAt: sealedAt, evidence: { reason: 'duplicate_window', duplicateOf: keyB, supersededStatus: 'pending-judge', voidedAt: sealedAt } },
+    };
+    const NOW = sealedAt + HOUR_MS;
+    const chained = (ledger) => Object.entries(ledger).filter(([, entry]) => typeof entry.duplicateOf === 'string' && typeof ledger[entry.duplicateOf]?.duplicateOf === 'string');
+
+    // With C's emission in the history read, a new window opens for it and C
+    // names that window.
+    const ledger = ingestHistory(stored, [runA, runB, runC], NOW);
+    assert.equal(ledger[keyB].duplicateOf, keyA);
+    const live = Object.keys(ledger).find((key) => key.startsWith(`${keyC}~`));
+    assert.ok(live, 'a window opens for C\'s emission beside the sealed row');
+    assert.deepEqual([ledger[keyC].duplicateOf, ledger[keyC].evidence.duplicateOf], [live, live]);
+    assert.deepEqual(chained(ledger), []);
+    assert.ok(collectUnarchivedReceipts(ledger).some((receipt) => receipt.key === keyC));
+    assert.deepEqual(ingestHistory(ledger, [runA, runB, runC], NOW + HOUR_MS), ledger, 'a second run changes nothing');
+
+    // Without history, C follows the chain to the window that kept B.
+    const bare = ingestHistory(stored, [], NOW);
+    assert.equal(bare[keyC].duplicateOf, keyA);
+    assert.deepEqual(chained(bare), []);
+  });
+
+  it('merges windows the old key multiplied: keeps the earliest and voids the rest as duplicate_window', () => {
+    // The ledger the old key wrote: one window per rendered question.
+    const multiplied = {};
+    for (const [hour, snap] of history.entries()) {
+      const [row] = Object.values(ingestHistory({}, [snap], T0 + hour * HOUR_MS));
+      multiplied[`${row.id}@${row.deadline}`] = row;
+    }
+    assert.equal(Object.keys(multiplied).length, TALLIES.length, 'fixture: one window per rendered question');
+    // A voided duplicate that already had its receipt archived gets it
+    // re-archived with the correction.
+    const resolvedKey = Object.keys(multiplied)[2];
+    Object.assign(multiplied[resolvedKey], { status: 'resolved', outcome: 'NO', resolvedAt: T0 + 3 * HOUR_MS, sealedAt: T0 + 3 * HOUR_MS, receiptArchivedAt: T0 + 3 * HOUR_MS, evidence: { reason: 'judged' } });
+
+    const NOW = T0 + 8 * HOUR_MS;
+    const ledger = ingestHistory(multiplied, [], NOW);
+    const [keeperKey, ...duplicateKeys] = Object.keys(multiplied).sort((a, b) => multiplied[a].generatedAt - multiplied[b].generatedAt);
+    assert.equal(ledger[keeperKey].status, 'pending-judge');
+    assert.equal(ledger[keeperKey].duplicateOf, undefined);
+    for (const key of duplicateKeys) {
+      assert.equal(ledger[key].outcome, 'VOID', key);
+      assert.equal(ledger[key].evidence.reason, 'duplicate_window', key);
+      assert.equal(ledger[key].duplicateOf, keeperKey, key);
+    }
+    assert.equal(ledger[resolvedKey].evidence.supersededOutcome, 'NO');
+    assert.ok(collectUnarchivedReceipts(ledger).some((receipt) => receipt.key === resolvedKey));
+
+    const again = ingestHistory(ledger, [], NOW + HOUR_MS);
+    assert.deepEqual(again, ledger, 'a second run changes nothing');
   });
 });

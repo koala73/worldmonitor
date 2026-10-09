@@ -21,7 +21,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
-import { chokepointHardContract, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
+import { chokepointHardContract, FROZEN_JUDGED_QUESTION_DOMAINS, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -1607,7 +1607,8 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 // between runs (#8990). A detector re-derives its threshold from the live
 // value on every hourly run, so for detectors the threshold is a parameter of
 // one question, frozen at the first emission with the probability it came
-// with; keying on it would open a window per run. A bet is a new question on
+// with; keying on it would open a window per run. A judged question rendered
+// from live state is keyed the same way, on the forecast, not its text (#9067). A bet is a new question on
 // each run, so its threshold is part of the key. The key is taken after the
 // count-to-judged migration, so every threshold of a migrated count maps to
 // the one judged question it became.
@@ -1622,7 +1623,10 @@ export function windowQuestionKey(entry) {
   migratePendingCountEntry(view, { ignoreAvailability: true });
   const spec = view.spec;
   const region = view.region || '';
-  if (spec.kind === 'judged') return JSON.stringify(['judged', region, spec.question ?? '']);
+  if (spec.kind === 'judged') {
+    if (FROZEN_JUDGED_QUESTION_DOMAINS.has(view.domain)) return JSON.stringify(['judged', region, view.domain, view.timeHorizon || null]);
+    return JSON.stringify(['judged', region, spec.question ?? '']);
+  }
   const threshold = Number(spec.threshold);
   const baseline = Number(spec.baselineValue);
   const direction = spec.operator === 'crosses' && parseMetricKey(spec.metricKey)?.fn !== 'yesPrice'
@@ -1828,9 +1832,11 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
   }
 
   let duplicates = 0;
-  for (const windows of byId.values()) {
+  const keptById = new Map();
+  for (const [id, windows] of byId) {
     windows.sort(byEmission);
     const kept = [];
+    keptById.set(id, kept);
     for (const window of windows) {
       const keeper = kept.find((other) => isSameWindowQuestion(other, window) && windowCovers(other.entry, Number(window.entry.generatedAt)));
       if (!keeper) {
@@ -1843,6 +1849,7 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
       }
     }
   }
+  repointChainedDuplicates(ledger, keptById, nowMs);
 
   // Only a call that read history can tell a row the old code overwrote from
   // a correct one. The cycle's own ingest passes no history, so it never
@@ -1911,6 +1918,40 @@ function rescoreToFirstSeen(entry, nowMs, firstEmission) {
 // last updated by the old code, unless history already confirmed it.
 function sightedBeforeFix(entry) {
   return Number(entry.lastSeenAt) > Number(entry.firstSeenAt) && !('lastSeenProbability' in entry) && !entry.openingVerifiedAt;
+}
+
+// A later key change can void the window a duplicate names, or leave it
+// naming a window whose span no longer holds its emission (#9067). Such a
+// duplicate is pointed at the live window that covers its emission, or else
+// at the end of the chain, and its receipt is written again. The second
+// correction pass of a run sees the windows that run opened.
+function repointChainedDuplicates(ledger, keptById, nowMs) {
+  for (const entry of Object.values(ledger)) {
+    if (!isDuplicateWindow(entry)) continue;
+    const named = ledger[entry.duplicateOf];
+    if (!named) continue;
+    const chained = isDuplicateWindow(named);
+    if (!chained && (isHorizonEntry(entry) || windowCovers(named, Number(entry.generatedAt)))) continue;
+    let target = null;
+    if (!isHorizonEntry(entry)) {
+      const window = { key: null, entry, questionKey: windowQuestionKey(entry) };
+      target = (keptById.get(entry.id) || [])
+        .find((other) => isSameWindowQuestion(other, window) && windowCovers(other.entry, Number(entry.generatedAt)))?.key ?? null;
+    }
+    if (!target && !chained) continue;
+    if (!target) {
+      const seen = new Set();
+      target = entry.duplicateOf;
+      while (isDuplicateWindow(ledger[target]) && !seen.has(target)) {
+        seen.add(target);
+        target = ledger[target].duplicateOf;
+      }
+      if (isDuplicateWindow(ledger[target])) continue;
+    }
+    entry.duplicateOf = target;
+    if (entry.evidence?.reason === DUPLICATE_WINDOW_VOID_REASON) entry.evidence.duplicateOf = target;
+    entry.duplicateRepointedAt = nowMs;
+  }
 }
 
 function voidDuplicateWindow(entry, keeperKey, nowMs) {
@@ -2363,6 +2404,7 @@ export function receiptNeedsRearchive(entry) {
     CORRECTION_VOID_REASONS.has(reason) ? Number(entry.evidence.voidedAt) || 0 : 0,
     Number(entry.evidence?.regradedAt) || 0,
     Number(entry.rescore?.rescoredAt) || 0,
+    Number(entry.duplicateRepointedAt) || 0,
   );
   return archivedAt < correctedAt;
 }

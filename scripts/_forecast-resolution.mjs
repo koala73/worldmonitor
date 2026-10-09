@@ -731,6 +731,15 @@ function specificJudgedQuestion(pred) {
   return null;
 }
 
+// Judged domains whose question text is rendered from live state, so it can
+// change between hourly runs of one forecast: the cyber question names a count
+// derived from the live threat tally, and a migrated cyber count asks a
+// different template (#9067); a military theater forecast's title follows the
+// live dominant operator country and surge type, while its id is the theater.
+// The resolver keys their judged windows on the forecast (id, region, horizon)
+// rather than the text, so the first emission's question is the one judged.
+export const FROZEN_JUDGED_QUESTION_DOMAINS = new Set(['cyber', 'military']);
+
 function buildJudgedSpec(pred, generatedAt) {
   return {
     kind: 'judged',

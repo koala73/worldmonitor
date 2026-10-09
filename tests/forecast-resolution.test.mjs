@@ -18,6 +18,7 @@ import {
   CONFLICT_ESCALATION_RATIO,
   deriveDeadline,
   buildResolutionSpec,
+  FROZEN_JUDGED_QUESTION_DOMAINS,
   attachResolutionSpecs,
   evaluateExtractionShadow,
   extractionShadowFeedKeys,
@@ -530,6 +531,15 @@ describe('buildResolutionSpec — domain constraints win over hard-mapped signal
     }), {}, GENERATED_AT);
     assert.equal(spec.kind, 'judged');
     assert.equal(spec.question, 'Within the 7d horizon after this forecast, did public threat-intelligence sources report at least 15 new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to Estonia?');
+  });
+
+  it('the cyber question renders a live count, so cyber judged windows are keyed per forecast (#9067)', () => {
+    const cyber = (tally) => buildResolutionSpec(pred({
+      domain: 'cyber', region: 'Estonia', title: 'Cyber threat concentration: Estonia', timeHorizon: '7d',
+      signals: [{ type: 'cyber', value: `${tally} threats (malware)`, weight: 0.5 }],
+    }), {}, GENERATED_AT).question;
+    assert.notEqual(cyber(40), cyber(90));
+    assert.deepEqual([...FROZEN_JUDGED_QUESTION_DOMAINS].sort(), ['cyber', 'military']);
   });
 
   it('a judged cyber forecast without a threat tally keeps the generic question', () => {
