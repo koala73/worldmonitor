@@ -23,6 +23,7 @@ const DODO_SECRET_BYTES = new Uint8Array([
   0x98, 0xa9, 0xba, 0xcb, 0xdc, 0xed, 0xfe, 0x0f,
 ]);
 const DODO_WEBHOOK_SECRET = `whsec_${btoa(String.fromCharCode(...DODO_SECRET_BYTES))}`;
+import { MAX_SIGNATURE_CANDIDATES } from "../lib/svixVerify";
 
 async function signDodoPayload(
   body: string,
@@ -757,6 +758,45 @@ describe("Dodo webhook failure tracking", () => {
       attemptCount: 1,
     });
     expect("rawPayload" in rows[0]).toBe(false);
+  });
+
+  test("fails closed on a buried or malformed signature candidate (#8491)", async () => {
+    // The Dodo verifier had neither the candidate cap (Clerk only) nor the
+    // malformed-part guard (Resend only) before the shared verifier. A real
+    // signature past the cap, or carried in a three-field part, is rejected;
+    // the same signature in a two-field part within the cap verifies.
+    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    const body = JSON.stringify(makeProviderValidSubscriptionPayload());
+    const webhookId = "wh_http_candidate_cap";
+    const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+    const real = await signDodoPayload(body, webhookId, timestampSeconds);
+    const post = (signatureHeader: string) =>
+      t.fetch("/dodopayments-webhook", {
+        method: "POST",
+        headers: {
+          "webhook-id": webhookId,
+          "webhook-timestamp": timestampSeconds,
+          "webhook-signature": signatureHeader,
+        },
+        body,
+      });
+
+    const padding = Array.from(
+      { length: MAX_SIGNATURE_CANDIDATES },
+      (_, i) => `v1,${btoa(`pad-${i}`)}`,
+    );
+    const buried = await post([...padding, real].join(" "));
+    expect(buried.status).toBe(401);
+    expect(await buried.text()).toBe("Invalid webhook signature");
+
+    const malformed = await post(`${real},extra`);
+    expect(malformed.status).toBe(401);
+
+    const rotated = await post(`v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= ${real}`);
+    expect(rotated.status).not.toBe(401);
+    expect(await t.run((ctx) => ctx.db.query("paymentWebhookFailures").collect())).toHaveLength(0);
   });
 
   test("still rejects a bad signature with 401 and records no failure", async () => {
