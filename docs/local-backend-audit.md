@@ -1,3 +1,5 @@
+> **Superseded (2026-09).** This matrix predates the sebuf gateway split and cites files that no longer exist (the `api/[[...path]].js` catch-all was removed in #785; the route counts are stale). It is kept for history only. The maintained desktop route-coverage baseline is [`docs/desktop-parity-matrix.md`](./desktop-parity-matrix.md) (#5902).
+
 # Local backend parity matrix (desktop sidecar)
 
 This matrix tracks desktop parity by mapping `src/services/*.ts` consumers to sebuf domain handlers and classifying each feature as:
