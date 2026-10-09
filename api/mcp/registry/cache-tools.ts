@@ -563,8 +563,10 @@ function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
 function scorecardClock(data: Record<string, unknown>, card: Record<string, unknown> | null) {
   const capturedAt = Date.now();
   const meta = data.scorecardMeta;
-  const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
-  const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
+  const raw = meta && typeof meta === 'object' && 'fetchedAt' in meta ? meta.fetchedAt : undefined;
+  // A missing, non-numeric or future clock is unknown, never fresh.
+  const fetchedAt = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : NaN;
+  const knownClock = Number.isFinite(fetchedAt) && fetchedAt <= capturedAt;
   return {
     windowDays: typeof card?.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
     stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
@@ -621,15 +623,17 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
 const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
 
 /**
- * The first sentence is the one tools/list keeps. A manual override (#8990)
- * makes it the notice. Otherwise the audit follows each scorecard, which a
- * static description cannot know, so it states the rule.
+ * The first sentence is the one tools/list keeps, so it names the tool's
+ * purpose and the audit rule (#8990). A manual override makes the rule the
+ * dated notice. Otherwise the audit follows each scorecard, which a static
+ * description cannot know, so it points at underAudit.
  */
 export function forecastScorecardDescription(configured?: ForecastAccuracyAudit | null): string {
   const override = accuracyAuditOverride(configured);
-  return override
-    ? `Under audit since ${override.since} (issue ${override.issue}): scores are unreliable; do not quote them as a verdict. ${FORECAST_SCORECARD_DESCRIPTION}`
-    : `Check underAudit first: while it is set (issue 8990), the scores are under audit; do not quote them as a verdict. ${FORECAST_SCORECARD_DESCRIPTION}`;
+  const lead = override
+    ? `Forecast resolution scorecard, under audit since ${override.since} (issue ${override.issue}): do not quote its scores.`
+    : 'Forecast resolution scorecard (Brier, calibration, funnel); check underAudit before quoting scores.';
+  return `${lead} ${FORECAST_SCORECARD_DESCRIPTION}`;
 }
 
 /** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */

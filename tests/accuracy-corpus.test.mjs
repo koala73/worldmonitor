@@ -2439,6 +2439,8 @@ describe('accuracy page horizon grades (#9057)', () => {
     const download = JSON.parse(accuracyDatasetDownload({ state: classifyAccuracyState(withGrades()), snapshotPath: SNAPSHOT_PATH, audit }));
     assert.equal(download.underAudit.issue, 8990, 'the download keeps the raw rows flagged under audit');
     assert.equal(download.horizonProjections.rows.length, 3);
+    assert.equal(download.horizonProjections.gradesPublished, false, 'the page withholds them, so the download does not call them published');
+    assert.equal(downloadFor(withGrades()).horizonProjections.gradesPublished, true, 'lifted, the measurable row is published');
   });
 
   it('shows the grades only where the derived audit lifts: measurable and fresh, never stale or failed (#8990)', () => {

@@ -713,16 +713,38 @@ describe('the accuracy audit lifts with the scorecard on every surface (#8990)',
     assert.equal(fresh.underAudit, undefined);
   });
 
+  it('holds the REST audit when the seed clock is missing, unusable or in the future', async () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    const { getForecastScorecard } = await import('../server/worldmonitor/forecast/v1/get-forecast-scorecard.ts');
+    const data = seed(30, 5);
+    for (const [label, stored] of [
+      ['future clock', { _seed: { fetchedAt: Date.now() + 3_600_000 }, data }],
+      ['null clock', { _seed: { fetchedAt: null }, data }],
+      ['string clock', { _seed: { fetchedAt: String(Date.now()) }, data }],
+      ['zero clock', { _seed: { fetchedAt: 0 }, data }],
+      ['no envelope', data],
+    ] as const) {
+      serveRedis({ [REDIS_KEY]: stored });
+      const res = await getForecastScorecard(makeCtx() as never, {});
+      assert.deepEqual(res.underAudit, NOTICE, label);
+    }
+  });
+
   it('holds the audit on both MCP tools when the seed clock is stale or unknown', () => {
     if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
     const data = seed(30, 5);
     const at = (hours: number | null) => (hours === null ? {} : { scorecardMeta: { fetchedAt: Date.now() - hours * 3_600_000 } });
-    for (const [label, hours, held] of [['fresh', 1, false], ['stale', 37, true], ['unknown clock', null, true]] as const) {
+    for (const [label, hours, held] of [['fresh', 1, false], ['stale', 37, true], ['unknown clock', null, true], ['future clock', -1, true]] as const) {
       const card = projectForecastScorecard({ scorecard: data, ...at(hours) }).underAudit;
       const reliability = forecastReliability({ scorecard: data, ...at(hours) }, ['market']) as { underAudit?: unknown; status: string };
       assert.deepEqual(card, held ? NOTICE : null, `scorecard tool, ${label}`);
       assert.deepEqual(reliability.underAudit ?? null, held ? NOTICE : null, `reliability, ${label}`);
       assert.equal(reliability.status, held ? 'unavailable' : 'ready', label);
+    }
+    for (const fetchedAt of [null, '', String(Date.now()), 0]) {
+      assert.deepEqual(projectForecastScorecard({ scorecard: data, scorecardMeta: { fetchedAt } }).underAudit, NOTICE, `clock ${JSON.stringify(fetchedAt)}`);
     }
   });
 

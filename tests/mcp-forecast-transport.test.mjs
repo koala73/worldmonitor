@@ -266,8 +266,9 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
   it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list sentence budget', async () => {
     const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
     const listed = (override) => compressDescription(forecastScorecardDescription(override), TOOL_DESCRIPTION_MAX_BYTES);
-    assert.equal(listed(AUDIT), 'Under audit since 2026-10-07 (issue 8990): scores are unreliable; do not quote them as a verdict.');
-    assert.equal(listed(null), 'Check underAudit first: while it is set (issue 8990), the scores are under audit; do not quote them as a verdict.');
+    assert.equal(listed(AUDIT), 'Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): do not quote its scores.');
+    assert.equal(listed(null), 'Forecast resolution scorecard (Brier, calibration, funnel); check underAudit before quoting scores.');
+    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= 120, 'inside the tools/list sentence budget');
     const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
     assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT_OVERRIDE));
   });

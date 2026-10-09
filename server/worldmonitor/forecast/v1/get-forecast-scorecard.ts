@@ -25,8 +25,9 @@ export function scorecardUnderAudit(audit: ForecastAccuracyAudit | null): Pick<G
 }
 
 // seed is the stored value, which carries skill.measurable; the response does
-// not. A stale response keeps the audit on: an old reading cannot lift it.
-function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, seed: unknown = null): GetForecastScorecardResponse {
+// not. seedStale keeps the audit on: an old reading, or one whose clock is
+// missing or in the future, cannot lift it.
+function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, seed: unknown = null, seedStale = true): GetForecastScorecardResponse {
   return {
     schemaVersion: 1,
     generatedAt: 0,
@@ -52,7 +53,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, s
     stale: false,
     error: '',
     ...overrides,
-    ...scorecardUnderAudit(forecastAccuracyAudit(seed, { stale: overrides.stale === true })),
+    ...scorecardUnderAudit(forecastAccuracyAudit(seed, { stale: seedStale })),
   };
 }
 
@@ -63,13 +64,19 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
     const [envelope, marketAlerts] = await Promise.all([getSeedJson(REDIS_KEY), readMarketAlerts()]);
     const data = envelope.data as Record<string, unknown> | null;
     if (!data) return markNoStoreFallbackResponse(ctx.request, withMarketAlerts(emptyScorecard(), marketAlerts));
-    const fetchedAt = Number(envelope.fetchedAt);
+    const now = Date.now();
+    const fetchedAt = envelope.fetchedAt;
+    // A seed without a usable clock has always read as stale.
+    const stale = fetchedAt === null || now - fetchedAt > MAX_STALE_MS;
+    // The audit asks more than the stale flag: only a known clock that is not
+    // in the future can lift it (#8990), the same rule MCP applies.
+    const knownClock = fetchedAt !== null && fetchedAt <= now;
     const response = withMarketAlerts(emptyScorecard({
       ...selectScorecardFields(data),
       degraded: false,
-      stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
+      stale,
       error: '',
-    }, data), marketAlerts);
+    }, data, !knownClock || stale), marketAlerts);
     // A missing block is never cached: the next request may find it.
     return marketAlerts ? response : markNoStoreFallbackResponse(ctx.request, response);
   } catch (err) {
@@ -107,8 +114,9 @@ async function getSeedJson(key: string): Promise<{ data: unknown | null; fetched
   if (raw == null) return { data: null, fetchedAt: null };
   const parsed = JSON.parse(raw) as unknown;
   if (isScorecardSeedEnvelope(parsed)) {
-    const fetchedAt = Number(parsed._seed.fetchedAt);
-    return { data: parsed.data ?? null, fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : null };
+    // Only a positive finite number is a clock: null, a string or 0 is a missing one.
+    const fetchedAt = parsed._seed.fetchedAt;
+    return { data: parsed.data ?? null, fetchedAt: typeof fetchedAt === 'number' && Number.isFinite(fetchedAt) && fetchedAt > 0 ? fetchedAt : null };
   }
   return { data: parsed, fetchedAt: null };
 }

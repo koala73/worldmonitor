@@ -1645,12 +1645,14 @@ function withPublishedMarketAlertMedians(scorecard) {
   };
 }
 
-function horizonProjectionsDownload(horizonGrades) {
+// Under an audit the page withholds the grades, so the download does not call
+// them published; the rows stay, flagged by underAudit like the raw scorecard.
+function horizonProjectionsDownload(horizonGrades, audit) {
   const grades = horizonGrades.grades;
   return {
     valuesPublished: false,
     gradesStatus: horizonGrades.status,
-    gradesPublished: Boolean(grades?.rows.some((row) => row.measurable)),
+    gradesPublished: !audit && Boolean(grades?.rows.some((row) => row.measurable)),
     definition: 'A projection is not a probability: it comes from a fixed, hand-set curve per domain, identified by curvesVersion. Each row grades one curve version at one horizon, scoring the projection value as a probability at that point in time. brier and realizedRate appear only when measurable is true, which needs the minimums below; other rows carry counts only.',
     minimums: { families: SKILL_MIN_FAMILIES, yesFamilies: SKILL_MIN_OUTCOME_FAMILIES, noFamilies: SKILL_MIN_OUTCOME_FAMILIES },
     source: 'MCP get_forecast_scorecard (horizonGrades), read from the same stored scorecard as the record above. The REST scorecard does not carry it.',
@@ -1715,7 +1717,7 @@ export function accuracyDatasetDownload({ state, snapshotPath, audit = accuracyS
     skillVsActualRate: skillDownload(state.scorecard),
     // The projection values are retired (#8967); their point-in-time grades
     // are published per curve version and horizon once measurable (#9057).
-    horizonProjections: horizonProjectionsDownload(state.horizonGrades),
+    horizonProjections: horizonProjectionsDownload(state.horizonGrades, audit),
     scorecard: withPublishedMarketAlertMedians(state.scorecard),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
