@@ -145,7 +145,10 @@ async function runRecap() {
     const li = el('li');
     li.append(el('span', '', s.title));
     const n = s.publishers;
-    li.append(el('span', `chip ${s.state || 'unknown'}`, n == null ? 'count unknown' : n <= 1 ? '1 source' : `${n} sources`));
+    const chips = el('span', 'chips');
+    chips.append(el('span', `chip ${s.state || 'unknown'}`, n == null ? 'count unknown' : n <= 1 ? '1 publisher' : `${n} publishers`));
+    if (s.credibility != null) chips.append(el('span', `chip cred band-${s.band}`, `CRED ${s.credibility}`));
+    li.append(chips);
     list.append(li);
     const key = s.title.split(/\s+/).slice(0, 3).join(' ').toLowerCase();
     const at = data.script.toLowerCase().indexOf(key);
@@ -169,65 +172,49 @@ function fmtTime(iso) {
 const renderers = {
   who(d) {
     const out = el('div');
-    if (!d) { out.append(el('span', 'warn', 'No monitored publisher carried it.')); return out; }
-    const st = d.strength;
-    const line = el('div', 'who-head');
-    line.append(el('span', 'big', d.families ?? '?'), el('span', '', d.families === 1 ? 'publisher' : 'publishers'));
-    if (st && d.families > 1) {
-      line.append(el('span', 'arrow', '→'), el('span', `big band-${st.band}`, st.weight.toFixed(1)), el('span', `band-${st.band}`, `weighted · ${st.band}`));
-    }
-    out.append(line);
-    if (st && d.families > 1) {
-      // Meter: 0..4 with the moderate (1.2) and strong (2.0) marks.
-      const meter = el('div', 'meter');
-      const fill = el('i', `band-${st.band}`);
-      fill.style.width = `${Math.min(100, (st.weight / 4) * 100)}%`;
-      meter.append(fill, Object.assign(el('b', 'mark'), { style: 'left:30%', title: 'moderate 1.2' }), Object.assign(el('b', 'mark'), { style: 'left:45%', title: 'strong 1.8' }));
-      out.append(meter);
-    }
+    if (!d) { out.append(el('span', 'warn', 'No publisher WorldMonitor monitors carried it.')); return out; }
+    const head = el('div', 'who-head');
+    head.append(el('span', 'big', d.coverage.publishers ?? '?'), el('span', '', d.summary ?? ''));
+    if (d.credibility) head.append(el('span', `cred band-${d.credibility.band}`, `CRED ${d.credibility.score}`));
+    out.append(head);
+    const flag = { 'single-publisher': 'Single publisher', 'tier4-only': 'Low-tier sources only' }[d.coverage.state];
+    if (flag) out.append(el('div', 'warn', flag));
+    // WorldMonitor's roster order: best declared tier first.
     const list = el('ol', 'ranked');
     for (const r of (d.rated ?? []).slice(0, 5)) {
       const li = el('li');
-      li.append(el('span', `tier t${r.tier ?? 0}`, r.tier ? `T${r.tier}` : '?'), el('span', 'name', r.name));
-      const bar = el('span', 'bar');
-      const fill = el('i');
-      fill.style.width = `${Math.round(r.weight * 100)}%`;
-      bar.append(fill);
-      li.append(bar, el('span', 'score', r.weight.toFixed(2)));
+      li.title = r.summary ?? '';
+      li.append(el('span', `tier t${r.tier ?? 0}`, r.tier ? `T${r.tier}` : 'T?'), el('span', 'name', r.name), el('span', `cred band-${r.band}`, `CRED ${r.credibility}`));
       const tags = el('span', 'tags');
       if (r.stateAffiliated) tags.append(el('span', 'tag bad', `state: ${r.stateAffiliated}`));
-      tags.append(el('span', `tag risk-${r.risk}`, `${r.risk} risk`));
+      tags.append(el('span', `tag risk-${r.risk}`, r.riskReviewed ? `${r.risk} risk` : 'risk not reviewed'));
       li.append(tags);
       list.append(li);
     }
     out.append(list);
-    const more = Math.max(0, (d.rated?.length ?? 0) - 5) + (d.publishersUnlisted ?? 0);
+    const more = Math.max(0, (d.rated?.length ?? 0) - 5) + (d.unlisted ?? 0);
     if (more) out.append(el('div', 'mono', `+${more} more`));
-    for (const c of st?.collapsed ?? []) out.append(el('div', 'warn', `${c.members.join(' + ')} = one voice (${c.voice})`));
-    if (st?.weakPoolCapped) out.append(el('div', 'warn', 'Aggregators and blogs capped at 0.5 combined'));
+    if (d.seeder?.entityCorroboration === false) out.append(el('div', 'warn', 'Entity-corroboration gate did not fire'));
+    out.append(el('div', 'legend', 'Tiers rank sources; they do not judge this claim.'));
     return out;
   },
   when(d) {
     const out = el('div');
     if (!d) { out.append(el('span', 'warn', 'No timeline: nothing to trace.')); return out; }
     out.append(el('div', 'mono', `First seen ${fmtTime(d.firstSeen)} · spread over ${d.spreadHours ?? '?'}h`));
-    const c = d.cascade;
-    if (c?.origin === '(unnamed sources)' && c.originCount > 1) out.append(el('div', 'warn', `${c.originCount} of ${c.total} headlines rest on unnamed sources`));
-    else if (c?.origin && c.originCount > 1) out.append(el('div', 'warn', `${c.originCount} of ${c.total} headlines credit the same origin: ${c.origin}`));
-    else if (c?.attributed) out.append(el('div', '', `${c.attributed} of ${c.total} headlines cite someone else's reporting`));
-    else out.append(el('div', '', 'No shared origin named in the headlines'));
+    if (d.mergedClusters > 1) out.append(el('div', '', `Found across ${d.mergedClusters} WorldMonitor clusters`));
+    if (d.primarySource) out.append(el('div', '', `Lead source: ${d.primarySource}`));
     return out;
   },
   numbers(d) {
     const out = el('div');
-    if (!d.figures.length) { out.append(el('span', '', 'No figures in the headline to check.')); return out; }
-    for (const f of d.figures) {
-      if (f.found && f.statedBy?.length === 1) out.append(el('div', 'warn', `✓ ${f.figure} is in the sources, but only one publisher states it: ${f.statedBy[0]}`));
-      else if (f.found) out.append(el('div', 'good', `✓ ${f.figure} appears in the sourced text${f.statedBy?.length > 1 ? ` (${f.statedBy.length} publishers)` : ''}`));
-      else if (f.sourcesSay) out.append(el('div', 'bad', `✗ ${f.figure} is not in the sources. They say ${f.sourcesSay}.`));
-      else out.append(el('div', 'warn', `? ${f.figure} is not in the sourced text: unproven`));
+    if (!d.facts?.length) { out.append(el('span', '', d.gate === 'not-checked' ? 'Nothing to check.' : 'No figures in the headline to check.')); return out; }
+    for (const f of d.facts) {
+      if (!f.grounded) out.append(el('div', 'bad', `✗ ${f.label} is not grounded in any source text`));
+      else if (f.statedBy?.length === 1) out.append(el('div', 'warn', `✓ ${f.label} is grounded, but only one publisher states it: ${f.statedBy[0]}`));
+      else out.append(el('div', 'good', `✓ ${f.label} is grounded in the sources${f.statedBy?.length > 1 ? ` (${f.statedBy.length} publishers)` : ''}`));
     }
-    out.append(el('div', 'mono', `checked against ${d.evidence}`));
+    out.append(el('div', 'mono', `WorldMonitor's fact-grounding gate · ${d.evidence}`));
     return out;
   },
   money(d) {
@@ -295,10 +282,12 @@ function runGrade(headline) {
       }
       if (ev.step === 'verdict') {
         const v = $('#verdict');
-        v.className = `verdict v-${ev.data.verdict.toLowerCase()}`;
-        $('#verdict-word').textContent = ev.data.verdict;
+        // Colour: WorldMonitor's coverage state; a corroborated story takes its credibility band.
+        v.className = `verdict v-${ev.data.key}${ev.data.key === 'corroborated' && ev.data.band ? ` cred-${ev.data.band}` : ''}`;
+        $('#verdict-word').textContent = ev.data.word;
         const ul = $('#verdict-reasons');
         ul.replaceChildren(...ev.data.reasons.map((r) => el('li', '', r)));
+        $('#verdict-hint').textContent = ev.data.hint ?? '';
         v.hidden = false;
         $('#verdict-pending').hidden = true;
         continue;
@@ -419,13 +408,7 @@ if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
 (async () => {
   config = { ...config, ...(await fetch('/api/config').then((r) => r.json())) };
-  if (config.rehearsal) {
-    $('#rehearsal-banner').hidden = false;
-    $('#mode-badge').textContent = 'REHEARSAL';
-    $('#mode-badge').classList.add('rehearsal');
-  } else {
-    $('#mode-badge').textContent = config.sourceKind.includes('live') ? `LIVE · ${config.sourceKind.toUpperCase()}` : 'ARCHIVE · SNAPSHOT DATA';
-  }
+  $('#mode-badge').textContent = config.sourceKind.includes('live') ? `LIVE · ${config.sourceKind.toUpperCase()}` : 'OFFLINE · REAL SNAPSHOT DATA';
   if (config.backdropUrl) {
     const f = el('iframe');
     f.src = config.backdropUrl;

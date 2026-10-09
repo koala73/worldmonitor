@@ -2,20 +2,23 @@
   "name": "worldmonitor-verification-desk",
   "version": "1.0.0",
   "private": true,
-  "description": "Live stage demo: an AI anchor grades headlines against WorldMonitor's publisher-family counts.",
+  "description": "Live stage demo: an AI anchor grades headlines with WorldMonitor's own corroboration, source-tier, provenance, credibility and grounding code.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node server.mjs",
-    "rehearse": "DESK_REHEARSAL=1 node server.mjs",
-    "grade": "node scripts/grade.mjs",
-    "snapshot": "node scripts/snapshot.mjs",
-    "snapshot:loop": "node scripts/snapshot.mjs --every=30",
-    "find-reveal": "node scripts/find-reveal.mjs",
-    "check": "node scripts/check.mjs",
-    "test": "node --test test/*.test.mjs"
+    "start": "node --import tsx server.mjs",
+    "offline": "DESK_OFFLINE=1 node --import tsx server.mjs",
+    "grade": "node --import tsx scripts/grade.mjs",
+    "snapshot": "node --import tsx scripts/snapshot.mjs",
+    "snapshot:loop": "node --import tsx scripts/snapshot.mjs --every=30",
+    "find-reveal": "node --import tsx scripts/find-reveal.mjs",
+    "check": "node --import tsx scripts/check.mjs",
+    "test": "node --import tsx --test test/*.test.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.91.1"
+    "@anthropic-ai/sdk": "^0.91.1",
+    "tsx": "^4.21.0"
   }
 }

@@ -1,9 +1,11 @@
-// "Grade a headline": the five checks, run in order and emitted one at a time
-// so the stage can reveal each step as the anchor reaches it.
+// "Grade a headline". The desk finds which WorldMonitor story the audience
+// means (retrieval); every judgment after that is WorldMonitor's (lib/wm.mjs).
+// Checks are emitted one at a time so the stage reveals each as the anchor
+// reaches it.
 
-import { attributionCascade, checkFigures, heuristicSearchTerms, overlapScore } from './text.mjs';
-import { assessSources } from './quality.mjs';
-import { computeVerdict, gateJudge, MATCH_THRESHOLD } from './verdict.mjs';
+import { heuristicSearchTerms, overlapScore } from './text.mjs';
+import { computeVerdict, MATCH_THRESHOLD } from './verdict.mjs';
+import { coverage, credibilityBand, groundFigures, ratePublishers, rosterSummary, sourceCredibility } from './wm.mjs';
 
 function hoursBetween(a, b) {
   const d = (Date.parse(b) - Date.parse(a)) / 3_600_000;
@@ -24,50 +26,32 @@ function bestMatch(headline, clusters) {
 }
 
 /**
- * One event can land in several digest clusters: on 2026-10-09 the Trump/Putin
- * diesel deal sat in 8 clusters, each a lone outlet (BBC, FT, CNBC, NBC, ...),
- * so every cluster read "single-publisher". Counting only the best cluster
- * would call the day's most-corroborated story single-source. Merge every
- * cluster that matches the headline AND the best cluster, then count distinct
- * publisher families across all of them.
+ * Retrieval, not grading. One event can land in several digest clusters: on
+ * 2026-10-09 the Trump/Putin diesel deal sat in 8 clusters, each a lone outlet,
+ * so each cluster alone read "single-publisher". The desk gathers every
+ * cluster that matches the headline and the best cluster, then hands all of
+ * their feed labels to WorldMonitor's assessCorroboration in one evidence
+ * set, with the highest digest-reported count as the floor (the same way
+ * evidenceFromCluster takes the max).
  */
-export function mergeSiblings(headline, best, clusters) {
+export function gatherStory(headline, best, clusters) {
   const siblings = clusters.filter((c) => c !== best
     && overlapScore(headline, c.title) >= MATCH_THRESHOLD
     && Math.max(overlapScore(best.title, c.title), overlapScore(c.title, best.title)) >= 0.3);
-  const titleSource = (c) => ({ publisher: c.publishers?.[0]?.name ?? c.primarySource ?? 'unknown', text: c.title });
-  if (!siblings.length) return { ...best, mergedClusters: 1, bySource: [titleSource(best)] };
   const all = [best, ...siblings];
-  const byName = new Map();
-  for (const c of all) {
-    for (const p of c.publishers ?? []) {
-      const prev = byName.get(p.name);
-      if (!prev) byName.set(p.name, { ...p, labels: [...(p.labels ?? [])] });
-      else {
-        for (const l of p.labels ?? []) if (!prev.labels.includes(l)) prev.labels.push(l);
-        if (p.tier != null && (prev.tier == null || p.tier < prev.tier)) prev.tier = p.tier;
-      }
-    }
-  }
-  const publishers = [...byName.values()].sort((a, b) => (a.tier ?? 5) - (b.tier ?? 5) || a.name.localeCompare(b.name));
-  const families = Math.max(publishers.length, ...all.map((c) => c.corroboration?.publishers ?? 0));
-  const state = families === 0 ? 'unknown'
-    : families === 1 ? 'single-publisher'
-      : publishers.length && publishers.every((p) => p.tier === 4) && families === publishers.length ? 'tier4-only' : 'corroborated';
+  const labels = [...new Set(all.flatMap((c) => [...(c.sources ?? []), ...(c.publishers ?? []).flatMap((p) => p.labels ?? [])]))];
+  const reported = Math.max(0, ...all.map((c) => c.corroboration?.publishers ?? 0)) || null;
   const times = (k) => all.map((c) => c[k]).filter(Boolean).sort();
   return {
     ...best,
-    publishers,
-    publishersUnlisted: Math.max(0, families - publishers.length),
-    corroboration: { state, publishers: families },
-    sources: [...new Set(all.flatMap((c) => c.sources ?? []))],
-    sourceProvenance: all.flatMap((c) => c.sourceProvenance ?? []),
-    memberCount: all.reduce((n, c) => n + (c.memberCount ?? 1), 0),
-    memberTitles: [...new Set(all.flatMap((c) => c.memberTitles?.length ? c.memberTitles : [c.title]))],
+    labels,
+    reported,
+    clusters: all,
+    memberTitles: [...new Set(all.flatMap((c) => (c.memberTitles?.length ? c.memberTitles : [c.title])))],
     firstSeen: times('firstSeen')[0] ?? best.firstSeen,
     lastUpdated: times('lastUpdated').at(-1) ?? best.lastUpdated,
-    mergedClusters: all.length,
-    bySource: all.map(titleSource),
+    // One text per cluster, credited to that cluster's lead publisher.
+    bySource: all.map((c) => ({ publisher: c.publishers?.[0]?.name ?? c.primarySource ?? 'unknown', text: c.title })),
   };
 }
 
@@ -82,69 +66,81 @@ function marketRelevance(headline, terms, market) {
  * @param {{source:object, anchor:object}} deps
  * @yields {{step:string, data:object}}
  */
-export async function* gradeHeadline(headline, { source, anchor, book = null }) {
+export async function* gradeHeadline(headline, { source, anchor }) {
   const result = { headline, startedAt: new Date().toISOString(), sourceKind: source.kind };
 
-  // 0. Find the story.
+  // 0. Find the story (retrieval).
   const terms = await anchor.searchTerms(headline, heuristicSearchTerms(headline));
   const search = await source.searchClusters(terms);
   const best = bestMatch(headline, search.clusters);
   const matched = best && best.score >= MATCH_THRESHOLD ? best.cluster : null;
+  const story = matched ? gatherStory(headline, matched, search.clusters) : null;
   result.terms = terms;
-  result.match = matched
-    ? { id: matched.id, title: matched.title, link: matched.link, score: Math.round(best.score * 100) / 100, seenIn: matched.seenIn ?? null }
+  result.match = story
+    ? { id: story.id, title: story.title, link: story.link, score: Math.round(best.score * 100) / 100, seenIn: story.seenIn ?? null, mergedClusters: story.clusters.length }
     : null;
-  const story = matched ? mergeSiblings(headline, matched, search.clusters) : null;
-  if (result.match) result.match.mergedClusters = story.mergedClusters;
   result.closest = !matched && best ? { title: best.cluster.title, score: Math.round(best.score * 100) / 100 } : null;
   yield { step: 'match', data: { terms, match: result.match, closest: result.closest, candidates: search.clusters.length, failures: search.failures ?? [] } };
 
   const detail = story ? await source.storyDetail(story, terms[0]) : null;
-  const memberTitles = story ? [...new Set([...(detail?.memberTitles ?? []), ...(story.memberTitles ?? [story.title])])] : [];
+  const memberTitles = story ? [...new Set([...(detail?.memberTitles ?? []), ...story.memberTitles])] : [];
 
-  // 1. Who said it? Publisher families, never feed labels.
-  const quality = story ? assessSources(story, book) : null;
+  // 1. Who said it? WorldMonitor's coverage verdict, publisher roster and source ratings.
+  let cov = null;
+  let rated = [];
+  let credibility = null;
+  if (story) {
+    cov = coverage(story.labels, story.reported);
+    const count = cov.verdict.publishers ?? 1;
+    rated = ratePublishers(cov.roster, count);
+    // One cluster: the credibility WorldMonitor already computed for it. Several:
+    // the same formula over the gathered evidence, led by the best-rated source.
+    const own = story.clusters.length === 1 && Number.isFinite(story.credibilityScore) ? story.credibilityScore : null;
+    const lead = rated[0];
+    const score = own ?? (lead ? sourceCredibility(lead.labels[0] ?? lead.name, count) : null);
+    credibility = score == null ? null : { score: Math.round(score), band: credibilityBand(score), source: own != null ? story.primarySource : lead.name };
+  }
   result.who = story
     ? {
-      rated: quality.rated,
-      strength: quality.strength,
-      families: story.corroboration?.publishers ?? story.distinctSourceCount ?? null,
-      state: story.corroboration?.state ?? 'unknown',
-      publishers: story.publishers,
-      publishersUnlisted: story.publishersUnlisted,
-      feedLabels: story.sources,
-      memberCount: story.memberCount,
-      seederCorroboration: detail?.corroborationSourceCount ?? null,
-      entityCorroboration: detail?.entityCorroboration ?? null,
+      coverage: cov.verdict,
+      summary: rosterSummary(cov.verdict, rated),
+      rated,
+      unlisted: Math.max(0, (cov.verdict.publishers ?? 0) - rated.length),
+      credibility,
+      feedLabels: story.labels,
+      memberCount: story.clusters.reduce((n, c) => n + (c.memberCount ?? 1), 0),
+      seeder: detail && (detail.entityCorroboration != null || detail.corroborationSourceCount != null)
+        ? { entityCorroboration: detail.entityCorroboration ?? null, corroborationSourceCount: detail.corroborationSourceCount ?? null }
+        : null,
     }
     : null;
   yield { step: 'who', data: result.who };
 
-  // 2. When did it first appear, and who leans on whom?
-  const cascade = attributionCascade(memberTitles);
+  // 2. When did it first appear and how fast did it spread? WorldMonitor's cluster timestamps.
   result.when = story
     ? {
       firstSeen: story.firstSeen,
       lastUpdated: story.lastUpdated,
       spreadHours: hoursBetween(story.firstSeen, story.lastUpdated),
       primarySource: story.primarySource,
-      cascade,
+      mergedClusters: story.clusters.length,
       memberTitles: memberTitles.slice(0, 12),
     }
     : null;
   yield { step: 'when', data: result.when };
 
-  // 3. Does the number exist in the sourced text?
+  // 3. Is every figure grounded? WorldMonitor's fact extractor and grounding gate.
   const article = story?.link ? await source.articleText(story.link) : null;
-  const evidenceText = [...memberTitles, article ?? ''].join('\n');
-  const bySource = story ? [...(story.bySource ?? []), ...(article ? [{ publisher: story.publishers?.[0]?.name ?? story.primarySource, text: article }] : [])] : [];
-  // "Only one publisher states this number" needs text from at least two publishers to mean anything.
+  const groundText = [...memberTitles, article ?? ''].join('\n');
+  // "Stated by one publisher only" needs text from at least two publishers to mean anything.
+  const bySource = story ? [...story.bySource, ...(article ? [{ publisher: rated[0]?.name ?? story.primarySource, text: article }] : [])] : [];
   const comparable = new Set(bySource.map((b) => b.publisher)).size >= 2;
-  const figures = story ? checkFigures(headline, evidenceText, comparable ? bySource : []).map((f) => (comparable ? f : { ...f, statedBy: null })) : [];
-  result.numbers = { figures, evidence: article ? 'article text + member headlines' : 'member headlines only', articleChars: article?.length ?? 0 };
+  result.numbers = story
+    ? { ...groundFigures(headline, groundText, comparable ? bySource : []), evidence: article ? 'article text + member headlines' : 'member headlines only' }
+    : { gate: 'not-checked', facts: [], evidence: null };
   yield { step: 'numbers', data: result.numbers };
 
-  // 4. What is money saying?
+  // 4. What is money saying? WorldMonitor's prediction-market feed.
   let markets = [];
   try {
     markets = (await source.markets(terms))
@@ -158,12 +154,19 @@ export async function* gradeHeadline(headline, { source, anchor, book = null }) 
   result.money = { markets };
   yield { step: 'money', data: result.money };
 
-  // 5. Verdict, from counts. The model's contradiction call must quote the evidence verbatim.
-  const judge = story ? gateJudge(await anchor.judge(headline, evidenceText), evidenceText) : null;
-  result.judge = judge;
-  const sourcesUnreachable = (search.failures?.length ?? 0) > 0 && search.failures.length >= terms.length;
-  result.verdict = computeVerdict({ match: story ? { score: best.score } : null, corroboration: story?.corroboration ?? null, figures, judge, sourcesUnreachable, quality });
-  yield { step: 'verdict', data: { ...result.verdict, judge } };
+  // 5. The card: WorldMonitor's judgments, arranged.
+  const sourcesUnreachable = !story && (search.failures?.length ?? 0) > 0 && search.failures.length >= terms.length;
+  result.verdict = computeVerdict({
+    found: Boolean(story),
+    sourcesUnreachable,
+    coverage: cov?.verdict,
+    summary: result.who?.summary ?? null,
+    credibility,
+    rated,
+    figures: story ? result.numbers : null,
+    seeder: result.who?.seeder ?? null,
+  });
+  yield { step: 'verdict', data: result.verdict };
 
   result.script = await anchor.narrateGrade(result);
   yield { step: 'script', data: { text: result.script } };

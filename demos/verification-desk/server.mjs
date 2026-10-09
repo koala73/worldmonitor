@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The Verification Desk: stage server.
 //   npm start                 live WorldMonitor data (needs .env)
-//   npm run rehearse          fictional rehearsal data, no keys needed
+//   npm run offline           committed real snapshots only, no keys, no network
 // Open http://localhost:4317 on the stage laptop, press F for fullscreen.
 
 import { createServer } from 'node:http';
@@ -10,12 +10,13 @@ import path from 'node:path';
 import { buildDesk, DATA_DIR, loadEnv, ROOT } from './lib/config.mjs';
 import { gradeHeadline } from './lib/grade.mjs';
 import { findRevealCandidates } from './lib/reveal.mjs';
+import { coverage, credibilityBand, sourceCredibility } from './lib/wm.mjs';
 
 loadEnv();
 const PORT = Number(process.env.PORT || 4317);
 const desk = buildDesk();
 const PUBLIC = path.join(ROOT, 'public');
-const CACHE_DIR = path.join(DATA_DIR, desk.rehearsal ? 'cache-rehearsal' : 'cache');
+const CACHE_DIR = path.join(DATA_DIR, 'cache');
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -48,21 +49,26 @@ async function recap() {
     const week = desk.source.weekClusters ? await desk.source.weekClusters() : [];
     let stories;
     let scope;
+    // Every story is graded by WorldMonitor: coverage state, publishers, credibility.
+    const grade = (title, labels, reported, credibilityScore) => {
+      const { verdict, roster } = coverage(labels, reported);
+      const lead = roster[0];
+      const score = Number.isFinite(credibilityScore) ? credibilityScore : lead ? sourceCredibility(lead.labels[0] ?? lead.name, verdict.publishers ?? 1) : null;
+      return { title, state: verdict.state, publishers: verdict.publishers, credibility: score == null ? null : Math.round(score), band: score == null ? null : credibilityBand(score) };
+    };
     if (week.length >= 5) {
-      // Biggest stories of the archived week by independent publisher families.
       stories = week
-        .filter((c) => c.corroboration?.publishers)
-        .sort((a, b) => b.corroboration.publishers - a.corroboration.publishers)
-        .slice(0, 6)
-        .map((c) => ({ title: c.title, publishers: c.corroboration.publishers, state: c.corroboration.state, firstSeen: c.firstSeen }));
-      scope = desk.rehearsal ? 'the rehearsal week' : 'the last seven days';
+        .map((c) => grade(c.title, c.sources ?? [], c.corroboration?.publishers ?? null, c.credibilityScore))
+        .filter((s) => s.publishers)
+        .sort((a, b) => b.publishers - a.publishers)
+        .slice(0, 6);
+      scope = 'the last seven days';
     } else {
       const brief = await desk.source.brief();
-      stories = brief.headlines.slice(0, 6).map((title, i) => ({
-        title,
-        publishers: brief.topStories?.[i]?.corroboration?.publishers ?? brief.topStories?.[i]?.uniqueSourceCount ?? null,
-        state: brief.topStories?.[i]?.corroboration?.state ?? 'unknown',
-      }));
+      stories = brief.headlines.slice(0, 6).map((title, i) => {
+        const t = brief.topStories?.[i] ?? {};
+        return grade(title, t.sources ?? t.publishers?.flatMap((p) => p.labels ?? [p.name]) ?? [], t.corroboration?.publishers ?? t.uniqueSourceCount ?? null, t.credibilityScore);
+      });
       scope = 'the world right now';
     }
     const script = await desk.anchor.narrateRecap(stories, scope);
@@ -71,9 +77,9 @@ async function recap() {
 }
 
 async function reveal() {
-  const pinnedPath = path.join(DATA_DIR, desk.rehearsal ? 'reveal-rehearsal.json' : 'reveal.json');
+  const pinnedPath = path.join(DATA_DIR, 'reveal.json');
   // data/reveal.json (pinned locally) wins over the committed snapshots/reveal.json.
-  for (const file of desk.rehearsal ? [pinnedPath] : [pinnedPath, path.join(ROOT, 'snapshots', 'reveal.json')]) {
+  for (const file of [pinnedPath, path.join(ROOT, 'snapshots', 'reveal.json')]) {
     try {
       const pinned = JSON.parse(await readFile(file, 'utf8'));
       return { ...pinned, pinned: true };
@@ -114,7 +120,7 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/config') {
       return sendJson(res, 200, {
-        rehearsal: desk.rehearsal,
+        offline: desk.offline,
         sourceKind: desk.source.kind,
         anchor: desk.anchor.enabled ? desk.anchor.model : null,
         tts: process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID ? 'elevenlabs' : 'browser',
@@ -172,7 +178,7 @@ desk.source.live?.warm?.();
 
 server.listen(PORT, () => {
   console.log(`Verification Desk on http://localhost:${PORT}`);
-  console.log(`  source: ${desk.source.kind}${desk.rehearsal ? ' (FICTIONAL rehearsal data)' : ''}`);
+  console.log(`  source: ${desk.source.kind}${desk.offline ? ' (committed snapshots, offline)' : ''}`);
   console.log(`  anchor: ${desk.anchor.enabled ? desk.anchor.model : 'template voice (no ANTHROPIC_API_KEY)'}`);
   console.log(`  voice:  ${process.env.ELEVENLABS_API_KEY ? 'ElevenLabs' : 'browser speech synthesis'}`);
 });

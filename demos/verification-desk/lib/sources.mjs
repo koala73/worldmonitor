@@ -1,7 +1,6 @@
 // Where the desk reads from. LiveSource calls WorldMonitor's MCP tools,
 // ArchiveSource replays snapshots taken by scripts/snapshot.mjs (the MCP news
-// tools only see the live digest window, so "last week" needs an archive),
-// and FixtureSource serves clearly-labelled rehearsal data with no network.
+// tools only see the live digest window, so "last week" needs an archive).
 
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -356,54 +355,5 @@ export class CombinedSource {
   async gdeltArticles() {
     const [l, a] = await Promise.all([this.live?.gdeltArticles() ?? [], this.archive?.gdeltArticles() ?? []]);
     return [...new Map([...a, ...l].map((x) => [x.url, x])).values()];
-  }
-}
-
-/** Rehearsal data. Every string in the fixture is fictional and the UI says so on screen. */
-export class FixtureSource {
-  constructor(fixture) {
-    this.fixture = fixture;
-    this.kind = 'rehearsal';
-  }
-
-  async searchClusters(terms) {
-    const lower = terms.map((t) => t.toLowerCase());
-    const clusters = this.fixture.clusters
-      .filter((c) => lower.some((t) => `${c.title} ${(c.memberTitles ?? []).join(' ')}`.toLowerCase().includes(t)))
-      .map((c) => normalizeCluster(c, { seenIn: 'rehearsal' }));
-    return { clusters, generatedAt: this.fixture.generatedAt, failures: [] };
-  }
-
-  async storyDetail(cluster) {
-    return cluster.memberTitles ? { memberTitles: cluster.memberTitles } : null;
-  }
-
-  async markets(terms) {
-    const lower = terms.map((t) => t.toLowerCase());
-    return this.fixture.markets.filter((m) => lower.some((t) => m.title.toLowerCase().includes(t)));
-  }
-
-  async articleText(url) {
-    return this.fixture.articles[url] ?? null;
-  }
-
-  async brief() {
-    return this.fixture.brief;
-  }
-
-  async allClusters() {
-    return this.fixture.clusters.map((c) => normalizeCluster(c, { seenIn: 'rehearsal' }));
-  }
-
-  async intelligenceStories() {
-    return [];
-  }
-
-  async weekClusters() {
-    return this.allClusters();
-  }
-
-  async gdeltArticles() {
-    return this.fixture.gdeltArticles ?? [];
   }
 }

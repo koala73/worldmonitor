@@ -36,7 +36,7 @@ if (pick) {
   if (!chosen) throw new Error(`No candidate #${pick}`);
   const script = await desk.anchor.narrateReveal(chosen);
   await mkdir(DATA_DIR, { recursive: true });
-  const file = path.join(DATA_DIR, desk.rehearsal ? 'reveal-rehearsal.json' : 'reveal.json');
+  const file = path.join(DATA_DIR, 'reveal.json');
   await writeFile(file, JSON.stringify({ candidate: chosen, script, pinnedAt: new Date().toISOString() }, null, 2));
   console.log(`\nPinned #${pick} -> ${path.relative(process.cwd(), file)}\n\nAnchor script:\n${script}\n\nEdit the script in that file if you want different words on stage.`);
 }

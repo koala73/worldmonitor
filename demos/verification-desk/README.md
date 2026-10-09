@@ -2,7 +2,7 @@
 
 A live stage piece for the *Verified Truth & Trust* panel. An AI anchor recaps the week, grades headlines the audience shouts out, and reveals a story that "everyone saw" but that traces back to one newsroom.
 
-The anchor's facts come from WorldMonitor's MCP tools. Its verdicts come from fixed rules in `lib/verdict.mjs`, applied to WorldMonitor's publisher-family counts. Claude only extracts search terms, quote-checks a possible contradiction, and writes the spoken lines. Every model call has a template fallback, so the desk keeps talking if a key or the network fails.
+The desk does not have its own idea of truth. It finds which WorldMonitor story the audience means, then every judgment on screen is a call into WorldMonitor's own code: the same modules the dashboard, the MCP tools and the brief seeders use (`lib/wm.mjs`). Claude only extracts search terms and writes the spoken lines, and a line is spoken only if it passes WorldMonitor's own brief hallucination validators. Every model call has a template fallback built only from WorldMonitor's data.
 
 > We don't ask the model if it's true. We ask the data where it came from.
 
@@ -14,7 +14,7 @@ The anchor's facts come from WorldMonitor's MCP tools. Its verdicts come from fi
 
 ```bash
 cd demos/verification-desk
-npm install
+npm install          # also installs tsx, which loads WorldMonitor's TypeScript modules
 cp .env.example .env          # add WORLDMONITOR_API_KEY, ANTHROPIC_API_KEY (+ ElevenLabs if you have it)
 npm run check                 # every line should be PASS, or a WARN you accept
 npm run snapshot:loop         # leave running overnight: archives the digest every 30 min
@@ -40,20 +40,13 @@ The finder looks for four patterns, all read straight from WorldMonitor's data:
 
 **Open every link before you pin a story.** The data says "one publisher family in what WorldMonitor monitors." On stage, you are the one telling a room that a newsroom was the only source. If you want different wording, edit `script` in `data/reveal.json`.
 
-## Rehearse without any keys
+## Practise without any keys
 
 ```bash
-npm run rehearse     # http://localhost:4317, fictional data, an orange REHEARSAL banner on screen
+npm run offline      # http://localhost:4317, the committed real snapshots, no network
 ```
 
-Every place, outlet and number in `fixtures/rehearsal.json` is invented. Try these headlines to see each verdict:
-
-- "Minister Calloway resigns" → **Single-source** (five regional editions of one paper count as one)
-- "Aurelia central bank raises rates by 75 basis points" → **Contradicted** (the sources say 50)
-- "Mount Tessaly eruption kills 400" → **Corroborated, figure unproven**
-- "Aurelia's president hospitalised" → **Weakly sourced** (8 publishers that weigh 0.9)
-- "Aliens land in Paris" → **Unverifiable**
-- Press **S** → the Lumora / Kestrel Wire cascade reveal
+Try the headlines in the table below, then press **S** for the iHeart reveal.
 
 ## On stage
 
@@ -71,34 +64,40 @@ npm start            # http://localhost:4317 → press F for fullscreen, H to hi
 
 Each grade streams the checks one at a time: **who** (publisher families, with collapsed feed labels struck through), **when** (first seen, spread, stated origin), **numbers** (every figure in the headline looked up in the article text and member headlines), **money** (Polymarket and Kalshi odds that match), then the **verdict** card, and then the anchor speaks. Every live grade is logged to `data/grades/` for your write-up after the panel.
 
-### Source quality: weight, not headcount (`lib/quality.mjs`)
+### How a headline is graded: WorldMonitor's chain, end to end
 
-Ten weak sources are not corroboration. Every publisher behind a story is ranked on screen with WorldMonitor's own ratings: its **tier** (1 wire service or official body, 2 major outlet, 3 specialist or regional, 4 aggregator or blog), its **propaganda risk**, and its **state affiliation**. These come from `get_sources`, and a copy of all 519 outlets is in `snapshots/sources.json`. Each publisher is scored with WorldMonitor's credibility formula, imported from `shared/news-credibility.js` rather than copied: tier 30%, risk 50%, state-controlled media capped.
-
-The story's **evidence weight** adds those scores up, with three rules:
-
-1. Each publisher adds its score ÷ 80, so a tier-1, low-risk wire is 1.0, a tier-2 low-risk outlet 0.91, an unrated blog 0.31 and RT 0.26.
-2. **State media of one country is one voice.** RT, TASS and RT Russia count once.
-3. **Aggregators, blogs and unnamed publishers add at most 0.5 between them,** however many there are.
-
-Bands: **strong** is 1.8 or more, including at least one top-rated source (0.85+). **Moderate** is 1.2 or more. Anything less is **weak**. The divisor, the cap and the bands are this desk's choices, not WorldMonitor constants; say so if asked.
-
-Real examples from 2026-10-09:
-
-- Diesel deal: 6 publishers, weight **4.3, strong** (BBC, FT, Meduza, France 24, CNBC, NBC).
-- Sudan drone strike: 2 publishers, weight **1.0, weak**. Daily Sabah is state-affiliated (Turkey) and Dabanga Sudan is unrated.
-
-In rehearsal, "Aurelia's president hospitalised" has 8 publishers but weighs **0.9**: three state outlets that are one voice, plus five blogs.
-
-### Verdict rules (`lib/verdict.mjs`)
-
-| Verdict | When |
+| Check on screen | WorldMonitor code it calls |
 |---|---|
-| Unverifiable | No monitored cluster matches, or there is no countable publisher evidence |
-| Contradicted | The sources state a different figure *for the same quantity* ("75 basis points" vs "50 basis points", not "kills 200" vs "magnitude 7.7"). Or Claude quotes a contradicting line **that appears verbatim in the evidence**; a quote that isn't verbatim is discarded. |
-| Single-source | One publisher family, counted across **every** matching cluster (one event can be split over several digest clusters). The card names that publisher and its rating. |
-| Weakly sourced | Two or more publishers, but the evidence weight is weak, or every source is an aggregator or blog |
-| Corroborated | Two or more publishers with moderate or strong weight. A figure the sources don't contain is flagged as unproven; a figure only one publisher states is flagged as single-source. |
+| Who said it: publishers, not feed labels (Reuters India + Reuters US = one) | `assessCorroboration`, `publisherRoster` in `server/_shared/corroboration.ts`; families in `shared/publisher-families.js` |
+| How good are they: tier T1–T4 | `declaredSourceTier`, `getSourceTier`, `TIER_MEANING` in `server/_shared/source-tiers.ts` |
+| Propaganda risk, state affiliation, provenance note | `getSourcePropagandaRisk`, `getSourceProvenanceState` in `shared/source-provenance.ts` |
+| CRED n per source and for the story, low/medium/high | `computeCredibilityScore` in `shared/news-credibility.js`, composed and banded as the dashboard's `resolveCredibilityScore` / `renderCredibilityBadge` (`src/components/news/source-provenance.ts`) |
+| Clears the corroboration bar? | `MIN_CORROBORATING_PUBLISHERS` (2), the same constant the brief and digest gates use |
+| Entity-corroboration gate | the insights seeder's `entityCorroboration` / `corroborationSourceCount`, read from `get_news_intelligence` |
+| Is every figure grounded? | `extractNumericFacts`, `validateNoHallucinatedFacts` in `shared/brief-llm-core.js`, the brief seeders' fact gate |
+| Is the anchor's script grounded? | `validateNoHallucinatedProperNouns`, `validateNoHallucinatedStatusQualifiers`, `validateNoHallucinatedFacts` |
+| Reveal: N sites, one publisher | `briefGroundingPublisherCount`, `briefGroundingGap` in `scripts/crawlable-developments.mjs` |
+| Wording ("Single publisher", "Low-tier sources only", "Reported by N publishers, including N tier-1") | `components.corroboration` in `src/locales/en.json` |
+
+The desk's own logic is limited to **retrieval**: matching a spoken headline to WorldMonitor clusters, and gathering every cluster of one event. On 2026-10-09 the diesel deal sat in 8 one-outlet clusters; all their feed labels go to `assessCorroboration` together. Change a rule in WorldMonitor and the desk changes with it.
+
+**The verdict card** puts WorldMonitor's coverage state in its own words (*Corroborated*, *Single publisher*, *Low-tier sources only*, *Unverifiable*, or *Not in WorldMonitor's sources*). The colour follows the CRED band, and the card lists the gates above with WorldMonitor's caveat: *tiers rank sources; they do not judge this claim. Coverage, not accuracy.* There is no "Contradicted": WorldMonitor has no contradiction judgment, so the desk doesn't invent one.
+
+Real results (2026-10-09 snapshot):
+
+| Headline | WorldMonitor says |
+|---|---|
+| Trump strikes diesel deal with Putin | Corroborated · 6 publishers · CRED 93 (BBC) · France 24 state-affiliated |
+| 31 civilians killed in drone strike on Sudan displacement camp | Corroborated · 2 publishers · CRED 56 (medium) · Daily Sabah state-affiliated (Turkey) · 31 stated by Daily Sabah only |
+| US imposes sanctions on ICC | Corroborated · 7 publishers incl. 1 tier-1 · CRED 68 |
+| Panama earthquake kills 200 | Corroborated · CRED 89 · **200 not grounded in any source** |
+| Nvidia's communications chief leaves | **Single publisher** · Business Insider, CRED 77 |
+| Trump Announces Diesel Deal With Russia (reveal) | 6 iHeart station sites → **1 publisher**, `thin-grounding` |
+
+**WorldMonitor data gaps the desk shows as-is** (fix them in WorldMonitor, not here):
+
+- "Reuters US" and "Reuters India" have no reviewed propaganda risk, so Reuters stories score CRED 68 while "Reuters" itself is reviewed low-risk.
+- CNA is state-affiliated (Singapore) *and* low risk, so it scores 93.
 
 WorldMonitor's corroboration states describe coverage, not accuracy. The anchor is prompted never to call a claim true or false, only to say what the sources show.
 
@@ -129,15 +128,17 @@ Soundbites:
 
 ```
 server.mjs            HTTP + SSE server, last-good cache, ElevenLabs proxy
+lib/wm.mjs            the only bridge to WorldMonitor's grading code (see the table above)
+lib/grade.mjs         retrieval + the checks, emitted one at a time
+lib/verdict.mjs       arranges WorldMonitor's judgments into the verdict card
+lib/reveal.mjs        single-publisher reveal finder, counted by WorldMonitor
+lib/text.mjs          retrieval only: matching a spoken headline to clusters
+lib/anchor.mjs        Claude voice, gated by WorldMonitor's brief validators, with template fallbacks
 lib/mcp-client.mjs    streamable-HTTP MCP client (X-WorldMonitor-Key or bearer)
-lib/sources.mjs       live MCP, archive snapshots, rehearsal fixtures
-lib/grade.mjs         the five checks, emitted one at a time
-lib/verdict.mjs       the verdict rule and the quote gate
-lib/text.mjs          matching, figure extraction, attribution detection
-lib/reveal.mjs        single-source candidate finder
-lib/anchor.mjs        Claude voice + template fallbacks
+lib/sources.mjs       live MCP and archive snapshots
 scripts/              snapshot, find-reveal, grade (CLI), check
+snapshots/            real WorldMonitor data, committed
 public/               the stage UI (no build step)
 ```
 
-`npm test` runs the rule, pipeline and MCP client tests against the fixtures.
+`npm test` checks that the bridge matches WorldMonitor's functions and runs the pipeline against the real snapshot. Everything runs under `node --import tsx`; the npm scripts already do this.

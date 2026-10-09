@@ -1,10 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Anchor } from './anchor.mjs';
-import { SourceBook } from './quality.mjs';
 import { WorldMonitorMcp } from './mcp-client.mjs';
-import { ArchiveSource, CombinedSource, FixtureSource, LiveSource } from './sources.mjs';
+import { ArchiveSource, CombinedSource, LiveSource } from './sources.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_DIR = path.join(ROOT, 'data');
@@ -17,31 +16,22 @@ export function loadEnv() {
   if (existsSync(envPath)) process.loadEnvFile(envPath);
 }
 
-/** WorldMonitor's outlet ratings (get_sources), as committed in snapshots/sources.json. */
-export function loadSourceBook() {
-  try {
-    return new SourceBook(JSON.parse(readFileSync(path.join(SNAPSHOT_DIR, 'sources.json'), 'utf8')).outlets);
-  } catch {
-    return new SourceBook([]);
-  }
-}
-
-export function buildDesk({ rehearsal = process.env.DESK_REHEARSAL === '1' } = {}) {
+/**
+ * Live WorldMonitor MCP when a key is set, with the archived and committed
+ * snapshots behind it. DESK_OFFLINE=1 (npm run offline) reads the snapshots
+ * only: real WorldMonitor data, no network, no keys.
+ */
+export function buildDesk({ offline = process.env.DESK_OFFLINE === '1' } = {}) {
   const anchor = new Anchor();
-  const book = loadSourceBook();
-  if (rehearsal) {
-    const fixture = JSON.parse(readFileSync(path.join(ROOT, 'fixtures', 'rehearsal.json'), 'utf8'));
-    return { source: new FixtureSource(fixture), anchor, book: new SourceBook(fixture.sources ?? []), rehearsal: true };
-  }
   const apiKey = process.env.WORLDMONITOR_API_KEY;
   const bearerToken = process.env.WORLDMONITOR_MCP_TOKEN;
-  const live = apiKey || bearerToken
+  const live = !offline && (apiKey || bearerToken)
     ? new LiveSource(new WorldMonitorMcp({ url: process.env.WORLDMONITOR_MCP_URL || 'https://worldmonitor.app/mcp', apiKey, bearerToken }))
     : null;
   const archiveDirs = [ARCHIVE_DIR, SNAPSHOT_DIR].filter((d) => existsSync(d));
   const archive = archiveDirs.length ? new ArchiveSource(archiveDirs, { days: Number(process.env.DESK_ARCHIVE_DAYS || 7) }) : null;
   if (!live && !archive) {
-    throw new Error('No data source: set WORLDMONITOR_API_KEY in demos/verification-desk/.env, or run with DESK_REHEARSAL=1.');
+    throw new Error('No data source: set WORLDMONITOR_API_KEY in demos/verification-desk/.env, or keep the committed snapshots/.');
   }
-  return { source: new CombinedSource(live, archive), anchor, book, rehearsal: false };
+  return { source: new CombinedSource(live, archive), anchor, offline: !live };
 }

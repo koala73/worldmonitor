@@ -1,89 +1,60 @@
-// The verdict rule. Deterministic on purpose: the model narrates the verdict,
-// it never decides it. Corroboration states come straight from WorldMonitor
-// (server/_shared/corroboration.ts) and describe coverage, not accuracy.
+// The verdict card. Nothing here is a new rule: it arranges WorldMonitor's
+// own judgments (lib/wm.mjs) into what the stage shows.
+//
+//   headline word  WorldMonitor's coverage state, in its own UI wording
+//   grade          WorldMonitor's credibility score and band (CRED n)
+//   flags          the brief corroboration bar, the seeder's entity gate,
+//                  the fact-grounding gate, state affiliation
+//
+// WorldMonitor is explicit that coverage is not accuracy ("This describes
+// coverage, not accuracy."), so the card says so too.
 
-export const VERDICTS = {
-  CORROBORATED: 'Corroborated',
-  SINGLE_SOURCE: 'Single-source',
-  WEAKLY_SOURCED: 'Weakly sourced',
-  CONTRADICTED: 'Contradicted',
-  UNVERIFIABLE: 'Unverifiable',
-};
+import { MIN_CORROBORATING_PUBLISHERS, WM_TEXT, coverageFlag } from './wm.mjs';
 
 export const MATCH_THRESHOLD = 0.5;
 
-/**
- * @param {object} input
- * @param {{score:number}|null} input.match         best cluster match, or null
- * @param {{state:string, publishers:number|null}|null} input.corroboration
- * @param {{figure:string, found:boolean, sourcesSay:string|null}[]} input.figures
- * @param {{stance:string, quote:string|null}|null} input.judge  quote already verified verbatim
- */
-export function computeVerdict({ match, corroboration, figures = [], judge = null, sourcesUnreachable = false, quality = null }) {
+export const VERDICT_WORDS = {
+  'not-found': 'Not in WorldMonitor’s sources',
+  unreachable: 'Sources unreachable',
+  'single-publisher': WM_TEXT.singlePublisher,
+  'tier4-only': WM_TEXT.tier4Only,
+  corroborated: 'Corroborated',
+  unknown: 'Unverifiable',
+};
+
+export function computeVerdict({ found, sourcesUnreachable = false, coverage, summary = null, credibility = null, rated = [], figures = null, seeder = null }) {
+  if (!found) {
+    const key = sourcesUnreachable ? 'unreachable' : 'not-found';
+    return {
+      key,
+      word: VERDICT_WORDS[key],
+      reasons: [sourcesUnreachable
+        ? 'The desk could not reach WorldMonitor, so it cannot check this claim.'
+        : 'No publisher WorldMonitor monitors carried this story in the window it holds.'],
+      hint: null,
+      band: null,
+    };
+  }
+  const state = coverage?.state ?? 'unknown';
   const reasons = [];
-  if (!match && sourcesUnreachable) {
-    // An outage is not evidence of absence: never say "nobody carried it" when we could not look.
-    reasons.push('The desk could not reach its sources, so it cannot check this claim.');
-    return { verdict: VERDICTS.UNVERIFIABLE, reasons };
+  if (summary) reasons.push(`${summary}.`);
+  if (credibility) reasons.push(`WorldMonitor credibility ${credibility.score}/100 (${credibility.band}), from ${credibility.source}.`);
+  const publishers = coverage?.publishers ?? 0;
+  reasons.push(publishers >= MIN_CORROBORATING_PUBLISHERS
+    ? `Clears WorldMonitor's corroboration bar (${MIN_CORROBORATING_PUBLISHERS} independent publishers).`
+    : `Below WorldMonitor's corroboration bar of ${MIN_CORROBORATING_PUBLISHERS} independent publishers.`);
+  for (const r of rated.filter((x) => x.stateAffiliated)) reasons.push(`${r.name}: state-affiliated (${r.stateAffiliated}).`);
+  if (seeder?.entityCorroboration === false) reasons.push('WorldMonitor’s entity-corroboration gate did not fire for this story.');
+  if (seeder?.entityCorroboration === true) reasons.push('WorldMonitor’s entity-corroboration gate fired: named entities match across outlets.');
+  for (const f of figures?.facts ?? []) {
+    if (!f.grounded) reasons.push(`The figure ${f.label} is not grounded in any source text.`);
+    else if (f.statedBy?.length === 1) reasons.push(`The figure ${f.label} is stated by one publisher only: ${f.statedBy[0]}.`);
   }
-  if (!match || match.score < MATCH_THRESHOLD) {
-    reasons.push('No monitored publisher carried this story in the window WorldMonitor holds.');
-    return { verdict: VERDICTS.UNVERIFIABLE, reasons };
-  }
-
-  if (judge?.stance === 'contradicts' && judge.quote) {
-    reasons.push(`The sources say otherwise: “${judge.quote}”`);
-    return { verdict: VERDICTS.CONTRADICTED, reasons };
-  }
-  const conflicting = figures.filter((f) => !f.found && f.sourcesSay);
-  if (conflicting.length && figures.every((f) => !f.found)) {
-    for (const f of conflicting) reasons.push(`The headline says ${f.figure}; the sourced text says ${f.sourcesSay}.`);
-    return { verdict: VERDICTS.CONTRADICTED, reasons };
-  }
-
-  const unproven = figures.filter((f) => !f.found);
-  const figureNote = unproven.length
-    ? `Figure${unproven.length > 1 ? 's' : ''} ${unproven.map((f) => f.figure).join(', ')} not found in the sourced text: unproven.`
-    : null;
-
-  const state = corroboration?.state ?? 'unknown';
-  const strength = quality?.strength ?? null;
-  const top = quality?.rated?.[0] ?? null;
-  const describe = (r) => `${r.name} (${r.tier ? `tier ${r.tier}` : 'unrated'}, ${r.risk} risk${r.stateAffiliated ? `, state-affiliated: ${r.stateAffiliated}` : ''})`;
-  const lone = figures.filter((f) => f.found && f.statedBy?.length === 1);
-  const loneNotes = lone.map((f) => `But the figure ${f.figure} comes from one publisher only: ${f.statedBy[0]}.`);
-
-  if (state === 'corroborated' || state === 'tier4-only') {
-    const head = `${corroboration.publishers} publishers carried it`;
-    for (const c of strength?.collapsed ?? []) reasons.push(`${c.members.join(', ')} are one voice: ${c.voice}.`);
-    // Many weak sources are not corroboration: weight decides, not headcount.
-    if (state === 'tier4-only' || strength?.band === 'weak') {
-      reasons.unshift(`${head}, but weighted by source quality they add up to ${strength ? strength.weight.toFixed(1) : 'little'}${strength?.weakPoolCapped ? ' (aggregators and blogs capped)' : ''}.`);
-      if (figureNote) reasons.push(figureNote);
-      reasons.push(...loneNotes);
-      return { verdict: VERDICTS.WEAKLY_SOURCED, reasons };
-    }
-    reasons.unshift(`${head}: evidence weight ${strength ? `${strength.weight.toFixed(1)}, ${strength.band}` : 'not rated'}${top ? `, led by ${describe(top)}` : ''}.`);
-    if (figureNote) reasons.push(figureNote);
-    reasons.push(...loneNotes);
-    const caveat = figureNote ? 'Story corroborated, figure unproven' : lone.length ? 'Story corroborated, figure single-source' : null;
-    return { verdict: VERDICTS.CORROBORATED, reasons, caveat, band: strength?.band ?? null };
-  }
-  if (state === 'single-publisher') {
-    reasons.push(top ? `Every copy traces to one publisher family: ${describe(top)}.` : 'Every copy traces to one publisher family.');
-    if (figureNote) reasons.push(figureNote);
-    return { verdict: VERDICTS.SINGLE_SOURCE, reasons };
-  }
-  reasons.push('WorldMonitor has no publisher evidence it can count for this story.');
-  return { verdict: VERDICTS.UNVERIFIABLE, reasons };
-}
-
-/** Evidence gate for the model's contradiction call: the quote must be verbatim in the evidence. */
-export function gateJudge(judge, evidenceText) {
-  if (!judge || !['supports', 'contradicts', 'insufficient'].includes(judge.stance)) return { stance: 'insufficient', quote: null };
-  if (judge.stance === 'insufficient') return { stance: 'insufficient', quote: null };
-  const quote = typeof judge.quote === 'string' ? judge.quote.trim() : '';
-  const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ');
-  if (quote.length < 8 || !norm(evidenceText).includes(norm(quote))) return { stance: 'insufficient', quote: null, rejected: judge.stance };
-  return { stance: judge.stance, quote };
+  return {
+    key: state,
+    word: VERDICT_WORDS[state] ?? VERDICT_WORDS.unknown,
+    reasons,
+    hint: coverageFlag(state)?.hint ?? `${WM_TEXT.rosterLegend} Coverage, not accuracy.`,
+    band: credibility?.band ?? null,
+  };
 }

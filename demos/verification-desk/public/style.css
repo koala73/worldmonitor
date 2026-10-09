@@ -104,7 +104,18 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .verdict.v-single-source { color: var(--single); }
 .verdict.v-contradicted { color: var(--bad); }
 .verdict.v-unverifiable { color: var(--unknown); }
-.verdict.v-weakly-sourced { color: #ff8a4c; }
+.verdict.v-not-found, .verdict.v-unknown, .verdict.v-unreachable { color: var(--unknown); }
+.verdict.v-single-publisher { color: var(--single); }
+.verdict.v-tier4-only { color: #ff8a4c; }
+.verdict.v-corroborated.cred-medium { color: var(--single); }
+.verdict.v-corroborated.cred-low { color: #ff8a4c; }
+.verdict-hint { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.cred { font: 700 12px var(--mono); padding: 2px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.cred.band-high { color: var(--ok); }
+.cred.band-medium { color: var(--single); }
+.cred.band-low { color: var(--bad); }
+.legend { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.chips { display: flex; gap: 6px; }
 .who-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .who-head .arrow { color: var(--muted); font-size: 22px; margin: 0 4px; }
 .band-strong { color: var(--ok); }
@@ -117,7 +128,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .meter i.band-weak { background: #ff8a4c; }
 .meter .mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--muted); }
 .ranked { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.ranked li { display: grid; grid-template-columns: 34px minmax(0, 1.4fr) minmax(60px, 1fr) 44px auto; gap: 8px; align-items: center; font-size: clamp(13px, 1vw, 16px); }
+.ranked li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: clamp(13px, 1vw, 16px); }
 .ranked .tier { font: 700 12px var(--mono); text-align: center; padding: 2px 0; border-radius: 4px; border: 1px solid currentColor; }
 .ranked .t1 { color: var(--ok); }
 .ranked .t2 { color: var(--accent); }

@@ -1,17 +1,21 @@
-// The anchor's voice. Claude turns the pipeline's findings into speech and
-// pulls search terms out of a shouted headline. It never decides a verdict:
-// verdict.mjs does that from WorldMonitor's counts. Every call has a template
-// fallback, so the desk still talks when the API key or the network is gone.
+// The anchor's voice. Claude turns WorldMonitor's findings into speech and
+// pulls search terms out of a shouted headline. It never judges: every
+// judgment on the card is WorldMonitor's (lib/wm.mjs). Before a generated
+// script is spoken it must pass the same hallucination validators
+// WorldMonitor runs on its own AI briefs; if it fails, or there is no API
+// key, the anchor reads a template built only from WorldMonitor's data.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { validateScript, WM_TEXT } from './wm.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 
 const ANCHOR_PERSONA = `You are the anchor of "The Verification Desk", a live segment on a conference stage, powered by WorldMonitor.
 You speak to a room, so write for the ear: short sentences, no lists, no markdown, no URLs, no emoji.
-You only state facts present in the JSON you are given. You never say a claim is true or false; you say what the sources show: how many independent publisher families carried it, how much those sources are worth (WorldMonitor rates each by tier and propaganda risk; many weak sources are not corroboration), whether its figures appear in the sourced text, and what prediction markets price.
-"Unverifiable" is an honest answer, say it plainly and without apology.
-Publisher families: several feeds or regional editions of one newsroom count as one.`;
+You only state facts present in the JSON you are given, using WorldMonitor's own terms: publishers (several feeds or editions of one newsroom are one publisher), source tiers (${[1, 2, 3, 4].map((t) => WM_TEXT[`tierTitle${t}`]).join('; ')}), propaganda risk, state affiliation, and WorldMonitor's credibility score out of 100.
+You never say a claim is true or false. WorldMonitor's rule: tiers rank sources; they do not judge the claim, and coverage is not accuracy.
+"Not in WorldMonitor's sources" and "Unverifiable" are honest answers; say them plainly and without apology.
+Do not introduce any name, title or number that is not in the JSON.`;
 
 function textOf(message) {
   return (message.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -69,154 +73,114 @@ export class Anchor {
     }
   }
 
-  /** Does the sourced text support or contradict the headline? The quote is gated verbatim afterwards. */
-  async judge(headline, evidenceText) {
-    if (!this.enabled || !evidenceText) return null;
-    try {
-      return await this.complete({
-        system: 'You compare a headline with source text. You are strict and literal.',
-        prompt: `Headline: ${JSON.stringify(headline)}\n\nSource text (headlines and article text from monitored outlets):\n"""\n${evidenceText.slice(0, 12_000)}\n"""\n\nDoes the source text support the headline's central claim, contradict it, or is it insufficient to say? "contradicts" only if the source text states something incompatible with the headline (a different number, the opposite outcome, a denial of the event). Quote the deciding sentence or headline EXACTLY as it appears in the source text (copy, do not paraphrase), or null if insufficient.`,
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['stance', 'quote'],
-          properties: {
-            stance: { type: 'string', enum: ['supports', 'contradicts', 'insufficient'] },
-            quote: { type: ['string', 'null'] },
-          },
-        },
-        maxTokens: 1500,
-      });
-    } catch {
-      return null;
-    }
-  }
-
-  async narrateGrade(result) {
-    const fallback = templateGrade(result);
+  /** Generated text is spoken only if WorldMonitor's brief validators find nothing invented. */
+  async grounded(prompt, facts, fallback, maxTokens = 1500) {
     if (!this.enabled) return fallback;
     try {
-      return await this.complete({
-        system: ANCHOR_PERSONA,
-        prompt: `The audience asked you to check this headline. Here is what the desk found:\n${JSON.stringify(compactForNarration(result))}\n\nSpeak the verdict in 45 to 75 words. Walk the checks in order (who carried it AND how much those sources are worth: say the headcount, then what they weigh by source quality, naming any state-media group that collapses into one voice; when it surfaced, whether the figures are in the sources, what money says if there is a market), then land on the verdict word exactly as given. If the verdict is Unverifiable, end on why that is the honest answer.`,
-        maxTokens: 1500,
-      });
+      const text = await this.complete({ system: ANCHOR_PERSONA, prompt, maxTokens });
+      const check = validateScript(text, `${JSON.stringify(facts)}\n${FIXED_GROUND}`);
+      if (!check.ok) {
+        console.warn(`[anchor] generated script failed WorldMonitor's grounding validators (${check.hallucinated.join(', ')}); using template`);
+        return fallback;
+      }
+      return text;
     } catch {
       return fallback;
     }
   }
 
-  async narrateRecap(stories, scope) {
-    const fallback = templateRecap(stories, scope);
-    if (!this.enabled) return fallback;
-    try {
-      return await this.complete({
-        system: ANCHOR_PERSONA,
-        prompt: `Open the segment with a recap of ${scope}. Stories, each with its independent publisher-family count and corroboration state:\n${JSON.stringify(stories)}\n\nWrite about 200 words (90 seconds spoken). Lead with a one-line welcome. For each story give one sentence of what happened, then tag it out loud with its count, e.g. "eleven independent newsrooms" or "one newsroom, so far". Close by inviting the audience to name a headline from the week for the desk to check.`,
-        maxTokens: 2000,
-      });
-    } catch {
-      return fallback;
-    }
+  narrateGrade(result) {
+    const facts = compactForNarration(result);
+    return this.grounded(
+      `The audience asked you to check this headline. Here is what WorldMonitor found:\n${JSON.stringify(facts)}\n\nSpeak it in 45 to 75 words, in order: who carried it (WorldMonitor's publisher count and the best-rated sources with their tier, propaganda risk and any state affiliation), WorldMonitor's credibility score, whether the headline's figures are grounded in the sources, what money says if there is a market, then the verdict exactly as given, followed by WorldMonitor's caveat that this describes coverage, not accuracy.`,
+      facts,
+      templateGrade(result),
+    );
   }
 
-  async narrateReveal(candidate) {
-    const fallback = templateReveal(candidate);
-    if (!this.enabled) return fallback;
-    try {
-      return await this.complete({
-        system: ANCHOR_PERSONA,
-        prompt: `This is the reveal. A story looked big. Here is what WorldMonitor's counts show:\n${JSON.stringify(candidate)}\n\nWrite 90 to 130 words, spoken, building to the point that the number of headlines is not the number of sources. Name the originating newsroom if the data names one. Do not invent outlets or numbers beyond the JSON. End with: "A headline in ${candidate.headlineCount ?? 'many'} places with one source is still one source."`,
-        maxTokens: 2000,
-      });
-    } catch {
-      return fallback;
-    }
+  narrateRecap(stories, scope) {
+    return this.grounded(
+      `Open the segment with a recap of ${scope}. Each story carries WorldMonitor's coverage state, publisher count and credibility score:\n${JSON.stringify(stories)}\n\nWrite about 200 words (90 seconds spoken). Lead with a one-line welcome. For each story say the headline in your own words, then tag it out loud with WorldMonitor's numbers, e.g. "six publishers, credibility seventy-nine" or "one publisher so far". Close by inviting the audience to name a headline from the week for the desk to check.`,
+      { scope, stories },
+      templateRecap(stories, scope),
+      2000,
+    );
+  }
+
+  narrateReveal(candidate) {
+    return this.grounded(
+      `This is the reveal. A story looked big. Here is what WorldMonitor counts:\n${JSON.stringify(candidate)}\n\nWrite 90 to 130 words, spoken, building to the point that the number of headlines is not the number of publishers. Name the origin if the data names one. End with: "A headline in ${candidate.headlineCount ?? 'many'} places with one source is still one source."`,
+      candidate,
+      templateReveal(candidate),
+      2000,
+    );
   }
 }
+
+// Words the persona itself may always use without the validators objecting.
+const FIXED_GROUND = 'WorldMonitor World Monitor Verification Desk Polymarket Kalshi Corroborated Unverifiable Single publisher Low-tier sources only';
 
 function compactForNarration(r) {
   return {
     headline: r.headline,
-    verdict: r.verdict?.verdict,
+    verdict: r.verdict?.word,
+    caveat: r.verdict?.hint,
     reasons: r.verdict?.reasons,
     matchedHeadline: r.match?.title ?? null,
-    publisherFamilies: r.who?.families ?? null,
-    sourcesRankedByQuality: (r.who?.rated ?? []).slice(0, 6).map((p) => ({ name: p.name, tier: p.tier, propagandaRisk: p.risk, stateAffiliated: p.stateAffiliated, weight: p.weight })),
-    evidenceWeight: r.who?.strength ? { weight: r.who.strength.weight, band: r.who.strength.band, headcount: r.who.strength.headcount, sameVoice: r.who.strength.collapsed } : null,
-    headlinesInCluster: r.who?.memberCount ?? null,
+    publishers: r.who?.coverage?.publishers ?? null,
+    rosterSummary: r.who?.summary ?? null,
+    sources: (r.who?.rated ?? []).slice(0, 5).map((p) => ({ name: p.name, tier: p.tier, tierTitle: p.tierTitle, credibility: p.credibility, propagandaRisk: p.risk, stateAffiliated: p.stateAffiliated })),
+    credibility: r.who?.credibility ?? null,
     firstSeen: r.when?.firstSeen ?? null,
     spreadHours: r.when?.spreadHours ?? null,
-    attributedTo: r.when?.cascade?.origin ?? null,
-    figures: r.numbers?.figures ?? [],
-    markets: (r.money?.markets ?? []).slice(0, 2).map((m) => ({ title: m.title, yes: m.yesPrice, source: m.source })),
+    figures: (r.numbers?.facts ?? []).map((f) => ({ figure: f.label, grounded: f.grounded, statedBy: f.statedBy })),
+    markets: (r.money?.markets ?? []).slice(0, 2).map((m) => ({ title: m.title, yes: Math.round(m.yesPrice), source: m.source })),
   };
 }
 
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 const say = (n) => (Number.isInteger(n) && n >= 0 && n < NUMBER_WORDS.length ? NUMBER_WORDS[n] : String(n));
-
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const TIER_WORDS = { 1: 'wire service or official body', 2: 'major outlet', 3: 'specialist or regional source', 4: 'aggregator or blog' };
+const TIER_WORDS = { 1: 'a wire service or official body', 2: 'a major outlet', 3: 'a specialist or regional source', 4: 'an aggregator or blog' };
+
+function describeSource(x) {
+  const bits = [x.tier ? `tier ${x.tier}, ${TIER_WORDS[x.tier]}` : 'a tier WorldMonitor has not declared'];
+  if (x.stateAffiliated) bits.push(`state-affiliated, ${x.stateAffiliated}`);
+  else if (x.risk && x.risk !== 'unknown') bits.push(`${x.risk} propaganda risk`);
+  return `${x.name}: ${bits.join('; ')}`;
+}
 
 export function templateGrade(r) {
-  const v = r.verdict?.verdict ?? 'Unverifiable';
+  const v = r.verdict;
   const parts = [];
-  if (!r.match && /could not reach/.test(r.verdict?.reasons?.[0] ?? '')) {
-    parts.push(`The desk can't reach its sources right now, so I won't pretend to know.`);
-  } else if (!r.match) {
-    parts.push(`I searched every outlet WorldMonitor monitors for that headline and found no publisher carrying it.`);
+  if (v?.key === 'unreachable') {
+    parts.push(`The desk can't reach WorldMonitor right now, so I won't pretend to know.`);
+  } else if (v?.key === 'not-found') {
+    parts.push(`No publisher WorldMonitor monitors carried that headline.`);
   } else {
-    const fam = r.who?.families;
-    const top = r.who?.rated?.[0];
-    const strength = r.who?.strength;
-    const describe = (x) => `${x.name}${x.stateAffiliated ? `, state-affiliated media from ${x.stateAffiliated}` : x.tier ? `, a ${TIER_WORDS[x.tier]}` : ''}`;
-    if (fam === 1) {
-      parts.push(`Every copy of this story traces back to one newsroom${top ? `: ${describe(top)}` : ''}.`);
-    } else if (strength) {
-      parts.push(`${cap(say(fam ?? 0))} publishers carried this story.`);
-      for (const c of strength.collapsed ?? []) parts.push(`But ${say(c.members.length)} of them are one voice: ${c.voice}.`);
-      if (strength.band === 'weak') {
-        parts.push(`Weighted by who they are, they add up to ${strength.weight.toFixed(1)}. Strong evidence needs one point eight, with at least one top-rated source.`);
-        const collapsedNames = new Set((strength.collapsed ?? []).flatMap((c) => c.members));
-        for (const x of (r.who?.rated ?? []).filter((y) => y.stateAffiliated && !collapsedNames.has(y.name)).slice(0, 2)) {
-          parts.push(`${x.name} is state-affiliated media from ${x.stateAffiliated}.`);
-        }
-      } else {
-        parts.push(`Weighted by who they are, that is ${strength.band} evidence, led by ${describe(top)}.`);
-      }
-    } else {
-      parts.push(`${cap(say(fam ?? 0))} independent publisher families carried this story.`);
+    const who = r.who;
+    if (who?.summary) parts.push(`${who.summary}.`);
+    for (const x of (who?.rated ?? []).slice(0, 2)) parts.push(`${describeSource(x)}.`);
+    if (who?.credibility) parts.push(`WorldMonitor's credibility score: ${who.credibility.score} out of 100, ${who.credibility.band}.`);
+    for (const f of r.numbers?.facts ?? []) {
+      if (!f.grounded) parts.push(`The figure ${f.label} is not in any source, so it is not grounded.`);
+      else if (f.statedBy?.length === 1) parts.push(`The figure ${f.label} comes from one publisher only: ${f.statedBy[0]}.`);
     }
-    const origin = r.when?.cascade?.origin;
-    if (origin === '(unnamed sources)' && r.when.cascade.originCount > 1) {
-      parts.push(`${cap(say(r.when.cascade.originCount))} of those headlines rest on unnamed sources.`);
-    } else if (origin && r.when.cascade.originCount > 1 && origin !== top?.name) {
-      parts.push(`${cap(say(r.when.cascade.originCount))} of those headlines credit the same origin: ${origin}.`);
-    }
-    const figures = r.numbers?.figures ?? [];
-    const conflicting = figures.find((f) => !f.found && f.sourcesSay);
-    const unproven = figures.find((f) => !f.found);
-    if (v === 'Contradicted' && conflicting) parts.push(`The headline says ${conflicting.figure}. The sources say ${conflicting.sourcesSay}.`);
-    else if (unproven) parts.push(`The figure ${unproven.figure} does not appear in the sourced text, so it is unproven.`);
-    else if (figures.some((f) => f.statedBy?.length === 1) && (r.who?.families ?? 0) > 1) {
-      const f = figures.find((x) => x.statedBy?.length === 1);
-      parts.push(`The number ${f.figure} comes from only one of them: ${f.statedBy[0]}.`);
-    }
-    else if (figures.length) parts.push(`The figures check out against the sourced text.`);
     const m = r.money?.markets?.[0];
     if (m) parts.push(`On ${m.source ? cap(m.source) : 'prediction markets'}, money prices "${m.title}" at ${Math.round(m.yesPrice)} percent.`);
   }
-  parts.push(`Verdict: ${v}.`);
-  if (v === 'Unverifiable') parts.push(`That is not a dodge. It is the most honest thing a system can say.`);
+  parts.push(`Verdict: ${v?.word ?? 'Unverifiable'}.`);
+  if (v?.key === 'not-found' || v?.key === 'unknown') parts.push(`That is not a dodge. It is the most honest thing a system can say.`);
+  else if (v?.key !== 'unreachable') parts.push(`As WorldMonitor puts it, this describes coverage, not accuracy.`);
   return parts.join(' ');
 }
 
 export function templateRecap(stories, scope) {
-  const lines = [`Good evening. This is the Verification Desk, and here is ${scope}, with every story tagged by how many independent newsrooms actually carried it.`];
+  const lines = [`Good evening. This is the Verification Desk, and here is ${scope}, with every story graded by WorldMonitor.`];
   for (const s of stories.slice(0, 6)) {
     const n = s.publishers ?? 0;
-    lines.push(`${s.title}. ${n <= 1 ? 'One newsroom, so far.' : `${cap(say(n))} independent newsrooms.`}`);
+    const cred = s.credibility != null ? `, credibility ${s.credibility}` : '';
+    lines.push(`${s.title}. ${n <= 1 ? `One publisher so far${cred}.` : `${cap(say(n))} publishers${cred}.`}`);
   }
   lines.push('Now it is your turn. Name a headline from this week, and the desk will check it, live.');
   return lines.join(' ');
@@ -225,9 +189,8 @@ export function templateRecap(stories, scope) {
 export function templateReveal(c) {
   return [
     `Here is a story a lot of you probably saw: "${c.title}".`,
-    `WorldMonitor counted ${c.headlineCount ?? 'many'} headlines for it${c.labelCount ? ` across ${c.labelCount} feeds` : ''}.`,
-    c.origin ? `Trace them back and they lead to one place: ${c.origin}.` : `Trace them back and they lead to one publisher family.`,
-    `No second, independent newsroom has confirmed it in our data.`,
+    `It ran in ${c.headlineCount ?? 'many'} places.`,
+    c.origin ? `WorldMonitor traces every one of them to one publisher: ${c.origin}.` : `WorldMonitor traces every one of them to one publisher.`,
     `A headline in ${c.headlineCount ?? 'many'} places with one source is still one source.`,
   ].join(' ');
 }
