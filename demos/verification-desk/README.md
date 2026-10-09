@@ -133,6 +133,7 @@ Say *validates the evidence*, never *validates the truth*. WorldMonitor's own wo
 3. **The reveal (90 s, S).** Six station sites, one publisher. Pause. *Message: virality is not corroboration.*
 
 Soundbites:
+
 - "A headline in 40 outlets with one source is still one source."
 - "We don't ask the model if it's true. We ask the data where it came from."
 - "The most honest output a system can give is: I can't verify this."
