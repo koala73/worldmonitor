@@ -72,9 +72,11 @@ test('country shortcut keeps the dashboard canonical and shares a working dashbo
 });
 
 test('country brief renders exact RPC records and preserves the country after reload', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.response.fetchedAt = Date.parse('2026-10-09T07:41:45.410Z');
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'rpc-before-reload');
 
@@ -89,6 +91,7 @@ test('country brief renders exact RPC records and preserves the country after re
   await page.reload();
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');

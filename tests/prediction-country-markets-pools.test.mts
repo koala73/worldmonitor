@@ -20,6 +20,8 @@ interface CountryMarketsTestState {
   // Production returns dataAvailable: true whenever the country index exists,
   // including ISO2 codes with no records. An omitted or false value keeps the rollout fallback.
   rpcDataAvailable?: boolean;
+  rpcFetchedAt?: number;
+  rpcFailure?: boolean;
   hydrated?: unknown;
 }
 
@@ -71,9 +73,11 @@ async function loadPredictionService() {
         async listPredictionMarkets(req) {
           const state = globalThis.__wmCountryMarketsTestState;
           state.rpcCalls.push({ category: req.category, query: req.query });
+          if (state.rpcFailure) throw new Error('Controlled RPC failure');
           return {
             markets: state.rpcMarketsByCategory[req.category] ?? [],
             ...(state.rpcDataAvailable === undefined ? {} : { dataAvailable: state.rpcDataAvailable }),
+            ...(state.rpcFetchedAt === undefined ? {} : { fetchedAt: state.rpcFetchedAt }),
           };
         }
       }
@@ -120,6 +124,45 @@ after(() => {
 });
 
 describe('original country contract metadata', () => {
+  it('preserves the original website RPC list clock while keeping legacy array results', async () => {
+    const originalClock = Date.parse('2026-10-09T07:41:45.410Z');
+    const rows = Array.from({ length: 6 }, (_, index) => ({ ...protoMarket(`China contract ${index}`, 500 - index), id: `original-${index}` }));
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': rows }, rpcDataAvailable: true, rpcFetchedAt: originalClock };
+    const service = await loadPredictionService();
+    const result = await service.fetchCountryMarketsWithMetadata('China', 'CN');
+    assert.equal(result.fetchedAt, originalClock);
+    assert.deepEqual(result.markets.map((row: { id: string }) => row.id), rows.slice(0, 5).map(row => row.id));
+    assert.deepEqual(await service.fetchCountryMarkets('China', 'CN'), result.markets);
+    assert.equal(globalThis.__wmCountryMarketsTestState.rpcCalls.length, 2);
+  });
+
+  it('preserves a valid empty RPC list clock without using bootstrap fallback', async () => {
+    const originalClock = Date.parse('2026-10-09T07:41:45.410Z');
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: true, rpcFetchedAt: originalClock, hydrated: { geopolitical: [bootstrapMarket('Will China host the meeting?', 500)], tech: [], fetchedAt: originalClock + 1 } };
+    const service = await loadPredictionService();
+    assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [], fetchedAt: originalClock });
+  });
+
+  it('keeps fallback clocks unknown after unavailable and failed RPC replies', async () => {
+    const fallback = bootstrapMarket('Will China host the meeting?', 500);
+    const service = await loadPredictionService();
+    for (const rpcFailure of [false, true]) {
+      globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: false, rpcFetchedAt: 1791531705410, rpcFailure, hydrated: { geopolitical: [fallback], tech: [], fetchedAt: 1791531705420 } };
+      assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [fallback] });
+    }
+  });
+
+  it('keeps an absent RPC clock and an empty fallback unknown', async () => {
+    const service = await loadPredictionService();
+    const row = protoMarket('China contract', 500);
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': [row] }, rpcDataAvailable: true };
+    const result = await service.fetchCountryMarketsWithMetadata('China', 'CN');
+    assert.equal(result.fetchedAt, undefined);
+    assert.equal(result.markets[0].id, row.id);
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: false, rpcFetchedAt: 1791531705410 };
+    assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [] });
+  });
+
   it('retains distinct original RPC identifiers sharing one display link and exact probability', async () => {
     const service = await loadPredictionService();
     const first = { ...protoMarket('China controlled contract', 500), id: 'KXCHINA-27-T4', yesPrice: 0.6849, source: 'MARKET_SOURCE_KALSHI', url: 'https://kalshi.com/markets/kxchina' };
