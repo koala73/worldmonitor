@@ -1,0 +1,173 @@
+{
+  "_note": "FICTIONAL rehearsal data. Every place, person, outlet and number below is invented so the show can be practised offline. Never present it as real news.",
+  "generatedAt": "2026-10-09T08:00:00Z",
+  "clusters": [
+    {
+      "id": "reh-veridia-strike",
+      "title": "Port Veridia dockworkers end 9-day strike after wage deal",
+      "link": "https://example.invalid/veridia-strike",
+      "primarySource": "Meridian Wire",
+      "memberCount": 9,
+      "distinctSourceCount": 6,
+      "sources": ["Meridian Wire", "Coastline Times", "Harbor Ledger", "Veridia Today", "Atlas Business", "Southport Post"],
+      "publishers": [
+        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
+        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
+        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
+        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
+        { "name": "Veridia Today", "tier": 3, "labels": ["Veridia Today"] },
+        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": { "state": "corroborated", "publishers": 6 },
+      "topKeywords": ["veridia", "strike", "dockworkers", "wage"],
+      "firstSeen": "2026-10-03T06:12:00Z",
+      "lastUpdated": "2026-10-03T19:40:00Z",
+      "memberTitles": [
+        "Port Veridia dockworkers end 9-day strike after wage deal",
+        "Veridia port reopens as 9-day dock strike ends",
+        "Dockworkers in Port Veridia accept 6% raise, ending strike",
+        "Shipping resumes at Port Veridia after strike",
+        "Port Veridia strike over: union backs wage offer"
+      ]
+    },
+    {
+      "id": "reh-calloway",
+      "title": "Minister Calloway to resign within days, Northgate Herald reports",
+      "link": "https://example.invalid/calloway",
+      "primarySource": "Northgate Herald",
+      "memberCount": 7,
+      "distinctSourceCount": 1,
+      "sources": ["Northgate Herald", "Northgate Herald North", "Northgate Herald South", "Northgate Herald East", "Northgate Herald Business"],
+      "publishers": [
+        { "name": "Northgate Herald", "tier": 2, "labels": ["Northgate Herald", "Northgate Herald North", "Northgate Herald South", "Northgate Herald East"] }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": { "state": "single-publisher", "publishers": 1 },
+      "topKeywords": ["calloway", "resign", "minister"],
+      "firstSeen": "2026-10-05T21:03:00Z",
+      "lastUpdated": "2026-10-07T09:15:00Z",
+      "memberTitles": [
+        "Minister Calloway to resign within days, Northgate Herald reports",
+        "Calloway resignation imminent, Northgate Herald reports",
+        "Calloway expected to quit cabinet, Northgate Herald reports",
+        "What Calloway's exit would mean for the north, Northgate Herald reports",
+        "Calloway allies brace for resignation, Northgate Herald reports",
+        "Markets shrug at Calloway resignation report",
+        "Calloway to resign: what we know"
+      ]
+    },
+    {
+      "id": "reh-aurelia-rates",
+      "title": "Aurelia central bank raises rates by 50 basis points",
+      "link": "https://example.invalid/aurelia-rates",
+      "primarySource": "Meridian Wire",
+      "memberCount": 8,
+      "distinctSourceCount": 5,
+      "sources": ["Meridian Wire", "Atlas Business", "Ledger Markets", "Coastline Times", "Aurelia Daily"],
+      "publishers": [
+        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
+        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
+        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
+        { "name": "Ledger Markets", "tier": 2, "labels": ["Ledger Markets"] },
+        { "name": "Aurelia Daily", "tier": 3, "labels": ["Aurelia Daily"] }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": { "state": "corroborated", "publishers": 5 },
+      "topKeywords": ["aurelia", "central bank", "rates", "basis points"],
+      "firstSeen": "2026-10-06T12:00:00Z",
+      "lastUpdated": "2026-10-06T16:30:00Z",
+      "memberTitles": [
+        "Aurelia central bank raises rates by 50 basis points",
+        "Aurelia hikes by 50bp, signals more to come",
+        "Aurelian rate rise of 50 basis points surprises no one",
+        "Aurelia's currency firms after 50bp hike"
+      ]
+    },
+    {
+      "id": "reh-tessaly",
+      "title": "Mount Tessaly erupts, villages on southern slope evacuated",
+      "link": "https://example.invalid/tessaly",
+      "primarySource": "Coastline Times",
+      "memberCount": 11,
+      "distinctSourceCount": 7,
+      "sources": ["Coastline Times", "Meridian Wire", "Harbor Ledger", "Southport Post", "Geo Desk", "Aurelia Daily", "Veridia Today"],
+      "publishers": [
+        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
+        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
+        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
+        { "name": "Geo Desk", "tier": 2, "labels": ["Geo Desk"] },
+        { "name": "Aurelia Daily", "tier": 3, "labels": ["Aurelia Daily"] },
+        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] },
+        { "name": "Veridia Today", "tier": 3, "labels": ["Veridia Today"] }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": { "state": "corroborated", "publishers": 7 },
+      "topKeywords": ["tessaly", "eruption", "volcano", "evacuated"],
+      "firstSeen": "2026-10-04T03:20:00Z",
+      "lastUpdated": "2026-10-05T11:00:00Z",
+      "memberTitles": [
+        "Mount Tessaly erupts, villages on southern slope evacuated",
+        "Tessaly volcano eruption forces evacuations",
+        "Ash cloud from Mount Tessaly grounds regional flights",
+        "Tessaly eruption: authorities urge residents to stay away"
+      ]
+    },
+    {
+      "id": "reh-lumora",
+      "title": "Lumora Telecom breach exposed 3 million accounts, Kestrel Wire reports",
+      "link": "https://example.invalid/lumora",
+      "primarySource": "Kestrel Wire",
+      "memberCount": 6,
+      "distinctSourceCount": 5,
+      "sources": ["Kestrel Wire", "Harbor Ledger", "Byte Brief", "Atlas Business", "Southport Post"],
+      "publishers": [
+        { "name": "Kestrel Wire", "tier": 2, "labels": ["Kestrel Wire"] },
+        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
+        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
+        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] },
+        { "name": "Byte Brief", "tier": 4, "labels": ["Byte Brief"] }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": { "state": "corroborated", "publishers": 5 },
+      "topKeywords": ["lumora", "breach", "accounts"],
+      "firstSeen": "2026-10-02T14:45:00Z",
+      "lastUpdated": "2026-10-03T08:10:00Z",
+      "memberTitles": [
+        "Lumora Telecom breach exposed 3 million accounts, Kestrel Wire reports",
+        "Lumora hit by data breach, Kestrel Wire reports",
+        "Lumora customers' data leaked, according to Kestrel Wire",
+        "Lumora Telecom confirms 'security incident' after Kestrel Wire report",
+        "3 million Lumora accounts exposed, citing Kestrel Wire",
+        "Lumora breach: Kestrel Wire reports"
+      ]
+    }
+  ],
+  "markets": [
+    { "title": "Will Aurelia's central bank hike again before December 31?", "yesPrice": 62, "source": "polymarket", "volume": 412000, "url": "https://example.invalid/m1", "endDate": "2026-12-31" },
+    { "title": "Calloway out as minister by December 31?", "yesPrice": 18, "source": "kalshi", "volume": 96000, "url": "https://example.invalid/m2", "endDate": "2026-12-31" },
+    { "title": "Port Veridia strike resumes before 2027?", "yesPrice": 9, "source": "polymarket", "volume": 21000, "url": "https://example.invalid/m3", "endDate": "2026-12-31" }
+  ],
+  "articles": {
+    "https://example.invalid/veridia-strike": "Dockworkers at Port Veridia voted on Friday to accept a 6% wage increase, ending a strike that lasted 9 days and idled 140 vessels. The union said 82% of members backed the deal.",
+    "https://example.invalid/aurelia-rates": "The central bank of Aurelia raised its policy rate by 50 basis points to 4.75% on Tuesday, the third increase this year. The governor said further tightening could follow.",
+    "https://example.invalid/tessaly": "Mount Tessaly erupted before dawn on Sunday. Authorities evacuated villages on the southern slope. Officials have not released a casualty figure."
+  },
+  "brief": {
+    "headlines": [
+      "Mount Tessaly erupts, villages on southern slope evacuated",
+      "Port Veridia dockworkers end 9-day strike after wage deal",
+      "Aurelia central bank raises rates by 50 basis points",
+      "Lumora Telecom breach exposed 3 million accounts, Kestrel Wire reports",
+      "Minister Calloway to resign within days, Northgate Herald reports"
+    ],
+    "topStories": [
+      { "corroboration": { "state": "corroborated", "publishers": 7 } },
+      { "corroboration": { "state": "corroborated", "publishers": 6 } },
+      { "corroboration": { "state": "corroborated", "publishers": 5 } },
+      { "corroboration": { "state": "corroborated", "publishers": 5 } },
+      { "corroboration": { "state": "single-publisher", "publishers": 1 } }
+    ],
+    "generatedAt": "2026-10-09T08:00:00Z"
+  }
+}

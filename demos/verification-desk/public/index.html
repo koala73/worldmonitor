@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Verification Desk</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="backdrop" aria-hidden="true"></div>
+  <div class="veil" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot live"></span>
+      <strong>THE VERIFICATION DESK</strong>
+      <span class="by">powered by WorldMonitor</span>
+    </div>
+    <div class="status">
+      <span id="mode-badge" class="badge">LIVE DATA</span>
+      <span id="clock"></span>
+    </div>
+  </header>
+
+  <div id="rehearsal-banner" class="rehearsal-banner" hidden>REHEARSAL DATA · FICTIONAL · NOT REAL NEWS</div>
+
+  <main class="stage">
+    <section class="anchor-col">
+      <div id="anchor" class="anchor">
+        <div class="rings"><span></span><span></span><span></span></div>
+        <div class="face">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="44" class="globe" />
+            <ellipse cx="60" cy="60" rx="20" ry="44" class="meridian" />
+            <ellipse cx="60" cy="60" rx="44" ry="16" class="meridian" />
+            <line x1="16" y1="60" x2="104" y2="60" class="meridian" />
+          </svg>
+          <div id="bars" class="bars"></div>
+        </div>
+        <iframe id="avatar-frame" title="Anchor avatar" allow="camera; microphone; autoplay" hidden></iframe>
+      </div>
+      <div class="anchor-name">WM ANCHOR <span id="anchor-state">standing by</span></div>
+      <div id="caption" class="caption" aria-live="polite"></div>
+    </section>
+
+    <section class="board">
+      <div id="view-idle" class="view active">
+        <p class="kicker">Truth online isn't a vibe.</p>
+        <h1>It's a count.</h1>
+        <p class="sub">Name a headline from this week. The desk will tell you who actually said it.</p>
+      </div>
+
+      <div id="view-recap" class="view">
+        <p class="kicker" id="recap-scope">The week in review</p>
+        <ol id="recap-list" class="recap-list"></ol>
+      </div>
+
+      <div id="view-grade" class="view">
+        <p class="kicker">Checking</p>
+        <h2 id="grade-headline" class="headline"></h2>
+        <div class="grade-grid">
+        <ol class="checks">
+          <li data-step="who"><span class="n">1</span><div><h3>Who said it?</h3><p class="what">Independent publisher families, not outlet labels</p><div class="out"></div></div></li>
+          <li data-step="when"><span class="n">2</span><div><h3>When did it appear, and who leans on whom?</h3><p class="what">First seen, spread, stated origin</p><div class="out"></div></div></li>
+          <li data-step="numbers"><span class="n">3</span><div><h3>Does the number exist?</h3><p class="what">Every figure checked against the sourced text</p><div class="out"></div></div></li>
+          <li data-step="money"><span class="n">4</span><div><h3>What is money saying?</h3><p class="what">Polymarket and Kalshi odds on the same event</p><div class="out"></div></div></li>
+        </ol>
+        <div class="verdict-slot">
+          <div id="verdict-pending" class="verdict-pending">VERDICT<br /><span>pending the checks</span></div>
+          <div id="verdict" class="verdict" hidden>
+            <span class="label">VERDICT</span>
+            <strong id="verdict-word"></strong>
+            <ul id="verdict-reasons"></ul>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div id="view-reveal" class="view">
+        <p class="kicker">The story everyone saw</p>
+        <h2 id="reveal-title" class="headline"></h2>
+        <div class="cascade">
+          <svg id="cascade-lines" class="cascade-lines" aria-hidden="true"></svg>
+          <div id="cascade-tiles" class="cascade-tiles"></div>
+          <div id="cascade-origin" class="cascade-origin" hidden>
+            <span class="count" id="origin-count">1</span>
+            <span class="origin-label">independent source</span>
+            <strong id="origin-name"></strong>
+          </div>
+        </div>
+        <p id="reveal-counter" class="reveal-counter"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer id="console" class="console">
+    <form id="ask">
+      <button type="button" id="mic" class="mic" title="Hold to listen (or press M)">●</button>
+      <input id="headline" autocomplete="off" placeholder="Type or say a headline from this week…" />
+      <button type="submit">Check it</button>
+    </form>
+    <div class="actions">
+      <button type="button" id="btn-recap" title="R">Recap</button>
+      <button type="button" id="btn-reveal" title="S">Reveal</button>
+      <button type="button" id="btn-stop" title="Esc">Reset</button>
+    </div>
+    <p class="hint">R recap · / headline · M mic · S reveal · Esc reset · F fullscreen · H hide console</p>
+  </footer>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
