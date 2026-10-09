@@ -46,11 +46,19 @@ describe('original public country market metadata', () => {
     expect(footer(fixtureState)).toContain('This time applies to the list. Quote times are not supplied.');
     expect([...fixtureState.body.querySelectorAll('.cdp-market-contract')].map(node => node.textContent)).toEqual(['Contract: KXCHINA-27-T4', 'Contract: KXCHINA-28-T4']);
     expect([...fixtureState.body.querySelectorAll('.cdp-market-prob')].map(node => node.textContent)).toEqual(['Probability: 68%', 'Probability: 31%']);
-    expect([...fixtureState.body.querySelectorAll('a')].map(node => node.getAttribute('href'))).toEqual([rpcRows[0].url, rpcRows[1].url]);
+    const [firstRow, secondRow] = rpcRows;
+    if (!firstRow || !secondRow) throw new Error('expected two rpc fixture rows');
+    expect([...fixtureState.body.querySelectorAll('a')].map(node => node.getAttribute('href'))).toEqual([firstRow.url, secondRow.url]);
     const captured = vi.spyOn(fixtureState.panel, 'updateMarkets');
     await load(fixtureState);
-    expect(captured.mock.calls[0]?.[0][0].yesPrice).toBe(0.6849 * 100);
-    expect(captured.mock.calls[0]?.[1]).toEqual({ fetchedAt: originalClock });
+    const firstCall = captured.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    if (!firstCall) throw new Error('expected updateMarkets to be called');
+    const firstMarket = firstCall[0][0];
+    expect(firstMarket).toBeDefined();
+    if (!firstMarket) throw new Error('expected updateMarkets to receive a market');
+    expect(firstMarket.yesPrice).toBe(0.6849 * 100);
+    expect(firstCall[1]).toEqual({ fetchedAt: originalClock });
   });
 
   it.each([undefined, 0, -1, NaN, Infinity, 8.64e15 + 1, '1791531705410'])('keeps missing or invalid clock %s unknown and clears the previous clock', async clock => {
@@ -134,7 +142,9 @@ describe('original public country market metadata', () => {
 
   it('keeps website arrays without a country clock', async () => {
     const fixtureState = fixture();
-    const legacyRows: PredictionMarket[] = [{ id: 'website-original', title: 'Website fixture', yesPrice: 31, url: rpcRows[0].url, source: 'kalshi' }];
+    const firstRow = rpcRows[0];
+    if (!firstRow) throw new Error('expected an rpc fixture row');
+    const legacyRows: PredictionMarket[] = [{ id: 'website-original', title: 'Website fixture', yesPrice: 31, url: firstRow.url, source: 'kalshi' }];
     vi.spyOn(prediction, 'fetchCountryMarkets').mockResolvedValue(legacyRows);
     vi.spyOn(imfCountryData, 'getImfCountryBundle').mockImplementation(() => new Promise(() => {}));
     const source = Reflect.get(fixtureState.controller, 'source');
@@ -147,7 +157,9 @@ describe('original public country market metadata', () => {
 
   it('leaves array-only renderer callers with unknown snapshot metadata', () => {
     const fixtureState = fixture();
-    fixtureState.panel.updateMarkets([{ title: 'Legacy row', yesPrice: 31, source: 'kalshi', url: rpcRows[0].url }] as PredictionMarket[]);
+    const firstRow = rpcRows[0];
+    if (!firstRow) throw new Error('expected an rpc fixture row');
+    fixtureState.panel.updateMarkets([{ title: 'Legacy row', yesPrice: 31, source: 'kalshi', url: firstRow.url }] as PredictionMarket[]);
     expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.');
     expect(fixtureState.body.textContent).toContain('Contract: Unknown');
   });
