@@ -14,7 +14,9 @@ import {
   reconcileCohort,
 } from '../scripts/_forecast-cohort.mjs';
 import { parseArgs, writeManifestFile } from '../scripts/forecast-cohort.mjs';
+import { createHash } from 'node:crypto';
 import { DEFAULT_JUDGED_SLA_MS, JUDGED_EVIDENCE_GRACE_MS, hardSlaMs } from '../scripts/_forecast-scorecard.mjs';
+import { emissionCandidate, windowQuestionKey } from '../scripts/seed-forecast-resolutions.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -75,6 +77,7 @@ function horizonForecast(id, generatedAt, h24Deadline) {
         threshold: 80,
         window: 'at-deadline',
         deadline: h24Deadline,
+        sampleToleranceMs: 12 * HOUR_MS,
         sourceFeed: 'market:commodities-bootstrap:v1',
       },
     },
@@ -160,6 +163,24 @@ describe('freezeCohort (#7066)', () => {
     assert.ok(horizon, 'the h24 window is frozen though ingest skips it once its deadline passed');
     assert.deepEqual([horizon.lane, horizon.horizon, horizon.parentKey, horizon.deadline], ['horizon', 'h24', parentKey, T0 + 3.5 * HOUR_MS]);
     assert.equal(horizon.unregisteredReason, 'deadline_passed_before_registration');
+    assert.deepEqual(horizon.sla, { lane: 'hard', ms: 12 * HOUR_MS + RESOLVER_CYCLE_MS, source: 'stamp' }, 'the level the resolver stamps on a horizon window');
+  });
+
+  it('never overwrites a frozen or ledger key when both window keys are taken', () => {
+    const deadline = T0 + 3.5 * HOUR_MS;
+    const other = hardForecast('fc-c', T0 - DAY_MS, { deadline, region: 'Elsewhere' });
+    const emitted = hardForecast('fc-c', T0 + 3 * HOUR_MS, { deadline });
+    const { ledger, historySnapshots, ...rest } = fixture();
+    const questionKey = windowQuestionKey(emissionCandidate({ forecast: emitted, spec: emitted.resolution, id: 'fc-c', deadline, generatedAt: emitted.generatedAt, snapshotAt: emitted.generatedAt }));
+    const suffixed = `fc-c@${deadline}~${createHash('sha256').update(questionKey).digest('hex').slice(0, 12)}`;
+    const row = { ...other, spec: other.resolution, deadline, firstSeenAt: other.generatedAt, status: 'resolved', outcome: 'NO', resolvedAt: deadline };
+    delete row.resolution;
+    const taken = structuredClone(ledger);
+    taken.data[`fc-c@${deadline}`] = row;
+    taken.data[suffixed] = { ...row, generatedAt: T0 + 5 * HOUR_MS };
+    const manifest = freezeFixture({ ...rest, ledger: taken, historySnapshots: [snapshot(T0 + 3 * HOUR_MS, [emitted]), ...historySnapshots] });
+    assert.equal(manifest.counts.emissions.keyCollisions, 1);
+    assert.ok(!manifest.entries.some((entry) => entry.key.startsWith('fc-c@')), 'no frozen record replaces a ledger window');
   });
 
   it('opens no entry for a bet on the base-rate placeholder, and counts it', () => {
@@ -184,8 +205,13 @@ describe('freezeCohort (#7066)', () => {
     assert.deepEqual([fromLedger.codeVersion, fromLedger.codeVersionSource], ['c'.repeat(40), 'ledger']);
     const untraced = freezeFixture({ traceRuns: [] }).entries.find((entry) => entry.id === 'fc-new');
     assert.deepEqual([untraced.codeVersion, untraced.codeVersionSource], ['', 'unknown']);
-    const carried = freezeFixture({ traceRuns: [], priorManifest: freezeFixture() }).entries.find((entry) => entry.id === 'fc-new');
+    const prior = freezeFixture();
+    const carried = freezeFixture({ traceRuns: [], priorManifest: prior }).entries.find((entry) => entry.id === 'fc-new');
     assert.deepEqual([carried.codeVersion, carried.codeVersionSource], [SHA_A, 'prior_manifest']);
+    const secondHand = freezeFixture({ traceRuns: [], priorManifest: freezeFixture({ traceRuns: [], priorManifest: prior }) }).entries.find((entry) => entry.id === 'fc-new');
+    assert.deepEqual([secondHand.codeVersion, secondHand.codeVersionSource], ['', 'unknown'], 'a carried version is not carried again');
+    assert.throws(() => freezeFixture({ priorManifest: { ...prior, cohortId: 'edited' } }), /manifestSha256/);
+    assert.throws(() => freezeFixture({ priorManifest: { ...prior, schemaVersion: 2 } }), /schemaVersion/);
   });
 
   it('accounts for every emission in the range', () => {
@@ -195,6 +221,7 @@ describe('freezeCohort (#7066)', () => {
       inCohortWindow: 4,
       joinedPreCohortWindow: 1,
       filteredOut: 0,
+      keyCollisions: 0,
       skipped: { no_resolution_spec: 1 },
       unregistered: { deadline_passed_before_registration: 1 },
     });
@@ -341,6 +368,21 @@ describe('reconcileCohort (#7066)', () => {
     assert.equal(open.slaVerdict, 'open');
   });
 
+  it('reports duplicate windows in their own class, outside matured, VOID and the verdict', () => {
+    const dup = row({ status: 'resolved', outcome: 'VOID', resolvedAt: T0 + 2 * DAY_MS, duplicateOf: 'x@0', evidence: { reason: 'duplicate_window' } });
+    const result = reconcileCohort(manifestWith([frozen('u@1'), frozen('d@1')]), envelope({ 'u@1': dup, 'd@1': cases['d@1'][1] }, NOW), NOW);
+    assert.equal(result.totals.duplicate_window, 1);
+    assert.deepEqual([result.totals.void, result.totals.matured, result.totals.scored], [0, 1, 1]);
+    assert.deepEqual(result.voidByReason, {});
+    assert.equal(result.slaVerdict, 'met');
+  });
+
+  it('counts an early resolution as terminal but not matured', () => {
+    const early = row({ deadline: NOW + DAY_MS, status: 'resolved', outcome: 'YES', resolvedAt: NOW - HOUR_MS });
+    const result = reconcileCohort(manifestWith([frozen('y@1', { deadline: NOW + DAY_MS })]), envelope({ 'y@1': early }, NOW), NOW);
+    assert.deepEqual([result.totals.terminal_in_sla, result.totals.matured, result.totals.scored], [1, 0, 1]);
+  });
+
   it('judges by the moved deadline of a settlement window', () => {
     const moved = reconcileCohort(manifestWith([frozen('m@1')]), envelope({ 'm@1': row({ deadline: NOW + DAY_MS }) }, NOW), NOW);
     assert.equal(moved.totals.immature, 1);
@@ -398,7 +440,7 @@ describe('forecast-cohort CLI and docs (#7066)', () => {
     assert.equal(RESOLVER_CYCLE_MS, DAY_MS + HOUR_MS, 'the docs say 1 day and 1 hour');
     for (const path of ['docs/panels/forecast.mdx', 'docs/zh/panels/forecast.mdx']) {
       const text = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-      for (const term of ['scripts/forecast-cohort.mjs', 'hardSlaMs', 'slaDueAt', 'RESOLVER_CYCLE_MS', 'missing_from_ledger', 'awaiting_registration', 'data/forecast-cohorts/', '--carry-code-versions', 'manifestSha256']) {
+      for (const term of ['scripts/forecast-cohort.mjs', 'hardSlaMs', 'slaDueAt', 'RESOLVER_CYCLE_MS', 'missing_from_ledger', 'awaiting_registration', 'data/forecast-cohorts/', '--carry-code-versions', 'manifestSha256', 'duplicate_window', 'base_rate_placeholder', '--origin legacy_detector']) {
         assert.ok(text.includes(term), `${path} mentions ${term}`);
       }
     }

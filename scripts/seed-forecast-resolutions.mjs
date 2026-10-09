@@ -2109,7 +2109,6 @@ function restoreDuplicateWindow(entry, nowMs) {
 function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapshotAt, nowMs, run) {
   for (const horizon of scoredHorizonKeys(forecast)) {
     const spec = forecast.horizonResolutions[horizon];
-    const probability = Number(forecast.projections[horizon]);
     const deadline = Number(spec.deadline);
     const key = `${parentKey}@${horizon}`;
     const existing = ledger[key];
@@ -2118,15 +2117,25 @@ function registerHorizonWindows(ledger, parentKey, forecast, generatedAt, snapsh
       continue;
     }
     if (deadline < nowMs) continue;
-    const view = { ...pickHorizonParentFields(forecast), probability, timeHorizon: spec.timeHorizon };
-    const curvesVersion = Number.isInteger(forecast.projectionCurvesVersion) ? { projectionCurvesVersion: forecast.projectionCurvesVersion } : {};
-    // resolveHorizonSpec grades on the nearest sample within the stored
-    // tolerance of the horizon deadline, so the window is due one run after
-    // that tolerance, not after its feed's settlement bound (#7072).
-    const toleranceMs = Number(spec.sampleToleranceMs);
-    const sla = Number.isFinite(toleranceMs) ? { sla: { lane: 'hard', ms: toleranceMs + RESOLVER_CYCLE_MS } } : {};
-    ledger[key] = { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline, run), key, parentKey, ...curvesVersion, ...sla };
+    ledger[key] = horizonWindowCandidate(forecast, horizon, parentKey, generatedAt, snapshotAt, run);
   }
+}
+
+// The row registerHorizonWindows opens for one scored horizon of a forecast.
+// Exported for the cohort tool (#7066), which freezes a horizon window the
+// ledger never registered with the level the resolver would have stamped.
+export function horizonWindowCandidate(forecast, horizon, parentKey, generatedAt, snapshotAt, run) {
+  const spec = forecast.horizonResolutions[horizon];
+  const probability = Number(forecast.projections[horizon]);
+  const deadline = Number(spec.deadline);
+  const view = { ...pickHorizonParentFields(forecast), probability, timeHorizon: spec.timeHorizon };
+  const curvesVersion = Number.isInteger(forecast.projectionCurvesVersion) ? { projectionCurvesVersion: forecast.projectionCurvesVersion } : {};
+  // resolveHorizonSpec grades on the nearest sample within the stored
+  // tolerance of the horizon deadline, so the window is due one run after
+  // that tolerance, not after its feed's settlement bound (#7072).
+  const toleranceMs = Number(spec.sampleToleranceMs);
+  const sla = Number.isFinite(toleranceMs) ? { sla: { lane: 'hard', ms: toleranceMs + RESOLVER_CYCLE_MS } } : {};
+  return { ...createEntry(forecast.id, view, spec, generatedAt, snapshotAt, deadline, run), key: `${parentKey}@${horizon}`, parentKey, ...curvesVersion, ...sla };
 }
 
 // The parent fields a horizon window keeps (#7075 review 2). The rest of the

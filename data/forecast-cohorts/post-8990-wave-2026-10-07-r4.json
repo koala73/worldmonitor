@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "cohortId": "post-8990-wave-2026-10-07-r3",
-  "note": "Windows opened by seed-forecasts runs on the #8990 resolver fix wave: from the first run on 761de732 (#9007, deployed 2026-10-07 19:49 UTC; the 20:04 run still ran 4da58ccc) up to the #9052 deploy (897479c9, live 2026-10-08 16:11 UTC), which withholds cyber and prediction-market forecasts and starts the next cohort. Projected with the resolver at 27381288d8: per-window service levels (#9059) and per-forecast keys for cyber and military judged windows (#9068). Code versions older than the trace pointer list are carried from earlier freezes of this range.",
-  "frozenAt": "2026-10-09T00:11:45.469Z",
+  "cohortId": "post-8990-wave-2026-10-07-r4",
+  "note": "Windows opened by seed-forecasts runs on the #8990 resolver fix wave: from the first run on 761de732 (#9007, deployed 2026-10-07 19:49 UTC; the 20:04 run still ran 4da58ccc) up to the #9052 deploy (897479c9, live 2026-10-08 16:11 UTC), which withholds cyber and prediction-market forecasts and starts the next cohort. Projected with the resolver at 32a36576f1. Code versions come only from sources this freeze read; runs older than the trace pointer list are unknown.",
+  "frozenAt": "2026-10-09T00:58:14.028Z",
   "window": {
     "start": "2026-10-07T21:00:00.000Z",
     "end": "2026-10-08T16:11:21.000Z",
@@ -28,8 +28,7 @@
     "historyFrom": "2026-09-30T15:04:10.968Z",
     "historyTo": "2026-10-09T00:04:34.942Z",
     "betsSnapshots": 95,
-    "traceRuns": 50,
-    "priorManifest": "post-8990-wave-2026-10-07-r2"
+    "traceRuns": 50
   },
   "counts": {
     "entries": 16,
@@ -54,14 +53,13 @@
     "byCodeVersion": {
       "1721279829b274abb6d046890c7eadcefd246188": 2,
       "1c3ce49d9d915498eb42b205315329b4253d7e38": 1,
-      "761de732c597e2d588848ec95b035da415d57c31": 3,
+      "761de732c597e2d588848ec95b035da415d57c31": 1,
       "c64c010b1573f24bfe4da1daba4afe2130157107": 3,
-      "unknown": 7
+      "unknown": 9
     },
     "codeVersionSource": {
-      "prior_manifest": 2,
       "trace_run": 7,
-      "unknown": 7
+      "unknown": 9
     },
     "slaSource": {
       "spec": 12,
@@ -70,9 +68,12 @@
     "emissions": {
       "total": 274,
       "inCohortWindow": 26,
-      "joinedPreCohortWindow": 248,
+      "joinedPreCohortWindow": 243,
       "filteredOut": 0,
-      "skipped": {},
+      "keyCollisions": 0,
+      "skipped": {
+        "base_rate_placeholder": 5
+      },
       "unregistered": {}
     }
   },
@@ -176,8 +177,8 @@
       "generatedAt": 1791410634177,
       "firstSeenAt": 1791410634177,
       "deadline": 1792015434177,
-      "codeVersion": "761de732c597e2d588848ec95b035da415d57c31",
-      "codeVersionSource": "prior_manifest",
+      "codeVersion": "",
+      "codeVersionSource": "unknown",
       "sla": {
         "lane": "judged",
         "ms": 172800000,
@@ -359,8 +360,8 @@
       "generatedAt": 1791406818913,
       "firstSeenAt": 1791406818913,
       "deadline": 1793505540000,
-      "codeVersion": "761de732c597e2d588848ec95b035da415d57c31",
-      "codeVersionSource": "prior_manifest",
+      "codeVersion": "",
+      "codeVersionSource": "unknown",
       "sla": {
         "lane": "hard",
         "ms": 90000000,
@@ -437,5 +438,5 @@
       "statusAtFreeze": "pending"
     }
   ],
-  "manifestSha256": "aa1fbeda57a4ade860a26324298faf0c7c6547b4e919c44a805cf32f749aa361"
+  "manifestSha256": "e74d843b8eef3475ff18e0f6bd4d72f0cfa83135960bceff31ce68f3381281c1"
 }

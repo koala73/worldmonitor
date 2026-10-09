@@ -31,6 +31,7 @@ import {
   REGISTRATION_GAP_REASONS,
   collectHistoryEmissions,
   emissionCandidate,
+  horizonWindowCandidate,
   indexQuestionWindows,
   ingestHistory,
   registrationGapReason,
@@ -58,6 +59,10 @@ export const COHORT_CLASSES = Object.freeze([
   'sla_unmeasurable',
   'awaiting_registration',
   'missing_from_ledger',
+  // A window the resolver voided as a duplicate of an earlier window of the
+  // same question (#8990). It was never a question; like the scorecard, the
+  // cohort leaves it out of matured, scored, VOID and the verdict.
+  'duplicate_window',
 ]);
 const BREACH_CLASSES = new Set(['pending_breach', 'terminal_late', 'missing_from_ledger', 'sla_unmeasurable']);
 
@@ -78,6 +83,8 @@ export function cohortLane(entry) {
 // that snapshot (forecast or bet history); the forecast trace pointer of the
 // same run, whose triggerContext records the deploy SHA (the pointer list
 // keeps 50 entries, about 25 runs); a prior manifest of the same windows.
+const FIRST_HAND_CODE_VERSION_SOURCES = new Set(['ledger', 'history', 'trace_run']);
+
 function codeVersionIndex(snapshots, traceRuns, priorManifest) {
   const bySnapshot = new Map();
   for (const snapshot of snapshots) {
@@ -89,8 +96,10 @@ function codeVersionIndex(snapshots, traceRuns, priorManifest) {
     if (sha) byRun.set(Number(pointer.generatedAt), String(sha));
   }
   const byPriorKey = new Map();
+  // Only versions the prior freeze read first-hand: a carried value would
+  // rest on a manifest this one cannot verify.
   for (const entry of priorManifest?.entries || []) {
-    if (entry?.codeVersion && entry.codeVersionSource !== 'unknown') byPriorKey.set(entry.key, entry.codeVersion);
+    if (entry?.codeVersion && FIRST_HAND_CODE_VERSION_SOURCES.has(entry.codeVersionSource)) byPriorKey.set(entry.key, entry.codeVersion);
   }
   return (key, entry, liveEntry) => {
     if (typeof liveEntry?.codeVersion === 'string' && liveEntry.codeVersion) return { codeVersion: liveEntry.codeVersion, codeVersionSource: 'ledger' };
@@ -176,6 +185,7 @@ export function freezeCohort({
   refuseUncoveredHistory('forecast history', historySnapshots, startMs);
   refuseUncoveredHistory('bet history', betsSnapshots, startMs);
 
+  if (priorManifest) verifyManifest(priorManifest);
   const live = ledgerMap(ledger);
   const snapshots = [...historySnapshots, ...betsSnapshots].filter(Boolean);
   const projected = ingestHistory(ledger || {}, snapshots, nowMs);
@@ -219,7 +229,7 @@ export function freezeCohort({
   // Emission accounting, with the resolver's own emission list and window
   // index, so it cannot drift from ingest.
   const windows = indexQuestionWindows(projected);
-  const emissions = { total: 0, inCohortWindow: 0, joinedPreCohortWindow: 0, filteredOut: 0, skipped: {}, unregistered: {} };
+  const emissions = { total: 0, inCohortWindow: 0, joinedPreCohortWindow: 0, filteredOut: 0, keyCollisions: 0, skipped: {}, unregistered: {} };
   // Gap reasons are the resolver's registration vocabulary (#7072).
   const bump = (bucket, reason) => {
     if (!REGISTRATION_GAP_REASONS.includes(reason)) throw new Error(`unknown registration gap reason ${reason}`);
@@ -257,10 +267,13 @@ export function freezeCohort({
       if (open) {
         parentKey = open.key;
       } else {
+        // The resolver's freeWindowKey: the plain key, else the question-hash
+        // suffix, else no window at all. A taken key is never overwritten.
         const plain = `${id}@${deadline}`;
-        parentKey = projected[plain] || entries.has(plain)
-          ? `${plain}~${createHash('sha256').update(questionKey).digest('hex').slice(0, 12)}`
-          : plain;
+        const suffixed = `${plain}~${createHash('sha256').update(questionKey).digest('hex').slice(0, 12)}`;
+        const taken = (key) => Boolean(projected[key]) || entries.has(key);
+        parentKey = !taken(plain) ? plain : !taken(suffixed) ? suffixed : null;
+        if (!parentKey) { emissions.keyCollisions += 1; continue; }
         freezeUnregistered(parentKey, { ...candidate, key: parentKey }, registrationGapReason(deadline, snapshotAt, nowMs));
         unregisteredWindows.set(group, [...(unregisteredWindows.get(group) || []), { key: parentKey, deadline }]);
       }
@@ -269,11 +282,8 @@ export function freezeCohort({
     for (const horizon of scoredHorizonKeys(forecast)) {
       const key = `${parentKey}@${horizon}`;
       if (projected[key] || entries.has(key)) continue;
-      const spec = forecast.horizonResolutions[horizon];
-      const horizonEntry = { ...candidate, spec, deadline: Number(spec.deadline), parentKey, key };
-      delete horizonEntry.sla;
-      delete horizonEntry.emissionHash;
-      freezeUnregistered(key, horizonEntry, registrationGapReason(Number(spec.deadline), snapshotAt, nowMs));
+      const horizonEntry = horizonWindowCandidate(forecast, horizon, parentKey, generatedAt, snapshotAt, emission.run);
+      freezeUnregistered(key, horizonEntry, registrationGapReason(horizonEntry.deadline, snapshotAt, nowMs));
     }
   }
 
@@ -294,7 +304,7 @@ export function freezeCohort({
       historyTo: new Date(Math.max(...historyTimes)).toISOString(),
       betsSnapshots: betsSnapshots.length,
       traceRuns: traceRuns.length,
-      ...(priorManifest && { priorManifest: priorManifest.cohortId }),
+      ...(priorManifest && { priorManifest: { cohortId: priorManifest.cohortId, manifestSha256: priorManifest.manifestSha256 } }),
     },
     counts: {
       entries: frozen.length,
@@ -336,12 +346,14 @@ function classifyEntry(frozen, entry, nowMs, ledgerWrittenAt) {
   const deadline = Number(entry.deadline ?? entry.spec?.deadline);
   const dueAt = dueAtFor(frozen, deadline);
   const base = { lane, deadline, dueAt, ...(deadline !== frozen.deadline && { frozenDeadline: frozen.deadline }) };
+  if (isDuplicateWindow(entry)) return { ...base, matured: false, duplicateOf: entry.duplicateOf, class: 'duplicate_window' };
   if (entry.status === 'resolved') {
     const resolvedAt = Number(entry.resolvedAt);
     const outcome = entry.outcome || 'unknown';
     const terminal = {
       ...base,
-      matured: true,
+      // An early resolution is terminal but not yet matured.
+      matured: !(deadline > nowMs),
       resolvedAt,
       outcome,
       ...(outcome === 'VOID' && { voidReason: entry.evidence?.reason || 'unknown' }),
@@ -465,6 +477,7 @@ const CLASS_LABELS = {
   terminal_late: 'Terminal late (breach)',
   sla_unmeasurable: 'SLA unmeasurable (breach)',
   awaiting_registration: 'Awaiting registration',
+  duplicate_window: 'Duplicate window (excluded)',
   missing_from_ledger: 'Missing from ledger (breach)',
 };
 

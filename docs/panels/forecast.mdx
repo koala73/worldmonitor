@@ -366,23 +366,23 @@ A frozen cohort follows one set of forecast windows from emission to outcome. A 
 
 It runs the resolver's own `ingestHistory` and emission helpers over them in memory. Every window opened by an emission inside the range is frozen under the `id@deadline` key the resolver gives it, including windows the next resolver run will register. Some emissions map to no window, for example when the deadline passed before any resolver run read them. Those are frozen too, with `unregisteredReason`, along with the missing horizon windows of a cohort window. Whether an emission counts therefore never depends on when the freeze ran.
 
-Each entry records its origin, domain, lane (hard, judged or horizon), deadline, whether it is of published origin, its `emissionHash`, its service level, and the code version of the run that opened it. The service level is the `sla` the resolver stamps on the row when it opens it. A row without a stamp takes its lane's level from its spec, as `slaDueAt` does: `hardSlaMs` for a hard or horizon window, `DEFAULT_JUDGED_SLA_MS` for a judged one. The code version comes from the first of these sources that has one:
+Each entry records its origin, domain, lane (hard, judged or horizon), deadline, whether it is of published origin, its `emissionHash`, its service level, and the code version of the run that opened it. The service level is the `sla` the resolver stamps on the row when it opens it. A row without a stamp takes its lane's level from its spec, as `slaDueAt` does: `hardSlaMs` for a hard or horizon window, `DEFAULT_JUDGED_SLA_MS` for a judged one. A horizon window the ledger never registered is frozen with the level the resolver would have stamped: its sample tolerance plus `RESOLVER_CYCLE_MS`. The code version comes from the first of these sources that has one:
 
 1. the ledger row's stamp
 2. the forecast or bet history snapshot's stamp
 3. the trace pointer of the same run
 4. an earlier manifest named with `--carry-code-versions`
 
-Otherwise it is `unknown`. Both history lists stamp each snapshot since #9059, so the code version survives as long as the history does. Older snapshots fall back to the trace pointer list, which keeps 50 entries (about 25 runs), or to an earlier manifest of the same windows.
+Otherwise it is `unknown`. Both history lists stamp each snapshot since #9059, so the code version survives as long as the history does. Older snapshots fall back to the trace pointer list, which keeps 50 entries (about 25 runs), or to an earlier manifest of the same windows. `--carry-code-versions` checks the earlier manifest's schema and `manifestSha256`, and carries only versions that freeze read first-hand, never one it carried itself.
 
 Every emission in the range is accounted for in the counts:
 
 - in a cohort window
 - joined a window opened before the range, and is scored on that earlier emission
 - left out by a filter
-- skipped by ingest, with a reason from the resolver's `REGISTRATION_GAP_REASONS`
+- skipped by ingest, with a reason from the resolver's `REGISTRATION_GAP_REASONS`; for example, `base_rate_placeholder` marks a bet on the seeder's base-rate placeholder, which opens no window
 
-Freezing refuses a range when either history list is empty or expired, or when the range starts at or before the oldest snapshot read, because runs at the start of the range may already have been trimmed. Run the freeze within about 8 days of the range start.
+Freezing refuses a range when either history list is empty or expired, even for a forecast-only freeze (`--origin legacy_detector`), because the projection must read every emission the resolver reads. It also refuses a range that starts at or before the oldest snapshot read, because runs at the start of the range may already have been trimmed. Run the freeze within about 8 days of the range start.
 
 The manifest is committed under `data/forecast-cohorts/`. Its `manifestSha256` covers everything in it, including the range, the filters and every entry with its service level. A freeze never replaces an existing manifest: a later freeze would read a later ledger and history, so a new freeze needs a new `--id`.
 
@@ -398,6 +398,7 @@ The manifest is committed under `data/forecast-cohorts/`. Its `manifestSha256` c
 | `sla_unmeasurable` | Resolved without a deadline or resolution time. A breach. |
 | `awaiting_registration` | Not in the ledger. The service level has not ended, and no ledger write came at least 1 resolver cycle after the emitting run. |
 | `missing_from_ledger` | Not in the ledger, although a ledger write came at least 1 resolver cycle after the emitting run, or its service level has ended. A breach. |
+| `duplicate_window` | The resolver voided it as a duplicate of an earlier window of the same question. It was never a question, so, as in the scorecard, it counts toward no matured, scored or VOID total and no verdict. |
 
 The resolver reads history when its run starts and writes the ledger minutes later. A ledger write soon after an emission therefore does not show that the resolver read that emission. `RESOLVER_CYCLE_MS` (1 day and 1 hour, the scorecard's resolver cycle) is the wait.
 
