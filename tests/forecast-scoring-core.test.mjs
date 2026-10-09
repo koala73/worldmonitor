@@ -762,7 +762,9 @@ describe('base-rate placeholder bets (#8990)', () => {
     const card = computeScorecard(ledger, NOW);
     assert.equal(card.betEngine.count, 1);
     assert.equal(card.betEngine.ensembleCount, 1);
-    assert.deepEqual([card.totals.entries, card.totals.void], [1, 0], 'a placeholder window, like a duplicate, was never a question');
+    const bets = card.byGenerationOrigin.find((row) => row.generationOrigin === 'bet_engine');
+    assert.deepEqual([bets.resolved, bets.void], [1, 0], 'a placeholder window, like a duplicate, was never a question');
+    assert.equal(card.totals.entries, 0, 'an unpromoted shadow bet is not in the published totals');
     assert.match(card.methodology, / 3 shadow bet windows that opened on a base-rate placeholder instead of a model forecast are left out of every count, VOID included \(issue #8990\)\./);
     assert.deepEqual(Object.values(ledger).filter(receiptNeedsRearchive).map((entry) => entry.key).sort(), [placeholder.key, firstEnsemble.key].sort());
     assert.deepEqual(ingestHistory(ledger, [], NOW + DAY_MS), ledger);

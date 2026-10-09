@@ -234,7 +234,7 @@ describe('computeScorecard', () => {
       h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine', probabilitySource: 'ensemble' }),
     }, NOW, { promoteBetEngine: true });
 
-    assert.equal(scorecard.schemaVersion, 2, 'schema 2 marks a seed that carries publishedByDomain');
+    assert.ok(scorecard.schemaVersion >= 2, 'schema 2 marks a seed that carries publishedByDomain');
     assert.deepEqual(scorecard.publishedByDomain, [
       { domain: 'conflict', count: 1, brier: 0.09, yesCount: 0, families: 1, nEff: 1, yesFamilies: 0, noFamilies: 1, referenceBrier: 0, measurable: false },
       { domain: 'market', count: 2, brier: 0.1, yesCount: 1, families: 1, nEff: 1, yesFamilies: 1, noFamilies: 1, referenceBrier: 0.25, measurable: false },
@@ -654,7 +654,8 @@ describe('evaluation corpus: SLA, VOID by reason and latency across both lanes (
     const { generationOrigin: _origin, ...detectorCounts } = detector;
     const { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane } = corpus;
     assert.deepEqual(detectorCounts, { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane });
-    assert.equal(corpus.byGenerationOrigin.reduce((sum, row) => sum + row.resolvedCount, 0), totals.resolved, 'every resolved window is in one origin');
+    assert.equal(totals.resolved, resolvedCount, 'the totals count the published windows the corpus counts');
+    assert.equal(corpus.byGenerationOrigin.reduce((sum, row) => sum + row.resolvedCount, 0), totals.resolved + bets.resolvedCount, 'every resolved window is in one origin');
   });
 
   it('reports VOID by reason across both lanes, keys sorted', () => {
@@ -712,7 +713,7 @@ describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
       d: betEngineEntry({ probability: 0.2, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'ensemble_partial', calibration: { marketPrice: 70 } }),
     }, NOW);
     assert.equal(scorecard.betEngine.count, 2, 'a placeholder window was never a question');
-    assert.equal(scorecard.totals.entries, 2);
+    assert.equal(scorecard.byGenerationOrigin.find((row) => row.generationOrigin === 'bet_engine').resolved, 2);
     assert.equal(scorecard.betEngine.ensembleCount, 2);
     assert.equal(scorecard.betEngine.vsBaseRate.count, 2);
     assert.equal(scorecard.betEngine.vsMarketSkill.count, 2);
@@ -1583,5 +1584,86 @@ describe('spec-origin follow-through slice (#7067)', () => {
   it('stays off the public scorecard contract', async () => {
     const { SCORECARD_DECLARED_FIELDS } = await import('../scripts/build-accuracy-page.mjs');
     for (const field of ['specOrigins', 'withheldAtEmission']) assert.ok(!SCORECARD_DECLARED_FIELDS.includes(field), field);
+  });
+});
+
+describe('ledger totals and funnel count published forecasts only (#8990)', () => {
+  const bet = (overrides) => resolved({ generationOrigin: 'bet_engine', probabilitySource: 'ensemble', ...overrides });
+  const ledger = {
+    detectorYes: resolved({ id: 'd1', outcome: 'YES' }),
+    detectorVoid: resolved({ id: 'd2', outcome: 'VOID' }),
+    // Published, though the headline leaves them out: their VOIDs were shown to users.
+    energyVoid: resolved({ id: 's1', generationOrigin: 'state_derived', domain: 'energy', outcome: 'VOID' }),
+    unattributedNo: resolved({ id: 'u1', generationOrigin: undefined, outcome: 'NO', probability: 0.3 }),
+    detectorJudge: { id: 'd3', generationOrigin: 'detector', status: 'pending-judge', probability: 0.5, spec: { kind: 'judged', deadline: NOW + DAY_MS } },
+    betYes: bet({ id: 'b1', outcome: 'YES' }),
+    betNo: bet({ id: 'b2', outcome: 'NO', probability: 0.2 }),
+    betOpen: bet({ id: 'b3', status: 'pending', outcome: undefined, resolvedAt: undefined, deadline: NOW + DAY_MS }),
+  };
+
+  it('leaves unpromoted shadow bets out, and keeps state-derived and unattributed rows', () => {
+    const scorecard = computeScorecard(ledger, NOW);
+    assert.deepEqual(scorecard.totals, {
+      entries: 5,
+      resolved: 4,
+      pending: 0,
+      pendingJudge: 1,
+      scored: 2,
+      void: 2,
+      voidRate: 0.5,
+      publicationCoverage: 0.4,
+    });
+    assert.equal(scorecard.funnel.resolved, 4);
+    assert.equal(scorecard.funnel.scored, 2);
+    assert.equal(scorecard.funnel.immature, 1, 'the open shadow bet is not in the funnel');
+    assert.equal(scorecard.funnel.matured + scorecard.funnel.immature + scorecard.funnel.maturityUnknown, scorecard.totals.entries);
+  });
+
+  it('keeps reporting shadow bets in their own slices and in the pooled scores', () => {
+    const scorecard = computeScorecard(ledger, NOW);
+    const bets = scorecard.byGenerationOrigin.find((row) => row.generationOrigin === 'bet_engine');
+    assert.equal(bets.resolved, 2);
+    assert.equal(bets.scored, 2);
+    assert.equal(scorecard.betEngine.count, 2);
+    assert.equal(scorecard.overall.count, 4);
+  });
+
+  it('counts a promoted shadow bet as published, as the headline does', () => {
+    const { totals, funnel, skill } = computeScorecard(ledger, NOW, { promoteBetEngine: true });
+    assert.equal(totals.entries, 8);
+    assert.equal(totals.resolved, 6);
+    assert.equal(totals.pending, 1);
+    assert.equal(totals.scored, 4);
+    assert.equal(totals.voidRate, round6(2 / 6));
+    assert.equal(funnel.resolved, 6);
+    assert.equal(skill.count, 3, 'the headline promotes the same bets');
+  });
+
+  it('draws the go-forward cohort from the totals population', () => {
+    const AFTER = Date.parse('2026-10-20T06:00:00Z');
+    const rows = Object.values(ledger).map((row) => ({ ...row, firstSeenAt: GO_FORWARD_SINCE_MS + DAY_MS, resolvedAt: row.status === 'resolved' ? AFTER - DAY_MS : undefined }));
+    for (const promoteBetEngine of [false, true]) {
+      const { totals, goForward } = computeScorecard(rows, AFTER, { promoteBetEngine });
+      assert.equal(goForward.entries, totals.entries);
+      assert.equal(goForward.resolved, totals.resolved);
+      assert.equal(goForward.void, totals.void);
+    }
+  });
+
+  it('states the population in the methodology and marks it with schema version 3', () => {
+    const scorecard = computeScorecard(ledger, NOW);
+    assert.equal(scorecard.schemaVersion, 3);
+    assert.match(scorecard.methodology, /The ledger totals and the maturity funnel count published forecasts only: shadow bets, scored for evidence but never shown, are left out of them\./);
+  });
+});
+
+describe('published ledger population in the docs (#8990)', () => {
+  it('names the schema version and the download field in both languages', () => {
+    for (const path of ['docs/panels/forecast.mdx', 'docs/zh/panels/forecast.mdx']) {
+      const text = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      assert.match(text, /`totals` (and|和) `funnel`/, `${path} names both blocks`);
+      assert.ok(text.includes('`schemaVersion` 3'), `${path} names schema 3`);
+      assert.ok(text.includes('ledgerPopulation'), `${path} names the download field`);
+    }
   });
 });

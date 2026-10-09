@@ -148,6 +148,12 @@ const WORLD_MONITOR_ORG = Object.freeze({
 const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
 const INSUFFICIENT_SAMPLE = 'Insufficient sample';
 const POOLED_POPULATION = 'all-scored-entries';
+
+// From schema 3 the producer counts published forecasts only in `totals` and
+// `funnel` (#8990). The page reads a frozen capture, so it names the population
+// that capture carries.
+const PUBLISHED_LEDGER_SCHEMA = 3;
+const ledgerIsPublished = (scorecard) => isFiniteNumber(scorecard?.schemaVersion) && scorecard.schemaVersion >= PUBLISHED_LEDGER_SCHEMA;
 const BRIER_DELTA_CONVENTION = 'The published delta is the market Brier minus the forecast Brier, and lower is better, so a negative delta means the market scored better.';
 
 const META_DESCRIPTION = 'World Monitor grades its own forecasts against always forecasting how often events actually happened: skill scores, Brier and log scores, and sample sizes.';
@@ -685,7 +691,7 @@ function headlineTiles(scorecard, intervals, escapeHtml) {
       `${formatCount(overall?.count ?? 0)} scored forecasts, ${scoreIntervalText(intervals.overall)}`,
     ],
     [
-      'Scored entries',
+      ledgerIsPublished(scorecard) ? 'Scored published forecasts' : 'Scored entries',
       formatCount(totals?.scored ?? 0),
       `of ${formatCount(totals?.resolved ?? 0)} resolved`,
     ],
@@ -770,7 +776,11 @@ function coverageSentence(state) {
   return `${sample} That meets the minimum for judging skill: ${SKILL_RULE}.`;
 }
 
-function totalsTable(totals, intervals, escapeHtml) {
+function totalsTable(scorecard, intervals, escapeHtml) {
+  const { totals } = scorecard;
+  const population = ledgerIsPublished(scorecard)
+    ? 'These totals count published forecasts only. Shadow bets, scored for evidence but never shown, are left out; they appear under Accuracy by generation origin.'
+    : 'These totals count every origin, unpublished shadow bets included.';
   const rows = [
     ['Entries in the rolling window', escapeHtml(formatCount(totals.entries))],
     ['Resolved', escapeHtml(formatCount(totals.resolved))],
@@ -786,7 +796,7 @@ function totalsTable(totals, intervals, escapeHtml) {
     ['Scored share of the ledger', `${escapeHtml(`${rateOf(totals.entries ? Math.round((totals.scored / totals.entries) * 1e6) / 1e6 : 0, totals.entries, 'entries')}, 95% interval`)} ${intervalHtml(intervals.scoredShare, escapeHtml)}`],
   ];
   return `      <div class="table-scroll"><table data-ledger-totals>
-        <caption>Resolution ledger totals for the rolling window. Forecasts withheld under issue #5234 are left out. These are state-derived sovereign risk, rates and inflation, and FX stress forecasts that no feed can check. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
+        <caption>Resolution ledger totals for the rolling window. ${escapeHtml(population)} Forecasts withheld under issue #5234 are left out. These are state-derived sovereign risk, rates and inflation, and FX stress forecasts that no feed can check. Voided entries are counted for coverage and excluded from every score below. A judging backlog is an ordinary state of the ledger, not a fault. The void rate's 95% interval is a Wilson interval on the counts shown.</caption>
         <thead><tr><th scope="col">Ledger stage</th><th scope="col">Entries</th></tr></thead>
         <tbody>
 ${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}
@@ -803,7 +813,7 @@ function funnelRateHtml(successes, count, escapeHtml) {
   return `${escapeHtml(text)} ${intervalHtml(estimate, escapeHtml)}`;
 }
 
-function funnelSection(funnel, escapeHtml) {
+function funnelSection(funnel, published, escapeHtml) {
   const heading = '      <h2>From deadline to grade</h2>';
   if (!isPlainObject(funnel)) {
     return `${heading}
@@ -821,7 +831,7 @@ function funnelSection(funnel, escapeHtml) {
   ];
   return `${heading}
       <div class="table-scroll"><table data-maturity-funnel>
-        <caption>Of the forecasts in the ledger that are past their deadline or already resolved, how many were resolved and how many could be graded. Unresolved forecasts not yet due are left out of both rates, so a young forecast never counts as a miss. The 95% interval is a Wilson interval on the counts shown.</caption>
+        <caption>Of the ${published ? 'published ' : ''}forecasts in the ledger that are past their deadline or already resolved, how many were resolved and how many could be graded. Unresolved forecasts not yet due are left out of both rates, so a young forecast never counts as a miss. The 95% interval is a Wilson interval on the counts shown.</caption>
         <thead><tr><th scope="col">Stage</th><th scope="col">Forecasts</th></tr></thead>
         <tbody>
 ${rows.map(([label, valueHtml]) => `          <tr><th scope="row">${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`).join('\n')}
@@ -1143,9 +1153,10 @@ function pooledCohort(scorecard) {
   };
 }
 
-function ledgerVerdictSentences(totals, windowDays) {
+function ledgerVerdictSentences(scorecard) {
+  const { totals, rollingWindowDays: windowDays } = scorecard;
   const windowPhrase = isFiniteNumber(windowDays) ? `Over the current ${formatCount(windowDays)}-day window` : 'Over the current rolling window';
-  return `${windowPhrase}, ${formatCount(totals.resolved)} forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} are in the queue for a judge, counted whether or not their deadline has passed.`;
+  return `${windowPhrase}, ${formatCount(totals.resolved)} ${ledgerIsPublished(scorecard) ? 'published ' : ''}forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} are in the queue for a judge, counted whether or not their deadline has passed.`;
 }
 
 function bandSentence({ band, count, yesCount }, escapeHtml) {
@@ -1175,7 +1186,7 @@ function pooledVerdictSentences(scorecard) {
   if (!cohort) {
     return 'How often all graded forecasts came true cannot be derived from this capture, because its probability buckets do not account for every graded forecast.';
   }
-  return `Across all ${formatCount(cohort.count)} graded forecasts, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}${intervalPhrase(proportionEstimate(cohort.yesCount, cohort.count))}. That count pools kinds of forecast that come true at very different rates, so it is not compared with a single rate. Skill is judged within the headline cohort and within each domain.`;
+  return `Across all ${formatCount(cohort.count)} graded forecasts of every origin, unpublished shadow bets included, ${formatCount(cohort.yesCount)} came true: ${rateOf(cohort.yesCount / cohort.count, cohort.count, 'graded forecasts')}${intervalPhrase(proportionEstimate(cohort.yesCount, cohort.count))}. That count pools kinds of forecast that come true at very different rates, so it is not compared with a single rate. Skill is judged within the headline cohort and within each domain.`;
 }
 
 // The page's lead (#8990): did the headline forecasts beat always forecasting
@@ -1217,7 +1228,7 @@ function skillVerdict(scorecard) {
 function verdictSection(scorecard, escapeHtml) {
   const skill = skillVerdict(scorecard);
   const paragraphs = [
-    escapeHtml(ledgerVerdictSentences(scorecard.totals, scorecard.rollingWindowDays)),
+    escapeHtml(ledgerVerdictSentences(scorecard)),
     bandOutcomes(scorecard.calibration).map((outcome) => bandSentence(outcome, escapeHtml)).join(' '),
     escapeHtml(marketVerdictSentence(scorecard.vsMarketSkill)),
     rateIntervalMarkup(escapeHtml(pooledVerdictSentences(scorecard))),
@@ -1341,9 +1352,9 @@ ${recordStatus(state, escapeHtml)}
 ${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, brierIntervals, escapeHtml)}\n${headlineResultParagraph(scorecard, brierIntervals.skill, escapeHtml)}`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
 ${cohortSection(scorecard.skill, unknownOriginSentence(scorecard), escapeHtml)}
       <h2>Resolution ledger</h2>
-${totalsTable(scorecard.totals, intervals, escapeHtml)}
+${totalsTable(scorecard, intervals, escapeHtml)}
       <p>${escapeHtml(scorecard.methodology)}</p>
-${funnelSection(scorecard.funnel, escapeHtml)}
+${funnelSection(scorecard.funnel, ledgerIsPublished(scorecard), escapeHtml)}
 ${receiptsSection(scorecard, escapeHtml)}
       <h2>Calibration</h2>
 ${calibrationTable(scorecard, intervals, escapeHtml)}
@@ -1522,6 +1533,8 @@ export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_
       vsMarketSkill: POOLED_POPULATION,
       overall: POOLED_POPULATION,
     },
+    // The population of scorecard.totals and scorecard.funnel in this capture.
+    ledgerPopulation: state.scorecard ? (ledgerIsPublished(state.scorecard) ? 'published-forecasts' : 'all-entries') : null,
     confidenceIntervals: {
       proportions: { published: true, method: 'wilson-95' },
       meanScores: {
