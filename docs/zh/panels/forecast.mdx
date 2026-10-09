@@ -181,6 +181,10 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_SHARE_TARGET`），只统计 2026-10-08 当天及之后首次发布的窗口（`GO_FORWARD_SINCE`，issue #4930）。窗口按其 `firstSeenAt` 归入，没有首次发布时间时按 `generatedAt` 归入。这一组窗口取自结算台账总计的统计范围，即仅限已发布预测，再限定为上述窗口：影子押注（`bet_engine`）在晋升之前不计入，因为用户看不到它们；状态派生的能源和货运预测会发布，因此计入。更早的窗口含有 issue #8990 审计中重新标注的 VOID，因此滚动 VOID 率不是该目标的衡量口径。成绩单在 `goForward` 下报告这一组窗口：条目数、已结算数、VOID 数、带 95% Wilson 区间的 VOID 占比，以及按原因划分的 VOID。公开端点不提供该数据块。方法说明会写出这一占比，`/accuracy/` 会在结算台账总计下方显示方法说明；在审计撤回评分期间，则显示在“方法说明”部分。这一组窗口尚无任何结算时，句子会如实说明，而不是显示 0%。已结算预测少于 `GO_FORWARD_MIN_RESOLVED`（30）条时（与技能评分的预测族门槛相同），句子会写出占比，但不与目标比较。裁判类预测比硬性预测晚几天结算，且历来更常被判为 VOID，因此早期读数偏低。当 2026-10-08 早于 180 天滚动窗口的起点后，在窗口起点之前结算的预测不再计入，句子也会改为注明该窗口。
 
+公开的准确率记录自 2026-10-07 起处于审计状态（issue #8990）。审计生效期间，`/accuracy/`、其 `scorecard.json` 下载、`llms-full.txt`、REST 成绩单的 `underAudit` 字段、预测面板和 MCP 预测工具都会撤下所有分数，并显示带日期的说明。常设审计（`shared/forecast-accuracy-audit.js` 中的 `STANDING_ACCURACY_AUDIT`）会在成绩单报告头条队列可衡量时自动解除：至少 30 个预测家族，其中至少 5 个结果为发生、5 个结果为未发生。解除审计无需修改任何常量。每个界面都对其展示的成绩单调用 `forecastAccuracyAudit()`，因此同一份成绩单在所有界面上的状态一致。REST 处理器和 MCP 读取种子器写入的 `skill.measurable`。公开契约没有空间容纳该字段，因此 `/accuracy/` 从其冻结快照中技能 Brier 区间的 `insufficientSample` 标志读取同一结论；种子器用相同的最低要求、在相同的记录上计算这两者。缺失、降级或无法读取的成绩单不可衡量，因此审计保持生效。`/accuracy/` 和 `llms-full.txt` 在下一次每周快照时跟进。未设置覆盖时，面板在成绩单返回之前，既不显示说明，也不显示分数。
+
+如需在头条可衡量时仍保持审计（用于将来的事件），将 `FORECAST_ACCURACY_AUDIT_OVERRIDE` 设为一个 `{ since, issue, reason }` 记录，并重新构建生成的输出。该覆盖只能增加审计。头条不可衡量时，没有任何设置可以解除审计。成绩单的方法说明还会写明，有多少条头条预测是在向 issue #7071 之前的匹配器所选市场价格混合之后发布的。这些记录按发布时的概率评分，该计数本身仍为内部字段。
+
 `sovereign_risk`、`rates_inflation` 和 `fx_stress` 分桶中的状态派生市场预测不再发布，因为没有数据源可以校验它们（issue #5234）。它们此前的记录仍保留在 `forecast:resolutions:v1` 中，但成绩单报告的所有数字都不计入这些记录，包括 VOID 率。结算器会把其中未结算的记录以原因 `withheld_unpublished` 封存为 VOID，不调用任何裁判。状态派生的 `energy` 和 `freight` 预测仍会发布。发布时若价格或咽喉要道数据源有匹配的数值，就按该数据源结算，否则交由裁判结算。
 
 同一规则还暂停发布另外 2 个无法计分的族（issue #8990）。两者都列在 `scripts/seed-forecasts.mjs` 的 `WITHHELD_PUBLISH_FAMILIES` 中：

@@ -30,7 +30,7 @@ import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shar
 import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
-import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -559,11 +559,11 @@ function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
 }
 
 /**
- * While the audit switch is set (#8990) no domain score leaves this tool:
- * status reads unavailable, byDomain is empty, and underAudit says why. The
- * freshness fields stay, so the badge's clock contract is unchanged.
+ * While an audit holds for this scorecard (#8990) no domain score leaves this
+ * tool: status reads unavailable, byDomain is empty, and underAudit says why.
+ * The freshness fields stay, so the badge's clock contract is unchanged.
  */
-export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = forecastAccuracyAudit(data.scorecard)) {
   const raw = data.scorecard;
   const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
   const unavailable = { status: 'unavailable', ...underAudit };
@@ -604,15 +604,19 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
 
 const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
 
-/** While the audit switch is set (#8990) the first sentence, the one tools/list keeps, is the notice. */
-export function forecastScorecardDescription(audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
-  return audit
-    ? `Under audit since ${audit.since} (issue ${audit.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
-    : FORECAST_SCORECARD_DESCRIPTION;
+/**
+ * The first sentence is the one tools/list keeps. A manual override (#8990)
+ * makes it the notice. Otherwise the audit follows each scorecard, which a
+ * static description cannot know, so it states the rule.
+ */
+export function forecastScorecardDescription(override: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE): string {
+  return override
+    ? `Under audit since ${override.since} (issue ${override.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
+    : `Check underAudit before quoting a score: while it is set (issue 8990), the scores are under audit and withdrawn. ${FORECAST_SCORECARD_DESCRIPTION}`;
 }
 
 /** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
-export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT) {
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = forecastAccuracyAudit(data.scorecard)) {
   const scorecard = data.scorecard;
   const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
   return {
@@ -3493,7 +3497,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     outputSchema: cacheEnvelope({
       underAudit: {
         type: ['object', 'null'],
-        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict.',
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict. Clears once the headline is measurable.',
         properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
       },
       scorecard: {

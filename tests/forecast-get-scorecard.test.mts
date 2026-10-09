@@ -35,7 +35,10 @@ import {
   selectScorecardFields,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES } from '../scripts/_forecast-scorecard.mjs';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
+import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { accuracyDatasetDownload, classifyAccuracyState, renderAccuracyLlmsSection } from '../scripts/build-accuracy-page.mjs';
+import { forecastReliability, projectForecastScorecard } from '../api/mcp/registry/cache-tools.ts';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -43,9 +46,9 @@ const originalEnv = { ...process.env };
 
 const REDIS_KEY = 'forecast:scorecard:v1';
 const AUDIT = { since: '2026-10-07', issue: 8990, reason: 'Scoring errors found.' };
-const LIVE_UNDER_AUDIT = FORECAST_ACCURACY_AUDIT
-  ? { underAudit: { since: FORECAST_ACCURACY_AUDIT.since, reason: FORECAST_ACCURACY_AUDIT.reason, issue: FORECAST_ACCURACY_AUDIT.issue } }
-  : {};
+// Every fixture below is unmeasurable, so the standing audit holds (#8990).
+const HELD = FORECAST_ACCURACY_AUDIT_OVERRIDE ?? STANDING_ACCURACY_AUDIT;
+const LIVE_UNDER_AUDIT = { underAudit: { since: HELD.since, reason: HELD.reason, issue: HELD.issue } };
 const MARKET_ALERTS_KEY = 'correlation:market-alerts:scorecard:v1';
 
 const FORECAST_DATA = {
@@ -245,7 +248,7 @@ describe('getForecastScorecard backend status', () => {
     const serialized = await response.json();
     assert.deepEqual(
       Object.keys(serialized).sort(),
-      [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].filter((field) => field !== 'underAudit' || FORECAST_ACCURACY_AUDIT).sort(),
+      [...SCORECARD_DECLARED_FIELDS, ...SCORECARD_LIVE_ONLY_FIELDS].sort(),
     );
     assert.deepEqual(
       serialized,
@@ -254,14 +257,14 @@ describe('getForecastScorecard backend status', () => {
     );
   });
 
-  it('flags the response under audit from the shared switch (#8993)', async () => {
+  it('flags the response under audit with the contract members only (#8993)', async () => {
     const { scorecardUnderAudit } = await import('../server/worldmonitor/forecast/v1/get-forecast-scorecard.ts');
     assert.deepEqual(scorecardUnderAudit(AUDIT), { underAudit: { since: '2026-10-07', reason: 'Scoring errors found.', issue: 8990 } });
+    assert.deepEqual(scorecardUnderAudit(STANDING_ACCURACY_AUDIT).underAudit, { since: '2026-10-07', reason: STANDING_ACCURACY_AUDIT.reason, issue: 8990 }, 'liftsWhenMeasurable stays off the contract');
     assert.deepEqual(scorecardUnderAudit(null), {}, 'a lifted audit leaves the field absent');
-    assert.deepEqual(scorecardUnderAudit(), LIVE_UNDER_AUDIT, 'defaults to FORECAST_ACCURACY_AUDIT');
   });
 
-  it('serves the live audit state on healthy, empty and degraded responses (#8993)', async () => {
+  it('holds the audit on unmeasurable healthy, empty and degraded responses (#8993)', async () => {
     console.error = () => {};
     const cases: Array<[string, Record<string, unknown>, string[]]> = [
       ['healthy', { [REDIS_KEY]: envelope(FORECAST_DATA), [MARKET_ALERTS_KEY]: envelope(MARKET_ALERTS_STORED) }, []],
@@ -271,7 +274,7 @@ describe('getForecastScorecard backend status', () => {
     for (const [label, stored, failing] of cases) {
       serveRedis(stored, failing);
       const res = await getForecastScorecard(makeCtx(), {});
-      assert.equal(Object.hasOwn(res, 'underAudit'), Boolean(FORECAST_ACCURACY_AUDIT), label);
+      assert.equal(Object.hasOwn(res, 'underAudit'), true, label);
       assert.deepEqual(res.underAudit, LIVE_UNDER_AUDIT.underAudit, label);
     }
   });
@@ -315,8 +318,8 @@ describe('getForecastScorecard backend status', () => {
     assert.deepEqual([...PUBLISHED_DOMAIN_FIELDS], [...SCORECARD_NESTED_ROW_FIELDS.publishedByDomain], 'and the same domain members');
   });
 
-  // Internal until the audit-lift checklist reads it (#9010): no public
-  // surface may serve the count of headline rows with pre-#7071 anchors.
+  // The count of headline rows with pre-#7071 anchors stays off every public
+  // field (#9010); the methodology sentence states it instead (#8990).
   it('keeps skill.preLineageAnchorCount off REST, MCP and the /accuracy/ capture', () => {
     for (const list of [SKILL_FIELDS, SKILL_EXTENDED_FIELDS, SCORECARD_NESTED_OBJECT_FIELDS.skill]) {
       assert.ok(!list.includes('preLineageAnchorCount'));
@@ -602,5 +605,103 @@ describe('getForecastScorecard backend status', () => {
       ['[forecast] getForecastScorecard market-alerts read failed:', 'redis unavailable'],
       ['[forecast] getForecastScorecard getRawJson failed:', 'redis unavailable'],
     ]);
+  });
+});
+
+// #8990: the audit lifts by itself once the seeder calls the headline
+// measurable. Every surface derives it from the same scorecard, so for one
+// seeded value REST, MCP, /accuracy/ (page, llms-full and download, built from
+// the frozen REST capture) all agree, on both sides of the family minimums.
+describe('the accuracy audit lifts with the scorecard on every surface (#8990)', () => {
+  const NOW = Date.parse('2026-10-08T00:00:00Z');
+  const DAY = 86_400_000;
+  // families forecast ids, one resolved window each; the first `yes` came true.
+  function ledger(families: number, yes: number) {
+    return Object.fromEntries(Array.from({ length: families }, (_, i) => [`fam-${i}`, {
+      id: `fam-${i}`, status: 'resolved', outcome: i < yes ? 'YES' : 'NO', probability: 0.3, domain: 'market',
+      generationOrigin: 'detector', firstSeenAt: NOW - 5 * DAY, resolvedAt: NOW - DAY,
+    }]));
+  }
+  const seed = (families: number, yes: number) => computeScorecard(ledger(families, yes), NOW) as Record<string, unknown> & { skill: { measurable: boolean } };
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  });
+
+  async function surfaces(data: Record<string, unknown>) {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    serveRedis({ [REDIS_KEY]: envelope(data) });
+    const { getForecastScorecard } = await import('../server/worldmonitor/forecast/v1/get-forecast-scorecard.ts');
+    const rest = await getForecastScorecard(makeCtx() as never, {});
+    const capture = selectDeclaredScorecardFields(rest);
+    const section = { attemptedAt: '2026-10-08', attemptedAtMs: NOW, capturedAt: '2026-10-08', generatedAt: NOW, scorecard: capture, failureCode: '' };
+    const state = classifyAccuracyState(section);
+    const download = JSON.parse(accuracyDatasetDownload({ state, snapshotPath: 'fixture.json' }));
+    const llms = renderAccuracyLlmsSection(section);
+    return {
+      rest: rest.underAudit ?? null,
+      mcpScorecard: projectForecastScorecard({ scorecard: data }).underAudit,
+      mcpReliability: (forecastReliability({ scorecard: data, scorecardMeta: { fetchedAt: NOW } }, ['market']) as { underAudit?: unknown }).underAudit ?? null,
+      download: download.underAudit,
+      llmsUnderAudit: /^Under audit since /m.test(llms),
+      coverage: state.coverage,
+    };
+  }
+
+  const NOTICE = { since: STANDING_ACCURACY_AUDIT.since, issue: STANDING_ACCURACY_AUDIT.issue, reason: STANDING_ACCURACY_AUDIT.reason };
+
+  it('lifts at exactly 30 families with 5 YES and 5 NO, on every surface', async () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const data = seed(30, 5);
+    assert.equal(data.skill.measurable, true, 'the fixture sits exactly on the minimums');
+    const got = await surfaces(data);
+    assert.deepEqual(got, { rest: null, mcpScorecard: null, mcpReliability: null, download: null, llmsUnderAudit: false, coverage: 'measurable' });
+  });
+
+  for (const [label, families, yes] of [['29 families', 29, 5], ['4 YES families', 30, 4], ['4 NO families', 30, 26]] as const) {
+    it(`holds one step below the minimums (${label}), on every surface`, async () => {
+      const data = seed(families, yes);
+      assert.equal(data.skill.measurable, false);
+      const got = await surfaces(data);
+      const held = FORECAST_ACCURACY_AUDIT_OVERRIDE ?? NOTICE;
+      for (const key of ['rest', 'mcpScorecard', 'mcpReliability', 'download'] as const) {
+        assert.deepEqual({ ...(got[key] as object) }, { since: held.since, issue: held.issue, reason: held.reason }, key);
+      }
+      assert.equal(got.llmsUnderAudit, true);
+      assert.equal(got.coverage, 'small-sample');
+    });
+  }
+
+  it('reads skill.measurable where the stored value carries it, and the interval flag on the capture', () => {
+    const lifted = seed(30, 5);
+    assert.equal(forecastAccuracyAudit(lifted, null), null);
+    // The seeder's own verdict decides: flip it and the audit holds, interval notwithstanding.
+    assert.equal(forecastAccuracyAudit({ ...lifted, skill: { ...lifted.skill, measurable: false } }, null), STANDING_ACCURACY_AUDIT);
+    // The REST capture has no skill.measurable; its interval flag agrees with it.
+    const capture = selectDeclaredScorecardFields(lifted);
+    assert.equal(Object.hasOwn(capture.skill, 'measurable'), false);
+    assert.equal(forecastAccuracyAudit(capture, null), null);
+    for (const [families, yes] of [[30, 5], [29, 5], [30, 4], [30, 26], [40, 20], [1, 1]]) {
+      const data = seed(families, yes) as { skill: { measurable: boolean }; uncertainty: { skillBrier: { insufficientSample: boolean } } };
+      assert.equal(data.skill.measurable, !data.uncertainty.skillBrier.insufficientSample, `${families}/${yes}`);
+    }
+  });
+
+  it('holds the audit for a missing, degraded or errored scorecard', () => {
+    const lifted = seed(30, 5);
+    for (const card of [null, undefined, {}, [], { ...lifted, degraded: true }, { ...lifted, error: 'forecast_scorecard_backend_unavailable' }, { ...lifted, skill: { ...lifted.skill, count: 0 } }]) {
+      assert.equal(forecastAccuracyAudit(card, null), STANDING_ACCURACY_AUDIT);
+    }
+  });
+
+  it('lets a manual override force the audit on while measurable, and never off', () => {
+    const FORCED = Object.freeze({ since: '2027-01-02', issue: 9999, reason: 'Fixture incident.' });
+    assert.equal(forecastAccuracyAudit(seed(30, 5), FORCED), FORCED);
+    assert.equal(forecastAccuracyAudit(seed(29, 5), FORCED), FORCED);
+    for (const off of [null, undefined, false, 0, '']) {
+      assert.equal(forecastAccuracyAudit(seed(29, 5), off as never), STANDING_ACCURACY_AUDIT, `override ${String(off)} cannot lift an unmeasurable record`);
+    }
   });
 });

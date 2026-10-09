@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -27,12 +27,13 @@ import {
 import { GO_FORWARD_SINCE_MS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
+import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Every suite below except the #8990 one pins the record as it reads once the
-// audit switch is lifted; that suite pins the state the switch publishes today.
+// audit has lifted; that suite pins the audited state.
 const LIFTED = null;
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8');
 
@@ -1950,32 +1951,84 @@ describe('accuracy record under audit (#8990)', () => {
   // The page body only: JSON-LD lives in the head, so it never counts as visible copy.
   const visibleText = ({ shell }) => stripTags(shell.body).replaceAll('&quot;', '"');
 
-  it('keeps the switch either lifted or a well-formed audit', () => {
-    if (FORECAST_ACCURACY_AUDIT === null) return;
-    assert.match(FORECAST_ACCURACY_AUDIT.since, /^\d{4}-\d{2}-\d{2}$/);
-    assert.ok(Number.isInteger(FORECAST_ACCURACY_AUDIT.issue) && FORECAST_ACCURACY_AUDIT.issue > 0);
-    assert.ok(FORECAST_ACCURACY_AUDIT.reason.length > 40);
-    assert.ok(Object.isFrozen(FORECAST_ACCURACY_AUDIT));
+  it('keeps the standing audit well-formed and the override either unset or a well-formed audit', () => {
+    for (const audit of [STANDING_ACCURACY_AUDIT, FORECAST_ACCURACY_AUDIT_OVERRIDE].filter(Boolean)) {
+      assert.match(audit.since, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(Number.isInteger(audit.issue) && audit.issue > 0);
+      assert.ok(audit.reason.length > 40);
+      assert.ok(Object.isFrozen(audit));
+    }
+    assert.equal(STANDING_ACCURACY_AUDIT.liftsWhenMeasurable, true);
+    assert.equal(FORECAST_ACCURACY_AUDIT_OVERRIDE?.liftsWhenMeasurable, undefined, 'an override never lifts by itself');
   });
 
   it('names the three flaws and the rescoring in the notice, with no skill verdict', () => {
     assert.equal(accuracyAuditNotice(AUDIT), NOTICE);
-    if (FORECAST_ACCURACY_AUDIT) assert.equal(FORECAST_ACCURACY_AUDIT.reason, AUDIT.reason, 'the live reason is the reviewed copy');
+    assert.equal(STANDING_ACCURACY_AUDIT.reason, AUDIT.reason, 'the standing reason is the reviewed copy');
     assert.doesNotMatch(NOTICE, /skill|beat|base rate/i);
   });
 
-  it('defaults every renderer to the switch', () => {
+  it('says when the standing audit lifts, and only on the standing audit', () => {
+    const LIFT = ' The scores return automatically once the headline cohort is measurable: at least 30 forecast families, with at least 5 that came true and 5 that did not.';
+    assert.equal(accuracyAuditNotice(STANDING_ACCURACY_AUDIT), `${NOTICE}${LIFT}`);
+    assert.ok(!accuracyAuditNotice(AUDIT).includes('return automatically'), 'a manual audit lifts only by hand');
+    const callout = renderState(FULL, { audit: STANDING_ACCURACY_AUDIT }).html.match(/<section id="under-audit"[\s\S]*?<\/section>/)[0];
+    assert.ok(stripTags(callout).includes(LIFT.trim()));
+    assert.ok(renderAccuracyLlmsSection(FULL, STANDING_ACCURACY_AUDIT).includes(LIFT.trim()));
+  });
+
+  it('derives every renderer\'s audit from the captured scorecard', () => {
     const { tpl } = fakeTpl();
-    const state = classifyAccuracyState(FULL);
-    const page = (audit) => renderAccuracyPage({
-      baseUrl: BASE_URL, tpl, state, lastmod: '2026-10-07', dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH, ...audit,
-    });
-    assert.equal(page({}), page({ audit: FORECAST_ACCURACY_AUDIT }));
-    assert.equal(renderAccuracyLlmsSection(FULL), renderAccuracyLlmsSection(FULL, FORECAST_ACCURACY_AUDIT));
-    assert.equal(
-      accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH }),
-      accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: FORECAST_ACCURACY_AUDIT }),
-    );
+    const SMALL = sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } });
+    for (const [label, section] of [['measurable', FULL], ['small sample', SMALL], ['nothing captured', null]]) {
+      const state = classifyAccuracyState(section);
+      const derived = forecastAccuracyAudit(state.scorecard);
+      const page = (audit) => renderAccuracyPage({
+        baseUrl: BASE_URL, tpl, state, lastmod: '2026-10-07', dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH, ...audit,
+      });
+      assert.equal(page({}), page({ audit: derived }), label);
+      assert.equal(renderAccuracyLlmsSection(section), renderAccuracyLlmsSection(section, derived), label);
+      assert.equal(
+        accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH }),
+        accuracyDatasetDownload({ state, snapshotPath: SNAPSHOT_PATH, audit: derived }),
+        label,
+      );
+    }
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    assert.equal(forecastAccuracyAudit(classifyAccuracyState(FULL).scorecard), null, 'a measurable capture lifts the audit');
+    assert.equal(forecastAccuracyAudit(classifyAccuracyState(SMALL).scorecard), STANDING_ACCURACY_AUDIT);
+    assert.equal(forecastAccuracyAudit(classifyAccuracyState(null).scorecard), STANDING_ACCURACY_AUDIT);
+  });
+
+  it('lifts every /accuracy/ surface for a measurable capture and holds them for a small sample', () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const SMALL = sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } });
+    const { tpl } = fakeTpl();
+    const build = (section) => {
+      const outDir = mkdtempSync(join(tmpdir(), 'accuracy-lift-'));
+      try {
+        writeAccuracySection({ outDir, baseUrl: BASE_URL, tpl, section, dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH });
+        return {
+          html: readFileSync(join(outDir, 'accuracy', 'index.html'), 'utf8'),
+          download: JSON.parse(readFileSync(join(outDir, DATASET.file), 'utf8')),
+          llms: renderAccuracyLlmsSection(section),
+        };
+      } finally {
+        rmSync(outDir, { recursive: true, force: true });
+      }
+    };
+    const lifted = build(FULL);
+    assert.doesNotMatch(lifted.html, /data-accuracy-audit|Under audit since/);
+    assert.match(lifted.html, /data-accuracy-verdict/);
+    assert.equal(lifted.download.underAudit, null);
+    assert.doesNotMatch(lifted.llms, /Under audit since/);
+    assert.match(lifted.llms, /Brier/);
+    const held = build(SMALL);
+    assert.match(held.html, /data-accuracy-audit="2026-10-07"/);
+    assert.doesNotMatch(held.html, /data-accuracy-verdict/);
+    assert.equal(held.download.underAudit.issue, 8990);
+    assert.match(held.llms, /^Under audit since 2026-10-07\./m);
+    assert.doesNotMatch(held.llms, /Brier/);
   });
 
   it('replaces the headline, the verdict and every score with the dated notice', () => {
@@ -2131,7 +2184,9 @@ describe('accuracy record under audit (#8990)', () => {
   const claimsIn = (text) => CLAIM_PHRASES.filter((phrase) => phrase.test(text)).map(String);
 
   it('keeps every static surface free of score claims', () => {
-    const surfaces = FORECAST_ACCURACY_AUDIT ? [...STATIC_SURFACES, 'public/llms-full.txt'] : STATIC_SURFACES;
+    // llms-full.txt is generated from the committed capture, so it is score-free exactly while that capture holds the audit.
+    const capture = JSON.parse(read(relative(repoRoot, resolveLatestLivePulseSnapshotPath(repoRoot)))).forecastScorecard;
+    const surfaces = forecastAccuracyAudit(classifyAccuracyState(capture).scorecard) ? [...STATIC_SURFACES, 'public/llms-full.txt'] : STATIC_SURFACES;
     for (const path of surfaces) assert.deepEqual(claimsIn(read(path)), [], `${path} states accuracy as a verdict`);
     const post = read(BLOG);
     const noteAt = post.indexOf(BLOG_NOTE);

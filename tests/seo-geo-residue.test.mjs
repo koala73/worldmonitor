@@ -13,7 +13,8 @@ import { comparisonDiscoveryEntries } from '../scripts/build-comparison-pages.mj
 import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation } from '../scripts/build-llms-full.mjs';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
+import { classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -89,10 +90,11 @@ describe('GEO residue #7463', () => {
     const section = generated.split(/^## Forecast accuracy$/m)[1]?.split(/^## /m)[0] ?? '';
     assert.match(generated, /^## Forecast accuracy$/m);
     assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
-    // While the #8990 switch is set, the section carries the withdrawal notice in place of every score.
-    if (FORECAST_ACCURACY_AUDIT) {
-      assert.match(section, new RegExp(`^Under audit since ${FORECAST_ACCURACY_AUDIT.since}\\.`, 'm'));
-      assert.ok(section.includes(`/issues/${FORECAST_ACCURACY_AUDIT.issue}`));
+    // While the capture holds the #8990 audit, the section carries the withdrawal notice in place of every score.
+    const audit = forecastAccuracyAudit(classifyAccuracyState(snapshot.forecastScorecard).scorecard);
+    if (audit) {
+      assert.match(section, new RegExp(`^Under audit since ${audit.since}\\.`, 'm'));
+      assert.ok(section.includes(`/issues/${audit.issue}`));
       assert.doesNotMatch(section, /Brier|scored forecasts|-day window/);
       return;
     }

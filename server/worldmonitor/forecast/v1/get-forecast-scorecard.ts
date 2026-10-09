@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
-import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../../../shared/forecast-accuracy-audit.js';
+import { forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../../shared/forecast-accuracy-audit.js';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { selectMarketAlertScorecard, selectScorecardFields } from './scorecard-fields';
 
@@ -19,14 +19,13 @@ interface ScorecardSeedEnvelope {
   data?: unknown;
 }
 
-// The same switch /accuracy/, scorecard.json, the panel and MCP read (#8990).
-export function scorecardUnderAudit(
-  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
-): Pick<GetForecastScorecardResponse, 'underAudit'> {
+// The audit /accuracy/, scorecard.json, the panel and MCP derive from the same scorecard (#8990).
+export function scorecardUnderAudit(audit: ForecastAccuracyAudit | null): Pick<GetForecastScorecardResponse, 'underAudit'> {
   return audit ? { underAudit: { since: audit.since, reason: audit.reason, issue: audit.issue } } : {};
 }
 
-function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
+// seed is the stored value, which carries skill.measurable; the response does not.
+function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, seed: unknown = null): GetForecastScorecardResponse {
   return {
     schemaVersion: 1,
     generatedAt: 0,
@@ -52,7 +51,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
     stale: false,
     error: '',
     ...overrides,
-    ...scorecardUnderAudit(),
+    ...scorecardUnderAudit(forecastAccuracyAudit(seed)),
   };
 }
 
@@ -69,7 +68,7 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
       degraded: false,
       stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
       error: '',
-    }), marketAlerts);
+    }, data), marketAlerts);
     // A missing block is never cached: the next request may find it.
     return marketAlerts ? response : markNoStoreFallbackResponse(ctx.request, response);
   } catch (err) {

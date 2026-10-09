@@ -3,7 +3,7 @@ import { getLocale, t } from '@/services/i18n';
 import { isDesktopRuntime } from '@/services/runtime';
 import { CANONICAL_ORIGIN } from '@/config/schema-graph-ids';
 import { escapeHtml } from '@/utils/sanitize';
-import { FORECAST_ACCURACY_AUDIT, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit, headlineFamilyGate, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
 
 interface GradedRecord {
   stale: boolean;
@@ -61,15 +61,21 @@ export function projectForecastRecord(resp: GetForecastScorecardResponse): Forec
 }
 
 /**
- * The scorecard's skill interval resamples whole forecast families, and its
- * insufficientSample flag carries the family minimums (#8990). An interval
- * over another cohort, or one from before that method, cannot vouch for them.
+ * The headline meets the family minimums (#8990), by the same gate that lifts
+ * the accuracy audit, so the strip and the audit cannot disagree.
  */
 function meetsFamilyMinimums(resp: GetForecastScorecardResponse): boolean {
-  const interval = resp.uncertainty?.skillBrier;
-  return /^family-level /.test(resp.uncertainty?.method ?? '')
-    && interval?.count === resp.skill?.count
-    && interval?.insufficientSample === false;
+  return headlineFamilyGate(resp) === 'met';
+}
+
+/**
+ * The audit the panel shows for this response. The server's flag wins; the
+ * local derivation backs it up, so a response from a server without the flag
+ * still withholds an unmeasurable record. Without a response the record is
+ * not measurable, so the standing audit holds.
+ */
+export function panelAccuracyAudit(resp: GetForecastScorecardResponse | null): ForecastAccuracyAudit | null {
+  return resp?.underAudit ?? forecastAccuracyAudit(resp);
 }
 
 /** Mirror SKILL_MIN_FAMILIES and SKILL_MIN_OUTCOME_FAMILIES in scripts/_forecast-scorecard.mjs; a test pins them together. */
@@ -122,12 +128,12 @@ function auditHint(audit: ForecastAccuracyAudit): string {
   return t('components.forecast.audit.hint', { date });
 }
 
-/** While the audit switch is set (#8990) the badge carries no score, whatever the scorecard says. */
+/** While an audit holds (#8990) the badge carries no score, whatever the scorecard says. */
 export function renderReliabilityBadge(
   table: ReliabilityTable | null,
   domain: string,
   domainLabel: string,
-  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
+  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE,
 ): string {
   if (audit) {
     const text = t('components.forecast.audit.label');
@@ -198,7 +204,7 @@ export function renderResolutionChips(
   history: FamilyHistory | null,
   forecastId: string,
   open = false,
-  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT,
+  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE,
 ): string {
   const windows = history?.get(forecastId);
   if (!windows?.length) return `<span class="fc-res-slot">${RES_GAP}${RES_GAP}</span>`;
@@ -285,7 +291,7 @@ function wrap(kind: ForecastRecord['kind'], inner: string): string {
   return `<div class="fc-record" data-fc-record="${kind}" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">${inner}</div>`;
 }
 
-export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT): string {
+export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE): string {
   if (audit) {
     const hint = auditHint(audit);
     return `<div class="fc-record" data-fc-record="under-audit" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">`

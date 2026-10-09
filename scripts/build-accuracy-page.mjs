@@ -15,7 +15,7 @@ import {
   meetsFamilyOutcomeMinimums,
   wilsonInterval,
 } from './_forecast-scorecard.mjs';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { forecastAccuracyAudit, headlineFamilyGate } from '../shared/forecast-accuracy-audit.js';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
 export const ACCURACY_CONTENT_VERSION = '2026-10-09';
@@ -52,8 +52,9 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
 // Proto fields the frozen page and its download deliberately leave out.
 // familyOutcomes keys the live forecast-card chips by forecast id; a weekly
 // snapshot has no live cards, and the distribution publishes no forecast ids.
-// underAudit mirrors FORECAST_ACCURACY_AUDIT, which the page and download read
-// at build time, so a captured copy would only go stale.
+// underAudit is derived from the captured scorecard at build time, with the
+// same forecastAccuracyAudit() the API applies, so a captured copy would only
+// duplicate it.
 export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes', 'underAudit']);
 
 // A fixed vocabulary, because the page is public: an exception message or an
@@ -232,10 +233,16 @@ export function auditIssueUrl(audit) {
 const auditSinceSentence = (audit) => `Under audit since ${audit.since}.`;
 const auditNoticeBody = (audit, where) => `${audit.reason} The scores previously shown ${where} were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.`;
 
-/** The withdrawal notice every surface prints while the audit switch is set. */
+const auditLiftSentence = (audit) => (audit.liftsWhenMeasurable
+  ? ` The scores return automatically once the headline cohort is measurable: ${SKILL_RULE}.`
+  : '');
+
+/** The withdrawal notice every surface prints while an audit holds. */
 export function accuracyAuditNotice(audit, where = 'here') {
-  return `${auditSinceSentence(audit)} ${auditNoticeBody(audit, where)}`;
+  return `${auditSinceSentence(audit)} ${auditNoticeBody(audit, where)}${auditLiftSentence(audit)}`;
 }
+
+const SKILL_RULE = `at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} that came true and ${SKILL_MIN_OUTCOME_FAMILIES} that did not`;
 
 const isPlainObject = (value) => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -436,22 +443,14 @@ function formatSkill(value) {
   return Number(text) > 0 ? `+${text}` : text === '-0.00' ? '0.00' : text;
 }
 
-// The producer's Brier interval resamples whole forecast families, and its
-// insufficientSample flag carries the family minimums (#8990). A capture whose
-// interval predates that method cannot show it met them.
-const FAMILY_INTERVAL_METHOD = /^family-level /;
-
 /**
  * Whether the headline cohort meets the family minimums: 'met', 'short', or
  * 'unknown' for a capture without a family-bootstrap interval over the cohort.
+ * The same gate lifts the audit (#8990), so the page's measurable reading and
+ * its audit state cannot disagree.
  */
 export function familyGate(scorecard) {
-  const skill = isPlainObject(scorecard?.skill) ? scorecard.skill : null;
-  const method = scorecard?.uncertainty?.method;
-  if (!skill || typeof method !== 'string' || !FAMILY_INTERVAL_METHOD.test(method)) return 'unknown';
-  const interval = scoreInterval(scorecard.uncertainty.skillBrier, skill.count, skill.brier);
-  if (!interval) return 'unknown';
-  return interval.small ? 'short' : 'met';
+  return headlineFamilyGate(scorecard);
 }
 
 /**
@@ -496,8 +495,6 @@ const SKILL_LEADS = Object.freeze({
 function skillIntervalPhrase(reading) {
   return reading.ci95 ? `, 95% interval ${formatSkill(reading.ci95[0])} to ${formatSkill(reading.ci95[1])}` : '';
 }
-
-const SKILL_RULE = `at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} that came true and ${SKILL_MIN_OUTCOME_FAMILIES} that did not`;
 
 function familyPhrase({ familyGated, measurable }) {
   if (!familyGated) return 'forecast families this capture does not count';
@@ -702,8 +699,9 @@ function accuracyNegativeScope(gradesCaptured) {
   return `${NEGATIVE_SCOPE_LEAD}${grades}${NEGATIVE_SCOPE_TAIL}`;
 }
 
-export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUDIT) {
+export function renderAccuracyLlmsSection(section, audit) {
   const state = classifyAccuracyState(section);
+  if (audit === undefined) audit = forecastAccuracyAudit(state.scorecard);
   const page = new URL(ACCURACY_PAGE_PATH, WORLD_MONITOR_ORG.url).href;
   const paragraphs = [`The standing forecast-resolution record is published at ${page}.`];
   if (audit) {
@@ -1422,7 +1420,7 @@ function provenanceLine(state, dataset, snapshotPath, escapeHtml, audited = fals
 
 function auditSection(audit, escapeHtml) {
   return `      <section id="under-audit" class="card" role="note" data-accuracy-audit="${escapeHtml(audit.since)}" aria-label="Accuracy under audit">
-        <p><strong>${escapeHtml(auditSinceSentence(audit))}</strong> ${escapeHtml(auditNoticeBody(audit, 'here'))}</p>
+        <p><strong>${escapeHtml(auditSinceSentence(audit))}</strong> ${escapeHtml(`${auditNoticeBody(audit, 'here')}${auditLiftSentence(audit)}`)}</p>
         <p>The findings and the fixes are tracked in <a href="${escapeHtml(auditIssueUrl(audit))}">issue #${escapeHtml(String(audit.issue))}</a>. The download below keeps the raw figures and marks them as under audit.</p>
       </section>`;
 }
@@ -1549,7 +1547,7 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset, audit }) {
   };
 }
 
-export function renderAccuracyPage({ baseUrl, tpl, state, lastmod, dataset, dataCatalog, snapshotPath, audit = FORECAST_ACCURACY_AUDIT }) {
+export function renderAccuracyPage({ baseUrl, tpl, state, lastmod, dataset, dataCatalog, snapshotPath, audit = forecastAccuracyAudit(state.scorecard) }) {
   const { breadcrumbLd, absoluteUrl, pageDocument } = tpl;
   const description = audit ? AUDIT_META_DESCRIPTION : META_DESCRIPTION;
   assertMetaDescription(description);
@@ -1646,7 +1644,7 @@ function horizonProjectionsDownload(horizonGrades) {
   };
 }
 
-export function accuracyDatasetDownload({ state, snapshotPath, audit = FORECAST_ACCURACY_AUDIT }) {
+export function accuracyDatasetDownload({ state, snapshotPath, audit = forecastAccuracyAudit(state.scorecard) }) {
   const skill = isPlainObject(state.scorecard?.skill) ? state.scorecard.skill : null;
   const payload = {
     dataset: DATASET_IDENTIFIER,
@@ -1717,7 +1715,7 @@ export function writeAccuracySection({
   dataset,
   dataCatalog,
   snapshotPath,
-  audit = FORECAST_ACCURACY_AUDIT,
+  audit,
 }) {
   if (!dataCatalog?.['@id'] || !dataset?.catalog?.['@id']) {
     throw new Error(
@@ -1725,6 +1723,7 @@ export function writeAccuracySection({
     );
   }
   const state = classifyAccuracyState(section);
+  if (audit === undefined) audit = forecastAccuracyAudit(state.scorecard);
   mkdirSync(join(outDir, 'accuracy'), { recursive: true });
   writeFileSync(
     join(outDir, 'accuracy', 'index.html'),

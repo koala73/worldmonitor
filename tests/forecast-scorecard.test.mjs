@@ -387,6 +387,14 @@ describe('market comparisons read only anchors that price the forecast question 
     assert.equal(scorecard.skill.preLineageAnchorCount, 1);
     const none = computeScorecard({ clean: resolved({ probability: 0.2, outcome: 'NO' }) }, NOW);
     assert.equal(none.skill.preLineageAnchorCount, 0);
+    // The count is internal, so the public methodology states it beside the audit-lift headline (#8990).
+    assert.ok(scorecard.methodology.endsWith(' 1 of the 3 headline forecasts scored here was published after a blend toward a market price chosen by the matcher used before issue #7071, which paired forecasts with unrelated markets; it is scored on the probability published.'));
+    assert.doesNotMatch(none.methodology, /issue #7071/);
+    const two = computeScorecard({
+      a: preLineage({ id: 'a', probability: 0.388, outcome: 'YES' }),
+      b: preLineage({ id: 'b', probability: 0.4, outcome: 'NO' }),
+    }, NOW);
+    assert.match(two.methodology, / 2 of the 2 headline forecasts scored here were published after a blend/);
   });
 
   it('treats a null or blank blend as missing lineage', () => {
