@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE } from '../shared/forecast-accuracy-audit';
 
 // #8984: the four-column forecast row needs ~270px beside the title. The row
 // must lay out from the table's width, so every card keeps a readable title
@@ -96,8 +96,8 @@ test('forecast rows keep titles readable and data inside the row at every panel 
     await expect(page.locator('html')).toHaveAttribute('data-wm-initial-data-ready', 'true', { timeout: 90_000 });
     await page.locator(PANEL).scrollIntoViewIfNeeded();
     await expect(page.locator(`${PANEL} .fc-prob-item`)).toHaveCount(FORECASTS.length, { timeout: 60_000 });
-    // The audit badge (#8990) needs no scorecard, so it renders without a pending placeholder.
-    await expect(page.locator(`${PANEL} .fc-card-meta.fc-reliability-pending`)).toHaveCount(FORECAST_ACCURACY_AUDIT ? 0 : FORECASTS.length);
+    // Only an overridden audit (#8990) renders before the scorecard answers; otherwise every badge waits.
+    await expect(page.locator(`${PANEL} .fc-card-meta.fc-reliability-pending`)).toHaveCount(FORECAST_ACCURACY_AUDIT_OVERRIDE ? 0 : FORECASTS.length);
     const loading = await measure(page);
     release();
     await expect(page.locator(`${PANEL} a.fc-reliability`)).toHaveCount(FORECASTS.length, { timeout: 30_000 });

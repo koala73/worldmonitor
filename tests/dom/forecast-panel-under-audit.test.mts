@@ -1,10 +1,11 @@
 /**
- * #8990: while the accuracy audit switch is set, the forecast panel shows no
- * score. The track-record strip and every card badge read "Accuracy under
- * audit" and link to /accuracy/, whatever the scorecard carries. The per-card
- * resolution chips stay, as recorded outcomes in neutral colour, never as a
- * verified grade. The sibling suites mock the switch to null to pin the
- * lifted state; this one mocks it to a fixture audit.
+ * #8990: while an accuracy audit holds, the forecast panel shows no score. The
+ * track-record strip and every card badge read "Accuracy under audit" and link
+ * to /accuracy/, whatever the scorecard carries. The per-card resolution chips
+ * stay, as recorded outcomes in neutral colour, never as a verified grade. The
+ * standing audit holds until the scorecard calls the headline measurable and
+ * lifts by itself then. The sibling suites pin the lifted state; this one runs
+ * the real gate.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,14 +13,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
-import { recordHref } from '@/components/forecast-record';
+import { recordHref, renderForecastRecord, renderReliabilityBadge, renderResolutionChips } from '@/components/forecast-record';
 
 import { initTestI18n } from './helpers/i18n.mts';
-
-// A fixture, not the live switch, so lifting the switch keeps the audited panel tested for the next audit.
-vi.mock('../../shared/forecast-accuracy-audit', () => ({
-  FORECAST_ACCURACY_AUDIT: Object.freeze({ since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' }),
-}));
 
 const SCORECARD_PATH = '/api/forecast/v1/get-forecast-scorecard';
 
@@ -49,6 +45,14 @@ function scorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetFo
     ...overrides,
   } as GetForecastScorecardResponse;
 }
+
+/** The same body once the headline meets the family minimums: the family-bootstrap interval says so. */
+const MEASURABLE = scorecard({
+  uncertainty: {
+    method: 'family-level percentile bootstrap (each resample draws whole forecast families), 2000 resamples, seed 7072',
+    skillBrier: { count: 243, mean: 0.110775, ci95: [0.09, 0.13], insufficientSample: false },
+  },
+} as Partial<GetForecastScorecardResponse>);
 
 function forecast(id: string, domain: string): Forecast {
   return { id, title: `Forecast ${id}`, probability: 0.62, domain, region: 'Middle East', trend: 'stable', signals: [] } as unknown as Forecast;
@@ -114,16 +118,61 @@ describe('ForecastPanel under the accuracy audit (#8990)', () => {
     }
   });
 
-  it('shows the badge before the scorecard answers, since it needs no data from it', async () => {
+  it('waits for the scorecard before choosing between the audit and the scores', async () => {
     stubScorecard(() => new Promise<Response>(() => {}));
     panel.updateForecasts(['cyber', 'conflict'].map((domain, i) => forecast(`fc-${i}`, domain)));
     const root = contentOf(panel);
     await vi.waitFor(() => expect(root.querySelectorAll('.fc-prob-item')).toHaveLength(2));
-    expect(root.querySelector('[data-fc-record]')!.getAttribute('data-fc-record')).toBe('under-audit');
-    expect(root.querySelector('.fc-reliability-pending')).toBeNull();
-    const badges = root.querySelectorAll<HTMLAnchorElement>('a.fc-reliability');
-    expect(badges).toHaveLength(2);
-    for (const badge of badges) expect(badge.dataset.fcReliabilityState).toBe('under-audit');
+    expect(root.querySelector('[data-fc-record]')!.getAttribute('data-fc-record')).toBe('loading');
+    expect(root.querySelectorAll('.fc-reliability-pending')).toHaveLength(2);
+    expect(root.querySelector('a.fc-reliability')).toBeNull();
+  });
+
+  it('lifts by itself once the scorecard calls the headline measurable', async () => {
+    const root = await render(async () => Response.json(MEASURABLE));
+    expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('ready');
+    for (const badge of root.querySelectorAll<HTMLAnchorElement>('a.fc-reliability')) {
+      expect(badge.dataset.fcReliabilityState).not.toBe('under-audit');
+    }
+    expect(root.querySelector('.fc-res-slot[data-unverified]')).toBeNull();
+    expect(root.textContent).not.toContain('Accuracy under audit');
+  });
+
+  it('holds the audit on a stale response, measurable or not', async () => {
+    const root = await render(async () => Response.json({ ...MEASURABLE, stale: true }));
+    expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('under-audit');
+    for (const badge of root.querySelectorAll<HTMLAnchorElement>('a.fc-reliability')) expect(badge.dataset.fcReliabilityState).toBe('under-audit');
+  });
+
+  it('sets the audit before projecting, so a projection that throws leaves no score and frees the request', async () => {
+    const broken = { ...MEASURABLE, stale: true, publishedByDomain: [null] };
+    stubScorecard(async () => Response.json(broken));
+    panel.updateForecasts(['cyber', 'conflict'].map((domain, i) => forecast(`fc-${i}`, domain)));
+    const root = contentOf(panel);
+    await vi.waitFor(() => expect(root.querySelector<HTMLElement>('[data-fc-record]')?.dataset.fcRecord).toBe('under-audit'));
+    await vi.waitFor(() => expect((panel as unknown as { recordPromise: unknown }).recordPromise).toBeNull());
+    expect((panel as unknown as { record: { kind: string } }).record.kind).toBe('unavailable');
+    expect(root.textContent).not.toMatch(/0\.074|0\.111/);
+  });
+
+  it('defaults every renderer to the standing audit, never to lifted', () => {
+    const ready = { kind: 'ready', brier: 0.11, graded: 243, yesShare: 0.1, voids: null, stale: false, generatedAt: 1, windowDays: 180 } as const;
+    expect(renderForecastRecord(ready)).toContain('data-fc-record="under-audit"');
+    const table = { windowDays: 180, stale: false, byDomain: new Map([['cyber', { kind: 'measured' as const, brier: 0.074, n: 205, yesShare: 0.04, bss: 0.2 }]]) };
+    expect(renderReliabilityBadge(table, 'cyber', 'Cyber')).toContain('data-fc-reliability-state="under-audit"');
+    expect(renderResolutionChips(new Map([['fc-0', [{ outcome: 'NO' }]]]) as never, 'fc-0')).toContain('data-unverified');
+  });
+
+  it('holds the audit one step below the minimums', async () => {
+    const short = { ...MEASURABLE.uncertainty!, skillBrier: { ...MEASURABLE.uncertainty!.skillBrier!, insufficientSample: true } };
+    const root = await render(async () => Response.json(scorecard({ ...MEASURABLE, uncertainty: short })));
+    expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('under-audit');
+  });
+
+  it('follows the server flag over a measurable-looking body', async () => {
+    const root = await render(async () => Response.json({ ...MEASURABLE, underAudit: { since: '2027-01-02', issue: 9999, reason: 'Server incident.' } }));
+    expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('under-audit');
+    expect(root.querySelector('[data-fc-record] .fc-sr-only')!.textContent).toContain('Jan 2, 2027');
   });
 
   it('shows the notice even when the scorecard request fails', async () => {

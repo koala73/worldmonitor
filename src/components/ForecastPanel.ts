@@ -6,8 +6,8 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
-import { FORECAST_ACCURACY_AUDIT } from '../../shared/forecast-accuracy-audit';
-import { projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
+import { accuracyAuditOverride, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+import { panelAccuracyAudit, projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
@@ -357,6 +357,9 @@ export class ForecastPanel extends Panel {
   private recordPromise: Promise<void> | null = null;
   /** Per-domain card badges (#5092), from the same scorecard response as the strip. */
   private reliability: ReliabilityTable | null = null;
+
+  /** The accuracy audit for the last scorecard (#8990); before one answers, only a manual override is known. */
+  private audit: ForecastAccuracyAudit | null = accuracyAuditOverride();
   /** Per-card resolution chips (#5092): each family's earlier resolved windows. */
   private familyHistory: FamilyHistory | null = null;
   /** Forecast ids whose VOID disclosure the reader left open; re-renders restore them. */
@@ -534,19 +537,27 @@ export class ForecastPanel extends Panel {
     this.recordPromise = fetchForecastScorecard(this.signal)
       .then(
         (resp) => {
-          this.record = projectForecastRecord(resp);
-          this.reliability = projectReliability(resp);
-          this.familyHistory = projectFamilyHistory(resp);
+          // The audit first (#8990): a projection that throws must not leave scores showing without it.
+          this.audit = panelAccuracyAudit(resp);
+          try {
+            this.record = projectForecastRecord(resp);
+            this.reliability = projectReliability(resp);
+            this.familyHistory = projectFamilyHistory(resp);
+          } catch {
+            this.record = { kind: 'unavailable' };
+            this.reliability = null;
+            this.familyHistory = null;
+          }
         },
         (err: unknown) => {
           if (this.isAbortError(err)) return;
           this.record = { kind: 'unavailable' };
           this.reliability = null;
           this.familyHistory = null;
+          this.audit = panelAccuracyAudit(null);
         },
       )
       .then(() => {
-        this.recordPromise = null;
         if (this.signal.aborted) return;
         // Patch the strip in place: render() rebuilds the table and would close
         // any Analysis or Signals pane the user opened. No slot yet means the
@@ -557,18 +568,21 @@ export class ForecastPanel extends Panel {
           return;
         }
         // renderForecastRecord() escapes every interpolated value.
-        setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
+        setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record, this.audit), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
         for (const badgeSlot of this.content.querySelectorAll<HTMLElement>('[data-fc-reliability]')) {
           const domain = badgeSlot.dataset.fcReliability ?? '';
           badgeSlot.classList.remove('fc-reliability-pending');
           // Both renderers escape every interpolated value.
           setTrustedHtml(badgeSlot, trustedHtml(this.cardMeta(badgeSlot.dataset.fcForecast ?? '', domain), 'ForecastPanel resolution chips and reliability badge; escaped markup (#5092)'));
         }
+      })
+      .finally(() => {
+        this.recordPromise = null;
       });
   }
 
   private cardMeta(forecastId: string, domain: string): string {
-    return `${renderResolutionChips(this.familyHistory, forecastId, this.openDisclosures.has(forecastId))}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain)}`;
+    return `${renderResolutionChips(this.familyHistory, forecastId, this.openDisclosures.has(forecastId), this.audit)}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain, this.audit)}`;
   }
 
   updateSimulation(theaterSummariesJson: string): void {
@@ -624,7 +638,7 @@ export class ForecastPanel extends Panel {
           <div class="fc-filters">${filtersHtml}</div>
           <div class="fc-filters">${regionsHtml}</div>
           ${sourceHtml}
-          <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
+          <div data-fc-record-slot>${renderForecastRecord(this.record, this.audit)}</div>
           <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
         </div>
       `, 'legacy Panel.setContent() migration'));
@@ -646,7 +660,7 @@ export class ForecastPanel extends Panel {
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-filters">${regionsHtml}</div>
         ${sourceHtml}
-        <div data-fc-record-slot>${renderForecastRecord(this.record)}</div>
+        <div data-fc-record-slot>${renderForecastRecord(this.record, this.audit)}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>
@@ -793,8 +807,8 @@ export class ForecastPanel extends Panel {
     const domain   = f.domain || 'conflict';
     const catColor = DOMAIN_COLORS[domain] || '#7d8590';
     const catLabel = DOMAIN_LABELS[domain] || domain;
-    // The audit badge needs no scorecard data (#8990), so only a scored badge waits for the request.
-    const badgePending = this.record.kind === 'loading' && !FORECAST_ACCURACY_AUDIT;
+    // An overridden audit needs no scorecard data (#8990); any other badge waits for the request.
+    const badgePending = this.record.kind === 'loading' && !this.audit;
     const probColor = pct >= 60 ? '#3fb950' : pct >= 40 ? '#d29922' : '#e05252';
     const trendText  = f.trend === 'rising' ? '↑ rising' : f.trend === 'falling' ? '↓ falling' : '→ stable';
     const trendColor = f.trend === 'rising' ? '#3fb950' : f.trend === 'falling' ? '#e05252' : '#7d8590';
@@ -821,7 +835,7 @@ export class ForecastPanel extends Panel {
             </div>
             ${simBarHtml}
             ${this.renderScoredHorizons(f)}
-            <div class="fc-card-meta${badgePending ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${badgePending ? `${renderResolutionChips(null, f.id)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
+            <div class="fc-card-meta${badgePending ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${badgePending ? `${renderResolutionChips(null, f.id, false, this.audit)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">

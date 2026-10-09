@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { DEFAULT_ROLLING_WINDOW_DAYS } from '../scripts/_forecast-scorecard.mjs';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { forecastReliability, forecastScorecardDescription } from '../api/mcp/registry/cache-tools.ts';
-import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
@@ -49,10 +49,12 @@ describe('public forecast family history transport', () => {
     const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 205, brier: 0.074, yesCount: 9 }], familyOutcomes };
     const result = project(scorecard);
     assert.deepEqual(result.familyOutcomes, familyOutcomes);
-    if (FORECAST_ACCURACY_AUDIT) {
+    // This scorecard carries no measurable headline, so the audit holds.
+    const audit = forecastAccuracyAudit(scorecard);
+    if (audit) {
       assert.equal(result.reliability.status, 'unavailable');
       assert.deepEqual(result.reliability.byDomain, []);
-      assert.deepEqual(result.reliability.underAudit, { since: FORECAST_ACCURACY_AUDIT.since, issue: FORECAST_ACCURACY_AUDIT.issue, reason: FORECAST_ACCURACY_AUDIT.reason });
+      assert.deepEqual(result.reliability.underAudit, { since: audit.since, issue: audit.issue, reason: audit.reason });
       assert.doesNotMatch(JSON.stringify(result.reliability), /0\.074|brier/i);
     } else {
       assert.equal(result.reliability.status, 'ready');
@@ -249,18 +251,25 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.deepEqual(reliability.properties.underAudit.type, 'object');
     assert.deepEqual(Object.keys(reliability.properties.underAudit.properties).sort(), ['issue', 'reason', 'since']);
   });
-  it('serves through the live switch', () => {
-    const data = { predictions: structuredClone(full), scorecard, scorecardMeta: { fetchedAt: Date.now() } };
-    const viaTool = opening._postFilter(structuredClone(data), {}, paid).reliability;
-    const direct = forecastReliability(data, ['energy'], FORECAST_ACCURACY_AUDIT);
-    assert.deepEqual({ ...viaTool, capturedAt: null }, { ...direct, capturedAt: null });
+  it('serves the audit derived from the scorecard it reads', () => {
+    for (const card of [scorecard, { ...scorecard, skill: { count: 205, measurable: true } }, { ...scorecard, skill: { count: 205, measurable: false } }]) {
+      const data = { predictions: structuredClone(full), scorecard: card, scorecardMeta: { fetchedAt: Date.now() } };
+      const viaTool = opening._postFilter(structuredClone(data), {}, paid).reliability;
+      const direct = forecastReliability(data, ['energy'], forecastAccuracyAudit(card));
+      assert.deepEqual({ ...viaTool, capturedAt: null }, { ...direct, capturedAt: null });
+    }
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const lifted = opening._postFilter({ predictions: structuredClone(full), scorecard: { ...scorecard, skill: { count: 205, measurable: true } }, scorecardMeta: { fetchedAt: Date.now() } }, {}, paid).reliability;
+    assert.equal(lifted.status, 'ready');
+    assert.equal(lifted.underAudit, undefined);
   });
-  it('leads the scorecard tool description with the notice, inside the tools/list sentence budget', async () => {
+  it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list sentence budget', async () => {
     const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
-    const listed = compressDescription(forecastScorecardDescription(AUDIT), TOOL_DESCRIPTION_MAX_BYTES);
-    assert.equal(listed, 'Under audit since 2026-10-07 (issue 8990): scores are unreliable and withdrawn while corrections are made.');
-    assert.doesNotMatch(forecastScorecardDescription(null), /Under audit/);
+    const listed = (override) => compressDescription(forecastScorecardDescription(override), TOOL_DESCRIPTION_MAX_BYTES);
+    assert.equal(listed(AUDIT), 'Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): do not quote its scores.');
+    assert.equal(listed(null), 'Forecast resolution scorecard (Brier, calibration, funnel); check underAudit before quoting scores.');
+    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= 120, 'inside the tools/list sentence budget');
     const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
-    assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT));
+    assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT_OVERRIDE));
   });
 });

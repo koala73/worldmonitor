@@ -180,6 +180,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const excludeOrigins = new Set(options.skillExcludeOrigins ?? defaultExcluded);
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
+  scorecard.methodology += preLineageAnchorNote(skill);
   scorecard.publishedByDomain = summarizePublishedByDomain(scored);
   const skillScored = scored.filter((entry) => !excludeOrigins.has(generationOriginOf(entry)));
   scorecard.uncertainty = {
@@ -398,6 +399,15 @@ function goForwardNote(goForward) {
     return ` ${share}. That is too few to compare with the target of ${target}, which needs at least ${goForward.minResolved} resolved. Judged forecasts resolve days after hard ones and have voided more often, so early readings run low.${scope}`;
   }
   return ` ${share}; the target is ${target}.${scope}`;
+}
+
+// The count itself is internal (#9010), so the methodology, which REST, MCP and
+// /accuracy/ all carry, states it beside the headline the audit lift reads (#8990).
+function preLineageAnchorNote(skill) {
+  const count = skill?.preLineageAnchorCount ?? 0;
+  if (!count) return '';
+  const [verb, subject] = count === 1 ? ['was', 'it is'] : ['were', 'they are'];
+  return ` ${COUNT.format(count)} of the ${COUNT.format(skill.count)} headline forecasts scored here ${verb} published after a blend toward a market price chosen by the matcher used before issue #7071, which paired forecasts with unrelated markets; ${subject} scored on the probability published.`;
 }
 
 export function isHorizonEntry(entry) {
