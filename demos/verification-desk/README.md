@@ -6,7 +6,18 @@ The desk has no idea of truth of its own. Every judgment on screen is WorldMonit
 
 > We don't tell you what's true. We show you what stands behind it.
 
-## What happens on stage
+## The show: the deck with live WorldMonitor scenes
+
+`/` serves the stage deck (`deck/verified-truth-stage.html`, installed to `public/deck.html` by `npm install` or `npm run deck`) with two live scenes added in place of its illustrative engine. The standalone desk is still at `/desk`.
+
+- **Live board** (after the Nobel slide): today's stories as WorldMonitor grades them. The left column is corroborated stories, with publisher count, CRED and best-tier sources. The right column is in-circulation, single-publisher stories, each with a stamp. Press **1–7**, or click a story, to check it live.
+- **Live check**: the deck's pipeline, lanes, dial and stamp, filled by WorldMonitor's grading. Press **T** to type an audience headline and **Enter** to run it, **Backspace** to go back to the picker.
+- **G** switches the HeyGen avatar on and off in the deck's avatar slot. When it is off, the deck's recorded voice plays (ElevenLabs for the live lines when the key is set).
+- **U** refreshes the board. Every other key is the deck's own; press **?** for the full list.
+
+The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonitor does it" slide shows HIGH/MED/LOW labels and an evidence ladder that WorldMonitor doesn't compute; the live scenes show what WorldMonitor actually computes.
+
+## What happens on stage (standalone desk, `/desk`)
 
 1. **Open the laptop page.** Today's board is already on screen, blurred behind "Press Space to go live". It is built from live WorldMonitor data, or the committed snapshot offline.
 2. **Space: go live.** The avatar connects (if configured) and the anchor narrates the board by itself: how many stories WorldMonitor is tracking, how many are corroborated, the best-supported one, the thinnest ones.
@@ -136,7 +147,9 @@ lib/mcp-client.mjs    streamable-HTTP MCP client (X-WorldMonitor-Key or bearer)
 lib/sources.mjs       live MCP and archive snapshots
 scripts/              snapshot, find-reveal, grade (CLI), check
 snapshots/            real WorldMonitor data, committed
-public/               the stage UI (no build step); public/avatar.js drives HeyGen LiveAvatar
+deck/                 the stage deck (source); scripts/install-deck.mjs injects the live scenes
+public/deck-live.*    live WorldMonitor scenes and the HeyGen switch inside the deck
+public/               the standalone desk (no build step); public/avatar.js drives HeyGen LiveAvatar
 scripts/build-avatar.mjs  bundles the LiveAvatar SDK locally on npm install (public/vendor/)
 ```
 

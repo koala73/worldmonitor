@@ -5,6 +5,7 @@
 // Open http://localhost:4317 on the stage laptop, press F for fullscreen.
 
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildDesk, DATA_DIR, loadEnv, ROOT } from './lib/config.mjs';
@@ -221,7 +222,10 @@ const server = createServer(async (req, res) => {
       return res.end(audio);
     }
 
-    const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+    // The stage deck is the show; the standalone desk stays at /desk.
+    const rel = url.pathname === '/'
+      ? (existsSync(path.join(PUBLIC, 'deck.html')) ? 'deck.html' : 'index.html')
+      : url.pathname === '/desk' ? 'index.html' : url.pathname.slice(1);
     const file = path.normalize(path.join(PUBLIC, rel));
     if (!file.startsWith(PUBLIC)) return sendJson(res, 403, { error: 'forbidden' });
     const body = await readFile(file);

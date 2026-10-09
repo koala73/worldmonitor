@@ -1,0 +1,63 @@
+/* Live WorldMonitor scenes inside the stage deck. Built from the deck's own
+   tokens and components (.glass, .vitem, .post, .stamp, .lane, .node, .tile,
+   .dialw, .verdict); only placement is defined here. */
+
+/* ---------- live board ---------- */
+#s-liveboard .head{position:absolute;left:80px;top:96px;right:80px}
+#s-liveboard .head .h1{font-size:1.75em;margin-top:.3em}
+#s-liveboard .live{display:inline-flex;align-items:center;gap:.5em;margin-right:.8em;padding:.25em .6em;border-radius:6px;background:var(--fal);color:#fff;font:800 .5em/1 var(--mono);letter-spacing:.2em;vertical-align:.2em}
+#s-liveboard .live:before{content:"";width:.55em;height:.55em;border-radius:50%;background:#fff;animation:pulse 1.2s infinite}
+#s-liveboard .totals{position:absolute;left:80px;right:80px;top:250px;display:flex;gap:56px;align-items:baseline;opacity:0;transform:translateY(12px);transition:all .6s}
+#s-liveboard .totals.in{opacity:1;transform:none}
+#s-liveboard .tot{display:flex;align-items:baseline;gap:14px}
+#s-liveboard .tot b{font:800 2.3em/1 var(--sans);letter-spacing:-.03em}
+#s-liveboard .tot span{font:600 .5em/1.2 var(--mono);letter-spacing:.18em;color:var(--mut);text-transform:uppercase}
+#s-liveboard .cols{position:absolute;left:80px;right:80px;top:370px;bottom:120px;display:grid;grid-template-columns:1fr 1fr;gap:40px}
+#s-liveboard .col{display:flex;flex-direction:column;min-height:0}
+#s-liveboard .vstack{display:flex;flex-direction:column;gap:10px;min-height:0}
+#s-liveboard .vitem{flex:none;padding:10px 16px 10px 14px}
+#s-liveboard .vitem .t{font-size:.66em}
+#s-liveboard .vitem .badges{margin-top:.35em}
+#s-liveboard .vitem .ic{font:800 16px/1 var(--mono)}
+#s-liveboard .posts{display:flex;flex-direction:column;gap:12px;min-height:0}
+#s-liveboard .post{flex:none;padding:14px 18px 14px;opacity:0;transform:translateY(16px);transition:all .5s}
+#s-liveboard .post.in{opacity:1;transform:none}
+#s-liveboard .post .hd{padding-right:0;max-width:56%;margin-bottom:6px;min-height:0}
+#s-liveboard .post .av{width:36px;height:36px}
+#s-liveboard .post .mt{padding:0;min-height:0;cursor:inherit}
+#s-liveboard .post .tx{font-size:.62em;margin-top:1em}
+#s-liveboard .post .stamp{font-size:.62em;top:12px;right:12px}
+#s-liveboard .post .num,#s-liveboard .vitem .num{font:700 13px/1 var(--mono);color:var(--acc);letter-spacing:.14em;margin-right:8px}
+#s-liveboard .vitem,#s-liveboard .post{cursor:pointer}
+#s-liveboard .vitem:hover,#s-liveboard .post:hover{border-color:var(--acc)}
+#s-liveboard .foot,#s-livecheck .foot{position:absolute;left:80px;right:80px;bottom:92px;font:500 .44em/1.3 var(--mono);color:var(--dim);letter-spacing:.06em}
+#s-liveboard .offline,#s-livecheck .offline{position:absolute;left:80px;right:80px;top:330px;padding:40px;font-size:.8em;line-height:1.4}
+#s-liveboard .offline b,#s-livecheck .offline b{color:var(--unv)}
+.badge.cred-high{color:var(--ver);border-color:rgba(52,211,153,.45)}
+.badge.cred-medium{color:var(--unv);border-color:rgba(251,191,36,.45)}
+.badge.cred-low{color:var(--fal);border-color:rgba(244,63,94,.45)}
+.badge.state{color:var(--fal);border-color:rgba(244,63,94,.45)}
+
+/* ---------- live check: the deck's engine placement, for this scene ---------- */
+#s-livecheck .head{position:absolute;left:80px;top:96px;right:80px}
+#s-livecheck .head .h1{font-size:1.75em;margin-top:.3em}
+#s-livecheck .pick{position:absolute;left:80px;right:80px;top:290px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+#s-livecheck .pick .pc{min-height:200px}
+#s-livecheck .pick .pc .meta{margin-top:auto;padding-top:.8em;display:flex;gap:8px;flex-wrap:wrap}
+#s-livecheck .typebox{position:absolute;left:80px;right:80px;top:820px;display:none;gap:16px;align-items:center}
+#s-livecheck .typebox.on{display:flex}
+#s-livecheck .typebox input{flex:1;font:600 .9em/1.2 var(--sans);padding:.5em .8em;border-radius:14px;border:2px solid var(--acc);background:rgba(3,10,14,.9);color:#fff;outline:none}
+#s-livecheck .typebox .hint{font:500 .5em/1.3 var(--mono);color:var(--mut)}
+#s-livecheck .run{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .5s}
+#s-livecheck.running .run{opacity:1;visibility:visible}
+#s-livecheck.running .pick,#s-livecheck.running .typebox{opacity:0;pointer-events:none}
+#s-livecheck.running .head{opacity:0}
+#s-livecheck .searching .lane .beam{animation:beam 1s ease-in-out infinite}
+#s-livecheck .found{position:absolute;left:80px;right:80px;top:212px;font:600 15px/1.3 var(--mono);color:var(--mut);letter-spacing:.04em;opacity:0;transition:opacity .4s}
+
+/* ---------- HeyGen avatar in the deck's avatar slot (G) ---------- */
+#avatar video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:0;transition:opacity .6s;background:#000;box-shadow:0 0 0 3px var(--acc),0 0 40px rgba(62,224,143,.35)}
+#avatar.heygen video{opacity:1}
+#avatar.heygen canvas{opacity:0}
+#avatar.heygen:not(.feature){width:300px;height:300px}
+#avatar.heygen-wait canvas{animation:pulse 1s infinite}
