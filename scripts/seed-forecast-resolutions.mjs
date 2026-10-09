@@ -1541,31 +1541,11 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   correctWindowsAndPlaceholders(ledger, nowMs, openingEmissions, historyRead);
   const windows = indexQuestionWindows(ledger);
 
-  // Emission order, not snapshot order: a later snapshot can carry an earlier
-  // emission, and the window a question opens must be the one its earliest
-  // emission opens, as correctLedgerWindows assumes.
-  const emissions = [];
-  for (const snapshot of snapshots) {
-    const snapshotAt = Number(snapshot.generatedAt || nowMs);
-    const run = emissionRunOf(snapshot);
-    for (const emitted of snapshot.predictions || []) {
-      const spec = emitted.resolution;
-      if (!spec || typeof spec !== 'object') continue;
-      // The extraction gate's `unscored` spec (#7067) withholds the forecast
-      // from both lanes, so it opens no window.
-      if (spec.kind !== 'hard' && spec.kind !== 'judged') continue;
-      const id = emitted.id;
-      const deadline = Number(spec.deadline);
-      const generatedAt = Number(emitted.generatedAt || emitted.createdAt || snapshotAt);
-      if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) continue;
-      const forecast = withSnapshotCodeVersion(emitted, snapshot);
-      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt, run });
-    }
-  }
-  emissions.sort((a, b) => a.generatedAt - b.generatedAt || a.snapshotAt - b.snapshotAt);
+  const emissions = collectHistoryEmissions(snapshots, nowMs);
 
-  for (const { forecast, spec, id, deadline, generatedAt, snapshotAt, run } of emissions) {
-    const candidate = createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline, run);
+  for (const emission of emissions) {
+    const { forecast, spec, id, deadline, generatedAt, snapshotAt, run } = emission;
+    const candidate = emissionCandidate(emission);
     const questionKey = windowQuestionKey(candidate);
     const coveringKey = windows.covering(id, { entry: candidate, questionKey }, generatedAt);
     if (coveringKey) {
@@ -1621,6 +1601,40 @@ function correctWindowsAndPlaceholders(ledger, nowMs, openingEmissions, historyR
   console.warn(`  [forecast-resolutions] placeholder correction did not settle in ${PLACEHOLDER_CORRECTION_MAX_ROUNDS} rounds`);
 }
 
+// Every history emission that carries a resolution spec, in emission order,
+// not snapshot order: a later snapshot can carry an earlier emission, and the
+// window a question opens must be the one its earliest emission opens, as
+// correctLedgerWindows assumes. `onSkip(reason, forecast, generatedAt)` sees
+// each emission left out. Exported for the cohort tool (#7066), which must
+// read history exactly as ingest does.
+export function collectHistoryEmissions(snapshots, nowMs, onSkip = null) {
+  const emissions = [];
+  for (const snapshot of snapshots || []) {
+    if (!snapshot) continue;
+    const snapshotAt = Number(snapshot.generatedAt || nowMs);
+    const run = emissionRunOf(snapshot);
+    for (const emitted of snapshot.predictions || []) {
+      const generatedAt = Number(emitted?.generatedAt || emitted?.createdAt || snapshotAt);
+      const spec = emitted?.resolution;
+      if (!spec || typeof spec !== 'object') { onSkip?.('no_resolution_spec', emitted, generatedAt); continue; }
+      // The extraction gate's `unscored` spec (#7067) withholds the forecast
+      // from both lanes, so it opens no window.
+      if (spec.kind !== 'hard' && spec.kind !== 'judged') { onSkip?.('withheld_at_emission', emitted, generatedAt); continue; }
+      const id = emitted.id;
+      const deadline = Number(spec.deadline);
+      if (!id || !Number.isFinite(deadline) || !Number.isFinite(generatedAt)) { onSkip?.('no_deadline', emitted, generatedAt); continue; }
+      const forecast = withSnapshotCodeVersion(emitted, snapshot);
+      emissions.push({ forecast, spec, id, deadline, generatedAt, snapshotAt, run });
+    }
+  }
+  return emissions.sort((a, b) => a.generatedAt - b.generatedAt || a.snapshotAt - b.snapshotAt);
+}
+
+// The ledger row an emission would open.
+export function emissionCandidate({ forecast, spec, id, deadline, generatedAt, snapshotAt, run }) {
+  return createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline, run);
+}
+
 // A ledger window is one question: the forecast id plus what it asks. Ids do
 // not pin the question. A state-derived or military id moves between regions
 // and titles, and a bet id keeps its id while its threshold and direction move
@@ -1669,7 +1683,7 @@ export function windowQuestionKey(entry) {
 // or placeholder, and the emission falls inside [generatedAt, deadline). Status does not
 // matter. A resolved window still owns every emission it absorbed while open,
 // so re-reading history cannot reopen it.
-function indexQuestionWindows(ledger) {
+export function indexQuestionWindows(ledger) {
   const byId = new Map();
   const add = (key, entry, questionKey = windowQuestionKey(entry)) => {
     if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry) || isPlaceholderBet(entry)) return;
@@ -1719,6 +1733,14 @@ export const REGISTRATION_GAP_REASONS = Object.freeze([
   'no_resolution_spec', 'withheld_at_emission', 'base_rate_placeholder', 'no_deadline', 'deadline_passed_before_registration', 'unregistered',
 ]);
 
+// Why a scoreable emission has no covering window. The first resolver run
+// after the snapshot lands within one cycle of it; a deadline before that run
+// is the one gap the ingest makes on purpose. Any other uncovered emission is
+// a lost window.
+export function registrationGapReason(deadline, snapshotAt, nowMs) {
+  return deadline < nowMs && deadline <= snapshotAt + LATE_READ_MAX_LAG_MS ? 'deadline_passed_before_registration' : 'unregistered';
+}
+
 export function summarizeRegistration(ledger, historySnapshots, nowMs) {
   const windows = indexQuestionWindows(normalizeLedger(ledger));
   // The ledger keeps a window until 180 days after it resolved, and a window
@@ -1764,10 +1786,7 @@ export function summarizeRegistration(ledger, historySnapshots, nowMs) {
       // VOID, possibly while they are still in the bet history. Its emissions
       // were registered; a missing window is not a gap.
       else if (voidsOnFirstRead(spec)) continue;
-      // The first resolver run after the snapshot lands within one cycle of
-      // it; a deadline before that run is the one gap the ingest makes on
-      // purpose. Any other uncovered emission is a lost window.
-      else window.uncovered ??= deadline < nowMs && deadline <= snapshotAt + LATE_READ_MAX_LAG_MS ? 'deadline_passed_before_registration' : 'unregistered';
+      else window.uncovered ??= registrationGapReason(deadline, snapshotAt, nowMs);
     }
   }
   // A window is registered when it has a scoreable emission and the ledger

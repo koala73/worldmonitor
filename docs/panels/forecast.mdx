@@ -354,6 +354,65 @@ Each run logs its mode, its reason, the map version, and the gate numbers: eligi
 
 Identity is the fallback at every level. An unknown domain, an identity domain, and a missing map all return the input probability unchanged. Raw publication is the fallback for the activated path: a failing gate, a missing map, or the kill switch publishes the post-blend probability on the next run. A calibrated publication keeps its post-blend value as `uncalibratedProbability`, so a return to raw loses no lineage.
 
+### Frozen evaluation cohorts
+
+A frozen cohort follows one set of forecast windows from emission to outcome. A later change to the resolver, the scorecard filters or the rolling window therefore cannot drop an entry from the count (issue #7066). `scripts/forecast-cohort.mjs` is an operator tool, not a Railway service. It only reads production Redis and writes a local file.
+
+`node scripts/forecast-cohort.mjs freeze --id <id> --start <iso> [--end <iso>] [--origin a,b] [--domain a,b]` reads these keys:
+
+- `forecast:resolutions:v1`
+- the newest 200 runs of forecast history and of bet history, the same read the resolver makes
+- the forecast trace pointers in `forecast:trace:runs:v1`
+
+It runs the resolver's own `ingestHistory` and emission helpers over them in memory. Every window opened by an emission inside the range is frozen under the `id@deadline` key the resolver gives it, including windows the next resolver run will register. Some emissions map to no window, for example when the deadline passed before any resolver run read them. Those are frozen too, with `unregisteredReason`, along with the missing horizon windows of a cohort window. Whether an emission counts therefore never depends on when the freeze ran.
+
+Each entry records its origin, domain, lane (hard, judged or horizon), deadline, whether it is of published origin, its `emissionHash`, its service level, and the code version of the run that opened it. The service level is the `sla` the resolver stamps on the row when it opens it. A row without a stamp takes its lane's level from its spec, as `slaDueAt` does: `hardSlaMs` for a hard or horizon window, `DEFAULT_JUDGED_SLA_MS` for a judged one. The code version comes from the first of these sources that has one:
+
+1. the ledger row's stamp
+2. the forecast or bet history snapshot's stamp
+3. the trace pointer of the same run
+4. an earlier manifest named with `--carry-code-versions`
+
+Otherwise it is `unknown`. Both history lists stamp each snapshot since #9059, so the code version survives as long as the history does. Older snapshots fall back to the trace pointer list, which keeps 50 entries (about 25 runs), or to an earlier manifest of the same windows.
+
+Every emission in the range is accounted for in the counts:
+
+- in a cohort window
+- joined a window opened before the range, and is scored on that earlier emission
+- left out by a filter
+- skipped by ingest, with a reason from the resolver's `REGISTRATION_GAP_REASONS`
+
+Freezing refuses a range when either history list is empty or expired, or when the range starts at or before the oldest snapshot read, because runs at the start of the range may already have been trimmed. Run the freeze within about 8 days of the range start.
+
+The manifest is committed under `data/forecast-cohorts/`. Its `manifestSha256` covers everything in it, including the range, the filters and every entry with its service level. A freeze never replaces an existing manifest: a later freeze would read a later ledger and history, so a new freeze needs a new `--id`.
+
+`node scripts/forecast-cohort.mjs reconcile --manifest data/forecast-cohorts/<id>.json` walks every frozen entry and gives it exactly 1 class:
+
+| Class | Meaning |
+|---|---|
+| `immature` | The deadline has not passed. |
+| `pending_in_sla` | Past the deadline, not terminal, still inside the service level. |
+| `pending_breach` | Not terminal after the service level ended. A breach. |
+| `terminal_in_sla` | Resolved (YES, NO or VOID) by the end of the service level. |
+| `terminal_late` | Resolved after the service level ended. A breach. |
+| `sla_unmeasurable` | Resolved without a deadline or resolution time. A breach. |
+| `awaiting_registration` | Not in the ledger. The service level has not ended, and no ledger write came at least 1 resolver cycle after the emitting run. |
+| `missing_from_ledger` | Not in the ledger, although a ledger write came at least 1 resolver cycle after the emitting run, or its service level has ended. A breach. |
+
+The resolver reads history when its run starts and writes the ledger minutes later. A ledger write soon after an emission therefore does not show that the resolver read that emission. `RESOLVER_CYCLE_MS` (1 day and 1 hour, the scorecard's resolver cycle) is the wait.
+
+Reconciliation applies each entry's frozen service level to the deadline the ledger holds now, through the scorecard's `slaDueAt`. A judged window's level starts after the 18-hour reporting grace. A market-settlement window is judged by its current deadline. A hard window waits as long as its feed is designed to make the resolver wait: for example, 2 days and 2 hours for a live point read, 15 days and 1 hour for EIA or a market settlement, and 76 days and 1 hour for monthly FRED.
+
+The verdict covers published-origin entries, the population the epic's acceptance names:
+
+- `met`: every entry is terminal within the service level
+- `breached`: any breach is listed
+- `open`: otherwise
+
+Shadow (`bet_engine`) and synthetic windows get their own verdict beside it. The report counts each class by lane, origin and code version, tallies VOIDs by reason, and lists every breach by key. Reconciliation refuses a manifest that no longer matches its hash.
+
+The resolver prunes resolved rows 180 days after resolution. A cohort entry reconciled after that reads `missing_from_ledger`, so reconcile a cohort before then.
+
 ## Run archive and replay
 
 Each `seed-forecasts` run writes its inputs to the private forecast trace bucket in R2 as `deep-snapshot.json`. The snapshot holds the raw feeds the detectors read, the recorded critical-signal bundle, every forecast the run produced, and the code revision in `triggerContext.deployRevision`. Since issue #9058 it also holds `calibrationPublication`: the calibration mode, reason, map version and decision time the run scored with, and the map's per-domain knots.
