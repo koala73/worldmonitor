@@ -140,3 +140,50 @@ test('today\'s board: one event across clusters is one story, graded by WorldMon
   const r = await gradeToResult(b.thin[0].title, snapshotDesk());
   assert.notEqual(r.verdict.key, 'not-found');
 });
+
+test('the board is dated by its data, and a presenter refresh refetches', async () => {
+  // Archive: the newest snapshot's time, never the request time.
+  const archived = await snapshotDesk().source.boardClusters();
+  assert.equal(Date.parse(archived.asOf), Date.parse('2026-10-09T21:10:10.756Z'));
+  // Live: cached for the TTL, refetched when forced.
+  let calls = 0;
+  const mcp = { async callTool(name) { calls += 1; return name === 'get_news_intelligence' ? { topStories: [] } : { clusters: [{ id: 'c1', title: 'A', sources: ['BBC'] }] }; } };
+  const live = new CombinedSource(new LiveSource(mcp), null);
+  await live.boardClusters();
+  await live.boardClusters();
+  assert.equal(calls, 2, 'two calls, then the cache');
+  const forced = await live.boardClusters({ force: true });
+  assert.equal(calls, 4, 'a forced refresh makes both calls again');
+  assert.equal(forced.from, 'live');
+  assert.ok(Date.parse(forced.asOf) > 0);
+});
+
+test('offline rehearsal makes no network calls', async () => {
+  const { buildDesk } = await import('../lib/config.mjs');
+  const desk = buildDesk({ offline: true });
+  assert.equal(desk.noNetwork, true);
+  assert.equal(desk.anchor.enabled, false, 'no Claude offline');
+  assert.equal(await desk.source.articleText('https://example.com/story'), null, 'no article fetch offline');
+});
+
+test('a fetched article is credited to the publisher of its own link', async () => {
+  // Two clusters of one event: the best match (Daily Sabah, the link) and a tier-1 wire.
+  const clusters = [
+    { id: 'a', title: 'Drone strike on Sudan camp kills 31 civilians', link: 'https://dailysabah.example/a', primarySource: 'Daily Sabah', sources: ['Daily Sabah'], publishers: [{ name: 'Daily Sabah', labels: ['Daily Sabah'] }] },
+    { id: 'b', title: 'Drone strike on Sudan displacement camp kills civilians', link: 'https://apnews.example/b', primarySource: 'AP News', sources: ['AP News'], publishers: [{ name: 'AP News', labels: ['AP News'] }] },
+  ];
+  const source = {
+    kind: 'archive',
+    async searchClusters() { return { clusters, generatedAt: null, failures: [] }; },
+    async allClusters() { return clusters; },
+    async intelligenceStories() { return []; },
+    async storyDetail() { return null; },
+    async markets() { return []; },
+    async weekClusters() { return []; },
+    async articleText(url) { return url.includes('dailysabah') ? 'At least 31 people were killed.' : null; },
+  };
+  const r = await gradeToResult('Drone strike on Sudan camp kills 31 civilians', { source, anchor });
+  const fact = r.numbers.facts.find((f) => f.label === '31');
+  assert.ok(fact, JSON.stringify(r.numbers));
+  assert.deepEqual(fact.statedBy, ['Daily Sabah'], 'the wire never stated 31; only the linked article and its own headline did');
+});

@@ -61,7 +61,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
   try {
-    const res = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(process.env.ELEVENLABS_VOICE_ID)}`, { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } });
+    const res = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(process.env.ELEVENLABS_VOICE_ID)}`, { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'User-Agent': 'WorldMonitor-VerificationDesk/1.0' } });
     if (res.ok) pass('ElevenLabs voice reachable');
     else fail(`ElevenLabs HTTP ${res.status}: check ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID`);
   } catch (error) {

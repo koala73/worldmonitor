@@ -19,10 +19,11 @@ export function loadEnv() {
 /**
  * Live WorldMonitor MCP when a key is set, with the archived and committed
  * snapshots behind it. DESK_OFFLINE=1 (npm run offline) reads the snapshots
- * only: real WorldMonitor data, no network, no keys.
+ * only: real WorldMonitor data, no network, no keys: no Claude, no article
+ * fetches, no live backdrop.
  */
 export function buildDesk({ offline = process.env.DESK_OFFLINE === '1' } = {}) {
-  const anchor = new Anchor();
+  const anchor = offline ? new Anchor({ apiKey: null }) : new Anchor();
   const apiKey = process.env.WORLDMONITOR_API_KEY;
   const bearerToken = process.env.WORLDMONITOR_MCP_TOKEN;
   const live = !offline && (apiKey || bearerToken)
@@ -33,5 +34,5 @@ export function buildDesk({ offline = process.env.DESK_OFFLINE === '1' } = {}) {
   if (!live && !archive) {
     throw new Error('No data source: set WORLDMONITOR_API_KEY in demos/verification-desk/.env, or keep the committed snapshots/.');
   }
-  return { source: new CombinedSource(live, archive), anchor, offline: !live };
+  return { source: new CombinedSource(live, archive, { noNetwork: offline }), anchor, offline: !live, noNetwork: offline };
 }

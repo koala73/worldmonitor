@@ -86,8 +86,8 @@ let boardMemo = null;
 async function board({ force = false } = {}) {
   if (!force && boardMemo && Date.now() - boardMemo.at < BOARD_REFRESH_MS) return boardMemo.value;
   const value = await cached('board', async () => {
-    const { clusters, from } = await desk.source.boardClusters();
-    const b = buildBoard(clusters, { asOf: new Date().toISOString() });
+    const { clusters, from, asOf } = await desk.source.boardClusters({ force });
+    const b = buildBoard(clusters, { asOf: asOf ?? new Date().toISOString() });
     return { ...b, from, refreshMinutes: BOARD_REFRESH_MS / 60_000, script: await desk.anchor.narrateBoard(b) };
   });
   boardMemo = { at: Date.now(), value };
@@ -142,7 +142,7 @@ const server = createServer(async (req, res) => {
         sourceKind: desk.source.kind,
         anchor: desk.anchor.enabled ? desk.anchor.model : null,
         tts: process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID ? 'elevenlabs' : 'browser',
-        backdropUrl: process.env.DESK_BACKDROP_URL ?? 'https://worldmonitor.app/embed?theme=dark',
+        backdropUrl: process.env.DESK_BACKDROP_URL ?? (desk.noNetwork ? '' : 'https://worldmonitor.app/embed?theme=dark'),
         avatar: liveavatar.configured(),
         boardRefreshMin: BOARD_REFRESH_MS / 60_000,
         stepDelayMs: Number(process.env.DESK_STEP_DELAY_MS || 1400),
@@ -206,7 +206,10 @@ const server = createServer(async (req, res) => {
 
 desk.source.live?.warm?.();
 
-server.listen(PORT, () => {
+// Localhost only by default: the paid routes (TTS, avatar tokens, grading) use
+// the presenter's keys and allowance. DESK_HOST=0.0.0.0 opens it to the network.
+const HOST = process.env.DESK_HOST || '127.0.0.1';
+server.listen(PORT, HOST, () => {
   console.log(`Verification Desk on http://localhost:${PORT}`);
   console.log(`  source: ${desk.source.kind}${desk.offline ? ' (committed snapshots, offline)' : ''}`);
   console.log(`  anchor: ${desk.anchor.enabled ? desk.anchor.model : 'template voice (no ANTHROPIC_API_KEY)'}`);

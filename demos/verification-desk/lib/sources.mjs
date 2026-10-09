@@ -135,9 +135,9 @@ export class LiveSource {
   // snapshots, at most once per TTL, and matched locally: one panel
   // allocation per refresh instead of one per shouted headline, and a grade
   // on stage costs no extra round trip.
-  async snapshot(name, load) {
+  async snapshot(name, load, { force = false } = {}) {
     const hit = this.snapshots.get(name);
-    if (hit && Date.now() - hit.at < this.ttlMs) return hit.value;
+    if (!force && hit && Date.now() - hit.at < this.ttlMs) return hit.value;
     const value = await load();
     this.snapshots.set(name, { at: Date.now(), value });
     return value;
@@ -202,11 +202,11 @@ export class LiveSource {
     }
   }
 
-  intelligencePayload() {
+  intelligencePayload({ force = false } = {}) {
     return this.snapshot('intelligence', async () => {
       const payload = await this.mcp.callTool('get_news_intelligence', { limit: 0 });
       return { stories: dig(payload, 'topStories') ?? [], articles: gdeltArticlesFrom(payload) };
-    });
+    }, { force });
   }
 
   async gdeltArticles() {
@@ -217,13 +217,17 @@ export class LiveSource {
     }
   }
 
-  /** Today's board: WorldMonitor's top stories plus the newest clusters. Two calls, cached for the TTL. */
-  async boardClusters() {
-    const [stories, newest] = await Promise.all([
-      this.intelligenceStories(),
-      this.snapshot('board-clusters', async () => (await this.mcp.callTool('get_news_clusters', { limit: 25 })).clusters ?? []),
+  /**
+   * Today's board: WorldMonitor's top stories plus the newest clusters. Two
+   * calls, cached for the TTL; `force` (the presenter's refresh) fetches both again.
+   */
+  async boardClusters({ force = false } = {}) {
+    const [payload, newest] = await Promise.all([
+      this.intelligencePayload({ force }).catch(() => ({ stories: [] })),
+      this.snapshot('board-clusters', async () => (await this.mcp.callTool('get_news_clusters', { limit: 25 })).clusters ?? [], { force }),
     ]);
-    return [...stories.map(storyAsCluster), ...newest.map((c) => normalizeCluster(c, { seenIn: 'live' }))];
+    const clusters = [...payload.stories.map(storyAsCluster), ...newest.map((c) => normalizeCluster(c, { seenIn: 'live' }))];
+    return { clusters, asOf: new Date(this.snapshots.get('board-clusters')?.at ?? Date.now()).toISOString() };
   }
 
   /** Fetch both snapshots before the show so the first grade is instant. */
@@ -241,9 +245,9 @@ export class ArchiveSource {
     this.cache = null;
   }
 
+  // Re-read when snapshot:loop adds a file, and every 10 minutes so the
+  // seven-day window moves on while the desk runs.
   async load() {
-    if (this.cache) return this.cache;
-    const cutoff = Date.now() - this.days * 86_400_000;
     let files = [];
     for (const dir of this.dirs) {
       try {
@@ -253,6 +257,10 @@ export class ArchiveSource {
       }
     }
     files.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+    const signature = files.join('|');
+    if (this.cache && this.cache.signature === signature && Date.now() - this.cache.loadedAt < 10 * 60_000) return this.cache;
+    const cutoff = Date.now() - this.days * 86_400_000;
+    let latest = null;
     const clusters = new Map();
     const stories = new Map();
     const briefs = [];
@@ -266,6 +274,7 @@ export class ArchiveSource {
       }
       const at = Date.parse(snap.takenAt);
       if (!Number.isFinite(at) || at < cutoff) continue;
+      if (!latest || snap.takenAt > latest) latest = snap.takenAt;
       for (const c of snap.clusters ?? []) {
         const prev = clusters.get(c.id);
         clusters.set(c.id, {
@@ -279,7 +288,7 @@ export class ArchiveSource {
       if (snap.brief) briefs.push({ ...snap.brief, takenAt: snap.takenAt });
       for (const a of snap.gdeltArticles ?? []) articles.set(a.url, a);
     }
-    this.cache = { clusters: [...clusters.values()], stories: [...stories.values()], briefs, articles: [...articles.values()], files: files.length };
+    this.cache = { clusters: [...clusters.values()], stories: [...stories.values()], briefs, articles: [...articles.values()], files: files.length, latest, signature, loadedAt: Date.now() };
     return this.cache;
   }
 
@@ -322,18 +331,19 @@ export class ArchiveSource {
     return (await this.load()).articles;
   }
 
-  /** The board from the archive: its top stories, then its clusters. */
+  /** The board from the archive: its top stories, then its clusters, as of the newest snapshot. */
   async boardClusters() {
-    const { clusters, stories } = await this.load();
-    return [...stories.map(storyAsCluster), ...clusters];
+    const { clusters, stories, latest } = await this.load();
+    return { clusters: [...stories.map(storyAsCluster), ...clusters], asOf: latest };
   }
 }
 
 /** Live first, archive behind it: a headline from five days ago is still findable. */
 export class CombinedSource {
-  constructor(live, archive) {
+  constructor(live, archive, { noNetwork = false } = {}) {
     this.live = live;
     this.archive = archive;
+    this.noNetwork = noNetwork;
     this.kind = live ? (archive ? 'live+archive' : 'live') : 'archive';
   }
 
@@ -368,7 +378,8 @@ export class CombinedSource {
   }
 
   articleText(url) {
-    return fetchArticleText(url);
+    // Offline rehearsal makes no network calls: figures are checked against headlines only.
+    return this.noNetwork ? Promise.resolve(null) : fetchArticleText(url);
   }
 
   async brief() {
@@ -396,16 +407,17 @@ export class CombinedSource {
   }
 
   /** Live when connected; the archive only when WorldMonitor cannot be reached or there is no key. */
-  async boardClusters() {
+  async boardClusters({ force = false } = {}) {
     if (this.live) {
       try {
-        const live = await this.live.boardClusters();
-        if (live.length) return { clusters: live, from: 'live' };
+        const live = await this.live.boardClusters({ force });
+        if (live.clusters.length) return { ...live, from: 'live' };
       } catch {
         // fall through to the archive
       }
     }
-    return { clusters: this.archive ? await this.archive.boardClusters() : [], from: 'archive' };
+    const archived = this.archive ? await this.archive.boardClusters() : { clusters: [], asOf: null };
+    return { ...archived, from: 'archive' };
   }
 
   async gdeltArticles() {

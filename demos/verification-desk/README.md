@@ -42,8 +42,10 @@ The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonito
 ```bash
 cd demos/verification-desk
 npm install          # installs tsx (loads WorldMonitor's TypeScript) and bundles the LiveAvatar SDK
-npm run offline      # no keys: http://localhost:4317 on the committed real snapshot
+npm run offline      # no keys, no network: http://localhost:4317 on the committed real snapshot
 ```
+
+The desk listens on localhost only, because its routes spend your keys and WorldMonitor allowance (`DESK_HOST` changes that). Offline mode makes no network calls at all: no Claude, no article fetches, no live backdrop.
 
 For the live show, `cp .env.example .env`, fill in what you have, then:
 

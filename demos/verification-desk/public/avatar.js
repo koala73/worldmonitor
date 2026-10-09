@@ -22,7 +22,8 @@ let wanted = false;
 let speaking = false;
 let warmTimer = null;
 let onChange = () => {};
-let speakDone = null;
+let speakDone = null;  // resolves the sentence in flight
+let speakFail = null;  // rejects it: the session it was on is gone
 
 function setReady(value) {
   ready = value;
@@ -138,7 +139,7 @@ function dropped(s) {
   if (standby?.s === s) { standby = null; return; }
   if (live?.s !== s) return;
   live = null;
-  speakDone?.();
+  speakFail?.(new Error('avatar dropped'));
   if (!wanted) { setReady(false); return; }
   if (promote()) return;
   setReady(false);
@@ -182,6 +183,7 @@ export async function start(video) {
 export async function stop() {
   wanted = false;
   clearTimeout(warmTimer);
+  speakDone?.(); // switched off mid-line: the line ends here, nothing else takes it over
   const sessions = [live?.s, standby?.s].filter(Boolean);
   live = null;
   standby = null;
@@ -231,10 +233,13 @@ export async function speak(text, onProgress, cancelled) {
       if (cancelled()) return;
       await freshSession();
       if (!isActive()) throw new Error('avatar dropped');
-      await new Promise((resolve) => {
-        // Generous ceiling: ~65 ms per character, plus start-up slack.
-        const timer = setTimeout(resolve, part.length * 65 + 6000);
-        speakDone = () => { clearTimeout(timer); speakDone = null; resolve(); };
+      await new Promise((resolve, reject) => {
+        const settle = (fn) => (value) => { clearTimeout(timer); speakDone = null; speakFail = null; fn(value); };
+        // Generous ceiling (~65 ms a character): a missed speak_ended on a live
+        // session still counts as spoken, so the line is not said twice.
+        const timer = setTimeout(() => settle(resolve)(), part.length * 65 + 6000);
+        speakDone = settle(resolve);
+        speakFail = settle(reject);
         live.s.repeat(part);
       });
       spoken += part.length + 1;

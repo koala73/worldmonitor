@@ -153,6 +153,7 @@ addScene({
     }
     root.querySelector('.when').textContent = `WORLDMONITOR · ${b.from === 'live' ? 'LIVE' : 'SNAPSHOT'} · ${new Date(b.asOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const picks = boardPicks(b);
+    LIVE.picks = picks; // story numbers on the board are live before the check scene is opened
     const t = b.totals;
     body.innerHTML = `<div class="totals"><div class="tot"><b class="n0">0</b><span>stories<br>tracked</span></div><div class="tot"><b class="n1 c-ver">0</b><span>corroborated<br>2+ publishers</span></div><div class="tot"><b class="n2 c-unv">0</b><span>single<br>publisher</span></div></div>
       <div class="cols"><div class="col"><div class="secthead c-ver"><span class="dot"></span>CORROBORATED · WORLDMONITOR</div><div class="vstack"></div></div>
@@ -274,6 +275,7 @@ function openType() { const t = $('#s-livecheck .typebox'); t.classList.add('on'
 function closeType() { const t = $('#s-livecheck .typebox'); if (!t) return; t.classList.remove('on'); $('#lcin')?.blur(); }
 function resetCheck() {
   clearTimers();
+  LIVE.run = (LIVE.run ?? 0) + 1;
   LIVE.running = false;
   const r = $('#s-livecheck');
   if (r) r.classList.remove('running');
@@ -293,6 +295,7 @@ async function runCheck(headline) {
   const root = $('#s-livecheck');
   Voice.stop(true);
   clearTimers();
+  const run = LIVE.run = (LIVE.run ?? 0) + 1;
   LIVE.running = true;
   LIVE.checkVoice = null;
   root.classList.add('running');
@@ -317,7 +320,7 @@ async function runCheck(headline) {
   const t0 = performance.now();
   at(900, () => { setSt(1); lanes.classList.add('searching'); });
   const r = await grade(headline);
-  if (!LIVE.running || root !== $('#s-livecheck')) return;
+  if (run !== LIVE.run || !LIVE.running || root !== $('#s-livecheck')) return;
   const wait = Math.max(0, 1600 - (performance.now() - t0));
   LIVE.result = r;
   at(wait, () => play(root, r, { setSt, parsed, lanes, vd, cl }));
@@ -435,7 +438,16 @@ window.onKey = function onKeyLive(e) {
   const d = cur();
   if (k === 'g' || k === 'G') { $('#start')?.classList.add('gone'); toggleHeygen(); return; }
   if (d.id === 'liveboard' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
-  if (d.id === 'liveboard' && (k === 'u' || k === 'U')) { loadBoard(true).then(() => go('liveboard', 0)); toast('Board refreshed from WorldMonitor'); return; }
+  if (d.id === 'liveboard' && (k === 'u' || k === 'U')) {
+    toast('Refreshing from WorldMonitor…');
+    loadBoard(true).then(async () => {
+      if (cur().id !== 'liveboard') return;
+      S.step = 0; updateHud();
+      await SC.liveboard.enter($('#s-liveboard'));
+      toast(LIVE.boardError ? `Refresh failed: ${LIVE.boardError}` : 'Board refreshed from WorldMonitor');
+    });
+    return;
+  }
   if (d.id === 'livecheck' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
   if (d.id === 'livecheck' && (k === 't' || k === 'T')) { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); openType(); return; }
   if (d.id === 'livecheck' && k === 'Backspace') { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); highlightPick(); return; }

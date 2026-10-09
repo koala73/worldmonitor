@@ -133,7 +133,8 @@ export async function* gradeHeadline(headline, { source, anchor }) {
   const article = story?.link ? await source.articleText(story.link) : null;
   const groundText = [...memberTitles, article ?? ''].join('\n');
   // "Stated by one publisher only" needs text from at least two publishers to mean anything.
-  const bySource = story ? [...story.bySource, ...(article ? [{ publisher: rated[0]?.name ?? story.primarySource, text: article }] : [])] : [];
+  // story.link is the best cluster's link: credit the article to that cluster's lead publisher.
+  const bySource = story ? [...story.bySource, ...(article ? [{ publisher: story.bySource[0]?.publisher ?? story.primarySource, text: article }] : [])] : [];
   const comparable = new Set(bySource.map((b) => b.publisher)).size >= 2;
   result.numbers = story
     ? { ...groundFigures(headline, groundText, comparable ? bySource : []), evidence: article ? 'article text + member headlines' : 'member headlines only' }
