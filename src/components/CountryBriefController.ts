@@ -70,7 +70,7 @@ export class CountryBriefController {
           : error instanceof SyntaxError || error instanceof ZodError ? 'invalid_response'
           : 'unknown_load_failure';
         console.warn('[CountryBriefController] section failed', { section: id, phase, category });
-      } catch { /* Diagnostics must not prevent the section failure notice. */ }
+      } catch {}
       this.snapshot.sections[id] = { state, reason };
       if (id !== 'stock') this.panel.setSectionFailure?.(id, state, reason);
       if (id === 'trade') this.panel.setSectionFailure?.('scenario', state, 'Trade exposure is unavailable, so this calculator cannot be loaded.');
