@@ -5584,9 +5584,6 @@
       "references": [
         {
           "path": "scripts/_bet-templates-markets.mjs"
-        },
-        {
-          "path": "scripts/seed-prediction-markets.mjs"
         }
       ]
     },
