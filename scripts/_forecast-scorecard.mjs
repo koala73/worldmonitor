@@ -62,17 +62,22 @@ export function generationOriginOf(entry) {
   return entry?.generationOrigin || 'unknown';
 }
 
-// The published-origin population: the headline skill set with bet_engine
-// held out regardless of the promotion flag. Calibration fits and evaluates
-// only this population (#7070).
 // Shadow origins the promotion flag has moved into publication. Promotion
 // (#5525 U14) is the only path; it moves bet_engine and nothing else.
 function promotedShadowOrigins(options) {
   return options.promoteBetEngine === true ? ['bet_engine'] : [];
 }
 
-// An entry users were shown: shadow bets are scored for evidence but never
-// published until promoted. Synthetic and unattributed rows were published.
+// Two populations both called "published" (#8990); keep them apart:
+// - Published forecasts (isPublishedEntry): every entry users were shown.
+//   Shadow bets are scored for evidence but never published until promoted;
+//   synthetic and unattributed rows were published. `totals`, `funnel` and
+//   `goForward` count this population.
+// - Attributable published forecasts (isPublishedOriginEntry): the headline
+//   skill set with bet_engine held out regardless of the promotion flag, so
+//   state_derived and unknown rows are out too. `corpus`, `publishedByDomain`,
+//   receipts, family outcomes and the calibration fit and evaluation (#7070)
+//   count this one.
 function isPublishedEntry(entry, options) {
   const origin = generationOriginOf(entry);
   return !SHADOW_GENERATION_ORIGINS.includes(origin) || promotedShadowOrigins(options).includes(origin);
@@ -148,6 +153,9 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     rollingWindowDays,
     methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. The ledger totals and the maturity funnel count published forecasts only: shadow bets, scored for evidence but never shown, are left out of them. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}${placeholderNote(placeholderCount)}${nowMs >= GO_FORWARD_SINCE_MS ? goForwardNote(goForward) : ''}`,
     totals: summarizeTotals(publishedEntries),
+    // Internal: every rolling-window entry, the seed-meta record count. The
+    // API, MCP and /accuracy/ select fields by name and leave it out.
+    ledgerEntries: entries.length,
     judgedLane: summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options),
     goForward,
     specOrigins: summarizeSpecOrigins(entries, options),

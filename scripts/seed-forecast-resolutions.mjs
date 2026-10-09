@@ -171,7 +171,10 @@ export function declareRecords(ledger) {
   return Object.keys(normalizeLedger(ledger)).length;
 }
 
+// A liveness count for health: every rolling-window entry, shadow bets
+// included, since `totals` counts published forecasts only (#8990).
 export function declareScorecardRecords(scorecard) {
+  if (Number.isInteger(scorecard?.ledgerEntries)) return scorecard.ledgerEntries;
   return Number.isInteger(scorecard?.totals?.entries) ? scorecard.totals.entries : 0;
 }
 

@@ -169,6 +169,8 @@ describe('getForecastScorecard backend status', () => {
           // The go-forward VOID-share cohort (#4930) reaches the public only
           // through the methodology sentence.
           goForward: { since: '2026-10-08', resolved: 4, void: 1, voidShare: 0.25, voidByReason: { all_judges_void: 1 } },
+          // The seed-meta record count (#8990), every origin included.
+          ledgerEntries: 7,
         },
       }),
     }), { status: 200 })) as typeof fetch;
@@ -180,6 +182,7 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(JSON.stringify(res).includes('archive_incomplete'), false);
     assert.equal(JSON.stringify(res).includes('goForward'), false);
     assert.equal(JSON.stringify(res).includes('all_judges_void'), false);
+    assert.equal(JSON.stringify(res).includes('ledgerEntries'), false);
   });
 
   it('the public RPC serializes only declared top-level cache fields', async () => {

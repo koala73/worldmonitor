@@ -654,8 +654,18 @@ describe('evaluation corpus: SLA, VOID by reason and latency across both lanes (
     const { generationOrigin: _origin, ...detectorCounts } = detector;
     const { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane } = corpus;
     assert.deepEqual(detectorCounts, { resolvedCount, resolvedWithinSlaCount, scoredWithinSlaCount, voidWithinSlaCount, resolvedLateCount, slaUnmeasurable, pendingPastSlaCount, voidByReason, byLane });
-    assert.equal(totals.resolved, resolvedCount, 'the totals count the published windows the corpus counts');
+    assert.equal(totals.resolved, resolvedCount, 'with only detector rows published, both populations agree');
     assert.equal(corpus.byGenerationOrigin.reduce((sum, row) => sum + row.resolvedCount, 0), totals.resolved + bets.resolvedCount, 'every resolved window is in one origin');
+  });
+
+  it('counts published synthetic rows in the totals but not in the attributable corpus (#8990)', () => {
+    const withSynthetic = { ...ledger, energy: live({ id: 's1', generationOrigin: 'state_derived', domain: 'energy', outcome: 'VOID', deadline: at(-5), resolvedAt: at(-4.5) }) };
+    const { corpus, totals } = computeScorecard(withSynthetic, NOW);
+    const base = computeScorecard(ledger, NOW);
+    assert.equal(totals.resolved, base.totals.resolved + 1, 'a published state-derived window counts in the totals');
+    assert.equal(totals.void, base.totals.void + 1);
+    assert.equal(corpus.resolvedCount, base.corpus.resolvedCount, 'the attributable corpus leaves it out');
+    assert.equal(totals.resolved - corpus.resolvedCount, 1);
   });
 
   it('reports VOID by reason across both lanes, keys sorted', () => {
@@ -1664,6 +1674,9 @@ describe('published ledger population in the docs (#8990)', () => {
       assert.match(text, /`totals` (and|和) `funnel`/, `${path} names both blocks`);
       assert.ok(text.includes('`schemaVersion` 3'), `${path} names schema 3`);
       assert.ok(text.includes('ledgerPopulation'), `${path} names the download field`);
+      for (const term of ['isPublishedEntry', 'isPublishedOriginEntry', 'vsMarketSkill', '2026-10-08 resolver run']) {
+        assert.ok(text.includes(term) || (term === '2026-10-08 resolver run' && text.includes('2026-10-08 结算运行')), `${path} names ${term}`);
+      }
     }
   });
 });

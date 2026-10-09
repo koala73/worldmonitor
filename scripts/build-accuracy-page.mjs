@@ -153,6 +153,13 @@ const POOLED_POPULATION = 'all-scored-entries';
 // `funnel` (#8990). The page reads a frozen capture, so it names the population
 // that capture carries.
 const PUBLISHED_LEDGER_SCHEMA = 3;
+// Population labels (#8990). `totals`, `funnel` and the go-forward share count
+// published forecasts (isPublishedEntry); receipts, domain rows and the
+// headline count the narrower attributable published forecasts
+// (isPublishedOriginEntry); calibration, overall and the market comparison
+// pool every origin.
+const POOLED_LABEL = 'of every origin, unpublished shadow bets included';
+const ATTRIBUTABLE_PUBLISHED = 'attributable published forecasts';
 const ledgerIsPublished = (scorecard) => isFiniteNumber(scorecard?.schemaVersion) && scorecard.schemaVersion >= PUBLISHED_LEDGER_SCHEMA;
 const BRIER_DELTA_CONVENTION = 'The published delta is the market Brier minus the forecast Brier, and lower is better, so a negative delta means the market scored better.';
 
@@ -688,7 +695,7 @@ function headlineTiles(scorecard, intervals, escapeHtml) {
     [
       'Brier score, every scored entry',
       isFiniteNumber(overall?.brier) ? formatScore(overall.brier) : 'Not measurable',
-      `${formatCount(overall?.count ?? 0)} scored forecasts, ${scoreIntervalText(intervals.overall)}`,
+      `${formatCount(overall?.count ?? 0)} scored forecasts ${POOLED_LABEL}, ${scoreIntervalText(intervals.overall)}`,
     ],
     [
       ledgerIsPublished(scorecard) ? 'Scored published forecasts' : 'Scored entries',
@@ -894,7 +901,7 @@ function receiptsSection(scorecard, escapeHtml, unverified = false) {
   // excluded origins resolved look the same; name both rather than guess.
   if (receipts.length === 0 && Number(scorecard.totals?.resolved) > 0) {
     return `${heading}
-      <p>This capture carries no receipts: it predates them, or no published forecast resolved in the window.</p>`;
+      <p>This capture carries no receipts: it predates them, or no attributable published forecast (synthetic and unattributed origins left out) resolved in the window.</p>`;
   }
   const rows = receipts.filter((receipt) => (
     isPlainObject(receipt) && Object.hasOwn(RECEIPT_OUTCOME_LABELS, receipt.outcome) && typeof receipt.question === 'string'
@@ -905,7 +912,7 @@ function receiptsSection(scorecard, escapeHtml, unverified = false) {
   }
   return `${heading}
       <div class="table-scroll"><table data-forecast-receipts${unverified ? ' data-receipts-unverified' : ''}>
-        <caption>${unverified ? `${escapeHtml(UNVERIFIED_RECEIPTS)} ` : ''}The ${escapeHtml(formatCount(rows.length))} most recently resolved published forecasts, newest first, leaving out experimental, synthetic and unattributed origins, voids included. ${escapeHtml(unverified ? UNVERIFIED_SCORED_CHANCE : SCORED_CHANCE)} A hard forecast is settled by reading a World Monitor data feed; a judged one by AI judges reading archived news, and the linked item is one they cited. Dates are UTC.</caption>
+        <caption>${unverified ? `${escapeHtml(UNVERIFIED_RECEIPTS)} ` : ''}The ${escapeHtml(formatCount(rows.length))} most recently resolved ${ATTRIBUTABLE_PUBLISHED}, newest first, leaving out experimental, synthetic and unattributed origins, voids included. ${escapeHtml(unverified ? UNVERIFIED_SCORED_CHANCE : SCORED_CHANCE)} A hard forecast is settled by reading a World Monitor data feed; a judged one by AI judges reading archived news, and the linked item is one they cited. Dates are UTC.</caption>
         <thead><tr><th scope="col">Forecast</th><th scope="col">Made</th><th scope="col">${unverified ? 'Chance scored' : 'Chance given'}</th><th scope="col">Outcome</th><th scope="col">Resolved</th><th scope="col">How it was settled</th></tr></thead>
         <tbody>
 ${rows.map((receipt) => `          <tr data-receipt-outcome="${escapeHtml(receipt.outcome)}"><th scope="row">${escapeHtml(receipt.question)}</th><td>${escapeHtml(utcDate(receipt.forecastAt))}</td><td><span data-probability-band>${escapeHtml(isFiniteNumber(receipt.probability) ? `${Number((receipt.probability * 100).toFixed(1))}%` : 'Not recorded')}</span></td><td>${escapeHtml(RECEIPT_OUTCOME_LABELS[receipt.outcome])}</td><td>${escapeHtml(utcDate(receipt.resolvedAt))}</td><td>${receiptSourceHtml(receipt, escapeHtml)}</td></tr>`).join('\n')}
@@ -918,7 +925,7 @@ function calibrationTable(scorecard, intervals, escapeHtml) {
   const populated = buckets.filter((bucket) => Number(bucket.count) > 0);
   const scored = scorecard.overall?.count ?? scorecard.totals?.scored ?? 0;
   return `      <div class="table-scroll"><table data-calibration>
-        <caption>Calibration by predicted probability, computed over all ${escapeHtml(formatCount(scored))} scored entries rather than the narrower headline cohort. Average predicted and Brier are probabilities, not rates. The 95% interval is a Wilson interval on how often the bucket's forecasts happened; a narrow bucket has a wide one. Buckets that scored nothing are omitted rather than shown as zero.</caption>
+        <caption>Calibration by predicted probability, computed over all ${escapeHtml(formatCount(scored))} scored forecasts ${POOLED_LABEL}, rather than the narrower headline cohort. Average predicted and Brier are probabilities, not rates. The 95% interval is a Wilson interval on how often the bucket's forecasts happened; a narrow bucket has a wide one. Buckets that scored nothing are omitted rather than shown as zero.</caption>
         <thead><tr><th scope="col">Predicted probability</th><th scope="col">Forecasts</th><th scope="col">Average predicted</th><th scope="col">Actually happened</th><th scope="col">95% interval</th><th scope="col">Brier</th></tr></thead>
         <tbody>
 ${populated.map((bucket) => `          <tr data-calibration-bucket="${escapeHtml(bucket.bucket)}"><th scope="row" data-probability-band>${escapeHtml(probabilityBand(bucket))}</th><td>${escapeHtml(formatCount(bucket.count))}</td><td>${scoreCell(bucket.predictedMean, escapeHtml)}</td><td>${escapeHtml(isFiniteNumber(bucket.realizedRate) ? rateOf(bucket.realizedRate, bucket.count, 'forecasts') : INSUFFICIENT_SAMPLE)}</td><td>${intervalHtml(intervals.calibration[bucket.bucket], escapeHtml)}</td><td>${scoreCell(bucket.brier, escapeHtml)}</td></tr>`).join('\n')}
@@ -976,7 +983,7 @@ function domainSection(scorecard, escapeHtml) {
     return '      <p>No published forecast has been graded in any domain yet.</p>';
   }
   return `      <div class="table-scroll"><table data-by-domain>
-        <caption>Accuracy by forecast domain for published forecasts only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its scores once its graded forecasts come from ${escapeHtml(SKILL_RULE)}, and reads Not yet measured below that. The actual-rate Brier is what always forecasting how often the domain's forecasts actually came true would have scored, p(1-p). The skill score compares the two: ${escapeHtml(SKILL_SCALE)}. Per-domain skill scores carry no interval yet, so the table does not say which domains beat that rate.</caption>
+        <caption>Accuracy by forecast domain for ${ATTRIBUTABLE_PUBLISHED} only: synthetic, unattributed and bet_engine entries are always left out, the same population as the forecast-card badges. A domain shows its scores once its graded forecasts come from ${escapeHtml(SKILL_RULE)}, and reads Not yet measured below that. The actual-rate Brier is what always forecasting how often the domain's forecasts actually came true would have scored, p(1-p). The skill score compares the two: ${escapeHtml(SKILL_SCALE)}. Per-domain skill scores carry no interval yet, so the table does not say which domains beat that rate.</caption>
         <thead><tr><th scope="col">Domain</th><th scope="col">Graded forecasts</th><th scope="col">Skill vs actual rate</th><th scope="col">Brier</th><th scope="col">Actual-rate Brier</th></tr></thead>
         <tbody>
 ${rows.map((row) => {
@@ -1020,7 +1027,7 @@ function marketSection(vsMarketSkill, escapeHtml) {
       ? 'the forecast scored better'
       : 'the two tied';
   return `      <h2>Against prediction markets</h2>
-      <p>Measured over every scored entry that carried a liquid prediction market's price, not over the narrower headline cohort. ${escapeHtml(MARKET_COMPARISON_SCOPE)} On ${escapeHtml(formatCount(vsMarketSkill.count))} such resolved entries the forecast Brier was ${escapeHtml(formatScore(vsMarketSkill.forecastBrier))} and the market Brier was ${escapeHtml(formatScore(vsMarketSkill.marketBrier))}. ${escapeHtml(BRIER_DELTA_CONVENTION)} Here the delta is ${escapeHtml(formatScore(delta))}, so on this sample ${escapeHtml(verdict)}.</p>`;
+      <p>Measured over every scored forecast ${POOLED_LABEL}, that carried a liquid prediction market's price, not over the narrower headline cohort. ${escapeHtml(MARKET_COMPARISON_SCOPE)} On ${escapeHtml(formatCount(vsMarketSkill.count))} such resolved entries the forecast Brier was ${escapeHtml(formatScore(vsMarketSkill.forecastBrier))} and the market Brier was ${escapeHtml(formatScore(vsMarketSkill.marketBrier))}. ${escapeHtml(BRIER_DELTA_CONVENTION)} Here the delta is ${escapeHtml(formatScore(delta))}, so on this sample ${escapeHtml(verdict)}.</p>`;
 }
 
 const NOT_YET_MEASURABLE = 'Not yet measurable';

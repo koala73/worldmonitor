@@ -242,7 +242,7 @@ VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_
 - 一个账本窗口会并入同一问题之后的截止时间。被并入的 `<id>@<deadline>` 计为已登记，但只按并入它的窗口的截止时间评分一次，从不按其自身的截止时间评分。`registeredLedgerWindows` 统计已登记窗口背后的账本窗口，因此小于 `ledgerRegisteredCount`。
 - `unregisteredByReason` 给出每个缺口的原因：`no_resolution_spec`、`withheld_at_emission`（提取闸门在发布时将该预测排除在评分之外，计入 `withheldAtEmission`）、`base_rate_placeholder`（只以种子器的基础概率占位值发布的影子押注，不会打开窗口）、`no_deadline`、`deadline_passed_before_registration`（截止时间早于该次发布之后的第一次结算器运行，结算器有意跳过）或 `unregistered`（结算器有机会打开该窗口却没有打开）。
 
-其他字段覆盖成绩单评分的滚动窗口（`slaScope: 'rolling_window'`），不含重复、暂停发布和时间范围窗口。顶层计数是已发布来源群组（`cohort: 'published_origin'`），即头条群体。`byGenerationOrigin` 按来源重复每项计数，使影子押注和合成记录与已发布数字分开。
+其他字段覆盖成绩单评分的滚动窗口（`slaScope: 'rolling_window'`），不含重复、暂停发布和时间范围窗口。顶层计数是可归属的已发布预测（`cohort: 'published_origin'`），即头条群体；它不含结算台账总计会计入的状态派生和来源不明的行。`byGenerationOrigin` 按来源重复每项计数，使影子押注和合成记录与已发布数字分开。
 
 - `resolvedWithinSlaCount`、`resolvedLateCount` 和 `slaUnmeasurable` 按窗口上记录的服务时限，划分每个已结算窗口（包括 VOID）。在该记录出现之前打开的窗口按其规范取时限。`scoredWithinSlaCount` 和 `voidWithinSlaCount` 拆分按时结算的窗口，因为一个立即作废一切的通道会让一切都按时结算。`pendingPastSlaCount` 统计已超过服务时限的未结窗口。`byLane` 把每项计数拆分为硬性通道和裁判通道。
 - `voidByReason` 按原因统计两个通道的 VOID。`judgedLane.voidByReason` 只覆盖裁判通道。
@@ -254,7 +254,7 @@ VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_
 - `byDomain` 和 `byGenerationOrigin` 给出每组的 Brier 与对数评分及其区间、该组的族数和小样本标记。与公开的分组一样，它们合并所有来源。
 - `vsMarket` 在已发布来源的群组上比较预测与市场。`wmMinusMarketBrier` 是预测 Brier 减去市场 Brier，预测更好时为负值。其配对区间让每个窗口的 2 个损失保持在一起。公开的 `vsMarketSkill` 仍合并所有来源。
 
-`totals` 和 `funnel` 只统计已发布预测（issue #8990，自 `schemaVersion` 3 起）。未晋升的影子押注（`bet_engine`）会为积累证据而评分，但从不展示，因此这两个数据块都不计入它们。已晋升的押注会发布，因此计入，与头条一致。状态派生预测和来源不明（`unknown`）的预测曾展示给用户，因此计入。头条技能评分排除它们另有原因：它们不是可归属的模型预测。影子押注仍在 `byGenerationOrigin` 和 `betEngine` 切片中单独报告，`overall` 和 `calibration` 仍合并所有来源。已结算的押注几乎从不判为 VOID，因此把它们合并进来会掩盖已发布预测的 VOID 率。以 2026-10-08 结算运行写入的账本计算，所有来源的滚动 VOID 率为 71.1%（501 条中 356 条），只算已发布预测则为 94.9%（375 条中 356 条）。方法说明会写明统计范围。`/accuracy/` 根据快照的 `schemaVersion` 在总计表和漏斗表的说明以及结论中写明统计范围，因此变更之前截取的快照仍会注明合并了所有来源；数据集下载在 `ledgerPopulation` 中记录该范围。
+`totals` 和 `funnel` 只统计已发布预测（issue #8990，自 `schemaVersion` 3 起）。未晋升的影子押注（`bet_engine`）会为积累证据而评分，但从不展示，因此这两个数据块都不计入它们。已晋升的押注会发布，因此计入，与头条一致。状态派生预测和来源不明（`unknown`）的预测曾展示给用户，因此计入。成绩单使用 2 个都称为“已发布”的统计范围。已发布预测（`isPublishedEntry`）指展示给用户的全部预测：`totals`、`funnel` 和 `goForward` 统计这一范围。可归属的已发布预测（`isPublishedOriginEntry`）还会排除状态派生和来源不明的行，因为它们不是可归属的模型预测：头条技能评分、`publishedByDomain`、回执、`familyOutcomes`、`corpus` 和校准拟合统计这一范围。影子押注仍在 `byGenerationOrigin` 和 `betEngine` 切片中单独报告，`overall`、`calibration` 和 `vsMarketSkill` 仍合并所有来源。`/accuracy/` 为每个合并数字标注“所有来源，包括未发布的影子押注”。已结算的押注几乎从不判为 VOID，因此把它们合并进来会掩盖已发布预测的 VOID 率。以 2026-10-08 结算运行写入的账本计算，所有来源的滚动 VOID 率为 71.1%（501 条中 356 条），只算已发布预测为 94.9%（375 条中 356 条）。方法说明会写明统计范围。`/accuracy/` 根据快照的 `schemaVersion` 在总计表和漏斗表的说明以及结论中写明统计范围，因此变更之前截取的快照仍会注明合并了所有来源；数据集下载在 `ledgerPopulation` 中记录该范围。
 
 `totals.publicationCoverage` 已弃用。它用已评分窗口数除以所有账本条目（包括未到期的条目），因此既不衡量发布，也不衡量覆盖。成绩单仍输出该字段，以免 API 和 MCP 读取方出错。`/accuracy/` 根据计数自行计算同一个账本已评分占比（按该字段原来的方式取整），并附上 95% Wilson 区间。其结论中的实际比率（头条预测和全部已评分预测成真的频率）也附有区间。每个区间只需要旁边列出的 2 个计数，因此都不占用公开契约的任何字节。
 
