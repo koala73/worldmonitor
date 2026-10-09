@@ -726,6 +726,52 @@ describe('crawlable content corpus deployment contracts', () => {
     }
   });
 
+  it('builds the prediction policy merge on main and preview while skipping unrelated scripts and tests', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-policy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const actual = [];
+      const expected = [];
+      for (const { paths, status } of [
+        { paths: ['scripts/shared/prediction-country-language.json', 'tests/prediction-country-index.test.mjs', 'tests/prediction-country-markets-pools.test.mts'], status: 1 },
+        { paths: ['scripts/seed-unrelated.mjs'], status: 0 },
+        { paths: ['tests/unrelated.test.mjs'], status: 0 },
+      ]) {
+        const previous = git('rev-parse', 'HEAD').trim();
+        for (const path of paths) {
+          mkdirSync(dirname(join(fixture, path)), { recursive: true });
+          writeFileSync(join(fixture, path), `${path}\n`);
+        }
+        git('add', '.');
+        git('commit', '-qm', paths.join(', '));
+        git('update-ref', 'refs/remotes/origin/main', previous);
+        for (const ref of ['main', 'feature/prediction-policy']) {
+          const result = spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: ref, VERCEL_GIT_PREVIOUS_SHA: previous },
+            encoding: 'utf8',
+          });
+          assert.ifError(result.error);
+          actual.push({ paths, ref, status: result.status });
+          expected.push({ paths, ref, status });
+        }
+      }
+      assert.deepEqual(actual, expected);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it('keeps corpus inputs available in Docker build contexts', () => {
     const markdownIgnore = dockerignoreSource.indexOf('*.md');
     const changelogInclude = dockerignoreSource.indexOf('!CHANGELOG.md');
