@@ -246,8 +246,12 @@ describe('fetchCountryMarkets uses the producer country index', () => {
       ['Will Norwegians approve the referendum?', true],
       ['Will Norwegian Cruise expand service to Norway?', true],
       ['Will Norwegian Cruise comply with Norwegian government rules?', true],
+      ['Will Norwegian cruise tourism exceed 2025 levels?', true],
+      ['Will a Norwegian cruise ship enter Russian waters?', true],
     ] as const;
 
+    const actual: string[][] = [];
+    const expectedTitles: string[][] = [];
     for (const rpcDataAvailable of [false, undefined]) {
       for (const [title, expected] of cases) {
         globalThis.__wmCountryMarketsTestState = {
@@ -263,9 +267,11 @@ describe('fetchCountryMarkets uses the producer country index', () => {
         };
         const service = await loadPredictionService();
         const out = await service.fetchCountryMarkets('Norway', 'NO');
-        assert.deepEqual(out.map((entry: { title: string }) => entry.title), expected ? [title] : [], title);
+        actual.push(out.map((entry: { title: string }) => entry.title));
+        expectedTitles.push(expected ? [title] : []);
       }
     }
+    assert.deepEqual(actual, expectedTitles);
   });
 
   it('keeps excluded demonym phrases out of the bootstrap fallback', async () => {

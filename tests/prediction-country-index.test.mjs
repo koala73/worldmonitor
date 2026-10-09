@@ -255,6 +255,8 @@ describe('Norway brand exclusions', () => {
     ['Will Norwegians approve the referendum?', true],
     ['Will Norwegian Cruise expand service to Norway?', true],
     ['Will Norwegian Cruise comply with Norwegian government rules?', true],
+    ['Will Norwegian cruise tourism exceed 2025 levels?', true],
+    ['Will a Norwegian cruise ship enter Russian waters?', true],
   ];
 
   for (const [title, expected] of cases) {
