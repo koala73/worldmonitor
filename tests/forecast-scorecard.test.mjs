@@ -598,7 +598,7 @@ describe('evaluation corpus: SLA, VOID by reason and latency across both lanes (
     // Due 6h from now with the grace, 12h ago without it.
     judgedPendingInGrace: { id: 'j4', generationOrigin: 'detector', status: 'pending-judge', spec: { ...judged, deadline: at(-2.5) } },
     // A late shadow bet stays out of the published counts.
-    shadowLate: live({ id: 'b1', generationOrigin: 'bet_engine', outcome: 'VOID', deadline: at(-10), resolvedAt: at(-2), evidence: { reason: 'late_read' } }),
+    shadowLate: live({ id: 'b1', generationOrigin: 'bet_engine', probabilitySource: 'ensemble', outcome: 'VOID', deadline: at(-10), resolvedAt: at(-2), evidence: { reason: 'late_read' } }),
   };
 
   it('holds each hard window to its own feed\'s settlement bound plus one resolver cycle', () => {
