@@ -82,6 +82,17 @@ describe('notification country-scope forwarding contract', () => {
     );
   });
 
+  // WORLDMONITOR-143: set-alert-rules previously rethrew INCOMPATIBLE_DELIVERY
+  // into the outer catch as a generic 500. Mirror set-notification-config so
+  // the edge can forward a structured 400 the client can render.
+  it('set-alert-rules translates INCOMPATIBLE_DELIVERY to a 400 with message', () => {
+    assert.match(
+      convexHttpSrc,
+      /action === "set-alert-rules"[\s\S]*?try \{[\s\S]*?setAlertRulesForUser[\s\S]*?\} catch \(err: unknown\) \{[\s\S]*?INCOMPATIBLE_DELIVERY[\s\S]*?parseConvexErrorData[\s\S]*?status: 400/,
+      'set-alert-rules must catch and translate INCOMPATIBLE_DELIVERY to a 400',
+    );
+  });
+
   // Review round 2: the Convex-layer 400 is only useful if the public edge
   // forwards it. The set-alert-rules edge handler previously collapsed every
   // non-ok relay response into a generic 500 — mirror set-notification-config.

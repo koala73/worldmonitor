@@ -618,6 +618,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       function fireForgetSave(p: Promise<unknown>, label: string): void {
         void p.catch((err) => {
           if (signal.aborted) return;
+          // Legacy set-alert-rules can still hit INCOMPATIBLE_DELIVERY (e.g.
+          // sensitivity save against an existing realtime row). Surface the
+          // server message on the sensitivity hint rather than only logging.
+          if (err instanceof IncompatibleDeliveryError) {
+            const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
+            if (hint) {
+              hint.style.display = '';
+              hint.textContent = err.message;
+            }
+            return;
+          }
           console.warn(`[notifications] ${label} failed (not saved):`, err);
         });
       }
