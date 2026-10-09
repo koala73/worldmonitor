@@ -91,7 +91,7 @@ if (liveavatar.apiKey()) {
       await liveavatar.createToken();
       pass(`LiveAvatar accepted the session request${liveavatar.sandbox() ? ' (sandbox: ~1 min sessions)' : ''}`);
     } catch (error) {
-      fail(`${error.message}. Fix the .env values (image avatars need LIVEAVATAR_VOICE_ID).`);
+      fail(`LiveAvatar: ${error.message}${/HTTP 4\d\d/.test(error.message) ? '. Fix the .env values (image avatars need LIVEAVATAR_VOICE_ID).' : ' (network: is api.liveavatar.com reachable?)'}`);
     }
   }
 } else {
