@@ -263,7 +263,7 @@ describe('fetchCountryMarkets uses the producer country index', () => {
         };
         const service = await loadPredictionService();
         const out = await service.fetchCountryMarkets('Norway', 'NO');
-        assert.deepEqual(out.map((m: { title: string }) => m.title), expected ? [title] : [], title);
+        assert.deepEqual(out.map((entry: { title: string }) => entry.title), expected ? [title] : [], title);
       }
     }
   });
