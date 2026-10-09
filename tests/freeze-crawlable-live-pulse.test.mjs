@@ -825,7 +825,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.equal(mcp[0].href, MCP_CANONICAL_ENDPOINT);
     assert.equal(isMcpAliasRequest(mcpUrl.host, mcpUrl.pathname), false);
     assert.equal(isMcpAliasRequest('www.worldmonitor.app', '/mcp'), true, 'the guard can fail');
-    assert.ok(!mcp[0].href.startsWith(STAGING_BASE), 'never the REST API base');
+    assert.notEqual(mcpUrl.origin, new URL(STAGING_BASE).origin, 'never the REST API base');
     assert.equal(mcp[0].options.headers.Origin, 'https://worldmonitor.app');
     assert.equal(mcp[0].options.method, 'POST');
     assert.equal(mcp[0].options.headers['X-WorldMonitor-Key'], 'test-key');
