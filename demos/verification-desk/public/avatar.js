@@ -51,7 +51,11 @@ async function connect() {
       resolve();
     });
   });
-  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speakDone?.(); });
+  // LiveAvatar speaks the context's opening line when a session starts; the
+  // desk's own lines wait for it, so they don't end on its speak_ended.
+  let openingDone;
+  const opening = new Promise((resolve) => { openingDone = resolve; });
+  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { openingDone(); speakDone?.(); });
   s.on(SessionEvent.SESSION_DISCONNECTED, () => {
     if (session !== s) return;
     session = null;
@@ -63,6 +67,7 @@ async function connect() {
   session = s;
   await s.start();
   await streamReady;
+  await Promise.race([opening, new Promise((r) => setTimeout(r, 5_000))]);
   setReady(true);
 }
 

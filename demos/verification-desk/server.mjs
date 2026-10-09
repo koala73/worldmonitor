@@ -13,6 +13,7 @@ import { gradeHeadline } from './lib/grade.mjs';
 import { buildBoard } from './lib/board.mjs';
 import { findRevealCandidates } from './lib/reveal.mjs';
 import { coverage, credibilityBand, sourceCredibility } from './lib/wm.mjs';
+import * as liveavatar from './lib/liveavatar.mjs';
 
 loadEnv();
 const PORT = Number(process.env.PORT || 4317);
@@ -93,40 +94,6 @@ async function board({ force = false } = {}) {
   return value;
 }
 
-// HeyGen LiveAvatar: the API key stays on this server; the browser gets a
-// one-session token. FULL mode with avatar_persona; LIVEAVATAR_TOKEN_BODY
-// (JSON) replaces the request body if HeyGen's API wants something else.
-async function avatarToken() {
-  const key = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
-  const avatarId = process.env.LIVEAVATAR_AVATAR_ID;
-  if (!key || !avatarId) throw new Error('Set LIVEAVATAR_API_KEY and LIVEAVATAR_AVATAR_ID in .env');
-  const body = process.env.LIVEAVATAR_TOKEN_BODY
-    ? JSON.parse(process.env.LIVEAVATAR_TOKEN_BODY)
-    : {
-      mode: process.env.LIVEAVATAR_MODE || 'FULL',
-      avatar_id: avatarId,
-      ...(process.env.LIVEAVATAR_VOICE_ID || process.env.LIVEAVATAR_CONTEXT_ID
-        ? { avatar_persona: {
-          ...(process.env.LIVEAVATAR_VOICE_ID ? { voice_id: process.env.LIVEAVATAR_VOICE_ID } : {}),
-          ...(process.env.LIVEAVATAR_CONTEXT_ID ? { context_id: process.env.LIVEAVATAR_CONTEXT_ID } : {}),
-          language: process.env.LIVEAVATAR_LANGUAGE || 'en',
-        } }
-        : {}),
-    };
-  const res = await fetch(`${process.env.LIVEAVATAR_API_URL || 'https://api.liveavatar.com'}/v1/sessions/token`, {
-    method: 'POST',
-    headers: { 'X-Api-Key': key, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'WorldMonitor-VerificationDesk/1.0' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const text = await res.text();
-  let payload = {};
-  try { payload = JSON.parse(text); } catch { /* keep text for the error */ }
-  const token = payload?.data?.session_token ?? payload?.data?.token ?? payload?.session_token ?? payload?.token;
-  if (!res.ok || !token) throw new Error(`LiveAvatar token HTTP ${res.status}: ${text.slice(0, 300)}`);
-  return { session_token: token, session_id: payload?.data?.session_id ?? null };
-}
-
 async function reveal() {
   const pinnedPath = path.join(DATA_DIR, 'reveal.json');
   // data/reveal.json (pinned locally) wins over the committed snapshots/reveal.json.
@@ -176,7 +143,7 @@ const server = createServer(async (req, res) => {
         anchor: desk.anchor.enabled ? desk.anchor.model : null,
         tts: process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID ? 'elevenlabs' : 'browser',
         backdropUrl: process.env.DESK_BACKDROP_URL ?? 'https://worldmonitor.app/embed?theme=dark',
-        avatar: Boolean((process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY) && process.env.LIVEAVATAR_AVATAR_ID),
+        avatar: liveavatar.configured(),
         boardRefreshMin: BOARD_REFRESH_MS / 60_000,
         stepDelayMs: Number(process.env.DESK_STEP_DELAY_MS || 1400),
       });
@@ -207,7 +174,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/board') return sendJson(res, 200, await board({ force: url.searchParams.get('refresh') === '1' }));
     if (url.pathname === '/api/avatar/token' && req.method === 'POST') {
       try {
-        return sendJson(res, 200, await avatarToken());
+        return sendJson(res, 200, await liveavatar.createToken());
       } catch (error) {
         return sendJson(res, 502, { error: error.message });
       }
@@ -244,5 +211,5 @@ server.listen(PORT, () => {
   console.log(`  source: ${desk.source.kind}${desk.offline ? ' (committed snapshots, offline)' : ''}`);
   console.log(`  anchor: ${desk.anchor.enabled ? desk.anchor.model : 'template voice (no ANTHROPIC_API_KEY)'}`);
   console.log(`  voice:  ${process.env.ELEVENLABS_API_KEY ? 'ElevenLabs' : 'browser speech synthesis'}`);
-  console.log(`  avatar: ${(process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY) && process.env.LIVEAVATAR_AVATAR_ID ? 'HeyGen LiveAvatar (press A to switch with the globe)' : 'globe only (no LiveAvatar key)'}`);
+  console.log(`  avatar: ${liveavatar.configured() ? 'HeyGen LiveAvatar (press A to switch with the globe)' : 'globe only (no LiveAvatar key)'}`);
 });

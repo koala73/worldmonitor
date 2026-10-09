@@ -8,6 +8,7 @@ import { ARCHIVE_DIR, DATA_DIR, loadEnv, ROOT } from '../lib/config.mjs';
 import { Anchor } from '../lib/anchor.mjs';
 import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
 import path from 'node:path';
+import * as liveavatar from '../lib/liveavatar.mjs';
 
 loadEnv();
 let failed = false;
@@ -70,27 +71,31 @@ if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
   warn('ElevenLabs not configured: the browser voice will speak (use Chrome or Edge for the best voice).');
 }
 
-const avatarKey = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
-if (avatarKey && process.env.LIVEAVATAR_AVATAR_ID) {
-  // Creates a session token without starting a session: proves the key, avatar and body are accepted.
-  try {
-    const res = await fetch(`${process.env.LIVEAVATAR_API_URL || 'https://api.liveavatar.com'}/v1/sessions/token`, {
-      method: 'POST',
-      headers: { 'X-Api-Key': avatarKey, 'Content-Type': 'application/json' },
-      body: process.env.LIVEAVATAR_TOKEN_BODY || JSON.stringify({
-        mode: process.env.LIVEAVATAR_MODE || 'FULL',
-        avatar_id: process.env.LIVEAVATAR_AVATAR_ID,
-        ...(process.env.LIVEAVATAR_VOICE_ID ? { avatar_persona: { voice_id: process.env.LIVEAVATAR_VOICE_ID, ...(process.env.LIVEAVATAR_CONTEXT_ID ? { context_id: process.env.LIVEAVATAR_CONTEXT_ID } : {}), language: process.env.LIVEAVATAR_LANGUAGE || 'en' } } : {}),
-      }),
-    });
-    const text = await res.text();
-    if (res.ok && /token/.test(text)) pass('HeyGen LiveAvatar accepted the session request');
-    else fail(`HeyGen LiveAvatar HTTP ${res.status}: ${text.slice(0, 300)}. Fix the .env values or set LIVEAVATAR_TOKEN_BODY from their docs.`);
-  } catch (error) {
-    fail(`HeyGen LiveAvatar: ${error.message}`);
+if (liveavatar.apiKey()) {
+  // Lists avatars and voices, makes sure the context exists, and creates a
+  // session token without starting a session (no credits used).
+  for (const kind of ['avatars', 'voices']) {
+    try {
+      const rows = await liveavatar.list(kind);
+      pass(`LiveAvatar ${kind}: ${rows.length} available${rows.length ? `, e.g. ${rows.slice(0, 5).map((r) => `${r.name || '?'}${r.type ? ` (${r.type})` : ''} = ${r.id}`).join('; ')}` : ''}`);
+    } catch (error) {
+      fail(`LiveAvatar ${kind}: ${error.message}${/HTTP 40[13]/.test(error.message) ? '. Is this a LiveAvatar key (app.liveavatar.com/developers)?' : ''}`);
+    }
+  }
+  if (!liveavatar.avatarId()) {
+    warn('Set LIVEAVATAR_AVATAR_ID to one of the avatars above (or LIVEAVATAR_SANDBOX=1 to try the free sandbox avatar).');
+  } else {
+    try {
+      const context = await liveavatar.ensureContext();
+      pass(`LiveAvatar context ${context.id} (${context.from})`);
+      await liveavatar.createToken();
+      pass(`LiveAvatar accepted the session request${liveavatar.sandbox() ? ' (sandbox: ~1 min sessions)' : ''}`);
+    } catch (error) {
+      fail(`${error.message}. Fix the .env values (image avatars need LIVEAVATAR_VOICE_ID).`);
+    }
   }
 } else {
-  warn('No LiveAvatar key/avatar: the globe + voice will present (press A does nothing).');
+  warn('No LiveAvatar key: the globe + voice will present (the avatar key does nothing).');
 }
 
 const snaps = existsSync(ARCHIVE_DIR) ? readdirSync(ARCHIVE_DIR).filter((f) => f.endsWith('.json')).sort() : [];

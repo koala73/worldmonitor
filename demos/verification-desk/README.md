@@ -59,7 +59,13 @@ npm start            # live WorldMonitor data
 | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | Human voice for the globe | The browser's built-in voice |
 | `LIVEAVATAR_API_KEY` + `LIVEAVATAR_AVATAR_ID` + `LIVEAVATAR_VOICE_ID` | HeyGen talking head that says the anchor's exact lines | The globe |
 
-**HeyGen LiveAvatar.** HeyGen's real-time avatars are a separate product, [LiveAvatar](https://www.liveavatar.com), with its own key and credits, separate from a HeyGen video API plan. Create an avatar and pick a voice there, copy the avatar id and voice id into `.env`, and run `npm run check`: it sends a real session request and prints LiveAvatar's exact answer. If their API wants a different body, paste it into `LIVEAVATAR_TOKEN_BODY`. The avatar uses FULL mode and `repeat`, so it says the desk's lines word for word. The microphone stays muted, so the avatar never improvises. If the session drops (LiveAvatar may cap sessions at a few minutes), it reconnects by itself. If it can't, the desk falls back to the globe and says so on screen. Press **A** to switch by hand at any time; switching to the globe closes the session so it stops using credits.
+**HeyGen LiveAvatar.** HeyGen's real-time avatars are a separate product, [LiveAvatar](https://www.liveavatar.com), with its own key from app.liveavatar.com/developers and its own credits (FULL mode: 2 credits a minute). A HeyGen video API key (`sk_V2_hgu…`) is a different product and may be refused. The integration follows LiveAvatar's own guide ([liveavatar-agent-skills](https://github.com/heygen-com/liveavatar-agent-skills), FULL mode):
+
+1. Put the key in `.env` and run `npm run check`. It lists your avatar and voice ids.
+2. Set `LIVEAVATAR_AVATAR_ID`, plus `LIVEAVATAR_VOICE_ID` for an image avatar, and run `npm run check` again. It creates the session context (cached in `data/liveavatar-context.json`; without a context LiveAvatar's avatar is silent) and a session token, and prints LiveAvatar's exact answer.
+3. `LIVEAVATAR_SANDBOX=1` tries LiveAvatar's free sandbox avatar (about one-minute sessions) without spending credits.
+
+The avatar says "WorldMonitor desk. Live." when it connects, then only the desk's lines, word for word (`repeat`). The microphone stays muted, so it never improvises. Sessions time out after 5 minutes without keep-alive; the SDK sends keep-alives, and if a session drops anyway the desk reconnects. If it can't, the desk falls back to the globe. Press **G** in the deck (**A** on `/desk`) to switch by hand; switching to the globe closes the session so it stops using credits.
 
 **WorldMonitor allowance.** The plan this was built on has 50 MCP calls a day. A show uses roughly 2 per board refresh and up to 3 per checked headline. `npm run check` prints what's left. `npm run snapshot:loop` takes a snapshot every 2 hours (3 calls each); stop it before the show if the allowance is tight.
 
@@ -111,7 +117,7 @@ WorldMonitor's corroboration states describe coverage, not accuracy. The anchor 
 ### If things break
 
 - **Venue Wi-Fi drops:** the board, recap and reveal replay from `data/cache/` (last good copy) and the snapshot. A new headline needs the network; the desk then says *Sources unreachable*, never "nobody carried it".
-- **HeyGen fails or freezes:** press **A**. The globe and voice take over mid-sentence.
+- **HeyGen fails or freezes:** press **G** in the deck (**A** on `/desk`). The globe and voice take over mid-sentence.
 - **No Anthropic key, or the API is slow:** the template voice speaks the same facts.
 - **The live map backdrop is slow:** set `DESK_BACKDROP_URL=` (empty) in `.env`.
 - **Safest fallback:** screen-record a full run tonight.
