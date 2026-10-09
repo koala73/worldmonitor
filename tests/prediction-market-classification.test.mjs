@@ -101,6 +101,16 @@ describe('Kalshi public landing and market identity', () => {
       assert.deepEqual(actual, row);
     }
   });
+
+  it('deduplicates the same contract across legacy and series-link snapshots', () => {
+    const updated = { title: 'Will China host the meeting?', source: 'kalshi', marketTicker: 'KXMEETING-27-CN', url: 'https://kalshi.com/markets/kxmeeting', yesPrice: 70, volume: 30000, tags: [], endDate: '2027-01-01T00:00:00Z' };
+    const { marketTicker, ...legacy } = updated;
+    legacy.url = 'https://kalshi.com/markets/KXMEETING-27-CN';
+    legacy.volume = 40000;
+    const rows = Object.values(buildBootstrapPools([updated, legacy], { now: FIXTURE_NOW }).pools).flat();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].volume, 40000);
+  });
 });
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what

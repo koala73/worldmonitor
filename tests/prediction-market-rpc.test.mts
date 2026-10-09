@@ -23,6 +23,17 @@ afterEach(() => {
 });
 
 describe('listPredictionMarkets legacy bootstrap compatibility', () => {
+  it('deduplicates a contract shared by legacy and series-link snapshots', async () => {
+    const updated = { title: 'China meeting', source: 'kalshi', marketTicker: 'KXMEETING-27-CN', url: 'https://kalshi.com/markets/kxmeeting', yesPrice: 70, volume: 30000 };
+    const { marketTicker, ...legacy } = updated;
+    legacy.url = 'https://kalshi.com/markets/KXMEETING-27-CN';
+    legacy.volume = 40000;
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify({ geopolitical: [updated], finance: [legacy], tech: [], fetchedAt: 789 }) });
+    const response = await listPredictionMarkets({} as never, { category: '', query: '', pageSize: 50, cursor: '' } as never);
+    assert.equal(response.markets.length, 1);
+    assert.equal(response.markets[0].id, 'KXMEETING-27-CN');
+    assert.equal(response.markets[0].volume, 40000);
+  });
   it('preserves contract IDs and separate events sharing a Kalshi series landing', async () => {
     const first = { title: 'China meeting in 2027', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/kxmeeting', marketTicker: 'KXMEETING-27-CN' };
     const second = { ...first, title: 'China meeting in 2028', marketTicker: 'KXMEETING-28-CN', volume: 40000 };
