@@ -24,6 +24,15 @@ function market(title, source, volume, options = {}) {
 }
 
 describe('buildCountryMarketIndex', () => {
+  it('keeps separate events and exact market IDs when their Kalshi landing is shared', () => {
+    const first = market('Will China host the meeting in 2027?', 'kalshi', 30000, { url: 'https://kalshi.com/markets/kxmeeting', eventKey: 'kalshi:KXMEETING-27', marketTicker: 'KXMEETING-27-CN' });
+    const second = market('Will China host the meeting in 2028?', 'kalshi', 40000, { url: first.url, eventKey: 'kalshi:KXMEETING-28', marketTicker: 'KXMEETING-28-CN' });
+    const sibling = { ...first, volume: 1000, marketTicker: 'KXMEETING-27-CN-LOW' };
+    const index = buildCountryMarketIndex([first, second, sibling], { now: NOW });
+    assert.deepEqual(new Set(index.CN.map(row => row.marketTicker)), new Set([first.marketTicker, second.marketTicker]));
+    const withoutEvent = buildCountryMarketIndex([first, second].map(({ eventKey, ...row }) => row), { now: NOW });
+    assert.equal(withoutEvent.CN.length, 2);
+  });
   it('counts only published country-market arrays', () => {
     assert.equal(countCountryMarkets({ US: [{}, {}], CN: [{}], invalid: null }), 3);
     assert.equal(countCountryMarkets(undefined), 0);

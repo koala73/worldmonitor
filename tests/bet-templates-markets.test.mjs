@@ -107,6 +107,28 @@ describe('eligibleMarkets + slot templates', () => {
 });
 
 describe('market bets resolve via the settlement feed (pend → settle → resolve)', () => {
+  it('preserves the exact Kalshi market ticker through bet generation and the settlement API request', async () => {
+    const row = market({ title: 'Fed interest rate in September 2026', source: 'kalshi', marketTicker: 'KXFED-26SEP-T4', url: 'https://kalshi.com/markets/kxfed' });
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([row]) }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
+    const entry = Object.values(ledger)[0];
+    assert.equal(entry.marketSlug, row.marketTicker);
+    const originalFetch = globalThis.fetch;
+    const urls = [];
+    globalThis.fetch = async url => {
+      urls.push(String(url));
+      return Response.json({ market: { status: 'settled', result: 'yes' } });
+    };
+    try {
+      const stats = await updateMarketSettlements(ledger, entry.deadline + DAY_MS, { readJson: async () => ({ records: [] }), writeJson: async () => {} });
+      assert.equal(stats.settled, 1);
+      assert.equal(urls.length, 1);
+      assert.equal(new URL(urls[0]).pathname, '/trade-api/v2/markets/KXFED-26SEP-T4');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   function marketEntry() {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
     const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
