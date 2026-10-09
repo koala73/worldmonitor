@@ -120,6 +120,29 @@ after(() => {
 });
 
 describe('fetchCountryMarkets uses the producer country index', () => {
+  it('preserves distinct Kalshi contracts sharing a series landing in bootstrap fallback', async () => {
+    const first = { ...bootstrapMarket('Will China host the meeting in 2027?', 30000), source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
+    const second = { ...first, title: 'Will China host the meeting in 2028?', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: false,
+      hydrated: { geopolitical: [first], tech: [], finance: [second], fetchedAt: Date.now() },
+    };
+    const service = await loadPredictionService();
+    const rows = await service.fetchCountryMarkets('China', 'CN');
+    assert.deepEqual(rows.map((row: { title: string }) => row.title), [second.title, first.title]);
+    assert.ok(rows.every((row: { url: string }) => row.url === first.displayUrl));
+  });
+
+  it('uses the public landing for ordinary hydrated prediction cards', async () => {
+    const row = { ...bootstrapMarket('Will China host the meeting?', 30000), source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
+    globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, hydrated: { geopolitical: [row], tech: [], finance: [], fetchedAt: Date.now() } };
+    const service = await loadPredictionService();
+    const result = await service.fetchPredictionCandidates();
+    assert.equal(result.displayed[0].url, row.displayUrl);
+    assert.equal(result.displayed[0].source, 'kalshi');
+    assert.equal((globalThis.__wmCountryMarketsTestState!.hydrated as { geopolitical: { url: string }[] }).geopolitical[0].url, row.url);
+  });
+
   it('sends one ISO2 request instead of literal-title category fan-out', async () => {
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {} };
     const service = await loadPredictionService();

@@ -108,11 +108,12 @@ describe('eligibleMarkets + slot templates', () => {
 
 describe('market bets resolve via the settlement feed (pend → settle → resolve)', () => {
   it('preserves the exact Kalshi market ticker through bet generation and the settlement API request', async () => {
-    const row = market({ title: 'Fed interest rate in September 2026', source: 'kalshi', marketTicker: 'KXFED-26SEP-T4', url: 'https://kalshi.com/markets/kxfed' });
+    const row = market({ title: 'Fed interest rate in September 2026', source: 'kalshi', url: 'https://kalshi.com/markets/KXFED-26SEP-T4', displayUrl: 'https://kalshi.com/markets/kxfed' });
+    assert.deepEqual(marketSlugFromUrl(row.url), { source: 'kalshi', slug: 'KXFED-26SEP-T4' });
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([row]) }, NOW);
     const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     const entry = Object.values(ledger)[0];
-    assert.equal(entry.marketSlug, row.marketTicker);
+    assert.equal(entry.marketSlug, 'KXFED-26SEP-T4');
     const originalFetch = globalThis.fetch;
     const urls = [];
     globalThis.fetch = async url => {

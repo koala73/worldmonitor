@@ -24,16 +24,16 @@ afterEach(() => {
 
 describe('listPredictionMarkets legacy bootstrap compatibility', () => {
   it('preserves contract IDs and separate events sharing a Kalshi series landing', async () => {
-    const first = { title: 'China meeting in 2027', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/kxmeeting', marketTicker: 'KXMEETING-27-CN' };
-    const second = { ...first, title: 'China meeting in 2028', marketTicker: 'KXMEETING-28-CN', volume: 40000 };
+    const first = { title: 'China meeting in 2027', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
+    const second = { ...first, title: 'China meeting in 2028', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
     const payload = { geopolitical: [first, second], tech: [], finance: [{ ...first, volume: 50000 }], countries: { CN: [first, second] }, fetchedAt: 789 };
     globalThis.fetch = async () => Response.json({ result: JSON.stringify(payload) });
     for (const category of ['', 'country:CN']) {
       const response = await listPredictionMarkets({} as never, { category, query: '', pageSize: 50, cursor: '' } as never);
-      assert.deepEqual(new Set(response.markets.map(row => row.id)), new Set([first.marketTicker, second.marketTicker]));
+      assert.deepEqual(new Set(response.markets.map(row => row.id)), new Set(['KXMEETING-27-CN', 'KXMEETING-28-CN']));
       assert.equal(response.markets.length, 2);
-      assert.ok(response.markets.every(row => row.url === first.url));
-      if (!category) assert.equal(response.markets.find(row => row.id === first.marketTicker)?.volume, 50000);
+      assert.ok(response.markets.every(row => row.url === first.displayUrl));
+      if (!category) assert.equal(response.markets.find(row => row.id === 'KXMEETING-27-CN')?.volume, 50000);
     }
   });
 

@@ -61,8 +61,8 @@ describe('Kalshi public landing and market identity', () => {
   it('uses explicit series provenance for both country and featured links', async () => {
     const result = await subject.fetchKalshiMarkets();
     for (const row of [result.countryCandidates[0], result.featured[0]]) {
-      assert.equal(row.url, 'https://kalshi.com/markets/kxputindjtlocation');
-      assert.equal(row.marketTicker, 'KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, 'https://kalshi.com/markets/kxputindjtlocation');
       assert.equal(row.yesPrice, 70);
       assert.equal(row.source, 'kalshi');
     }
@@ -72,18 +72,18 @@ describe('Kalshi public landing and market identity', () => {
   it('does not infer a series from a market ticker when provenance is absent or malformed', () => {
     for (const series_ticker of [undefined, '', '../other']) {
       const row = subject.kalshiCountryCandidate({ ...event.markets[0], series_ticker });
-      assert.equal(row.url, '');
-      assert.equal(row.marketTicker, 'KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, '');
     }
   });
 
   it('preserves distinct event markets through actual bootstrap pool construction', () => {
-    const first = { title: 'Will China meet Trump in 2027?', yesPrice: 70, volume: 30000, source: 'kalshi', tags: [], url: 'https://kalshi.com/markets/kxmeeting', marketTicker: 'KXMEETING-27-CN', endDate: '2027-01-01T00:00:00Z' };
-    const second = { ...first, title: 'Will China meet Trump in 2028?', marketTicker: 'KXMEETING-28-CN', volume: 40000 };
+    const first = { title: 'Will China meet Trump in 2027?', yesPrice: 70, volume: 30000, source: 'kalshi', tags: [], url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting', endDate: '2027-01-01T00:00:00Z' };
+    const second = { ...first, title: 'Will China meet Trump in 2028?', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
     const result = buildBootstrapPools([first, second, { ...first, volume: 50000 }], { now: FIXTURE_NOW });
-    assert.deepEqual(new Set(Object.values(result.pools).flat().map(row => row.marketTicker)), new Set([first.marketTicker, second.marketTicker]));
+    assert.deepEqual(new Set(Object.values(result.pools).flat().map(row => row.url)), new Set([first.url, second.url]));
     assert.equal(result.duplicatesDropped, 1);
-    assert.equal(Object.values(result.pools).flat().find(row => row.marketTicker === first.marketTicker).volume, 50000);
+    assert.equal(Object.values(result.pools).flat().find(row => row.url === first.url).volume, 50000);
   });
 
   it('preserves all four observed China Polymarket links and prices', () => {
