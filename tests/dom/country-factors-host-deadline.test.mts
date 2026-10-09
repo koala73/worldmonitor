@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHostCountryBriefSource, createWebsiteCountryBriefSource } from '@/services/country-brief-source';
+import norwayFactors from '../../e2e/fixtures/country-factors-no.json';
 
 const website = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('@/services/premium-fetch', () => ({ premiumFetch: website.fetch }));
 
-const value = { unavailable: false, scorecard: { countryCode: 'NO', pillars: [1, 2, 3, 4, 5] } };
+const value = norwayFactors;
 type CallArgs = { section: string; arguments: object };
 
 async function harness(queueMs = 11_000, serviceMs = 1_730) {
@@ -58,40 +59,40 @@ describe('native factors queue and dispatched response budgets', () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it('returns all five pillars after 11 seconds queued and 1.73 seconds dispatched', async () => {
-    const h = await harness();
-    const blockers = h.occupy();
-    const factors = h.source.factors('NO', new AbortController().signal);
+    const hostHarness = await harness();
+    const blockers = hostHarness.occupy();
+    const factors = hostHarness.source.factors('NO', new AbortController().signal);
     const outcome = observe(factors);
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(11_000);
-    expect(h.events.filter(e => e.section === 'factors').map(e => e.at)).toEqual([11_000]);
+    expect(hostHarness.events.filter(event => event.section === 'factors').map(event => event.at)).toEqual([11_000]);
     await vi.advanceTimersByTimeAsync(1_730);
     expect(outcome.error).toBeUndefined();
     expect(await factors).toEqual(value);
     await Promise.all(blockers);
-    expect(h.maximum()).toBe(3);
+    expect(hostHarness.maximum()).toBe(3);
   });
 
   it('dispatches queued factors when preceding host requests hit their existing bound', async () => {
-    const h = await harness(31_000);
-    const blockers = h.occupy().map(promise => promise.catch(error => error));
-    const factors = h.source.factors('NO', new AbortController().signal);
+    const hostHarness = await harness(31_000);
+    const blockers = hostHarness.occupy().map(promise => promise.catch(error => error));
+    const factors = hostHarness.source.factors('NO', new AbortController().signal);
     const outcome = observe(factors);
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(29_999);
     expect(outcome.error).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
-    expect(h.events.filter(e => e.section === 'factors').map(e => e.at)).toEqual([30_000]);
+    expect(hostHarness.events.filter(event => event.section === 'factors').map(event => event.at)).toEqual([30_000]);
     await vi.advanceTimersByTimeAsync(1_730);
     expect(await factors).toEqual(value);
     expect((await Promise.all(blockers)).map(error => error.message)).toEqual(Array(3).fill('WorldMonitor host request timed out.'));
-    expect(h.maximum()).toBe(3);
+    expect(hostHarness.maximum()).toBe(3);
   });
 
   it('retains host timeout errors and discards an ignored-abort late value', async () => {
-    const h = await harness(11_000, 30_001);
-    const blockers = h.occupy();
-    const factors = h.source.factors('NO', new AbortController().signal);
+    const hostHarness = await harness(11_000, 30_001);
+    const blockers = hostHarness.occupy();
+    const factors = hostHarness.source.factors('NO', new AbortController().signal);
     const outcome = observe(factors);
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(40_999);
@@ -100,20 +101,20 @@ describe('native factors queue and dispatched response budgets', () => {
     expect(outcome.error?.message).toContain('WorldMonitor host request timed out.');
     await vi.advanceTimersByTimeAsync(1);
     expect(outcome.value).toBeUndefined();
-    const retry = h.source.factors('NO', new AbortController().signal);
+    const retry = hostHarness.source.factors('NO', new AbortController().signal);
     observe(retry);
     await vi.dynamicImportSettled();
-    expect(h.events.filter(e => e.section === 'factors')).toHaveLength(2);
-    h.source.clearLoadedData();
+    expect(hostHarness.events.filter(event => event.section === 'factors')).toHaveLength(2);
+    hostHarness.source.clearLoadedData();
     await Promise.all(blockers);
   });
 
   it.each([0, 11_000])('keeps a duplicate subscriber alive when another cancels at %i ms', async cancelAt => {
-    const h = await harness();
-    const blockers = h.occupy();
+    const hostHarness = await harness();
+    const blockers = hostHarness.occupy();
     const controller = new AbortController();
-    const first = observe(h.source.factors('NO', controller.signal));
-    const second = h.source.factors('NO', new AbortController().signal);
+    const first = observe(hostHarness.source.factors('NO', controller.signal));
+    const second = hostHarness.source.factors('NO', new AbortController().signal);
     observe(second);
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(cancelAt);
@@ -121,21 +122,21 @@ describe('native factors queue and dispatched response budgets', () => {
     await vi.advanceTimersByTimeAsync(12_730 - cancelAt);
     expect(first.error?.name).toBe('AbortError');
     expect(await second).toEqual(value);
-    expect(h.events.filter(e => e.section === 'factors')).toHaveLength(1);
-    expect(h.events.find(e => e.section === 'factors')?.signal.aborted).toBe(false);
+    expect(hostHarness.events.filter(event => event.section === 'factors')).toHaveLength(1);
+    expect(hostHarness.events.find(event => event.section === 'factors')?.signal.aborted).toBe(false);
     await Promise.all(blockers);
   });
 
   it('removes a last cancelled queued factors request without occupying a slot', async () => {
-    const h = await harness();
-    const blockers = h.occupy();
+    const hostHarness = await harness();
+    const blockers = hostHarness.occupy();
     const controller = new AbortController();
-    const outcome = observe(h.source.factors('NO', controller.signal));
+    const outcome = observe(hostHarness.source.factors('NO', controller.signal));
     await vi.dynamicImportSettled();
     controller.abort(new DOMException('caller cancelled', 'AbortError'));
     await vi.advanceTimersByTimeAsync(11_000);
     expect(outcome.error?.name).toBe('AbortError');
-    expect(h.events.filter(e => e.section === 'factors')).toHaveLength(0);
+    expect(hostHarness.events.filter(event => event.section === 'factors')).toHaveLength(0);
     await Promise.all(blockers);
   });
 
