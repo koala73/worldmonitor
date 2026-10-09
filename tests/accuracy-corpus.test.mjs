@@ -1599,7 +1599,7 @@ describe('accuracy verdict block', () => {
   });
 
   it('states the market comparison in words that follow the delta sign', () => {
-    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 graded cases that carried a liquid prediction market's price, the market's odds were closer to what happened than World Monitor's\. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question\./);
+    assert.match(verdictText(renderState(LIVE_SECTION).html), /In the 78 graded cases of every origin, unpublished shadow bets included, that carried a liquid prediction market's price, the market's odds were closer to what happened than World Monitor's\. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question\./);
     const flipped = sectionWith({ vsMarketSkill: { count: 78, forecastBrier: 0.073136, marketBrier: 0.154623, brierDelta: 0.081487 } });
     assert.match(verdictText(renderState(flipped).html), /World Monitor's odds were closer to what happened than the market's/);
     const tied = sectionWith({ vsMarketSkill: { count: 4, forecastBrier: 0.1, marketBrier: 0.1, brierDelta: 0 } });

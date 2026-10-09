@@ -1184,7 +1184,7 @@ function marketVerdictSentence(vsMarketSkill) {
     : delta > 0
       ? "World Monitor's odds were closer to what happened than the market's"
       : 'the two were equally close to what happened';
-  return `In the ${formatCount(vsMarketSkill.count)} graded cases that carried a liquid prediction market's price, ${closer}. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question.`;
+  return `In the ${formatCount(vsMarketSkill.count)} graded cases of every origin, unpublished shadow bets included, that carried a liquid prediction market's price, ${closer}. A market matched to a forecast, rather than one the forecast bet on, can ask a narrower or broader question.`;
 }
 
 // One rate over every graded forecast mixes domains whose outcomes come true
