@@ -9,18 +9,69 @@
       "primarySource": "Meridian Wire",
       "memberCount": 9,
       "distinctSourceCount": 6,
-      "sources": ["Meridian Wire", "Coastline Times", "Harbor Ledger", "Veridia Today", "Atlas Business", "Southport Post"],
+      "sources": [
+        "Meridian Wire",
+        "Coastline Times",
+        "Harbor Ledger",
+        "Veridia Today",
+        "Atlas Business",
+        "Southport Post"
+      ],
       "publishers": [
-        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
-        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
-        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
-        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
-        { "name": "Veridia Today", "tier": 3, "labels": ["Veridia Today"] },
-        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] }
+        {
+          "name": "Meridian Wire",
+          "tier": 1,
+          "labels": [
+            "Meridian Wire"
+          ]
+        },
+        {
+          "name": "Coastline Times",
+          "tier": 2,
+          "labels": [
+            "Coastline Times"
+          ]
+        },
+        {
+          "name": "Harbor Ledger",
+          "tier": 2,
+          "labels": [
+            "Harbor Ledger"
+          ]
+        },
+        {
+          "name": "Atlas Business",
+          "tier": 2,
+          "labels": [
+            "Atlas Business"
+          ]
+        },
+        {
+          "name": "Veridia Today",
+          "tier": 3,
+          "labels": [
+            "Veridia Today"
+          ]
+        },
+        {
+          "name": "Southport Post",
+          "tier": 3,
+          "labels": [
+            "Southport Post"
+          ]
+        }
       ],
       "publishersUnlisted": 0,
-      "corroboration": { "state": "corroborated", "publishers": 6 },
-      "topKeywords": ["veridia", "strike", "dockworkers", "wage"],
+      "corroboration": {
+        "state": "corroborated",
+        "publishers": 6
+      },
+      "topKeywords": [
+        "veridia",
+        "strike",
+        "dockworkers",
+        "wage"
+      ],
       "firstSeen": "2026-10-03T06:12:00Z",
       "lastUpdated": "2026-10-03T19:40:00Z",
       "memberTitles": [
@@ -38,13 +89,35 @@
       "primarySource": "Northgate Herald",
       "memberCount": 7,
       "distinctSourceCount": 1,
-      "sources": ["Northgate Herald", "Northgate Herald North", "Northgate Herald South", "Northgate Herald East", "Northgate Herald Business"],
+      "sources": [
+        "Northgate Herald",
+        "Northgate Herald North",
+        "Northgate Herald South",
+        "Northgate Herald East",
+        "Northgate Herald Business"
+      ],
       "publishers": [
-        { "name": "Northgate Herald", "tier": 2, "labels": ["Northgate Herald", "Northgate Herald North", "Northgate Herald South", "Northgate Herald East"] }
+        {
+          "name": "Northgate Herald",
+          "tier": 2,
+          "labels": [
+            "Northgate Herald",
+            "Northgate Herald North",
+            "Northgate Herald South",
+            "Northgate Herald East"
+          ]
+        }
       ],
       "publishersUnlisted": 0,
-      "corroboration": { "state": "single-publisher", "publishers": 1 },
-      "topKeywords": ["calloway", "resign", "minister"],
+      "corroboration": {
+        "state": "single-publisher",
+        "publishers": 1
+      },
+      "topKeywords": [
+        "calloway",
+        "resign",
+        "minister"
+      ],
       "firstSeen": "2026-10-05T21:03:00Z",
       "lastUpdated": "2026-10-07T09:15:00Z",
       "memberTitles": [
@@ -64,17 +137,61 @@
       "primarySource": "Meridian Wire",
       "memberCount": 8,
       "distinctSourceCount": 5,
-      "sources": ["Meridian Wire", "Atlas Business", "Ledger Markets", "Coastline Times", "Aurelia Daily"],
+      "sources": [
+        "Meridian Wire",
+        "Atlas Business",
+        "Ledger Markets",
+        "Coastline Times",
+        "Aurelia Daily"
+      ],
       "publishers": [
-        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
-        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
-        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
-        { "name": "Ledger Markets", "tier": 2, "labels": ["Ledger Markets"] },
-        { "name": "Aurelia Daily", "tier": 3, "labels": ["Aurelia Daily"] }
+        {
+          "name": "Meridian Wire",
+          "tier": 1,
+          "labels": [
+            "Meridian Wire"
+          ]
+        },
+        {
+          "name": "Atlas Business",
+          "tier": 2,
+          "labels": [
+            "Atlas Business"
+          ]
+        },
+        {
+          "name": "Coastline Times",
+          "tier": 2,
+          "labels": [
+            "Coastline Times"
+          ]
+        },
+        {
+          "name": "Ledger Markets",
+          "tier": 2,
+          "labels": [
+            "Ledger Markets"
+          ]
+        },
+        {
+          "name": "Aurelia Daily",
+          "tier": 3,
+          "labels": [
+            "Aurelia Daily"
+          ]
+        }
       ],
       "publishersUnlisted": 0,
-      "corroboration": { "state": "corroborated", "publishers": 5 },
-      "topKeywords": ["aurelia", "central bank", "rates", "basis points"],
+      "corroboration": {
+        "state": "corroborated",
+        "publishers": 5
+      },
+      "topKeywords": [
+        "aurelia",
+        "central bank",
+        "rates",
+        "basis points"
+      ],
       "firstSeen": "2026-10-06T12:00:00Z",
       "lastUpdated": "2026-10-06T16:30:00Z",
       "memberTitles": [
@@ -91,19 +208,77 @@
       "primarySource": "Coastline Times",
       "memberCount": 11,
       "distinctSourceCount": 7,
-      "sources": ["Coastline Times", "Meridian Wire", "Harbor Ledger", "Southport Post", "Geo Desk", "Aurelia Daily", "Veridia Today"],
+      "sources": [
+        "Coastline Times",
+        "Meridian Wire",
+        "Harbor Ledger",
+        "Southport Post",
+        "Geo Desk",
+        "Aurelia Daily",
+        "Veridia Today"
+      ],
       "publishers": [
-        { "name": "Meridian Wire", "tier": 1, "labels": ["Meridian Wire"] },
-        { "name": "Coastline Times", "tier": 2, "labels": ["Coastline Times"] },
-        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
-        { "name": "Geo Desk", "tier": 2, "labels": ["Geo Desk"] },
-        { "name": "Aurelia Daily", "tier": 3, "labels": ["Aurelia Daily"] },
-        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] },
-        { "name": "Veridia Today", "tier": 3, "labels": ["Veridia Today"] }
+        {
+          "name": "Meridian Wire",
+          "tier": 1,
+          "labels": [
+            "Meridian Wire"
+          ]
+        },
+        {
+          "name": "Coastline Times",
+          "tier": 2,
+          "labels": [
+            "Coastline Times"
+          ]
+        },
+        {
+          "name": "Harbor Ledger",
+          "tier": 2,
+          "labels": [
+            "Harbor Ledger"
+          ]
+        },
+        {
+          "name": "Geo Desk",
+          "tier": 2,
+          "labels": [
+            "Geo Desk"
+          ]
+        },
+        {
+          "name": "Aurelia Daily",
+          "tier": 3,
+          "labels": [
+            "Aurelia Daily"
+          ]
+        },
+        {
+          "name": "Southport Post",
+          "tier": 3,
+          "labels": [
+            "Southport Post"
+          ]
+        },
+        {
+          "name": "Veridia Today",
+          "tier": 3,
+          "labels": [
+            "Veridia Today"
+          ]
+        }
       ],
       "publishersUnlisted": 0,
-      "corroboration": { "state": "corroborated", "publishers": 7 },
-      "topKeywords": ["tessaly", "eruption", "volcano", "evacuated"],
+      "corroboration": {
+        "state": "corroborated",
+        "publishers": 7
+      },
+      "topKeywords": [
+        "tessaly",
+        "eruption",
+        "volcano",
+        "evacuated"
+      ],
       "firstSeen": "2026-10-04T03:20:00Z",
       "lastUpdated": "2026-10-05T11:00:00Z",
       "memberTitles": [
@@ -120,17 +295,60 @@
       "primarySource": "Kestrel Wire",
       "memberCount": 6,
       "distinctSourceCount": 5,
-      "sources": ["Kestrel Wire", "Harbor Ledger", "Byte Brief", "Atlas Business", "Southport Post"],
+      "sources": [
+        "Kestrel Wire",
+        "Harbor Ledger",
+        "Byte Brief",
+        "Atlas Business",
+        "Southport Post"
+      ],
       "publishers": [
-        { "name": "Kestrel Wire", "tier": 2, "labels": ["Kestrel Wire"] },
-        { "name": "Atlas Business", "tier": 2, "labels": ["Atlas Business"] },
-        { "name": "Harbor Ledger", "tier": 2, "labels": ["Harbor Ledger"] },
-        { "name": "Southport Post", "tier": 3, "labels": ["Southport Post"] },
-        { "name": "Byte Brief", "tier": 4, "labels": ["Byte Brief"] }
+        {
+          "name": "Kestrel Wire",
+          "tier": 2,
+          "labels": [
+            "Kestrel Wire"
+          ]
+        },
+        {
+          "name": "Atlas Business",
+          "tier": 2,
+          "labels": [
+            "Atlas Business"
+          ]
+        },
+        {
+          "name": "Harbor Ledger",
+          "tier": 2,
+          "labels": [
+            "Harbor Ledger"
+          ]
+        },
+        {
+          "name": "Southport Post",
+          "tier": 3,
+          "labels": [
+            "Southport Post"
+          ]
+        },
+        {
+          "name": "Byte Brief",
+          "tier": 4,
+          "labels": [
+            "Byte Brief"
+          ]
+        }
       ],
       "publishersUnlisted": 0,
-      "corroboration": { "state": "corroborated", "publishers": 5 },
-      "topKeywords": ["lumora", "breach", "accounts"],
+      "corroboration": {
+        "state": "corroborated",
+        "publishers": 5
+      },
+      "topKeywords": [
+        "lumora",
+        "breach",
+        "accounts"
+      ],
       "firstSeen": "2026-10-02T14:45:00Z",
       "lastUpdated": "2026-10-03T08:10:00Z",
       "memberTitles": [
@@ -141,12 +359,137 @@
         "3 million Lumora accounts exposed, citing Kestrel Wire",
         "Lumora breach: Kestrel Wire reports"
       ]
+    },
+    {
+      "id": "reh-president",
+      "title": "Aurelia's president secretly hospitalised, sources say",
+      "link": "https://example.invalid/president",
+      "primarySource": "Norvenia International",
+      "memberCount": 11,
+      "distinctSourceCount": 8,
+      "sources": [
+        "Norvenia International",
+        "Norvenia Today",
+        "NVN 24",
+        "TruthWave Blog",
+        "Viral Brief",
+        "Clickstream News",
+        "GeoPulse Aggregator",
+        "Daily Signal Feed"
+      ],
+      "publishers": [
+        {
+          "name": "Norvenia International",
+          "tier": null,
+          "labels": [
+            "Norvenia International"
+          ]
+        },
+        {
+          "name": "Norvenia Today",
+          "tier": null,
+          "labels": [
+            "Norvenia Today"
+          ]
+        },
+        {
+          "name": "NVN 24",
+          "tier": null,
+          "labels": [
+            "NVN 24"
+          ]
+        },
+        {
+          "name": "TruthWave Blog",
+          "tier": null,
+          "labels": [
+            "TruthWave Blog"
+          ]
+        },
+        {
+          "name": "Viral Brief",
+          "tier": null,
+          "labels": [
+            "Viral Brief"
+          ]
+        },
+        {
+          "name": "Clickstream News",
+          "tier": null,
+          "labels": [
+            "Clickstream News"
+          ]
+        },
+        {
+          "name": "GeoPulse Aggregator",
+          "tier": null,
+          "labels": [
+            "GeoPulse Aggregator"
+          ]
+        },
+        {
+          "name": "Daily Signal Feed",
+          "tier": null,
+          "labels": [
+            "Daily Signal Feed"
+          ]
+        }
+      ],
+      "publishersUnlisted": 0,
+      "corroboration": {
+        "state": "corroborated",
+        "publishers": 8
+      },
+      "topKeywords": [
+        "aurelia",
+        "president",
+        "hospitalised"
+      ],
+      "firstSeen": "2026-10-07T22:10:00Z",
+      "lastUpdated": "2026-10-08T14:00:00Z",
+      "memberTitles": [
+        "Aurelia's president secretly hospitalised, sources say",
+        "Is Aurelia's president gravely ill? Sources say yes",
+        "BREAKING: Aurelian leader rushed to hospital, sources say",
+        "Aurelia hiding president's health crisis, Norvenia Today reports",
+        "Aurelia president hospitalised — what they aren't telling you",
+        "Sources: Aurelian president in intensive care"
+      ]
     }
   ],
   "markets": [
-    { "title": "Will Aurelia's central bank hike again before December 31?", "yesPrice": 62, "source": "polymarket", "volume": 412000, "url": "https://example.invalid/m1", "endDate": "2026-12-31" },
-    { "title": "Calloway out as minister by December 31?", "yesPrice": 18, "source": "kalshi", "volume": 96000, "url": "https://example.invalid/m2", "endDate": "2026-12-31" },
-    { "title": "Port Veridia strike resumes before 2027?", "yesPrice": 9, "source": "polymarket", "volume": 21000, "url": "https://example.invalid/m3", "endDate": "2026-12-31" }
+    {
+      "title": "Will Aurelia's central bank hike again before December 31?",
+      "yesPrice": 62,
+      "source": "polymarket",
+      "volume": 412000,
+      "url": "https://example.invalid/m1",
+      "endDate": "2026-12-31"
+    },
+    {
+      "title": "Calloway out as minister by December 31?",
+      "yesPrice": 18,
+      "source": "kalshi",
+      "volume": 96000,
+      "url": "https://example.invalid/m2",
+      "endDate": "2026-12-31"
+    },
+    {
+      "title": "Port Veridia strike resumes before 2027?",
+      "yesPrice": 9,
+      "source": "polymarket",
+      "volume": 21000,
+      "url": "https://example.invalid/m3",
+      "endDate": "2026-12-31"
+    },
+    {
+      "title": "Aurelia's president leaves office before 2027?",
+      "yesPrice": 6,
+      "source": "polymarket",
+      "volume": 58000,
+      "url": "https://example.invalid/m4",
+      "endDate": "2026-12-31"
+    }
   ],
   "articles": {
     "https://example.invalid/veridia-strike": "Dockworkers at Port Veridia voted on Friday to accept a 6% wage increase, ending a strike that lasted 9 days and idled 140 vessels. The union said 82% of members backed the deal.",
@@ -159,15 +502,189 @@
       "Port Veridia dockworkers end 9-day strike after wage deal",
       "Aurelia central bank raises rates by 50 basis points",
       "Lumora Telecom breach exposed 3 million accounts, Kestrel Wire reports",
-      "Minister Calloway to resign within days, Northgate Herald reports"
+      "Minister Calloway to resign within days, Northgate Herald reports",
+      "Aurelia's president secretly hospitalised, sources say"
     ],
     "topStories": [
-      { "corroboration": { "state": "corroborated", "publishers": 7 } },
-      { "corroboration": { "state": "corroborated", "publishers": 6 } },
-      { "corroboration": { "state": "corroborated", "publishers": 5 } },
-      { "corroboration": { "state": "corroborated", "publishers": 5 } },
-      { "corroboration": { "state": "single-publisher", "publishers": 1 } }
+      {
+        "corroboration": {
+          "state": "corroborated",
+          "publishers": 7
+        }
+      },
+      {
+        "corroboration": {
+          "state": "corroborated",
+          "publishers": 6
+        }
+      },
+      {
+        "corroboration": {
+          "state": "corroborated",
+          "publishers": 5
+        }
+      },
+      {
+        "corroboration": {
+          "state": "corroborated",
+          "publishers": 5
+        }
+      },
+      {
+        "corroboration": {
+          "state": "single-publisher",
+          "publishers": 1
+        }
+      },
+      {
+        "corroboration": {
+          "state": "corroborated",
+          "publishers": 8
+        }
+      }
     ],
     "generatedAt": "2026-10-09T08:00:00Z"
-  }
+  },
+  "sources": [
+    [
+      "Meridian Wire",
+      1,
+      "low",
+      "wire",
+      null
+    ],
+    [
+      "Coastline Times",
+      2,
+      "low",
+      "mainstream",
+      null
+    ],
+    [
+      "Harbor Ledger",
+      2,
+      "low",
+      "mainstream",
+      null
+    ],
+    [
+      "Atlas Business",
+      2,
+      "low",
+      "market",
+      null
+    ],
+    [
+      "Ledger Markets",
+      2,
+      "low",
+      "market",
+      null
+    ],
+    [
+      "Geo Desk",
+      2,
+      "low",
+      "mainstream",
+      null
+    ],
+    [
+      "Northgate Herald",
+      2,
+      "low",
+      "mainstream",
+      null
+    ],
+    [
+      "Kestrel Wire",
+      2,
+      "low",
+      "wire",
+      null
+    ],
+    [
+      "Veridia Today",
+      3,
+      "unknown",
+      "mainstream",
+      null
+    ],
+    [
+      "Southport Post",
+      3,
+      "unknown",
+      "mainstream",
+      null
+    ],
+    [
+      "Aurelia Daily",
+      3,
+      "medium",
+      "mainstream",
+      "Aurelia"
+    ],
+    [
+      "Byte Brief",
+      4,
+      "unknown",
+      "tech",
+      null
+    ],
+    [
+      "Norvenia International",
+      2,
+      "high",
+      "mainstream",
+      "Norvenia"
+    ],
+    [
+      "Norvenia Today",
+      3,
+      "high",
+      "mainstream",
+      "Norvenia"
+    ],
+    [
+      "NVN 24",
+      3,
+      "high",
+      "wire",
+      "Norvenia"
+    ],
+    [
+      "TruthWave Blog",
+      4,
+      "unknown",
+      "other",
+      null
+    ],
+    [
+      "Viral Brief",
+      4,
+      "unknown",
+      "other",
+      null
+    ],
+    [
+      "Clickstream News",
+      4,
+      "unknown",
+      "other",
+      null
+    ],
+    [
+      "GeoPulse Aggregator",
+      4,
+      "unknown",
+      "other",
+      null
+    ],
+    [
+      "Daily Signal Feed",
+      4,
+      "unknown",
+      "other",
+      null
+    ]
+  ]
 }

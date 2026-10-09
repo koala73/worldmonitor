@@ -170,17 +170,41 @@ const renderers = {
   who(d) {
     const out = el('div');
     if (!d) { out.append(el('span', 'warn', 'No monitored publisher carried it.')); return out; }
-    const line = el('div');
-    line.append(el('span', 'big', d.families ?? '?'), el('span', '', d.families === 1 ? 'publisher family' : 'independent publisher families'));
-    if (d.memberCount && d.memberCount > (d.families ?? 0)) line.append(el('span', 'warn', ` · ${d.memberCount} headlines`));
+    const st = d.strength;
+    const line = el('div', 'who-head');
+    line.append(el('span', 'big', d.families ?? '?'), el('span', '', d.families === 1 ? 'publisher' : 'publishers'));
+    if (st && d.families > 1) {
+      line.append(el('span', 'arrow', '→'), el('span', `big band-${st.band}`, st.weight.toFixed(1)), el('span', `band-${st.band}`, `weighted · ${st.band}`));
+    }
     out.append(line);
-    const pubs = el('div', 'pubs');
-    for (const p of (d.publishers ?? []).slice(0, 8)) pubs.append(el('span', 'pub', p.name));
-    // The feed labels that collapsed into one family, struck through: five editions count once.
-    const names = new Set((d.publishers ?? []).map((p) => p.name));
-    for (const p of d.publishers ?? []) for (const l of p.labels ?? []) if (!names.has(l)) pubs.append(el('span', 'pub label', l));
-    if (d.publishersUnlisted) pubs.append(el('span', 'pub', `+${d.publishersUnlisted} more`));
-    out.append(pubs);
+    if (st && d.families > 1) {
+      // Meter: 0..4 with the moderate (1.2) and strong (2.0) marks.
+      const meter = el('div', 'meter');
+      const fill = el('i', `band-${st.band}`);
+      fill.style.width = `${Math.min(100, (st.weight / 4) * 100)}%`;
+      meter.append(fill, Object.assign(el('b', 'mark'), { style: 'left:30%', title: 'moderate 1.2' }), Object.assign(el('b', 'mark'), { style: 'left:45%', title: 'strong 1.8' }));
+      out.append(meter);
+    }
+    const list = el('ol', 'ranked');
+    for (const r of (d.rated ?? []).slice(0, 5)) {
+      const li = el('li');
+      li.append(el('span', `tier t${r.tier ?? 0}`, r.tier ? `T${r.tier}` : '?'), el('span', 'name', r.name));
+      const bar = el('span', 'bar');
+      const fill = el('i');
+      fill.style.width = `${Math.round(r.weight * 100)}%`;
+      bar.append(fill);
+      li.append(bar, el('span', 'score', r.weight.toFixed(2)));
+      const tags = el('span', 'tags');
+      if (r.stateAffiliated) tags.append(el('span', 'tag bad', `state: ${r.stateAffiliated}`));
+      tags.append(el('span', `tag risk-${r.risk}`, `${r.risk} risk`));
+      li.append(tags);
+      list.append(li);
+    }
+    out.append(list);
+    const more = Math.max(0, (d.rated?.length ?? 0) - 5) + (d.publishersUnlisted ?? 0);
+    if (more) out.append(el('div', 'mono', `+${more} more`));
+    for (const c of st?.collapsed ?? []) out.append(el('div', 'warn', `${c.members.join(' + ')} = one voice (${c.voice})`));
+    if (st?.weakPoolCapped) out.append(el('div', 'warn', 'Aggregators and blogs capped at 0.5 combined'));
     return out;
   },
   when(d) {
@@ -188,7 +212,8 @@ const renderers = {
     if (!d) { out.append(el('span', 'warn', 'No timeline: nothing to trace.')); return out; }
     out.append(el('div', 'mono', `First seen ${fmtTime(d.firstSeen)} · spread over ${d.spreadHours ?? '?'}h`));
     const c = d.cascade;
-    if (c?.origin && c.originCount > 1) out.append(el('div', 'warn', `${c.originCount} of ${c.total} headlines credit the same origin: ${c.origin}`));
+    if (c?.origin === '(unnamed sources)' && c.originCount > 1) out.append(el('div', 'warn', `${c.originCount} of ${c.total} headlines rest on unnamed sources`));
+    else if (c?.origin && c.originCount > 1) out.append(el('div', 'warn', `${c.originCount} of ${c.total} headlines credit the same origin: ${c.origin}`));
     else if (c?.attributed) out.append(el('div', '', `${c.attributed} of ${c.total} headlines cite someone else's reporting`));
     else out.append(el('div', '', 'No shared origin named in the headlines'));
     return out;
@@ -261,7 +286,10 @@ function runGrade(headline) {
         li.classList.add('done');
         li.querySelector('.out').replaceChildren(renderers[ev.step](ev.data));
         pending = order.indexOf(ev.step) + 1;
-        if (order[pending]) row(order[pending]).classList.add('running');
+        if (order[pending]) {
+          row(order[pending]).classList.add('running');
+          row(order[pending]).scrollIntoView({ block: 'nearest' });
+        }
         await sleep(config.stepDelayMs);
         continue;
       }

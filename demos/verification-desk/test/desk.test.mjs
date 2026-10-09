@@ -46,7 +46,7 @@ test('verdict rule: counts decide, never the model', () => {
   assert.equal(computeVerdict({ match: null }).verdict, 'Unverifiable');
   assert.equal(computeVerdict({ match: m, corroboration: { state: 'corroborated', publishers: 4 } }).verdict, 'Corroborated');
   assert.equal(computeVerdict({ match: m, corroboration: { state: 'single-publisher', publishers: 1 } }).verdict, 'Single-source');
-  assert.equal(computeVerdict({ match: m, corroboration: { state: 'tier4-only', publishers: 3 } }).verdict, 'Unverifiable');
+  assert.equal(computeVerdict({ match: m, corroboration: { state: 'tier4-only', publishers: 3 } }).verdict, 'Weakly sourced');
   assert.equal(computeVerdict({ match: m, corroboration: { state: 'unknown', publishers: null } }).verdict, 'Unverifiable');
   assert.equal(
     computeVerdict({ match: m, corroboration: { state: 'corroborated', publishers: 4 }, figures: [{ figure: '75', found: false, sourcesSay: '50' }] }).verdict,
@@ -144,7 +144,8 @@ test('an outage is reported as an outage, never as "nobody carried it"', async (
 test('real 2026-10-09 snapshot: split clusters, unrelated figures, one-publisher numbers, syndication', async () => {
   const { ArchiveSource, CombinedSource } = await import('../lib/sources.mjs');
   const archive = new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 });
-  const deps = { source: new CombinedSource(null, archive), anchor: new Anchor({ apiKey: '' }) };
+  const { loadSourceBook } = await import('../lib/config.mjs');
+  const deps = { source: new CombinedSource(null, archive), anchor: new Anchor({ apiKey: '' }), book: loadSourceBook() };
 
   // The diesel deal sat in 8 one-outlet clusters; counting one cluster would say Single-source.
   const diesel = await gradeToResult('Trump strikes diesel deal with Putin', deps);
@@ -159,10 +160,46 @@ test('real 2026-10-09 snapshot: split clusters, unrelated figures, one-publisher
   // Two outlets report the strikes; only one states the number.
   const sudan = await gradeToResult('31 civilians killed in drone strike on Sudan displacement camp', deps);
   assert.deepEqual(sudan.numbers.figures[0].statedBy, ['Daily Sabah']);
-  assert.equal(sudan.verdict.caveat, 'Story corroborated, figure single-source');
+  // Daily Sabah (tier 2, medium risk, state-affiliated: Turkey) + Dabanga Sudan (tier 3, unreviewed) weigh too little.
+  assert.equal(sudan.verdict.verdict, 'Weakly sourced');
+  assert.equal(sudan.who.rated.find((r) => r.name === 'Daily Sabah').stateAffiliated, 'Turkey');
+  assert.equal(diesel.who.strength.band, 'strong');
 
   const [top] = await findRevealCandidates(deps.source);
   assert.equal(top.pattern, 'syndication');
   assert.equal(top.origin, 'iheart.com');
   assert.equal(top.headlineCount, 6);
+});
+
+test('source quality: weight, not headcount, decides', async () => {
+  const { SourceBook, assessSources, sourceScore } = await import('../lib/quality.mjs');
+  // WorldMonitor's own formula: tier 1 + low risk is the top source score; state media is capped.
+  assert.equal(sourceScore(1, 'low'), 80);
+  assert.ok(sourceScore(3, 'high') <= 40);
+  const book = new SourceBook([
+    ['AP News', 1, 'low', 'wire', null], ['BBC World', 2, 'low', 'mainstream', null],
+    ['RT', 3, 'high', 'wire', 'Russia'], ['TASS', 3, 'high', 'wire', 'Russia'], ['RT Russia', 3, 'high', 'wire', 'Russia'],
+    ...['Blog A', 'Blog B', 'Blog C', 'Blog D', 'Blog E', 'Blog F', 'Blog G'].map((n) => [n, 4, 'unknown', 'other', null]),
+  ]);
+  const story = (names) => ({ publishers: names.map((name) => ({ name, labels: [name] })), publishersUnlisted: 0 });
+
+  const two = assessSources(story(['AP News', 'BBC World']), book);
+  assert.equal(two.strength.band, 'strong');
+
+  const ten = assessSources(story(['RT', 'TASS', 'RT Russia', 'Blog A', 'Blog B', 'Blog C', 'Blog D', 'Blog E', 'Blog F', 'Blog G']), book);
+  assert.equal(ten.strength.headcount, 10);
+  assert.equal(ten.strength.band, 'weak');
+  assert.ok(ten.strength.weight < two.strength.weight);
+  assert.deepEqual(ten.strength.collapsed, [{ voice: 'Russia state media', members: ['RT', 'TASS', 'RT Russia'] }]);
+  assert.equal(ten.strength.weakPoolCapped, true);
+  // WorldMonitor weights propaganda risk at 50%: a high-risk state outlet ranks below an unrated blog.
+  assert.ok(ten.rated.find((r) => r.name === 'RT').weight < ten.rated.find((r) => r.name === 'Blog A').weight);
+});
+
+test('rehearsal: eight weak sources are "Weakly sourced", not corroborated', async () => {
+  const { SourceBook } = await import('../lib/quality.mjs');
+  const r = await gradeToResult("Aurelia's president hospitalised", { ...desk(), book: new SourceBook(fixture.sources) });
+  assert.equal(r.who.families, 8);
+  assert.equal(r.verdict.verdict, 'Weakly sourced');
+  assert.match(r.script, /one voice: Norvenia state media/);
 });

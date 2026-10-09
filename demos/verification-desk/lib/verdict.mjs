@@ -5,6 +5,7 @@
 export const VERDICTS = {
   CORROBORATED: 'Corroborated',
   SINGLE_SOURCE: 'Single-source',
+  WEAKLY_SOURCED: 'Weakly sourced',
   CONTRADICTED: 'Contradicted',
   UNVERIFIABLE: 'Unverifiable',
 };
@@ -18,7 +19,7 @@ export const MATCH_THRESHOLD = 0.5;
  * @param {{figure:string, found:boolean, sourcesSay:string|null}[]} input.figures
  * @param {{stance:string, quote:string|null}|null} input.judge  quote already verified verbatim
  */
-export function computeVerdict({ match, corroboration, figures = [], judge = null, sourcesUnreachable = false }) {
+export function computeVerdict({ match, corroboration, figures = [], judge = null, sourcesUnreachable = false, quality = null }) {
   const reasons = [];
   if (!match && sourcesUnreachable) {
     // An outage is not evidence of absence: never say "nobody carried it" when we could not look.
@@ -46,24 +47,32 @@ export function computeVerdict({ match, corroboration, figures = [], judge = nul
     : null;
 
   const state = corroboration?.state ?? 'unknown';
-  if (state === 'corroborated') {
-    reasons.push(`${corroboration.publishers} independent publisher families carried it.`);
+  const strength = quality?.strength ?? null;
+  const top = quality?.rated?.[0] ?? null;
+  const describe = (r) => `${r.name} (${r.tier ? `tier ${r.tier}` : 'unrated'}, ${r.risk} risk${r.stateAffiliated ? `, state-affiliated: ${r.stateAffiliated}` : ''})`;
+  const lone = figures.filter((f) => f.found && f.statedBy?.length === 1);
+  const loneNotes = lone.map((f) => `But the figure ${f.figure} comes from one publisher only: ${f.statedBy[0]}.`);
+
+  if (state === 'corroborated' || state === 'tier4-only') {
+    const head = `${corroboration.publishers} publishers carried it`;
+    for (const c of strength?.collapsed ?? []) reasons.push(`${c.members.join(', ')} are one voice: ${c.voice}.`);
+    // Many weak sources are not corroboration: weight decides, not headcount.
+    if (state === 'tier4-only' || strength?.band === 'weak') {
+      reasons.unshift(`${head}, but weighted by source quality they add up to ${strength ? strength.weight.toFixed(1) : 'little'}${strength?.weakPoolCapped ? ' (aggregators and blogs capped)' : ''}.`);
+      if (figureNote) reasons.push(figureNote);
+      reasons.push(...loneNotes);
+      return { verdict: VERDICTS.WEAKLY_SOURCED, reasons };
+    }
+    reasons.unshift(`${head}: evidence weight ${strength ? `${strength.weight.toFixed(1)}, ${strength.band}` : 'not rated'}${top ? `, led by ${describe(top)}` : ''}.`);
     if (figureNote) reasons.push(figureNote);
-    // The event is corroborated; a number in it may still rest on one newsroom.
-    const lone = figures.filter((f) => f.found && f.statedBy?.length === 1);
-    for (const f of lone) reasons.push(`But the figure ${f.figure} comes from one publisher only: ${f.statedBy[0]}.`);
+    reasons.push(...loneNotes);
     const caveat = figureNote ? 'Story corroborated, figure unproven' : lone.length ? 'Story corroborated, figure single-source' : null;
-    return { verdict: VERDICTS.CORROBORATED, reasons, caveat };
+    return { verdict: VERDICTS.CORROBORATED, reasons, caveat, band: strength?.band ?? null };
   }
   if (state === 'single-publisher') {
-    reasons.push('Every copy traces to one publisher family.');
+    reasons.push(top ? `Every copy traces to one publisher family: ${describe(top)}.` : 'Every copy traces to one publisher family.');
     if (figureNote) reasons.push(figureNote);
     return { verdict: VERDICTS.SINGLE_SOURCE, reasons };
-  }
-  if (state === 'tier4-only') {
-    reasons.push(`${corroboration.publishers} publishers carried it, but every one is an aggregator or blog. No primary outlet.`);
-    if (figureNote) reasons.push(figureNote);
-    return { verdict: VERDICTS.UNVERIFIABLE, reasons };
   }
   reasons.push('WorldMonitor has no publisher evidence it can count for this story.');
   return { verdict: VERDICTS.UNVERIFIABLE, reasons };

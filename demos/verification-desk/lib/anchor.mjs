@@ -9,7 +9,7 @@ const DEFAULT_MODEL = 'claude-opus-5-5';
 
 const ANCHOR_PERSONA = `You are the anchor of "The Verification Desk", a live segment on a conference stage, powered by WorldMonitor.
 You speak to a room, so write for the ear: short sentences, no lists, no markdown, no URLs, no emoji.
-You only state facts present in the JSON you are given. You never say a claim is true or false; you say what the sources show: how many independent publisher families carried it, whether its figures appear in the sourced text, and what prediction markets price.
+You only state facts present in the JSON you are given. You never say a claim is true or false; you say what the sources show: how many independent publisher families carried it, how much those sources are worth (WorldMonitor rates each by tier and propaganda risk; many weak sources are not corroboration), whether its figures appear in the sourced text, and what prediction markets price.
 "Unverifiable" is an honest answer, say it plainly and without apology.
 Publisher families: several feeds or regional editions of one newsroom count as one.`;
 
@@ -98,7 +98,7 @@ export class Anchor {
     try {
       return await this.complete({
         system: ANCHOR_PERSONA,
-        prompt: `The audience asked you to check this headline. Here is what the desk found:\n${JSON.stringify(compactForNarration(result))}\n\nSpeak the verdict in 45 to 75 words. Walk the checks in order (who carried it, when it surfaced, whether the figures are in the sources, what money says if there is a market), then land on the verdict word exactly as given. If the verdict is Unverifiable, end on why that is the honest answer.`,
+        prompt: `The audience asked you to check this headline. Here is what the desk found:\n${JSON.stringify(compactForNarration(result))}\n\nSpeak the verdict in 45 to 75 words. Walk the checks in order (who carried it AND how much those sources are worth: say the headcount, then what they weigh by source quality, naming any state-media group that collapses into one voice; when it surfaced, whether the figures are in the sources, what money says if there is a market), then land on the verdict word exactly as given. If the verdict is Unverifiable, end on why that is the honest answer.`,
         maxTokens: 1500,
       });
     } catch {
@@ -142,7 +142,8 @@ function compactForNarration(r) {
     reasons: r.verdict?.reasons,
     matchedHeadline: r.match?.title ?? null,
     publisherFamilies: r.who?.families ?? null,
-    publishers: r.who?.publishers?.map((p) => p.name).slice(0, 6) ?? [],
+    sourcesRankedByQuality: (r.who?.rated ?? []).slice(0, 6).map((p) => ({ name: p.name, tier: p.tier, propagandaRisk: p.risk, stateAffiliated: p.stateAffiliated, weight: p.weight })),
+    evidenceWeight: r.who?.strength ? { weight: r.who.strength.weight, band: r.who.strength.band, headcount: r.who.strength.headcount, sameVoice: r.who.strength.collapsed } : null,
     headlinesInCluster: r.who?.memberCount ?? null,
     firstSeen: r.when?.firstSeen ?? null,
     spreadHours: r.when?.spreadHours ?? null,
@@ -156,6 +157,7 @@ const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'sev
 const say = (n) => (Number.isInteger(n) && n >= 0 && n < NUMBER_WORDS.length ? NUMBER_WORDS[n] : String(n));
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const TIER_WORDS = { 1: 'wire service or official body', 2: 'major outlet', 3: 'specialist or regional source', 4: 'aggregator or blog' };
 
 export function templateGrade(r) {
   const v = r.verdict?.verdict ?? 'Unverifiable';
@@ -166,12 +168,30 @@ export function templateGrade(r) {
     parts.push(`I searched every outlet WorldMonitor monitors for that headline and found no publisher carrying it.`);
   } else {
     const fam = r.who?.families;
-    const lead = r.who?.publishers?.[0]?.name;
-    parts.push(fam === 1
-      ? `Every copy of this story traces back to one newsroom${lead ? `, ${lead}` : ''}.`
-      : `${cap(say(fam ?? 0))} independent publisher families carried this story.`);
+    const top = r.who?.rated?.[0];
+    const strength = r.who?.strength;
+    const describe = (x) => `${x.name}${x.stateAffiliated ? `, state-affiliated media from ${x.stateAffiliated}` : x.tier ? `, a ${TIER_WORDS[x.tier]}` : ''}`;
+    if (fam === 1) {
+      parts.push(`Every copy of this story traces back to one newsroom${top ? `: ${describe(top)}` : ''}.`);
+    } else if (strength) {
+      parts.push(`${cap(say(fam ?? 0))} publishers carried this story.`);
+      for (const c of strength.collapsed ?? []) parts.push(`But ${say(c.members.length)} of them are one voice: ${c.voice}.`);
+      if (strength.band === 'weak') {
+        parts.push(`Weighted by who they are, they add up to ${strength.weight.toFixed(1)}. Strong evidence needs one point eight, with at least one top-rated source.`);
+        const collapsedNames = new Set((strength.collapsed ?? []).flatMap((c) => c.members));
+        for (const x of (r.who?.rated ?? []).filter((y) => y.stateAffiliated && !collapsedNames.has(y.name)).slice(0, 2)) {
+          parts.push(`${x.name} is state-affiliated media from ${x.stateAffiliated}.`);
+        }
+      } else {
+        parts.push(`Weighted by who they are, that is ${strength.band} evidence, led by ${describe(top)}.`);
+      }
+    } else {
+      parts.push(`${cap(say(fam ?? 0))} independent publisher families carried this story.`);
+    }
     const origin = r.when?.cascade?.origin;
-    if (origin && r.when.cascade.originCount > 1 && origin !== lead) {
+    if (origin === '(unnamed sources)' && r.when.cascade.originCount > 1) {
+      parts.push(`${cap(say(r.when.cascade.originCount))} of those headlines rest on unnamed sources.`);
+    } else if (origin && r.when.cascade.originCount > 1 && origin !== top?.name) {
       parts.push(`${cap(say(r.when.cascade.originCount))} of those headlines credit the same origin: ${origin}.`);
     }
     const figures = r.numbers?.figures ?? [];
@@ -181,7 +201,7 @@ export function templateGrade(r) {
     else if (unproven) parts.push(`The figure ${unproven.figure} does not appear in the sourced text, so it is unproven.`);
     else if (figures.some((f) => f.statedBy?.length === 1) && (r.who?.families ?? 0) > 1) {
       const f = figures.find((x) => x.statedBy?.length === 1);
-      parts.push(`${cap(say(r.who.families))} newsrooms carry the event, but the number ${f.figure} comes from only one of them: ${f.statedBy[0]}.`);
+      parts.push(`The number ${f.figure} comes from only one of them: ${f.statedBy[0]}.`);
     }
     else if (figures.length) parts.push(`The figures check out against the sourced text.`);
     const m = r.money?.markets?.[0];

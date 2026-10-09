@@ -2,6 +2,7 @@
 // so the stage can reveal each step as the anchor reaches it.
 
 import { attributionCascade, checkFigures, heuristicSearchTerms, overlapScore } from './text.mjs';
+import { assessSources } from './quality.mjs';
 import { computeVerdict, gateJudge, MATCH_THRESHOLD } from './verdict.mjs';
 
 function hoursBetween(a, b) {
@@ -60,6 +61,7 @@ export function mergeSiblings(headline, best, clusters) {
     publishersUnlisted: Math.max(0, families - publishers.length),
     corroboration: { state, publishers: families },
     sources: [...new Set(all.flatMap((c) => c.sources ?? []))],
+    sourceProvenance: all.flatMap((c) => c.sourceProvenance ?? []),
     memberCount: all.reduce((n, c) => n + (c.memberCount ?? 1), 0),
     memberTitles: [...new Set(all.flatMap((c) => c.memberTitles?.length ? c.memberTitles : [c.title]))],
     firstSeen: times('firstSeen')[0] ?? best.firstSeen,
@@ -80,7 +82,7 @@ function marketRelevance(headline, terms, market) {
  * @param {{source:object, anchor:object}} deps
  * @yields {{step:string, data:object}}
  */
-export async function* gradeHeadline(headline, { source, anchor }) {
+export async function* gradeHeadline(headline, { source, anchor, book = null }) {
   const result = { headline, startedAt: new Date().toISOString(), sourceKind: source.kind };
 
   // 0. Find the story.
@@ -101,8 +103,11 @@ export async function* gradeHeadline(headline, { source, anchor }) {
   const memberTitles = story ? [...new Set([...(detail?.memberTitles ?? []), ...(story.memberTitles ?? [story.title])])] : [];
 
   // 1. Who said it? Publisher families, never feed labels.
+  const quality = story ? assessSources(story, book) : null;
   result.who = story
     ? {
+      rated: quality.rated,
+      strength: quality.strength,
       families: story.corroboration?.publishers ?? story.distinctSourceCount ?? null,
       state: story.corroboration?.state ?? 'unknown',
       publishers: story.publishers,
@@ -133,7 +138,9 @@ export async function* gradeHeadline(headline, { source, anchor }) {
   const article = story?.link ? await source.articleText(story.link) : null;
   const evidenceText = [...memberTitles, article ?? ''].join('\n');
   const bySource = story ? [...(story.bySource ?? []), ...(article ? [{ publisher: story.publishers?.[0]?.name ?? story.primarySource, text: article }] : [])] : [];
-  const figures = story ? checkFigures(headline, evidenceText, bySource) : [];
+  // "Only one publisher states this number" needs text from at least two publishers to mean anything.
+  const comparable = new Set(bySource.map((b) => b.publisher)).size >= 2;
+  const figures = story ? checkFigures(headline, evidenceText, comparable ? bySource : []).map((f) => (comparable ? f : { ...f, statedBy: null })) : [];
   result.numbers = { figures, evidence: article ? 'article text + member headlines' : 'member headlines only', articleChars: article?.length ?? 0 };
   yield { step: 'numbers', data: result.numbers };
 
@@ -155,7 +162,7 @@ export async function* gradeHeadline(headline, { source, anchor }) {
   const judge = story ? gateJudge(await anchor.judge(headline, evidenceText), evidenceText) : null;
   result.judge = judge;
   const sourcesUnreachable = (search.failures?.length ?? 0) > 0 && search.failures.length >= terms.length;
-  result.verdict = computeVerdict({ match: story ? { score: best.score } : null, corroboration: story?.corroboration ?? null, figures, judge, sourcesUnreachable });
+  result.verdict = computeVerdict({ match: story ? { score: best.score } : null, corroboration: story?.corroboration ?? null, figures, judge, sourcesUnreachable, quality });
   yield { step: 'verdict', data: { ...result.verdict, judge } };
 
   result.script = await anchor.narrateGrade(result);

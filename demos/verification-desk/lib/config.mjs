@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Anchor } from './anchor.mjs';
+import { SourceBook } from './quality.mjs';
 import { WorldMonitorMcp } from './mcp-client.mjs';
 import { ArchiveSource, CombinedSource, FixtureSource, LiveSource } from './sources.mjs';
 
@@ -16,11 +17,21 @@ export function loadEnv() {
   if (existsSync(envPath)) process.loadEnvFile(envPath);
 }
 
+/** WorldMonitor's outlet ratings (get_sources), as committed in snapshots/sources.json. */
+export function loadSourceBook() {
+  try {
+    return new SourceBook(JSON.parse(readFileSync(path.join(SNAPSHOT_DIR, 'sources.json'), 'utf8')).outlets);
+  } catch {
+    return new SourceBook([]);
+  }
+}
+
 export function buildDesk({ rehearsal = process.env.DESK_REHEARSAL === '1' } = {}) {
   const anchor = new Anchor();
+  const book = loadSourceBook();
   if (rehearsal) {
     const fixture = JSON.parse(readFileSync(path.join(ROOT, 'fixtures', 'rehearsal.json'), 'utf8'));
-    return { source: new FixtureSource(fixture), anchor, rehearsal: true };
+    return { source: new FixtureSource(fixture), anchor, book: new SourceBook(fixture.sources ?? []), rehearsal: true };
   }
   const apiKey = process.env.WORLDMONITOR_API_KEY;
   const bearerToken = process.env.WORLDMONITOR_MCP_TOKEN;
@@ -32,5 +43,5 @@ export function buildDesk({ rehearsal = process.env.DESK_REHEARSAL === '1' } = {
   if (!live && !archive) {
     throw new Error('No data source: set WORLDMONITOR_API_KEY in demos/verification-desk/.env, or run with DESK_REHEARSAL=1.');
   }
-  return { source: new CombinedSource(live, archive), anchor, rehearsal: false };
+  return { source: new CombinedSource(live, archive), anchor, book, rehearsal: false };
 }

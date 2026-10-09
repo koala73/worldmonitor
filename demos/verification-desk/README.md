@@ -51,6 +51,7 @@ Every place, outlet and number in `fixtures/rehearsal.json` is invented. Try the
 - "Minister Calloway resigns" → **Single-source** (five regional editions of one paper count as one)
 - "Aurelia central bank raises rates by 75 basis points" → **Contradicted** (the sources say 50)
 - "Mount Tessaly eruption kills 400" → **Corroborated, figure unproven**
+- "Aurelia's president hospitalised" → **Weakly sourced** (8 publishers that weigh 0.9)
 - "Aliens land in Paris" → **Unverifiable**
 - Press **S** → the Lumora / Kestrel Wire cascade reveal
 
@@ -70,14 +71,34 @@ npm start            # http://localhost:4317 → press F for fullscreen, H to hi
 
 Each grade streams the checks one at a time: **who** (publisher families, with collapsed feed labels struck through), **when** (first seen, spread, stated origin), **numbers** (every figure in the headline looked up in the article text and member headlines), **money** (Polymarket and Kalshi odds that match), then the **verdict** card, and then the anchor speaks. Every live grade is logged to `data/grades/` for your write-up after the panel.
 
+### Source quality: weight, not headcount (`lib/quality.mjs`)
+
+Ten weak sources are not corroboration. Every publisher behind a story is ranked on screen with WorldMonitor's own ratings: its **tier** (1 wire service or official body, 2 major outlet, 3 specialist or regional, 4 aggregator or blog), its **propaganda risk**, and its **state affiliation**. These come from `get_sources`, and a copy of all 519 outlets is in `snapshots/sources.json`. Each publisher is scored with WorldMonitor's credibility formula, imported from `shared/news-credibility.js` rather than copied: tier 30%, risk 50%, state-controlled media capped.
+
+The story's **evidence weight** adds those scores up, with three rules:
+
+1. Each publisher adds its score ÷ 80, so a tier-1, low-risk wire is 1.0, a tier-2 low-risk outlet 0.91, an unrated blog 0.31 and RT 0.26.
+2. **State media of one country is one voice.** RT, TASS and RT Russia count once.
+3. **Aggregators, blogs and unnamed publishers add at most 0.5 between them,** however many there are.
+
+Bands: **strong** is 1.8 or more, including at least one top-rated source (0.85+). **Moderate** is 1.2 or more. Anything less is **weak**. The divisor, the cap and the bands are this desk's choices, not WorldMonitor constants; say so if asked.
+
+Real examples from 2026-10-09:
+
+- Diesel deal: 6 publishers, weight **4.3, strong** (BBC, FT, Meduza, France 24, CNBC, NBC).
+- Sudan drone strike: 2 publishers, weight **1.0, weak**. Daily Sabah is state-affiliated (Turkey) and Dabanga Sudan is unrated.
+
+In rehearsal, "Aurelia's president hospitalised" has 8 publishers but weighs **0.9**: three state outlets that are one voice, plus five blogs.
+
 ### Verdict rules (`lib/verdict.mjs`)
 
 | Verdict | When |
 |---|---|
-| Unverifiable | No monitored cluster matches; or only aggregators/blogs carried it (`tier4-only`); or there is no countable publisher evidence |
-| Contradicted | The sources state a different figure, or Claude quotes a contradicting line **that appears verbatim in the evidence**. A quote that isn't verbatim is discarded. |
-| Single-source | One publisher family (`single-publisher`), counted across **every** matching cluster: one event can be split over several digest clusters |
-| Corroborated | Two or more independent families. A figure the sources don't contain is flagged as unproven; a figure only one publisher states is flagged as single-source. |
+| Unverifiable | No monitored cluster matches, or there is no countable publisher evidence |
+| Contradicted | The sources state a different figure *for the same quantity* ("75 basis points" vs "50 basis points", not "kills 200" vs "magnitude 7.7"). Or Claude quotes a contradicting line **that appears verbatim in the evidence**; a quote that isn't verbatim is discarded. |
+| Single-source | One publisher family, counted across **every** matching cluster (one event can be split over several digest clusters). The card names that publisher and its rating. |
+| Weakly sourced | Two or more publishers, but the evidence weight is weak, or every source is an aggregator or blog |
+| Corroborated | Two or more publishers with moderate or strong weight. A figure the sources don't contain is flagged as unproven; a figure only one publisher states is flagged as single-source. |
 
 WorldMonitor's corroboration states describe coverage, not accuracy. The anchor is prompted never to call a claim true or false, only to say what the sources show.
 
