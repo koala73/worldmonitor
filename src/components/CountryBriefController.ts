@@ -62,13 +62,16 @@ export class CountryBriefController {
       if (!current()) return null;
       const state = error instanceof CountrySectionError ? error.state : 'unavailable';
       const reason = state === 'locked' ? 'This section is not authorized by the current connection.' : 'This section could not be loaded. Retry to refresh it.';
+      let category: 'display_failure' | 'locked' | 'unavailable_response' | 'timeout' | 'invalid_response' | 'unknown_load_failure' = phase === 'apply' ? 'display_failure' : 'unknown_load_failure';
       try {
-        const category = phase === 'apply' ? 'display_failure'
+        category = phase === 'apply' ? 'display_failure'
           : state === 'locked' ? 'locked'
           : error instanceof CountrySectionError ? 'unavailable_response'
           : error instanceof DOMException && error.name === 'TimeoutError' ? 'timeout'
           : error instanceof SyntaxError || error instanceof ZodError ? 'invalid_response'
           : 'unknown_load_failure';
+      } catch {}
+      try {
         console.warn('[CountryBriefController] section failed', { section: id, phase, category });
       } catch {}
       this.snapshot.sections[id] = { state, reason };
