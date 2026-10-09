@@ -226,7 +226,7 @@ export interface CountryBriefPanel {
   onClose(cb: () => void): void;
   updateBrief(data: CountryIntelData): void;
   updateNews(headlines: NewsItem[]): void;
-  updateMarkets(markets: PredictionMarket[]): void;
+  updateMarkets(markets: PredictionMarket[], metadata?: { fetchedAt?: number }): void;
   updateStock(data: StockIndexData): void;
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;

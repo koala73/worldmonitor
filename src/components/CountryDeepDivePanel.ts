@@ -2969,13 +2969,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.renderEconomicIndicators();
   }
 
-  public updateMarkets(markets: PredictionMarket[]): void {
+  public updateMarkets(markets: PredictionMarket[], metadata?: { fetchedAt?: number }): void {
     if (!this.marketsBody) return;
     this.marketsBody.replaceChildren();
 
     if (markets.length === 0) {
       this.marketsBody.append(this.makeEmpty(t('countryBrief.noMarkets')));
-      return;
     }
 
     for (const market of markets.slice(0, 5)) {
@@ -2999,6 +2998,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const sourceBadge = this.el('span', 'prediction-source', source);
       sourceBadge.dataset.source = market.source === 'kalshi' ? 'kalshi' : 'polymarket';
       meta.append(sourceBadge, document.createTextNode(market.endDate ? ` Ends ${this.shortDate(market.endDate)}` : ' Active'));
+      const identity = this.el('div', 'cdp-market-contract', `Contract: ${market.id || 'Unknown'}`);
+      identity.style.overflowWrap = 'anywhere';
+      meta.append(identity);
       item.append(top, prob, meta);
 
       const expanded = this.el('div', 'cdp-expanded-only');
@@ -3018,6 +3020,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       this.marketsBody.append(item);
     }
+    const fetchedAt = metadata?.fetchedAt;
+    const snapshot = typeof fetchedAt === 'number' && Number.isFinite(fetchedAt) && fetchedAt > 0 ? new Date(fetchedAt) : null;
+    const snapshotText = snapshot && Number.isFinite(snapshot.getTime()) ? `Market data snapshot: ${snapshot.toISOString()}. This time applies to the list.` : 'Snapshot time unavailable.';
+    this.marketsBody.append(this.el('div', 'cdp-section-source cdp-economic-source', `${snapshotText} Quote times are not supplied.`));
   }
 
   public updateBrief(data: CountryIntelData): void {
