@@ -1723,7 +1723,7 @@ export function writeAccuracySection({
     );
   }
   const state = classifyAccuracyState(section);
-  if (audit === undefined) audit = forecastAccuracyAudit(state.scorecard);
+  // An omitted audit stays undefined, so each renderer derives it from state.scorecard.
   mkdirSync(join(outDir, 'accuracy'), { recursive: true });
   writeFileSync(
     join(outDir, 'accuracy', 'index.html'),
