@@ -89,6 +89,17 @@ describe('country section failure diagnostics', () => {
     expect(fixtureState.failure).toHaveBeenCalledOnce();
   });
 
+  it.each(['dom-name', 'zod-instance'] as const)('retains the fixed fallback when %s classification throws', async kind => {
+    const fixtureState = fixture();
+    const error = kind === 'dom-name' ? new DOMException(sentinel, 'TimeoutError') : {};
+    Object.defineProperty(error, kind === 'dom-name' ? 'name' : '_zod', { get() { throw new Error(sentinel); } });
+    await fixtureState.read('debt', async () => { throw error; }, vi.fn());
+    expect(fixtureState.warning).toHaveBeenCalledExactlyOnceWith('[CountryBriefController] section failed', { section: 'debt', phase: 'load', category: 'unknown_load_failure' });
+    expect(fixtureState.failure).toHaveBeenCalledExactlyOnceWith('debt', 'unavailable', 'This section could not be loaded. Retry to refresh it.');
+    expect(fixtureState.changed).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify([fixtureState.warning.mock.calls, fixtureState.failure.mock.calls, fixtureState.changed.mock.calls])).not.toContain(sentinel);
+  });
+
   it('keeps current AbortError failures observable when ownership is still current', async () => {
     const fixtureState = fixture();
     await fixtureState.read('debt', async () => { throw new DOMException(sentinel, 'AbortError'); }, vi.fn());
