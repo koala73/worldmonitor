@@ -121,6 +121,19 @@ export function countSettlementLagMs(feedKey) {
   return 0;
 }
 
+// A hard spec resolveHardSpec VOIDs on its first read, before the deadline
+// check: a metric it cannot evaluate (unsupported_metric_key) or no threshold
+// (missing_threshold). Such a window resolves before the emissions it goes on
+// covering.
+export function voidsOnFirstRead(spec) {
+  return spec?.kind === 'hard' && !evaluableHardSpec(spec);
+}
+
+function evaluableHardSpec(spec) {
+  const parsed = parseMetricKey(spec?.metricKey);
+  return Boolean(parsed) && SUPPORTED_FUNCTIONS.has(parsed.fn) && Number.isFinite(Number(spec?.threshold));
+}
+
 // The longest a hard window waits after its deadline, by design, before
 // resolveHardSpec seals or VOIDs it while its data is missing (#7072). The
 // branches follow resolveHardSpec's order, so the first one that would decide
@@ -134,10 +147,8 @@ export function countSettlementLagMs(feedKey) {
 // hard-lane service level adds one resolver cycle, the run that applies the
 // seal; a test drives resolveHardSpec to hold these bounds to its behaviour.
 export function hardResolutionBoundMs(spec) {
+  if (!evaluableHardSpec(spec)) return 0;
   const parsed = parseMetricKey(spec?.metricKey);
-  if (!parsed || !SUPPORTED_FUNCTIONS.has(parsed.fn)) return 0;
-  // resolveHardSpec VOIDs a spec without a threshold at once (missing_threshold).
-  if (!Number.isFinite(Number(spec?.threshold))) return 0;
   const feedKey = parsed.feedKey || spec?.sourceFeed;
   if (parsed.fn === 'yesPrice' && (spec?.sourceFeed === MARKET_BOOTSTRAP_FEED_KEY || parsed.feedKey === MARKET_BOOTSTRAP_FEED_KEY)) return 0;
   const isPointWindow = spec?.window === 'at-deadline' || spec?.window === 'at-endDate';

@@ -20,7 +20,7 @@ import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } fr
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
-import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON } from './_forecast-resolution-eval.mjs';
+import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON, voidsOnFirstRead } from './_forecast-resolution-eval.mjs';
 import { chokepointHardContract, FROZEN_JUDGED_QUESTION_DOMAINS, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
@@ -1694,9 +1694,10 @@ export const REGISTRATION_GAP_REASONS = Object.freeze([
 export function summarizeRegistration(ledger, historySnapshots, nowMs) {
   const windows = indexQuestionWindows(normalizeLedger(ledger));
   // The ledger keeps a window until 180 days after it resolved, and a window
-  // resolves after the emissions it covers. Counting only emissions from the
-  // retention window therefore never asks for a window a run has pruned; the
-  // 200-run bet history reaches further back than that.
+  // resolves after the emissions it covers, except one whose spec the
+  // resolver VOIDs on its first read (handled below). Counting only emissions
+  // from the retention window therefore never asks for a window a run has
+  // pruned; the 200-run bet history reaches further back than that.
   const retainedFrom = nowMs - LEDGER_RETENTION_WINDOW_DAYS * DAY_MS;
   const snapshots = [...(historySnapshots || [])]
     .filter((snapshot) => snapshot && Number(snapshot.generatedAt || nowMs) >= retainedFrom)
@@ -1728,6 +1729,11 @@ export function summarizeRegistration(ledger, historySnapshots, nowMs) {
       const candidate = createEntry(forecast.id, forecast, spec, generatedAt, snapshotAt, deadline);
       const covering = windows.covering(forecast.id, { entry: candidate, questionKey: windowQuestionKey(candidate) }, generatedAt);
       if (covering) window.ledgerKeys.add(covering);
+      // A window VOIDed on its first read keeps covering later emissions of
+      // its question until its deadline, and is pruned 180 days after that
+      // VOID, possibly while they are still in the bet history. Its emissions
+      // were registered; a missing window is not a gap.
+      else if (voidsOnFirstRead(spec)) continue;
       // The first resolver run after the snapshot lands within one cycle of
       // it; a deadline before that run is the one gap the ingest makes on
       // purpose. Any other uncovered emission is a lost window.
@@ -3243,13 +3249,16 @@ export async function appendR2Receipts(receipts, options = {}) {
       const day = new Date(receipt.resolvedAt).toISOString().slice(0, 10);
       const safeKey = receipt.key.replace(/[^a-zA-Z0-9@._-]+/g, '_');
       const key = `${config.basePrefix}/forecast-resolutions/${day}/${safeKey}-${receipt.resolvedAt}.json`;
-      await putObject(config, key, receipt, {
+      const written = await putObject(config, key, receipt, {
         kind: 'forecast-resolution',
         outcome: receipt.entry?.outcome || 'unknown',
       });
       // The hash of the stored bytes is publishable where the object path is
       // not: it lets a reader check a receipt without learning where it lives.
-      archived.push({ key: receipt.key, objectKey: key, receiptHash: sha256Hex(serializeR2JsonBody(receipt)) });
+      // The writer reports the digest of the body it sent; a writer that does
+      // not is hashed from the same serialization.
+      const receiptHash = typeof written?.sha256 === 'string' ? written.sha256 : sha256Hex(serializeR2JsonBody(receipt));
+      archived.push({ key: receipt.key, objectKey: key, receiptHash });
       console.log(`  [forecast-resolutions] R2 receipt: ${key}`);
     } catch (err) {
       console.warn(`  [forecast-resolutions] R2 receipt failed for ${receipt.key}: ${err?.message || err}`);

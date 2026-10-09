@@ -48,7 +48,6 @@ import {
   buildScorecard,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { DEFAULT_JUDGED_SLA_MS, hardSlaMs } from '../scripts/_forecast-scorecard.mjs';
-import { serializeR2JsonBody as serializeR2Json } from '../scripts/_r2-storage.mjs';
 import { createHash } from 'node:crypto';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
@@ -1874,6 +1873,37 @@ describe('ledger provenance and registration coverage (#7072)', () => {
     assert.equal(registration.historyFrom, runN);
   });
 
+  // Round-3 review probe: a daily bet re-emitted until its 30-day deadline,
+  // resolved and archived by each daily run, over 240 runs. A spec the
+  // resolver VOIDs on its first read resolves before the emissions it covers,
+  // so its window is pruned while they are still in the bet history.
+  it('reads no gap on any day for a daily bet, including one whose spec the resolver voids on its first read (#7072)', () => {
+    const contract = chokepointHardContract('Strait of Hormuz');
+    const gapDays = (overrides) => {
+      const deadline = T0 + 30 * DAY_MS;
+      const bet = (generatedAt) => forecast({
+        id: 'b-1', generationOrigin: 'bet_engine', generatedAt, deadline,
+        resolution: { kind: 'hard', metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)', operator: contract.operator, threshold: contract.threshold, window: 'at-deadline', deadline, sourceFeed: 'supply_chain:chokepoints:v4', ...overrides },
+      });
+      let ledger = {};
+      const history = [];
+      const days = [];
+      for (let day = 0; day <= 240; day += 1) {
+        const now = T0 + day * DAY_MS;
+        if (now < deadline) history.unshift(snapshot(now, [bet(now)]));
+        const read = history.slice(0, 200);
+        const registration = summarizeRegistration(ingestHistory(ledger, read, now), read, now);
+        if (Object.keys(registration.unregisteredByReason).length) days.push(day);
+        ledger = processResolutionCycle(ledger, read, {}, now).ledger;
+        for (const entry of Object.values(ledger)) if (entry.status === 'resolved' && !entry.receiptArchivedAt) entry.receiptArchivedAt = now;
+      }
+      return days;
+    };
+    assert.deepEqual(gapDays({}), [], 'valid spec');
+    assert.deepEqual(gapDays({ metricKey: 'supply_chain:chokepoints:v4|bogus(route==x)' }), [], 'unsupported metric');
+    assert.deepEqual(gapDays({ threshold: undefined }), [], 'missing threshold');
+  });
+
   it('counts a window the ledger scores as registered even when the gate withheld one of its emissions (#7067)', () => {
     const hard = forecast();
     const withheld = forecast({ generatedAt: T0 + 3_600_000, resolution: { kind: 'unscored', reason: 'generic_question', deadline: T0 + DAY_MS } });
@@ -1922,10 +1952,28 @@ describe('ledger provenance and registration coverage (#7072)', () => {
         CLOUDFLARE_R2_BUCKET: 'bucket',
         CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'receipts',
       },
-      putObject: async (_config, key, payload) => { stored.set(key, serializeR2Json(payload)); },
+      // Stands in for the writer: the body is built here, not by the module
+      // under test, and the writer reports the digest of what it sent.
+      putObject: async (_config, key, payload) => {
+        const body = `${JSON.stringify(payload, null, 2)}\n`;
+        stored.set(key, body);
+        return { key, sha256: sha256(body) };
+      },
     });
     const [{ objectKey, receiptHash }] = archived;
     assert.equal(receiptHash, sha256(stored.get(objectKey)), 'the hash is of the bytes stored');
+    // A writer that reports another body's digest is believed: the hash names what was written.
+    const [drifted] = await appendR2Receipts([receipt], {
+      env: { CLOUDFLARE_R2_ACCOUNT_ID: 'acct', CLOUDFLARE_R2_ACCESS_KEY_ID: 'id', CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret', CLOUDFLARE_R2_BUCKET: 'bucket', CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'receipts' },
+      putObject: async () => ({ sha256: sha256('compressed body') }),
+    });
+    assert.equal(drifted.receiptHash, sha256('compressed body'));
+    // A writer that reports nothing falls back to hashing the serialized receipt.
+    const [fallback] = await appendR2Receipts([receipt], {
+      env: { CLOUDFLARE_R2_ACCOUNT_ID: 'acct', CLOUDFLARE_R2_ACCESS_KEY_ID: 'id', CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret', CLOUDFLARE_R2_BUCKET: 'bucket', CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'receipts' },
+      putObject: async () => undefined,
+    });
+    assert.equal(fallback.receiptHash, sha256(`${JSON.stringify(receipt, null, 2)}\n`));
     const ledger = { 'a@1': { key: 'a@1', status: 'resolved', outcome: 'YES', resolvedAt: T0 } };
     markReceiptsArchived(ledger, archived, T0 + 1);
     assert.equal(ledger['a@1'].receiptHash, receiptHash);

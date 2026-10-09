@@ -857,8 +857,10 @@ describe('hardResolutionBoundMs matches when resolveHardSpec first seals a windo
       }
       assert.notEqual(sealedAfter, null, 'the window seals inside its bound');
       assert.ok(sealedAfter <= bound + HOUR, `sealed ${sealedAfter / HOUR}h after the deadline, bound ${bound / HOUR}h`);
-      // GPS jamming counts its bound from the start of the deadline's UTC day.
-      if (label !== 'GPS jamming') assert.ok(sealedAfter >= bound, `sealed ${sealedAfter / HOUR}h, before the ${bound / HOUR}h bound`);
+      // GPS jamming counts its bound from the start of the deadline's UTC day,
+      // so it may seal that many hours early, and no earlier.
+      const lowerBound = label === 'GPS jamming' ? bound - (deadline - Math.floor(deadline / DAY) * DAY) : bound;
+      assert.ok(sealedAfter >= lowerBound, `sealed ${sealedAfter / HOUR}h, before the ${lowerBound / HOUR}h lower bound`);
     });
   }
 });
