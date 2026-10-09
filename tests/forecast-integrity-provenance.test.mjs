@@ -121,7 +121,8 @@ describe('forecast integrity and provenance surfaces', () => {
     );
     assert.match(docs, /Political probability ceiling \| 0\.80/);
     assert.match(docs, /Military probability ceiling \| 0\.90/);
-    assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
+    assert.doesNotMatch(docs, /Infrastructure probability ceiling/, 'the infrastructure cap was retired in #5334');
+    assert.doesNotMatch(seeder, /INFRASTRUCTURE_DETECTOR_PROB_MAX/);
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
     assert.match(seeder, /Math\.min\(CONFLICT_BASE_DETECTOR_PROB_MAX,/);
     assert.equal(
