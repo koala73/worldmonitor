@@ -31,7 +31,7 @@ interface BootstrapMarket {
   url: string;
   endDate?: string;
   source?: 'kalshi' | 'polymarket';
-  marketTicker?: string;
+  displayUrl?: string;
 }
 
 interface BootstrapData {
@@ -49,7 +49,6 @@ interface CountryIndexData {
 const DEGENERATE_MARKET_SLUGS = new Set(['undefined', 'null', 'nan', '']);
 
 function bootstrapMarketIdentity(market: BootstrapMarket): string {
-  if (market.source === 'kalshi' && market.marketTicker) return `kalshi:${market.marketTicker}`;
   const url = String(market?.url ?? '').trim();
   if (url) {
     const path = url.split(/[?#]/)[0] ?? '';
@@ -79,11 +78,11 @@ function dedupeBootstrapMarkets(markets: BootstrapMarket[]): BootstrapMarket[] {
 
 function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
   return {
-    id: (m.source === 'kalshi' && m.marketTicker) || m.url?.split('/').pop() || '',
+    id: m.url?.split('/').pop() || '',
     title: m.title,
     yesPrice: (m.yesPrice ?? 50) / 100,
     volume: m.volume ?? 0,
-    url: m.url || '',
+    url: (m.source === 'kalshi' ? m.displayUrl ?? m.url : m.url) ?? '',
     closesAt: m.endDate ? Date.parse(m.endDate) : 0,
     category,
     source: m.source === 'kalshi' ? 'MARKET_SOURCE_KALSHI' as MarketSource : 'MARKET_SOURCE_POLYMARKET' as MarketSource,

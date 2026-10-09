@@ -23,6 +23,14 @@ afterEach(() => {
 });
 
 describe('listPredictionMarkets legacy bootstrap compatibility', () => {
+  it('suppresses an explicitly unavailable display destination while retaining the contract ID', async () => {
+    const row = { title: 'China meeting', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: '' };
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify({ countries: { CN: [row] }, fetchedAt: 789 }) });
+    const response = await listPredictionMarkets({} as never, { category: 'country:CN', query: '', pageSize: 5, cursor: '' } as never);
+    assert.equal(response.markets[0].id, 'KXMEETING-27-CN');
+    assert.equal(response.markets[0].url, '');
+    assert.equal(response.markets[0].yesPrice, 0.7);
+  });
   it('preserves contract IDs and separate events sharing a Kalshi series landing', async () => {
     const first = { title: 'China meeting in 2027', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
     const second = { ...first, title: 'China meeting in 2028', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };

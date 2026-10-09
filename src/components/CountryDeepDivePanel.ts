@@ -2984,7 +2984,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const title = this.el('div', 'cdp-market-title', market.title);
       top.append(title);
 
-      const link = sanitizeUrl(market.url || '');
+      const link = sanitizeUrl((market.source === 'kalshi' ? market.displayUrl ?? market.url : market.url) || '');
       if (link) {
         const anchor = this.el('a', 'cdp-market-link', 'Open');
         anchor.setAttribute('href', link);

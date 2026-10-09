@@ -130,15 +130,17 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     const service = await loadPredictionService();
     const rows = await service.fetchCountryMarkets('China', 'CN');
     assert.deepEqual(rows.map((row: { title: string }) => row.title), [second.title, first.title]);
-    assert.ok(rows.every((row: { url: string }) => row.url === first.displayUrl));
+    assert.deepEqual(rows.map((row: { url: string }) => row.url), [second.url, first.url]);
+    assert.ok(rows.every((row: { displayUrl: string }) => row.displayUrl === first.displayUrl));
   });
 
-  it('uses the public landing for ordinary hydrated prediction cards', async () => {
+  it('preserves identity and display destination for ordinary hydrated prediction cards', async () => {
     const row = { ...bootstrapMarket('Will China host the meeting?', 30000), source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, hydrated: { geopolitical: [row], tech: [], finance: [], fetchedAt: Date.now() } };
     const service = await loadPredictionService();
     const result = await service.fetchPredictionCandidates();
-    assert.equal(result.displayed[0].url, row.displayUrl);
+    assert.equal(result.displayed[0].url, row.url);
+    assert.equal(result.displayed[0].displayUrl, row.displayUrl);
     assert.equal(result.displayed[0].source, 'kalshi');
     assert.equal((globalThis.__wmCountryMarketsTestState!.hydrated as { geopolitical: { url: string }[] }).geopolitical[0].url, row.url);
   });

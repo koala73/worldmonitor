@@ -9,6 +9,7 @@ export interface PredictionMarket {
   yesPrice: number;     // 0-100 scale (legacy compat)
   volume?: number;
   url?: string;
+  displayUrl?: string;
   endDate?: string;
   source?: 'polymarket' | 'kalshi';
   regions?: string[];
