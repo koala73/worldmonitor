@@ -1716,7 +1716,7 @@ function isSameWindowQuestion(a, b) {
 // is scored once, at the absorbing window's deadline, never at its own. Each
 // gap is named by its first unregistered emission.
 export const REGISTRATION_GAP_REASONS = Object.freeze([
-  'no_resolution_spec', 'withheld_at_emission', 'no_deadline', 'deadline_passed_before_registration', 'unregistered',
+  'no_resolution_spec', 'withheld_at_emission', 'base_rate_placeholder', 'no_deadline', 'deadline_passed_before_registration', 'unregistered',
 ]);
 
 export function summarizeRegistration(ledger, historySnapshots, nowMs) {
@@ -1747,8 +1747,10 @@ export function summarizeRegistration(ledger, historySnapshots, nowMs) {
         // The extraction gate withheld it from scoring (#7067); the
         // scorecard's withheldAtEmission counts these, and no window opens.
         : spec.kind !== 'hard' && spec.kind !== 'judged' ? 'withheld_at_emission'
-          : !Number.isFinite(deadline) || !Number.isFinite(generatedAt) ? 'no_deadline'
-            : null;
+          // A bet on the seeder's base-rate placeholder opens no window (#8990).
+          : isPlaceholderBet({ ...forecast, spec }) ? 'base_rate_placeholder'
+            : !Number.isFinite(deadline) || !Number.isFinite(generatedAt) ? 'no_deadline'
+              : null;
       if (unscoreable) {
         window.unscoreable ??= unscoreable;
         continue;

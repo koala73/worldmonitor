@@ -1851,6 +1851,18 @@ describe('ledger provenance and registration coverage (#7072)', () => {
     assert.deepEqual(summarizeRegistration(ledger, [snapshot(T0, [withheld])], T0).unregisteredByReason, { withheld_at_emission: 1 });
   });
 
+  it('names a bet emitted only on the base-rate placeholder as a placeholder, not lost (#8990)', () => {
+    const bet = (probabilitySource, generatedAt) => forecast({ id: 'bet:eia', generationOrigin: 'bet_engine', probabilitySource, generatedAt, resolution: { kind: 'hard', metricKey: 'energy:eia-petroleum:v1|value(metric==brent)', operator: 'crosses', threshold: 90, baselineValue: 85, window: 'at-deadline', deadline: T0 + 7 * DAY_MS, sourceFeed: 'energy:eia-petroleum:v1' } });
+    const placeholderOnly = [snapshot(T0, [bet('base_rate', T0)])];
+    const ledger = ingestHistory({}, placeholderOnly, T0);
+    assert.deepEqual(summarizeRegistration(ledger, placeholderOnly, T0).unregisteredByReason, { base_rate_placeholder: 1 });
+    const thenEnsembled = [...placeholderOnly, snapshot(T0 + 3_600_000, [bet('ensemble', T0 + 3_600_000)])];
+    const opened = ingestHistory({}, thenEnsembled, T0 + 3_600_000);
+    const registration = summarizeRegistration(opened, thenEnsembled, T0 + 3_600_000);
+    assert.equal(registration.ledgerRegisteredCount, 1, 'the ensemble emission opened the window; the placeholder beside it is no gap');
+    assert.deepEqual(registration.unregisteredByReason, {});
+  });
+
   it('does not read a window a previous run pruned as a gap (#7072 review)', () => {
     // Run N, 186 days after a bet window resolved, prunes it; run N+1 reads
     // the pruned ledger with the same old snapshot still in the bet history.
@@ -1882,7 +1894,7 @@ describe('ledger provenance and registration coverage (#7072)', () => {
     const gapDays = (overrides) => {
       const deadline = T0 + 30 * DAY_MS;
       const bet = (generatedAt) => forecast({
-        id: 'b-1', generationOrigin: 'bet_engine', generatedAt, deadline,
+        id: 'b-1', generationOrigin: 'bet_engine', probabilitySource: 'ensemble', generatedAt, deadline,
         resolution: { kind: 'hard', metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)', operator: contract.operator, threshold: contract.threshold, window: 'at-deadline', deadline, sourceFeed: 'supply_chain:chokepoints:v4', ...overrides },
       });
       let ledger = {};
