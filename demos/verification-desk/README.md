@@ -112,7 +112,9 @@ WorldMonitor's corroboration states describe coverage, not accuracy. The anchor 
 
 ## Stage script (~7 minutes)
 
-**Open.** "Truth online isn't a vibe, it's a count. I'm going to let an AI anchor re-read last week's news to you, and tell you, claim by claim, what was actually verified and what the whole internet just repeated."
+**Open.** "We don't tell you what's true. We show you what stands behind it: how many independent sources, how credible each one is, and whether the facts hold up. I'm going to let an AI anchor re-read this week's news with you, claim by claim."
+
+Say *validates the evidence*, never *validates the truth*. WorldMonitor's own wording is "This describes coverage, not accuracy." Several credible outlets can repeat the same wrong official statement; the desk shows the evidence, it does not rule on reality.
 
 1. **Recap (90 s, press R).** The anchor reads the week, and every story carries its count. *Message: verification can be the default, not an afterthought.*
 2. **Grade a headline (3 min, two or three from the room).** Each check lands on screen as the anchor reaches it. If someone names something that isn't in the data, let it land on **Unverifiable**. That's the most powerful answer to show. *Message: trust is auditable, step by step.*
