@@ -8,6 +8,7 @@ import {
   parseYesPrice,
   parseKalshiYesPrice,
   parsePredictionMarketVolume,
+  kalshiMarketUrl,
   selectPricedKalshiMarket,
   shouldInclude,
   scoreMarket,
@@ -21,6 +22,14 @@ import {
 function market(title, yesPrice, volume, opts = {}) {
   return { title, yesPrice, volume, ...opts };
 }
+
+describe('Kalshi series website landing', () => {
+  it('matches the official KXHIGHNY guide example from explicit provenance', () => {
+    assert.equal(kalshiMarketUrl('KXHIGHNY'), 'https://kalshi.com/markets/kxhighny');
+    assert.equal(kalshiMarketUrl(' KXPUTINDJTLOCATION '), 'https://kalshi.com/markets/kxputindjtlocation');
+    for (const value of [undefined, '', '../other', 'KXHIGHNY?market=other']) assert.equal(kalshiMarketUrl(value), '');
+  });
+});
 
 describe('parseKalshiYesPrice', () => {
   it('converts 0-1 dollar scale to 0-100', () => {

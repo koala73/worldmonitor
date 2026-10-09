@@ -85,6 +85,22 @@ describe('Kalshi public landing and market identity', () => {
     assert.equal(result.duplicatesDropped, 1);
     assert.equal(Object.values(result.pools).flat().find(row => row.marketTicker === first.marketTicker).volume, 50000);
   });
+
+  it('preserves all four observed China Polymarket links and prices', () => {
+    const urls = [
+      'https://polymarket.com/event/china-gdp-growth-yy-in-q3-2026-20260716161116873',
+      'https://polymarket.com/event/best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/second-best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/third-best-chinese-ai-company-end-of-october',
+    ];
+    const rows = urls.map((url, i) => ({ title: `Will China AI company ${i} succeed?`, url, yesPrice: [68, 30, 22, 18][i], volume: 30000, source: 'polymarket', tags: ['ai'], endDate: '2027-01-01T00:00:00Z' }));
+    const result = Object.values(buildBootstrapPools(rows, { now: FIXTURE_NOW }).pools).flat();
+    assert.equal(result.length, 4);
+    for (const row of rows) {
+      const { regions, ...actual } = result.find(entry => entry.url === row.url);
+      assert.deepEqual(actual, row);
+    }
+  });
 });
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what

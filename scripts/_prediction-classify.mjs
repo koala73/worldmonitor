@@ -165,6 +165,7 @@ export function partitionMarkets(markets) {
 const DEGENERATE_SLUGS = new Set(['undefined', 'null', 'nan', '']);
 
 export function marketIdentity(market) {
+  if (market?.source === 'kalshi' && market.marketTicker) return `kalshi:${market.marketTicker}`;
   const url = String(market?.url ?? '').trim();
   if (url) {
     const slug = url.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() ?? '';

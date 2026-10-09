@@ -151,7 +151,7 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
       if (!Array.isArray(data?.markets)) {
         throw new Error('Kalshi invalid payload: expected markets array');
       }
-      markets.push(...data.markets);
+      markets.push(...data.markets.map(market => ({ ...market, series_ticker: seriesTicker })));
 
       const nextCursor = typeof data.cursor === 'string' ? data.cursor.trim() : '';
       if (!nextCursor) {

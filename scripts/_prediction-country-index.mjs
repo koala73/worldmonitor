@@ -113,6 +113,7 @@ function countryMatches(normalizedTitle, matchers) {
 function marketEventIdentity(market) {
   const eventKey = String(market?.eventKey ?? '').trim();
   if (eventKey) return eventKey;
+  if (market?.source === 'kalshi' && market.marketTicker) return `kalshi:${market.marketTicker}`;
   const url = String(market?.url ?? '').trim();
   if (url) return url;
   return String(market?.title ?? '').trim().toLowerCase();
@@ -174,6 +175,7 @@ function publicMarket(market) {
     url: market.url,
     ...(market.endDate ? { endDate: market.endDate } : {}),
     source: market.source,
+    ...(market.source === 'kalshi' && market.marketTicker ? { marketTicker: market.marketTicker } : {}),
   };
 }
 

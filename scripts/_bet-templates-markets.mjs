@@ -56,7 +56,9 @@ export function parseMarketRecord(record) {
   const yesPrice = Number(record.yesPrice);
   const volume = Number(record.volume);
   const endDateMs = Date.parse(record.endDate ?? '');
-  const slugInfo = marketSlugFromUrl(record.url);
+  const slugInfo = record.source === 'kalshi' && record.marketTicker
+    ? { source: 'kalshi', slug: String(record.marketTicker) }
+    : marketSlugFromUrl(record.url);
   if (!title || !slugInfo) return null;
   if (!Number.isFinite(yesPrice)) return null;
   if (!Number.isFinite(volume) || volume < MARKET_MIN_VOLUME) return null;
