@@ -247,6 +247,27 @@ describe('buildCountryMarketIndex', () => {
   });
 });
 
+describe('Norway brand exclusions', () => {
+  const cases = [
+    ['Norwegian Cruise passengers carried in 2026: Above 3.25 million', false],
+    ['Will Norway hold an early election?', true],
+    ['Will the Norwegian government hold an early election?', true],
+    ['Will Norwegians approve the referendum?', true],
+    ['Will Norwegian Cruise expand service to Norway?', true],
+    ['Will Norwegian Cruise comply with Norwegian government rules?', true],
+  ];
+
+  for (const [title, expected] of cases) {
+    it(`matches Norway only for country evidence: ${title}`, () => {
+      const index = buildCountryMarketIndex([market(title, 'kalshi', 10_000)], { now: NOW });
+      assert.deepEqual(index.NO?.map((entry) => entry.title) ?? [], expected ? [title] : []);
+      assert.deepEqual(selectKalshiSeriesTickers([
+        { ticker: 'KXNORWAYTEST', title, category: 'World', volume_fp: '10000' },
+      ], ['NO']), expected ? ['KXNORWAYTEST'] : []);
+    });
+  }
+});
+
 describe('projectCountryMarketIndex', () => {
   const usMarket = market('Will United States GDP grow in 2027?', 'kalshi', 6_000);
 

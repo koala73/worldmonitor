@@ -73,7 +73,7 @@ async function loadPredictionService() {
           state.rpcCalls.push({ category: req.category, query: req.query });
           return {
             markets: state.rpcMarketsByCategory[req.category] ?? [],
-            dataAvailable: state.rpcDataAvailable === true,
+            ...(state.rpcDataAvailable === undefined ? {} : { dataAvailable: state.rpcDataAvailable }),
           };
         }
       }
@@ -235,6 +235,36 @@ describe('fetchCountryMarkets uses the producer country index', () => {
       const out = await service.fetchCountryMarkets(country, countryCode);
 
       assert.deepEqual(out.map((m: { title: string }) => m.title), [title], countryCode);
+    }
+  });
+
+  it('excludes the Norwegian Cruise brand while preserving independent Norway evidence in the fallback', async () => {
+    const cases = [
+      ['Norwegian Cruise passengers carried in 2026: Above 3.25 million', false],
+      ['Will Norway hold an early election?', true],
+      ['Will the Norwegian government hold an early election?', true],
+      ['Will Norwegians approve the referendum?', true],
+      ['Will Norwegian Cruise expand service to Norway?', true],
+      ['Will Norwegian Cruise comply with Norwegian government rules?', true],
+    ] as const;
+
+    for (const rpcDataAvailable of [false, undefined]) {
+      for (const [title, expected] of cases) {
+        globalThis.__wmCountryMarketsTestState = {
+          rpcCalls: [],
+          rpcMarketsByCategory: {},
+          rpcDataAvailable,
+          hydrated: {
+            geopolitical: [{ ...bootstrapMarket(title, 10_000), source: 'kalshi' }],
+            tech: [],
+            finance: [],
+            fetchedAt: Date.now(),
+          },
+        };
+        const service = await loadPredictionService();
+        const out = await service.fetchCountryMarkets('Norway', 'NO');
+        assert.deepEqual(out.map((m: { title: string }) => m.title), expected ? [title] : [], title);
+      }
     }
   });
 

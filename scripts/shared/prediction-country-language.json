@@ -59,7 +59,7 @@
       "terms": ["dutch"],
       "excludedPhrases": ["dutch bros", "dutch auction"]
     },
-    "NO": { "terms": ["norwegian", "norwegians"] },
+    "NO": { "terms": ["norwegian", "norwegians"], "excludedPhrases": ["norwegian cruise"] },
     "PH": { "terms": ["filipino", "filipinos"] },
     "PK": { "terms": ["pakistani", "pakistanis"] },
     "PL": { "terms": ["polish election", "polish government", "polish president", "polish parliament"] },
