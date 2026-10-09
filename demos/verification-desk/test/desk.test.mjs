@@ -187,3 +187,13 @@ test('a fetched article is credited to the publisher of its own link', async () 
   assert.ok(fact, JSON.stringify(r.numbers));
   assert.deepEqual(fact.statedBy, ['Daily Sabah'], 'the wire never stated 31; only the linked article and its own headline did');
 });
+
+test('article text: scripts with spaced end tags are dropped, entities decode once', async () => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  const body = `<p>Officials said 31 people died.</p><script>var x = "200 dead";</script ><style>.a{}</style >
+    <p>Tom &amp;lt;Jerry&amp;gt; &quot;quoted&quot; &amp; more ${'filler text '.repeat(30)}</p>`;
+  const text = await fetchArticleText('https://example.com/a', { fetchImpl: async () => ({ ok: true, text: async () => body }) });
+  assert.ok(text.includes('31 people died'));
+  assert.ok(!text.includes('200'), 'script content is not article text');
+  assert.ok(text.includes('Tom &lt;Jerry&gt; "quoted" & more'), text.slice(0, 120));
+});

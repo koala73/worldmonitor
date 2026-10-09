@@ -82,15 +82,16 @@ export function collectMarkets(payload) {
   return out;
 }
 
+const ENTITIES = { nbsp: ' ', amp: '&', quot: '"', '#39': "'", apos: "'" };
+
+// Plain text for figure checks only; it is never rendered as HTML.
 function stripHtml(html) {
   return String(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
+    // One pass, so "&amp;lt;" stays "&lt;" (no double unescaping).
+    .replace(/&(nbsp|amp|quot|#39|apos);/g, (_, name) => ENTITIES[name])
     .replace(/\s+/g, ' ')
     .trim();
 }
