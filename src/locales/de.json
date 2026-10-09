@@ -2423,7 +2423,8 @@
           "judged_old_selection": "Bewertet mit einer später als unzuverlässig befundenen Nachweismethode",
           "late_read": "Der Feed wurde nicht nah genug an der Frist ausgelesen",
           "feed_unavailable": "Der Datenfeed war nach der Frist nicht verfügbar",
-          "resolver_could_not_read_feed": "Unser Auswertungssystem konnte diesen Datenfeed nicht korrekt lesen"
+          "resolver_could_not_read_feed": "Unser Auswertungssystem konnte diesen Datenfeed nicht korrekt lesen",
+          "base_rate_placeholder": "Mit einem Basisraten-Platzhalter eröffnet, nicht mit einer Modellprognose"
         }
       },
       "horizons": {

@@ -133,7 +133,7 @@ describe('computeScorecard', () => {
       // synthetic backfill — inflates overall, must be held out of skill
       c: resolved({ probability: 0.9, outcome: 'YES', generationOrigin: 'state_derived' }),
       // shadow bet-engine — scored for evidence but not promoted to the headline
-      d: resolved({ probability: 0.2, outcome: 'NO', generationOrigin: 'bet_engine' }),
+      d: resolved({ probability: 0.2, outcome: 'NO', generationOrigin: 'bet_engine', probabilitySource: 'ensemble' }),
     };
 
     const scorecard = computeScorecard(ledger, NOW);
@@ -227,11 +227,11 @@ describe('computeScorecard', () => {
       a: resolved({ probability: 0.8, outcome: 'YES', domain: 'market', generationOrigin: 'detector' }),
       b: resolved({ probability: 0.4, outcome: 'NO', domain: 'market', generationOrigin: 'detector' }),
       c: resolved({ probability: 0.3, outcome: 'NO', domain: 'conflict', generationOrigin: 'detector' }),
-      d: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'bet_engine' }),
+      d: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'bet_engine', probabilitySource: 'ensemble' }),
       e: resolved({ probability: 0.1, outcome: 'YES', domain: 'market', generationOrigin: 'state_derived' }),
       f: absent,
       g: resolved({ probability: 0.5, outcome: 'VOID', domain: 'market', generationOrigin: 'detector' }),
-      h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine' }),
+      h: resolved({ probability: 0.9, outcome: 'NO', domain: 'cyber', generationOrigin: 'bet_engine', probabilitySource: 'ensemble' }),
     }, NOW, { promoteBetEngine: true });
 
     assert.equal(scorecard.schemaVersion, 2, 'schema 2 marks a seed that carries publishedByDomain');
@@ -704,14 +704,15 @@ describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
     });
   }
 
-  it('keeps windows that opened on the base-rate placeholder out of the skill comparisons (#8990)', () => {
+  it('leaves windows that opened on the base-rate placeholder out of every count (#8990)', () => {
     const scorecard = computeScorecard({
       a: betEngineEntry({ probability: 0.8, outcome: 'YES', baselineProbability: 0.4, calibration: { marketPrice: 60 } }),
       b: betEngineEntry({ probability: 0.4, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'base_rate', calibration: { marketPrice: 70 } }),
       c: betEngineEntry({ probability: 0.3, outcome: 'NO', baselineProbability: 0.4, probabilitySource: undefined, calibration: { marketPrice: 70 } }),
       d: betEngineEntry({ probability: 0.2, outcome: 'NO', baselineProbability: 0.4, probabilitySource: 'ensemble_partial', calibration: { marketPrice: 70 } }),
     }, NOW);
-    assert.equal(scorecard.betEngine.count, 4, 'every bet window is still scored');
+    assert.equal(scorecard.betEngine.count, 2, 'a placeholder window was never a question');
+    assert.equal(scorecard.totals.entries, 2);
     assert.equal(scorecard.betEngine.ensembleCount, 2);
     assert.equal(scorecard.betEngine.vsBaseRate.count, 2);
     assert.equal(scorecard.betEngine.vsMarketSkill.count, 2);
@@ -1457,8 +1458,8 @@ describe('go-forward VOID share KPI (#4930)', () => {
 
   it('leaves unpublished shadow bets out and keeps published state-derived rows (#5525)', () => {
     const rows = [
-      opened(GO_FORWARD_SINCE_MS, { id: 'bet', generationOrigin: 'bet_engine', outcome: 'YES' }),
-      opened(GO_FORWARD_SINCE_MS, { id: 'bet-2', generationOrigin: 'bet_engine', outcome: 'NO' }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'bet', generationOrigin: 'bet_engine', probabilitySource: 'ensemble', outcome: 'YES' }),
+      opened(GO_FORWARD_SINCE_MS, { id: 'bet-2', generationOrigin: 'bet_engine', probabilitySource: 'ensemble', outcome: 'NO' }),
       opened(GO_FORWARD_SINCE_MS, { id: 'energy', generationOrigin: 'state_derived', domain: 'energy', outcome: 'VOID' }),
       opened(GO_FORWARD_SINCE_MS, { id: 'detector', outcome: 'NO' }),
     ];
@@ -1568,7 +1569,7 @@ describe('spec-origin follow-through slice (#7067)', () => {
       chokepoint: row('k', { sourceFeed: 'supply_chain:chokepoints:v4' }),
       unlisted: row('u', { sourceFeed: 'intelligence:other:v1' }),
       gated: row('g', { sourceFeed: 'supply_chain:chokepoints:v4', specOrigin: 'hard', specFamily: 'market' }, { specOrigin: 'hard' }),
-      bet: row('b', { sourceFeed: 'prediction:markets-resolution:v1' }, { generationOrigin: 'bet_engine' }),
+      bet: row('b', { sourceFeed: 'prediction:markets-resolution:v1' }, { generationOrigin: 'bet_engine', probabilitySource: 'ensemble' }),
     };
     const { specOrigins } = computeScorecard(ledger, NOW);
     assert.deepEqual(

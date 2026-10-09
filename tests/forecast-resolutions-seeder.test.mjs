@@ -2135,6 +2135,7 @@ describe('Gate-2 promotion env wiring (review R3 #8)', () => {
       outcome: 'YES',
       probability: 0.8,
       generationOrigin: 'bet_engine',
+      probabilitySource: 'ensemble',
       domain: 'market',
       resolvedAt: T0,
     },

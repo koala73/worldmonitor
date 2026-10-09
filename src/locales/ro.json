@@ -2433,7 +2433,8 @@
           "judged_old_selection": "Evaluat cu o metodă de selectare a dovezilor considerată ulterior nesigură",
           "late_read": "Fluxul nu a fost citit suficient de aproape de termen",
           "feed_unavailable": "Fluxul de date nu a fost disponibil după termen",
-          "resolver_could_not_read_feed": "Sistemul nostru de soluționare nu a putut citi corect acest flux de date"
+          "resolver_could_not_read_feed": "Sistemul nostru de soluționare nu a putut citi corect acest flux de date",
+          "base_rate_placeholder": "Deschis cu o valoare provizorie a ratei de bază, nu cu o prognoză a modelului"
         }
       },
       "horizons": {

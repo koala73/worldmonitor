@@ -710,6 +710,7 @@
   "components.forecast.resolution.outcome.void": "VOID",
   "components.forecast.resolution.outcome.yes": "YES",
   "components.forecast.resolution.void.all_judges_void": "Both judges found the evidence insufficient",
+  "components.forecast.resolution.void.base_rate_placeholder": "Opened on a base-rate placeholder, not a model forecast",
   "components.forecast.resolution.void.beyond_archive_horizon": "The news archive no longer covered the question window",
   "components.forecast.resolution.void.count_source_window_not_retained": "The feed no longer held the question window",
   "components.forecast.resolution.void.feed_unavailable": "The data feed was unavailable after the deadline",

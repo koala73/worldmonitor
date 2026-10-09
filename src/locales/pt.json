@@ -2048,7 +2048,8 @@
           "judged_old_selection": "Julgado com um método de evidência posteriormente considerado não confiável",
           "late_read": "O feed não foi lido perto o bastante do prazo",
           "feed_unavailable": "O feed de dados ficou indisponível após o prazo",
-          "resolver_could_not_read_feed": "Nosso sistema de resolução não conseguiu ler este feed de dados corretamente"
+          "resolver_could_not_read_feed": "Nosso sistema de resolução não conseguiu ler este feed de dados corretamente",
+          "base_rate_placeholder": "Aberto com um valor provisório de taxa base, não com uma previsão do modelo"
         }
       },
       "horizons": {

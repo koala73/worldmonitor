@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  BASE_RATE_PLACEHOLDER_VOID_REASON,
   DUPLICATE_WINDOW_VOID_REASON,
   FIRST_SEEN_RESCORE_REASON,
   RECEIPT_REARCHIVE_PER_RUN,
@@ -16,7 +17,7 @@ import {
   processResolutionCycleWithJudges,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { marketQuestionIdentity, resolveHardSpec, shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
 import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, chokepointHardContract } from '../scripts/_forecast-resolution.mjs';
 
@@ -434,7 +435,7 @@ describe('existing ledger correction (#8990)', () => {
     assert.deepEqual(ingestHistory(ledger, [], NOW + DAY_MS), ledger);
   });
 
-  it('labels a window that opened on the base-rate placeholder and keeps its base rate', () => {
+  it('labels a window inferred to have opened on the base-rate placeholder but does not void an inference', () => {
     const placeholder = base(T0, { generationOrigin: 'bet_engine', status: 'resolved', outcome: 'NO', probability: 0.7, firstSeenProbability: 0.4, baselineProbability: 0.4, probabilitySource: 'ensemble', passes: [{ probability: 0.7 }], resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 10 } });
     const ledger = ingestHistory({ [placeholder.key]: placeholder }, HISTORY, NOW);
     const row = ledger[placeholder.key];
@@ -443,6 +444,8 @@ describe('existing ledger correction (#8990)', () => {
     assert.equal(row.baselineProbability, 0.4);
     assert.equal('passes' in row, false);
     assert.deepEqual(row.rescore.superseded, { passes: [{ probability: 0.7 }], probabilitySource: 'ensemble' });
+    assert.equal(row.rescore.inferredBaseRate, true);
+    assert.equal(row.outcome, 'NO', 'an ensemble can land on the base rate, so only history-read provenance voids');
   });
 
   it('restores a window\'s opening fields from its first emission when history still holds it', () => {
@@ -627,7 +630,7 @@ describe('market-settlement bets (#8990)', () => {
     };
   }
 
-  it('tracks the venue close on a pending window and never reopens the market after it moved before the emission', () => {
+  it('tracks the venue close on a pending window and never reopens the market after it moved before the emission; the slug\'s next market is its own question', () => {
     let ledger = ingestHistory({}, [snap(SEP_9, [settlementBet(SEP_9, VENUE_CLOSE + 30 * DAY_MS, 0.25, 'Gemini 4.0 released by September 30, 2026?')])], SEP_9);
     const [opened] = windowsOf(ledger, ID);
     ledger = ingestHistory(ledger, [snap(SEP_9 + DAY_MS, [settlementBet(SEP_9 + DAY_MS, VENUE_CLOSE, 0.3, 'Gemini 4.0 released by September 30, 2026?')])], SEP_9 + DAY_MS);
@@ -636,8 +639,12 @@ describe('market-settlement bets (#8990)', () => {
 
     Object.assign(ledger[opened.key], { status: 'resolved', outcome: 'NO', resolvedAt: VENUE_CLOSE + DAY_MS });
     const afterClose = Date.parse('2026-10-06T05:00:00Z');
-    const reemitted = ingestHistory(ledger, [snap(afterClose, [settlementBet(afterClose, SYNTHETIC_CLOSE, 0.65, 'Gemini 4.0 released by October 31, 2026?')])], afterClose + HOUR_MS);
-    assert.deepEqual(windowsOf(reemitted, ID).map((entry) => entry.key), [opened.key], 'the settled market is not scored again');
+    const sameMarket = ingestHistory(ledger, [snap(afterClose, [settlementBet(afterClose, SYNTHETIC_CLOSE, 0.65, 'Gemini 4.0 released by September 30, 2026?')])], afterClose + HOUR_MS);
+    assert.deepEqual(windowsOf(sameMarket, ID).map((entry) => entry.key), [opened.key], 'the settled market is not scored again');
+    const nextMarket = ingestHistory(ledger, [snap(afterClose, [settlementBet(afterClose, SYNTHETIC_CLOSE, 0.65, 'Gemini 4.0 released by October 31, 2026?')])], afterClose + HOUR_MS);
+    const keys = windowsOf(nextMarket, ID).map((entry) => entry.key);
+    assert.equal(keys.length, 2, 'the October market opens its own window');
+    assert.deepEqual(nextMarket[opened.key], ledger[opened.key]);
   });
 
   it('voids an existing window that reopened a market after its close', () => {
@@ -654,5 +661,245 @@ describe('market-settlement bets (#8990)', () => {
     assert.equal(ledger[reopenedKey].duplicateOf, keeper.key);
     assert.equal(ledger[keeper.key].outcome, 'NO');
   });
+
+  it('opens another market of the slug as its own window, which never moves the first window\'s deadline', () => {
+    let ledger = ingestHistory({}, [snap(SEP_9, [settlementBet(SEP_9, VENUE_CLOSE, 0.25, 'Gemini 4.0 released by September 30, 2026?')])], SEP_9);
+    const [opened] = windowsOf(ledger, ID);
+    const next = SEP_9 + DAY_MS;
+    ledger = ingestHistory(ledger, [snap(next, [settlementBet(next, SYNTHETIC_CLOSE, 0.65, 'Gemini 4.0 released by October 31, 2026?')])], next);
+    const october = windowsOf(ledger, ID).find((entry) => entry.key !== opened.key);
+    assert.equal(october.deadline, SYNTHETIC_CLOSE);
+    assert.equal(october.probability, 0.65);
+    assert.equal(ledger[opened.key].deadline, VENUE_CLOSE);
+    assert.equal(ledger[opened.key].lastSeenAt, SEP_9);
+    const later = next + DAY_MS;
+    ledger = ingestHistory(ledger, [snap(later, [settlementBet(later, SYNTHETIC_CLOSE + DAY_MS, 0.7, 'gemini 4.0 released by  october 31, 2026')])], later);
+    assert.equal(windowsOf(ledger, ID).length, 2, 'the same market joins its window');
+    assert.equal(ledger[october.key].deadline, SYNTHETIC_CLOSE + DAY_MS);
+    assert.equal(ledger[october.key].probability, 0.65);
+
+    const kalshi = (at, title) => ({ ...settlementBet(at, SYNTHETIC_CLOSE, 0.5, title), id: 'market:KXGEMINI', marketSlug: 'KXGEMINI', marketSource: 'kalshi' });
+    let ticker = ingestHistory({}, [snap(SEP_9, [kalshi(SEP_9, 'Gemini 4.0 by October 31?')])], SEP_9);
+    ticker = ingestHistory(ticker, [snap(next, [kalshi(next, 'Will Gemini 4.0 ship by Oct 31?')])], next);
+    assert.equal(windowsOf(ticker, 'market:KXGEMINI').length, 1, 'a Kalshi ticker is one market whatever its title');
+    const retitled = next + DAY_MS;
+    ledger = ingestHistory(ledger, [snap(retitled, [settlementBet(retitled, VENUE_CLOSE + DAY_MS, 0.3, 'gemini 4.0 released by  September 30, 2026')])], retitled);
+    assert.equal(ledger[opened.key].deadline, VENUE_CLOSE + DAY_MS, 'case, spacing and a trailing ? are the same market');
+  });
 });
 
+
+describe('base-rate placeholder bets (#8990)', () => {
+  const D = 4 * DAY_MS;
+  const NOW = T0 + 10 * DAY_MS;
+  const betRow = (generatedAt, extra) => {
+    const spec = brent(generatedAt, 87, 85, 0.4).resolution;
+    return {
+      id: 'commodity:BZ=F',
+      key: `commodity:BZ=F@${generatedAt + D}`,
+      domain: 'market',
+      region: '',
+      title: 'rise to 87',
+      generationOrigin: 'bet_engine',
+      spec,
+      baselineProbability: 0.4,
+      generatedAt,
+      deadline: generatedAt + D,
+      firstSeenAt: generatedAt,
+      lastSeenAt: generatedAt,
+      samples: { count: 0, recent: [] },
+      ...extra,
+    };
+  };
+  const placeholder = betRow(T0, { probabilitySource: 'base_rate', probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'YES', resolvedAt: T0 + D + HOUR_MS, evidence: { metricValue: 88 }, receiptArchivedAt: T0 + D + 2 * HOUR_MS });
+  const dupEvidence = (keeperKey, outcome, metricValue, resolvedAt) => ({ reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: keeperKey, resolvedAt, supersededOutcome: outcome, supersededEvidence: { metricValue }, voidedAt: T0 + 8 * DAY_MS });
+  const firstEnsemble = betRow(T0 + DAY_MS, { probabilitySource: 'ensemble', probability: 0.2, firstSeenProbability: 0.2, status: 'resolved', outcome: 'VOID', duplicateOf: placeholder.key, resolvedAt: T0 + 5 * DAY_MS + HOUR_MS, evidence: dupEvidence(placeholder.key, 'NO', 86, T0 + 5 * DAY_MS + HOUR_MS), receiptArchivedAt: T0 + 8 * DAY_MS + HOUR_MS });
+  const laterEnsemble = betRow(T0 + 2 * DAY_MS, { probabilitySource: 'ensemble', probability: 0.3, firstSeenProbability: 0.3, status: 'resolved', outcome: 'VOID', duplicateOf: placeholder.key, resolvedAt: T0 + 6 * DAY_MS + HOUR_MS, evidence: dupEvidence(placeholder.key, 'NO', 86, T0 + 6 * DAY_MS + HOUR_MS) });
+  const placeholderDuplicate = betRow(T0 + 3 * DAY_MS, { probabilitySource: 'base_rate', probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'VOID', duplicateOf: placeholder.key, resolvedAt: T0 + 7 * DAY_MS + HOUR_MS, evidence: dupEvidence(placeholder.key, 'YES', 88, T0 + 7 * DAY_MS + HOUR_MS) });
+  const untagged = { ...betRow(T0 - 20 * DAY_MS, { probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'NO', resolvedAt: T0 - 16 * DAY_MS, evidence: { metricValue: 80 } }), id: 'commodity:CL=F', key: `commodity:CL=F@${T0 - 16 * DAY_MS}` };
+  delete untagged.baselineProbability;
+  const pending = betRow(NOW - DAY_MS, { probabilitySource: 'base_rate', probability: 0.4, firstSeenProbability: 0.4, status: 'pending' });
+  const legacy = Object.fromEntries([placeholder, firstEnsemble, laterEnsemble, placeholderDuplicate, untagged, pending].map((entry) => [entry.key, entry]));
+
+  it('opens no window on a placeholder emission and opens the question on its first ensemble', () => {
+    const baseRate = { ...brent(T0, 87, 85, 0.4), probabilitySource: 'base_rate', baselineProbability: 0.4 };
+    const ensembled = { ...brent(T0 + DAY_MS, 87, 85, 0.7), probabilitySource: 'ensemble', baselineProbability: 0.4 };
+    assert.deepEqual(windowsOf(ingestHistory({}, [snap(T0, [baseRate])], T0), 'commodity:BZ=F'), []);
+    const ledger = ingestHistory({}, [snap(T0, [baseRate]), snap(T0 + DAY_MS, [ensembled])], T0 + DAY_MS);
+    const windows = windowsOf(ledger, 'commodity:BZ=F');
+    assert.equal(windows.length, 1);
+    assert.equal(windows[0].generatedAt, T0 + DAY_MS);
+    assert.equal(windows[0].probability, 0.7);
+    assert.equal(windows[0].probabilitySource, 'ensemble');
+  });
+
+  it('opens no window on an untagged bet emission, which predates the ensemble stage', () => {
+    const { probabilitySource, ...untaggedBet } = brent(T0, 87, 85, 0.4);
+    assert.equal(probabilitySource, 'ensemble');
+    assert.deepEqual(windowsOf(ingestHistory({}, [snap(T0, [untaggedBet])], T0), 'commodity:BZ=F'), []);
+  });
+
+  it('voids existing placeholder windows and scores the question from its first ensemble', () => {
+    const ledger = ingestHistory(legacy, [], NOW);
+    const voided = ledger[placeholder.key];
+    assert.equal(voided.outcome, 'VOID');
+    assert.deepEqual(voided.evidence, { reason: BASE_RATE_PLACEHOLDER_VOID_REASON, resolvedAt: placeholder.resolvedAt, supersededOutcome: 'YES', supersededEvidence: { metricValue: 88 }, voidedAt: NOW });
+    assert.equal(ledger[untagged.key].outcome, 'VOID');
+    assert.equal(ledger[untagged.key].evidence.reason, BASE_RATE_PLACEHOLDER_VOID_REASON);
+    assert.equal(ledger[pending.key].status, 'resolved');
+    assert.equal(ledger[pending.key].outcome, 'VOID');
+    assert.equal(ledger[pending.key].evidence.supersededStatus, 'pending');
+
+    const restored = ledger[firstEnsemble.key];
+    assert.equal(restored.outcome, 'NO');
+    assert.deepEqual(restored.evidence, { metricValue: 86 });
+    assert.equal('duplicateOf' in restored, false);
+    assert.deepEqual(restored.duplicateRestore, { formerDuplicateOf: placeholder.key, restoredAt: NOW });
+    assert.equal(ledger[laterEnsemble.key].duplicateOf, firstEnsemble.key, 'a later ensemble the restored window covers is its duplicate');
+    assert.equal(ledger[laterEnsemble.key].evidence.duplicateOf, firstEnsemble.key);
+    assert.equal(ledger[placeholderDuplicate.key].duplicateOf, placeholder.key, 'a placeholder duplicate stays VOID');
+
+    const card = computeScorecard(ledger, NOW);
+    assert.equal(card.betEngine.count, 1);
+    assert.equal(card.betEngine.ensembleCount, 1);
+    assert.deepEqual([card.totals.entries, card.totals.void], [1, 0], 'a placeholder window, like a duplicate, was never a question');
+    assert.match(card.methodology, / 3 shadow bet windows that opened on a base-rate placeholder instead of a model forecast are left out of every count, VOID included \(issue #8990\)\./);
+    assert.deepEqual(Object.values(ledger).filter(receiptNeedsRearchive).map((entry) => entry.key).sort(), [placeholder.key, firstEnsemble.key].sort());
+    assert.deepEqual(ingestHistory(ledger, [], NOW + DAY_MS), ledger);
+  });
+
+  it('converges in one run when the rescore returns restored windows to their placeholders', () => {
+    // Each relabelled row's first emission in the bet history was the base
+    // rate; the old rank guard had labelled it ensemble. Restoring one
+    // uncovers the next, so the correction repeats until none is restored.
+    const relabelled = (day, keeperKey) => betRow(T0 + day * DAY_MS, { probabilitySource: 'ensemble', probability: 0.7, firstSeenProbability: 0.4, status: 'resolved', outcome: 'VOID', duplicateOf: keeperKey, resolvedAt: T0 + (day + 4) * DAY_MS + HOUR_MS, evidence: dupEvidence(keeperKey, 'NO', 86, T0 + (day + 4) * DAY_MS + HOUR_MS) });
+    const first = relabelled(1, placeholder.key);
+    const second = relabelled(2, first.key);
+    const absorbed = betRow(T0 + 3 * DAY_MS, { probabilitySource: 'ensemble', probability: 0.3, firstSeenProbability: 0.3, status: 'resolved', outcome: 'VOID', duplicateOf: second.key, resolvedAt: T0 + 7 * DAY_MS + HOUR_MS, evidence: dupEvidence(second.key, 'NO', 86, T0 + 7 * DAY_MS + HOUR_MS) });
+    // Kept only because the window covering it was a duplicate.
+    const uncovered = betRow(T0 + 3.5 * DAY_MS, { probabilitySource: 'ensemble', probability: 0.35, firstSeenProbability: 0.35, status: 'resolved', outcome: 'NO', resolvedAt: T0 + 7.5 * DAY_MS + HOUR_MS, evidence: { metricValue: 86 } });
+    const emission = (day, probability, probabilitySource) => snap(T0 + day * DAY_MS, [{ ...brent(T0 + day * DAY_MS, 87, 85, probability), probabilitySource, baselineProbability: 0.4 }]);
+    const history = [emission(0, 0.4, 'base_rate'), emission(1, 0.4, 'base_rate'), emission(2, 0.4, 'base_rate'), emission(3, 0.3, 'ensemble'), emission(3.5, 0.35, 'ensemble')];
+    const start = Object.fromEntries([placeholder, first, second, absorbed, uncovered].map((entry) => [entry.key, entry]));
+    const ledger = ingestHistory(start, history, NOW);
+    for (const row of [first, second]) {
+      assert.equal(ledger[row.key].probabilitySource, 'base_rate', 'its first emission was the placeholder');
+      assert.equal(ledger[row.key].evidence.reason, BASE_RATE_PLACEHOLDER_VOID_REASON);
+    }
+    assert.equal(ledger[absorbed.key].outcome, 'NO');
+    assert.equal('duplicateOf' in ledger[absorbed.key], false);
+    assert.equal(ledger[uncovered.key].duplicateOf, absorbed.key, 'the restored window covers it');
+    assert.deepEqual(ingestHistory(ledger, history, NOW + DAY_MS), ledger);
+  });
+
+  it('never restores a duplicate graded on a settlement read before it was forecast', () => {
+    // Live row: the September market of a ceasefire slug inherited the July
+    // market's close date and settlement while it sat under the July
+    // placeholder window.
+    const SETTLEMENT = 'prediction:markets-resolution:v1';
+    const SLUG = 'israel-x-iran-ceasefire-continues-throughptptpt-20260716224448963';
+    const JULY_16 = Date.parse('2026-07-16T05:00:00Z');
+    const JULY_31 = Date.parse('2026-07-31T12:00:00Z');
+    const SEP_1 = Date.parse('2026-09-01T05:00:00Z');
+    const settlementRow = (generatedAt, question, extra) => ({
+      id: `market:${SLUG}`,
+      key: `market:${SLUG}@${generatedAt}`,
+      domain: 'market',
+      region: '',
+      title: question,
+      generationOrigin: 'bet_engine',
+      marketSlug: SLUG,
+      marketSource: 'polymarket',
+      spec: { kind: 'hard', metricKey: `${SETTLEMENT}|yesPrice(slug==${SLUG})`, operator: 'crosses', threshold: 50, baselineValue: 80, window: 'at-deadline', deadline: JULY_31, sourceFeed: SETTLEMENT, question },
+      baselineProbability: 0.4,
+      generatedAt,
+      deadline: JULY_31,
+      firstSeenAt: generatedAt,
+      lastSeenAt: generatedAt,
+      samples: { count: 0, recent: [] },
+      ...extra,
+    });
+    const july = settlementRow(JULY_16, 'Israel x Iran ceasefire continues through July 31?', { probabilitySource: 'base_rate', probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'YES', resolvedAt: Date.parse('2026-08-04T06:00:00Z'), evidence: { metricValue: 100, readTs: Date.parse('2026-08-04T06:00:00Z') } });
+    const readTs = Date.parse('2026-08-04T06:00:00Z');
+    const september = settlementRow(SEP_1, 'Israel x Iran ceasefire continues through September 30?', { probabilitySource: 'ensemble', probability: 0.35, firstSeenProbability: 0.35, status: 'resolved', outcome: 'VOID', duplicateOf: july.key, resolvedAt: SEP_1 + DAY_MS, evidence: { reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: july.key, resolvedAt: SEP_1 + DAY_MS, supersededOutcome: 'YES', supersededEvidence: { metricValue: 100, readTs }, voidedAt: SEP_1 + 2 * DAY_MS } });
+    const variants = {
+      live: september,
+      readOnly: { ...september, deadline: SEP_1 + 30 * DAY_MS },
+      deadlineOnly: { ...september, evidence: { ...september.evidence, supersededEvidence: { metricValue: 100 } } },
+    };
+    for (const [name, row] of Object.entries(variants)) {
+      const ledger = ingestHistory({ [july.key]: july, [row.key]: row }, [], Date.parse('2026-10-08T12:00:00Z'));
+      assert.equal(ledger[july.key].evidence.reason, BASE_RATE_PLACEHOLDER_VOID_REASON, name);
+      assert.equal(ledger[row.key].outcome, 'VOID', name);
+      assert.equal(ledger[row.key].duplicateOf, july.key, name);
+      assert.equal('duplicateRestore' in ledger[row.key], false, name);
+      assert.equal(computeScorecard(ledger, Date.parse('2026-10-08T12:00:00Z')).betEngine, undefined, name);
+    }
+  });
+
+  describe('a later market of a slug whose first window was a placeholder (#8990)', () => {
+    // Live shape: the July ceasefire market opened on the placeholder and
+    // settled YES; the October market of the same event slug sat under it as
+    // a duplicate and is emitted again with a future deadline.
+    const SETTLEMENT = 'prediction:markets-resolution:v1';
+    const SLUG = 'israel-x-iran-ceasefire-continues-throughptptpt-20260716224448963';
+    const ID = `market:${SLUG}`;
+    const JULY_Q = 'Israel x Iran ceasefire continues through July 31?';
+    const OCT_Q = 'Israel x Iran ceasefire continues through October 31?';
+    const JULY_31 = Date.parse('2026-07-31T12:00:00Z');
+    const OCT_2 = Date.parse('2026-10-02T05:00:00Z');
+    const OCT_31 = Date.parse('2026-10-31T12:00:00Z');
+    const NOW_OCT = Date.parse('2026-10-08T12:00:00Z');
+    const spec = (question, deadline) => ({ kind: 'hard', metricKey: `${SETTLEMENT}|yesPrice(slug==${SLUG})`, operator: 'crosses', threshold: 50, baselineValue: 80, window: 'at-deadline', deadline, sourceFeed: SETTLEMENT, question });
+    const row = (key, question, generatedAt, extra) => ({ id: ID, key, domain: 'market', region: '', title: question, generationOrigin: 'bet_engine', marketSlug: SLUG, marketSource: 'polymarket', spec: spec(question, JULY_31), baselineProbability: 0.4, generatedAt, deadline: JULY_31, firstSeenAt: generatedAt, lastSeenAt: generatedAt, samples: { count: 0, recent: [] }, ...extra });
+    const july = row(`${ID}@${JULY_31}`, JULY_Q, Date.parse('2026-07-16T05:00:00Z'), { probabilitySource: 'base_rate', probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'YES', resolvedAt: Date.parse('2026-08-04T06:00:00Z'), evidence: { metricValue: 100, readTs: Date.parse('2026-08-04T06:00:00Z') } });
+    const octDuplicate = row(`${ID}@${JULY_31}~oct`, OCT_Q, Date.parse('2026-09-20T05:00:00Z'), { probabilitySource: 'ensemble', probability: 0.4, firstSeenProbability: 0.4, status: 'resolved', outcome: 'VOID', duplicateOf: july.key, resolvedAt: Date.parse('2026-09-21T06:00:00Z'), evidence: { reason: DUPLICATE_WINDOW_VOID_REASON, duplicateOf: july.key, supersededOutcome: 'YES', supersededEvidence: { metricValue: 100, readTs: Date.parse('2026-09-21T06:00:00Z') }, voidedAt: Date.parse('2026-10-07T06:00:00Z') } });
+    const octEmission = { id: ID, title: OCT_Q, domain: 'market', region: '', generationOrigin: 'bet_engine', probabilitySource: 'ensemble', baselineProbability: 0.4, probability: 0.4, marketSlug: SLUG, marketSource: 'polymarket', generatedAt: OCT_2, resolution: spec(OCT_Q, OCT_31) };
+    const julyRecord = { market: JULY_Q, slug: SLUG, yesPrice: 100, asOf: Date.parse('2026-08-04T06:00:00Z') };
+
+    it('opens its own window once the placeholder is voided, even when its only earlier row is a duplicate, and the July record never grades it', () => {
+      const ledger = ingestHistory({ [july.key]: july, [octDuplicate.key]: octDuplicate }, [snap(OCT_2, [octEmission])], NOW_OCT);
+      assert.equal(ledger[july.key].evidence.reason, BASE_RATE_PLACEHOLDER_VOID_REASON);
+      assert.equal(ledger[octDuplicate.key].duplicateOf, july.key, 'it read July\'s settlement before it was forecast');
+      const opened = windowsOf(ledger, ID).filter((entry) => ![july.key, octDuplicate.key].includes(entry.key));
+      assert.equal(opened.length, 1);
+      assert.equal(opened[0].spec.question, OCT_Q);
+      assert.equal(opened[0].deadline, OCT_31);
+      const julyOnly = shapeResolutionFeeds({ [SETTLEMENT]: { records: [julyRecord] } })[SETTLEMENT];
+      assert.equal(resolveHardSpec(opened[0], julyOnly, [], Date.parse('2026-11-01T06:00:00Z')).status, 'pending');
+    });
+
+    it('never grades a window on another market\'s settlement record of the slug', () => {
+      const octWindow = { ...row(`${ID}@${OCT_31}`, OCT_Q, OCT_2, { probabilitySource: 'ensemble', probability: 0.4, status: 'pending' }), spec: spec(OCT_Q, OCT_31), deadline: OCT_31 };
+      const julyOnly = shapeResolutionFeeds({ [SETTLEMENT]: { records: [julyRecord] } })[SETTLEMENT];
+      const afterClose = Date.parse('2026-11-01T06:00:00Z');
+      assert.equal(resolveHardSpec(octWindow, julyOnly, [], afterClose).status, 'pending');
+      const both = shapeResolutionFeeds({ [SETTLEMENT]: { records: [julyRecord, { market: 'israel x iran ceasefire continues through October 31', slug: SLUG, yesPrice: 0, asOf: afterClose }] } })[SETTLEMENT];
+      const settled = resolveHardSpec(octWindow, both, [], afterClose);
+      assert.equal(settled.outcome, 'NO', 'its own record, matched through the normalizer');
+      const kalshi = { ...octWindow, marketSource: 'kalshi' };
+      assert.equal(resolveHardSpec(kalshi, julyOnly, [], afterClose).outcome, 'YES', 'a Kalshi ticker is one market');
+    });
+  });
+
+  it('normalizes cosmetic title differences in a market question', () => {
+    assert.equal(marketQuestionIdentity('Will Astra\u2019s rocket launch by March 31, 2026?'), marketQuestionIdentity("will astra's rocket  launch by March 31, 2026"));
+    assert.notEqual(marketQuestionIdentity('Ceasefire through July 31?'), marketQuestionIdentity('Ceasefire through October 31?'));
+    assert.notEqual(marketQuestionIdentity('Released by December 31, 2026?'), marketQuestionIdentity('Released by December 31, 2027?'), 'a year is another market');
+  });
+
+  it('counts only placeholder windows inside the rolling window in the methodology', () => {
+    const old = { ...untagged, key: 'old-placeholder', resolvedAt: NOW - 200 * DAY_MS };
+    const card = computeScorecard({ [old.key]: ingestHistory({ [old.key]: old }, [], NOW)[old.key] }, NOW);
+    assert.doesNotMatch(card.methodology, /shadow bet window/);
+  });
+
+  it('lets an ensemble emission inside a voided placeholder window open the question', () => {
+    const ensembled = { ...brent(NOW, 87, 85, 0.65), probabilitySource: 'ensemble', baselineProbability: 0.4 };
+    const ledger = ingestHistory(legacy, [snap(NOW, [ensembled])], NOW);
+    const opened = windowsOf(ledger, 'commodity:BZ=F').filter((entry) => entry.generatedAt === NOW);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].status, 'pending');
+    assert.equal(opened[0].probability, 0.65);
+  });
+});

@@ -9,6 +9,10 @@ import { ingestHistory, samplePendingEntries, resolveDueEntries } from '../scrip
 import { buildBetsSnapshot } from '../scripts/seed-forecast-bets.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 
+// Only a bet carrying a model forecast opens a ledger window (#8990), so
+// ingest fixtures are tagged as the ensemble stage would tag them.
+const ensembled = (bets) => bets.map((bet) => ({ ...bet, probabilitySource: 'ensemble' }));
+
 const NOW = Date.parse('2026-07-12T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -167,7 +171,7 @@ describe('seeder emits both energy and commodity bets', () => {
 describe('commodity resolution hardening (review fixes)', () => {
   function wtiEntryInLedger() {
     const snap = buildBetsSnapshot({ [COMMODITY_FEED]: { _seed: { fetchedAt: NOW }, data: commoditiesFixture() } }, NOW, {});
-    const ledger = ingestHistory({}, [snap], NOW);
+    const ledger = ingestHistory({}, [{ ...snap, predictions: ensembled(snap.predictions) }], NOW);
     const key = Object.keys(ledger).find((k) => ledger[k].spec?.metricKey?.includes('symbol==CL=F'));
     return { ledger, key, deadline: ledger[key].deadline };
   }

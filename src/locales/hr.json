@@ -2168,7 +2168,8 @@
           "judged_old_selection": "Ocijenjeno metodom prikupljanja dokaza koja se kasnije pokazala nepouzdanom",
           "late_read": "Feed nije očitan dovoljno blizu roka",
           "feed_unavailable": "Izvor podataka nije bio dostupan nakon roka",
-          "resolver_could_not_read_feed": "Naš sustav za razrješavanje nije mogao ispravno pročitati ovaj izvor podataka"
+          "resolver_could_not_read_feed": "Naš sustav za razrješavanje nije mogao ispravno pročitati ovaj izvor podataka",
+          "base_rate_placeholder": "Otvoreno s privremenom vrijednošću osnovne stope, a ne s prognozom modela"
         }
       },
       "horizons": {

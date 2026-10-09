@@ -2413,7 +2413,8 @@
           "judged_old_selection": "依据一种后来被认定不可靠的取证方法作出裁定",
           "late_read": "未能在足够接近截止时间时读取数据源",
           "feed_unavailable": "数据源在截止日期后不可用",
-          "resolver_could_not_read_feed": "我们的结算系统未能正确读取此数据源"
+          "resolver_could_not_read_feed": "我们的结算系统未能正确读取此数据源",
+          "base_rate_placeholder": "以基础比率占位值开启，而非模型预测"
         }
       },
       "horizons": {

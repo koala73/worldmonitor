@@ -99,6 +99,7 @@ const RENDER = `
       late_read: "The feed was not read close enough to the deadline",
       feed_unavailable: "The data feed was unavailable after the deadline",
       resolver_could_not_read_feed: "Our resolver could not read this feed correctly",
+      base_rate_placeholder: "Opened on a base-rate placeholder, not a model forecast",
       other: "Could not be resolved"
     };
     function indexHistory(rows) {

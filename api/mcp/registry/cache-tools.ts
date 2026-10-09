@@ -531,7 +531,7 @@ const FORECAST_VOID_REASONS = new Set([
   'missing_deadline', 'missing_generated_at', 'beyond_archive_horizon', 'no_archive_evidence',
   'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'other',
   'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'judged_old_selection',
-  'late_read', 'feed_unavailable', 'resolver_could_not_read_feed',
+  'late_read', 'feed_unavailable', 'resolver_could_not_read_feed', 'base_rate_placeholder',
 ]);
 
 function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {

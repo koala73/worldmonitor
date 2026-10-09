@@ -2443,7 +2443,8 @@
           "judged_old_selection": "Posouzeno metodou výběru důkazů, která se později ukázala jako nespolehlivá",
           "late_read": "Zdroj dat nebyl přečten dostatečně blízko termínu",
           "feed_unavailable": "Zdroj dat byl po termínu nedostupný",
-          "resolver_could_not_read_feed": "Náš vyhodnocovací systém nedokázal tento zdroj dat správně přečíst"
+          "resolver_could_not_read_feed": "Náš vyhodnocovací systém nedokázal tento zdroj dat správně přečíst",
+          "base_rate_placeholder": "Otevřeno se zástupnou hodnotou základní míry, ne s prognózou modelu"
         }
       },
       "horizons": {

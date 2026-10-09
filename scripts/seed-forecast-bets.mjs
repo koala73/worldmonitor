@@ -9,6 +9,8 @@
 // It NEVER writes the user-facing canonical (forecast:predictions:v2) — shadow
 // bets are invisible to users but ingested by the resolver so they score into
 // the scorecard's byGenerationOrigin='bet_engine' slice (the Gate-1 evidence).
+// Only a bet carrying an ensemble probability opens a scored window; the base
+// rate is a placeholder and the recorded baseline (#8990).
 // Railway cron; mirrors the seed-forecast-resolutions service.
 
 import {
@@ -205,7 +207,7 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   let skipped = 0;
   for (const bet of ranked) {
     if (questionKeyOf && openQuestions.has(openQuestionToken(bet.id, questionKeyOf({ ...bet, spec: bet.resolution })))) { skipped += 1; continue; }
-    if (attempted >= topK) break; // K new attempts filled; remaining keep base-rate
+    if (attempted >= topK) break; // K new attempts filled; the rest keep the placeholder and open no window
     if (Date.now() >= deadlineMs) break; // remaining bets keep the base-rate
     attempted += 1;
     try {
@@ -234,9 +236,10 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
 // Questions with an open ledger window whose dates cover nowMs, the emission
 // time of this run's bets. A window keeps the probability it opened with
 // (#8990), so a re-run of a covered question, whether it opened on a full
-// ensemble, a partial one or the base rate, would be wasted spend. A pending
-// window past its deadline (an unsettled feed) does not cover this run's
-// emission, which opens its own window and needs its own ensemble.
+// ensemble or a partial one, would be wasted spend. A placeholder emission
+// opens no window, so its question stays open to the next run's ensemble. A
+// pending window past its deadline (an unsettled feed) does not cover this
+// run's emission, which opens its own window and needs its own ensemble.
 // `questionKeyOf` is the resolver's windowQuestionKey.
 export function collectOpenQuestions(ledger, questionKeyOf, nowMs) {
   const entries = ledger && typeof ledger === 'object'

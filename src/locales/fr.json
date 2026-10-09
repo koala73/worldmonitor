@@ -2433,7 +2433,8 @@
           "judged_old_selection": "Jugé avec une méthode de preuve reconnue par la suite non fiable",
           "late_read": "Le flux n'a pas été lu assez près de la date limite",
           "feed_unavailable": "Le flux de données n'était pas disponible après la date limite",
-          "resolver_could_not_read_feed": "Notre système de résolution n'a pas pu lire correctement ce flux de données"
+          "resolver_could_not_read_feed": "Notre système de résolution n'a pas pu lire correctement ce flux de données",
+          "base_rate_placeholder": "Ouvert sur une valeur provisoire de taux de base, et non sur une prévision du modèle"
         }
       },
       "horizons": {

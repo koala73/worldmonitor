@@ -2040,7 +2040,8 @@
           "judged_old_selection": "Beoordeeld met een bewijsmethode die later onbetrouwbaar bleek te zijn",
           "late_read": "De feed is niet dicht genoeg bij de deadline uitgelezen",
           "feed_unavailable": "De gegevensfeed was na de deadline niet beschikbaar",
-          "resolver_could_not_read_feed": "Ons beoordelingssysteem kon deze datafeed niet correct lezen"
+          "resolver_could_not_read_feed": "Ons beoordelingssysteem kon deze datafeed niet correct lezen",
+          "base_rate_placeholder": "Geopend met een tijdelijke basisfrequentiewaarde, niet met een modelvoorspelling"
         }
       },
       "horizons": {

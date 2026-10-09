@@ -67,7 +67,7 @@ const settlementBet = (generatedAt, deadline) => bet(generatedAt, deadline, {
 
 const brentFeed = (price, fetchedAt) => shapeResolutionFeeds({ [COMMODITY_FEED]: { _seed: { fetchedAt }, data: { quotes: [{ symbol: 'BZ=F', price }] } } });
 const eiaFeed = (current, date) => shapeResolutionFeeds({ [EIA_FEED]: { brent: { current, date, unit: 'USD/bbl' } } });
-const settlementFeed = (yesPrice, asOf) => shapeResolutionFeeds({ [SETTLEMENT_FEED]: { records: [{ slug: SLUG, yesPrice, asOf }] } });
+const settlementFeed = (yesPrice, asOf) => shapeResolutionFeeds({ [SETTLEMENT_FEED]: { records: [{ market: 'Gemini 4.0 released by June 30, 2026?', slug: SLUG, yesPrice, asOf }] } });
 
 const onlyRow = (ledger) => {
   const rows = Object.values(ledger).filter((entry) => !entry.parentKey);
@@ -339,6 +339,7 @@ describe('rows already graded on a late read (#8990)', () => {
     region: '',
     title: `The Brent crude oil price: ${threshold >= baselineValue ? 'rise' : 'fall'} to ${threshold} USD/bbl?`,
     generationOrigin: 'bet_engine',
+    probabilitySource: 'ensemble',
     spec: { kind: 'hard', metricKey: BRENT, operator: 'crosses', threshold, baselineValue, window: 'at-deadline', deadline, sourceFeed: COMMODITY_FEED, question: `Will Brent reach ${threshold}?` },
     probability: 0.4,
     firstSeenProbability: 0.4,

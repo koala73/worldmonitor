@@ -2413,7 +2413,8 @@
           "judged_old_selection": "Được xác định bằng phương pháp chọn bằng chứng mà sau này được phát hiện là không đáng tin cậy",
           "late_read": "Nguồn dữ liệu không được đọc đủ gần thời hạn",
           "feed_unavailable": "Feed dữ liệu không khả dụng sau thời hạn",
-          "resolver_could_not_read_feed": "Hệ thống phân định của chúng tôi không đọc đúng được nguồn dữ liệu này"
+          "resolver_could_not_read_feed": "Hệ thống phân định của chúng tôi không đọc đúng được nguồn dữ liệu này",
+          "base_rate_placeholder": "Được mở bằng giá trị tạm thời của tỷ lệ cơ sở, không phải dự báo của mô hình"
         }
       },
       "horizons": {

@@ -103,16 +103,30 @@ export function isDuplicateWindow(entry) {
   return typeof entry?.duplicateOf === 'string';
 }
 
+// A bet that carries the seeder's base-rate placeholder instead of a model
+// forecast (#8990): it fell outside the ensemble's top K or budget, or its
+// ensemble call failed. Bets emitted before the seeder recorded provenance
+// predate the ensemble stage, so they are placeholders too. A placeholder
+// emission never opens a window, and a placeholder window from before that
+// rule is VOID and, like a duplicate, left out of every scorecard count.
+export function isPlaceholderBet(entry) {
+  return generationOriginOf(entry) === 'bet_engine'
+    && !isHorizonEntry(entry)
+    && (entry.probabilitySource === 'base_rate' || entry.probabilitySource == null)
+    && entry.rescore?.inferredBaseRate !== true;
+}
+
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
-  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry) && !isDuplicateWindow(entry));
+  const allEntries = normalizeLedger(ledger).filter((entry) => !isWithheldEntry(entry) && !isDuplicateWindow(entry) && !isPlaceholderBet(entry));
   const inWindow = (entry) => {
     if (entry?.status !== 'resolved') return true;
     const resolvedAt = Number(entry.resolvedAt);
     return !Number.isFinite(resolvedAt) || resolvedAt >= minResolvedAt;
   };
   const entries = allEntries.filter((entry) => !isHorizonEntry(entry) && inWindow(entry));
+  const placeholderCount = normalizeLedger(ledger).filter((entry) => !isDuplicateWindow(entry) && isPlaceholderBet(entry) && inWindow(entry)).length;
   const horizonEntries = allEntries.filter((entry) => isHorizonEntry(entry) && inWindow(entry));
 
   const resolved = entries.filter((entry) => entry?.status === 'resolved');
@@ -128,7 +142,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     schemaVersion: 2,
     generatedAt: nowMs,
     rollingWindowDays,
-    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}${nowMs >= GO_FORWARD_SINCE_MS ? goForwardNote(goForward) : ''}`,
+    methodology: `Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math. Each window is one question, and it is scored on the probability published when the window opened; a later re-emission of the same question does not change it. While an outcome-fitted calibration gate passes, that probability is calibrated, and the API does not mark which ones are; after a switch between raw and calibrated publication, the rolling window mixes forecasts published under both.${envelopeBugNote(voided)}${placeholderNote(placeholderCount)}${nowMs >= GO_FORWARD_SINCE_MS ? goForwardNote(goForward) : ''}`,
     totals: {
       entries: entries.length,
       resolved: resolved.length,
@@ -201,8 +215,8 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     }
     // The skill comparisons measure the ensemble, so they read only windows
     // that opened on an ensemble probability. A window that opened on the
-    // base-rate placeholder is still scored above, but it would compare the
-    // base rate with itself (#8990).
+    // base-rate placeholder is VOID base_rate_placeholder (#8990), so every
+    // scored bet window should pass this filter.
     const ensembleScored = betEngineScored.filter(isEnsembleScored);
     slice.ensembleCount = ensembleScored.length;
     const sliceMarket = summarizeMarketSkill(ensembleScored);
@@ -286,6 +300,16 @@ export function isScoredEntry(entry) {
 // on this so a projection never enters a forecast metric, fit, or cohort.
 // The #5233 correction travels with the numbers it changed: a frozen capture
 // taken before the resolver voided those rows carries no note.
+// Shadow bet windows that opened on the seeder's base-rate placeholder leave
+// every count, VOID included, so the totals shrink rather than the VOID rate
+// rising on rows that were never forecasts.
+function placeholderNote(count) {
+  if (!count) return '';
+  return count === 1
+    ? ' 1 shadow bet window that opened on a base-rate placeholder instead of a model forecast is left out of every count, VOID included (issue #8990).'
+    : ` ${count} shadow bet windows that opened on a base-rate placeholder instead of a model forecast are left out of every count, VOID included (issue #8990).`;
+}
+
 function envelopeBugNote(voided) {
   const count = voided.filter((entry) => entry?.evidence?.reason === 'resolver_envelope_bug').length;
   if (!count) return '';
@@ -1613,6 +1637,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
   late_read: 'The feed was not read close enough to the deadline',
   feed_unavailable: 'The data feed was unavailable after the deadline',
   resolver_could_not_read_feed: 'Our resolver could not read this feed correctly',
+  base_rate_placeholder: 'Opened on a base-rate placeholder, not a model forecast',
   other: 'Could not be resolved',
 });
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);

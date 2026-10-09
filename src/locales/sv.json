@@ -2040,7 +2040,8 @@
           "judged_old_selection": "Bedömd med en bevismetod som senare visade sig opålitlig",
           "late_read": "Källan lästes inte tillräckligt nära tidsfristen",
           "feed_unavailable": "Dataflödet var inte tillgängligt efter tidsfristen",
-          "resolver_could_not_read_feed": "Vårt bedömningssystem kunde inte läsa den här datakällan korrekt"
+          "resolver_could_not_read_feed": "Vårt bedömningssystem kunde inte läsa den här datakällan korrekt",
+          "base_rate_placeholder": "Öppnad med ett platshållarvärde för basfrekvensen, inte med en modellprognos"
         }
       },
       "horizons": {

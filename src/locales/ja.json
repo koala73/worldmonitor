@@ -2413,7 +2413,8 @@
           "judged_old_selection": "後に信頼できないと判明した証拠選定方法で判定",
           "late_read": "締め切りに十分近い時点でフィードを読み取れませんでした",
           "feed_unavailable": "締め切り後、データフィードが利用できませんでした",
-          "resolver_could_not_read_feed": "当社の判定システムがこのデータフィードを正しく読み取れませんでした"
+          "resolver_could_not_read_feed": "当社の判定システムがこのデータフィードを正しく読み取れませんでした",
+          "base_rate_placeholder": "モデルの予測ではなく、基準率の仮の値で開始されました"
         }
       },
       "horizons": {

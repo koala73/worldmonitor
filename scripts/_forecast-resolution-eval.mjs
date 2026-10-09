@@ -198,6 +198,10 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     return voidResult('market_price_not_outcome', entry, spec, parsed, nowMs);
   }
 
+  if (parsed.fn === 'yesPrice' && (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY)) {
+    feedData = settlementRecordsForMarket(feedData, entry, spec);
+  }
+
   const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
   if (isPointWindow && (parsed.feedKey || spec.sourceFeed) === GPS_JAM_FEED_KEY) {
     const snapshot = resolveDailySnapshotRead(parsed, feedData, samples, deadline, nowMs, entry, spec);
@@ -894,4 +898,36 @@ function summarizeSamples(samples) {
 function aggregateTimeline(fn, timeline) {
   if (fn === 'riskScore' || fn === 'hexCount') return Math.max(...timeline.map((s) => s.value));
   return timeline[timeline.length - 1]?.value;
+}
+
+// One market of a Polymarket event slug, compared on its normalized title
+// (#8990). The bootstrap feed carries no market id, and an event lists its
+// next market under the same slug once one closes, so the settlement feed can
+// hold several records for one slug. Case, spacing, curly apostrophes and a
+// trailing "?" do not change the market; a year does. A Kalshi ticker is one
+// market, so Kalshi bets skip the comparison. A venue retitling its own
+// Polymarket market beyond that reads as a new market: its later bets open
+// their own window, and the first window keeps its last deadline.
+export function marketQuestionIdentity(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, ' ')
+    .replace(/[?\s]+$/, '');
+}
+
+export function isSingleMarketVenue(entry) {
+  return entry?.marketSource === 'kalshi';
+}
+
+// The settlement records of this window's own market. The loader appends one
+// record per market it settles, named by the window's title, so a record for
+// another market of the slug never grades this window.
+function settlementRecordsForMarket(feedData, entry, spec) {
+  if (feedData == null || isSingleMarketVenue(entry)) return feedData;
+  const question = spec?.question ?? entry?.title;
+  if (question == null) return feedData;
+  const identity = marketQuestionIdentity(question);
+  return [...iterateRecords(feedData)].filter((record) => marketQuestionIdentity(record.market) === identity);
 }

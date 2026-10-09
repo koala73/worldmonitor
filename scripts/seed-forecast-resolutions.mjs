@@ -20,9 +20,9 @@ import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } fr
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
-import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON, voidsOnFirstRead } from './_forecast-resolution-eval.mjs';
+import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON, isSingleMarketVenue, marketQuestionIdentity, voidsOnFirstRead } from './_forecast-resolution-eval.mjs';
 import { chokepointHardContract, FROZEN_JUDGED_QUESTION_DOMAINS, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
-import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
+import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPlaceholderBet, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -1538,7 +1538,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
   const openingEmissions = indexEmissions(snapshots, nowMs);
   const historyRead = snapshots.length > 0;
-  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+  correctWindowsAndPlaceholders(ledger, nowMs, openingEmissions, historyRead);
   const windows = indexQuestionWindows(ledger);
 
   // Emission order, not snapshot order: a later snapshot can carry an earlier
@@ -1581,6 +1581,8 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     // A window opened after its deadline would be read from whatever the
     // feed or archive holds now, not at the deadline.
     if (deadline < nowMs) continue;
+    // The question's window opens on its first model forecast.
+    if (isPlaceholderBet(candidate)) continue;
     const key = freeWindowKey(ledger, id, deadline, questionKey);
     if (!key) continue;
     ledger[key] = { ...candidate, key };
@@ -1591,7 +1593,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   // A window opened this run for an emission the old code had absorbed into
   // another question can precede an existing window of its own question, so
   // the correction runs again and the ledger converges in one run.
-  correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+  correctWindowsAndPlaceholders(ledger, nowMs, openingEmissions, historyRead);
   // After the window correction, so a duplicate keeps duplicate_window
   // whichever of the two corrections reaches a ledger first.
   voidOldSelectionJudgedResolutions(ledger, nowMs);
@@ -1599,6 +1601,24 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
   relabelUnreadFeedVoids(ledger, nowMs);
   migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
+}
+
+// Placeholder voids come before the window correction, so a window a
+// placeholder had absorbed is walked again. The correction can restore a row
+// to the placeholder it opened on, and voiding that row restores the windows
+// it had absorbed, so the two repeat until no window is restored. Each round
+// restores only duplicates of placeholders, which the correction never keeps,
+// so live chains settle in 2 rounds; the cap keeps a broken invariant from
+// hanging the run.
+const PLACEHOLDER_CORRECTION_MAX_ROUNDS = 8;
+
+function correctWindowsAndPlaceholders(ledger, nowMs, openingEmissions, historyRead) {
+  voidPlaceholderBetWindows(ledger, nowMs);
+  for (let round = 0; round < PLACEHOLDER_CORRECTION_MAX_ROUNDS; round += 1) {
+    correctLedgerWindows(ledger, nowMs, openingEmissions, { historyRead });
+    if (voidPlaceholderBetWindows(ledger, nowMs).restored === 0) return;
+  }
+  console.warn(`  [forecast-resolutions] placeholder correction did not settle in ${PLACEHOLDER_CORRECTION_MAX_ROUNDS} rounds`);
 }
 
 // A ledger window is one question: the forecast id plus what it asks. Ids do
@@ -1612,6 +1632,12 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
 // each run, so its threshold is part of the key. The key is taken after the
 // count-to-judged migration, so every threshold of a migrated count maps to
 // the one judged question it became.
+//
+// A Polymarket event lists several markets in turn under one slug, and a
+// market bet's id is the slug, so a market-settlement bet also keys on its
+// market's title (#8990). A later market of the slug is its own question: it
+// opens its own window, settles on its own record, and never moves the
+// earlier market's deadline. A Kalshi ticker is one market.
 //
 // The count normalization ignores the feed-availability flags: a count on a
 // feed listed in UNAVAILABLE_COUNT_FEED_MIGRATIONS always keys as its judged
@@ -1634,17 +1660,19 @@ export function windowQuestionKey(entry) {
     ? (threshold >= baseline ? 'up' : 'down')
     : null;
   const thresholdKey = view.generationOrigin === 'bet_engine' && Number.isFinite(threshold) ? threshold : null;
-  return JSON.stringify([spec.kind ?? null, region, spec.metricKey ?? null, spec.operator ?? null, thresholdKey, spec.window ?? null, direction]);
+  const key = [spec.kind ?? null, region, spec.metricKey ?? null, spec.operator ?? null, thresholdKey, spec.window ?? null, direction];
+  if (spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY && !isSingleMarketVenue(view)) key.push(marketQuestionIdentity(spec.question ?? view.title));
+  return JSON.stringify(key);
 }
 
-// Windows an emission can join: same id and question, not a voided duplicate,
-// and the emission falls inside [generatedAt, deadline). Status does not
+// Windows an emission can join: same id and question, not a voided duplicate
+// or placeholder, and the emission falls inside [generatedAt, deadline). Status does not
 // matter. A resolved window still owns every emission it absorbed while open,
 // so re-reading history cannot reopen it.
 function indexQuestionWindows(ledger) {
   const byId = new Map();
   const add = (key, entry, questionKey = windowQuestionKey(entry)) => {
-    if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry)) return;
+    if (!entry?.id || isHorizonEntry(entry) || isDuplicateWindow(entry) || isPlaceholderBet(entry)) return;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
     byId.get(entry.id).push({ key, entry, questionKey });
   };
@@ -1832,7 +1860,7 @@ export function correctLedgerWindows(ledger, nowMs, emissions = new Map(), { his
       horizonByParent.get(entry.parentKey).push(entry);
       continue;
     }
-    if (isDuplicateWindow(entry)) continue;
+    if (isDuplicateWindow(entry) || isPlaceholderBet(entry)) continue;
     if (!byId.has(entry.id)) byId.set(entry.id, []);
     byId.get(entry.id).push({ key, entry, questionKey: windowQuestionKey(entry) });
   }
@@ -1912,7 +1940,11 @@ function rescoreToFirstSeen(entry, nowMs, firstEmission) {
   entry.rescore = { reason: FIRST_SEEN_RESCORE_REASON, supersededProbability: entry.probability, superseded, rescoredAt: nowMs };
   for (const field of fields) delete entry[field];
   if (probabilityMoved && Number.isFinite(Number(entry.baselineProbability)) && Number(entry.baselineProbability) === first) {
+    // Inferred, not read from history: an ensemble can land on the base
+    // rate, so the row leaves the skill comparisons but is not voided as a
+    // placeholder.
     entry.probabilitySource = 'base_rate';
+    entry.rescore.inferredBaseRate = true;
   }
   entry.probability = first;
   return true;
@@ -1973,6 +2005,74 @@ function voidDuplicateWindow(entry, keeperKey, nowMs) {
     entry.resolvedAt = nowMs;
     entry.sealedAt = nowMs;
   }
+}
+
+// Until #8990 a bet window opened on whatever its first emission carried,
+// often the seeder's base-rate placeholder. The window then kept that
+// placeholder for its whole life, and the seeder never ran the ensemble for
+// its question again. Each run seals those windows VOID base_rate_placeholder,
+// keeping a pending window's status or a resolved window's outcome and
+// evidence as superseded. A placeholder window no longer owns its question, so
+// a later window the correction had voided as its duplicate is restored to
+// the status or outcome it had, and the window correction walks it again: the
+// question is scored from its first model forecast. A placeholder already
+// VOID keeps its reason. Re-running changes nothing.
+export const BASE_RATE_PLACEHOLDER_VOID_REASON = 'base_rate_placeholder';
+
+export function voidPlaceholderBetWindows(ledger, nowMs) {
+  let voided = 0;
+  let restored = 0;
+  for (const entry of Object.values(ledger)) {
+    if (!entry?.id || isDuplicateWindow(entry) || !isPlaceholderBet(entry)) continue;
+    if (entry.status === 'resolved' && entry.outcome === 'VOID') continue;
+    const superseded = entry.status === 'resolved'
+      ? { resolvedAt: entry.resolvedAt, supersededOutcome: entry.outcome, supersededEvidence: entry.evidence }
+      : { supersededStatus: entry.status };
+    entry.evidence = { reason: BASE_RATE_PLACEHOLDER_VOID_REASON, ...superseded, voidedAt: nowMs };
+    entry.outcome = 'VOID';
+    if (entry.status !== 'resolved') {
+      entry.status = 'resolved';
+      entry.resolvedAt = nowMs;
+      entry.sealedAt = nowMs;
+    }
+    voided += 1;
+  }
+  for (const entry of Object.values(ledger)) {
+    if (!isDuplicateWindow(entry) || isHorizonEntry(entry) || isPlaceholderBet(entry)) continue;
+    if (!isPlaceholderBet(ledger[entry.duplicateOf]) || readBeforeEmission(entry)) continue;
+    restoreDuplicateWindow(entry, nowMs);
+    restored += 1;
+  }
+  return { voided, restored };
+}
+
+// A duplicate whose deadline or settlement read precedes its own emission was
+// graded on an outcome known before it was forecast: a market-settlement
+// window tracks the venue's close, so a later market listed under the same
+// slug inherits the earlier market's close date and settlement (#8990). Ingest
+// never opens such a window, so the restore leaves it a duplicate.
+function readBeforeEmission(entry) {
+  const generatedAt = Number(entry.generatedAt);
+  const evidence = entry.evidence?.reason === DUPLICATE_WINDOW_VOID_REASON ? entry.evidence.supersededEvidence : entry.evidence;
+  const readTs = Number(evidence?.readTs);
+  return Number(entry.deadline) < generatedAt || (Number.isFinite(readTs) && readTs < generatedAt);
+}
+
+function restoreDuplicateWindow(entry, nowMs) {
+  const formerDuplicateOf = entry.duplicateOf;
+  delete entry.duplicateOf;
+  const evidence = entry.evidence;
+  if (evidence?.reason === DUPLICATE_WINDOW_VOID_REASON) {
+    if ('supersededStatus' in evidence) {
+      entry.status = evidence.supersededStatus;
+      for (const field of ['outcome', 'evidence', 'resolvedAt', 'sealedAt']) delete entry[field];
+    } else {
+      entry.outcome = evidence.supersededOutcome;
+      if (evidence.supersededEvidence === undefined) delete entry.evidence;
+      else entry.evidence = evidence.supersededEvidence;
+    }
+  }
+  entry.duplicateRestore = { formerDuplicateOf, restoredAt: nowMs };
 }
 
 // One ledger window per hard projection contract (#7075), keyed
@@ -2375,7 +2475,8 @@ function isLateLiveRead(entry) {
 
 // Rows corrected after their receipt reached R2 (#5233 envelope voids,
 // #8990 duplicate voids, old-selection judged voids, late-read corrections,
-// #9013 unread-feed relabels and rescores) are written again so R2 holds the
+// #9013 unread-feed relabels, rescores, placeholder voids and restored
+// duplicates) are written again so R2 holds the
 // correction. R2 writes are serial at about 450 ms (p90 about 780 ms), and
 // the whole run has a 150 s fetch phase, so each run rewrites at most this
 // many stale receipts, oldest first: 50 x 780 ms is about 40 s, which leaves
@@ -2398,7 +2499,7 @@ export function collectUnarchivedReceipts(ledger, { rearchiveLimit = RECEIPT_REA
     }));
 }
 
-const CORRECTION_VOID_REASONS = new Set([ENVELOPE_BUG_VOID_REASON, DUPLICATE_WINDOW_VOID_REASON, JUDGED_OLD_SELECTION_VOID_REASON, LATE_READ_VOID_REASON, RESOLVER_COULD_NOT_READ_FEED_VOID_REASON]);
+const CORRECTION_VOID_REASONS = new Set([ENVELOPE_BUG_VOID_REASON, DUPLICATE_WINDOW_VOID_REASON, JUDGED_OLD_SELECTION_VOID_REASON, LATE_READ_VOID_REASON, RESOLVER_COULD_NOT_READ_FEED_VOID_REASON, BASE_RATE_PLACEHOLDER_VOID_REASON]);
 
 // Durable: derived from the correction stamps, so it holds until a later
 // archive write stamps receiptArchivedAt after the correction.
@@ -2411,6 +2512,7 @@ export function receiptNeedsRearchive(entry) {
     Number(entry.evidence?.regradedAt) || 0,
     Number(entry.rescore?.rescoredAt) || 0,
     Number(entry.duplicateRepointedAt) || 0,
+    Number(entry.duplicateRestore?.restoredAt) || 0,
   );
   return archivedAt < correctedAt;
 }

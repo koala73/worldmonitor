@@ -26,6 +26,13 @@ function eiaFixture(overrides = {}) {
   };
 }
 
+// Only a bet carrying a model forecast opens a ledger window (#8990), so the
+// ingest tests tag the snapshot as the ensemble stage would.
+function ensembledSnapshot(snap) {
+  for (const bet of snap.predictions) bet.probabilitySource = 'ensemble';
+  return snap;
+}
+
 describe('buildBetsSnapshot base rate', () => {
   it('falls back to an honest thin-history prior when no series has accumulated', () => {
     // Empty prior series → only the current reading → 0 deltas → directional prior,
@@ -97,7 +104,7 @@ describe('shapeResolutionFeed (eia-petroleum loader)', () => {
 
 describe('bet-engine shadow bets flow through ingest → resolve', () => {
   function betEntry(metricSubstr) {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     return Object.values(ledger).find((e) => e.spec?.metricKey?.includes(metricSubstr));
   }
@@ -134,7 +141,7 @@ describe('bet-engine shadow bets flow through ingest → resolve', () => {
 
 describe('value settlement gate (#2 — no false NO on a stale pre-release read)', () => {
   function inventoryEntry() {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     return Object.values(ledger).find((e) => e.spec?.metricKey?.includes('inventory'));
   }
@@ -151,7 +158,7 @@ describe('value settlement gate (#2 — no false NO on a stale pre-release read)
   });
 
   it('keeps EIA pending through the default grace and resolves from the covering weekly report', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     const key = Object.keys(ledger).find((k) => ledger[k].spec?.metricKey?.includes('inventory'));
     const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
@@ -385,8 +392,12 @@ describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 
     assert.equal(entry.probabilitySource, 'ensemble');
   });
 
+  it('opens no window on a base-rate placeholder (#8990)', () => {
+    assert.deepEqual(ingestHistory({}, [betSnapshot()], NOW), {});
+  });
+
   it('a later sighting of the same question is recorded for audit, never scored (#8990)', () => {
-    const first = betSnapshot(); // base_rate 0.4
+    const first = betSnapshot({ probabilitySource: 'ensemble' }); // 0.4
     const ledger = ingestHistory({}, [first], NOW);
     const second = betSnapshot({ probability: 0.45 });
     for (const bet of second.predictions) bet.generatedAt = NOW + 60_000;
@@ -412,7 +423,7 @@ describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 
   });
 
   it('the market anchor stays paired with the probability the window opened with (#8990)', () => {
-    const first = betSnapshot({ calibration: { marketPrice: 62, source: 'polymarket' } });
+    const first = betSnapshot({ probabilitySource: 'ensemble_partial', calibration: { marketPrice: 62, source: 'polymarket' } });
     let ledger = ingestHistory({}, [first], NOW);
     const upgraded = betSnapshot({
       probabilitySource: 'ensemble', probability: 0.7,
@@ -423,7 +434,7 @@ describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 
     ledger = ingestHistory(ledger, [upgraded], NOW + 60_000);
     const entry = Object.values(ledger)[0];
     assert.equal(entry.probability, 0.4);
-    assert.equal(entry.probabilitySource, 'base_rate');
+    assert.equal(entry.probabilitySource, 'ensemble_partial');
     assert.equal(entry.calibration.marketPrice, 62);
   });
 
@@ -445,10 +456,10 @@ describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 
     // Energy horizons are wall-clock derived: a next-day run generates a later
     // deadline for the same id. The merge must NOT advance the open window's
     // deadline or daily reruns would keep the bet open forever.
-    const first = betSnapshot();
+    const first = betSnapshot({ probabilitySource: 'ensemble' });
     const ledger = ingestHistory({}, [first], NOW);
     const entryBefore = Object.values(ledger)[0];
-    const nextDay = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW + DAY_MS }, data: eiaFixture() } }, NOW + DAY_MS, {});
+    const nextDay = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW + DAY_MS }, data: eiaFixture() } }, NOW + DAY_MS, {}));
     const after = ingestHistory(ledger, [nextDay], NOW + DAY_MS);
     const entryAfter = Object.values(after).find((e) => e.key === entryBefore.key);
     assert.equal(entryAfter.deadline, entryBefore.deadline);
@@ -461,5 +472,27 @@ describe('bet history code version (#7072)', () => {
     assert.equal(stampCodeVersion({ predictions: [] }, { VERCEL_GIT_COMMIT_SHA: 'vercel', GITHUB_SHA: 'gh' }).codeVersion, 'vercel');
     assert.equal(stampCodeVersion({ predictions: [] }, { RAILWAY_GIT_COMMIT_SHA: 'railway', VERCEL_GIT_COMMIT_SHA: 'vercel' }).codeVersion, 'railway');
     assert.equal('codeVersion' in stampCodeVersion({ predictions: [] }, {}), false);
+  });
+});
+
+describe('market bets after the venue close (#8990)', () => {
+  const SETTLEMENT = 'prediction:markets-resolution:v1';
+  const SLUG = 'israel-x-iran-ceasefire-continues-through';
+  const marketBet = (question) => ({
+    id: `market:${SLUG}`,
+    title: question,
+    generationOrigin: 'bet_engine',
+    marketSlug: SLUG,
+    marketSource: 'polymarket',
+    resolution: { kind: 'hard', metricKey: `${SETTLEMENT}|yesPrice(slug==${SLUG})`, operator: 'crosses', threshold: 50, window: 'at-deadline', deadline: NOW + 30 * DAY_MS, sourceFeed: SETTLEMENT, question },
+  });
+
+  it('ensembles the slug\'s next market, which the resolver keys as its own question, and skips the open one', () => {
+    const july = 'Israel x Iran ceasefire continues through July 31?';
+    const open = { ...marketBet(july), spec: marketBet(july).resolution, status: 'pending', deadline: NOW + 30 * DAY_MS };
+    const questions = collectOpenQuestions({ a: open }, windowQuestionKey, NOW);
+    const token = (bet) => `${bet.id}\n${windowQuestionKey({ ...bet, spec: bet.resolution })}`;
+    assert.equal(questions.has(token(marketBet('israel x iran ceasefire continues through july 31'))), true);
+    assert.equal(questions.has(token(marketBet('Israel x Iran ceasefire continues through August 31?'))), false);
   });
 });

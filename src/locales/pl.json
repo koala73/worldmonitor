@@ -2443,7 +2443,8 @@
           "judged_old_selection": "Oceniono metodą doboru dowodów, którą później uznano za niewiarygodną",
           "late_read": "Źródło danych nie zostało odczytane wystarczająco blisko terminu",
           "feed_unavailable": "Źródło danych było niedostępne po terminie",
-          "resolver_could_not_read_feed": "Nasz system rozstrzygania nie mógł poprawnie odczytać tego źródła danych"
+          "resolver_could_not_read_feed": "Nasz system rozstrzygania nie mógł poprawnie odczytać tego źródła danych",
+          "base_rate_placeholder": "Otwarte na wartości zastępczej stopy bazowej, a nie na prognozie modelu"
         }
       },
       "horizons": {
