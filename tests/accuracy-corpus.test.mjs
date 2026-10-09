@@ -2441,6 +2441,20 @@ describe('accuracy page horizon grades (#9057)', () => {
     assert.equal(download.horizonProjections.rows.length, 3);
   });
 
+  it('shows the grades only where the derived audit lifts: measurable and fresh, never stale or failed (#8990)', () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const derived = (section) => renderState(section, { audit: undefined }).shell.body;
+    assert.match(derived(withGrades()), /<h2 id="horizon-grades">/, 'a fresh measurable capture lifts the audit and shows the grades');
+    for (const [label, section] of [
+      ['small sample', { ...withGrades(), scorecard: { ...LIVE_SCORECARD, uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } } }],
+      ['stale', { ...withGrades(), attemptedAtMs: LIVE_SECTION.attemptedAtMs + 40 * 3_600_000 }],
+      ['retained after a failed capture', { ...withGrades(), failureCode: 'http-error' }],
+    ]) {
+      assert.doesNotMatch(derived(section), /horizon-grades|horizon-grade=/, label);
+      assert.match(derived(section), /data-accuracy-audit=/, label);
+    }
+  });
+
   it('publishes the grades in the download with their definition and minimums', () => {
     const download = downloadFor(withGrades()).horizonProjections;
     assert.equal(download.valuesPublished, false);
