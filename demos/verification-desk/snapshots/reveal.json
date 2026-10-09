@@ -1,0 +1,41 @@
+{
+  "candidate": {
+    "pattern": "syndication",
+    "title": "Trump Announces Diesel Deal With Russia",
+    "link": "https://1019bigwaax.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+    "origin": "iHeart (iheart.com)",
+    "headlineCount": 6,
+    "outlets": 6,
+    "feedLabels": [
+      "1019bigwaax.iheart.com",
+      "kfbk.iheart.com",
+      "kfyr.iheart.com",
+      "kogo.iheart.com",
+      "newsradio910wltp.iheart.com",
+      "wjno.iheart.com"
+    ],
+    "memberTitles": [
+      "Trump Announces Diesel Deal With Russia | News Radio 101.9 Big WAAX",
+      "Trump Announces Diesel Deal With Russia",
+      "Trump Announces Diesel Deal With Russia | KFYR 550 AM / 99.7 FM",
+      "Trump Announces Diesel Deal With Russia | Newsradio 600 KOGO",
+      "Trump Announces Diesel Deal With Russia | NewsRadio 910 WLTP",
+      "Trump Announces Diesel Deal With Russia"
+    ],
+    "links": [
+      "https://1019bigwaax.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+      "https://kfbk.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+      "https://kfyr.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+      "https://kogo.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+      "https://newsradio910wltp.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/",
+      "https://wjno.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+    ],
+    "publisherFamilies": 1,
+    "seenIn": "gdelt",
+    "score": 24,
+    "why": "6 different sites ran the identical headline; every one belongs to iheart.com."
+  },
+  "script": "Here is a headline that ran yesterday: \"Trump Announces Diesel Deal With Russia.\" WorldMonitor found it on six different radio station websites. KFBK. KOGO. KFYR. WLTP. WJNO. Big WAAX. Six mastheads. Six web addresses. The same words, word for word. Trace them back, and every one of them is the same company, iHeart, publishing one piece of copy. Six headlines. One source. Now, the diesel deal itself is real. The BBC, the Financial Times, CNBC and NBC each reported it on their own. That is what corroboration looks like. Six stations repeating one script is not. A headline in six places with one source is still one source.",
+  "pinnedAt": "2026-10-09T21:30:00Z",
+  "provenance": "GDELT articles returned by get_news_intelligence on 2026-10-09 ~21:00 UTC; the corroborating newsrooms come from get_news_clusters query=diesel at the same time. See snapshots/2026-10-09T21-10-10Z.json."
+}

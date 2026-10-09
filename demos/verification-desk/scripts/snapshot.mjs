@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ARCHIVE_DIR, loadEnv } from '../lib/config.mjs';
 import { dig, WorldMonitorMcp } from '../lib/mcp-client.mjs';
-import { FULL_CATEGORIES } from '../lib/sources.mjs';
+import { FULL_CATEGORIES, gdeltArticlesFrom } from '../lib/sources.mjs';
 
 loadEnv();
 
@@ -33,8 +33,11 @@ async function snapshot() {
     }
   }
   let intelligenceStories = [];
+  let gdeltArticles = [];
   try {
-    intelligenceStories = dig(await mcp.callTool('get_news_intelligence', { limit: 0 }), 'topStories') ?? [];
+    const intel = await mcp.callTool('get_news_intelligence', { limit: 0 });
+    intelligenceStories = dig(intel, 'topStories') ?? [];
+    gdeltArticles = gdeltArticlesFrom(intel);
   } catch (error) {
     errors.push(`intelligence: ${error.message}`);
   }
@@ -47,7 +50,7 @@ async function snapshot() {
   }
   await mkdir(ARCHIVE_DIR, { recursive: true });
   const file = path.join(ARCHIVE_DIR, `${takenAt.replace(/[:.]/g, '-')}.json`);
-  await writeFile(file, JSON.stringify({ takenAt, clusters: [...clusters.values()], intelligenceStories, brief, errors }));
+  await writeFile(file, JSON.stringify({ takenAt, clusters: [...clusters.values()], intelligenceStories, gdeltArticles, brief, errors }));
   console.log(`${takenAt}  ${clusters.size} clusters, ${intelligenceStories.length} stories${errors.length ? `, ${errors.length} errors: ${errors.slice(0, 3).join('; ')}` : ''}  -> ${path.basename(file)}`);
   if (!clusters.size && errors.length) process.exitCode = 1;
 }

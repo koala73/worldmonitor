@@ -95,7 +95,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 
 .verdict { padding: 22px 24px; border-radius: 12px; border: 2px solid currentColor; background: var(--panel); animation: stamp 500ms cubic-bezier(.2, 1.6, .4, 1); }
 .verdict .label { font: 600 13px var(--mono); letter-spacing: 0.3em; opacity: 0.8; }
-.verdict strong { display: block; font-size: clamp(36px, 3.6vw, 64px); letter-spacing: -0.02em; line-height: 1; margin: 4px 0 8px; }
+.verdict strong { display: block; font-size: clamp(30px, 3vw, 56px); overflow-wrap: anywhere; letter-spacing: -0.02em; line-height: 1; margin: 4px 0 8px; }
 .verdict ul { margin: 0; padding-left: 20px; color: var(--text); font-size: clamp(14px, 1.15vw, 18px); }
 .verdict.v-corroborated { color: var(--ok); }
 .verdict.v-single-source { color: var(--single); }

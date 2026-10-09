@@ -197,7 +197,8 @@ const renderers = {
     const out = el('div');
     if (!d.figures.length) { out.append(el('span', '', 'No figures in the headline to check.')); return out; }
     for (const f of d.figures) {
-      if (f.found) out.append(el('div', 'good', `✓ ${f.figure} appears in the sourced text`));
+      if (f.found && f.statedBy?.length === 1) out.append(el('div', 'warn', `✓ ${f.figure} is in the sources, but only one publisher states it: ${f.statedBy[0]}`));
+      else if (f.found) out.append(el('div', 'good', `✓ ${f.figure} appears in the sourced text${f.statedBy?.length > 1 ? ` (${f.statedBy.length} publishers)` : ''}`));
       else if (f.sourcesSay) out.append(el('div', 'bad', `✗ ${f.figure} is not in the sources. They say ${f.sourcesSay}.`));
       else out.append(el('div', 'warn', `? ${f.figure} is not in the sourced text: unproven`));
     }
@@ -323,11 +324,12 @@ async function runReveal() {
     if (labels[i] && c.memberTitles?.length) tile.append(el('small', '', labels[i]));
     tile.style.animationDelay = '0ms';
     $('#cascade-tiles').append(tile);
-    $('#reveal-counter').textContent = `${i + 1} headline${i ? 's' : ''}${c.outlets ? ` · ${c.outlets} outlets` : ''}`;
+    $('#reveal-counter').textContent = `${i + 1} headline${i ? 's' : ''}`;
     await sleep(650);
   }
   const total = c.headlineCount ?? items.length;
-  $('#reveal-counter').textContent = `${total} headlines${c.outlets ? ` · ${c.outlets} outlets` : ''} → traced back`;
+  const unit = c.pattern === 'syndication' ? 'sites' : 'outlets';
+  $('#reveal-counter').textContent = `${total} headlines${c.outlets ? ` · ${c.outlets} ${unit}` : ''} → traced back`;
   await sleep(900);
   if (myRun !== runId) return;
   $('#origin-count').textContent = '1';
@@ -394,7 +396,7 @@ if ('speechSynthesis' in window) speechSynthesis.getVoices();
     $('#mode-badge').textContent = 'REHEARSAL';
     $('#mode-badge').classList.add('rehearsal');
   } else {
-    $('#mode-badge').textContent = `LIVE · ${config.sourceKind.toUpperCase()}`;
+    $('#mode-badge').textContent = config.sourceKind.includes('live') ? `LIVE · ${config.sourceKind.toUpperCase()}` : 'ARCHIVE · SNAPSHOT DATA';
   }
   if (config.backdropUrl) {
     const f = el('iframe');

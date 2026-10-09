@@ -139,3 +139,30 @@ test('an outage is reported as an outage, never as "nobody carried it"', async (
   assert.match(r.verdict.reasons[0], /could not reach/);
   assert.match(r.script, /can't reach its sources/);
 });
+
+// Regression cases from real WorldMonitor data captured 2026-10-09 (snapshots/).
+test('real 2026-10-09 snapshot: split clusters, unrelated figures, one-publisher numbers, syndication', async () => {
+  const { ArchiveSource, CombinedSource } = await import('../lib/sources.mjs');
+  const archive = new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 });
+  const deps = { source: new CombinedSource(null, archive), anchor: new Anchor({ apiKey: '' }) };
+
+  // The diesel deal sat in 8 one-outlet clusters; counting one cluster would say Single-source.
+  const diesel = await gradeToResult('Trump strikes diesel deal with Putin', deps);
+  assert.equal(diesel.verdict.verdict, 'Corroborated');
+  assert.ok(diesel.who.families >= 5);
+
+  // "magnitude 7.7" must not contradict "kills 200": different quantities.
+  const quake = await gradeToResult('Panama earthquake kills 200', deps);
+  assert.equal(quake.verdict.verdict, 'Corroborated');
+  assert.equal(quake.verdict.caveat, 'Story corroborated, figure unproven');
+
+  // Two outlets report the strikes; only one states the number.
+  const sudan = await gradeToResult('31 civilians killed in drone strike on Sudan displacement camp', deps);
+  assert.deepEqual(sudan.numbers.figures[0].statedBy, ['Daily Sabah']);
+  assert.equal(sudan.verdict.caveat, 'Story corroborated, figure single-source');
+
+  const [top] = await findRevealCandidates(deps.source);
+  assert.equal(top.pattern, 'syndication');
+  assert.equal(top.origin, 'iheart.com');
+  assert.equal(top.headlineCount, 6);
+});

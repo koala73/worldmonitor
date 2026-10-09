@@ -49,7 +49,11 @@ export function computeVerdict({ match, corroboration, figures = [], judge = nul
   if (state === 'corroborated') {
     reasons.push(`${corroboration.publishers} independent publisher families carried it.`);
     if (figureNote) reasons.push(figureNote);
-    return { verdict: VERDICTS.CORROBORATED, reasons, caveat: figureNote ? 'Story corroborated, figure unproven' : null };
+    // The event is corroborated; a number in it may still rest on one newsroom.
+    const lone = figures.filter((f) => f.found && f.statedBy?.length === 1);
+    for (const f of lone) reasons.push(`But the figure ${f.figure} comes from one publisher only: ${f.statedBy[0]}.`);
+    const caveat = figureNote ? 'Story corroborated, figure unproven' : lone.length ? 'Story corroborated, figure single-source' : null;
+    return { verdict: VERDICTS.CORROBORATED, reasons, caveat };
   }
   if (state === 'single-publisher') {
     reasons.push('Every copy traces to one publisher family.');

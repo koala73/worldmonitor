@@ -179,6 +179,10 @@ export function templateGrade(r) {
     const unproven = figures.find((f) => !f.found);
     if (v === 'Contradicted' && conflicting) parts.push(`The headline says ${conflicting.figure}. The sources say ${conflicting.sourcesSay}.`);
     else if (unproven) parts.push(`The figure ${unproven.figure} does not appear in the sourced text, so it is unproven.`);
+    else if (figures.some((f) => f.statedBy?.length === 1) && (r.who?.families ?? 0) > 1) {
+      const f = figures.find((x) => x.statedBy?.length === 1);
+      parts.push(`${cap(say(r.who.families))} newsrooms carry the event, but the number ${f.figure} comes from only one of them: ${f.statedBy[0]}.`);
+    }
     else if (figures.length) parts.push(`The figures check out against the sourced text.`);
     const m = r.money?.markets?.[0];
     if (m) parts.push(`On ${m.source ? cap(m.source) : 'prediction markets'}, money prices "${m.title}" at ${Math.round(m.yesPrice)} percent.`);

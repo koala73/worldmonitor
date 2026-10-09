@@ -72,11 +72,14 @@ async function recap() {
 
 async function reveal() {
   const pinnedPath = path.join(DATA_DIR, desk.rehearsal ? 'reveal-rehearsal.json' : 'reveal.json');
-  try {
-    const pinned = JSON.parse(await readFile(pinnedPath, 'utf8'));
-    return { ...pinned, pinned: true };
-  } catch {
-    // nothing pinned yet: compute
+  // data/reveal.json (pinned locally) wins over the committed snapshots/reveal.json.
+  for (const file of desk.rehearsal ? [pinnedPath] : [pinnedPath, path.join(ROOT, 'snapshots', 'reveal.json')]) {
+    try {
+      const pinned = JSON.parse(await readFile(file, 'utf8'));
+      return { ...pinned, pinned: true };
+    } catch {
+      // not pinned here
+    }
   }
   return cached('reveal', async () => {
     const [top] = await findRevealCandidates(desk.source, { limit: 1 });

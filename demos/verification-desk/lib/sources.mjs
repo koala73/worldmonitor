@@ -37,6 +37,13 @@ export function normalizeCluster(c, extra = {}) {
   };
 }
 
+/** GDELT article rows ({title, url}) from a get_news_intelligence payload. */
+export function gdeltArticlesFrom(payload) {
+  const topics = dig(payload, 'topics');
+  if (!Array.isArray(topics)) return [];
+  return topics.flatMap((t) => (t.articles ?? []).map((a) => ({ title: a.title, url: a.url, source: a.source ?? null, date: a.date ?? null })));
+}
+
 /** Collects every market-shaped object ({title, yesPrice}) inside a payload. */
 export function collectMarkets(payload) {
   const out = [];
@@ -168,7 +175,22 @@ export class LiveSource {
 
   async intelligenceStories() {
     try {
-      return await this.snapshot('intelligence', async () => dig(await this.mcp.callTool('get_news_intelligence', { limit: 0 }), 'topStories') ?? []);
+      return (await this.intelligencePayload()).stories;
+    } catch {
+      return [];
+    }
+  }
+
+  intelligencePayload() {
+    return this.snapshot('intelligence', async () => {
+      const payload = await this.mcp.callTool('get_news_intelligence', { limit: 0 });
+      return { stories: dig(payload, 'topStories') ?? [], articles: gdeltArticlesFrom(payload) };
+    });
+  }
+
+  async gdeltArticles() {
+    try {
+      return (await this.intelligencePayload()).articles;
     } catch {
       return [];
     }
@@ -182,8 +204,8 @@ export class LiveSource {
 
 /** Snapshots written by scripts/snapshot.mjs, newest wins per cluster id. */
 export class ArchiveSource {
-  constructor(dir, { days = 7 } = {}) {
-    this.dir = dir;
+  constructor(dirs, { days = 7 } = {}) {
+    this.dirs = Array.isArray(dirs) ? dirs : [dirs];
     this.days = days;
     this.kind = 'archive';
     this.cache = null;
@@ -193,18 +215,22 @@ export class ArchiveSource {
     if (this.cache) return this.cache;
     const cutoff = Date.now() - this.days * 86_400_000;
     let files = [];
-    try {
-      files = (await readdir(this.dir)).filter((f) => f.endsWith('.json')).sort();
-    } catch {
-      files = [];
+    for (const dir of this.dirs) {
+      try {
+        files.push(...(await readdir(dir)).filter((f) => /^\d{4}-\d{2}-\d{2}T.*\.json$/.test(f)).map((f) => path.join(dir, f)));
+      } catch {
+        // directory not created yet
+      }
     }
+    files.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
     const clusters = new Map();
     const stories = new Map();
     const briefs = [];
+    const articles = new Map();
     for (const f of files) {
       let snap;
       try {
-        snap = JSON.parse(await readFile(path.join(this.dir, f), 'utf8'));
+        snap = JSON.parse(await readFile(f, 'utf8'));
       } catch {
         continue;
       }
@@ -221,8 +247,9 @@ export class ArchiveSource {
       }
       for (const s of snap.intelligenceStories ?? []) stories.set(s.primaryTitle, { ...s, snapshotAt: snap.takenAt });
       if (snap.brief) briefs.push({ ...snap.brief, takenAt: snap.takenAt });
+      for (const a of snap.gdeltArticles ?? []) articles.set(a.url, a);
     }
-    this.cache = { clusters: [...clusters.values()], stories: [...stories.values()], briefs, files: files.length };
+    this.cache = { clusters: [...clusters.values()], stories: [...stories.values()], briefs, articles: [...articles.values()], files: files.length };
     return this.cache;
   }
 
@@ -259,6 +286,10 @@ export class ArchiveSource {
 
   async intelligenceStories() {
     return (await this.load()).stories;
+  }
+
+  async gdeltArticles() {
+    return (await this.load()).articles;
   }
 }
 
@@ -320,6 +351,11 @@ export class CombinedSource {
   async weekClusters() {
     return this.archive ? (await this.archive.load()).clusters : [];
   }
+
+  async gdeltArticles() {
+    const [l, a] = await Promise.all([this.live?.gdeltArticles() ?? [], this.archive?.gdeltArticles() ?? []]);
+    return [...new Map([...a, ...l].map((x) => [x.url, x])).values()];
+  }
 }
 
 /** Rehearsal data. Every string in the fixture is fictional and the UI says so on screen. */
@@ -364,5 +400,9 @@ export class FixtureSource {
 
   async weekClusters() {
     return this.allClusters();
+  }
+
+  async gdeltArticles() {
+    return this.fixture.gdeltArticles ?? [];
   }
 }

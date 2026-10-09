@@ -58,17 +58,27 @@ export function heuristicSearchTerms(headline, max = 4) {
 const SCALE = { thousand: 1e3, k: 1e3, million: 1e6, mn: 1e6, m: 1e6, billion: 1e9, bn: 1e9, b: 1e9, trillion: 1e12, tn: 1e12 };
 const NUMBER_RE = /(\$|€|£)?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(%|percent|per cent|thousand|million|billion|trillion|bn|mn|tn|[kmb](?![a-z]))?/gi;
 
-/** Every figure in a text, with its numeric value (scale words applied). */
+const CONTEXT_SKIP = new Set(['a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'by', 'and', 'or', 'for', 'from', 'with', 'as', 'than', 'about', 'some', 'nearly', 'over', 'least', 'more', 'up', 'down', 'per']);
+
+function contextWords(text, start, end) {
+  const before = text.slice(Math.max(0, start - 40), start).toLowerCase().match(/[a-z]+/g) ?? [];
+  const after = text.slice(end, end + 40).toLowerCase().match(/[a-z]+/g) ?? [];
+  const pick = (arr) => arr.filter((w) => !CONTEXT_SKIP.has(w)).slice(0, 1);
+  return [...pick(before.reverse()), ...pick(after)].map((w) => w.replace(/(ing|ed|es|s)$/, ''));
+}
+
+/** Every figure in a text, with its numeric value (scale words applied) and the words around it. */
 export function extractFigures(text) {
   const out = [];
-  for (const m of String(text || '').matchAll(NUMBER_RE)) {
+  const str = String(text || '');
+  for (const m of str.matchAll(NUMBER_RE)) {
     const digits = m[2].replace(/,/g, '');
     const base = Number(digits);
     if (!Number.isFinite(base)) continue;
     const unit = (m[3] || '').toLowerCase();
     const isPercent = unit === '%' || unit.startsWith('per');
     const value = isPercent ? base : base * (SCALE[unit] ?? 1);
-    out.push({ raw: m[0].trim(), digits, value, percent: isPercent });
+    out.push({ raw: m[0].trim(), digits, value, percent: isPercent, context: contextWords(str, m.index, m.index + m[0].length) });
   }
   return out;
 }
@@ -80,19 +90,30 @@ function sameFigure(a, b) {
   return Math.abs(a.value - b.value) / Math.max(a.value, b.value) < 0.005;
 }
 
+/** Two figures measure the same thing only when they share a neighbouring word ("75 basis" / "50 basis"). */
+function sameQuantity(a, b) {
+  return a.percent === b.percent && a.context.some((w) => b.context.includes(w));
+}
+
 /**
  * The extraction evidence gate, applied to a headline: each figure the
  * headline states must appear in the sourced text, or it is unproven.
- * Single-digit counts ("2 dead") are checked too; nothing is waived.
+ * A different figure is only a conflict when it measures the same thing:
+ * "kills 200" is not contradicted by "magnitude 7.7".
+ * With `bySource` ([{publisher, text}]) each figure also lists which
+ * publishers state it, so a corroborated story with a one-publisher number
+ * is visible.
  */
-export function checkFigures(headline, evidenceText) {
+export function checkFigures(headline, evidenceText, bySource = []) {
   const claimed = extractFigures(headline);
   const available = extractFigures(evidenceText);
   return claimed.map((figure) => {
     const match = available.find((a) => sameFigure(figure, a));
-    // A different figure of the same kind in the sources is worth saying out loud.
-    const nearest = match ? null : available.find((a) => a.percent === figure.percent && a.digits !== figure.digits) ?? null;
-    return { figure: figure.raw, found: Boolean(match), matchedAs: match?.raw ?? null, sourcesSay: nearest?.raw ?? null };
+    const conflict = match ? null : available.find((a) => !sameFigure(figure, a) && sameQuantity(figure, a)) ?? null;
+    const statedBy = [...new Set(bySource
+      .filter((s) => extractFigures(s.text).some((a) => sameFigure(figure, a)))
+      .map((s) => s.publisher))];
+    return { figure: figure.raw, found: Boolean(match), matchedAs: match?.raw ?? null, sourcesSay: conflict?.raw ?? null, statedBy };
   });
 }
 

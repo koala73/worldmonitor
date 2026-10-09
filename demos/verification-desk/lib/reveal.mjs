@@ -7,6 +7,10 @@
 //            claim on the same named origin ("... Reuters reports").
 //   ungated  many outlets carried it, yet the insights seeder's independent
 //            entity-corroboration gate never fired.
+//   syndication  the same headline on several "different" sites that share
+//            one owner (iHeart station pages, one content network's mastheads):
+//            many URLs, one newsroom. Read from the GDELT articles in
+//            get_news_intelligence.
 //
 // Candidates are ranked, never auto-published: the presenter opens the links
 // and picks one with `find-reveal --pick N` before going on stage.
@@ -70,6 +74,8 @@ export function cascadeCandidates(items) {
 export function ungatedCandidates(stories) {
   return stories
     .filter((s) => (s.uniqueSourceCount ?? 0) >= 4 && s.entityCorroboration === false && (s.corroborationSourceCount ?? 0) === 0)
+    // Several independent families already corroborate it: not a single-source story, whatever the entity gate says.
+    .filter((s) => !(s.corroboration?.state === 'corroborated' && (s.corroboration.publishers ?? 0) >= 3))
     .map((s) => ({
       pattern: 'ungated',
       title: s.primaryTitle ?? s.title,
@@ -86,11 +92,72 @@ export function ungatedCandidates(stories) {
     }));
 }
 
+const SUFFIX = /\s+[|–—-]\s+[^|–—-]{2,60}$/;
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+/** Registrable-ish owner: kfbk.iheart.com -> iheart.com. Good enough for the families GDELT shows. */
+function ownerOf(host) {
+  const parts = host.split('.');
+  const twoLevel = /\.(co|com|org|net|gov|ac)\.[a-z]{2}$/.test(host);
+  return parts.slice(twoLevel ? -3 : -2).join('.');
+}
+
+/** A shared numeric article id in the path (content networks reuse it across mastheads). */
+function articleId(url) {
+  return url.match(/\/(\d{6,})\//)?.[1] ?? null;
+}
+
+export function syndicationCandidates(articles) {
+  const groups = new Map();
+  for (const a of articles ?? []) {
+    const host = a.url && hostOf(a.url);
+    if (!host || !a.title) continue;
+    const key = a.title.replace(SUFFIX, '').trim().toLowerCase();
+    if (key.length < 12) continue;
+    const g = groups.get(key) ?? { title: a.title.replace(SUFFIX, '').trim(), items: [] };
+    if (!g.items.some((i) => i.host === host)) g.items.push({ host, owner: ownerOf(host), id: articleId(a.url), url: a.url, title: a.title });
+    groups.set(key, g);
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    if (g.items.length < 3) continue;
+    const owners = new Set(g.items.map((i) => i.owner));
+    const ids = new Set(g.items.map((i) => i.id).filter(Boolean));
+    const oneOwner = owners.size === 1 || (ids.size === 1 && g.items.every((i) => i.id));
+    if (!oneOwner) continue;
+    const owner = [...owners][0];
+    out.push({
+      pattern: 'syndication',
+      title: g.title,
+      link: g.items[0].url,
+      origin: owner,
+      headlineCount: g.items.length,
+      outlets: g.items.length,
+      feedLabels: g.items.map((i) => i.host),
+      memberTitles: g.items.map((i) => i.title),
+      links: g.items.map((i) => i.url),
+      publisherFamilies: 1,
+      seenIn: 'gdelt',
+      score: 4 * g.items.length,
+      why: `${g.items.length} different sites ran the identical headline; every one belongs to ${owner}.`,
+    });
+  }
+  return out;
+}
+
 export async function findRevealCandidates(source, { limit = 10 } = {}) {
-  const [clusters, week, stories] = await Promise.all([
+  const [clusters, week, stories, articles] = await Promise.all([
     source.allClusters(),
     source.weekClusters ? source.weekClusters() : [],
     source.intelligenceStories(),
+    source.gdeltArticles ? source.gdeltArticles() : [],
   ]);
   const byId = new Map([...week, ...clusters].map((c) => [c.id, c]));
   const allClusters = [...byId.values()];
@@ -98,6 +165,7 @@ export async function findRevealCandidates(source, { limit = 10 } = {}) {
     ...echoCandidates(allClusters),
     ...cascadeCandidates([...stories, ...allClusters.filter((c) => c.memberTitles?.length)]),
     ...ungatedCandidates(stories),
+    ...syndicationCandidates(articles),
   ];
   const seen = new Set();
   return candidates

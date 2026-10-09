@@ -6,6 +6,10 @@ The anchor's facts come from WorldMonitor's MCP tools. Its verdicts come from fi
 
 > We don't ask the model if it's true. We ask the data where it came from.
 
+## Already in the repo: real data from 2026-10-09
+
+`snapshots/` holds real WorldMonitor data, captured through the MCP connector on 2026-10-09 around 21:10 UTC, and a **pinned reveal**: "Trump Announces Diesel Deal With Russia", the same headline on six iHeart radio station sites, so one source. `npm start` works on this data with no keys at all. See [snapshots/README.md](snapshots/README.md) for the headlines to try and what each one shows. Open the six links in `snapshots/reveal.json` before the panel.
+
 ## Prepare tonight (about 20 minutes, then it runs by itself)
 
 ```bash
@@ -25,12 +29,13 @@ npm run find-reveal                 # ranked candidates, with every member headl
 npm run find-reveal -- --pick 2     # pin #2 to data/reveal.json and draft the anchor script
 ```
 
-The finder looks for three patterns, all read straight from WorldMonitor's counts:
+The finder looks for four patterns, all read straight from WorldMonitor's data:
 
 | Pattern | What it means | How it's detected |
 |---|---|---|
 | `cascade` | Several outlets ran it, and their headlines all credit the same origin ("…, Reuters reports") | At least 3 headlines and 60% or more of attributed headlines name one origin |
 | `echo` | One publisher filed it under many feeds or regional editions, and no one else carried it | `corroboration.state === "single-publisher"` and 3 or more headlines |
+| `syndication` | The same headline on several sites that share one owner (iHeart stations, one content network's mastheads) | GDELT articles in `get_news_intelligence`: 3 or more hosts with one owner domain, or the same article id |
 | `ungated` | Many outlets carried it, but the insights seeder's independent entity-corroboration gate never fired | `uniqueSourceCount >= 4`, `entityCorroboration === false` |
 
 **Open every link before you pin a story.** The data says "one publisher family in what WorldMonitor monitors." On stage, you are the one telling a room that a newsroom was the only source. If you want different wording, edit `script` in `data/reveal.json`.
@@ -71,8 +76,8 @@ Each grade streams the checks one at a time: **who** (publisher families, with c
 |---|---|
 | Unverifiable | No monitored cluster matches; or only aggregators/blogs carried it (`tier4-only`); or there is no countable publisher evidence |
 | Contradicted | The sources state a different figure, or Claude quotes a contradicting line **that appears verbatim in the evidence**. A quote that isn't verbatim is discarded. |
-| Single-source | One publisher family (`single-publisher`) |
-| Corroborated | Two or more independent families. A figure the sources don't contain is flagged as unproven on the card. |
+| Single-source | One publisher family (`single-publisher`), counted across **every** matching cluster: one event can be split over several digest clusters |
+| Corroborated | Two or more independent families. A figure the sources don't contain is flagged as unproven; a figure only one publisher states is flagged as single-source. |
 
 WorldMonitor's corroboration states describe coverage, not accuracy. The anchor is prompted never to call a claim true or false, only to say what the sources show.
 
